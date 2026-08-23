@@ -1,0 +1,583 @@
+{% extends "admin/change_list.html" %}
+
+{% load static %}
+
+
+{% block search %}
+
+<div
+    id="shvya-saved-views"
+    class="shvya-saved-views"
+    data-storage-key="shvya-admin-saved-view:{{ request.path }}"
+>
+
+    <div class="shvya-saved-views-header">
+
+        <div class="shvya-saved-views-title">
+
+            <span class="shvya-saved-views-icon">
+                ★
+            </span>
+
+            <span>
+                Saved Views
+            </span>
+
+        </div>
+
+
+        <div class="shvya-saved-views-actions">
+
+            <select
+                id="shvya-saved-view-select"
+                class="shvya-saved-view-select"
+                aria-label="Saved views"
+            >
+                <option value="">
+                    Select saved view
+                </option>
+            </select>
+
+
+            <button
+                type="button"
+                id="shvya-save-view"
+                class="shvya-saved-view-button shvya-saved-view-primary"
+            >
+                + Save current
+            </button>
+
+
+            <button
+                type="button"
+                id="shvya-delete-view"
+                class="shvya-saved-view-button shvya-saved-view-danger"
+                disabled
+            >
+                Delete
+            </button>
+
+        </div>
+
+    </div>
+
+
+    <div
+        id="shvya-saved-view-message"
+        class="shvya-saved-view-message"
+        aria-live="polite"
+    ></div>
+
+</div>
+
+
+{{ block.super }}
+
+{% endblock %}
+
+
+{% block extrastyle %}
+
+    {{ block.super }}
+
+    <link
+        rel="stylesheet"
+        href="{% static 'admin/shvya-admin.css' %}"
+    >
+
+{% endblock %}
+
+
+{% block extrajs %}
+
+    {{ block.super }}
+
+    <script>
+        (function () {
+
+            "use strict";
+
+
+            const container =
+                document.getElementById(
+                    "shvya-saved-views"
+                );
+
+
+            if (!container) {
+                return;
+            }
+
+
+            const select =
+                document.getElementById(
+                    "shvya-saved-view-select"
+                );
+
+
+            const saveButton =
+                document.getElementById(
+                    "shvya-save-view"
+                );
+
+
+            const deleteButton =
+                document.getElementById(
+                    "shvya-delete-view"
+                );
+
+
+            const message =
+                document.getElementById(
+                    "shvya-saved-view-message"
+                );
+
+
+            const storageKey =
+                container.dataset.storageKey;
+
+
+            /*
+             * ========================================================
+             * STORAGE
+             * ========================================================
+             */
+
+            function getViews() {
+
+                try {
+
+                    const raw =
+                        localStorage.getItem(
+                            storageKey
+                        );
+
+
+                    if (!raw) {
+                        return {};
+                    }
+
+
+                    const parsed =
+                        JSON.parse(
+                            raw
+                        );
+
+
+                    if (
+                        !parsed ||
+                        typeof parsed !== "object" ||
+                        Array.isArray(parsed)
+                    ) {
+                        return {};
+                    }
+
+
+                    return parsed;
+
+                } catch (error) {
+
+                    console.warn(
+                        "SHVYA Saved Views:",
+                        error
+                    );
+
+                    return {};
+                }
+            }
+
+
+            function saveViews(
+                views
+            ) {
+
+                try {
+
+                    localStorage.setItem(
+                        storageKey,
+                        JSON.stringify(
+                            views
+                        )
+                    );
+
+                    return true;
+
+                } catch (error) {
+
+                    console.warn(
+                        "SHVYA Saved Views:",
+                        error
+                    );
+
+                    showMessage(
+                        "Unable to save this view.",
+                        "error"
+                    );
+
+                    return false;
+                }
+            }
+
+
+            /*
+             * ========================================================
+             * MESSAGE
+             * ========================================================
+             */
+
+            function showMessage(
+                text,
+                type = "success"
+            ) {
+
+                if (!message) {
+                    return;
+                }
+
+
+                message.textContent =
+                    text;
+
+
+                message.className =
+                    "shvya-saved-view-message " +
+                    "shvya-saved-view-message-" +
+                    type;
+
+
+                window.clearTimeout(
+                    showMessage.timeout
+                );
+
+
+                showMessage.timeout =
+                    window.setTimeout(
+                        function () {
+
+                            message.textContent =
+                                "";
+
+                            message.className =
+                                "shvya-saved-view-message";
+
+                        },
+                        2500
+                    );
+            }
+
+
+            /*
+             * ========================================================
+             * CURRENT QUERY
+             * ========================================================
+             */
+
+            function currentQueryString() {
+
+                const params =
+                    new URLSearchParams(
+                        window.location.search
+                    );
+
+
+                params.delete(
+                    "_changelist_filters"
+                );
+
+
+                return params.toString();
+            }
+
+
+            function buildViewUrl(
+                queryString
+            ) {
+
+                const url =
+                    new URL(
+                        window.location.href
+                    );
+
+
+                url.search =
+                    queryString
+                        ? "?" + queryString
+                        : "";
+
+
+                return url.toString();
+            }
+
+
+            /*
+             * ========================================================
+             * POPULATE SAVED VIEWS
+             * ========================================================
+             */
+
+            function populateViews() {
+
+                const views =
+                    getViews();
+
+
+                while (
+                    select.options.length > 1
+                ) {
+
+                    select.remove(
+                        1
+                    );
+                }
+
+
+                const names =
+                    Object.keys(
+                        views
+                    ).sort(
+                        function (
+                            a,
+                            b
+                        ) {
+
+                            return a.localeCompare(
+                                b
+                            );
+
+                        }
+                    );
+
+
+                names.forEach(
+                    function (
+                        name
+                    ) {
+
+                        const option =
+                            document.createElement(
+                                "option"
+                            );
+
+
+                        option.value =
+                            name;
+
+
+                        option.textContent =
+                            name;
+
+
+                        select.appendChild(
+                            option
+                        );
+
+                    }
+                );
+
+
+                deleteButton.disabled =
+                    !select.value;
+            }
+
+
+            /*
+             * ========================================================
+             * SAVE CURRENT VIEW
+             * ========================================================
+             */
+
+            saveButton.addEventListener(
+                "click",
+                function () {
+
+                    const name =
+                        window.prompt(
+                            "Enter a name for this saved view:"
+                        );
+
+
+                    if (!name) {
+                        return;
+                    }
+
+
+                    const cleanName =
+                        name.trim();
+
+
+                    if (!cleanName) {
+                        return;
+                    }
+
+
+                    const views =
+                        getViews();
+
+
+                    views[cleanName] = {
+                        query:
+                            currentQueryString(),
+
+                        created_at:
+                            new Date().toISOString()
+                    };
+
+
+                    if (
+                        saveViews(
+                            views
+                        )
+                    ) {
+
+                        populateViews();
+
+
+                        select.value =
+                            cleanName;
+
+
+                        deleteButton.disabled =
+                            false;
+
+
+                        showMessage(
+                            "View saved successfully."
+                        );
+                    }
+
+                }
+            );
+
+
+            /*
+             * ========================================================
+             * RESTORE VIEW
+             * ========================================================
+             */
+
+            select.addEventListener(
+                "change",
+                function () {
+
+                    const name =
+                        select.value;
+
+
+                    deleteButton.disabled =
+                        !name;
+
+
+                    if (!name) {
+                        return;
+                    }
+
+
+                    const views =
+                        getViews();
+
+
+                    const view =
+                        views[name];
+
+
+                    if (
+                        !view ||
+                        typeof view.query !==
+                            "string"
+                    ) {
+
+                        showMessage(
+                            "This saved view is invalid.",
+                            "error"
+                        );
+
+                        return;
+                    }
+
+
+                    window.location.href =
+                        buildViewUrl(
+                            view.query
+                        );
+
+                }
+            );
+
+
+            /*
+             * ========================================================
+             * DELETE VIEW
+             * ========================================================
+             */
+
+            deleteButton.addEventListener(
+                "click",
+                function () {
+
+                    const name =
+                        select.value;
+
+
+                    if (!name) {
+                        return;
+                    }
+
+
+                    const confirmed =
+                        window.confirm(
+                            'Delete saved view "' +
+                            name +
+                            '"?'
+                        );
+
+
+                    if (!confirmed) {
+                        return;
+                    }
+
+
+                    const views =
+                        getViews();
+
+
+                    delete views[name];
+
+
+                    if (
+                        saveViews(
+                            views
+                        )
+                    ) {
+
+                        populateViews();
+
+
+                        select.value =
+                            "";
+
+
+                        deleteButton.disabled =
+                            true;
+
+
+                        showMessage(
+                            "Saved view deleted."
+                        );
+                    }
+
+                }
+            );
+
+
+            /*
+             * ========================================================
+             * INITIALIZE
+             * ========================================================
+             */
+
+            populateViews();
+
+        })();
+    </script>
+
+{% endblock %}

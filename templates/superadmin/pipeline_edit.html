@@ -1,0 +1,277 @@
+{% extends "superadmin/base.html" %}
+
+{% block content %}
+
+<div class="max-w-3xl mx-auto">
+
+    <!-- =====================================================
+         HEADER
+    ====================================================== -->
+
+    <div class="mb-6">
+
+        <div class="flex items-center justify-between">
+
+            <div>
+
+                <h1 class="text-xl font-semibold text-gray-900">
+                    Edit Pipeline
+                </h1>
+
+                <p class="text-sm text-gray-500 mt-1">
+                    Update pipeline settings for
+                    <span class="font-medium text-gray-700">
+                        {{ organization.name }}
+                    </span>
+                </p>
+
+            </div>
+
+            <a
+                href="{% url 'superadmin-organization-detail' organization.id %}"
+                class="px-3 py-2 text-sm border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
+            >
+                Back
+            </a>
+
+        </div>
+
+    </div>
+
+
+    <!-- =====================================================
+         FORM
+    ====================================================== -->
+
+    <div class="bg-white border rounded-lg">
+
+        <div class="px-6 py-5 border-b">
+
+            <h2 class="text-base font-semibold text-gray-900">
+                Pipeline Information
+            </h2>
+
+            <p class="text-xs text-gray-500 mt-1">
+                Update the details below and save your changes.
+            </p>
+
+        </div>
+
+
+        <form
+            method="post"
+            class="p-6"
+        >
+
+            {% csrf_token %}
+
+
+            <!-- Non-field errors -->
+
+            {% if form.non_field_errors %}
+
+                <div class="mb-5 p-3 rounded-md bg-red-50 border border-red-200">
+
+                    {% for error in form.non_field_errors %}
+
+                        <p class="text-sm text-red-700">
+                            {{ error }}
+                        </p>
+
+                    {% endfor %}
+
+                </div>
+
+            {% endif %}
+
+
+            <!-- =================================================
+                 NAME
+            ================================================== -->
+
+            <div class="mb-5">
+
+                <label
+                    for="{{ form.name.id_for_label }}"
+                    class="block text-sm font-medium text-gray-700 mb-1"
+                >
+                    Pipeline Name
+                </label>
+
+                {{ form.name }}
+
+                {% for error in form.name.errors %}
+
+                    <p class="mt-1 text-xs text-red-600">
+                        {{ error }}
+                    </p>
+
+                {% endfor %}
+
+            </div>
+
+
+            <!-- =================================================
+                 DESCRIPTION
+            ================================================== -->
+
+            <div class="mb-5">
+
+                <label
+                    for="{{ form.description.id_for_label }}"
+                    class="block text-sm font-medium text-gray-700 mb-1"
+                >
+                    Description
+                </label>
+
+                {{ form.description }}
+
+                {% for error in form.description.errors %}
+
+                    <p class="mt-1 text-xs text-red-600">
+                        {{ error }}
+                    </p>
+
+                {% endfor %}
+
+            </div>
+
+
+            <!-- =================================================
+                 COUNTRY
+            ================================================== -->
+
+            <div class="mb-5">
+
+                <label
+                    for="{{ form.country_code.id_for_label }}"
+                    class="block text-sm font-medium text-gray-700 mb-1"
+                >
+                    Country Code
+                </label>
+
+                {{ form.country_code }}
+
+                {% for error in form.country_code.errors %}
+
+                    <p class="mt-1 text-xs text-red-600">
+                        {{ error }}
+                    </p>
+
+                {% endfor %}
+
+            </div>
+
+
+            <!-- =================================================
+                 PHONE
+            ================================================== -->
+
+            <div class="mb-5">
+
+                <label
+                    for="{{ form.phone_number.id_for_label }}"
+                    class="block text-sm font-medium text-gray-700 mb-1"
+                >
+                    Phone Number
+                </label>
+
+                {{ form.phone_number }}
+
+                {% for error in form.phone_number.errors %}
+
+                    <p class="mt-1 text-xs text-red-600">
+                        {{ error }}
+                    </p>
+
+                {% endfor %}
+
+            </div>
+
+
+            <!-- =================================================
+                 OWNER
+            ================================================== -->
+
+            <div class="mb-5">
+
+                <label
+                    for="{{ form.owner.id_for_label }}"
+                    class="block text-sm font-medium text-gray-700 mb-1"
+                >
+                    Pipeline Owner
+                </label>
+
+                {{ form.owner }}
+
+                {% for error in form.owner.errors %}
+
+                    <p class="mt-1 text-xs text-red-600">
+                        {{ error }}
+                    </p>
+
+                {% endfor %}
+
+            </div>
+
+
+            <!-- =================================================
+                 ACTIVE STATUS
+            ================================================== -->
+
+            {% if form.is_active %}
+
+                <div class="mb-6">
+
+                    <label class="flex items-center gap-2">
+
+                        {{ form.is_active }}
+
+                        <span class="text-sm text-gray-700">
+                            Pipeline is active
+                        </span>
+
+                    </label>
+
+                    {% for error in form.is_active.errors %}
+
+                        <p class="mt-1 text-xs text-red-600">
+                            {{ error }}
+                        </p>
+
+                    {% endfor %}
+
+                </div>
+
+            {% endif %}
+
+
+            <!-- =================================================
+                 ACTIONS
+            ================================================== -->
+
+            <div class="flex items-center justify-end gap-3 pt-5 border-t">
+
+                <a
+                    href="{% url 'superadmin-organization-detail' organization.id %}"
+                    class="px-4 py-2 text-sm border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
+                >
+                    Cancel
+                </a>
+
+                <button
+                    type="submit"
+                    class="px-4 py-2 text-sm bg-indigo-600 text-white rounded-md hover:bg-indigo-700"
+                >
+                    Save Changes
+                </button>
+
+            </div>
+
+        </form>
+
+    </div>
+
+</div>
+
+{% endblock %}

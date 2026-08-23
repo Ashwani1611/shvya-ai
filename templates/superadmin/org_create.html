@@ -1,0 +1,427 @@
+{% extends "superadmin/base.html" %}
+
+{% block content %}
+
+<div class="max-w-4xl mx-auto">
+
+    <!-- =====================================================
+         HEADER
+    ====================================================== -->
+
+    <div class="mb-6 flex items-center justify-between">
+
+        <div>
+            <h1 class="text-xl font-semibold text-gray-900">
+                Add Client
+            </h1>
+
+            <p class="text-sm text-gray-500 mt-1">
+                Create a new organization in SHVYA.
+            </p>
+        </div>
+
+        <a
+            href="{% url 'superadmin-org-list' %}"
+            class="px-4 py-2 border rounded-md text-sm text-gray-700 hover:bg-gray-50"
+        >
+            Cancel
+        </a>
+
+    </div>
+
+
+    <!-- =====================================================
+         FORM
+    ====================================================== -->
+
+    <div class="bg-white border rounded-lg shadow-sm">
+
+        <form
+            method="post"
+            class="p-6"
+        >
+
+            {% csrf_token %}
+
+
+            <!-- =================================================
+                 NON-FIELD ERRORS
+            ================================================== -->
+
+            {% if form.non_field_errors %}
+
+                <div class="mb-6 p-4 rounded-md bg-red-50 border border-red-200">
+
+                    {% for error in form.non_field_errors %}
+
+                        <p class="text-sm text-red-700">
+                            {{ error }}
+                        </p>
+
+                    {% endfor %}
+
+                </div>
+
+            {% endif %}
+
+
+            <!-- =================================================
+                 ORGANIZATION INFORMATION
+            ================================================== -->
+
+            <div class="mb-8">
+
+                <h2 class="text-sm font-semibold text-gray-900 mb-4">
+                    Organization Information
+                </h2>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+
+
+                    <!-- Organization Name -->
+
+                    <div class="md:col-span-2">
+
+                        <label
+                            for="{{ form.name.id_for_label }}"
+                            class="block text-sm font-medium text-gray-700 mb-1"
+                        >
+                            {{ form.name.label }}
+                        </label>
+
+                        {{ form.name }}
+
+                        {% if form.name.errors %}
+
+                            {% for error in form.name.errors %}
+
+                                <p class="mt-1 text-xs text-red-600">
+                                    {{ error }}
+                                </p>
+
+                            {% endfor %}
+
+                        {% endif %}
+
+                    </div>
+
+
+                    <!-- Package -->
+
+                    <div>
+
+                        <label
+                            for="{{ form.package.id_for_label }}"
+                            class="block text-sm font-medium text-gray-700 mb-1"
+                        >
+                            {{ form.package.label }}
+                        </label>
+
+                        {{ form.package }}
+
+                        {% if form.package.errors %}
+
+                            {% for error in form.package.errors %}
+
+                                <p class="mt-1 text-xs text-red-600">
+                                    {{ error }}
+                                </p>
+
+                            {% endfor %}
+
+                        {% endif %}
+
+                    </div>
+
+
+                    <!-- Payment Mode -->
+
+                    <div>
+
+                        <label
+                            for="{{ form.payment_mode.id_for_label }}"
+                            class="block text-sm font-medium text-gray-700 mb-1"
+                        >
+                            {{ form.payment_mode.label }}
+                        </label>
+
+                        {{ form.payment_mode }}
+
+                        {% if form.payment_mode.errors %}
+
+                            {% for error in form.payment_mode.errors %}
+
+                                <p class="mt-1 text-xs text-red-600">
+                                    {{ error }}
+                                </p>
+
+                            {% endfor %}
+
+                        {% endif %}
+
+                    </div>
+
+
+                    <!-- Number of Seats -->
+
+                    <div>
+
+                        <label
+                            for="{{ form.number_of_seats.id_for_label }}"
+                            class="block text-sm font-medium text-gray-700 mb-1"
+                        >
+                            {{ form.number_of_seats.label }}
+                        </label>
+
+                        {{ form.number_of_seats }}
+
+                        {% if form.number_of_seats.errors %}
+
+                            {% for error in form.number_of_seats.errors %}
+
+                                <p class="mt-1 text-xs text-red-600">
+                                    {{ error }}
+                                </p>
+
+                            {% endfor %}
+
+                        {% endif %}
+
+                    </div>
+
+
+                    <!-- Assigned POC -->
+
+                    <div>
+
+                        <label
+                            for="{{ form.assigned_poc.id_for_label }}"
+                            class="block text-sm font-medium text-gray-700 mb-1"
+                        >
+                            {{ form.assigned_poc.label }}
+                        </label>
+
+                        {{ form.assigned_poc }}
+
+                        {% if form.assigned_poc.errors %}
+
+                            {% for error in form.assigned_poc.errors %}
+
+                                <p class="mt-1 text-xs text-red-600">
+                                    {{ error }}
+                                </p>
+
+                            {% endfor %}
+
+                        {% endif %}
+
+                    </div>
+
+                </div>
+
+            </div>
+
+
+            <!-- =================================================
+                 CREDITS & COMMERCIAL INFORMATION
+            ================================================== -->
+
+            <div class="mb-8">
+
+                <h2 class="text-sm font-semibold text-gray-900 mb-4">
+                    Credits & Commercial Information
+                </h2>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+
+
+                    <!-- Total Credits -->
+
+                    <div>
+
+                        <label
+                            for="{{ form.credits_total.id_for_label }}"
+                            class="block text-sm font-medium text-gray-700 mb-1"
+                        >
+                            {{ form.credits_total.label }}
+                        </label>
+
+                        {{ form.credits_total }}
+
+                        {% if form.credits_total.errors %}
+
+                            {% for error in form.credits_total.errors %}
+
+                                <p class="mt-1 text-xs text-red-600">
+                                    {{ error }}
+                                </p>
+
+                            {% endfor %}
+
+                        {% endif %}
+
+                    </div>
+
+
+                    <!-- Total Sale Amount -->
+
+                    <div>
+
+                        <label
+                            for="{{ form.total_sale_amount.id_for_label }}"
+                            class="block text-sm font-medium text-gray-700 mb-1"
+                        >
+                            {{ form.total_sale_amount.label }}
+                        </label>
+
+                        {{ form.total_sale_amount }}
+
+                        {% if form.total_sale_amount.errors %}
+
+                            {% for error in form.total_sale_amount.errors %}
+
+                                <p class="mt-1 text-xs text-red-600">
+                                    {{ error }}
+                                </p>
+
+                            {% endfor %}
+
+                        {% endif %}
+
+                    </div>
+
+
+                    <!-- Credit Alert -->
+
+                    <div class="md:col-span-2">
+
+                        <label class="inline-flex items-center gap-2">
+
+                            {{ form.credits_alert_enabled }}
+
+                            <span class="text-sm text-gray-700">
+                                {{ form.credits_alert_enabled.label }}
+                            </span>
+
+                        </label>
+
+                        {% if form.credits_alert_enabled.errors %}
+
+                            {% for error in form.credits_alert_enabled.errors %}
+
+                                <p class="mt-1 text-xs text-red-600">
+                                    {{ error }}
+                                </p>
+
+                            {% endfor %}
+
+                        {% endif %}
+
+                    </div>
+
+                </div>
+
+            </div>
+
+
+            <!-- =================================================
+                 TAGS
+            ================================================== -->
+
+            <div class="mb-8">
+
+                <h2 class="text-sm font-semibold text-gray-900 mb-4">
+                    Organization Tags
+                </h2>
+
+                <label
+                    for="{{ form.tags.id_for_label }}"
+                    class="block text-sm font-medium text-gray-700 mb-1"
+                >
+                    {{ form.tags.label }}
+                </label>
+
+                {{ form.tags }}
+
+                <p class="mt-1 text-xs text-gray-400">
+                    Hold Ctrl on Windows or Command on Mac to select multiple tags.
+                </p>
+
+                {% if form.tags.errors %}
+
+                    {% for error in form.tags.errors %}
+
+                        <p class="mt-1 text-xs text-red-600">
+                            {{ error }}
+                        </p>
+
+                    {% endfor %}
+
+                {% endif %}
+
+            </div>
+
+
+            <!-- =================================================
+                 OPERATIONAL NOTES
+            ================================================== -->
+
+            <div class="mb-8">
+
+                <h2 class="text-sm font-semibold text-gray-900 mb-4">
+                    Operational Notes
+                </h2>
+
+                <label
+                    for="{{ form.operational_notes.id_for_label }}"
+                    class="block text-sm font-medium text-gray-700 mb-1"
+                >
+                    {{ form.operational_notes.label }}
+                </label>
+
+                {{ form.operational_notes }}
+
+                {% if form.operational_notes.errors %}
+
+                    {% for error in form.operational_notes.errors %}
+
+                        <p class="mt-1 text-xs text-red-600">
+                            {{ error }}
+                        </p>
+
+                    {% endfor %}
+
+                {% endif %}
+
+            </div>
+
+
+            <!-- =================================================
+                 ACTIONS
+            ================================================== -->
+
+            <div class="pt-5 border-t flex items-center justify-end gap-3">
+
+                <a
+                    href="{% url 'superadmin-org-list' %}"
+                    class="px-4 py-2 border rounded-md text-sm text-gray-700 hover:bg-gray-50"
+                >
+                    Cancel
+                </a>
+
+                <button
+                    type="submit"
+                    class="px-5 py-2 bg-indigo-600 text-white rounded-md text-sm font-medium hover:bg-indigo-700 transition"
+                >
+                    Create Client
+                </button>
+
+            </div>
+
+        </form>
+
+    </div>
+
+</div>
+
+{% endblock %}

@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+    <meta charset="UTF-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
+
+    <title>SHVYA Superadmin Login</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+
+</head>
+
+
+<body class="min-h-screen bg-gray-100 flex items-center justify-center">
+
+
+    <div class="w-full max-w-md px-6">
+
+
+        <div class="bg-white border border-gray-200 rounded-xl shadow-sm p-8">
+
+
+            <!-- Header -->
+
+            <div class="text-center mb-8">
+
+                <div
+                    class="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-indigo-600 text-white font-bold text-lg"
+                >
+                    S
+                </div>
+
+                <h1 class="text-2xl font-semibold text-gray-900">
+                    SHVYA Superadmin
+                </h1>
+
+                <p class="mt-2 text-sm text-gray-500">
+                    Sign in to access the Superadmin Console
+                </p>
+
+            </div>
+
+
+            <!-- Error -->
+
+            {% if error %}
+
+                <div
+                    class="mb-5 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+                >
+                    {{ error }}
+                </div>
+
+            {% endif %}
+
+
+            <!-- Login Form -->
+
+            <form
+                method="post"
+                action=""
+                class="space-y-5"
+            >
+
+                {% csrf_token %}
+
+
+                <!-- Email -->
+
+                <div>
+
+                    <label
+                        for="email"
+                        class="block text-sm font-medium text-gray-700 mb-1"
+                    >
+                        Email
+                    </label>
+
+                    <input
+                        id="email"
+                        name="username"
+                        type="email"
+                        autocomplete="username"
+                        required
+                        autofocus
+                        class="w-full rounded-md border border-gray-300 px-3 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                        placeholder="Enter Superadmin email"
+                    >
+
+                </div>
+
+
+                <!-- Password -->
+
+                <div>
+
+                    <label
+                        for="password"
+                        class="block text-sm font-medium text-gray-700 mb-1"
+                    >
+                        Password
+                    </label>
+
+                    <input
+                        id="password"
+                        name="password"
+                        type="password"
+                        autocomplete="current-password"
+                        required
+                        class="w-full rounded-md border border-gray-300 px-3 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                        placeholder="Enter password"
+                    >
+
+                </div>
+
+
+                <!-- Submit -->
+
+                <button
+                    type="submit"
+                    class="w-full rounded-md bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+                >
+                    Sign In
+                </button>
+
+            </form>
+
+
+            <div class="mt-6 text-center">
+
+                <p class="text-xs text-gray-400">
+                    SHVYA Superadmin Console
+                </p>
+
+            </div>
+
+
+        </div>
+
+
+    </div>
+
+
+</body>
+
+</html>

@@ -1,0 +1,2639 @@
+{% extends "admin/base_site.html" %}
+
+{% load i18n static log %}
+
+{% block title %}
+    SHVYA ADMIN | Technical Control Center
+{% endblock %}
+
+
+{% block extrastyle %}
+    {{ block.super }}
+
+    <style>
+
+        /* =====================================================
+           SHVYA CONTROL CENTER
+        ===================================================== */
+
+        .shvya-control-center {
+            width: 100%;
+            max-width: 1500px;
+            margin: 0 auto;
+        }
+
+
+        /* =====================================================
+           PAGE HEADER
+        ===================================================== */
+
+        .shvya-dashboard-header {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 24px;
+
+            margin-bottom: 28px;
+        }
+
+
+        .shvya-dashboard-title {
+            margin: 0 !important;
+
+            font-size: 28px !important;
+            line-height: 1.2;
+
+            font-weight: 700 !important;
+
+            color: var(--shvya-text) !important;
+        }
+
+
+        .shvya-dashboard-subtitle {
+            margin: 7px 0 0;
+
+            color: var(--shvya-text-muted);
+
+            font-size: 13px;
+        }
+
+
+        .shvya-dashboard-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+
+            padding: 8px 12px;
+
+            border: 1px solid var(--shvya-border);
+
+            border-radius: 999px;
+
+            background: var(--shvya-surface);
+
+            color: var(--shvya-text-secondary);
+
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+
+        .shvya-status-dot {
+            width: 7px;
+            height: 7px;
+
+            border-radius: 50%;
+
+            background: var(--shvya-success);
+        }
+
+
+        .shvya-status-dot.shvya-status-warning {
+            background: #d97706;
+        }
+
+
+        .shvya-status-dot.shvya-status-error {
+            background: #dc2626;
+        }
+
+
+
+        /* =====================================================
+           SHVYA SMART GLOBAL SEARCH
+        ===================================================== */
+
+        .shvya-global-search {
+            position: relative;
+            width: min(100%, 760px);
+            margin: 0 auto 24px;
+            z-index: 50;
+        }
+
+        .shvya-global-search-bar {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            min-height: 48px;
+            padding: 0 14px;
+            background: var(--shvya-surface);
+            border: 1px solid var(--shvya-border);
+            border-radius: var(--shvya-radius-lg);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+            transition: border-color 120ms ease, box-shadow 120ms ease;
+        }
+
+        .shvya-global-search-bar:focus-within {
+            border-color: var(--shvya-primary);
+            box-shadow: 0 0 0 3px var(--shvya-primary-soft);
+        }
+
+        .shvya-global-search-icon {
+            flex: 0 0 auto;
+            color: var(--shvya-text-muted);
+            font-size: 16px;
+            line-height: 1;
+        }
+
+        .shvya-global-search-input {
+            width: 100%;
+            min-width: 0;
+            padding: 0;
+            border: 0 !important;
+            outline: 0 !important;
+            background: transparent !important;
+            color: var(--shvya-text) !important;
+            font-size: 13px;
+            font-weight: 500;
+            box-shadow: none !important;
+        }
+
+        .shvya-global-search-input::placeholder {
+            color: var(--shvya-text-muted);
+            opacity: 1;
+        }
+
+        .shvya-global-search-shortcut {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 30px;
+            height: 24px;
+            padding: 0 7px;
+            border: 1px solid var(--shvya-border-soft);
+            border-radius: 6px;
+            background: var(--shvya-surface-soft);
+            color: var(--shvya-text-muted);
+            font-size: 9px;
+            font-weight: 700;
+            white-space: nowrap;
+        }
+
+        .shvya-search-loading {
+            display: none;
+            width: 15px;
+            height: 15px;
+            border: 2px solid var(--shvya-border);
+            border-top-color: var(--shvya-primary);
+            border-radius: 50%;
+            animation: shvya-search-spin 650ms linear infinite;
+            flex: 0 0 auto;
+        }
+
+        .shvya-global-search.is-loading .shvya-search-loading {
+            display: block;
+        }
+
+        @keyframes shvya-search-spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        .shvya-search-results {
+            display: none;
+            position: absolute;
+            top: calc(100% + 8px);
+            left: 0;
+            right: 0;
+            max-height: 430px;
+            overflow-y: auto;
+            padding: 8px;
+            background: var(--shvya-surface);
+            border: 1px solid var(--shvya-border);
+            border-radius: var(--shvya-radius-lg);
+            box-shadow: 0 14px 35px rgba(0, 0, 0, 0.12);
+        }
+
+        .shvya-search-results.is-visible {
+            display: block;
+        }
+
+        .shvya-search-result {
+            display: flex;
+            align-items: center;
+            gap: 11px;
+            width: 100%;
+            min-height: 52px;
+            padding: 9px 10px;
+            border: 1px solid transparent;
+            border-radius: var(--shvya-radius-md);
+            background: transparent;
+            color: var(--shvya-text);
+            text-decoration: none !important;
+            text-align: left;
+            cursor: pointer;
+            transition: background 100ms ease, border-color 100ms ease;
+        }
+
+        .shvya-search-result:hover,
+        .shvya-search-result.is-active {
+            background: var(--shvya-primary-soft);
+            border-color: var(--shvya-border);
+        }
+
+        .shvya-search-result-icon {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 32px;
+            height: 32px;
+            flex: 0 0 32px;
+            border-radius: 8px;
+            background: var(--shvya-surface-soft);
+            color: var(--shvya-primary);
+            font-size: 12px;
+            font-weight: 800;
+        }
+
+        .shvya-search-result-content {
+            min-width: 0;
+            flex: 1;
+        }
+
+        .shvya-search-result-type {
+            margin-bottom: 2px;
+            color: var(--shvya-text-muted);
+            font-size: 9px;
+            font-weight: 800;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+        }
+
+        .shvya-search-result-name {
+            overflow: hidden;
+            color: var(--shvya-text);
+            font-size: 12px;
+            font-weight: 650;
+            line-height: 1.35;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .shvya-search-result-meta {
+            margin-top: 2px;
+            overflow: hidden;
+            color: var(--shvya-text-muted);
+            font-size: 9px;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .shvya-search-result-arrow {
+            color: var(--shvya-text-muted);
+            font-size: 14px;
+            flex: 0 0 auto;
+        }
+
+        .shvya-search-state {
+            padding: 28px 14px;
+            color: var(--shvya-text-muted);
+            text-align: center;
+            font-size: 11px;
+        }
+
+        .shvya-search-state strong {
+            display: block;
+            margin-bottom: 4px;
+            color: var(--shvya-text-secondary);
+            font-size: 12px;
+        }
+
+        .shvya-search-footer {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            margin-top: 5px;
+            padding: 8px 10px 2px;
+            color: var(--shvya-text-muted);
+            font-size: 9px;
+            border-top: 1px solid var(--shvya-border-soft);
+        }
+
+        .shvya-search-footer kbd {
+            padding: 2px 5px;
+            border: 1px solid var(--shvya-border-soft);
+            border-radius: 4px;
+            background: var(--shvya-surface-soft);
+            color: var(--shvya-text-secondary);
+            font-size: 8px;
+            font-weight: 700;
+        }
+
+        @media (max-width: 700px) {
+            .shvya-global-search {
+                margin-bottom: 18px;
+            }
+
+            .shvya-global-search-shortcut {
+                display: none;
+            }
+
+            .shvya-search-results {
+                max-height: 55vh;
+            }
+        }
+
+        /* =====================================================
+           STAT CARDS
+        ===================================================== */
+
+        .shvya-stat-grid {
+            display: grid;
+
+            grid-template-columns:
+                repeat(4, minmax(0, 1fr));
+
+            gap: 16px;
+
+            margin-bottom: 24px;
+        }
+
+
+        .shvya-stat-card {
+            position: relative;
+
+            padding: 20px;
+
+            background: var(--shvya-surface);
+
+            border: 1px solid var(--shvya-border);
+
+            border-radius: var(--shvya-radius-lg);
+
+            box-shadow:
+                0 1px 2px rgba(0, 0, 0, 0.04);
+
+            transition:
+                transform 120ms ease,
+                border-color 120ms ease;
+        }
+
+
+        .shvya-stat-card:hover {
+            transform: translateY(-1px);
+
+            border-color: var(--shvya-primary);
+        }
+
+
+        .shvya-stat-label {
+            color: var(--shvya-text-muted);
+
+            font-size: 11px;
+
+            font-weight: 700;
+
+            text-transform: uppercase;
+
+            letter-spacing: 0.07em;
+        }
+
+
+        .shvya-stat-value {
+            margin-top: 8px;
+
+            color: var(--shvya-text);
+
+            font-size: 28px;
+
+            line-height: 1;
+
+            font-weight: 700;
+        }
+
+
+        .shvya-stat-description {
+            margin-top: 8px;
+
+            color: var(--shvya-text-muted);
+
+            font-size: 11px;
+        }
+
+
+        .shvya-stat-icon {
+            position: absolute;
+
+            top: 18px;
+            right: 18px;
+
+            width: 34px;
+            height: 34px;
+
+            display: flex;
+
+            align-items: center;
+            justify-content: center;
+
+            border-radius: 9px;
+
+            background: var(--shvya-primary-soft);
+
+            color: var(--shvya-primary);
+
+            font-size: 15px;
+            font-weight: 700;
+        }
+
+
+        /* =====================================================
+           MAIN DASHBOARD GRID
+        ===================================================== */
+
+        .shvya-dashboard-grid {
+            display: grid;
+
+            grid-template-columns:
+                minmax(0, 1.5fr)
+                minmax(300px, 0.8fr);
+
+            gap: 20px;
+
+            align-items: start;
+        }
+
+
+        /* =====================================================
+           DASHBOARD CARD
+        ===================================================== */
+
+        .shvya-dashboard-card {
+            background: var(--shvya-surface);
+
+            border: 1px solid var(--shvya-border);
+
+            border-radius: var(--shvya-radius-lg);
+
+            overflow: hidden;
+
+            margin-bottom: 20px;
+        }
+
+
+        .shvya-dashboard-card-header {
+            display: flex;
+
+            align-items: center;
+
+            justify-content: space-between;
+
+            padding: 16px 18px;
+
+            border-bottom:
+                1px solid var(--shvya-border-soft);
+        }
+
+
+        .shvya-dashboard-card-title {
+            margin: 0;
+
+            color: var(--shvya-text);
+
+            font-size: 14px;
+
+            font-weight: 700;
+        }
+
+
+        .shvya-dashboard-card-description {
+            margin: 4px 0 0;
+
+            color: var(--shvya-text-muted);
+
+            font-size: 11px;
+        }
+
+
+        .shvya-dashboard-card-body {
+            padding: 18px;
+        }
+
+
+        /* =====================================================
+           QUICK ACTIONS
+        ===================================================== */
+
+        .shvya-quick-actions {
+            display: grid;
+
+            grid-template-columns:
+                repeat(5, minmax(0, 1fr));
+
+            gap: 10px;
+
+            margin-bottom: 24px;
+        }
+
+
+        .shvya-action-button {
+            display: flex;
+
+            align-items: center;
+            justify-content: center;
+
+            gap: 8px;
+
+            min-height: 44px;
+
+            padding: 9px 12px;
+
+            background: var(--shvya-primary);
+
+            border: 1px solid var(--shvya-primary);
+
+            border-radius: var(--shvya-radius-md);
+
+            color: #ffffff !important;
+
+            text-decoration: none !important;
+
+            font-size: 11px;
+
+            font-weight: 700;
+
+            transition:
+                background 120ms ease,
+                border-color 120ms ease,
+                transform 120ms ease;
+        }
+
+
+        .shvya-action-button:hover {
+            background: var(--shvya-primary-hover);
+
+            border-color: var(--shvya-primary-hover);
+
+            color: #ffffff !important;
+
+            transform: translateY(-1px);
+        }
+
+
+        .shvya-action-icon {
+            display: flex;
+
+            align-items: center;
+            justify-content: center;
+
+            width: 20px;
+            height: 20px;
+
+            border-radius: 5px;
+
+            background: rgba(255, 255, 255, 0.16);
+
+            color: #ffffff;
+
+            font-size: 14px;
+
+            line-height: 1;
+        }
+
+
+        .shvya-quick-access-heading {
+            margin-bottom: 10px;
+
+            color: var(--shvya-text-muted);
+
+            font-size: 10px;
+
+            font-weight: 700;
+
+            text-transform: uppercase;
+
+            letter-spacing: 0.08em;
+        }
+
+
+        /* =====================================================
+           QUICK ACCESS
+        ===================================================== */
+
+        .shvya-quick-grid {
+            display: grid;
+
+            grid-template-columns:
+                repeat(3, minmax(0, 1fr));
+
+            gap: 10px;
+        }
+
+
+        .shvya-quick-link {
+            display: flex;
+
+            align-items: center;
+
+            gap: 10px;
+
+            min-height: 52px;
+
+            padding: 10px 12px;
+
+            background: var(--shvya-surface-soft);
+
+            border: 1px solid var(--shvya-border-soft);
+
+            border-radius: var(--shvya-radius-md);
+
+            color: var(--shvya-text-secondary) !important;
+
+            text-decoration: none !important;
+
+            font-size: 12px;
+
+            font-weight: 600;
+
+            transition:
+                background 120ms ease,
+                border-color 120ms ease,
+                color 120ms ease;
+        }
+
+
+        .shvya-quick-link:hover {
+            background: var(--shvya-primary-soft);
+
+            border-color: var(--shvya-primary);
+
+            color: var(--shvya-primary) !important;
+        }
+
+
+        .shvya-quick-icon {
+            width: 28px;
+            height: 28px;
+
+            display: flex;
+
+            align-items: center;
+            justify-content: center;
+
+            flex-shrink: 0;
+
+            border-radius: 7px;
+
+            background: var(--shvya-surface);
+
+            color: var(--shvya-primary);
+
+            font-size: 12px;
+        }
+
+
+        /* =====================================================
+           SYSTEM HEALTH
+        ===================================================== */
+
+        .shvya-system-health {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 10px;
+        }
+
+        .shvya-health-overall {
+            grid-column: 1 / -1;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 14px;
+            padding: 14px 16px;
+            background: var(--shvya-surface-soft);
+            border: 1px solid var(--shvya-border-soft);
+            border-radius: var(--shvya-radius-md);
+        }
+
+        .shvya-health-overall-copy {
+            min-width: 0;
+        }
+
+        .shvya-health-overall-label {
+            color: var(--shvya-text);
+            font-size: 12px;
+            font-weight: 700;
+        }
+
+        .shvya-health-overall-description {
+            margin-top: 3px;
+            color: var(--shvya-text-muted);
+            font-size: 10px;
+        }
+
+        .shvya-health-card {
+            display: flex;
+            align-items: center;
+            gap: 11px;
+            min-width: 0;
+            padding: 13px 14px;
+            background: var(--shvya-surface);
+            border: 1px solid var(--shvya-border-soft);
+            border-radius: var(--shvya-radius-md);
+        }
+
+        .shvya-health-card-icon {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 30px;
+            height: 30px;
+            flex: 0 0 30px;
+            border-radius: 8px;
+            background: var(--shvya-primary-soft);
+            color: var(--shvya-primary);
+            font-size: 10px;
+            font-weight: 800;
+        }
+
+        .shvya-health-card-content {
+            min-width: 0;
+            flex: 1;
+        }
+
+        .shvya-health-card-name {
+            color: var(--shvya-text-secondary);
+            font-size: 11px;
+            font-weight: 700;
+        }
+
+        .shvya-health-card-description {
+            margin-top: 3px;
+            overflow: hidden;
+            color: var(--shvya-text-muted);
+            font-size: 9px;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .shvya-health-card-status {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            flex: 0 0 auto;
+            color: var(--shvya-success);
+            font-size: 10px;
+            font-weight: 700;
+        }
+
+        .shvya-health-card-status.shvya-health-warning {
+            color: #d97706;
+        }
+
+        .shvya-health-card-status.shvya-health-error {
+            color: #dc2626;
+        }
+
+        .shvya-health-card-status .shvya-status-dot {
+            width: 7px;
+            height: 7px;
+        }
+
+        @media (max-width: 700px) {
+            .shvya-system-health {
+                grid-template-columns: 1fr;
+            }
+
+            .shvya-health-overall {
+                grid-column: auto;
+                align-items: flex-start;
+                flex-direction: column;
+            }
+        }
+
+
+        /* =====================================================
+           SYSTEM STATUS
+        ===================================================== */
+
+        .shvya-status-list {
+            display: flex;
+
+            flex-direction: column;
+
+            gap: 0;
+        }
+
+
+        .shvya-status-row {
+            display: flex;
+
+            align-items: center;
+
+            justify-content: space-between;
+
+            padding: 12px 0;
+
+            border-bottom:
+                1px solid var(--shvya-border-soft);
+        }
+
+
+        .shvya-status-row:last-child {
+            border-bottom: 0;
+        }
+
+
+        .shvya-status-name {
+            color: var(--shvya-text-secondary);
+
+            font-size: 12px;
+
+            font-weight: 500;
+        }
+
+
+        .shvya-status-value {
+            display: inline-flex;
+
+            align-items: center;
+
+            gap: 7px;
+
+            color: var(--shvya-success);
+
+            font-size: 11px;
+
+            font-weight: 700;
+        }
+
+
+        /* =====================================================
+           RECENT ACTIVITY
+        ===================================================== */
+
+        .shvya-activity-count {
+            display: inline-flex;
+            align-items: center;
+            padding: 5px 8px;
+            border-radius: 999px;
+            background: var(--shvya-surface-soft);
+            border: 1px solid var(--shvya-border-soft);
+            color: var(--shvya-text-muted);
+            font-size: 9px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .shvya-activity-list {
+            margin: 0;
+            padding: 0;
+            list-style: none;
+        }
+
+        .shvya-activity-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            padding: 14px 0;
+            border-bottom: 1px solid var(--shvya-border-soft);
+        }
+
+        .shvya-activity-item:first-child {
+            padding-top: 0;
+        }
+
+        .shvya-activity-item:last-child {
+            padding-bottom: 0;
+            border-bottom: 0;
+        }
+
+        .shvya-activity-marker {
+            width: 8px;
+            height: 8px;
+            margin-top: 6px;
+            flex-shrink: 0;
+            border-radius: 50%;
+            background: var(--shvya-primary);
+        }
+
+        .shvya-activity-marker.shvya-activity-add {
+            background: var(--shvya-success);
+        }
+
+        .shvya-activity-marker.shvya-activity-change {
+            background: var(--shvya-primary);
+        }
+
+        .shvya-activity-marker.shvya-activity-delete {
+            background: #dc2626;
+        }
+
+        .shvya-activity-content {
+            min-width: 0;
+            flex: 1;
+        }
+
+        .shvya-activity-topline {
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            margin-bottom: 4px;
+        }
+
+        .shvya-activity-action {
+            font-size: 9px;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+        }
+
+        .shvya-action-add {
+            color: var(--shvya-success);
+        }
+
+        .shvya-action-change {
+            color: var(--shvya-primary);
+        }
+
+        .shvya-action-delete {
+            color: #dc2626;
+        }
+
+        .shvya-activity-model {
+            color: var(--shvya-text-muted);
+            font-size: 9px;
+            font-weight: 600;
+        }
+
+        .shvya-activity-object {
+            color: var(--shvya-text);
+            font-size: 12px;
+            line-height: 1.4;
+            font-weight: 600;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .shvya-activity-object-link {
+            color: var(--shvya-text) !important;
+            text-decoration: none !important;
+        }
+
+        .shvya-activity-object-link:hover {
+            color: var(--shvya-primary) !important;
+            text-decoration: underline !important;
+        }
+
+        .shvya-activity-meta {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin-top: 4px;
+            color: var(--shvya-text-muted);
+            font-size: 10px;
+        }
+
+        .shvya-activity-meta strong {
+            color: var(--shvya-text-secondary);
+            font-weight: 600;
+        }
+
+        .shvya-activity-separator {
+            opacity: 0.6;
+        }
+
+        .shvya-activity-footer {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            margin-top: 16px;
+            padding-top: 12px;
+            border-top: 1px solid var(--shvya-border-soft);
+            color: var(--shvya-text-muted);
+            font-size: 10px;
+        }
+
+        .shvya-activity-view-all {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            color: var(--shvya-primary) !important;
+            text-decoration: none !important;
+            font-size: 10px;
+            font-weight: 700;
+        }
+
+        .shvya-activity-view-all:hover {
+            text-decoration: underline !important;
+        }
+
+        /* =====================================================
+           EMPTY STATE
+        ===================================================== */
+
+        .shvya-empty-state {
+            padding: 22px 10px;
+
+            text-align: center;
+
+            color: var(--shvya-text-muted);
+
+            font-size: 12px;
+        }
+
+
+        /* =====================================================
+           RESPONSIVE
+        ===================================================== */
+
+        @media (max-width: 1100px) {
+
+            .shvya-stat-grid {
+                grid-template-columns:
+                    repeat(2, minmax(0, 1fr));
+            }
+
+            .shvya-dashboard-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .shvya-quick-actions {
+                grid-template-columns:
+                    repeat(2, minmax(0, 1fr));
+            }
+
+        }
+
+
+        @media (max-width: 700px) {
+
+            .shvya-stat-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .shvya-quick-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .shvya-quick-actions {
+                grid-template-columns: 1fr;
+            }
+
+            .shvya-dashboard-header {
+                flex-direction: column;
+            }
+
+        }
+
+    </style>
+{% endblock %}
+
+
+{% block breadcrumbs %}
+{% endblock %}
+
+
+{% block content %}
+
+<div class="shvya-control-center">
+
+    <!-- =====================================================
+         SMART GLOBAL SEARCH
+    ====================================================== -->
+
+    <section class="shvya-global-search" id="shvya-global-search">
+
+        <div class="shvya-global-search-bar">
+
+            <span class="shvya-global-search-icon" aria-hidden="true">
+                ⌕
+            </span>
+
+            <input
+                type="search"
+                id="shvya-global-search-input"
+                class="shvya-global-search-input"
+                placeholder="Search organizations, users, leads, pipelines or API keys..."
+                autocomplete="off"
+                spellcheck="false"
+                aria-label="Search SHVYA Admin"
+                aria-expanded="false"
+                aria-controls="shvya-search-results"
+            >
+
+            <span
+                class="shvya-search-loading"
+                id="shvya-search-loading"
+                aria-hidden="true"
+            ></span>
+
+            <span class="shvya-global-search-shortcut">
+                Ctrl K
+            </span>
+
+        </div>
+
+        <div
+            class="shvya-search-results"
+            id="shvya-search-results"
+            role="listbox"
+            aria-label="Search results"
+        ></div>
+
+    </section>
+
+
+    <!-- =====================================================
+         HEADER
+    ====================================================== -->
+
+    <div class="shvya-dashboard-header">
+
+        <div>
+
+            <h1 class="shvya-dashboard-title">
+                Technical Control Center
+            </h1>
+
+            <p class="shvya-dashboard-subtitle">
+                System-wide administration, configuration and platform health.
+            </p>
+
+        </div>
+
+
+        <div class="shvya-dashboard-badge">
+
+            <span
+                class="shvya-status-dot
+                {% if shvya_admin_stats.system.overall.status == 'warning' %}
+                    shvya-status-warning
+                {% elif shvya_admin_stats.system.overall.status == 'error' %}
+                    shvya-status-error
+                {% endif %}"
+            ></span>
+
+            {{ shvya_admin_stats.system.overall.label }}
+
+        </div>
+
+    </div>
+
+
+    <!-- =====================================================
+         STAT CARDS
+    ====================================================== -->
+
+    <div class="shvya-stat-grid">
+
+
+        <!-- Organizations -->
+
+        <a
+            href="{% url 'admin:organizations_organization_changelist' %}"
+            style="text-decoration:none;"
+        >
+
+            <div class="shvya-stat-card">
+
+                <div class="shvya-stat-icon">
+                    O
+                </div>
+
+                <div class="shvya-stat-label">
+                    Organizations
+                </div>
+
+                <div class="shvya-stat-value">
+                    {{ shvya_admin_stats.organizations }}
+                </div>
+
+                <div class="shvya-stat-description">
+                    Organization management
+                </div>
+
+            </div>
+
+        </a>
+
+
+        <!-- Users -->
+
+        <a
+            href="{% url 'admin:accounts_user_changelist' %}"
+            style="text-decoration:none;"
+        >
+
+            <div class="shvya-stat-card">
+
+                <div class="shvya-stat-icon">
+                    U
+                </div>
+
+                <div class="shvya-stat-label">
+                    Users
+                </div>
+
+                <div class="shvya-stat-value">
+                    {{ shvya_admin_stats.users }}
+                </div>
+
+                <div class="shvya-stat-description">
+                    Platform users
+                </div>
+
+            </div>
+
+        </a>
+
+
+        <!-- Leads -->
+
+        <a
+            href="{% url 'admin:crm_lead_changelist' %}"
+            style="text-decoration:none;"
+        >
+
+            <div class="shvya-stat-card">
+
+                <div class="shvya-stat-icon">
+                    L
+                </div>
+
+                <div class="shvya-stat-label">
+                    Leads
+                </div>
+
+                <div class="shvya-stat-value">
+                    {{ shvya_admin_stats.leads }}
+                </div>
+
+                <div class="shvya-stat-description">
+                    CRM lead records
+                </div>
+
+            </div>
+
+        </a>
+
+
+        <!-- API Keys -->
+
+        <a
+            href="{% url 'admin:organizations_apikey_changelist' %}"
+            style="text-decoration:none;"
+        >
+
+            <div class="shvya-stat-card">
+
+                <div class="shvya-stat-icon">
+                    K
+                </div>
+
+                <div class="shvya-stat-label">
+                    API Keys
+                </div>
+
+                <div class="shvya-stat-value">
+                    {{ shvya_admin_stats.api_keys }}
+                </div>
+
+                <div class="shvya-stat-description">
+                    Integration credentials
+                </div>
+
+            </div>
+
+        </a>
+
+    </div>
+
+
+    <!-- =====================================================
+         MAIN GRID
+    ====================================================== -->
+
+    <div class="shvya-dashboard-grid">
+
+
+        <!-- =================================================
+             LEFT COLUMN
+        ================================================== -->
+
+        <div>
+
+
+            <!-- =================================================
+                 QUICK ACTIONS + QUICK ACCESS
+            ================================================== -->
+
+            <section class="shvya-dashboard-card">
+
+                <div class="shvya-dashboard-card-header">
+
+                    <div>
+
+                        <h2 class="shvya-dashboard-card-title">
+                            Quick actions
+                        </h2>
+
+                        <p class="shvya-dashboard-card-description">
+                            Create and manage core SHVYA resources.
+                        </p>
+
+                    </div>
+
+                </div>
+
+
+                <div class="shvya-dashboard-card-body">
+
+
+                    <!-- =================================================
+                         QUICK ACTIONS
+                    ================================================== -->
+
+                    <div class="shvya-quick-actions">
+
+
+                        <!-- NEW ORGANIZATION -->
+
+                        <a
+                            href="{% url 'admin:organizations_organization_add' %}"
+                            class="shvya-action-button"
+                        >
+
+                            <span class="shvya-action-icon">
+                                +
+                            </span>
+
+                            <span>
+                                New Organization
+                            </span>
+
+                        </a>
+
+
+                        <!-- NEW USER -->
+
+                        <a
+                            href="{% url 'admin:accounts_user_add' %}"
+                            class="shvya-action-button"
+                        >
+
+                            <span class="shvya-action-icon">
+                                +
+                            </span>
+
+                            <span>
+                                New User
+                            </span>
+
+                        </a>
+
+
+                        <!-- NEW LEAD -->
+
+                        <a
+                            href="{% url 'admin:crm_lead_add' %}"
+                            class="shvya-action-button"
+                        >
+
+                            <span class="shvya-action-icon">
+                                +
+                            </span>
+
+                            <span>
+                                New Lead
+                            </span>
+
+                        </a>
+
+
+                        <!-- NEW PIPELINE -->
+
+                        <a
+                            href="{% url 'admin:crm_pipeline_add' %}"
+                            class="shvya-action-button"
+                        >
+
+                            <span class="shvya-action-icon">
+                                +
+                            </span>
+
+                            <span>
+                                New Pipeline
+                            </span>
+
+                        </a>
+
+
+                        <!-- NEW API KEY -->
+
+                        <a
+                            href="{% url 'admin:organizations_apikey_add' %}"
+                            class="shvya-action-button"
+                        >
+
+                            <span class="shvya-action-icon">
+                                +
+                            </span>
+
+                            <span>
+                                New API Key
+                            </span>
+
+                        </a>
+
+
+                    </div>
+
+
+                    <!-- =================================================
+                         QUICK ACCESS
+                    ================================================== -->
+
+                    <div class="shvya-quick-access-heading">
+                        Quick access
+                    </div>
+
+
+                    <div class="shvya-quick-grid">
+
+
+                        <!-- ORGANIZATIONS -->
+
+                        <a
+                            href="{% url 'admin:organizations_organization_changelist' %}"
+                            class="shvya-quick-link"
+                        >
+
+                            <span class="shvya-quick-icon">
+                                O
+                            </span>
+
+                            Organizations
+
+                        </a>
+
+
+                        <!-- USERS -->
+
+                        <a
+                            href="{% url 'admin:accounts_user_changelist' %}"
+                            class="shvya-quick-link"
+                        >
+
+                            <span class="shvya-quick-icon">
+                                U
+                            </span>
+
+                            Users
+
+                        </a>
+
+
+                        <!-- LEADS -->
+
+                        <a
+                            href="{% url 'admin:crm_lead_changelist' %}"
+                            class="shvya-quick-link"
+                        >
+
+                            <span class="shvya-quick-icon">
+                                L
+                            </span>
+
+                            Leads
+
+                        </a>
+
+
+                        <!-- PIPELINES -->
+
+                        <a
+                            href="{% url 'admin:crm_pipeline_changelist' %}"
+                            class="shvya-quick-link"
+                        >
+
+                            <span class="shvya-quick-icon">
+                                P
+                            </span>
+
+                            Pipelines
+
+                        </a>
+
+
+                        <!-- STAGES -->
+
+                        <a
+                            href="{% url 'admin:crm_stage_changelist' %}"
+                            class="shvya-quick-link"
+                        >
+
+                            <span class="shvya-quick-icon">
+                                S
+                            </span>
+
+                            Stages
+
+                        </a>
+
+
+                        <!-- API KEYS -->
+
+                        <a
+                            href="{% url 'admin:organizations_apikey_changelist' %}"
+                            class="shvya-quick-link"
+                        >
+
+                            <span class="shvya-quick-icon">
+                                K
+                            </span>
+
+                            API Keys
+
+                        </a>
+
+
+                        <!-- ORGANIZATION TAGS -->
+
+                        <a
+                            href="{% url 'admin:organizations_organizationtag_changelist' %}"
+                            class="shvya-quick-link"
+                        >
+
+                            <span class="shvya-quick-icon">
+                                T
+                            </span>
+
+                            Organization Tags
+
+                        </a>
+
+
+                        <!-- CRM TAGS -->
+
+                        <a
+                            href="{% url 'admin:crm_tag_changelist' %}"
+                            class="shvya-quick-link"
+                        >
+
+                            <span class="shvya-quick-icon">
+                                #
+                            </span>
+
+                            CRM Tags
+
+                        </a>
+
+
+                        <!-- GROUPS -->
+
+                        <a
+                            href="{% url 'admin:auth_group_changelist' %}"
+                            class="shvya-quick-link"
+                        >
+
+                            <span class="shvya-quick-icon">
+                                G
+                            </span>
+
+                            Groups
+
+                        </a>
+
+
+                    </div>
+
+
+                </div>
+
+            </section>
+
+
+            <!-- RECENT ACTIVITY -->
+
+            <section class="shvya-dashboard-card">
+
+                <div class="shvya-dashboard-card-header">
+
+                    <div>
+
+                        <h2 class="shvya-dashboard-card-title">
+                            Recent activity
+                        </h2>
+
+                        <p class="shvya-dashboard-card-description">
+                            Latest administrative actions performed in SHVYA.
+                        </p>
+
+                    </div>
+
+                    <span class="shvya-activity-count">
+                        Last 8 actions
+                    </span>
+
+                </div>
+
+
+                <div class="shvya-dashboard-card-body">
+
+                    {% get_admin_log 8 as admin_log for_user user %}
+
+                    {% if admin_log %}
+
+                        <ul class="shvya-activity-list">
+
+                            {% for entry in admin_log %}
+
+                                <li class="shvya-activity-item">
+
+                                    <span
+                                        class="shvya-activity-marker
+                                        {% if entry.is_addition %}
+                                            shvya-activity-add
+                                        {% elif entry.is_change %}
+                                            shvya-activity-change
+                                        {% elif entry.is_deletion %}
+                                            shvya-activity-delete
+                                        {% endif %}"
+                                    ></span>
+
+
+                                    <div class="shvya-activity-content">
+
+                                        <div class="shvya-activity-topline">
+
+                                            {% if entry.is_addition %}
+
+                                                <span class="shvya-activity-action shvya-action-add">
+                                                    Added
+                                                </span>
+
+                                            {% elif entry.is_change %}
+
+                                                <span class="shvya-activity-action shvya-action-change">
+                                                    Changed
+                                                </span>
+
+                                            {% elif entry.is_deletion %}
+
+                                                <span class="shvya-activity-action shvya-action-delete">
+                                                    Deleted
+                                                </span>
+
+                                            {% endif %}
+
+
+                                            {% if entry.content_type %}
+
+                                                <span class="shvya-activity-model">
+                                                    {{ entry.content_type.name|capfirst }}
+                                                </span>
+
+                                            {% endif %}
+
+                                        </div>
+
+
+                                        <div class="shvya-activity-object">
+
+                                            {% if entry.is_deletion or not entry.get_admin_url %}
+
+                                                <span>
+                                                    {{ entry.object_repr }}
+                                                </span>
+
+                                            {% else %}
+
+                                                <a
+                                                    href="{{ entry.get_admin_url }}"
+                                                    class="shvya-activity-object-link"
+                                                >
+                                                    {{ entry.object_repr }}
+                                                </a>
+
+                                            {% endif %}
+
+                                        </div>
+
+
+                                        <div class="shvya-activity-meta">
+
+                                            <span>
+                                                By
+                                                <strong>
+                                                    {{ entry.user.get_username }}
+                                                </strong>
+                                            </span>
+
+                                            <span class="shvya-activity-separator">
+                                                ·
+                                            </span>
+
+                                            <span>
+                                                {{ entry.action_time|date:"M d, Y · H:i" }}
+                                            </span>
+
+                                        </div>
+
+                                    </div>
+
+                                </li>
+
+                            {% endfor %}
+
+                        </ul>
+
+
+                        <div class="shvya-activity-footer">
+
+                            <span>
+                                Showing the latest administrative actions
+                            </span>
+
+                            {% url 'admin:admin_logentry_changelist' as admin_log_url %}
+
+                            {% if admin_log_url %}
+
+                                <a
+                                    href="{{ admin_log_url }}"
+                                    class="shvya-activity-view-all"
+                                >
+                                    View all
+                                    <span>→</span>
+                                </a>
+
+                            {% endif %}
+
+                        </div>
+
+
+                    {% else %}
+
+                        <div class="shvya-empty-state">
+
+                            <div class="shvya-empty-icon">
+                                —
+                            </div>
+
+                            <strong>
+                                No administrative activity yet
+                            </strong>
+
+                            <span>
+                                Actions performed through Django Admin will appear here.
+                            </span>
+
+                        </div>
+
+                    {% endif %}
+
+                </div>
+
+            </section>
+
+
+            <!-- SYSTEM STATUS -->
+
+            <section class="shvya-dashboard-card">
+
+                <div class="shvya-dashboard-card-header">
+
+                    <div>
+                        <h2 class="shvya-dashboard-card-title">
+                            System health
+                        </h2>
+
+                        <p class="shvya-dashboard-card-description">
+                            Live platform service checks.
+                        </p>
+                    </div>
+
+                    <span class="shvya-status-value
+                        {% if shvya_admin_stats.system.overall.status == 'warning' %}
+                            shvya-status-warning
+                        {% elif shvya_admin_stats.system.overall.status == 'error' %}
+                            shvya-status-error
+                        {% endif %}"
+                    >
+                        <span
+                            class="shvya-status-dot
+                            {% if shvya_admin_stats.system.overall.status == 'warning' %}
+                                shvya-status-warning
+                            {% elif shvya_admin_stats.system.overall.status == 'error' %}
+                                shvya-status-error
+                            {% endif %}"
+                        ></span>
+                        {{ shvya_admin_stats.system.overall.label }}
+                    </span>
+
+                </div>
+
+                <div class="shvya-dashboard-card-body">
+
+                    <div class="shvya-system-health">
+
+                        <div class="shvya-health-overall">
+                            <div class="shvya-health-overall-copy">
+                                <div class="shvya-health-overall-label">
+                                    Platform health
+                                </div>
+                                <div class="shvya-health-overall-description">
+                                    SHVYA technical control services are checked in real time.
+                                </div>
+                            </div>
+
+                            <span class="shvya-health-card-status
+                                {% if shvya_admin_stats.system.overall.status == 'warning' %}
+                                    shvya-health-warning
+                                {% elif shvya_admin_stats.system.overall.status == 'error' %}
+                                    shvya-health-error
+                                {% endif %}"
+                            >
+                                <span
+                                    class="shvya-status-dot
+                                    {% if shvya_admin_stats.system.overall.status == 'warning' %}
+                                        shvya-status-warning
+                                    {% elif shvya_admin_stats.system.overall.status == 'error' %}
+                                        shvya-status-error
+                                    {% endif %}"
+                                ></span>
+                                {{ shvya_admin_stats.system.overall.label }}
+                            </span>
+                        </div>
+
+                        <div class="shvya-health-card">
+                            <span class="shvya-health-card-icon">DB</span>
+                            <div class="shvya-health-card-content">
+                                <div class="shvya-health-card-name">PostgreSQL Database</div>
+                                <div class="shvya-health-card-description">Primary application database</div>
+                            </div>
+                            <span class="shvya-health-card-status
+                                {% if shvya_admin_stats.system.database.status == 'warning' %}
+                                    shvya-health-warning
+                                {% elif shvya_admin_stats.system.database.status == 'error' %}
+                                    shvya-health-error
+                                {% endif %}"
+                            >
+                                <span class="shvya-status-dot
+                                    {% if shvya_admin_stats.system.database.status == 'warning' %}
+                                        shvya-status-warning
+                                    {% elif shvya_admin_stats.system.database.status == 'error' %}
+                                        shvya-status-error
+                                    {% endif %}"
+                                ></span>
+                                {{ shvya_admin_stats.system.database.label }}
+                            </span>
+                        </div>
+
+                        <div class="shvya-health-card">
+                            <span class="shvya-health-card-icon">DJ</span>
+                            <div class="shvya-health-card-content">
+                                <div class="shvya-health-card-name">Django</div>
+                                <div class="shvya-health-card-description">Application framework</div>
+                            </div>
+                            <span class="shvya-health-card-status
+                                {% if shvya_admin_stats.system.django.status == 'warning' %}
+                                    shvya-health-warning
+                                {% elif shvya_admin_stats.system.django.status == 'error' %}
+                                    shvya-health-error
+                                {% endif %}"
+                            >
+                                <span class="shvya-status-dot
+                                    {% if shvya_admin_stats.system.django.status == 'warning' %}
+                                        shvya-status-warning
+                                    {% elif shvya_admin_stats.system.django.status == 'error' %}
+                                        shvya-status-error
+                                    {% endif %}"
+                                ></span>
+                                {{ shvya_admin_stats.system.django.label }}
+                            </span>
+                        </div>
+
+                        <div class="shvya-health-card">
+                            <span class="shvya-health-card-icon">AU</span>
+                            <div class="shvya-health-card-content">
+                                <div class="shvya-health-card-name">Authentication</div>
+                                <div class="shvya-health-card-description">User authentication and access</div>
+                            </div>
+                            <span class="shvya-health-card-status
+                                {% if shvya_admin_stats.system.authentication.status == 'warning' %}
+                                    shvya-health-warning
+                                {% elif shvya_admin_stats.system.authentication.status == 'error' %}
+                                    shvya-health-error
+                                {% endif %}"
+                            >
+                                <span class="shvya-status-dot
+                                    {% if shvya_admin_stats.system.authentication.status == 'warning' %}
+                                        shvya-status-warning
+                                    {% elif shvya_admin_stats.system.authentication.status == 'error' %}
+                                        shvya-status-error
+                                    {% endif %}"
+                                ></span>
+                                {{ shvya_admin_stats.system.authentication.label }}
+                            </span>
+                        </div>
+
+                        <div class="shvya-health-card">
+                            <span class="shvya-health-card-icon">CR</span>
+                            <div class="shvya-health-card-content">
+                                <div class="shvya-health-card-name">CRM</div>
+                                <div class="shvya-health-card-description">Lead and CRM data layer</div>
+                            </div>
+                            <span class="shvya-health-card-status
+                                {% if shvya_admin_stats.system.crm.status == 'warning' %}
+                                    shvya-health-warning
+                                {% elif shvya_admin_stats.system.crm.status == 'error' %}
+                                    shvya-health-error
+                                {% endif %}"
+                            >
+                                <span class="shvya-status-dot
+                                    {% if shvya_admin_stats.system.crm.status == 'warning' %}
+                                        shvya-status-warning
+                                    {% elif shvya_admin_stats.system.crm.status == 'error' %}
+                                        shvya-status-error
+                                    {% endif %}"
+                                ></span>
+                                {{ shvya_admin_stats.system.crm.label }}
+                            </span>
+                        </div>
+
+                        <div class="shvya-health-card">
+                            <span class="shvya-health-card-icon">API</span>
+                            <div class="shvya-health-card-content">
+                                <div class="shvya-health-card-name">REST API</div>
+                                <div class="shvya-health-card-description">REST Framework and JWT configuration</div>
+                            </div>
+                            <span class="shvya-health-card-status
+                                {% if shvya_admin_stats.system.api.status == 'warning' %}
+                                    shvya-health-warning
+                                {% elif shvya_admin_stats.system.api.status == 'error' %}
+                                    shvya-health-error
+                                {% endif %}"
+                            >
+                                <span class="shvya-status-dot
+                                    {% if shvya_admin_stats.system.api.status == 'warning' %}
+                                        shvya-status-warning
+                                    {% elif shvya_admin_stats.system.api.status == 'error' %}
+                                        shvya-status-error
+                                    {% endif %}"
+                                ></span>
+                                {{ shvya_admin_stats.system.api.label }}
+                            </span>
+                        </div>
+
+                    </div>
+
+                </div>
+
+            </section>
+
+
+            <!-- =====================================================
+                 ADMINISTRATION CENTER
+            ====================================================== -->
+
+            <section class="shvya-dashboard-card">
+
+                <div class="shvya-dashboard-card-header">
+
+                    <div>
+
+                        <h2 class="shvya-dashboard-card-title">
+                            Administration
+                        </h2>
+
+                        <p class="shvya-dashboard-card-description">
+                            Manage SHVYA configuration, access and platform resources.
+                        </p>
+
+                    </div>
+
+                </div>
+
+
+                <div class="shvya-dashboard-card-body">
+
+                    <div class="shvya-admin-center-grid">
+
+
+                        <!-- =================================================
+                             ORGANIZATION MANAGEMENT
+                        ================================================== -->
+
+                        <div class="shvya-admin-center-group">
+
+                            <div class="shvya-admin-center-group-header">
+
+                                <div class="shvya-admin-center-icon">
+                                    O
+                                </div>
+
+                                <div>
+
+                                    <h3 class="shvya-admin-center-title">
+                                        Organization Management
+                                    </h3>
+
+                                    <p class="shvya-admin-center-description">
+                                        Manage organizations and organization-level configuration.
+                                    </p>
+
+                                </div>
+
+                            </div>
+
+
+                            <div class="shvya-admin-center-links">
+
+                                <a
+                                    href="{% url 'admin:organizations_organization_changelist' %}"
+                                    class="shvya-admin-center-link"
+                                >
+
+                                    <span>
+                                        Organizations
+                                    </span>
+
+                                    <span class="shvya-admin-center-arrow">
+                                        →
+                                    </span>
+
+                                </a>
+
+
+                                <a
+                                    href="{% url 'admin:organizations_organizationtag_changelist' %}"
+                                    class="shvya-admin-center-link"
+                                >
+
+                                    <span>
+                                        Organization Tags
+                                    </span>
+
+                                    <span class="shvya-admin-center-arrow">
+                                        →
+                                    </span>
+
+                                </a>
+
+                            </div>
+
+                        </div>
+
+
+                        <!-- =================================================
+                             ACCESS CONTROL
+                        ================================================== -->
+
+                        <div class="shvya-admin-center-group">
+
+                            <div class="shvya-admin-center-group-header">
+
+                                <div class="shvya-admin-center-icon">
+                                    U
+                                </div>
+
+                                <div>
+
+                                    <h3 class="shvya-admin-center-title">
+                                        Access Control
+                                    </h3>
+
+                                    <p class="shvya-admin-center-description">
+                                        Manage users, groups and administrative permissions.
+                                    </p>
+
+                                </div>
+
+                            </div>
+
+
+                            <div class="shvya-admin-center-links">
+
+                                <a
+                                    href="{% url 'admin:accounts_user_changelist' %}"
+                                    class="shvya-admin-center-link"
+                                >
+
+                                    <span>
+                                        Users
+                                    </span>
+
+                                    <span class="shvya-admin-center-arrow">
+                                        →
+                                    </span>
+
+                                </a>
+
+
+                                <a
+                                    href="{% url 'admin:auth_group_changelist' %}"
+                                    class="shvya-admin-center-link"
+                                >
+
+                                    <span>
+                                        Groups &amp; Permissions
+                                    </span>
+
+                                    <span class="shvya-admin-center-arrow">
+                                        →
+                                    </span>
+
+                                </a>
+
+                            </div>
+
+                        </div>
+
+
+                        <!-- =================================================
+                             INTEGRATIONS
+                        ================================================== -->
+
+                        <div class="shvya-admin-center-group">
+
+                            <div class="shvya-admin-center-group-header">
+
+                                <div class="shvya-admin-center-icon">
+                                    K
+                                </div>
+
+                                <div>
+
+                                    <h3 class="shvya-admin-center-title">
+                                        Integrations
+                                    </h3>
+
+                                    <p class="shvya-admin-center-description">
+                                        Manage API access and external system integrations.
+                                    </p>
+
+                                </div>
+
+                            </div>
+
+
+                            <div class="shvya-admin-center-links">
+
+                                <a
+                                    href="{% url 'admin:organizations_apikey_changelist' %}"
+                                    class="shvya-admin-center-link"
+                                >
+
+                                    <span>
+                                        API Keys
+                                    </span>
+
+                                    <span class="shvya-admin-center-arrow">
+                                        →
+                                    </span>
+
+                                </a>
+
+                            </div>
+
+                        </div>
+
+
+                        <!-- =================================================
+                             CRM CONFIGURATION
+                        ================================================== -->
+
+                        <div class="shvya-admin-center-group">
+
+                            <div class="shvya-admin-center-group-header">
+
+                                <div class="shvya-admin-center-icon">
+                                    C
+                                </div>
+
+                                <div>
+
+                                    <h3 class="shvya-admin-center-title">
+                                        CRM Configuration
+                                    </h3>
+
+                                    <p class="shvya-admin-center-description">
+                                        Configure pipelines, stages and CRM tagging.
+                                    </p>
+
+                                </div>
+
+                            </div>
+
+
+                            <div class="shvya-admin-center-links">
+
+                                <a
+                                    href="{% url 'admin:crm_pipeline_changelist' %}"
+                                    class="shvya-admin-center-link"
+                                >
+
+                                    <span>
+                                        Pipelines
+                                    </span>
+
+                                    <span class="shvya-admin-center-arrow">
+                                        →
+                                    </span>
+
+                                </a>
+
+
+                                <a
+                                    href="{% url 'admin:crm_stage_changelist' %}"
+                                    class="shvya-admin-center-link"
+                                >
+
+                                    <span>
+                                        Stages
+                                    </span>
+
+                                    <span class="shvya-admin-center-arrow">
+                                        →
+                                    </span>
+
+                                </a>
+
+
+                                <a
+                                    href="{% url 'admin:crm_tag_changelist' %}"
+                                    class="shvya-admin-center-link"
+                                >
+
+                                    <span>
+                                        CRM Tags
+                                    </span>
+
+                                    <span class="shvya-admin-center-arrow">
+                                        →
+                                    </span>
+
+                                </a>
+
+                            </div>
+
+                        </div>
+
+
+                    </div>
+
+                </div>
+
+            </section>
+
+
+        </div>
+
+
+    </div>
+
+
+</div>
+
+
+<script>
+(function () {
+    "use strict";
+
+    const searchRoot = document.getElementById("shvya-global-search");
+    const input = document.getElementById("shvya-global-search-input");
+    const resultsBox = document.getElementById("shvya-search-results");
+
+    if (!searchRoot || !input || !resultsBox) {
+        return;
+    }
+
+    const searchUrl = "{% url 'admin-global-search' %}";
+    const searchDelay = 220;
+    const minimumQueryLength = 1;
+
+    let debounceTimer = null;
+    let requestController = null;
+    let currentResults = [];
+    let activeIndex = -1;
+
+    const typeIcons = {
+        organization: "O",
+        user: "U",
+        lead: "L",
+        pipeline: "P",
+        api_key: "K"
+    };
+
+    function escapeHtml(value) {
+        const div = document.createElement("div");
+        div.textContent = value == null ? "" : String(value);
+        return div.innerHTML;
+    }
+
+    function showResults() {
+        resultsBox.classList.add("is-visible");
+        input.setAttribute("aria-expanded", "true");
+    }
+
+    function hideResults() {
+        resultsBox.classList.remove("is-visible");
+        input.setAttribute("aria-expanded", "false");
+        activeIndex = -1;
+    }
+
+    function setState(title, message) {
+        resultsBox.innerHTML =
+            '<div class="shvya-search-state">' +
+                '<strong>' + escapeHtml(title) + '</strong>' +
+                '<span>' + escapeHtml(message) + '</span>' +
+            '</div>';
+        showResults();
+    }
+
+    function setLoading(isLoading) {
+        searchRoot.classList.toggle("is-loading", isLoading);
+    }
+
+    function renderResults(results, query) {
+        currentResults = results || [];
+        activeIndex = -1;
+
+        if (!currentResults.length) {
+            setState(
+                "No results found",
+                'Nothing matched "' + query + '".'
+            );
+            return;
+        }
+
+        let html = "";
+
+        currentResults.forEach(function (result, index) {
+            const type = result.type || "result";
+            const icon = typeIcons[type] || "?";
+            const meta = result.organization
+                ? result.organization
+                : "";
+
+            html +=
+                '<a ' +
+                    'href="' + escapeHtml(result.url || "#") + '" ' +
+                    'class="shvya-search-result" ' +
+                    'role="option" ' +
+                    'data-index="' + index + '"' +
+                '>' +
+                    '<span class="shvya-search-result-icon">' +
+                        escapeHtml(icon) +
+                    '</span>' +
+                    '<span class="shvya-search-result-content">' +
+                        '<span class="shvya-search-result-type">' +
+                            escapeHtml(result.label || type) +
+                        '</span>' +
+                        '<span class="shvya-search-result-name">' +
+                            escapeHtml(result.name || "Unnamed") +
+                        '</span>' +
+                        (
+                            meta
+                            ? '<span class="shvya-search-result-meta">' +
+                                escapeHtml(meta) +
+                              '</span>'
+                            : ""
+                        ) +
+                    '</span>' +
+                    '<span class="shvya-search-result-arrow">' +
+                        "→" +
+                    '</span>' +
+                '</a>';
+        });
+
+        html +=
+            '<div class="shvya-search-footer">' +
+                '<span>' +
+                    escapeHtml(currentResults.length) +
+                    ' result' +
+                    (currentResults.length === 1 ? "" : "s") +
+                '</span>' +
+                '<span>' +
+                    '<kbd>↑</kbd> <kbd>↓</kbd> navigate &nbsp; ' +
+                    '<kbd>Enter</kbd> open' +
+                '</span>' +
+            '</div>';
+
+        resultsBox.innerHTML = html;
+        showResults();
+    }
+
+    function updateActiveResult() {
+        const items = resultsBox.querySelectorAll(".shvya-search-result");
+
+        items.forEach(function (item, index) {
+            const active = index === activeIndex;
+            item.classList.toggle("is-active", active);
+            item.setAttribute("aria-selected", active ? "true" : "false");
+
+            if (active) {
+                item.scrollIntoView({
+                    block: "nearest"
+                });
+            }
+        });
+    }
+
+    function moveSelection(direction) {
+        if (!currentResults.length) {
+            return;
+        }
+
+        if (activeIndex === -1) {
+            activeIndex = direction > 0
+                ? 0
+                : currentResults.length - 1;
+        } else {
+            activeIndex += direction;
+
+            if (activeIndex < 0) {
+                activeIndex = currentResults.length - 1;
+            }
+
+            if (activeIndex >= currentResults.length) {
+                activeIndex = 0;
+            }
+        }
+
+        updateActiveResult();
+    }
+
+    function openActiveResult() {
+        if (
+            activeIndex < 0 ||
+            activeIndex >= currentResults.length
+        ) {
+            return;
+        }
+
+        const result = currentResults[activeIndex];
+
+        if (result && result.url) {
+            window.location.href = result.url;
+        }
+    }
+
+    async function performSearch(query) {
+        if (!query || query.length < minimumQueryLength) {
+            currentResults = [];
+            activeIndex = -1;
+            resultsBox.innerHTML = "";
+            hideResults();
+            return;
+        }
+
+        if (requestController) {
+            requestController.abort();
+        }
+
+        requestController = new AbortController();
+        setLoading(true);
+
+        try {
+            const response = await fetch(
+                searchUrl + "?q=" + encodeURIComponent(query),
+                {
+                    method: "GET",
+                    credentials: "same-origin",
+                    headers: {
+                        "X-Requested-With": "XMLHttpRequest",
+                        "Accept": "application/json"
+                    },
+                    signal: requestController.signal
+                }
+            );
+
+            if (!response.ok) {
+                throw new Error(
+                    "Search request failed: " + response.status
+                );
+            }
+
+            const data = await response.json();
+
+            if (input.value.trim() !== query) {
+                return;
+            }
+
+            renderResults(
+                data.results || [],
+                query
+            );
+
+        } catch (error) {
+            if (error.name === "AbortError") {
+                return;
+            }
+
+            currentResults = [];
+            activeIndex = -1;
+
+            setState(
+                "Search unavailable",
+                "Please try again in a moment."
+            );
+
+            console.error(
+                "SHVYA Admin global search error:",
+                error
+            );
+
+        } finally {
+            setLoading(false);
+        }
+    }
+
+    function scheduleSearch() {
+        window.clearTimeout(debounceTimer);
+
+        const query = input.value.trim();
+
+        if (!query) {
+            currentResults = [];
+            activeIndex = -1;
+            resultsBox.innerHTML = "";
+            hideResults();
+            return;
+        }
+
+        setState(
+            "Searching...",
+            "Looking across SHVYA Admin resources."
+        );
+
+        debounceTimer = window.setTimeout(
+            function () {
+                performSearch(query);
+            },
+            searchDelay
+        );
+    }
+
+    input.addEventListener("input", scheduleSearch);
+
+    input.addEventListener("keydown", function (event) {
+        if (event.key === "Escape") {
+            hideResults();
+            input.blur();
+            return;
+        }
+
+        if (event.key === "ArrowDown") {
+            event.preventDefault();
+
+            if (!resultsBox.classList.contains("is-visible")) {
+                performSearch(input.value.trim());
+            } else {
+                moveSelection(1);
+            }
+
+            return;
+        }
+
+        if (event.key === "ArrowUp") {
+            event.preventDefault();
+
+            if (!resultsBox.classList.contains("is-visible")) {
+                performSearch(input.value.trim());
+            } else {
+                moveSelection(-1);
+            }
+
+            return;
+        }
+
+        if (event.key === "Enter") {
+            if (activeIndex >= 0) {
+                event.preventDefault();
+                openActiveResult();
+            }
+        }
+    });
+
+    document.addEventListener("keydown", function (event) {
+        const isShortcut =
+            (event.ctrlKey || event.metaKey) &&
+            event.key.toLowerCase() === "k";
+
+        if (isShortcut) {
+            event.preventDefault();
+            input.focus();
+            input.select();
+        }
+    });
+
+    document.addEventListener("click", function (event) {
+        if (!searchRoot.contains(event.target)) {
+            hideResults();
+        }
+    });
+
+    input.addEventListener("focus", function () {
+        if (input.value.trim()) {
+            showResults();
+        }
+    });
+})();
+</script>
+
+{% endblock %}

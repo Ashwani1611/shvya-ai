@@ -1,0 +1,423 @@
+{% extends "superadmin/base.html" %}
+
+{% block content %}
+
+<div class="mb-4 flex items-center justify-between">
+
+    <h1 class="text-lg font-semibold">
+        Organizations
+    </h1>
+
+    <!-- =====================================================
+         ADD CLIENT
+    ====================================================== -->
+
+    <a
+        href="{% url 'superadmin-organization-create' %}"
+        class="inline-flex items-center px-4 py-2 bg-indigo-600 text-white rounded-md text-sm font-medium hover:bg-indigo-700 transition"
+    >
+        + Add Client
+    </a>
+
+</div>
+
+
+<!-- =========================================================
+     Search & Filters
+========================================================= -->
+
+<form
+    method="get"
+    class="bg-white border rounded-md p-4 mb-4 flex flex-wrap items-center gap-4"
+>
+
+    <!-- Search -->
+
+    <input
+        type="text"
+        name="search"
+        value="{{ search }}"
+        placeholder="Search by organization name, email, or phone"
+        class="border rounded-md px-3 py-2 text-sm flex-1 min-w-[280px]"
+    >
+
+
+    <!-- No Leads Created -->
+
+    <label class="flex items-center gap-1 text-xs">
+
+        <input
+            type="checkbox"
+            name="no_leads_created"
+            value="1"
+            {% if request.GET.no_leads_created %}checked{% endif %}
+        >
+
+        No Leads Created
+
+    </label>
+
+
+    <!-- Installment Client -->
+
+    <label class="flex items-center gap-1 text-xs">
+
+        <input
+            type="checkbox"
+            name="installment_client"
+            value="1"
+            {% if request.GET.installment_client %}checked{% endif %}
+        >
+
+        Installment Client
+
+    </label>
+
+
+    <!-- Low AF Usage - Placeholder -->
+
+    <label
+        class="flex items-center gap-1 text-xs text-gray-400"
+        title="No usage data yet"
+    >
+
+        <input
+            type="checkbox"
+            disabled
+        >
+
+        Low AF Usage
+
+    </label>
+
+
+    <!-- Low AI Usage - Placeholder -->
+
+    <label
+        class="flex items-center gap-1 text-xs text-gray-400"
+        title="No usage data yet"
+    >
+
+        <input
+            type="checkbox"
+            disabled
+        >
+
+        Low AI Usage
+
+    </label>
+
+
+    <!-- Package -->
+
+    <select
+        name="plan"
+        class="border rounded-md px-3 py-2 text-sm"
+    >
+
+        <option value="">
+            All Plans
+        </option>
+
+        {% for value, label in packages %}
+
+            <option
+                value="{{ value }}"
+                {% if request.GET.plan == value %}selected{% endif %}
+            >
+                {{ label }}
+            </option>
+
+        {% endfor %}
+
+    </select>
+
+
+    <!-- Organization Tag -->
+
+    <select
+        name="tag"
+        class="border rounded-md px-3 py-2 text-sm"
+    >
+
+        <option value="">
+            All Tags
+        </option>
+
+        {% for tag in all_tags %}
+
+            <option
+                value="{{ tag.id }}"
+                {% if request.GET.tag == tag.id|stringformat:"s" %}selected{% endif %}
+            >
+                {{ tag.name }}
+            </option>
+
+        {% endfor %}
+
+    </select>
+
+
+    <!-- Apply -->
+
+    <button
+        type="submit"
+        class="px-4 py-2 border rounded-md text-sm hover:bg-gray-50"
+    >
+        Apply
+    </button>
+
+</form>
+
+
+<!-- =========================================================
+     ORGANIZATION TABLE
+========================================================= -->
+
+<div class="bg-white border rounded-md overflow-x-auto">
+
+    <table class="w-full text-sm">
+
+        <thead class="bg-gray-50 text-gray-500 text-xs uppercase">
+
+            <tr>
+
+                <th class="px-3 py-2 text-left">
+                    Organization
+                </th>
+
+                <th class="px-3 py-2 text-left">
+                    Created At
+                </th>
+
+                <th class="px-3 py-2 text-left">
+                    Subscription
+                </th>
+
+                <th class="px-3 py-2 text-left">
+                    Leads
+                </th>
+
+                <th class="px-3 py-2 text-left">
+                    AI Msgs
+                </th>
+
+                <th class="px-3 py-2 text-left">
+                    AI Qualifications
+                </th>
+
+                <th class="px-3 py-2 text-left">
+                    AI Bumpups
+                </th>
+
+                <th class="px-3 py-2 text-left">
+                    AFS Sent
+                </th>
+
+                <th class="px-3 py-2 text-left">
+                    Credits Used
+                </th>
+
+                <th class="px-3 py-2 text-left">
+                    KB Setup
+                </th>
+
+                <th class="px-3 py-2 text-left">
+                    Sequences
+                </th>
+
+            </tr>
+
+        </thead>
+
+
+        <tbody>
+
+            {% for org in orgs %}
+
+                <tr class="border-t hover:bg-gray-50">
+
+                    <!-- =================================================
+                         ORGANIZATION
+                    ================================================== -->
+
+                    <td class="px-3 py-3 align-top">
+
+                        <a
+                            href="{% url 'superadmin-organization-detail' organization_id=org.id %}"
+                            class="text-indigo-600 font-medium hover:underline"
+                        >
+                            {{ org.name }}
+                        </a>
+
+                        <div class="text-xs text-gray-400">
+                            Pipelines: {{ org.pipeline_count }}
+                        </div>
+
+
+                        <!-- Tags + Package -->
+
+                        <div class="flex flex-wrap gap-1 mt-1">
+
+                            {% for tag in org.tags.all %}
+
+                                <span
+                                    class="text-[10px] border rounded px-1 py-0.5"
+                                >
+                                    {{ tag.name }}
+                                </span>
+
+                            {% endfor %}
+
+
+                            <span
+                                class="text-[10px] border rounded px-1 py-0.5"
+                            >
+                                {{ org.get_package_display }}
+                            </span>
+
+                        </div>
+
+                    </td>
+
+
+                    <!-- =================================================
+                         CREATED
+                    ================================================== -->
+
+                    <td class="px-3 py-3 align-top text-xs">
+
+                        {{ org.created_at|date:"M d" }}
+
+                    </td>
+
+
+                    <!-- =================================================
+                         SUBSCRIPTION
+                    ================================================== -->
+
+                    <td class="px-3 py-3 align-top text-xs">
+
+                        Start:
+                        {{ org.day_of_sale|date:"M d"|default:"—" }}
+
+                        <br>
+
+                        Next:
+                        {{ org.next_payment_at|date:"M d"|default:"—" }}
+
+                    </td>
+
+
+                    <!-- =================================================
+                         LEADS
+                    ================================================== -->
+
+                    <td class="px-3 py-3 align-top">
+
+                        {{ org.lead_count }}
+
+                    </td>
+
+
+                    <!-- =================================================
+                         AI MSGS
+                    ================================================== -->
+
+                    <td class="px-3 py-3 align-top text-gray-400">
+
+                        0
+
+                    </td>
+
+
+                    <!-- =================================================
+                         AI QUALIFICATIONS
+                    ================================================== -->
+
+                    <td class="px-3 py-3 align-top text-gray-400">
+
+                        0
+
+                    </td>
+
+
+                    <!-- =================================================
+                         AI BUMPUPS
+                    ================================================== -->
+
+                    <td class="px-3 py-3 align-top text-gray-400">
+
+                        0
+
+                    </td>
+
+
+                    <!-- =================================================
+                         AFS SENT
+                    ================================================== -->
+
+                    <td class="px-3 py-3 align-top text-gray-400">
+
+                        0
+
+                    </td>
+
+
+                    <!-- =================================================
+                         CREDITS
+                    ================================================== -->
+
+                    <td class="px-3 py-3 align-top">
+
+                        {{ org.credits_used }}
+
+                    </td>
+
+
+                    <!-- =================================================
+                         KB SETUP
+                    ================================================== -->
+
+                    <td class="px-3 py-3 align-top text-red-500 text-center">
+
+                        ✕
+
+                    </td>
+
+
+                    <!-- =================================================
+                         SEQUENCES
+                    ================================================== -->
+
+                    <td class="px-3 py-3 align-top text-gray-400">
+
+                        0
+
+                    </td>
+
+                </tr>
+
+
+            {% empty %}
+
+                <tr>
+
+                    <td
+                        colspan="11"
+                        class="px-3 py-6 text-center text-gray-400"
+                    >
+                        No organizations found.
+                    </td>
+
+                </tr>
+
+            {% endfor %}
+
+        </tbody>
+
+    </table>
+
+</div>
+
+{% endblock %}

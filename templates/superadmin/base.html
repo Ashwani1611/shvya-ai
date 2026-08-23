@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>{% block title %}SHVYA AI - Super Admin{% endblock %}</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    {% block extra_head %}{% endblock %}
+</head>
+
+<body class="bg-gray-50 text-gray-900">
+
+    <!-- Super Admin Top Header -->
+    <header class="h-12 bg-white border-b flex items-center justify-between px-5">
+
+        <div class="font-semibold text-sm">
+            SHVYA AI
+        </div>
+
+        <div class="text-sm">
+            Welcome, {{ request.user.get_full_name|default:request.user.email }}
+        </div>
+
+    </header>
+
+
+    <!-- Super Admin Content -->
+    <main class="p-5">
+
+        {% block content %}
+        {% endblock %}
+
+    </main>
+
+</body>
+</html>

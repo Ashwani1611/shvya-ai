@@ -1,0 +1,521 @@
+{% load static %}
+
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+    <meta charset="UTF-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
+
+    <title>SHVYA AI — Profile</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <link
+        rel="stylesheet"
+        href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css"
+    >
+
+</head>
+
+
+<body class="bg-gray-50 text-gray-900">
+
+<div class="min-h-screen">
+
+
+    <!-- =====================================================
+         HEADER
+         ===================================================== -->
+
+    <header class="border-b border-gray-200 bg-white">
+
+        <div
+            class="mx-auto flex max-w-7xl items-center justify-between px-6 py-4"
+        >
+
+            <div>
+
+                <h1 class="text-xl font-semibold">
+                    My Profile
+                </h1>
+
+                <p class="mt-1 text-sm text-gray-500">
+                    Manage and view your SHVYA AI account information.
+                </p>
+
+            </div>
+
+
+            <div class="flex items-center gap-3">
+
+                <a
+                    href="{% url 'crm-dashboard' %}"
+                    class="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
+                >
+
+                    <i class="ti ti-arrow-left"></i>
+
+                    Back to Dashboard
+
+                </a>
+
+
+                <a
+                    href="{% url 'crm-logout' %}"
+                    class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium text-red-600 transition hover:bg-red-50"
+                >
+
+                    <i class="ti ti-logout"></i>
+
+                    Logout
+
+                </a>
+
+            </div>
+
+        </div>
+
+    </header>
+
+
+
+    <!-- =====================================================
+         MAIN
+         ===================================================== -->
+
+    <main class="mx-auto max-w-7xl px-6 py-8">
+
+
+        <div class="grid grid-cols-1 gap-6 lg:grid-cols-3">
+
+
+            <!-- =================================================
+                 PROFILE SUMMARY
+                 ================================================= -->
+
+            <section
+                class="rounded-xl border border-gray-200 bg-white p-6 shadow-sm"
+            >
+
+                <div class="flex flex-col items-center text-center">
+
+
+                    <!-- AVATAR -->
+
+                    <div
+                        class="flex h-24 w-24 items-center justify-center rounded-full bg-blue-100 text-3xl font-bold text-blue-700"
+                    >
+
+                        {{ profile_user.name|default:"U"|first|upper }}
+
+                    </div>
+
+
+                    <!-- NAME -->
+
+                    <h2 class="mt-5 text-xl font-semibold text-gray-900">
+
+                        {{ profile_user.name|default:"User" }}
+
+                    </h2>
+
+
+                    <!-- EMAIL -->
+
+                    <p class="mt-1 text-sm text-gray-500">
+
+                        {{ profile_user.email }}
+
+                    </p>
+
+
+                    <!-- ROLE -->
+
+                    <span
+                        class="mt-4 inline-flex rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold capitalize text-blue-700"
+                    >
+
+                        {{ profile_user.get_role_display }}
+
+                    </span>
+
+
+                    <!-- STATUS -->
+
+                    <div class="mt-5 flex items-center gap-2 text-sm">
+
+                        {% if profile_user.is_active %}
+
+                            <span
+                                class="h-2.5 w-2.5 rounded-full bg-green-500"
+                            ></span>
+
+                            <span class="text-gray-600">
+                                Active account
+                            </span>
+
+                        {% else %}
+
+                            <span
+                                class="h-2.5 w-2.5 rounded-full bg-red-500"
+                            ></span>
+
+                            <span class="text-gray-600">
+                                Inactive account
+                            </span>
+
+                        {% endif %}
+
+                    </div>
+
+                </div>
+
+            </section>
+
+
+
+            <!-- =================================================
+                 ACCOUNT INFORMATION
+                 ================================================= -->
+
+            <section
+                class="rounded-xl border border-gray-200 bg-white shadow-sm lg:col-span-2"
+            >
+
+                <div
+                    class="border-b border-gray-200 px-6 py-5"
+                >
+
+                    <h2 class="text-lg font-semibold text-gray-900">
+                        Account Information
+                    </h2>
+
+                    <p class="mt-1 text-sm text-gray-500">
+                        Your SHVYA AI account details.
+                    </p>
+
+                </div>
+
+
+                <div class="divide-y divide-gray-100">
+
+
+                    <!-- NAME -->
+
+                    <div
+                        class="grid grid-cols-1 gap-2 px-6 py-5 sm:grid-cols-3"
+                    >
+
+                        <div class="text-sm font-medium text-gray-500">
+                            Name
+                        </div>
+
+                        <div
+                            class="text-sm text-gray-900 sm:col-span-2"
+                        >
+
+                            {{ profile_user.name|default:"—" }}
+
+                        </div>
+
+                    </div>
+
+
+                    <!-- EMAIL -->
+
+                    <div
+                        class="grid grid-cols-1 gap-2 px-6 py-5 sm:grid-cols-3"
+                    >
+
+                        <div class="text-sm font-medium text-gray-500">
+                            Email
+                        </div>
+
+                        <div
+                            class="text-sm text-gray-900 sm:col-span-2"
+                        >
+
+                            {{ profile_user.email }}
+
+                        </div>
+
+                    </div>
+
+
+                    <!-- PHONE -->
+
+                    <div
+                        class="grid grid-cols-1 gap-2 px-6 py-5 sm:grid-cols-3"
+                    >
+
+                        <div class="text-sm font-medium text-gray-500">
+                            Phone Number
+                        </div>
+
+                        <div
+                            class="text-sm text-gray-900 sm:col-span-2"
+                        >
+
+                            {{ profile_user.phone|default:"—" }}
+
+                        </div>
+
+                    </div>
+
+
+                    <!-- ORGANIZATION -->
+
+                    <div
+                        class="grid grid-cols-1 gap-2 px-6 py-5 sm:grid-cols-3"
+                    >
+
+                        <div class="text-sm font-medium text-gray-500">
+                            Company
+                        </div>
+
+                        <div
+                            class="text-sm text-gray-900 sm:col-span-2"
+                        >
+
+                            {% if organization %}
+
+                                {{ organization.name }}
+
+                            {% else %}
+
+                                —
+
+                            {% endif %}
+
+                        </div>
+
+                    </div>
+
+
+                    <!-- PACKAGE -->
+
+                    <div
+                        class="grid grid-cols-1 gap-2 px-6 py-5 sm:grid-cols-3"
+                    >
+
+                        <div class="text-sm font-medium text-gray-500">
+                            Package
+                        </div>
+
+                        <div
+                            class="sm:col-span-2"
+                        >
+
+                            {% if organization %}
+
+                                <span
+                                    class="inline-flex rounded-full bg-green-50 px-3 py-1 text-xs font-semibold capitalize text-green-700"
+                                >
+
+                                    {{ organization.get_package_display }}
+
+                                </span>
+
+                            {% else %}
+
+                                <span class="text-sm text-gray-500">
+                                    —
+                                </span>
+
+                            {% endif %}
+
+                        </div>
+
+                    </div>
+
+
+                    <!-- ROLE -->
+
+                    <div
+                        class="grid grid-cols-1 gap-2 px-6 py-5 sm:grid-cols-3"
+                    >
+
+                        <div class="text-sm font-medium text-gray-500">
+                            Role
+                        </div>
+
+                        <div
+                            class="text-sm text-gray-900 sm:col-span-2"
+                        >
+
+                            {{ profile_user.get_role_display }}
+
+                        </div>
+
+                    </div>
+
+
+                    <!-- CREATED -->
+
+                    <div
+                        class="grid grid-cols-1 gap-2 px-6 py-5 sm:grid-cols-3"
+                    >
+
+                        <div class="text-sm font-medium text-gray-500">
+                            Account Created
+                        </div>
+
+                        <div
+                            class="text-sm text-gray-900 sm:col-span-2"
+                        >
+
+                            {{ profile_user.created_at|date:"d M Y, h:i A" }}
+
+                        </div>
+
+                    </div>
+
+
+                    <!-- LAST LOGIN -->
+
+                    <div
+                        class="grid grid-cols-1 gap-2 px-6 py-5 sm:grid-cols-3"
+                    >
+
+                        <div class="text-sm font-medium text-gray-500">
+                            Last Login
+                        </div>
+
+                        <div
+                            class="text-sm text-gray-900 sm:col-span-2"
+                        >
+
+                            {% if profile_user.last_login_at %}
+
+                                {{ profile_user.last_login_at|date:"d M Y, h:i A" }}
+
+                            {% else %}
+
+                                —
+
+                            {% endif %}
+
+                        </div>
+
+                    </div>
+
+
+                </div>
+
+            </section>
+
+        </div>
+
+
+
+        <!-- =====================================================
+             ORGANIZATION INFORMATION
+             ===================================================== -->
+
+        {% if organization %}
+
+        <section
+            class="mt-6 rounded-xl border border-gray-200 bg-white shadow-sm"
+        >
+
+            <div
+                class="border-b border-gray-200 px-6 py-5"
+            >
+
+                <h2 class="text-lg font-semibold text-gray-900">
+                    Company Information
+                </h2>
+
+                <p class="mt-1 text-sm text-gray-500">
+                    Information associated with your SHVYA organization.
+                </p>
+
+            </div>
+
+
+            <div class="grid grid-cols-1 gap-6 p-6 md:grid-cols-3">
+
+
+                <!-- COMPANY -->
+
+                <div>
+
+                    <div class="flex items-center gap-2 text-sm font-medium text-gray-500">
+
+                        <i class="ti ti-building"></i>
+
+                        Company
+
+                    </div>
+
+                    <div class="mt-2 text-sm font-semibold text-gray-900">
+
+                        {{ organization.name }}
+
+                    </div>
+
+                </div>
+
+
+                <!-- PACKAGE -->
+
+                <div>
+
+                    <div class="flex items-center gap-2 text-sm font-medium text-gray-500">
+
+                        <i class="ti ti-package"></i>
+
+                        Package
+
+                    </div>
+
+                    <div class="mt-2 text-sm font-semibold capitalize text-gray-900">
+
+                        {{ organization.get_package_display }}
+
+                    </div>
+
+                </div>
+
+
+                <!-- SEATS -->
+
+                <div>
+
+                    <div class="flex items-center gap-2 text-sm font-medium text-gray-500">
+
+                        <i class="ti ti-users"></i>
+
+                        Seats
+
+                    </div>
+
+                    <div class="mt-2 text-sm font-semibold text-gray-900">
+
+                        {{ organization.number_of_seats }}
+
+                    </div>
+
+                </div>
+
+
+            </div>
+
+        </section>
+
+        {% endif %}
+
+
+    </main>
+
+</div>
+
+</body>
+
+</html>

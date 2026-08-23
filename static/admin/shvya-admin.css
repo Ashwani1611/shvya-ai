@@ -1,0 +1,1530 @@
+/* =========================================================
+   SHVYA ADMIN
+   Technical Control Center
+   Django 6.1
+   Light + Dark Theme
+========================================================= */
+
+
+/* =========================================================
+   SHVYA THEME VARIABLES
+========================================================= */
+
+:root {
+    --shvya-primary: #4f46e5;
+    --shvya-primary-hover: #4338ca;
+    --shvya-primary-soft: #eef2ff;
+
+    --shvya-body-bg: #f5f7fb;
+
+    --shvya-surface: #ffffff;
+    --shvya-surface-soft: #f8fafc;
+    --shvya-surface-hover: #f1f5f9;
+
+    --shvya-text: #111827;
+    --shvya-text-secondary: #374151;
+    --shvya-text-muted: #6b7280;
+
+    --shvya-border: #d1d5db;
+    --shvya-border-soft: #e5e7eb;
+
+    --shvya-header-bg: #ffffff;
+    --shvya-header-text: #111827;
+
+    --shvya-link: #4338ca;
+    --shvya-link-hover: #312e81;
+
+    --shvya-table-header: #f8fafc;
+    --shvya-table-hover: #f3f4f6;
+
+    --shvya-input-bg: #ffffff;
+    --shvya-input-text: #111827;
+
+    --shvya-success: #047857;
+    --shvya-warning: #b45309;
+    --shvya-danger: #b91c1c;
+
+    --shvya-sidebar-width: 248px;
+    --shvya-header-height: 64px;
+
+    --shvya-radius-sm: 6px;
+    --shvya-radius-md: 8px;
+    --shvya-radius-lg: 12px;
+}
+
+
+/* =========================================================
+   DARK MODE
+========================================================= */
+
+html[data-theme="dark"] {
+    --shvya-primary: #818cf8;
+    --shvya-primary-hover: #a5b4fc;
+    --shvya-primary-soft: #1e1b4b;
+
+    --shvya-body-bg: #0f172a;
+
+    --shvya-surface: #111827;
+    --shvya-surface-soft: #1f2937;
+    --shvya-surface-hover: #273244;
+
+    --shvya-text: #f9fafb;
+    --shvya-text-secondary: #e5e7eb;
+    --shvya-text-muted: #9ca3af;
+
+    --shvya-border: #374151;
+    --shvya-border-soft: #273244;
+
+    --shvya-header-bg: #111827;
+    --shvya-header-text: #f9fafb;
+
+    --shvya-link: #a5b4fc;
+    --shvya-link-hover: #c7d2fe;
+
+    --shvya-table-header: #1f2937;
+    --shvya-table-hover: #1e293b;
+
+    --shvya-input-bg: #111827;
+    --shvya-input-text: #f9fafb;
+
+    --shvya-success: #34d399;
+    --shvya-warning: #fbbf24;
+    --shvya-danger: #f87171;
+}
+
+
+/* =========================================================
+   SYSTEM DARK MODE FALLBACK
+========================================================= */
+
+@media (prefers-color-scheme: dark) {
+
+    html:not([data-theme="light"]) {
+
+        --shvya-primary: #818cf8;
+        --shvya-primary-hover: #a5b4fc;
+        --shvya-primary-soft: #1e1b4b;
+
+        --shvya-body-bg: #0f172a;
+
+        --shvya-surface: #111827;
+        --shvya-surface-soft: #1f2937;
+        --shvya-surface-hover: #273244;
+
+        --shvya-text: #f9fafb;
+        --shvya-text-secondary: #e5e7eb;
+        --shvya-text-muted: #9ca3af;
+
+        --shvya-border: #374151;
+        --shvya-border-soft: #273244;
+
+        --shvya-header-bg: #111827;
+        --shvya-header-text: #f9fafb;
+
+        --shvya-link: #a5b4fc;
+        --shvya-link-hover: #c7d2fe;
+
+        --shvya-table-header: #1f2937;
+        --shvya-table-hover: #1e293b;
+
+        --shvya-input-bg: #111827;
+        --shvya-input-text: #f9fafb;
+
+        --shvya-success: #34d399;
+        --shvya-warning: #fbbf24;
+        --shvya-danger: #f87171;
+    }
+}
+
+
+/* =========================================================
+   GLOBAL PAGE
+========================================================= */
+
+html {
+    background: var(--shvya-body-bg);
+}
+
+body {
+    background: var(--shvya-body-bg);
+    color: var(--shvya-text);
+    overflow-x: hidden;
+}
+
+
+/* =========================================================
+   HEADER
+========================================================= */
+
+#header {
+    min-height: var(--shvya-header-height);
+
+    background: var(--shvya-header-bg);
+    color: var(--shvya-header-text);
+
+    border-bottom: 1px solid var(--shvya-border);
+
+    box-sizing: border-box;
+}
+
+
+/* =========================================================
+   SHVYA BRAND
+========================================================= */
+
+#site-name {
+    display: flex;
+    align-items: center;
+}
+
+#site-name a {
+    color: var(--shvya-primary) !important;
+
+    font-size: 18px;
+    font-weight: 700;
+
+    letter-spacing: -0.01em;
+
+    text-decoration: none !important;
+}
+
+#site-name a:hover {
+    color: var(--shvya-primary-hover) !important;
+}
+
+
+/* =========================================================
+   USER TOOLS
+========================================================= */
+
+#user-tools {
+    color: var(--shvya-text-secondary) !important;
+}
+
+#user-tools a {
+    color: var(--shvya-link) !important;
+}
+
+#user-tools a:hover {
+    color: var(--shvya-link-hover) !important;
+}
+
+
+/* =========================================================
+   MAIN CONTENT
+========================================================= */
+
+#main {
+    margin-left: var(--shvya-sidebar-width);
+    min-height: calc(100vh - var(--shvya-header-height));
+}
+
+#content {
+    max-width: none;
+
+    padding: 28px;
+
+    color: var(--shvya-text);
+}
+
+
+/* =========================================================
+   PAGE HEADINGS
+========================================================= */
+
+#content h1,
+#content h2,
+#content h3,
+#content h4,
+#content h5,
+#content h6 {
+    color: var(--shvya-text) !important;
+}
+
+#content h1 {
+    font-weight: 700;
+}
+
+
+/* =========================================================
+   BREADCRUMBS
+========================================================= */
+
+div.breadcrumbs {
+    background: transparent !important;
+
+    color: var(--shvya-text-secondary) !important;
+
+    padding: 0 0 20px 0;
+}
+
+div.breadcrumbs a {
+    color: var(--shvya-link) !important;
+}
+
+
+/* =========================================================
+   GLOBAL LINKS
+========================================================= */
+
+a:link,
+a:visited {
+    color: var(--shvya-link);
+}
+
+a:hover {
+    color: var(--shvya-link-hover);
+}
+
+
+/* =========================================================
+   ADMIN MODULES / CARDS
+========================================================= */
+
+.module {
+    background: var(--shvya-surface) !important;
+
+    color: var(--shvya-text) !important;
+
+    border: 1px solid var(--shvya-border) !important;
+
+    border-radius: var(--shvya-radius-lg);
+
+    overflow: hidden;
+
+    margin-bottom: 20px;
+
+    box-shadow:
+        0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+
+/* =========================================================
+   MODULE HEADINGS
+========================================================= */
+
+.module caption,
+.module caption a {
+    background: var(--shvya-surface-soft) !important;
+
+    color: var(--shvya-text) !important;
+
+    font-weight: 700;
+
+    border-bottom: 1px solid var(--shvya-border-soft);
+}
+
+.module caption {
+    padding: 14px 16px;
+}
+
+.module caption a:hover {
+    color: var(--shvya-primary) !important;
+}
+
+
+/* =========================================================
+   MODULE TABLES
+========================================================= */
+
+.module table {
+    width: 100%;
+
+    background: var(--shvya-surface);
+}
+
+.module th,
+.module td {
+    color: var(--shvya-text) !important;
+
+    border-bottom-color:
+        var(--shvya-border-soft) !important;
+}
+
+.module tr {
+    background: var(--shvya-surface);
+}
+
+.module tr:hover {
+    background: var(--shvya-table-hover);
+}
+
+
+/* =========================================================
+   MODULE LINKS
+========================================================= */
+
+.module a {
+    color: var(--shvya-link) !important;
+}
+
+.module a:hover {
+    color: var(--shvya-link-hover) !important;
+}
+
+
+/* =========================================================
+   ADD / CHANGE LINKS
+========================================================= */
+
+.addlink,
+.changelink {
+    color: var(--shvya-link) !important;
+}
+
+.addlink:hover,
+.changelink:hover {
+    color: var(--shvya-link-hover) !important;
+}
+
+
+/* =========================================================
+   RECENT ACTIONS
+========================================================= */
+
+#content-main .module {
+    color: var(--shvya-text);
+}
+
+#content-related {
+    color: var(--shvya-text);
+}
+
+#content-related h2,
+#content-related h3 {
+    color: var(--shvya-text) !important;
+}
+
+.actionlist li {
+    color: var(--shvya-text-secondary);
+}
+
+
+/* =========================================================
+   CHANGE LIST TABLE
+========================================================= */
+
+#result_list {
+    width: 100%;
+
+    background: var(--shvya-surface);
+
+    border: 1px solid var(--shvya-border);
+
+    border-radius: var(--shvya-radius-lg);
+
+    overflow: hidden;
+}
+
+#result_list thead th {
+    background: var(--shvya-table-header) !important;
+
+    color: var(--shvya-text-secondary) !important;
+
+    font-size: 12px;
+
+    text-transform: uppercase;
+
+    letter-spacing: 0.04em;
+}
+
+#result_list tbody td,
+#result_list tbody th {
+    color: var(--shvya-text) !important;
+
+    border-bottom-color:
+        var(--shvya-border-soft) !important;
+}
+
+#result_list tbody tr:hover {
+    background: var(--shvya-table-hover);
+}
+
+
+/* =========================================================
+   FORMS
+========================================================= */
+
+input,
+textarea,
+select {
+    background: var(--shvya-input-bg) !important;
+
+    color: var(--shvya-input-text) !important;
+
+    border: 1px solid var(--shvya-border) !important;
+
+    border-radius: var(--shvya-radius-md);
+}
+
+input::placeholder,
+textarea::placeholder {
+    color: var(--shvya-text-muted) !important;
+}
+
+input:focus,
+textarea:focus,
+select:focus {
+    border-color:
+        var(--shvya-primary) !important;
+
+    outline: none;
+
+    box-shadow:
+        0 0 0 2px rgba(79, 70, 229, 0.15);
+}
+
+
+/* =========================================================
+   FORM LABELS
+========================================================= */
+
+label,
+label.required {
+    color: var(--shvya-text-secondary) !important;
+}
+
+.form-row {
+    color: var(--shvya-text);
+}
+
+
+/* =========================================================
+   HELP TEXT
+========================================================= */
+
+.help,
+.helptext,
+.form-row .help,
+p.help {
+    color: var(--shvya-text-muted) !important;
+}
+
+
+/* =========================================================
+   BUTTONS
+========================================================= */
+
+.button,
+input[type="submit"],
+.submit-row input,
+a.button {
+    border-radius: var(--shvya-radius-md);
+}
+
+
+/* =========================================================
+   PRIMARY BUTTON
+========================================================= */
+
+input[type="submit"].default,
+.submit-row input.default {
+    background: var(--shvya-primary);
+
+    color: #ffffff !important;
+
+    border: none;
+}
+
+input[type="submit"].default:hover,
+.submit-row input.default:hover {
+    background: var(--shvya-primary-hover);
+}
+
+
+/* =========================================================
+   FILTER SIDEBAR
+========================================================= */
+
+#changelist-filter {
+    background: var(--shvya-surface);
+
+    color: var(--shvya-text);
+
+    border-left:
+        1px solid var(--shvya-border);
+}
+
+#changelist-filter h2,
+#changelist-filter h3 {
+    color: var(--shvya-text) !important;
+}
+
+#changelist-filter li,
+#changelist-filter label {
+    color: var(--shvya-text-secondary) !important;
+}
+
+#changelist-filter a {
+    color: var(--shvya-link) !important;
+}
+
+
+/* =========================================================
+   MESSAGES
+========================================================= */
+
+.messagelist li {
+    border-radius: var(--shvya-radius-md);
+}
+
+
+/* =========================================================
+   SHVYA ADMIN SIDEBAR
+========================================================= */
+
+#shvya-admin-sidebar {
+    position: fixed;
+
+    top: var(--shvya-header-height);
+    left: 0;
+    bottom: 0;
+
+    width: var(--shvya-sidebar-width);
+
+    background: var(--shvya-surface);
+
+    border-right:
+        1px solid var(--shvya-border);
+
+    overflow-y: auto;
+
+    z-index: 1000;
+
+    display: flex;
+    flex-direction: column;
+
+    box-sizing: border-box;
+}
+
+
+/* =========================================================
+   SIDEBAR SCROLLBAR
+========================================================= */
+
+#shvya-admin-sidebar::-webkit-scrollbar {
+    width: 6px;
+}
+
+#shvya-admin-sidebar::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+#shvya-admin-sidebar::-webkit-scrollbar-thumb {
+    background: var(--shvya-border);
+
+    border-radius: 999px;
+}
+
+#shvya-admin-sidebar::-webkit-scrollbar-thumb:hover {
+    background: var(--shvya-text-muted);
+}
+
+
+/* =========================================================
+   SIDEBAR BRAND
+========================================================= */
+
+.shvya-sidebar-brand {
+    padding: 18px 20px;
+
+    border-bottom:
+        1px solid var(--shvya-border-soft);
+}
+
+.shvya-sidebar-brand a {
+    display: flex;
+
+    align-items: center;
+
+    gap: 11px;
+
+    text-decoration: none !important;
+}
+
+
+/* =========================================================
+   BRAND MARK
+========================================================= */
+
+.shvya-brand-mark {
+    width: 34px;
+    height: 34px;
+
+    display: flex;
+
+    align-items: center;
+    justify-content: center;
+
+    flex-shrink: 0;
+
+    border-radius: 9px;
+
+    background: var(--shvya-primary);
+
+    color: #ffffff !important;
+
+    font-size: 15px;
+
+    font-weight: 800;
+}
+
+
+/* =========================================================
+   BRAND TEXT
+========================================================= */
+
+.shvya-brand-text {
+    display: flex;
+
+    flex-direction: column;
+
+    line-height: 1.1;
+}
+
+.shvya-brand-text strong {
+    color: var(--shvya-text) !important;
+
+    font-size: 14px;
+
+    letter-spacing: 0.02em;
+}
+
+.shvya-brand-text small {
+    color: var(--shvya-text-muted) !important;
+
+    font-size: 9px;
+
+    margin-top: 3px;
+
+    letter-spacing: 0.12em;
+}
+
+
+/* =========================================================
+   SIDEBAR NAVIGATION
+========================================================= */
+
+.shvya-sidebar-nav {
+    padding: 14px 10px 20px;
+}
+
+
+/* =========================================================
+   NAVIGATION SECTION
+========================================================= */
+
+.shvya-nav-section {
+    margin-bottom: 18px;
+}
+
+
+/* =========================================================
+   NAVIGATION LABEL
+========================================================= */
+
+.shvya-nav-label {
+    padding: 7px 11px;
+
+    color: var(--shvya-text-muted) !important;
+
+    font-size: 10px;
+
+    font-weight: 700;
+
+    letter-spacing: 0.10em;
+}
+
+
+/* =========================================================
+   NAVIGATION ITEM
+========================================================= */
+
+.shvya-nav-item {
+    display: flex;
+
+    align-items: center;
+
+    gap: 11px;
+
+    min-height: 38px;
+
+    padding: 8px 11px;
+
+    margin: 2px 0;
+
+    border-radius: var(--shvya-radius-md);
+
+    color: var(--shvya-text-secondary) !important;
+
+    font-size: 13px;
+
+    font-weight: 500;
+
+    text-decoration: none !important;
+
+    transition:
+        background 120ms ease,
+        color 120ms ease;
+}
+
+.shvya-nav-item:hover {
+    background: var(--shvya-surface-soft);
+
+    color: var(--shvya-primary) !important;
+}
+
+
+/* =========================================================
+   NAVIGATION ICON
+========================================================= */
+
+.shvya-nav-icon {
+    width: 18px;
+
+    display: inline-flex;
+
+    justify-content: center;
+
+    flex-shrink: 0;
+
+    color: var(--shvya-text-muted) !important;
+
+    font-size: 14px;
+}
+
+.shvya-nav-item:hover .shvya-nav-icon {
+    color: var(--shvya-primary) !important;
+}
+
+
+/* =========================================================
+   ACTIVE NAVIGATION ITEM
+========================================================= */
+
+.shvya-nav-item.active {
+    background: var(--shvya-primary-soft);
+
+    color: var(--shvya-primary) !important;
+
+    font-weight: 600;
+}
+
+.shvya-nav-item.active .shvya-nav-icon {
+    color: var(--shvya-primary) !important;
+}
+
+
+/* =========================================================
+   DISABLED NAVIGATION ITEM
+========================================================= */
+
+.shvya-nav-disabled {
+    opacity: 0.45;
+
+    cursor: default;
+}
+
+.shvya-nav-disabled:hover {
+    background: transparent;
+
+    color: var(--shvya-text-secondary) !important;
+}
+
+.shvya-nav-disabled:hover .shvya-nav-icon {
+    color: var(--shvya-text-muted) !important;
+}
+
+
+/* =========================================================
+   SIDEBAR FOOTER
+========================================================= */
+
+.shvya-sidebar-footer {
+    margin-top: auto;
+
+    padding: 12px;
+
+    border-top:
+        1px solid var(--shvya-border-soft);
+}
+
+
+/* =========================================================
+   FOOTER LINKS
+========================================================= */
+
+.shvya-footer-link {
+    display: flex;
+
+    align-items: center;
+
+    gap: 9px;
+
+    padding: 9px 11px;
+
+    border-radius: var(--shvya-radius-md);
+
+    color: var(--shvya-text-muted) !important;
+
+    font-size: 12px;
+
+    text-decoration: none !important;
+}
+
+.shvya-footer-link:hover {
+    background: var(--shvya-surface-soft);
+
+    color: var(--shvya-primary) !important;
+}
+
+
+/* =========================================================
+   HIDE DJANGO DEFAULT SIDEBAR TOGGLE
+========================================================= */
+
+#toggle-nav-sidebar {
+    display: none !important;
+}
+/* =========================================================
+   CONTENT AREA WITH SIDEBAR
+========================================================= */
+
+#main {
+    margin-left: var(--shvya-sidebar-width);
+    min-height: calc(100vh - var(--shvya-header-height));
+}
+
+/* =========================================================
+   RESPONSIVE — TABLET
+========================================================= */
+
+@media (max-width: 900px) {
+
+    :root {
+        --shvya-sidebar-width: 220px;
+    }
+
+    #shvya-admin-sidebar {
+        width: 220px;
+    }
+
+    #main {
+        margin-left: 220px;
+    }
+
+}
+
+
+/* =========================================================
+   RESPONSIVE — MOBILE
+========================================================= */
+
+@media (max-width: 700px) {
+
+    #shvya-admin-sidebar {
+        display: none;
+    }
+
+    #main {
+        margin-left: 0;
+    }
+
+    #content {
+        padding: 16px;
+    }
+
+    #header {
+        min-height: 56px;
+    }
+
+    #site-name a {
+        font-size: 16px;
+    }
+
+}
+
+
+/* =========================================================
+   ACCESSIBILITY
+========================================================= */
+
+.shvya-nav-item:focus-visible,
+.shvya-footer-link:focus-visible,
+.shvya-sidebar-brand a:focus-visible {
+    outline: 2px solid var(--shvya-primary);
+
+    outline-offset: 2px;
+}
+
+
+/* =========================================================
+   DARK MODE SHADOW ADJUSTMENT
+========================================================= */
+
+html[data-theme="dark"] .module {
+    box-shadow:
+        0 1px 2px rgba(0, 0, 0, 0.25);
+}
+
+
+/* =========================================================
+   DARK MODE INPUT PLACEHOLDER
+========================================================= */
+
+html[data-theme="dark"] input::placeholder,
+html[data-theme="dark"] textarea::placeholder {
+    color: #9ca3af !important;
+}
+
+
+/* =========================================================
+   DARK MODE SELECT OPTIONS
+========================================================= */
+
+html[data-theme="dark"] option {
+    background: var(--shvya-input-bg);
+
+    color: var(--shvya-input-text);
+}
+
+/* =========================================================
+   D1.8 — RECENT ACTIVITY
+========================================================= */
+
+.shvya-activity-count {
+    display: inline-flex;
+    align-items: center;
+    padding: 5px 8px;
+    border-radius: 999px;
+    background: var(--shvya-surface-soft);
+    border: 1px solid var(--shvya-border-soft);
+    color: var(--shvya-text-muted);
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.shvya-activity-list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.shvya-activity-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 14px 0;
+    border-bottom: 1px solid var(--shvya-border-soft);
+}
+
+.shvya-activity-item:first-child {
+    padding-top: 0;
+}
+
+.shvya-activity-item:last-child {
+    padding-bottom: 0;
+    border-bottom: 0;
+}
+
+.shvya-activity-marker {
+    width: 8px;
+    height: 8px;
+    margin-top: 6px;
+    flex-shrink: 0;
+    border-radius: 50%;
+    background: var(--shvya-primary);
+}
+
+.shvya-activity-marker.shvya-activity-add {
+    background: var(--shvya-success);
+}
+
+.shvya-activity-marker.shvya-activity-change {
+    background: var(--shvya-primary);
+}
+
+.shvya-activity-marker.shvya-activity-delete {
+    background: var(--shvya-danger);
+}
+
+.shvya-activity-content {
+    min-width: 0;
+    flex: 1;
+}
+
+.shvya-activity-topline {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    margin-bottom: 4px;
+}
+
+.shvya-activity-action {
+    font-size: 9px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+
+.shvya-action-add {
+    color: var(--shvya-success);
+}
+
+.shvya-action-change {
+    color: var(--shvya-primary);
+}
+
+.shvya-action-delete {
+    color: var(--shvya-danger);
+}
+
+.shvya-activity-model {
+    color: var(--shvya-text-muted);
+    font-size: 9px;
+    font-weight: 600;
+}
+
+.shvya-activity-object {
+    color: var(--shvya-text);
+    font-size: 12px;
+    line-height: 1.4;
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.shvya-activity-object-link {
+    color: var(--shvya-text) !important;
+    text-decoration: none !important;
+}
+
+.shvya-activity-object-link:hover {
+    color: var(--shvya-primary) !important;
+    text-decoration: underline !important;
+}
+
+.shvya-activity-meta {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 4px;
+    color: var(--shvya-text-muted);
+    font-size: 10px;
+}
+
+.shvya-activity-meta strong {
+    color: var(--shvya-text-secondary);
+    font-weight: 600;
+}
+
+.shvya-activity-separator {
+    opacity: 0.6;
+}
+
+.shvya-activity-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-top: 16px;
+    padding-top: 12px;
+    border-top: 1px solid var(--shvya-border-soft);
+    color: var(--shvya-text-muted);
+    font-size: 10px;
+}
+
+.shvya-activity-view-all {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    color: var(--shvya-primary) !important;
+    text-decoration: none !important;
+    font-size: 10px;
+    font-weight: 700;
+}
+
+.shvya-activity-view-all:hover {
+    color: var(--shvya-primary-hover) !important;
+    text-decoration: underline !important;
+}
+
+.shvya-empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 28px 12px;
+    text-align: center;
+    color: var(--shvya-text-muted);
+    font-size: 11px;
+}
+
+.shvya-empty-state strong {
+    color: var(--shvya-text-secondary);
+    font-size: 12px;
+}
+
+.shvya-empty-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    margin-bottom: 3px;
+    border-radius: 8px;
+    background: var(--shvya-surface-soft);
+    border: 1px solid var(--shvya-border-soft);
+    color: var(--shvya-text-muted);
+    font-weight: 700;
+}
+
+/* =========================================================
+   D1.8 — RECENT ACTIVITY RESPONSIVE
+========================================================= */
+
+@media (max-width: 700px) {
+    .shvya-activity-footer {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .shvya-activity-meta {
+        flex-wrap: wrap;
+    }
+
+    .shvya-activity-object {
+        white-space: normal;
+    }
+}
+/* =========================================================
+   D1.9 — ADMINISTRATION CENTER
+========================================================= */
+
+.shvya-admin-center-grid {
+    display: grid;
+
+    grid-template-columns:
+        repeat(2, minmax(0, 1fr));
+
+    gap: 12px;
+}
+
+
+.shvya-admin-center-group {
+    padding: 16px;
+
+    background: var(--shvya-surface-soft);
+
+    border: 1px solid var(--shvya-border-soft);
+
+    border-radius: var(--shvya-radius-md);
+}
+
+
+.shvya-admin-center-group-header {
+    display: flex;
+
+    align-items: flex-start;
+
+    gap: 10px;
+
+    margin-bottom: 14px;
+}
+
+
+.shvya-admin-center-icon {
+    display: flex;
+
+    align-items: center;
+    justify-content: center;
+
+    width: 32px;
+    height: 32px;
+
+    flex-shrink: 0;
+
+    border-radius: 8px;
+
+    background: var(--shvya-primary-soft);
+
+    color: var(--shvya-primary);
+
+    font-size: 11px;
+
+    font-weight: 800;
+}
+
+
+.shvya-admin-center-title {
+    margin: 0;
+
+    color: var(--shvya-text);
+
+    font-size: 12px;
+
+    font-weight: 700;
+}
+
+
+.shvya-admin-center-description {
+    margin: 4px 0 0;
+
+    color: var(--shvya-text-muted);
+
+    font-size: 10px;
+
+    line-height: 1.45;
+}
+
+
+.shvya-admin-center-links {
+    display: flex;
+
+    flex-direction: column;
+
+    gap: 4px;
+}
+
+
+.shvya-admin-center-link {
+    display: flex;
+
+    align-items: center;
+
+    justify-content: space-between;
+
+    gap: 10px;
+
+    padding: 9px 10px;
+
+    border-radius: 6px;
+
+    color: var(--shvya-text-secondary) !important;
+
+    text-decoration: none !important;
+
+    font-size: 11px;
+
+    font-weight: 600;
+
+    transition:
+        background 120ms ease,
+        color 120ms ease;
+}
+
+
+.shvya-admin-center-link:hover {
+    background: var(--shvya-surface);
+
+    color: var(--shvya-primary) !important;
+}
+
+
+.shvya-admin-center-arrow {
+    color: var(--shvya-text-muted);
+
+    font-size: 13px;
+
+    transition:
+        transform 120ms ease,
+        color 120ms ease;
+}
+
+
+.shvya-admin-center-link:hover
+.shvya-admin-center-arrow {
+    color: var(--shvya-primary);
+
+    transform: translateX(2px);
+}
+
+
+/* =========================================================
+   D1.9 — ADMINISTRATION CENTER RESPONSIVE
+========================================================= */
+
+@media (max-width: 1100px) {
+
+    .shvya-admin-center-grid {
+        grid-template-columns: 1fr;
+    }
+
+}
+
+
+@media (max-width: 700px) {
+
+    .shvya-admin-center-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .shvya-admin-center-group {
+        padding: 14px;
+    }
+
+    .shvya-admin-center-group-header {
+        gap: 9px;
+    }
+
+    .shvya-admin-center-title {
+        font-size: 11px;
+    }
+
+    .shvya-admin-center-description {
+        font-size: 9px;
+    }
+
+}
+
+/* =========================================================
+   SHVYA ADMIN — SAVED VIEWS
+========================================================= */
+
+.shvya-saved-views {
+    margin-bottom: 14px;
+    padding: 12px 14px;
+    background: var(--shvya-surface);
+    border: 1px solid var(--shvya-border-soft);
+    border-radius: var(--shvya-radius-md);
+    box-sizing: border-box;
+}
+
+.shvya-saved-views-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    flex-wrap: wrap;
+}
+
+.shvya-saved-views-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--shvya-text);
+    font-size: 11px;
+    font-weight: 700;
+}
+
+.shvya-saved-views-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border-radius: 6px;
+    background: var(--shvya-primary-soft);
+    color: var(--shvya-primary);
+    font-size: 11px;
+}
+
+.shvya-saved-views-actions {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    flex-wrap: wrap;
+}
+
+.shvya-saved-view-select {
+    min-width: 170px;
+    min-height: 34px;
+    padding: 6px 10px;
+    border: 1px solid var(--shvya-border);
+    border-radius: var(--shvya-radius-md);
+    background: var(--shvya-surface);
+    color: var(--shvya-text);
+    font-size: 11px;
+}
+
+.shvya-saved-view-button {
+    min-height: 34px;
+    padding: 6px 11px;
+    border: 1px solid var(--shvya-border);
+    border-radius: var(--shvya-radius-md);
+    background: var(--shvya-surface);
+    color: var(--shvya-text-secondary);
+    cursor: pointer;
+    font-size: 10px;
+    font-weight: 700;
+    transition:
+        background 120ms ease,
+        border-color 120ms ease,
+        color 120ms ease,
+        transform 120ms ease;
+}
+
+.shvya-saved-view-button:hover:not(:disabled) {
+    border-color: var(--shvya-primary);
+    color: var(--shvya-primary);
+    transform: translateY(-1px);
+}
+
+.shvya-saved-view-primary {
+    background: var(--shvya-primary);
+    border-color: var(--shvya-primary);
+    color: #ffffff !important;
+}
+
+.shvya-saved-view-primary:hover:not(:disabled) {
+    background: var(--shvya-primary-hover);
+    border-color: var(--shvya-primary-hover);
+    color: #ffffff !important;
+}
+
+.shvya-saved-view-danger {
+    color: var(--shvya-text-muted);
+}
+
+.shvya-saved-view-danger:hover:not(:disabled) {
+    border-color: #dc2626;
+    color: #dc2626;
+}
+
+.shvya-saved-view-button:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+.shvya-saved-view-message {
+    min-height: 0;
+    margin-top: 0;
+    color: var(--shvya-text-muted);
+    font-size: 10px;
+    font-weight: 600;
+}
+
+.shvya-saved-view-message-success {
+    margin-top: 7px;
+    color: var(--shvya-success);
+}
+
+.shvya-saved-view-message-error {
+    margin-top: 7px;
+    color: #dc2626;
+}
+
+@media (max-width: 700px) {
+    .shvya-saved-views-header {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .shvya-saved-views-actions {
+        width: 100%;
+    }
+
+    .shvya-saved-view-select {
+        flex: 1;
+        min-width: 0;
+        width: 100%;
+    }
+
+    .shvya-saved-view-button {
+        flex: 1;
+    }
+}

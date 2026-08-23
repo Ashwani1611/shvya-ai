@@ -1,0 +1,927 @@
+{% load static %}
+
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+    <meta charset="UTF-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
+
+    <title>Signup | SHVYA AI</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <style>
+
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            min-height: 100%;
+            font-family:
+                Inter,
+                ui-sans-serif,
+                system-ui,
+                -apple-system,
+                BlinkMacSystemFont,
+                "Segoe UI",
+                sans-serif;
+        }
+
+        body {
+            background: #ffffff;
+        }
+
+        .signup-page {
+            min-height: 100vh;
+            display: flex;
+            overflow: hidden;
+        }
+
+        /* =====================================================
+           LEFT PANEL
+           ===================================================== */
+
+        .signup-left {
+            width: 50%;
+            min-height: 100vh;
+            background:
+                radial-gradient(
+                    circle at 100% 0%,
+                    rgba(255,255,255,0.08),
+                    transparent 28%
+                ),
+                linear-gradient(
+                    135deg,
+                    #205ba3 0%,
+                    #15559d 45%,
+                    #174f91 100%
+                );
+
+            color: white;
+
+            padding:
+                28px
+                7vw
+                50px
+                6vw;
+
+            position: relative;
+
+            overflow: hidden;
+        }
+
+        .signup-left::before {
+            content: "";
+            position: absolute;
+
+            width: 300px;
+            height: 300px;
+
+            border-radius: 50%;
+
+            background: rgba(255,255,255,0.035);
+
+            top: -120px;
+            right: -90px;
+        }
+
+        .signup-left::after {
+            content: "";
+            position: absolute;
+
+            width: 240px;
+            height: 240px;
+
+            border-radius: 50%;
+
+            background: rgba(255,255,255,0.035);
+
+            bottom: -130px;
+            left: -100px;
+        }
+
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+
+            position: relative;
+            z-index: 2;
+        }
+
+        .brand-mark {
+            width: 44px;
+            height: 44px;
+
+            border-radius: 12px;
+
+            display: flex;
+            align-items: center;
+            justify-content: center;
+
+            background: rgba(255,255,255,0.12);
+
+            border:
+                1px solid
+                rgba(255,255,255,0.20);
+
+            font-size: 22px;
+            font-weight: 800;
+        }
+
+        .brand-name {
+            font-size: 27px;
+            font-weight: 800;
+            letter-spacing: -0.8px;
+        }
+
+        .brand-name span {
+            font-weight: 400;
+            opacity: 0.75;
+        }
+
+        .hero-content {
+            position: relative;
+            z-index: 2;
+
+            max-width: 610px;
+
+            margin-top: 78px;
+        }
+
+        .hero-title {
+            font-size: clamp(
+                42px,
+                4.1vw,
+                64px
+            );
+
+            line-height: 0.98;
+
+            font-weight: 800;
+
+            letter-spacing: -2px;
+
+            margin: 0;
+        }
+
+        .hero-description {
+            margin-top: 30px;
+
+            max-width: 590px;
+
+            font-size: 18px;
+
+            line-height: 1.8;
+
+            color:
+                rgba(255,255,255,0.82);
+        }
+
+        .feature-grid {
+            display: grid;
+
+            grid-template-columns:
+                repeat(2, minmax(0, 1fr));
+
+            gap: 16px;
+
+            margin-top: 48px;
+
+            max-width: 590px;
+        }
+
+        .feature-card {
+            min-height: 120px;
+
+            border:
+                1px solid
+                rgba(255,255,255,0.20);
+
+            background:
+                rgba(255,255,255,0.09);
+
+            border-radius: 16px;
+
+            padding: 20px;
+
+            backdrop-filter: blur(6px);
+        }
+
+        .feature-icon {
+            width: 40px;
+            height: 40px;
+
+            display: flex;
+            align-items: center;
+            justify-content: center;
+
+            border-radius: 10px;
+
+            background:
+                rgba(255,255,255,0.16);
+
+            font-size: 19px;
+
+            margin-bottom: 14px;
+        }
+
+        .feature-title {
+            font-weight: 700;
+            font-size: 15px;
+        }
+
+        .feature-description {
+            margin-top: 7px;
+
+            color:
+                rgba(255,255,255,0.70);
+
+            font-size: 13px;
+
+            line-height: 1.5;
+        }
+
+        /* =====================================================
+           RIGHT PANEL
+           ===================================================== */
+
+        .signup-right {
+            width: 50%;
+            min-height: 100vh;
+
+            background:
+                radial-gradient(
+                    circle at 85% 25%,
+                    rgba(33,105,185,0.08),
+                    transparent 24%
+                ),
+                #ffffff;
+
+            display: flex;
+
+            align-items: center;
+            justify-content: center;
+
+            padding: 40px;
+
+            position: relative;
+        }
+
+        .signup-right::before {
+            content: "";
+
+            position: absolute;
+
+            width: 200px;
+            height: 200px;
+
+            border-radius: 50%;
+
+            background:
+                rgba(32,91,163,0.035);
+
+            right: 5%;
+            top: 18%;
+        }
+
+        .signup-container {
+            width: 100%;
+            max-width: 495px;
+
+            position: relative;
+            z-index: 2;
+        }
+
+        .signup-logo {
+            text-align: center;
+
+            margin-bottom: 32px;
+        }
+
+        .signup-logo-title {
+            color: #145aa4;
+
+            font-size: 36px;
+
+            font-weight: 800;
+
+            letter-spacing: -1.5px;
+        }
+
+        .signup-logo-subtitle {
+            margin-top: 4px;
+
+            color: #7c8796;
+
+            font-size: 13px;
+        }
+
+        .signup-card {
+            background: white;
+
+            border:
+                1px solid
+                #d8dee7;
+
+            border-radius: 12px;
+
+            padding: 40px;
+
+            box-shadow:
+                0 18px 45px
+                rgba(15, 23, 42, 0.08);
+        }
+
+        .signup-title {
+            text-align: center;
+
+            font-size: 27px;
+
+            font-weight: 700;
+
+            color: #111827;
+
+            margin-bottom: 32px;
+        }
+
+        .field {
+            margin-bottom: 18px;
+        }
+
+        .field label {
+            display: block;
+
+            font-size: 14px;
+
+            font-weight: 600;
+
+            color: #111827;
+
+            margin-bottom: 8px;
+        }
+
+        .field input {
+            width: 100%;
+
+            box-sizing: border-box;
+
+            height: 48px;
+
+            border:
+                1px solid
+                #cbd5e1;
+
+            border-radius: 6px;
+
+            padding:
+                0
+                14px;
+
+            font-size: 15px;
+
+            color: #111827;
+
+            outline: none;
+
+            transition:
+                border-color 0.15s,
+                box-shadow 0.15s;
+        }
+
+        .field input:focus {
+            border-color: #1976d2;
+
+            box-shadow:
+                0 0 0 3px
+                rgba(25,118,210,0.12);
+        }
+
+        .field input::placeholder {
+            color: #9ca3af;
+        }
+
+        .error-message {
+            margin-top: 7px;
+
+            color: #dc2626;
+
+            font-size: 12px;
+        }
+
+        .general-error {
+            background: #fef2f2;
+
+            border:
+                1px solid
+                #fecaca;
+
+            color: #b91c1c;
+
+            border-radius: 7px;
+
+            padding: 11px 13px;
+
+            font-size: 13px;
+
+            margin-bottom: 18px;
+        }
+
+        .signup-button {
+            width: 100%;
+
+            height: 50px;
+
+            border: 0;
+
+            border-radius: 6px;
+
+            background: #1976d2;
+
+            color: white;
+
+            font-size: 16px;
+
+            font-weight: 700;
+
+            cursor: pointer;
+
+            margin-top: 8px;
+
+            box-shadow:
+                0 7px 18px
+                rgba(25,118,210,0.20);
+
+            transition:
+                background 0.15s,
+                transform 0.15s;
+        }
+
+        .signup-button:hover {
+            background: #1565c0;
+        }
+
+        .signup-button:active {
+            transform: translateY(1px);
+        }
+
+        .login-link {
+            text-align: center;
+
+            margin-top: 20px;
+
+            font-size: 15px;
+
+            color: #111827;
+        }
+
+        .login-link a {
+            color: #6b21a8;
+
+            text-decoration: underline;
+
+            font-weight: 500;
+        }
+
+        .security-text {
+            text-align: center;
+
+            margin-top: 26px;
+
+            color: #718096;
+
+            font-size: 13px;
+        }
+
+        /* =====================================================
+           RESPONSIVE
+           ===================================================== */
+
+        @media (max-width: 900px) {
+
+            .signup-page {
+                flex-direction: column;
+            }
+
+            .signup-left,
+            .signup-right {
+                width: 100%;
+            }
+
+            .signup-left {
+                min-height: auto;
+
+                padding:
+                    28px
+                    7vw
+                    50px;
+            }
+
+            .hero-content {
+                margin-top: 55px;
+            }
+
+            .signup-right {
+                min-height: auto;
+
+                padding:
+                    60px
+                    25px;
+                }
+
+            .feature-grid {
+                max-width: none;
+            }
+        }
+
+        @media (max-width: 560px) {
+
+            .hero-title {
+                font-size: 42px;
+            }
+
+            .feature-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .signup-card {
+                padding: 28px 22px;
+            }
+
+            .signup-right {
+                padding: 40px 16px;
+            }
+        }
+
+    </style>
+
+</head>
+
+
+<body>
+
+<div class="signup-page">
+
+    <!-- =====================================================
+         LEFT SIDE
+         ====================================================== -->
+
+    <section class="signup-left">
+
+        <div class="brand">
+
+            <div class="brand-mark">
+                S
+            </div>
+
+            <div class="brand-name">
+                SHVYA <span>AI</span>
+            </div>
+
+        </div>
+
+
+        <div class="hero-content">
+
+            <h1 class="hero-title">
+
+                AI-Powered
+                <br>
+                Qualification That
+                <br>
+                Saves Time
+
+            </h1>
+
+
+            <p class="hero-description">
+
+                Automatically identify lead intent,
+                qualify prospects, and help your sales
+                team focus only on the opportunities
+                that matter.
+
+            </p>
+
+
+            <div class="feature-grid">
+
+                <div class="feature-card">
+
+                    <div class="feature-icon">
+                        ✦
+                    </div>
+
+                    <div class="feature-title">
+                        AI Lead Qualification
+                    </div>
+
+                    <div class="feature-description">
+                        Identify high-value prospects
+                        using intelligent qualification.
+                    </div>
+
+                </div>
+
+
+                <div class="feature-card">
+
+                    <div class="feature-icon">
+                        ✓
+                    </div>
+
+                    <div class="feature-title">
+                        Smarter Sales Workflow
+                    </div>
+
+                    <div class="feature-description">
+                        Keep your sales team focused
+                        on the right leads.
+                    </div>
+
+                </div>
+
+
+                <div class="feature-card">
+
+                    <div class="feature-icon">
+                        ↗
+                    </div>
+
+                    <div class="feature-title">
+                        Automated Follow-up
+                    </div>
+
+                    <div class="feature-description">
+                        Reduce manual work and never
+                        lose track of prospects.
+                    </div>
+
+                </div>
+
+
+                <div class="feature-card">
+
+                    <div class="feature-icon">
+                        ◎
+                    </div>
+
+                    <div class="feature-title">
+                        Centralized CRM
+                    </div>
+
+                    <div class="feature-description">
+                        Manage leads, pipelines, notes,
+                        calls, and stages.
+                    </div>
+
+                </div>
+
+            </div>
+
+        </div>
+
+    </section>
+
+
+    <!-- =====================================================
+         RIGHT SIDE
+         ====================================================== -->
+
+    <section class="signup-right">
+
+        <div class="signup-container">
+
+            <div class="signup-logo">
+
+                <div class="signup-logo-title">
+                    SHVYA AI
+                </div>
+
+                <div class="signup-logo-subtitle">
+                    AI-Powered CRM
+                </div>
+
+            </div>
+
+
+            <div class="signup-card">
+
+                <h2 class="signup-title">
+                    Signup
+                </h2>
+
+
+                {% if errors.general %}
+
+                    <div class="general-error">
+                        {{ errors.general }}
+                    </div>
+
+                {% endif %}
+
+
+                <form
+                    method="post"
+                    action="{% url 'crm-signup' %}"
+                    novalidate
+                >
+
+                    {% csrf_token %}
+
+
+                    <!-- NAME -->
+
+                    <div class="field">
+
+                        <label for="id_name">
+                            Name
+                        </label>
+
+                        <input
+                            id="id_name"
+                            type="text"
+                            name="name"
+                            value="{{ form_data.name|default:'' }}"
+                            placeholder="Enter your name"
+                            autocomplete="name"
+                            required
+                        >
+
+                        {% if errors.name %}
+
+                            <div class="error-message">
+                                {{ errors.name }}
+                            </div>
+
+                        {% endif %}
+
+                    </div>
+
+
+                    <!-- EMAIL -->
+
+                    <div class="field">
+
+                        <label for="id_email">
+                            Email
+                        </label>
+
+                        <input
+                            id="id_email"
+                            type="email"
+                            name="email"
+                            value="{{ form_data.email|default:'' }}"
+                            placeholder="Enter your email"
+                            autocomplete="email"
+                            required
+                        >
+
+                        {% if errors.email %}
+
+                            <div class="error-message">
+                                {{ errors.email }}
+                            </div>
+
+                        {% endif %}
+
+                    </div>
+
+
+                    <!-- PHONE -->
+
+                    <div class="field">
+
+                        <label for="id_phone">
+                            Phone Number
+                        </label>
+
+                        <input
+                            id="id_phone"
+                            type="tel"
+                            name="phone"
+                            value="{{ form_data.phone|default:'' }}"
+                            placeholder="Enter your phone number"
+                            autocomplete="tel"
+                            required
+                        >
+
+                        {% if errors.phone %}
+
+                            <div class="error-message">
+                                {{ errors.phone }}
+                            </div>
+
+                        {% endif %}
+
+                    </div>
+
+
+                    <!-- COMPANY -->
+
+                    <div class="field">
+
+                        <label for="id_company_name">
+                            Company Name
+                        </label>
+
+                        <input
+                            id="id_company_name"
+                            type="text"
+                            name="company_name"
+                            value="{{ form_data.company_name|default:'' }}"
+                            placeholder="Enter your company name"
+                            autocomplete="organization"
+                            required
+                        >
+
+                        {% if errors.company_name %}
+
+                            <div class="error-message">
+                                {{ errors.company_name }}
+                            </div>
+
+                        {% endif %}
+
+                    </div>
+
+
+                    <!-- PASSWORD -->
+
+                    <div class="field">
+
+                        <label for="id_password">
+                            Password
+                        </label>
+
+                        <input
+                            id="id_password"
+                            type="password"
+                            name="password"
+                            placeholder="Password"
+                            autocomplete="new-password"
+                            required
+                        >
+
+                        {% if errors.password %}
+
+                            <div class="error-message">
+                                {{ errors.password }}
+                            </div>
+
+                        {% endif %}
+
+                    </div>
+
+
+                    <!-- SUBMIT -->
+
+                    <button
+                        type="submit"
+                        class="signup-button"
+                    >
+                        Signup
+                    </button>
+
+                </form>
+
+
+                <!-- LOGIN -->
+
+                <div class="login-link">
+
+                    Already have an account?
+
+                    <a
+                        href="{% url 'crm-login' %}"
+                    >
+                        Login
+                    </a>
+
+                </div>
+
+
+                <div class="security-text">
+
+                    Create your SHVYA AI CRM workspace.
+
+                </div>
+
+            </div>
+
+        </div>
+
+    </section>
+
+</div>
+
+</body>
+
+</html>

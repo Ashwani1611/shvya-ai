@@ -1,0 +1,13 @@
+{% for s in stages %}
+
+<option value="{{ s.id }}">
+    {{ s.name }}
+</option>
+
+{% empty %}
+
+<option value="">
+    No stages available
+</option>
+
+{% endfor %}

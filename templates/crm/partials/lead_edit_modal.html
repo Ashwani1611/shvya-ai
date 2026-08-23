@@ -1,0 +1,340 @@
+<div
+    id="edit-modal-overlay"
+    class="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
+>
+
+    <div
+        class="bg-white rounded-lg w-full max-w-md max-h-[90vh] overflow-y-auto"
+    >
+
+        <!-- =========================================================
+             MODAL HEADER
+             ========================================================= -->
+
+        <div
+            class="flex items-center justify-between px-5 py-4 border-b"
+        >
+
+            <h2 class="font-semibold text-lg">
+                Edit Lead Details
+            </h2>
+
+            <button
+                type="button"
+                onclick="document.getElementById('modal-root').innerHTML=''"
+                class="text-gray-400 hover:text-gray-600 text-xl"
+                aria-label="Close"
+            >
+                &times;
+            </button>
+
+        </div>
+
+
+        <!-- =========================================================
+             EDIT FORM
+             ========================================================= -->
+
+        <form
+            id="lead-edit-form"
+            method="post"
+            action="{% url 'crm-lead-edit-save' lead.id %}"
+            hx-post="{% url 'crm-lead-edit-save' lead.id %}"
+            hx-target="#modal-root"
+            hx-swap="none"
+            class="px-5 py-4 space-y-4"
+        >
+
+            {% csrf_token %}
+
+
+            <!-- =====================================================
+                 NAME
+                 ===================================================== -->
+
+            <div>
+
+                <label
+                    for="lead-name"
+                    class="text-xs text-gray-500"
+                >
+                    Name *
+                </label>
+
+                <input
+                    id="lead-name"
+                    type="text"
+                    name="name"
+                    value="{{ lead.name }}"
+                    required
+                    autocomplete="name"
+                    class="w-full border rounded-md px-3 py-2 text-sm mt-1"
+                >
+
+            </div>
+
+
+            <!-- =====================================================
+                 EMAIL
+                 ===================================================== -->
+
+            <div>
+
+                <label
+                    for="lead-email"
+                    class="text-xs text-gray-500"
+                >
+                    Email
+                </label>
+
+                <input
+                    id="lead-email"
+                    type="email"
+                    name="email"
+                    value="{{ lead.email }}"
+                    autocomplete="email"
+                    class="w-full border rounded-md px-3 py-2 text-sm mt-1"
+                >
+
+            </div>
+
+
+            <!-- =====================================================
+                 WHATSAPP / PHONE
+                 ===================================================== -->
+
+            <div>
+
+                <label
+                    for="lead-phone"
+                    class="text-xs text-gray-500"
+                >
+                    Enter WhatsApp Number
+                </label>
+
+                <input
+                    id="lead-phone"
+                    type="text"
+                    name="phone"
+                    value="{{ lead.phone }}"
+                    autocomplete="tel"
+                    class="w-full border rounded-md px-3 py-2 text-sm mt-1"
+                >
+
+            </div>
+
+
+            <!-- =====================================================
+                 PIPELINE
+
+                 ACCESS RULES:
+
+                 ADMIN
+                     Can select any active pipeline belonging
+                     to their organization.
+
+                 AGENT
+                     Can select only pipelines permitted by
+                     get_user_pipelines().
+
+                 When the pipeline changes, HTMX requests the
+                 stages belonging to that selected pipeline.
+
+                 The previous stage is NOT retained.
+                 ===================================================== -->
+
+            <div>
+
+                <label
+                    for="lead-pipeline"
+                    class="text-xs text-gray-500"
+                >
+                    Pipeline *
+                </label>
+
+                <select
+                    id="lead-pipeline"
+                    name="pipeline"
+                    required
+                    hx-get="{% url 'crm-lead-edit-stages' %}"
+                    hx-trigger="change"
+                    hx-target="#lead-stage"
+                    hx-swap="innerHTML"
+                    hx-include="#lead-pipeline"
+                    class="w-full border rounded-md px-3 py-2 text-sm mt-1"
+                >
+
+                    {% for p in pipelines %}
+
+                    <option
+                        value="{{ p.id }}"
+                        {% if p.id == lead.pipeline_id %}
+                            selected
+                        {% endif %}
+                    >
+                        {{ p.name }}
+                    </option>
+
+                    {% endfor %}
+
+                </select>
+
+            </div>
+
+
+            <!-- =====================================================
+                 STAGE
+
+                 IMPORTANT:
+
+                 This dropdown is dynamically replaced by HTMX
+                 whenever the Pipeline changes.
+
+                 The server returns ONLY stages belonging to the
+                 selected pipeline.
+
+                 Therefore a stage belonging to the previous
+                 pipeline cannot remain after a pipeline change.
+                 ===================================================== -->
+
+            <div>
+
+                <label
+                    for="lead-stage"
+                    class="text-xs text-gray-500"
+                >
+                    Stage *
+                </label>
+
+                <select
+                    id="lead-stage"
+                    name="stage"
+                    required
+                    class="w-full border rounded-md px-3 py-2 text-sm mt-1"
+                >
+
+                    {% for s in stages %}
+
+                    <option
+                        value="{{ s.id }}"
+                        {% if s.id == lead.stage_id %}
+                            selected
+                        {% endif %}
+                    >
+                        {{ s.name }}
+                    </option>
+
+                    {% empty %}
+
+                    <option value="">
+                        No stages available
+                    </option>
+
+                    {% endfor %}
+
+                </select>
+
+            </div>
+
+
+            <!-- =====================================================
+                 ADDITIONAL ATTRIBUTES
+                 ===================================================== -->
+
+            <div class="border-t pt-3">
+
+                <div class="text-sm font-medium mb-2">
+                    Additional Attributes
+                </div>
+
+                {% for key, value in lead.attributes.items %}
+
+                <div class="mb-2">
+
+                    <label
+                        for="attr-{{ forloop.counter }}"
+                        class="text-xs text-gray-500"
+                    >
+                        {{ key }}
+                    </label>
+
+                    <input
+                        id="attr-{{ forloop.counter }}"
+                        type="text"
+                        name="attr_{{ key }}"
+                        value="{{ value }}"
+                        class="w-full border rounded-md px-3 py-2 text-sm mt-1"
+                    >
+
+                </div>
+
+                {% empty %}
+
+                <div class="text-xs text-gray-300">
+                    No additional attributes
+                </div>
+
+                {% endfor %}
+
+            </div>
+
+
+            <!-- =====================================================
+                 NOTES
+                 ===================================================== -->
+
+            <div>
+
+                <label
+                    for="lead-notes"
+                    class="text-xs text-gray-500"
+                >
+                    Notes
+                </label>
+
+                <textarea
+                    id="lead-notes"
+                    name="notes"
+                    rows="5"
+                    placeholder="Enter notes about this lead..."
+                    class="w-full border rounded-md px-3 py-2 text-sm mt-1 resize-y"
+                >{{ lead_note_text }}</textarea>
+
+            </div>
+
+
+            <!-- =====================================================
+                 BUTTONS
+                 ===================================================== -->
+
+            <div
+                class="flex justify-end gap-2 pt-3 border-t"
+            >
+
+                <!-- Cancel -->
+
+                <button
+                    type="button"
+                    onclick="document.getElementById('modal-root').innerHTML=''"
+                    class="px-4 py-2 border rounded-md text-sm hover:bg-gray-50"
+                >
+                    Cancel
+                </button>
+
+
+                <!-- Save Changes -->
+
+                <button
+                    type="submit"
+                    class="px-4 py-2 bg-blue-600 text-white rounded-md text-sm hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                    Save Changes
+                </button>
+
+            </div>
+
+        </form>
+
+    </div>
+
+</div>

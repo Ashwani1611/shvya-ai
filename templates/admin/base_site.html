@@ -1,0 +1,36 @@
+{% extends "admin/base.html" %}
+
+{% load static %}
+
+{% block title %}
+    {% if subtitle %}
+        {{ subtitle }} | SHVYA ADMIN
+    {% elif title %}
+        {{ title }} | SHVYA ADMIN
+    {% else %}
+        SHVYA ADMIN
+    {% endif %}
+{% endblock %}
+
+
+{% block extrastyle %}
+    {{ block.super }}
+
+    <link
+        rel="stylesheet"
+        href="{% static 'admin/shvya-admin.css' %}"
+    >
+{% endblock %}
+
+
+{% block branding %}
+<div id="site-name">
+    <a href="{% url 'admin:index' %}">
+        SHVYA ADMIN
+    </a>
+</div>
+{% endblock %}
+
+
+{% block nav-global %}
+{% endblock %}

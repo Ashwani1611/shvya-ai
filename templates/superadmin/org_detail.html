@@ -1,0 +1,3032 @@
+{% extends "superadmin/base.html" %}
+
+{% block content %}
+
+<div class="mb-6 flex items-center justify-between">
+
+    <div>
+
+        <div class="flex items-center gap-3">
+
+            <a
+                href="{% url 'superadmin-org-list' %}"
+                class="text-sm text-gray-500 hover:text-indigo-600"
+            >
+                ← Organizations
+            </a>
+
+            <span class="text-gray-300">
+                /
+            </span>
+
+            <h1 class="text-xl font-semibold">
+                {{ organization.name }}
+            </h1>
+
+        </div>
+
+        <div class="mt-1 text-xs text-gray-400">
+            Organization ID:
+            {{ organization.id }}
+        </div>
+
+    </div>
+
+
+    <!-- Account Status -->
+
+    {% if organization.is_active %}
+
+        <span
+            class="px-3 py-1 text-xs rounded-full bg-green-100 text-green-700"
+        >
+            Active
+        </span>
+
+    {% else %}
+
+        <span
+            class="px-3 py-1 text-xs rounded-full bg-red-100 text-red-700"
+        >
+            Disabled
+        </span>
+
+    {% endif %}
+
+</div>
+
+
+<!-- =========================================================
+     ORGANIZATION INFORMATION
+========================================================= -->
+
+<div class="bg-white border rounded-lg mb-6">
+
+    <div class="px-5 py-4 border-b flex items-center justify-between">
+
+        <div>
+
+            <h2 class="text-base font-semibold">
+                Organization Information
+            </h2>
+
+            <p class="text-xs text-gray-400 mt-1">
+                Core organization and account information.
+            </p>
+
+        </div>
+
+
+        <!-- Edit Organization -->
+
+        <a
+            href="{% url 'superadmin-organization-update' organization_id=organization.id %}"
+            class="px-3 py-1.5 text-xs border rounded-md text-indigo-600 border-indigo-200 hover:bg-indigo-50"
+        >
+            Edit
+        </a>
+
+    </div>
+
+
+    <div class="p-5 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+
+
+        <!-- Name -->
+
+        <div class="border rounded-md p-4">
+
+            <div class="text-xs text-gray-400">
+                Organization
+            </div>
+
+            <div class="mt-1 font-medium">
+                {{ organization.name }}
+            </div>
+
+        </div>
+
+
+        <!-- Assigned POC -->
+
+        <div class="border rounded-md p-4">
+
+            <div class="text-xs text-gray-400">
+                Assigned POC
+            </div>
+
+            <div class="mt-1 font-medium">
+
+                {% if organization.assigned_poc %}
+
+                    {{ organization.assigned_poc }}
+
+                {% else %}
+
+                    <span class="text-gray-400">
+                        Not assigned
+                    </span>
+
+                {% endif %}
+
+            </div>
+
+        </div>
+
+
+        <!-- Package -->
+
+        <div class="border rounded-md p-4">
+
+            <div class="text-xs text-gray-400">
+                Package
+            </div>
+
+            <div class="mt-1 font-medium">
+                {{ organization.get_package_display }}
+            </div>
+
+        </div>
+
+
+        <!-- Payment Mode -->
+
+        <div class="border rounded-md p-4">
+
+            <div class="text-xs text-gray-400">
+                Payment Mode
+            </div>
+
+            <div class="mt-1 font-medium">
+                {{ organization.get_payment_mode_display }}
+            </div>
+
+        </div>
+
+
+        <!-- Credits Used -->
+
+        <div class="border rounded-md p-4">
+
+            <div class="text-xs text-gray-400">
+                Credits Used
+            </div>
+
+            <div class="mt-1 font-medium">
+                {{ organization.credits_used }}
+            </div>
+
+        </div>
+
+
+        <!-- Credits Remaining -->
+
+        <div class="border rounded-md p-4">
+
+            <div class="text-xs text-gray-400">
+                Credits Remaining
+            </div>
+
+            <div class="mt-1 font-medium">
+                {{ organization.credits_remaining }}
+            </div>
+
+        </div>
+
+
+        <!-- Credits Total -->
+
+        <div class="border rounded-md p-4">
+
+            <div class="text-xs text-gray-400">
+                Credits Total
+            </div>
+
+            <div class="mt-1 font-medium">
+                {{ organization.credits_total }}
+            </div>
+
+        </div>
+
+
+        <!-- Number of Seats -->
+
+        <div class="border rounded-md p-4">
+
+            <div class="text-xs text-gray-400">
+                Number of Seats
+            </div>
+
+            <div class="mt-1 font-medium">
+                {{ organization.number_of_seats }}
+            </div>
+
+        </div>
+
+
+        <!-- Renewal Payment -->
+
+        <div class="border rounded-md p-4">
+
+            <div class="text-xs text-gray-400">
+                Renewal Payment At
+            </div>
+
+            <div class="mt-1 font-medium">
+
+                {% if organization.renewal_payment_at %}
+
+                    {{ organization.renewal_payment_at|date:"d M Y" }}
+
+                {% else %}
+
+                    <span class="text-gray-400">
+                        Not set
+                    </span>
+
+                {% endif %}
+
+            </div>
+
+        </div>
+
+
+        <!-- Next Payment -->
+
+        <div class="border rounded-md p-4">
+
+            <div class="text-xs text-gray-400">
+                Next Payment At
+            </div>
+
+            <div class="mt-1 font-medium">
+
+                {% if organization.next_payment_at %}
+
+                    {{ organization.next_payment_at|date:"d M Y" }}
+
+                {% else %}
+
+                    <span class="text-gray-400">
+                        Not set
+                    </span>
+
+                {% endif %}
+
+            </div>
+
+        </div>
+
+
+        <!-- Day of Sale -->
+
+        <div class="border rounded-md p-4">
+
+            <div class="text-xs text-gray-400">
+                Day of Sale
+            </div>
+
+            <div class="mt-1 font-medium">
+
+                {% if organization.day_of_sale %}
+
+                    {{ organization.day_of_sale|date:"d M Y" }}
+
+                {% else %}
+
+                    <span class="text-gray-400">
+                        Not set
+                    </span>
+
+                {% endif %}
+
+            </div>
+
+        </div>
+
+
+        <!-- Onboarding -->
+
+        <div class="border rounded-md p-4">
+
+            <div class="text-xs text-gray-400">
+                Onboarding Completion
+            </div>
+
+            <div class="mt-1 font-medium">
+
+                {% if organization.onboarding_completion_date %}
+
+                    {{ organization.onboarding_completion_date|date:"d M Y" }}
+
+                {% else %}
+
+                    <span class="text-gray-400">
+                        Not set
+                    </span>
+
+                {% endif %}
+
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+
+<!-- =========================================================
+     OPERATIONAL NOTES
+========================================================= -->
+
+<div class="bg-white border rounded-lg mb-6">
+
+    <div class="px-5 py-4 border-b">
+
+        <h2 class="text-base font-semibold">
+            Operational Notes
+        </h2>
+
+        <p class="text-xs text-gray-400 mt-1">
+            Internal notes visible to Superadmin users.
+        </p>
+
+    </div>
+
+
+    <div class="p-5">
+
+        {% if organization.operational_notes %}
+
+            <div class="whitespace-pre-wrap text-sm text-gray-700">
+                {{ organization.operational_notes }}
+            </div>
+
+        {% else %}
+
+            <div class="text-sm text-gray-400">
+                No operational notes have been added.
+            </div>
+
+        {% endif %}
+
+    </div>
+
+</div>
+
+
+<!-- =========================================================
+     TAGS
+========================================================= -->
+
+<div class="bg-white border rounded-lg mb-6">
+
+    <div class="px-5 py-4 border-b flex items-center justify-between">
+
+        <div>
+
+            <h2 class="text-base font-semibold">
+                Tags
+            </h2>
+
+            <p class="text-xs text-gray-400 mt-1">
+                Organization-level Superadmin tags.
+            </p>
+
+        </div>
+
+
+        <button
+            type="button"
+            disabled
+            class="px-3 py-1.5 text-xs border rounded-md text-gray-400 cursor-not-allowed"
+        >
+            Manage Tags
+        </button>
+
+    </div>
+
+
+    <div class="p-5">
+
+        {% if organization.tags.all %}
+
+            <div class="flex flex-wrap gap-2">
+
+                {% for tag in organization.tags.all %}
+
+                    <span
+                        class="px-2 py-1 text-xs border rounded-md bg-gray-50"
+                    >
+                        {{ tag.name }}
+                    </span>
+
+                {% empty %}
+
+                    <span class="text-sm text-gray-400">
+                        No tags assigned.
+                    </span>
+
+                {% endfor %}
+
+            </div>
+
+        {% else %}
+
+            <span class="text-sm text-gray-400">
+                No tags assigned.
+            </span>
+
+        {% endif %}
+
+    </div>
+
+</div>
+
+
+<!-- =========================================================
+     ACCOUNT INFORMATION
+========================================================= -->
+
+<div class="bg-white border rounded-lg mb-6">
+
+    <div class="px-5 py-4 border-b">
+
+        <h2 class="text-base font-semibold">
+            Account Information
+        </h2>
+
+    </div>
+
+
+    <div class="p-5 grid grid-cols-1 md:grid-cols-3 gap-4">
+
+
+        <div>
+
+            <div class="text-xs text-gray-400">
+                Organization ID
+            </div>
+
+            <div class="mt-1 text-sm font-mono break-all">
+                {{ organization.id }}
+            </div>
+
+        </div>
+
+
+        <div>
+
+            <div class="text-xs text-gray-400">
+                Timezone
+            </div>
+
+            <div class="mt-1 text-sm">
+                {{ organization.timezone }}
+            </div>
+
+        </div>
+
+
+        <div>
+
+            <div class="text-xs text-gray-400">
+                Created At
+            </div>
+
+            <div class="mt-1 text-sm">
+                {{ organization.created_at|date:"d M Y, H:i" }}
+            </div>
+
+        </div>
+
+
+        <div>
+
+            <div class="text-xs text-gray-400">
+                Updated At
+            </div>
+
+            <div class="mt-1 text-sm">
+                {{ organization.updated_at|date:"d M Y, H:i" }}
+            </div>
+
+        </div>
+
+
+        <div>
+
+            <div class="text-xs text-gray-400">
+                Account Status
+            </div>
+
+            <div class="mt-1 text-sm">
+
+                {% if organization.is_active %}
+
+                    <span class="text-green-600 font-medium">
+                        Active
+                    </span>
+
+                {% else %}
+
+                    <span class="text-red-600 font-medium">
+                        Disabled
+                    </span>
+
+                {% endif %}
+
+            </div>
+
+        </div>
+
+
+        <div>
+
+            <div class="text-xs text-gray-400">
+                Disabled At
+            </div>
+
+            <div class="mt-1 text-sm">
+
+                {% if organization.disabled_at %}
+
+                    {{ organization.disabled_at|date:"d M Y, H:i" }}
+
+                {% else %}
+
+                    <span class="text-gray-400">
+                        —
+                    </span>
+
+                {% endif %}
+
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+
+<!-- =========================================================
+     SUPERADMIN CONTROL CENTER
+========================================================= -->
+
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+
+    <!-- =====================================================
+         USERS
+    ====================================================== -->
+
+    <div class="bg-white border rounded-lg">
+
+        <div class="px-5 py-4 border-b flex items-center justify-between">
+
+            <div>
+                <h2 class="text-base font-semibold">
+                    Organization Users
+                </h2>
+
+                <p class="text-xs text-gray-400 mt-1">
+                    Users belonging to this organization.
+                </p>
+            </div>
+
+            <button
+                type="button"
+                id="openCreateUserModal"
+                class="px-3 py-1.5 text-xs bg-indigo-600 text-white rounded-md hover:bg-indigo-700"
+            >
+                + Create User
+            </button>
+
+        </div>
+
+        <div class="p-5">
+
+            {% with organization_users=organization.users.all %}
+
+                {% if organization_users %}
+
+                    <div class="overflow-x-auto">
+
+                        <table class="min-w-full text-sm">
+
+                            <thead>
+                                <tr class="border-b text-left text-xs text-gray-400">
+
+                                    <th class="py-3 pr-4">
+                                        Name
+                                    </th>
+
+                                    <th class="py-3 pr-4">
+                                        Email
+                                    </th>
+
+                                    <th class="py-3 pr-4">
+                                        Phone
+                                    </th>
+
+                                    <th class="py-3 pr-4">
+                                        Role
+                                    </th>
+
+                                    <th class="py-3 pr-4">
+                                        Status
+                                    </th>
+
+                                    <th class="py-3 pr-4">
+                                        Last Login
+                                    </th>
+
+                                    <th class="py-3 pr-4">
+                                        Created
+                                    </th>
+
+                                    <th class="py-3 text-right">
+                                        Actions
+                                    </th>
+
+                                </tr>
+                            </thead>
+
+                            <tbody class="divide-y">
+
+                                {% for user in organization_users %}
+
+                                    <tr class="hover:bg-gray-50">
+
+                                        <td class="py-3 pr-4 font-medium">
+                                            {% if user.name %}
+                                                {{ user.name }}
+                                            {% else %}
+                                                —
+                                            {% endif %}
+                                        </td>
+
+                                        <td class="py-3 pr-4">
+                                            {{ user.email }}
+                                        </td>
+
+                                        <td class="py-3 pr-4">
+                                            {% if user.phone %}
+                                                {{ user.phone }}
+                                            {% else %}
+                                                <span class="text-gray-400">—</span>
+                                            {% endif %}
+                                        </td>
+
+                                        <td class="py-3 pr-4">
+                                            {{ user.get_role_display }}
+                                        </td>
+
+                                        <td class="py-3 pr-4">
+
+                                            {% if user.is_active %}
+                                                <span class="px-2 py-1 text-xs rounded-full bg-green-100 text-green-700">
+                                                    Active
+                                                </span>
+                                            {% else %}
+                                                <span class="px-2 py-1 text-xs rounded-full bg-red-100 text-red-700">
+                                                    Inactive
+                                                </span>
+                                            {% endif %}
+
+                                        </td>
+
+                                        <td class="py-3 pr-4">
+
+                                            {% if user.last_login_at %}
+                                                {{ user.last_login_at|date:"d M Y, H:i" }}
+                                            {% else %}
+                                                <span class="text-gray-400">
+                                                    Never
+                                                </span>
+                                            {% endif %}
+
+                                        </td>
+
+                                        <td class="py-3 pr-4">
+
+                                            {% if user.created_at %}
+                                                {{ user.created_at|date:"d M Y" }}
+                                            {% else %}
+                                                —
+                                            {% endif %}
+
+                                        </td>
+
+                                        <td class="py-3 text-right">
+
+                                            <div class="flex items-center justify-end gap-2">
+
+                                                <!-- Edit User -->
+                                                <a
+                                                    href="{% url 'superadmin-organization-user-edit' organization_id=organization.id user_id=user.id %}"
+                                                    class="inline-flex items-center px-2.5 py-1.5 text-xs font-medium border border-gray-300 rounded-md text-gray-700 bg-white hover:bg-gray-50"
+                                                >
+                                                    Edit
+                                                </a>
+
+                                                <!-- Enable / Disable User -->
+                                                <form
+                                                    method="post"
+                                                    action="{% url 'superadmin-organization-user-toggle-active' organization_id=organization.id user_id=user.id %}"
+                                                    class="inline"
+                                                    onsubmit="return confirm('{% if user.is_active %}Disable this user?{% else %}Enable this user?{% endif %}');"
+                                                >
+                                                    {% csrf_token %}
+
+                                                    {% if user.is_active %}
+                                                        <input type="hidden" name="is_active" value="0">
+                                                        <button
+                                                            type="submit"
+                                                            class="inline-flex items-center px-2.5 py-1.5 text-xs font-medium border border-red-200 rounded-md text-red-700 bg-red-50 hover:bg-red-100"
+                                                        >
+                                                            Disable
+                                                        </button>
+                                                    {% else %}
+                                                        <input type="hidden" name="is_active" value="1">
+                                                        <button
+                                                            type="submit"
+                                                            class="inline-flex items-center px-2.5 py-1.5 text-xs font-medium border border-green-200 rounded-md text-green-700 bg-green-50 hover:bg-green-100"
+                                                        >
+                                                            Enable
+                                                        </button>
+                                                    {% endif %}
+                                                </form>
+
+                                            </div>
+
+                                        </td>
+
+                                    </tr>
+
+                                {% endfor %}
+
+                            </tbody>
+
+                        </table>
+
+                    </div>
+
+                {% else %}
+
+                    <div class="text-sm text-gray-400">
+                        No users have been added to this organization yet.
+                    </div>
+
+                {% endif %}
+
+            {% endwith %}
+
+        </div>
+
+    </div>
+
+
+<!-- =====================================================
+     PIPELINES
+====================================================== -->
+
+<div class="bg-white border rounded-lg">
+
+    <!-- Header -->
+    <div class="px-5 py-4 border-b flex items-center justify-between">
+
+        <div>
+            <h2 class="text-base font-semibold">
+                Pipeline Settings
+            </h2>
+
+            <p class="text-xs text-gray-500 mt-1">
+                Manage pipelines belonging to this organization.
+            </p>
+        </div>
+
+        <a
+            href="{% url 'superadmin-organization-pipeline-add' organization.id %}"
+            class="px-3 py-1.5 text-xs bg-indigo-600 text-white rounded-md hover:bg-indigo-700"
+        >
+            Create Pipeline
+        </a>
+
+    </div>
+
+
+    <!-- Pipeline List -->
+    <div class="p-5">
+
+        <div class="overflow-x-auto">
+
+            <table class="w-full text-sm">
+
+                <thead>
+                    <tr class="border-b text-left text-xs text-gray-500">
+
+                        <th class="py-3 pr-4 font-medium">
+                            Pipeline
+                        </th>
+
+                        <th class="py-3 px-4 font-medium">
+                            Country
+                        </th>
+
+                        <th class="py-3 px-4 font-medium">
+                            Phone
+                        </th>
+
+                        <th class="py-3 px-4 font-medium">
+                            Owner
+                        </th>
+
+                        <th class="py-3 pl-4 font-medium text-right">
+                            Status
+                        </th>
+
+                        <th class="py-3 pl-4 font-medium text-right">
+                            Actions
+                        </th>
+
+                    </tr>
+                </thead>
+
+
+                <tbody>
+
+                    {% for pipeline in organization.pipelines.all %}
+
+                        <tr class="border-b last:border-b-0">
+
+                            <!-- Pipeline Name -->
+                            <td class="py-3 pr-4">
+
+                                <div class="font-medium text-gray-900">
+                                    {{ pipeline.name }}
+                                </div>
+
+                            </td>
+
+
+                            <!-- Country -->
+                            <td class="py-3 px-4 text-gray-600">
+
+                                {% if pipeline.country_code %}
+                                    {{ pipeline.country_code }}
+                                {% else %}
+                                    —
+                                {% endif %}
+
+                            </td>
+
+
+                            <!-- Phone -->
+                            <td class="py-3 px-4 text-gray-600">
+
+                                {% if pipeline.phone_number %}
+                                    {{ pipeline.phone_number }}
+                                {% else %}
+                                    —
+                                {% endif %}
+
+                            </td>
+
+
+                            <!-- Owner -->
+                            <td class="py-3 px-4 text-gray-600">
+
+                                {% if pipeline.owner %}
+                                    {{ pipeline.owner.email }}
+                                {% else %}
+                                    —
+                                {% endif %}
+
+                            </td>
+
+
+                            <!-- Status -->
+                            <td class="py-3 pl-4 text-right">
+
+                                {% if pipeline.is_active %}
+
+                                    <span
+                                        class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-50 text-green-700"
+                                    >
+                                        Active
+                                    </span>
+
+                                {% else %}
+
+                                    <span
+                                        class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-600"
+                                    >
+                                        Inactive
+                                    </span>
+
+                                {% endif %}
+
+                            <td class="py-3 pl-4 text-right">
+
+    <div class="inline-flex items-center gap-2">
+
+        <!-- Edit Pipeline -->
+        <a
+            href="{% url 'superadmin-organization-pipeline-edit' organization.id pipeline.id %}"
+            class="inline-flex items-center px-3 py-1.5 text-xs font-medium text-indigo-600 border border-indigo-200 rounded-md hover:bg-indigo-50"
+        >
+            Edit
+        </a>
+
+        <!-- Delete Pipeline -->
+        <form
+            method="post"
+            action="{% url 'superadmin-organization-pipeline-delete' organization.id pipeline.id %}"
+            class="inline"
+            onsubmit="return confirm('Are you sure you want to delete this pipeline?');"
+        >
+
+            {% csrf_token %}
+
+            <button
+                type="submit"
+                class="inline-flex items-center px-3 py-1.5 text-xs font-medium text-red-600 border border-red-200 rounded-md hover:bg-red-50"
+            >
+                Delete
+            </button>
+
+        </form>
+
+    </div>
+
+</td>
+
+                        </tr>
+
+                    {% empty %}
+
+                        <tr>
+
+                            <td
+                                colspan="6"
+                                class="py-8 text-center"
+                            >
+
+                                <div class="text-sm text-gray-500">
+                                    No pipelines have been created for this organization yet.
+                                </div>
+
+                                <div class="text-xs text-gray-400 mt-1">
+                                    Click "Create Pipeline" to add the first pipeline.
+                                </div>
+
+                            </td>
+
+                        </tr>
+
+                    {% endfor %}
+
+                </tbody>
+
+            </table>
+
+        </div>
+
+    </div>
+
+</div>
+
+
+<!-- =========================================================
+     PAYMENT INFORMATION
+========================================================= -->
+
+<div class="bg-white border rounded-lg mt-6">
+
+    <!-- Header -->
+
+    <div class="px-5 py-4 border-b flex items-center justify-between">
+
+        <div>
+
+            <h2 class="text-base font-semibold">
+                Payment Information
+            </h2>
+
+            <p class="text-xs text-gray-400 mt-1">
+                Payment history, collections and outstanding balance.
+            </p>
+
+        </div>
+
+
+        <button
+            type="button"
+            id="openAddPaymentModal"
+            class="px-3 py-1.5 text-xs bg-indigo-600 text-white rounded-md hover:bg-indigo-700"
+        >
+            + Add Payment
+        </button>
+
+    </div>
+
+
+    <!-- Payment Summary -->
+
+    <div class="p-5">
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+
+
+            <!-- Total Sale -->
+
+            <div class="border rounded-lg p-4">
+
+                <div class="text-xs text-gray-400">
+                    Total Sale Amount
+                </div>
+
+                <div class="mt-1 text-xl font-semibold">
+                    ₹{{ organization.total_sale_amount|default:"0.00" }}
+                </div>
+
+            </div>
+
+
+            <!-- Total Paid -->
+
+            <div class="border rounded-lg p-4">
+
+                <div class="text-xs text-gray-400">
+                    Total Paid
+                </div>
+
+                <div class="mt-1 text-xl font-semibold text-green-600">
+                    ₹{{ payment_total|default:"0.00" }}
+                </div>
+
+            </div>
+
+
+            <!-- Balance -->
+
+            <div
+                class="border rounded-lg p-4"
+                data-total-sale="{{ organization.total_sale_amount|default:'0' }}"
+                data-total-paid="{{ payment_total|default:'0' }}"
+            >
+
+                <div class="text-xs text-gray-400">
+                    Balance Remaining
+                </div>
+
+                <div
+                    id="paymentBalance"
+                    class="mt-1 text-xl font-semibold"
+                >
+                    ₹0.00
+                </div>
+
+            </div>
+
+        </div>
+
+
+        <!-- Payment History -->
+
+        <div class="border rounded-lg overflow-hidden">
+
+            <div class="px-4 py-3 border-b bg-gray-50">
+
+                <h3 class="text-sm font-semibold">
+                    Payment History
+                </h3>
+
+            </div>
+
+
+            {% if payments %}
+
+                <div class="overflow-x-auto">
+
+                    <table class="min-w-full text-sm">
+
+                        <thead class="bg-gray-50 border-b">
+
+                            <tr>
+
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500">
+                                    Date
+                                </th>
+
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500">
+                                    Amount
+                                </th>
+
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500">
+                                    Method
+                                </th>
+
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500">
+                                    Reference
+                                </th>
+
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500">
+                                    Notes
+                                </th>
+
+                                <th class="px-4 py-3 text-right text-xs font-medium text-gray-500">
+                                    Actions
+                                </th>
+
+                            </tr>
+
+                        </thead>
+
+
+                        <tbody class="divide-y">
+
+                            {% for payment in payments %}
+
+                                <tr
+                                    class="hover:bg-gray-50"
+                                    data-payment-row="{{ payment.id }}"
+                                    data-payment-amount="{{ payment.amount }}"
+                                    data-payment-date="{{ payment.payment_date|date:'Y-m-d' }}"
+                                    data-payment-method="{{ payment.payment_method }}"
+                                    data-payment-reference="{{ payment.reference_number|default:'' }}"
+                                    data-payment-notes="{{ payment.notes|default:'' }}"
+                                >
+
+                                    <td class="px-4 py-3 whitespace-nowrap">
+
+                                        {{ payment.payment_date|date:"d M Y" }}
+
+                                    </td>
+
+
+                                    <td class="px-4 py-3 font-medium">
+
+                                        ₹{{ payment.amount }}
+
+                                    </td>
+
+
+                                    <td class="px-4 py-3">
+
+                                        {{ payment.get_payment_method_display }}
+
+                                    </td>
+
+
+                                    <td class="px-4 py-3">
+
+                                        {% if payment.reference_number %}
+
+                                            {{ payment.reference_number }}
+
+                                        {% else %}
+
+                                            <span class="text-gray-400">
+                                                —
+                                            </span>
+
+                                        {% endif %}
+
+                                    </td>
+
+
+                                    <td class="px-4 py-3 max-w-xs">
+
+                                        {% if payment.notes %}
+
+                                            <span class="text-gray-600">
+                                                {{ payment.notes }}
+                                            </span>
+
+                                        {% else %}
+
+                                            <span class="text-gray-400">
+                                                —
+                                            </span>
+
+                                        {% endif %}
+
+                                    </td>
+
+
+                                    <td class="px-4 py-3">
+
+                                        <div class="flex items-center justify-end gap-2">
+
+                                            <button
+                                                type="button"
+                                                class="editPaymentButton px-2.5 py-1 text-xs border rounded-md text-indigo-600 border-indigo-200 hover:bg-indigo-50"
+                                                data-payment-id="{{ payment.id }}"
+                                            >
+                                                Edit
+                                            </button>
+
+
+                                            <button
+                                                type="button"
+                                                class="deletePaymentButton px-2.5 py-1 text-xs border rounded-md text-red-600 border-red-200 hover:bg-red-50"
+                                                data-payment-id="{{ payment.id }}"
+                                                data-payment-amount="{{ payment.amount }}"
+                                                data-payment-date="{{ payment.payment_date|date:'d M Y' }}"
+                                            >
+                                                Delete
+                                            </button>
+
+                                        </div>
+
+                                    </td>
+
+                                </tr>
+
+                            {% endfor %}
+
+                        </tbody>
+
+                    </table>
+
+                </div>
+
+            {% else %}
+
+                <div class="p-8 text-center">
+
+                    <div class="text-sm font-medium text-gray-600">
+                        No payments recorded yet.
+                    </div>
+
+                    <div class="text-xs text-gray-400 mt-1">
+                        Add the organization's first payment using
+                        the button above.
+                    </div>
+
+                </div>
+
+            {% endif %}
+
+        </div>
+
+    </div>
+
+</div>
+
+
+<!-- =========================================================
+     CREATE ORGANIZATION USER MODAL — STEP 4D.3
+========================================================= -->
+
+<div id="createUserModal" class="hidden fixed inset-0 z-50 overflow-y-auto">
+    <div class="fixed inset-0 bg-black/40" data-close-create-user></div>
+    <div class="relative min-h-screen flex items-center justify-center p-4">
+        <div class="relative bg-white rounded-xl shadow-xl w-full max-w-lg">
+            <div class="px-5 py-4 border-b flex items-center justify-between">
+                <div>
+                    <h2 class="text-base font-semibold">Create Organization User</h2>
+                    <p class="text-xs text-gray-400 mt-1">Add a user to {{ organization.name }}.</p>
+                </div>
+                <button type="button" id="closeCreateUserModal" class="text-gray-400 hover:text-gray-700 text-xl">×</button>
+            </div>
+            <form method="post" action="{% url 'superadmin-organization-user-add' organization_id=organization.id %}" class="p-5 space-y-4">
+                {% csrf_token %}
+                <div><label for="create_user_name" class="block text-xs font-medium text-gray-600 mb-1">Full Name</label><input type="text" name="name" id="create_user_name" maxlength="150" class="w-full border rounded-md px-3 py-2 text-sm" placeholder="Enter full name" required></div>
+                <div><label for="create_user_email" class="block text-xs font-medium text-gray-600 mb-1">Email</label><input type="email" name="email" id="create_user_email" maxlength="254" class="w-full border rounded-md px-3 py-2 text-sm" placeholder="Enter email address" required></div>
+                <div><label for="create_user_phone" class="block text-xs font-medium text-gray-600 mb-1">Phone</label><input type="text" name="phone" id="create_user_phone" maxlength="32" class="w-full border rounded-md px-3 py-2 text-sm" placeholder="Enter phone number"></div>
+                <div><label for="create_user_role" class="block text-xs font-medium text-gray-600 mb-1">Role</label><select name="role" id="create_user_role" class="w-full border rounded-md px-3 py-2 text-sm" required><option value="agent">Agent</option><option value="supervisor">Supervisor</option><option value="admin">Admin</option></select></div>
+                <div><label for="create_user_password" class="block text-xs font-medium text-gray-600 mb-1">Password</label><input type="password" name="password" id="create_user_password" minlength="8" class="w-full border rounded-md px-3 py-2 text-sm" placeholder="Minimum 8 characters" required></div>
+                <div><label for="create_user_password_confirm" class="block text-xs font-medium text-gray-600 mb-1">Confirm Password</label><input type="password" name="password_confirm" id="create_user_password_confirm" minlength="8" class="w-full border rounded-md px-3 py-2 text-sm" placeholder="Confirm password" required></div>
+                <div class="flex items-center gap-2"><input type="checkbox" name="is_active" id="create_user_is_active" value="on" checked class="rounded border-gray-300"><label for="create_user_is_active" class="text-sm text-gray-700">Active user</label></div>
+                <div class="pt-3 border-t flex items-center justify-end gap-2"><button type="button" id="cancelCreateUserModal" class="px-4 py-2 text-sm border rounded-md hover:bg-gray-50">Cancel</button><button type="submit" class="px-4 py-2 text-sm bg-indigo-600 text-white rounded-md hover:bg-indigo-700">Create User</button></div>
+            </form>
+        </div>
+    </div>
+</div>
+
+
+<!-- =========================================================
+     ACCOUNT CONTROLS
+========================================================= -->
+
+<div class="bg-white border rounded-lg mt-6">
+
+    <div class="px-5 py-4 border-b">
+
+        <h2 class="text-base font-semibold">
+            Account Controls
+        </h2>
+
+    </div>
+
+
+    <div class="p-5 flex flex-wrap gap-2">
+
+        <button
+            type="button"
+            id="generateLoginLinkButton"
+            onclick="generateLoginLink()"
+            class="px-3 py-2 border border-indigo-300 rounded-md text-sm text-indigo-700 hover:bg-indigo-50"
+        >
+            Generate Login Link
+        </button>
+
+
+        <button
+            type="button"
+            onclick="openResetPasswordModal()"
+            class="px-3 py-2 border border-gray-300 rounded-md text-sm text-gray-700 hover:bg-gray-50"
+>
+            Reset Password
+        </button>
+
+
+        {% if organization.is_active %}
+
+            <button
+                type="button"
+                disabled
+                class="px-3 py-2 border rounded-md text-sm text-gray-400 cursor-not-allowed"
+            >
+                Disable Account
+            </button>
+
+        {% else %}
+
+            <button
+                type="button"
+                disabled
+                class="px-3 py-2 border rounded-md text-sm text-gray-400 cursor-not-allowed"
+            >
+                Enable Account
+            </button>
+
+        {% endif %}
+
+    </div>
+
+</div>
+
+
+<!-- =========================================================
+     GENERATE LOGIN LINK MODAL
+========================================================= -->
+
+<div
+    id="generateLoginLinkModal"
+    class="hidden fixed inset-0 z-50 overflow-y-auto"
+>
+
+    <div
+        class="fixed inset-0 bg-black/40"
+        onclick="closeGenerateLoginLinkModal()"
+    ></div>
+
+    <div class="relative min-h-screen flex items-center justify-center p-4">
+
+        <div class="relative bg-white rounded-xl shadow-xl w-full max-w-2xl">
+
+            <div class="px-5 py-4 border-b flex items-center justify-between">
+                <div>
+                    <h2 class="text-base font-semibold text-gray-900">
+                        Generate Login Link
+                    </h2>
+                    <p class="text-xs text-gray-500 mt-1">
+                        One-time login link for the user assigned to the Leads pipeline.
+                    </p>
+                </div>
+
+                <button
+                    type="button"
+                    onclick="closeGenerateLoginLinkModal()"
+                    class="text-gray-400 hover:text-gray-700 text-xl leading-none"
+                    aria-label="Close"
+                >
+                    &times;
+                </button>
+            </div>
+
+            <div class="p-5">
+
+                <div class="rounded-md border border-green-200 bg-green-50 p-4">
+                    <div class="text-sm font-medium text-green-800">
+                        Login link generated successfully
+                    </div>
+                    <div id="generateLoginLinkUser" class="text-xs text-green-700 mt-1"></div>
+                </div>
+
+                <label
+                    for="generatedLoginLink"
+                    class="block text-xs font-medium text-gray-600 mt-5 mb-2"
+                >
+                    One-time Login URL
+                </label>
+
+                <textarea
+                    id="generatedLoginLink"
+                    readonly
+                    rows="3"
+                    class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm text-gray-700 bg-gray-50 break-all"
+                ></textarea>
+
+                <div class="text-xs text-gray-500 mt-2">
+                    This link expires after 5 minutes and can be used only once.
+                </div>
+
+                <div class="mt-5 flex flex-wrap justify-end gap-2">
+
+                    <button
+                        type="button"
+                        onclick="closeGenerateLoginLinkModal()"
+                        class="px-4 py-2 text-sm border rounded-md hover:bg-gray-50"
+                    >
+                        Close
+                    </button>
+
+                    <button
+                        type="button"
+                        onclick="copyGeneratedLoginLink()"
+                        class="px-4 py-2 text-sm border border-indigo-300 text-indigo-700 rounded-md hover:bg-indigo-50"
+                    >
+                        Copy Link
+                    </button>
+
+                    <button
+                        type="button"
+                        onclick="openGeneratedLoginLink()"
+                        class="px-4 py-2 text-sm bg-indigo-600 text-white rounded-md hover:bg-indigo-700"
+                    >
+                        Open Login Link
+                    </button>
+
+                </div>
+
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+
+<!-- =========================================================
+     RESET PASSWORD MODAL
+========================================================= -->
+
+<div
+    id="resetPasswordModal"
+    class="hidden fixed inset-0 z-50 overflow-y-auto"
+>
+
+    <!-- Backdrop -->
+    <div
+        class="fixed inset-0 bg-black/40"
+        onclick="closeResetPasswordModal()"
+    ></div>
+
+
+    <!-- Modal Wrapper -->
+    <div class="relative min-h-screen flex items-center justify-center p-4">
+
+        <!-- Modal -->
+        <div class="relative bg-white rounded-xl shadow-xl w-full max-w-lg">
+
+            <!-- Header -->
+            <div class="px-5 py-4 border-b flex items-center justify-between">
+
+                <h2 class="text-xl font-semibold text-gray-900">
+                    Reset Password
+                </h2>
+
+                <button
+                    type="button"
+                    onclick="closeResetPasswordModal()"
+                    class="text-gray-400 hover:text-gray-600 text-2xl leading-none"
+                >
+                    &times;
+                </button>
+
+            </div>
+
+
+            <!-- Form -->
+            <form
+                method="POST"
+                action="{% url 'superadmin-organization-user-reset-password' organization.id %}"
+            >
+
+                {% csrf_token %}
+
+                <div class="p-5 space-y-5">
+
+                    <!-- Select User -->
+                    <div>
+
+                        <label
+                            for="resetPasswordUser"
+                            class="block text-sm font-medium text-gray-700 mb-2"
+                        >
+                            Select User
+                        </label>
+
+                        <select
+                            id="resetPasswordUser"
+                            name="user_id"
+                            required
+                            class="w-full border border-gray-300 rounded-md px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        >
+
+                            <option value="">
+                                Select organization user
+                            </option>
+
+                            {% for reset_user in organization_users %}
+
+                                <option
+    value="{{ reset_user.id }}"
+    {% if reset_password_selected_user and reset_password_selected_user.id == reset_user.id %}
+        selected
+    {% endif %}
+>
+    {{ reset_user.email }}
+</option>
+
+                            {% endfor %}
+
+                        </select>
+
+                    </div>
+
+
+                    <!-- New Password -->
+                    <div>
+
+                        <label
+                            for="resetPasswordNew"
+                            class="block text-sm font-medium text-gray-700 mb-2"
+                        >
+                            New Password
+                        </label>
+
+                        <input
+                            type="password"
+                            id="resetPasswordNew"
+                            name="new_password1"
+                            minlength="8"
+                            required
+                            autocomplete="new-password"
+                            placeholder="Enter new password"
+                            class="w-full border border-gray-300 rounded-md px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        >
+
+                        {% if reset_password_form %}
+                            {% for error in reset_password_form.new_password1.errors %}
+                                <p class="mt-1 text-xs text-red-600">
+                                    {{ error }}
+                                </p>
+                            {% endfor %}
+                        {% endif %}
+
+                    </div>
+
+
+                    <!-- Confirm Password -->
+                    <div>
+
+                        <label
+                            for="resetPasswordConfirm"
+                            class="block text-sm font-medium text-gray-700 mb-2"
+                        >
+                            Confirm Password
+                        </label>
+
+                        <input
+                            type="password"
+                            id="resetPasswordConfirm"
+                            name="new_password2"
+                            minlength="8"
+                            required
+                            autocomplete="new-password"
+                            placeholder="Confirm new password"
+                            class="w-full border border-gray-300 rounded-md px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        >
+
+                        {% if reset_password_form %}
+                            {% for error in reset_password_form.new_password2.errors %}
+                                <p class="mt-1 text-xs text-red-600">
+                                    {{ error }}
+                                </p>
+                            {% endfor %}
+                        {% endif %}
+
+                    </div>
+
+
+                    {% if reset_password_form %}
+
+                        {% for error in reset_password_form.non_field_errors %}
+
+                            <p class="text-sm text-red-600">
+                                {{ error }}
+                            </p>
+
+                        {% endfor %}
+
+                    {% endif %}
+
+                </div>
+
+
+                <!-- Footer -->
+                <div class="px-5 pb-5">
+
+                    <button
+                        type="submit"
+                        class="w-full px-4 py-3 bg-indigo-600 text-white rounded-md text-sm font-semibold hover:bg-indigo-700"
+                    >
+                        Reset Password
+                    </button>
+
+                </div>
+
+            </form>
+
+        </div>
+
+    </div>
+
+</div>
+
+
+<!-- =========================================================
+     ADD PAYMENT MODAL
+========================================================= -->
+
+<div
+    id="addPaymentModal"
+    class="hidden fixed inset-0 z-50 overflow-y-auto"
+>
+
+    <div
+        class="fixed inset-0 bg-black/40"
+        data-close-add-payment
+    ></div>
+
+
+    <div class="relative min-h-screen flex items-center justify-center p-4">
+
+        <div class="relative bg-white rounded-xl shadow-xl w-full max-w-lg">
+
+            <!-- Header -->
+
+            <div class="px-5 py-4 border-b flex items-center justify-between">
+
+                <div>
+
+                    <h2 class="text-base font-semibold">
+                        Add Payment
+                    </h2>
+
+                    <p class="text-xs text-gray-400 mt-1">
+                        Add a payment received from
+                        {{ organization.name }}.
+                    </p>
+
+                </div>
+
+
+                <button
+                    type="button"
+                    id="closeAddPaymentModal"
+                    class="text-gray-400 hover:text-gray-700 text-xl"
+                >
+                    ×
+                </button>
+
+            </div>
+
+
+            <!-- Form -->
+
+            <form
+                method="post"
+                action="{% url 'superadmin-organization-payment-add' organization_id=organization.id %}"
+                class="p-5 space-y-4"
+            >
+
+                {% csrf_token %}
+
+
+                {% if payment_form.non_field_errors %}
+
+                    <div class="p-3 rounded-md bg-red-50 border border-red-200 text-sm text-red-700">
+
+                        {% for error in payment_form.non_field_errors %}
+
+                            <div>
+                                {{ error }}
+                            </div>
+
+                        {% endfor %}
+
+                    </div>
+
+                {% endif %}
+
+
+                <!-- Amount -->
+
+                <div>
+
+                    <label
+                        for="{{ payment_form.amount.id_for_label }}"
+                        class="block text-xs font-medium text-gray-600 mb-1"
+                    >
+                        Amount
+                    </label>
+
+                    {{ payment_form.amount }}
+
+                    {% for error in payment_form.amount.errors %}
+
+                        <div class="text-xs text-red-600 mt-1">
+                            {{ error }}
+                        </div>
+
+                    {% endfor %}
+
+                </div>
+
+
+                <!-- Payment Date -->
+
+                <div>
+
+                    <label
+                        for="{{ payment_form.payment_date.id_for_label }}"
+                        class="block text-xs font-medium text-gray-600 mb-1"
+                    >
+                        Payment Date
+                    </label>
+
+                    {{ payment_form.payment_date }}
+
+                    {% for error in payment_form.payment_date.errors %}
+
+                        <div class="text-xs text-red-600 mt-1">
+                            {{ error }}
+                        </div>
+
+                    {% endfor %}
+
+                </div>
+
+
+                <!-- Payment Method -->
+
+                <div>
+
+                    <label
+                        for="{{ payment_form.payment_method.id_for_label }}"
+                        class="block text-xs font-medium text-gray-600 mb-1"
+                    >
+                        Payment Method
+                    </label>
+
+                    {{ payment_form.payment_method }}
+
+                    {% for error in payment_form.payment_method.errors %}
+
+                        <div class="text-xs text-red-600 mt-1">
+                            {{ error }}
+                        </div>
+
+                    {% endfor %}
+
+                </div>
+
+
+                <!-- Reference -->
+
+                <div>
+
+                    <label
+                        for="{{ payment_form.reference_number.id_for_label }}"
+                        class="block text-xs font-medium text-gray-600 mb-1"
+                    >
+                        Reference Number
+                    </label>
+
+                    {{ payment_form.reference_number }}
+
+                    {% for error in payment_form.reference_number.errors %}
+
+                        <div class="text-xs text-red-600 mt-1">
+                            {{ error }}
+                        </div>
+
+                    {% endfor %}
+
+                </div>
+
+
+                <!-- Notes -->
+
+                <div>
+
+                    <label
+                        for="{{ payment_form.notes.id_for_label }}"
+                        class="block text-xs font-medium text-gray-600 mb-1"
+                    >
+                        Notes
+                    </label>
+
+                    {{ payment_form.notes }}
+
+                    {% for error in payment_form.notes.errors %}
+
+                        <div class="text-xs text-red-600 mt-1">
+                            {{ error }}
+                        </div>
+
+                    {% endfor %}
+
+                </div>
+
+
+                <!-- Buttons -->
+
+                <div class="pt-3 border-t flex items-center justify-end gap-2">
+
+                    <button
+                        type="button"
+                        id="cancelAddPaymentModal"
+                        class="px-4 py-2 text-sm border rounded-md hover:bg-gray-50"
+                    >
+                        Cancel
+                    </button>
+
+
+                    <button
+                        type="submit"
+                        class="px-4 py-2 text-sm bg-indigo-600 text-white rounded-md hover:bg-indigo-700"
+                    >
+                        Save Payment
+                    </button>
+
+                </div>
+
+            </form>
+
+        </div>
+
+    </div>
+
+</div>
+
+
+<!-- =========================================================
+     EDIT PAYMENT MODAL
+========================================================= -->
+
+<div
+    id="editPaymentModal"
+    class="hidden fixed inset-0 z-50 overflow-y-auto"
+>
+
+    <div
+        class="fixed inset-0 bg-black/40"
+        data-close-edit-payment
+    ></div>
+
+
+    <div class="relative min-h-screen flex items-center justify-center p-4">
+
+        <div class="relative bg-white rounded-xl shadow-xl w-full max-w-lg">
+
+            <!-- Header -->
+
+            <div class="px-5 py-4 border-b flex items-center justify-between">
+
+                <div>
+
+                    <h2 class="text-base font-semibold">
+                        Edit Payment
+                    </h2>
+
+                    <p class="text-xs text-gray-400 mt-1">
+                        Update payment information.
+                    </p>
+
+                </div>
+
+
+                <button
+                    type="button"
+                    id="closeEditPaymentModal"
+                    class="text-gray-400 hover:text-gray-700 text-xl"
+                >
+                    ×
+                </button>
+
+            </div>
+
+
+            <!-- Form -->
+
+            <form
+                method="post"
+                id="editPaymentForm"
+                action=""
+                class="p-5 space-y-4"
+            >
+
+                {% csrf_token %}
+
+
+                <!-- Amount -->
+
+                <div>
+
+                    <label
+                        for="edit_payment_amount"
+                        class="block text-xs font-medium text-gray-600 mb-1"
+                    >
+                        Amount
+                    </label>
+
+                    <input
+                        type="number"
+                        name="amount"
+                        id="edit_payment_amount"
+                        min="0"
+                        step="0.01"
+                        class="w-full border rounded-md px-3 py-2 text-sm"
+                        required
+                    >
+
+                </div>
+
+
+                <!-- Date -->
+
+                <div>
+
+                    <label
+                        for="edit_payment_date"
+                        class="block text-xs font-medium text-gray-600 mb-1"
+                    >
+                        Payment Date
+                    </label>
+
+                    <input
+                        type="date"
+                        name="payment_date"
+                        id="edit_payment_date"
+                        class="w-full border rounded-md px-3 py-2 text-sm"
+                        required
+                    >
+
+                </div>
+
+
+                <!-- Method -->
+
+                <div>
+
+                    <label
+                        for="edit_payment_method"
+                        class="block text-xs font-medium text-gray-600 mb-1"
+                    >
+                        Payment Method
+                    </label>
+
+                    <select
+                        name="payment_method"
+                        id="edit_payment_method"
+                        class="w-full border rounded-md px-3 py-2 text-sm"
+                        required
+                    >
+
+                        <option value="cash">
+                            Cash
+                        </option>
+
+                        <option value="bank_transfer">
+                            Bank Transfer
+                        </option>
+
+                        <option value="upi">
+                            UPI
+                        </option>
+
+                        <option value="card">
+                            Card
+                        </option>
+
+                        <option value="other">
+                            Other
+                        </option>
+
+                    </select>
+
+                </div>
+
+
+                <!-- Reference -->
+
+                <div>
+
+                    <label
+                        for="edit_payment_reference"
+                        class="block text-xs font-medium text-gray-600 mb-1"
+                    >
+                        Reference Number
+                    </label>
+
+                    <input
+                        type="text"
+                        name="reference_number"
+                        id="edit_payment_reference"
+                        class="w-full border rounded-md px-3 py-2 text-sm"
+                    >
+
+                </div>
+
+
+                <!-- Notes -->
+
+                <div>
+
+                    <label
+                        for="edit_payment_notes"
+                        class="block text-xs font-medium text-gray-600 mb-1"
+                    >
+                        Notes
+                    </label>
+
+                    <textarea
+                        name="notes"
+                        id="edit_payment_notes"
+                        rows="3"
+                        class="w-full border rounded-md px-3 py-2 text-sm"
+                    ></textarea>
+
+                </div>
+
+
+                <!-- Buttons -->
+
+                <div class="pt-3 border-t flex items-center justify-end gap-2">
+
+                    <button
+                        type="button"
+                        id="cancelEditPaymentModal"
+                        class="px-4 py-2 text-sm border rounded-md hover:bg-gray-50"
+                    >
+                        Cancel
+                    </button>
+
+
+                    <button
+                        type="submit"
+                        class="px-4 py-2 text-sm bg-indigo-600 text-white rounded-md hover:bg-indigo-700"
+                    >
+                        Update Payment
+                    </button>
+
+                </div>
+
+            </form>
+
+        </div>
+
+    </div>
+
+</div>
+
+
+<!-- =========================================================
+     DELETE PAYMENT MODAL
+========================================================= -->
+
+<div
+    id="deletePaymentModal"
+    class="hidden fixed inset-0 z-50 overflow-y-auto"
+>
+
+    <div
+        class="fixed inset-0 bg-black/40"
+        data-close-delete-payment
+    ></div>
+
+
+    <div class="relative min-h-screen flex items-center justify-center p-4">
+
+        <div class="relative bg-white rounded-xl shadow-xl w-full max-w-md">
+
+            <div class="px-5 py-4 border-b flex items-center justify-between">
+
+                <h2 class="text-base font-semibold">
+                    Delete Payment
+                </h2>
+
+
+                <button
+                    type="button"
+                    id="closeDeletePaymentModal"
+                    class="text-gray-400 hover:text-gray-700 text-xl"
+                >
+                    ×
+                </button>
+
+            </div>
+
+
+            <div class="p-5">
+
+                <p class="text-sm text-gray-600">
+                    Are you sure you want to delete this payment?
+                </p>
+
+
+                <div class="mt-4 p-4 bg-gray-50 rounded-md">
+
+                    <div class="flex justify-between text-sm">
+
+                        <span class="text-gray-500">
+                            Amount
+                        </span>
+
+                        <span
+                            id="deletePaymentAmount"
+                            class="font-semibold"
+                        >
+                            —
+                        </span>
+
+                    </div>
+
+
+                    <div class="flex justify-between text-sm mt-2">
+
+                        <span class="text-gray-500">
+                            Date
+                        </span>
+
+                        <span id="deletePaymentDate">
+                            —
+                        </span>
+
+                    </div>
+
+                </div>
+
+
+                <div class="mt-5 flex items-center justify-end gap-2">
+
+                    <button
+                        type="button"
+                        id="cancelDeletePaymentModal"
+                        class="px-4 py-2 text-sm border rounded-md hover:bg-gray-50"
+                    >
+                        Cancel
+                    </button>
+
+
+                    <form
+                        method="post"
+                        id="deletePaymentForm"
+                        action=""
+                    >
+
+                        {% csrf_token %}
+
+                        <button
+                            type="submit"
+                            class="px-4 py-2 text-sm bg-red-600 text-white rounded-md hover:bg-red-700"
+                        >
+                            Delete Payment
+                        </button>
+
+                    </form>
+
+                </div>
+
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+
+<!-- =========================================================
+     STEP 3G PAYMENT JAVASCRIPT
+========================================================= -->
+
+<script>
+
+document.addEventListener("DOMContentLoaded", function () {
+
+    /*
+     * ---------------------------------------------------------
+     * CREATE USER MODAL — STEP 4D.3
+     * ---------------------------------------------------------
+     */
+
+    const createUserModal = document.getElementById("createUserModal");
+    const openCreateUserButton = document.getElementById("openCreateUserModal");
+    const closeCreateUserButton = document.getElementById("closeCreateUserModal");
+    const cancelCreateUserButton = document.getElementById("cancelCreateUserModal");
+
+    function openCreateUserModal() {
+        if (!createUserModal) return;
+        createUserModal.classList.remove("hidden");
+        document.body.classList.add("overflow-hidden");
+    }
+
+    function closeCreateUserModal() {
+        if (!createUserModal) return;
+        createUserModal.classList.add("hidden");
+        document.body.classList.remove("overflow-hidden");
+    }
+
+    if (openCreateUserButton) openCreateUserButton.addEventListener("click", openCreateUserModal);
+    if (closeCreateUserButton) closeCreateUserButton.addEventListener("click", closeCreateUserModal);
+    if (cancelCreateUserButton) cancelCreateUserButton.addEventListener("click", closeCreateUserModal);
+
+    const createUserBackdrop = document.querySelector("[data-close-create-user]");
+    if (createUserBackdrop) createUserBackdrop.addEventListener("click", closeCreateUserModal);
+
+
+    /*
+     * ---------------------------------------------------------
+     * BALANCE CALCULATION
+     * ---------------------------------------------------------
+     */
+
+    const balanceContainer = document.querySelector(
+        "[data-total-sale]"
+    );
+
+    const balanceElement = document.getElementById(
+        "paymentBalance"
+    );
+
+    if (balanceContainer && balanceElement) {
+
+        const totalSale = parseFloat(
+            balanceContainer.dataset.totalSale || "0"
+        );
+
+        const totalPaid = parseFloat(
+            balanceContainer.dataset.totalPaid || "0"
+        );
+
+        const balance = Math.max(
+            totalSale - totalPaid,
+            0
+        );
+
+        balanceElement.textContent =
+            "₹" + balance.toFixed(2);
+
+    }
+
+
+    /*
+     * ---------------------------------------------------------
+     * ADD PAYMENT MODAL
+     * ---------------------------------------------------------
+     */
+
+    const addModal = document.getElementById(
+        "addPaymentModal"
+    );
+
+    const openAddButton = document.getElementById(
+        "openAddPaymentModal"
+    );
+
+    const closeAddButton = document.getElementById(
+        "closeAddPaymentModal"
+    );
+
+    const cancelAddButton = document.getElementById(
+        "cancelAddPaymentModal"
+    );
+
+
+    function openAddPaymentModal() {
+
+        if (!addModal) {
+            return;
+        }
+
+        addModal.classList.remove("hidden");
+
+        document.body.classList.add(
+            "overflow-hidden"
+        );
+
+    }
+
+
+    function closeAddPaymentModal() {
+
+        if (!addModal) {
+            return;
+        }
+
+        addModal.classList.add("hidden");
+
+        document.body.classList.remove(
+            "overflow-hidden"
+        );
+
+    }
+
+
+    if (openAddButton) {
+
+        openAddButton.addEventListener(
+            "click",
+            openAddPaymentModal
+        );
+
+    }
+
+
+    if (closeAddButton) {
+
+        closeAddButton.addEventListener(
+            "click",
+            closeAddPaymentModal
+        );
+
+    }
+
+
+    if (cancelAddButton) {
+
+        cancelAddButton.addEventListener(
+            "click",
+            closeAddPaymentModal
+        );
+
+    }
+
+
+    const addBackdrop = document.querySelector(
+        "[data-close-add-payment]"
+    );
+
+    if (addBackdrop) {
+
+        addBackdrop.addEventListener(
+            "click",
+            closeAddPaymentModal
+        );
+
+    }
+
+
+    /*
+     * ---------------------------------------------------------
+     * EDIT PAYMENT MODAL
+     * ---------------------------------------------------------
+     */
+
+    const editModal = document.getElementById(
+        "editPaymentModal"
+    );
+
+    const editForm = document.getElementById(
+        "editPaymentForm"
+    );
+
+    const editAmount = document.getElementById(
+        "edit_payment_amount"
+    );
+
+    const editDate = document.getElementById(
+        "edit_payment_date"
+    );
+
+    const editMethod = document.getElementById(
+        "edit_payment_method"
+    );
+
+    const editReference = document.getElementById(
+        "edit_payment_reference"
+    );
+
+    const editNotes = document.getElementById(
+        "edit_payment_notes"
+    );
+
+
+    function openEditPaymentModal(
+        paymentId
+    ) {
+
+        const row = document.querySelector(
+            '[data-payment-row="' +
+            paymentId +
+            '"]'
+        );
+
+        if (!row || !editModal || !editForm) {
+            return;
+        }
+
+
+        const amount =
+            row.dataset.paymentAmount || "";
+
+        const date =
+            row.dataset.paymentDate || "";
+
+        const method =
+            row.dataset.paymentMethod || "other";
+
+        const reference =
+            row.dataset.paymentReference || "";
+
+        const notes =
+            row.dataset.paymentNotes || "";
+
+
+        editAmount.value = amount;
+
+        editDate.value = date;
+
+        editMethod.value = method;
+
+        editReference.value = reference;
+
+        editNotes.value = notes;
+
+
+        editForm.action =
+            "{% url 'superadmin-organization-payment-edit' organization_id=organization.id payment_id=0 %}"
+            .replace(
+                "/0/edit/",
+                "/" + paymentId + "/edit/"
+            );
+
+
+        editModal.classList.remove(
+            "hidden"
+        );
+
+        document.body.classList.add(
+            "overflow-hidden"
+        );
+
+    }
+
+
+    function closeEditPaymentModal() {
+
+        if (!editModal) {
+            return;
+        }
+
+        editModal.classList.add(
+            "hidden"
+        );
+
+        document.body.classList.remove(
+            "overflow-hidden"
+        );
+
+    }
+
+
+    document.querySelectorAll(
+        ".editPaymentButton"
+    ).forEach(function (button) {
+
+        button.addEventListener(
+            "click",
+            function () {
+
+                openEditPaymentModal(
+                    button.dataset.paymentId
+                );
+
+            }
+        );
+
+    });
+
+
+    const closeEditButton = document.getElementById(
+        "closeEditPaymentModal"
+    );
+
+    const cancelEditButton = document.getElementById(
+        "cancelEditPaymentModal"
+    );
+
+
+    if (closeEditButton) {
+
+        closeEditButton.addEventListener(
+            "click",
+            closeEditPaymentModal
+        );
+
+    }
+
+
+    if (cancelEditButton) {
+
+        cancelEditButton.addEventListener(
+            "click",
+            closeEditPaymentModal
+        );
+
+    }
+
+
+    const editBackdrop = document.querySelector(
+        "[data-close-edit-payment]"
+    );
+
+    if (editBackdrop) {
+
+        editBackdrop.addEventListener(
+            "click",
+            closeEditPaymentModal
+        );
+
+    }
+
+
+    /*
+     * ---------------------------------------------------------
+     * DELETE PAYMENT MODAL
+     * ---------------------------------------------------------
+     */
+
+    const deleteModal = document.getElementById(
+        "deletePaymentModal"
+    );
+
+    const deleteForm = document.getElementById(
+        "deletePaymentForm"
+    );
+
+    const deleteAmount = document.getElementById(
+        "deletePaymentAmount"
+    );
+
+    const deleteDate = document.getElementById(
+        "deletePaymentDate"
+    );
+
+
+    function openDeletePaymentModal(
+        paymentId,
+        amount,
+        date
+    ) {
+
+        if (!deleteModal || !deleteForm) {
+            return;
+        }
+
+
+        deleteAmount.textContent =
+            "₹" + amount;
+
+        deleteDate.textContent =
+            date;
+
+
+        deleteForm.action =
+            "{% url 'superadmin-organization-payment-delete' organization_id=organization.id payment_id=0 %}"
+            .replace(
+                "/0/delete/",
+                "/" + paymentId + "/delete/"
+            );
+
+
+        deleteModal.classList.remove(
+            "hidden"
+        );
+
+        document.body.classList.add(
+            "overflow-hidden"
+        );
+
+    }
+
+
+    function closeDeletePaymentModal() {
+
+        if (!deleteModal) {
+            return;
+        }
+
+        deleteModal.classList.add(
+            "hidden"
+        );
+
+        document.body.classList.remove(
+            "overflow-hidden"
+        );
+
+    }
+
+
+    document.querySelectorAll(
+        ".deletePaymentButton"
+    ).forEach(function (button) {
+
+        button.addEventListener(
+            "click",
+            function () {
+
+                openDeletePaymentModal(
+                    button.dataset.paymentId,
+                    button.dataset.paymentAmount,
+                    button.dataset.paymentDate
+                );
+
+            }
+        );
+
+    });
+
+
+    const closeDeleteButton = document.getElementById(
+        "closeDeletePaymentModal"
+    );
+
+    const cancelDeleteButton = document.getElementById(
+        "cancelDeletePaymentModal"
+    );
+
+
+    if (closeDeleteButton) {
+
+        closeDeleteButton.addEventListener(
+            "click",
+            closeDeletePaymentModal
+        );
+
+    }
+
+
+    if (cancelDeleteButton) {
+
+        cancelDeleteButton.addEventListener(
+            "click",
+            closeDeletePaymentModal
+        );
+
+    }
+
+
+    const deleteBackdrop = document.querySelector(
+        "[data-close-delete-payment]"
+    );
+
+    if (deleteBackdrop) {
+
+        deleteBackdrop.addEventListener(
+            "click",
+            closeDeletePaymentModal
+        );
+
+    }
+
+
+    /*
+     * ---------------------------------------------------------
+     * ESCAPE KEY
+     * ---------------------------------------------------------
+     */
+
+    document.addEventListener(
+        "keydown",
+        function (event) {
+
+            if (event.key !== "Escape") {
+                return;
+            }
+
+
+            closeAddPaymentModal();
+
+            closeEditPaymentModal();
+
+            closeDeletePaymentModal();
+
+        }
+    );
+
+});
+
+</script>
+
+
+<!-- =========================================================
+     NEXT STEPS NOTICE
+========================================================= -->
+
+<div class="mt-6 p-4 border border-indigo-100 bg-indigo-50 rounded-lg">
+
+    <div class="text-sm font-medium text-indigo-800">
+        Superadmin Control Center
+    </div>
+
+    <div class="text-xs text-indigo-700 mt-1">
+        Organization-level controls will be added incrementally:
+        editing, payments, users, pipelines, login links,
+        password reset, account enable/disable, and analytics.
+    </div>
+
+</div>
+
+<script>
+
+function openResetPasswordModal() {
+
+    const modal = document.getElementById(
+        "resetPasswordModal"
+    );
+
+    if (!modal) {
+        return;
+    }
+
+    modal.classList.remove("hidden");
+
+    document.body.classList.add(
+        "overflow-hidden"
+    );
+}
+
+
+function closeResetPasswordModal() {
+
+    const modal = document.getElementById(
+        "resetPasswordModal"
+    );
+
+    if (!modal) {
+        return;
+    }
+
+    modal.classList.add("hidden");
+
+    document.body.classList.remove(
+        "overflow-hidden"
+    );
+}
+
+
+document.addEventListener(
+    "keydown",
+    function(event) {
+
+        if (event.key === "Escape") {
+
+            closeResetPasswordModal();
+
+        }
+
+    }
+);
+
+</script>
+
+<script>
+
+function getCookie(name) {
+
+    const cookies = document.cookie ? document.cookie.split(";") : [];
+
+    for (const cookie of cookies) {
+        const trimmed = cookie.trim();
+
+        if (trimmed.startsWith(name + "=")) {
+            return decodeURIComponent(
+                trimmed.substring(name.length + 1)
+            );
+        }
+    }
+
+    return "";
+}
+
+
+function openGenerateLoginLinkModal() {
+
+    const modal = document.getElementById(
+        "generateLoginLinkModal"
+    );
+
+    if (!modal) {
+        return;
+    }
+
+    modal.classList.remove("hidden");
+
+    document.body.classList.add("overflow-hidden");
+}
+
+
+function closeGenerateLoginLinkModal() {
+
+    const modal = document.getElementById(
+        "generateLoginLinkModal"
+    );
+
+    if (!modal) {
+        return;
+    }
+
+    modal.classList.add("hidden");
+
+    document.body.classList.remove("overflow-hidden");
+}
+
+
+async function generateLoginLink() {
+
+    const organizationId = "{{ organization.id }}";
+
+    const button = document.getElementById(
+        "generateLoginLinkButton"
+    );
+
+    if (!organizationId) {
+        alert("Organization ID is missing.");
+        return;
+    }
+
+    const url =
+        "{% url 'superadmin-organization-generate-login-link' organization_id=organization.id %}";
+
+    if (button) {
+        button.disabled = true;
+        button.classList.add("opacity-60", "cursor-wait");
+        button.textContent = "Generating...";
+    }
+
+    try {
+
+        const response = await fetch(
+            url,
+            {
+                method: "POST",
+                headers: {
+                    "X-CSRFToken": getCookie("csrftoken"),
+                    "X-Requested-With": "XMLHttpRequest",
+                    "Accept": "application/json",
+                },
+                credentials: "same-origin",
+            }
+        );
+
+        const contentType =
+            response.headers.get("content-type") || "";
+
+        const data = contentType.includes("application/json")
+            ? await response.json()
+            : {
+                success: false,
+                error: await response.text(),
+            };
+
+        if (!response.ok || !data.success) {
+
+            alert(
+                data.error ||
+                "Unable to generate login link."
+            );
+
+            return;
+        }
+
+        const linkField = document.getElementById(
+            "generatedLoginLink"
+        );
+
+        const userField = document.getElementById(
+            "generateLoginLinkUser"
+        );
+
+        if (linkField) {
+            linkField.value = data.login_url || "";
+        }
+
+        if (userField) {
+            userField.textContent =
+                "User: " +
+                (data.user_name || data.user_email || "—") +
+                " • Valid for 5 minutes";
+        }
+
+        openGenerateLoginLinkModal();
+
+    } catch (error) {
+
+        console.error(
+            "Generate Login Link error:",
+            error
+        );
+
+        alert(
+            "An unexpected error occurred while generating the login link."
+        );
+
+    } finally {
+
+        if (button) {
+            button.disabled = false;
+            button.classList.remove("opacity-60", "cursor-wait");
+            button.textContent = "Generate Login Link";
+        }
+    }
+}
+
+
+async function copyGeneratedLoginLink() {
+
+    const linkField = document.getElementById(
+        "generatedLoginLink"
+    );
+
+    if (!linkField || !linkField.value) {
+        alert("No login link is available to copy.");
+        return;
+    }
+
+    try {
+
+        await navigator.clipboard.writeText(
+            linkField.value
+        );
+
+        alert("Login link copied to clipboard.");
+
+    } catch (error) {
+
+        linkField.focus();
+        linkField.select();
+
+        alert(
+            "Clipboard access was blocked. The link has been selected; press Ctrl+C to copy it."
+        );
+    }
+}
+
+
+function openGeneratedLoginLink() {
+
+    const linkField = document.getElementById(
+        "generatedLoginLink"
+    );
+
+    const loginUrl = linkField ? linkField.value.trim() : "";
+
+    if (!loginUrl) {
+        alert("No login link is available.");
+        return;
+    }
+
+    window.open(
+        loginUrl,
+        "_blank",
+        "noopener,noreferrer"
+    );
+}
+
+
+document.addEventListener(
+    "keydown",
+    function(event) {
+
+        if (event.key === "Escape") {
+            closeGenerateLoginLinkModal();
+        }
+    }
+);
+
+</script>
+
+{% endblock %}

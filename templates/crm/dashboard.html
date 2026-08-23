@@ -1,0 +1,223 @@
+{% extends "base.html" %}
+
+
+{% block title %}
+    SHVYA AI - CRM
+{% endblock %}
+
+
+{% block header_actions %}
+
+<div class="flex gap-2">
+
+    <button
+        type="button"
+        class="px-3 py-1.5 border rounded-md text-sm text-blue-600 border-blue-600 hover:bg-blue-50"
+    >
+        Call Reminders
+    </button>
+
+
+    <button
+        type="button"
+        class="px-3 py-1.5 border rounded-md text-sm text-blue-600 border-blue-600 hover:bg-blue-50"
+    >
+        Import Leads
+    </button>
+
+
+    <button
+        type="button"
+        class="px-3 py-1.5 bg-blue-600 text-white rounded-md text-sm hover:bg-blue-700"
+    >
+        + Add New Lead
+    </button>
+
+</div>
+
+{% endblock %}
+
+
+{% block content %}
+
+<div
+    id="dashboard-root"
+    data-pipeline="{{ selected_pipeline_id }}"
+>
+
+
+    <!-- Pipeline + Search + Filters -->
+
+    <div class="flex items-center gap-3 mb-4">
+
+
+        <!-- Pipeline Selector -->
+
+        <select
+            id="pipeline-select"
+            class="border border-gray-300 rounded-md px-3 py-2 text-sm bg-white text-gray-700"
+            name="pipeline"
+
+            hx-get="{% url 'crm-lead-table-partial' %}"
+            hx-target="#lead-table-container"
+            hx-trigger="change"
+            hx-include="#search-input"
+        >
+
+            {% for p in pipelines %}
+
+            <option
+                value="{{ p.id }}"
+                {% if p.id|stringformat:"s" == selected_pipeline_id %}
+                    selected
+                {% endif %}
+            >
+                {{ p.name }}
+            </option>
+
+            {% endfor %}
+
+        </select>
+
+
+
+        <!-- Lead Search -->
+
+        <input
+            id="search-input"
+            type="text"
+            name="search"
+            placeholder="Search Leads"
+            class="flex-1 border border-gray-300 rounded-md px-3 py-2 text-sm max-w-md bg-white text-gray-700 placeholder-gray-400"
+
+            hx-get="{% url 'crm-lead-table-partial' %}"
+            hx-target="#lead-table-container"
+            hx-trigger="keyup changed delay:400ms"
+            hx-include="#pipeline-select"
+        >
+
+
+
+        <!-- ====================================================
+             FILTER BUTTON
+             ==================================================== -->
+
+        <button
+            type="button"
+            class="w-10 h-10 flex items-center justify-center border border-gray-300 rounded-md bg-white text-gray-800 hover:bg-gray-100 hover:text-gray-900 transition-colors shadow-sm"
+
+            hx-get="{% url 'crm-lead-filters-modal' %}?pipeline={{ selected_pipeline_id }}"
+
+            hx-target="#modal-root"
+
+            hx-swap="innerHTML"
+
+            title="Filters"
+
+            aria-label="Open filters"
+        >
+
+            <!-- Inline Filter SVG -->
+
+            <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+            >
+
+                <path d="M4 6h16"></path>
+                <path d="M7 12h10"></path>
+                <path d="M10 18h4"></path>
+
+            </svg>
+
+        </button>
+
+
+    </div>
+
+
+
+    <!-- Lead Table -->
+
+    <div
+        id="lead-table-container"
+
+        hx-get="{% url 'crm-lead-table-partial' %}?pipeline={{ selected_pipeline_id }}"
+
+        hx-trigger="load"
+
+        hx-swap="innerHTML"
+    >
+
+        <p class="text-gray-400 text-sm">
+            Loading leads...
+        </p>
+
+    </div>
+
+</div>
+
+
+<script>
+    document.body.addEventListener(
+        "leadUpdated",
+        function () {
+
+            const modalRoot = document.getElementById(
+                "modal-root"
+            );
+
+            if (modalRoot) {
+                modalRoot.innerHTML = "";
+            }
+
+            const pipelineSelect = document.getElementById(
+                "pipeline-select"
+            );
+
+            const searchInput = document.getElementById(
+                "search-input"
+            );
+
+            const leadTable = document.getElementById(
+                "lead-table-container"
+            );
+
+            if (!leadTable || !pipelineSelect) {
+                return;
+            }
+
+            const pipelineId = pipelineSelect.value;
+
+            const search = searchInput
+                ? searchInput.value
+                : "";
+
+            const url =
+                "{% url 'crm-lead-table-partial' %}"
+                + "?pipeline="
+                + encodeURIComponent(pipelineId)
+                + "&search="
+                + encodeURIComponent(search);
+
+            htmx.ajax(
+                "GET",
+                url,
+                {
+                    target: "#lead-table-container",
+                    swap: "innerHTML",
+                }
+            );
+        }
+    );
+</script>
+
+{% endblock %}

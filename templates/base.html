@@ -1,0 +1,405 @@
+{% load crm_extras %}
+{% load static %}
+
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>{% block title %}SHVYA AI{% endblock %}</title>
+
+
+    <!-- ========================================================
+         TAILWIND CSS
+         ======================================================== -->
+
+    <script src="https://cdn.tailwindcss.com"></script>
+
+
+    <!-- ========================================================
+         TABLER ICONS
+         ======================================================== -->
+
+    <link
+        rel="stylesheet"
+        href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.34.0/dist/tabler-icons.min.css"
+    >
+
+    <!-- Explicit Tabler icon font styling -->
+    <style>
+        .ti {
+            font-family: "tabler-icons" !important;
+            font-style: normal;
+            font-weight: normal;
+            font-variant: normal;
+            line-height: 1;
+            display: inline-block;
+            text-rendering: auto;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+
+        .sidebar-icon {
+            width: 20px;
+            height: 20px;
+            min-width: 20px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+        }
+    </style>
+
+
+    <!-- ========================================================
+         HTMX
+         ======================================================== -->
+
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+
+
+    {% block extra_head %}{% endblock %}
+
+</head>
+
+
+<body class="bg-gray-50 text-gray-900">
+
+
+<div class="flex h-screen overflow-hidden">
+
+
+    <!-- ========================================================
+         SIDEBAR
+         ======================================================== -->
+
+    <aside
+        class="w-56 bg-white border-r border-gray-200 flex flex-col shrink-0"
+    >
+
+
+        <!-- ====================================================
+             LOGO
+             ==================================================== -->
+
+        <div
+            class="px-4 py-4 font-bold text-lg border-b border-gray-100"
+        >
+            SHVYA AI
+        </div>
+
+
+        <!-- ====================================================
+             NAVIGATION
+             ==================================================== -->
+
+        <nav class="flex-1 overflow-y-auto py-2">
+
+
+            <!-- ==================================================
+                 CRM
+                 ================================================== -->
+
+            <a
+                href="{% url 'crm-dashboard' %}"
+                class="flex items-center gap-3 px-4 py-2 text-sm font-medium
+                {% if request.resolver_match.url_name == 'crm-dashboard' %}
+                    bg-blue-50 text-blue-700
+                {% else %}
+                    text-gray-700 hover:bg-gray-50
+                {% endif %}"
+            >
+
+                <i class="ti ti-users sidebar-icon"></i>
+
+                <span>CRM</span>
+
+            </a>
+
+
+            <!-- ==================================================
+                 COMING SOON MODULES
+                 ================================================== -->
+
+            {% for item in nav_items %}
+
+                <div
+                    class="flex items-center gap-3 px-4 py-2 text-sm text-gray-400 cursor-not-allowed"
+                    title="Coming soon"
+                >
+
+                    <i
+                        class="ti {{ item.icon }} sidebar-icon"
+                    ></i>
+
+                    <span>{{ item.label }}</span>
+
+                </div>
+
+            {% endfor %}
+
+
+        </nav>
+
+
+    </aside>
+
+
+
+    <!-- ========================================================
+         MAIN AREA
+         ======================================================== -->
+
+    <div class="flex-1 flex flex-col overflow-hidden">
+
+
+        <!-- ====================================================
+             TOPBAR
+             ==================================================== -->
+
+        <header
+            class="bg-white border-b border-gray-200 px-6 py-3 flex items-center justify-between shrink-0"
+        >
+
+            <h1 class="text-lg font-semibold">
+
+                {% block header %}
+
+                    Welcome, {{ request.user.name|default:"User" }}
+
+                {% endblock %}
+
+            </h1>
+
+
+            <!-- ==================================================
+                 PROFILE + LOGOUT
+                 ================================================== -->
+
+            <div class="flex items-center gap-2">
+
+                <!-- Profile -->
+
+                <a
+                    href="{% url 'crm-profile' %}"
+                    class="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-700 rounded-lg hover:bg-gray-100"
+                >
+                    <i class="ti ti-user"></i>
+                    Profile
+                </a>
+
+
+                <!-- Logout -->
+
+                <a
+                    href="{% url 'crm-logout' %}"
+                    class="flex items-center gap-2 px-3 py-2 text-sm font-medium text-red-600 rounded-lg hover:bg-red-50"
+                >
+                    <i class="ti ti-logout"></i>
+                    Logout
+                </a>
+
+            </div>
+
+
+        </header>
+
+
+
+        <!-- ====================================================
+             PAGE CONTENT
+             ==================================================== -->
+
+        <main class="flex-1 overflow-y-auto p-6">
+
+            {% block content %}{% endblock %}
+
+        </main>
+
+
+    </div>
+
+
+</div>
+
+
+
+<!-- ============================================================
+     SHARED MODAL ROOT
+     ============================================================ -->
+
+<div id="modal-root"></div>
+
+
+
+<!-- ============================================================
+     HTMX EVENT HANDLERS
+     ============================================================ -->
+
+<script>
+
+
+/* ============================================================
+   LEAD UPDATED
+   ============================================================ */
+
+document.body.addEventListener('leadUpdated', function() {
+
+    const modalRoot = document.getElementById('modal-root');
+
+    if (modalRoot) {
+
+        modalRoot.innerHTML = '';
+
+    }
+
+
+    const container = document.getElementById(
+        'lead-table-container'
+    );
+
+    if (container) {
+
+        htmx.trigger(
+            container,
+            'load'
+        );
+
+    }
+
+});
+
+
+
+/* ============================================================
+   ORGANIZATION UPDATED
+   ============================================================ */
+
+document.body.addEventListener('orgUpdated', function() {
+
+    const modalRoot = document.getElementById('modal-root');
+
+    if (modalRoot) {
+
+        modalRoot.innerHTML = '';
+
+    }
+
+
+    window.location.reload();
+
+});
+
+
+
+/* ============================================================
+   STAGE TAB SWITCHING
+   ============================================================ */
+
+document.body.addEventListener('click', function(e) {
+
+    const tab = e.target.closest('.stage-tab');
+
+
+    if (!tab) {
+
+        return;
+
+    }
+
+
+    const panelGroup = tab.closest(
+        '[data-tab-group]'
+    );
+
+
+    if (!panelGroup) {
+
+        return;
+
+    }
+
+
+    /* --------------------------------------------------------
+       Reset all tabs
+       -------------------------------------------------------- */
+
+    panelGroup
+        .querySelectorAll('.stage-tab')
+        .forEach(function(t) {
+
+            t.classList.remove(
+                'bg-current-stage',
+                'text-white'
+            );
+
+            t.classList.add(
+                'bg-gray-50',
+                'text-gray-600'
+            );
+
+            t.style.backgroundColor = '';
+
+        });
+
+
+    /* --------------------------------------------------------
+       Activate selected tab
+       -------------------------------------------------------- */
+
+    tab.classList.remove(
+        'bg-gray-50',
+        'text-gray-600'
+    );
+
+
+    tab.classList.add(
+        'bg-current-stage',
+        'text-white'
+    );
+
+
+    tab.style.backgroundColor =
+        tab.dataset.color;
+
+
+    /* --------------------------------------------------------
+       Hide all stage panels
+       -------------------------------------------------------- */
+
+    panelGroup
+        .querySelectorAll('.stage-panel')
+        .forEach(function(p) {
+
+            p.classList.add('hidden');
+
+        });
+
+
+    /* --------------------------------------------------------
+       Show selected stage panel
+       -------------------------------------------------------- */
+
+    const target = panelGroup.querySelector(
+        '#stage-panel-' + tab.dataset.stageId
+    );
+
+
+    if (target) {
+
+        target.classList.remove('hidden');
+
+    }
+
+});
+
+
+</script>
+
+
+</body>
+
+</html>

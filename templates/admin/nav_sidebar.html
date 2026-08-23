@@ -1,0 +1,340 @@
+{% load i18n %}
+
+<aside id="shvya-admin-sidebar">
+
+    <!-- =====================================================
+         SHVYA ADMIN BRAND
+    ====================================================== -->
+
+    <div class="shvya-sidebar-brand">
+
+        <a href="{% url 'admin:index' %}">
+
+            <span class="shvya-brand-mark">
+                S
+            </span>
+
+            <span class="shvya-brand-text">
+                <strong>SHVYA</strong>
+                <small>ADMIN</small>
+            </span>
+
+        </a>
+
+    </div>
+
+
+    <!-- =====================================================
+         NAVIGATION
+    ====================================================== -->
+
+    <nav class="shvya-sidebar-nav">
+
+
+        <!-- =================================================
+             CONTROL
+        ================================================== -->
+
+        <div class="shvya-nav-section">
+
+            <div class="shvya-nav-label">
+                CONTROL
+            </div>
+
+            <a
+                href="{% url 'admin:index' %}"
+                class="shvya-nav-item"
+            >
+                <span class="shvya-nav-icon">⌂</span>
+                <span>Overview</span>
+            </a>
+
+        </div>
+
+
+        <!-- =================================================
+             OPERATIONS
+        ================================================== -->
+
+        <div class="shvya-nav-section">
+
+            <div class="shvya-nav-label">
+                OPERATIONS
+            </div>
+
+
+            <!-- Organizations -->
+
+            <a
+                href="{% url 'admin:organizations_organization_changelist' %}"
+                class="shvya-nav-item"
+            >
+                <span class="shvya-nav-icon">▣</span>
+                <span>Organizations</span>
+            </a>
+
+
+            <!-- Users -->
+
+            <a
+                href="{% url 'admin:accounts_user_changelist' %}"
+                class="shvya-nav-item"
+            >
+                <span class="shvya-nav-icon">◉</span>
+                <span>Users</span>
+            </a>
+
+
+            <!-- API Keys -->
+
+            <a
+                href="{% url 'admin:organizations_apikey_changelist' %}"
+                class="shvya-nav-item"
+            >
+                <span class="shvya-nav-icon">⌘</span>
+                <span>API Keys</span>
+            </a>
+
+
+            <!-- Groups / Permissions -->
+
+            <a
+                href="{% url 'admin:auth_group_changelist' %}"
+                class="shvya-nav-item"
+            >
+                <span class="shvya-nav-icon">◎</span>
+                <span>Groups &amp; Permissions</span>
+            </a>
+
+        </div>
+
+
+        <!-- =================================================
+             CRM
+        ================================================== -->
+
+        <div class="shvya-nav-section">
+
+            <div class="shvya-nav-label">
+                CRM
+            </div>
+
+
+            <!-- Leads -->
+
+            <a
+                href="{% url 'admin:crm_lead_changelist' %}"
+                class="shvya-nav-item"
+            >
+                <span class="shvya-nav-icon">◆</span>
+                <span>Leads</span>
+            </a>
+
+
+            <!-- Pipelines -->
+
+            <a
+                href="{% url 'admin:crm_pipeline_changelist' %}"
+                class="shvya-nav-item"
+            >
+                <span class="shvya-nav-icon">◇</span>
+                <span>Pipelines</span>
+            </a>
+
+
+            <!-- Stages -->
+
+            <a
+                href="{% url 'admin:crm_stage_changelist' %}"
+                class="shvya-nav-item"
+            >
+                <span class="shvya-nav-icon">◌</span>
+                <span>Stages</span>
+            </a>
+
+
+            <!-- Contacts -->
+
+            <a
+                href="{% url 'admin:crm_leadcontact_changelist' %}"
+                class="shvya-nav-item"
+            >
+                <span class="shvya-nav-icon">○</span>
+                <span>Contacts</span>
+            </a>
+
+
+            <!-- Notes -->
+
+            <a
+                href="{% url 'admin:crm_leadnote_changelist' %}"
+                class="shvya-nav-item"
+            >
+                <span class="shvya-nav-icon">□</span>
+                <span>Notes</span>
+            </a>
+
+
+            <!-- Calls -->
+
+            <a
+                href="{% url 'admin:crm_leadcall_changelist' %}"
+                class="shvya-nav-item"
+            >
+                <span class="shvya-nav-icon">◉</span>
+                <span>Lead Calls</span>
+            </a>
+
+
+            <!-- Reminders -->
+
+            <a
+                href="{% url 'admin:crm_leadreminder_changelist' %}"
+                class="shvya-nav-item"
+            >
+                <span class="shvya-nav-icon">◷</span>
+                <span>Reminders</span>
+            </a>
+
+
+            <!-- Tags -->
+
+            <a
+                href="{% url 'admin:crm_tag_changelist' %}"
+                class="shvya-nav-item"
+            >
+                <span class="shvya-nav-icon">#</span>
+                <span>Tags</span>
+            </a>
+
+
+            <!-- Lead Tags -->
+
+            <a
+                href="{% url 'admin:crm_leadtag_changelist' %}"
+                class="shvya-nav-item"
+            >
+                <span class="shvya-nav-icon">◇</span>
+                <span>Lead Tags</span>
+            </a>
+
+
+            <!-- Pipeline Permissions -->
+
+            <a
+                href="{% url 'admin:crm_pipelinepermission_changelist' %}"
+                class="shvya-nav-item"
+            >
+                <span class="shvya-nav-icon">◎</span>
+                <span>Pipeline Permissions</span>
+            </a>
+
+        </div>
+
+
+        <!-- =================================================
+             SYSTEM
+        ================================================== -->
+
+        <div class="shvya-nav-section">
+
+            <div class="shvya-nav-label">
+                SYSTEM
+            </div>
+
+
+            <a
+                href="#"
+                class="shvya-nav-item shvya-nav-disabled"
+                title="Coming soon"
+            >
+                <span class="shvya-nav-icon">◫</span>
+                <span>Tasks</span>
+            </a>
+
+
+            <a
+                href="#"
+                class="shvya-nav-item shvya-nav-disabled"
+                title="Coming soon"
+            >
+                <span class="shvya-nav-icon">≡</span>
+                <span>System Logs</span>
+            </a>
+
+
+            <a
+                href="#"
+                class="shvya-nav-item shvya-nav-disabled"
+                title="Coming soon"
+            >
+                <span class="shvya-nav-icon">◈</span>
+                <span>Audit Trail</span>
+            </a>
+
+        </div>
+
+
+        <!-- =================================================
+             CONFIGURATION
+        ================================================== -->
+
+        <div class="shvya-nav-section">
+
+            <div class="shvya-nav-label">
+                CONFIGURATION
+            </div>
+
+
+            <!-- Organization Tags -->
+
+            <a
+                href="{% url 'admin:organizations_organizationtag_changelist' %}"
+                class="shvya-nav-item"
+            >
+                <span class="shvya-nav-icon">#</span>
+                <span>Organization Tags</span>
+            </a>
+
+
+            <!-- Groups -->
+
+            <a
+                href="{% url 'admin:auth_group_changelist' %}"
+                class="shvya-nav-item"
+            >
+                <span class="shvya-nav-icon">⚙</span>
+                <span>Groups</span>
+            </a>
+
+        </div>
+
+    </nav>
+
+
+    <!-- =====================================================
+         EXTERNAL NAVIGATION
+    ====================================================== -->
+
+    <div class="shvya-sidebar-footer">
+
+        <a
+            href="/superadmin/"
+            class="shvya-footer-link"
+        >
+            <span>↗</span>
+            <span>Super Admin</span>
+        </a>
+
+
+        <a
+            href="/dashboard/"
+            class="shvya-footer-link"
+        >
+            <span>↗</span>
+            <span>CRM Dashboard</span>
+        </a>
+
+    </div>
+
+</aside>

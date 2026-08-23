@@ -1,0 +1,342 @@
+{% load crm_extras %}
+
+
+{% if not stage_groups %}
+
+<p class="text-gray-400 text-sm">
+    No pipeline selected, or no stages found.
+</p>
+
+
+{% else %}
+
+
+<div data-tab-group>
+
+
+    <!-- ========================================================
+         STAGE TABS
+         ======================================================== -->
+
+    <div class="flex gap-2 overflow-x-auto pb-1 mb-5">
+
+        {% for group in stage_groups %}
+
+        <button
+            type="button"
+
+            class="stage-tab whitespace-nowrap text-sm px-4 py-1.5 rounded-full flex items-center gap-2 border border-transparent {% if forloop.first %}text-white{% else %}bg-gray-50 text-gray-600{% endif %}"
+
+            data-stage-id="{{ group.stage.id }}"
+
+            data-color="{{ group.theme.hex }}"
+
+            {% if forloop.first %}
+                style="background-color: {{ group.theme.hex }};"
+            {% endif %}
+        >
+
+            {{ group.stage.name }}
+
+
+            <span
+                class="text-xs rounded-full px-1.5 {% if forloop.first %}bg-white/25{% else %}bg-white{% endif %}"
+            >
+                {{ group.count }}
+            </span>
+
+        </button>
+
+        {% endfor %}
+
+    </div>
+
+
+
+    <!-- ========================================================
+         STAGE PANELS
+         ======================================================== -->
+
+    {% for group in stage_groups %}
+
+    <div
+        id="stage-panel-{{ group.stage.id }}"
+
+        class="stage-panel {% if not forloop.first %}hidden{% endif %} flex flex-col gap-2.5"
+    >
+
+
+        {% if group.leads %}
+
+
+            {% for lead in group.leads %}
+
+
+            <!-- ==================================================
+                 LEAD CARD
+                 ================================================== -->
+
+            <div
+                class="flex items-center gap-4 bg-white border border-gray-200 rounded-xl px-4 py-3.5"
+            >
+
+
+                <!-- Avatar -->
+
+                <div
+                    class="w-10 h-10 rounded-full {{ group.theme.avatar_bg }} {{ group.theme.avatar_text }} flex items-center justify-center font-medium text-sm shrink-0"
+                >
+                    {{ lead.initials }}
+                </div>
+
+
+
+                <!-- Lead Information -->
+
+                <div class="flex-1 min-w-0">
+
+
+                    <div class="flex items-center gap-2">
+
+                        <p class="font-medium text-sm truncate">
+                            {{ lead.name }}
+                        </p>
+
+
+                        {% if lead.phone %}
+
+                        <a
+                            href="https://wa.me/{{ lead.phone|cut:'+' }}"
+
+                            target="_blank"
+
+                            rel="noopener noreferrer"
+
+                            class="text-xs rounded-full px-2 py-0.5 bg-green-50 text-green-700 flex items-center gap-1 shrink-0"
+                        >
+
+                            <span class="font-medium">
+                                WhatsApp
+                            </span>
+
+                        </a>
+
+                        {% endif %}
+
+                    </div>
+
+
+
+                    <p class="text-xs text-gray-500 mt-0.5 truncate">
+
+                        {{ lead.phone }}
+
+                        {% if lead.email %}
+                            &middot; {{ lead.email }}
+                        {% endif %}
+
+                    </p>
+
+
+
+                    {% if lead.display_note_text %}
+
+                    <p class="text-xs text-gray-400 mt-1.5 truncate">
+
+                        <span class="mr-1">
+                            Note:
+                        </span>
+
+                        {{ lead.display_note_text|truncatechars:60 }}
+
+                    </p>
+
+                    {% endif %}
+
+                </div>
+
+
+
+                <!-- ==================================================
+                     METRICS
+                     ================================================== -->
+
+                <div class="flex gap-5 shrink-0">
+
+
+                    <div>
+
+                        <p class="text-[11px] text-gray-400 mb-0.5">
+                            Auto follow-up
+                        </p>
+
+                        <p class="text-xs text-gray-400 italic">
+                            Coming soon
+                        </p>
+
+                    </div>
+
+
+                    <div>
+
+                        <p class="text-[11px] text-gray-400 mb-0.5">
+                            Calls
+                        </p>
+
+                        <p class="text-xs font-medium">
+                            {{ lead.call_count }}
+                        </p>
+
+                    </div>
+
+
+                    <div>
+
+                        <p class="text-[11px] text-gray-400 mb-0.5">
+                            Next reminder
+                        </p>
+
+                        <p
+                            class="text-xs {% if lead.next_reminder %}font-medium{% else %}text-gray-400{% endif %}"
+                        >
+
+                            {% if lead.next_reminder %}
+                                {{ lead.next_reminder.due_at|date:"M d, H:i" }}
+                            {% else %}
+                                None
+                            {% endif %}
+
+                        </p>
+
+                    </div>
+
+
+                    <div>
+
+                        <p class="text-[11px] text-gray-400 mb-0.5">
+                            In stage
+                        </p>
+
+                        <p class="text-xs font-medium">
+                            {{ lead.days_in_stage }}d
+                        </p>
+
+                    </div>
+
+
+                </div>
+
+
+
+                <!-- ==================================================
+                     ACTIONS
+                     ================================================== -->
+
+                <div class="flex items-center gap-2 shrink-0">
+
+
+                    <!-- ==================================================
+                         EDIT BUTTON
+                         ================================================== -->
+
+                    <button
+                        type="button"
+
+                        class="w-9 h-9 flex items-center justify-center rounded-md border border-gray-300 bg-white text-gray-800 hover:bg-gray-100 hover:text-gray-900 transition-colors shadow-sm"
+
+                        hx-get="{% url 'crm-lead-edit-modal' lead.id %}"
+
+                        hx-target="#modal-root"
+
+                        hx-swap="innerHTML"
+
+                        aria-label="Edit lead"
+
+                        title="Edit lead"
+                    >
+
+                        <!-- Inline Edit SVG -->
+
+                        <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            width="18"
+                            height="18"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            aria-hidden="true"
+                        >
+
+                            <path d="M4 20h4l10.5-10.5a2.828 2.828 0 1 0-4-4L4 16v4"></path>
+
+                            <path d="M13.5 6.5l4 4"></path>
+
+                        </svg>
+
+                    </button>
+
+
+
+                    <!-- Stage Selector -->
+
+                    <select
+                        class="text-xs border border-gray-300 rounded-md px-2 py-1.5 bg-white text-gray-700"
+                        aria-label="Lead stage"
+                    >
+
+                        {% for s in all_stages %}
+
+                        <option
+                            value="{{ s.id }}"
+                            {% if s.id == lead.stage_id %}selected{% endif %}
+                        >
+                            {{ s.name }}
+                        </option>
+
+                        {% endfor %}
+
+                    </select>
+
+
+                </div>
+
+
+            </div>
+
+
+            {% endfor %}
+
+
+        {% else %}
+
+
+            <!-- Empty Stage -->
+
+            <div
+                class="text-center py-8 text-gray-400 text-sm border border-dashed border-gray-200 rounded-xl"
+            >
+
+                <span class="text-lg block mb-1.5">
+                    —
+                </span>
+
+                No leads in {{ group.stage.name }} yet
+
+            </div>
+
+
+        {% endif %}
+
+
+    </div>
+
+    {% endfor %}
+
+
+</div>
+
+
+{% endif %}
