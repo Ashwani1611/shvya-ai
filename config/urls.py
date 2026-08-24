@@ -55,7 +55,7 @@ urlpatterns = [
 
     path(
         "api/v1/leads/",
-        include("apps.crm.urls"),
+        include("apps.crm.urls.api_v1"),
     ),
 
     # =========================================================
@@ -83,7 +83,7 @@ urlpatterns = [
 
     path(
         "dashboard/",
-        include("apps.crm.web_urls"),
+        include("apps.crm.urls.web"),
     ),
 
     # =========================================================

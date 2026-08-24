@@ -136,6 +136,7 @@ INSTALLED_APPS = [
     "apps.analytics",
     "apps.integrations",
     "apps.teams",
+    "apps.telephony",
 ]
 
 

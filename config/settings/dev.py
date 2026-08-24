@@ -1,4 +1,5 @@
 from .base import *
 
 DEBUG = True
-DATABASES = { ... }  # your local DB
+
+CORS_ALLOW_ALL_ORIGINS = True
