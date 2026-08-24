@@ -1,6 +1,6 @@
 from django.core.exceptions import ValidationError
 
-from apps.crm.models import Lead, Stage
+from apps.crm.models import Stage
 
 
 def move_lead(*, lead, new_stage):

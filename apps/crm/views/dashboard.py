@@ -1,15 +1,17 @@
 import logging
-from apps.crm.decorators import crm_login_required
+
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db.models import Q
 from django.http import HttpResponse
-from django.shortcuts import get_object_or_404, render, redirect
+from django.shortcuts import get_object_or_404, render
 from django.utils import timezone
 from django.views.decorators.http import require_GET, require_POST
 
-from apps.crm.models import Lead, Pipeline, Stage, LeadNote
 from apps.accounts.models import User
-from .api import get_user_pipelines
+from apps.crm.decorators import crm_login_required
+from apps.crm.models import Lead, LeadNote, Pipeline, Stage
+
+from .api import STAGE_THEMES, get_user_pipelines
 
 logger = logging.getLogger(__name__)
 

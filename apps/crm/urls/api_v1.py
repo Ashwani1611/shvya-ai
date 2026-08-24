@@ -1,4 +1,5 @@
 from django.urls import path
+
 from apps.crm.views.api import BulkMoveStageAPIView, LeadListAPIView, LeadUpsertAPIView
 
 urlpatterns = [

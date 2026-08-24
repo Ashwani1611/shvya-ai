@@ -11,7 +11,6 @@ from apps.crm.models import Lead
 class DuplicateLeadError(Exception):
     """Raised when an upsert would violate (organization, phone) uniqueness
     in a way that isn't a normal update — e.g. a race condition."""
-    pass
 
 
 def create_lead(*, organization, pipeline, stage, name, phone, **extra_fields):

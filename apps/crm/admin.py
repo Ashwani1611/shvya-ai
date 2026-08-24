@@ -1,18 +1,17 @@
 from django.contrib import admin
 
 from .models import (
-    Pipeline,
-    Stage,
     Lead,
-    LeadContact,
-    PipelinePermission,
-    LeadNote,
     LeadCall,
+    LeadContact,
+    LeadNote,
     LeadReminder,
-    Tag,
     LeadTag,
+    Pipeline,
+    PipelinePermission,
+    Stage,
+    Tag,
 )
-
 
 # ============================================================
 # PIPELINE / STAGE

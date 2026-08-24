@@ -7,7 +7,6 @@ from apps.organizations.models import (
     OrganizationPayment,
 )
 
-
 # ============================================================
 # ORGANIZATION CREATE FORM
 # ============================================================

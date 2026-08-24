@@ -5,7 +5,6 @@ from django.contrib.auth.forms import ReadOnlyPasswordHashField
 
 from .models import User
 
-
 # ============================================================
 # USER CREATION FORM
 # ============================================================

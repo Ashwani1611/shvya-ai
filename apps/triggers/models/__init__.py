@@ -1,1 +1,1 @@
-from .trigger import *  # noqa
+from .trigger import *

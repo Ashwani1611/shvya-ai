@@ -1,15 +1,16 @@
 from django.urls import path
+
+from apps.accounts.views import crm_signup_view
 from apps.crm.authentication import crm_login_view, crm_profile_view
 from apps.crm.views.dashboard import (
     dashboard_view,
-    lead_table_partial,
     lead_edit_modal,
-    lead_edit_stages,
     lead_edit_save,
+    lead_edit_stages,
     lead_filters_modal,
     lead_filters_values,
+    lead_table_partial,
 )
-from apps.accounts.views import crm_signup_view
 
 urlpatterns = [
     path("login/", crm_login_view, name="crm-login"),

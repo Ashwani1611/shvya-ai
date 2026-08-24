@@ -1,13 +1,11 @@
-from django.utils import timezone
+import logging
 
+from django.contrib.auth import authenticate
+from django.shortcuts import redirect, render
+from django.utils import timezone
 from rest_framework.authentication import BaseAuthentication
 from rest_framework.exceptions import AuthenticationFailed
-import logging
-from django.contrib.auth import authenticate
-from django.contrib.auth.decorators import login_required
-from django.http import HttpResponse
-from django.shortcuts import get_object_or_404, render, redirect
-from apps.accounts.models import User
+
 from apps.accounts.session_utils import (
     get_session_store,
     save_session_cookie,
@@ -16,8 +14,8 @@ from apps.accounts.session_utils import (
 
 logger = logging.getLogger(__name__)
 
-from apps.organizations.models import APIKey
 from apps.crm.constants import CRM_SESSION_AREA
+from apps.organizations.models import APIKey
 
 
 class APIKeyPrincipal:

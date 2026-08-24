@@ -6,7 +6,6 @@ from django.contrib.auth import (
 )
 from django.contrib.sessions.backends.db import SessionStore
 
-
 # ============================================================
 # SHVYA SESSION CONFIGURATION
 # ============================================================

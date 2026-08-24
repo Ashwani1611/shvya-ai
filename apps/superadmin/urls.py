@@ -2,10 +2,10 @@ from django.urls import path
 
 from .views import (
     admin_global_search,
+    org_list_view,
     organization_create_view,
     organization_detail_view,
     organization_generate_login_link_view,
-    superadmin_login_view,
     organization_payment_create_view,
     organization_payment_delete_view,
     organization_payment_update_view,
@@ -17,9 +17,8 @@ from .views import (
     organization_user_reset_password_view,
     organization_user_toggle_active_view,
     organization_user_update_view,
-    org_list_view,
+    superadmin_login_view,
 )
-
 
 urlpatterns = [
     # =========================================================

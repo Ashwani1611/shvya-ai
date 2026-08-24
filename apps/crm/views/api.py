@@ -1,15 +1,17 @@
 import logging
+
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db.models import Q
-from django.utils import timezone
+from django.shortcuts import get_object_or_404
 from rest_framework import status
 from rest_framework.generics import ListAPIView
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.crm.authentication import SHVYAAPIKeyAuthentication
 from apps.accounts.models import User
-from apps.crm.models import Lead, Pipeline, Stage, LeadNote
+from apps.crm.authentication import SHVYAAPIKeyAuthentication
+from apps.crm.models import Lead, Pipeline, Stage
 from apps.crm.serializers import LeadUpsertSerializer
 from services.crm.lead_service import DuplicateLeadError, upsert_lead
 

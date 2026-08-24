@@ -6,8 +6,8 @@ from django.db.models import Count, Q
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
-from django.utils.http import url_has_allowed_host_and_scheme
 from django.utils import timezone
+from django.utils.http import url_has_allowed_host_and_scheme
 
 from apps.accounts.models import OneTimeLoginToken, User
 from apps.accounts.session_utils import (
@@ -15,9 +15,7 @@ from apps.accounts.session_utils import (
     save_session_cookie,
     set_authenticated_user,
 )
-
 from apps.crm.models import Lead, Pipeline
-
 from apps.organizations.models import (
     APIKey,
     Organization,
@@ -33,7 +31,6 @@ from .forms import (
     OrganizationUserUpdateForm,
     PipelineCreateForm,
 )
-
 
 # ============================================================
 # SUPER ADMIN ACCESS CONTROL

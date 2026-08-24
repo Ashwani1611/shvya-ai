@@ -1,15 +1,14 @@
 from django.urls import path
 
 from .views import (
-    one_time_login_view,
-    crm_logout_view,
     crm_forgot_password_view,
+    crm_logout_view,
+    crm_password_reset_complete_view,
     crm_password_reset_sent_view,
     crm_password_reset_view,
     crm_signup_view,
-    crm_password_reset_complete_view,
+    one_time_login_view,
 )
-
 
 urlpatterns = [
 

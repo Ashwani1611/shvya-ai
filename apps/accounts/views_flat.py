@@ -1,36 +1,29 @@
 import hashlib
 
+from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth import password_validation
+from django.contrib.auth.forms import SetPasswordForm
+from django.contrib.auth.tokens import default_token_generator
 from django.core.exceptions import ValidationError
+from django.core.mail import send_mail
 from django.db import IntegrityError, transaction
 from django.http import HttpResponse
 from django.shortcuts import redirect, render
-from django.utils import timezone
-
-from apps.organizations.models import Organization
-
-from .models import OneTimeLoginToken
-from django.conf import settings
-from django.contrib.auth.forms import SetPasswordForm
-from django.contrib.auth.tokens import default_token_generator
-from django.core.mail import send_mail
-from django.shortcuts import redirect, render
-from django.template.loader import render_to_string
 from django.urls import reverse
+from django.utils import timezone
 from django.utils.encoding import force_bytes, force_str
 from django.utils.http import urlsafe_base64_decode, urlsafe_base64_encode
 
-from .models import User
+from apps.organizations.models import Organization
 
+from .models import OneTimeLoginToken, User
 from .session_utils import (
+    delete_session_cookie,
     get_session_store,
     save_session_cookie,
     set_authenticated_user,
-    clear_authenticated_user,
-    delete_session_cookie,
 )
-
 
 # ============================================================
 # PUBLIC CRM SIGNUP

@@ -2,7 +2,6 @@
 # --- migrated from serializers.py ---
 from rest_framework import serializers
 
-
 RESERVED_FIELDS = {
     "name",
     "phone",

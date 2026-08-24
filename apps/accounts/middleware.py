@@ -1,14 +1,13 @@
-from django.contrib.auth import get_user_model
 from django.contrib.auth import (
     BACKEND_SESSION_KEY,
     HASH_SESSION_KEY,
     SESSION_KEY,
+    get_user_model,
 )
 
 from .session_utils import (
     get_session_store,
 )
-
 
 User = get_user_model()
 
