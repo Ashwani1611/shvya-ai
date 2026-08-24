@@ -24,9 +24,7 @@ from apps.accounts.models import User
 from apps.accounts.session_utils import (
     get_session_store,
     save_session_cookie,
-    delete_session_cookie,
     set_authenticated_user,
-    clear_authenticated_user,
 )
 
 from services.lead_service import DuplicateLeadError, upsert_lead
@@ -451,91 +449,14 @@ def crm_profile_view(request):
 
 
 # ============================================================
-# CRM LOGOUT
-# ============================================================
-
-
-@require_GET
-def crm_logout_view(request):
-    """
-    Completely log out of the dedicated CRM session.
-
-    This does NOT log the user out of:
-
-        - Django Admin
-        - Superadmin
-        - other SHVYA sessions
-
-    It only removes:
-
-        shvya_crm_sessionid
-    """
-
-    # --------------------------------------------------------
-    # Load CRM session.
-    # --------------------------------------------------------
-
-    session = get_crm_session(
-        request
-    )
-
-    # --------------------------------------------------------
-    # Remove Django authentication state from the CRM session.
-    # --------------------------------------------------------
-
-    clear_authenticated_user(
-        session
-    )
-
-    # --------------------------------------------------------
-    # Save the cleared session.
-    # --------------------------------------------------------
-
-    try:
-
-        if session.session_key:
-            session.save()
-
-    except Exception:
-
-        logger.exception(
-            "Failed to save cleared CRM session."
-        )
-
-    # --------------------------------------------------------
-    # Redirect to CRM login page.
-    # --------------------------------------------------------
-
-    response = redirect(
-        "crm-login"
-    )
-
-    # --------------------------------------------------------
-    # Explicitly delete the dedicated CRM cookie.
-    # --------------------------------------------------------
-
-    delete_session_cookie(
-        response,
-        CRM_SESSION_AREA,
-    )
-
-    # --------------------------------------------------------
-    # Prevent browser caching of the dashboard.
-    # --------------------------------------------------------
-
-    response["Cache-Control"] = (
-        "no-cache, no-store, must-revalidate"
-    )
-
-    response["Pragma"] = "no-cache"
-    response["Expires"] = "0"
-
-    return response
-
-
-# ============================================================
 # PHASE 2 — API VIEWS
 # ============================================================
+#
+# NOTE: CRM logout lives in apps.accounts.views.crm_logout_view
+# (routed as "crm-logout" in apps.accounts.urls). It flushes the
+# entire session rather than clearing individual keys, which is
+# the stronger/correct approach — an earlier, weaker duplicate of
+# this view previously lived here unused and has been removed.
 
 
 class LeadUpsertAPIView(APIView):
@@ -719,6 +640,9 @@ class LeadListAPIView(ListAPIView):
 
         qs = Lead.objects.filter(
             organization=organization
+        ).select_related(
+            "pipeline",
+            "stage",
         )
 
         search = (
@@ -2057,6 +1981,7 @@ def lead_filters_values(
     stages = (
         Stage.objects.filter(
             pipeline_id=pipeline_id,
+            pipeline__organization=organization,
             is_active=True,
         )
         if pipeline_id
