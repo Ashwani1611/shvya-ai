@@ -30,8 +30,17 @@ from .forms import (
     OrganizationUserForm,
     OrganizationUserUpdateForm,
     PipelineCreateForm,
-)
-
+    )
+from apps.core.ratelimit import ratelimit
+from .models import AuditLog
+from .forms import (
+     OrganizationCreateForm,
+     OrganizationPaymentForm,
+     OrganizationUpdateForm,
+     OrganizationUserForm,
+     OrganizationUserUpdateForm,
+     PipelineCreateForm,
+    )
 # ============================================================
 # SUPER ADMIN ACCESS CONTROL
 # ============================================================
@@ -48,7 +57,11 @@ def superuser_required(view_func):
 # SUPER ADMIN — LOGIN
 # ============================================================
 
-
+@ratelimit(
+    key_func=lambda r: r.POST.get("username", "") if r.method == "POST" else "",
+    limit=5,
+    window=300,
+    )
 def superadmin_login_view(request):
     """
     Authenticate SHVYA Superadmin users using the dedicated
@@ -919,6 +932,17 @@ def organization_user_toggle_active_view(
     user.save(
         update_fields=["is_active"],
     )
+    AuditLog.record(
+        actor=request.user,
+        action=(
+            AuditLog.Action.USER_ACTIVATED
+            if user.is_active
+            else AuditLog.Action.USER_DEACTIVATED
+        ),
+        target=user,
+        request=request,
+        organization_id=str(organization.id),
+        )
 
     return redirect(
         "superadmin-organization-detail",
@@ -990,6 +1014,14 @@ def organization_user_reset_password_view(
             if reset_password_form.is_valid():
 
                 reset_password_form.save()
+
+                AuditLog.record(
+                    actor=request.user,
+                    action=AuditLog.Action.PASSWORD_RESET,
+                    target=selected_user,
+                    request=request,
+                    organization_id=str(organization.id),
+                    )
 
                 return redirect(
                     "superadmin-organization-detail",
@@ -1251,6 +1283,15 @@ def organization_generate_login_link_view(
         organization=organization,
         expires_at=expires_at,
     )
+    AuditLog.record(
+        actor=request.user,
+        action=AuditLog.Action.LOGIN_LINK_GENERATED,
+        target=user,
+        request=request,
+        organization_id=str(organization.id),
+        organization_name=organization.name,
+        pipeline=pipeline.name,
+        )
 
     # ---------------------------------------------------------
     # Build one-time login URL

@@ -118,8 +118,9 @@ INSTALLED_APPS = [
     # Third-party
     "rest_framework",
     "rest_framework_simplejwt",
+    "rest_framework_simplejwt.token_blacklist",
     "corsheaders",
-
+    
     # --- Core & Platform Apps ---
     "apps.organizations",
     "apps.accounts",
@@ -451,23 +452,35 @@ REST_FRAMEWORK = {
     ),
 
     "PAGE_SIZE": 25,
+
+    "DEFAULT_THROTTLE_RATES": {
+    "jwt_login": "10/min",
+    },
 }
 
 
 SIMPLE_JWT = {
-    "ACCESS_TOKEN_LIFETIME": timedelta(
-        hours=8,
-    ),
+     "ACCESS_TOKEN_LIFETIME": timedelta(
+         hours=8,
+     ),
 
-    "REFRESH_TOKEN_LIFETIME": timedelta(
-        days=7,
-    ),
+     "REFRESH_TOKEN_LIFETIME": timedelta(
+         days=7,
+     ),
 
-    "ROTATE_REFRESH_TOKENS": True,
+     "ROTATE_REFRESH_TOKENS": True,
+     "BLACKLIST_AFTER_ROTATION": True,
 }
 
-
 CORS_ALLOW_ALL_ORIGINS = DEBUG
+
+
+# ---------------------------------------------------------------------------
+# Sessions
+# ---------------------------------------------------------------------------
+
+SESSION_COOKIE_AGE = 86400  # 1 day, per SHVYA's session requirement
+
 
 
 # ---------------------------------------------------------------------------

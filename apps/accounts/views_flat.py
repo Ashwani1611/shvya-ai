@@ -15,6 +15,15 @@ from django.utils import timezone
 from django.utils.encoding import force_bytes, force_str
 from django.utils.http import urlsafe_base64_decode, urlsafe_base64_encode
 
+# in that view file
+from rest_framework_simplejwt.views import TokenObtainPairView
+from rest_framework.throttling import ScopedRateThrottle
+
+class ThrottledTokenObtainPairView(TokenObtainPairView):
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "jwt_login"
+    
+from apps.core.ratelimit import ratelimit
 from apps.organizations.models import Organization
 
 from .models import OneTimeLoginToken, User
@@ -659,6 +668,11 @@ def crm_logout_view(request):
 # CRM FORGOT PASSWORD
 # ============================================================
 
+@ratelimit(
+    key_func=lambda r: r.POST.get("email", "") if r.method == "POST" else "",
+    limit=5,
+    window=900,
+    )
 
 def crm_forgot_password_view(request):
     """

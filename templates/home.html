@@ -1,0 +1,361 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SHVYA AI — AI-Powered CRM</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --blue-900:#0B1E4D;
+    --blue-700:#1E3FA8;
+    --blue-600:#2C55D6;
+    --blue-500:#3D6BF0;
+    --blue-100:#E8EEFF;
+    --ink:#0F1830;
+    --ink-soft:#5A6483;
+    --paper:#FFFFFF;
+    --paper-soft:#F6F8FE;
+    --line:#E2E8F8;
+    --radius:16px;
+    --shadow:0 20px 40px -18px rgba(20,42,110,0.25);
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  html{scroll-behavior:smooth;}
+  body{
+    font-family:'Inter',sans-serif;
+    color:var(--ink);
+    background:var(--paper);
+    -webkit-font-smoothing:antialiased;
+  }
+  h1,h2,h3,.brand{font-family:'Sora',sans-serif;}
+  a{text-decoration:none;color:inherit;}
+  img{max-width:100%;display:block;}
+  .wrap{max-width:1180px;margin:0 auto;padding:0 32px;}
+
+  /* NAV */
+  nav{
+    position:sticky;top:0;z-index:50;
+    background:rgba(255,255,255,0.85);
+    backdrop-filter:blur(10px);
+    border-bottom:1px solid var(--line);
+  }
+  .nav-inner{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:18px 32px;max-width:1180px;margin:0 auto;
+  }
+  .brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:1.15rem;letter-spacing:-0.01em;}
+  .brand-mark{
+    width:34px;height:34px;border-radius:9px;
+    background:linear-gradient(135deg,var(--blue-500),var(--blue-700));
+    color:#fff;display:flex;align-items:center;justify-content:center;
+    font-weight:800;font-size:0.95rem;
+  }
+  .nav-links{display:flex;gap:34px;font-size:0.94rem;font-weight:500;color:var(--ink-soft);}
+  .nav-links a:hover{color:var(--blue-700);}
+  .nav-cta{display:flex;gap:12px;align-items:center;}
+  .btn{
+    display:inline-flex;align-items:center;justify-content:center;
+    padding:11px 22px;border-radius:10px;font-weight:600;font-size:0.92rem;
+    transition:transform .15s ease, box-shadow .15s ease, background .15s ease;
+    border:1px solid transparent;cursor:pointer;
+  }
+  .btn-primary{background:var(--blue-600);color:#fff;box-shadow:0 10px 24px -10px rgba(44,85,214,0.55);}
+  .btn-primary:hover{background:var(--blue-700);transform:translateY(-1px);}
+  .btn-ghost{color:var(--blue-700);border-color:var(--line);background:#fff;}
+  .btn-ghost:hover{border-color:var(--blue-500);}
+
+  /* HERO */
+  .hero{
+    position:relative;overflow:hidden;
+    padding:88px 0 100px;
+    background:
+      radial-gradient(900px 500px at 85% -10%, var(--blue-100), transparent),
+      radial-gradient(700px 400px at -10% 30%, var(--blue-100), transparent);
+  }
+  .hero-grid{display:grid;grid-template-columns:1.1fr 0.9fr;gap:56px;align-items:center;}
+  .eyebrow{
+    display:inline-flex;align-items:center;gap:8px;
+    padding:6px 14px;border-radius:999px;background:var(--blue-100);
+    color:var(--blue-700);font-size:0.8rem;font-weight:600;letter-spacing:0.02em;
+    margin-bottom:22px;
+  }
+  .eyebrow-dot{width:6px;height:6px;border-radius:50%;background:var(--blue-600);}
+  .hero h1{
+    font-size:3.2rem;line-height:1.08;letter-spacing:-0.02em;font-weight:800;
+    color:var(--blue-900);
+  }
+  .hero h1 span{color:var(--blue-600);}
+  .hero p{
+    margin-top:22px;font-size:1.12rem;line-height:1.65;color:var(--ink-soft);max-width:520px;
+  }
+  .hero-actions{display:flex;gap:14px;margin-top:34px;}
+  .btn-lg{padding:14px 28px;font-size:0.98rem;border-radius:12px;}
+  .hero-note{margin-top:18px;font-size:0.85rem;color:var(--ink-soft);}
+
+  /* HERO VISUAL - pipeline mock */
+  .hero-visual{
+    background:var(--paper);border:1px solid var(--line);border-radius:20px;
+    box-shadow:var(--shadow);padding:22px;position:relative;
+  }
+  .hv-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;}
+  .hv-head .dot-row{display:flex;gap:6px;}
+  .hv-head .dotc{width:9px;height:9px;border-radius:50%;background:var(--line);}
+  .hv-title{font-size:0.82rem;font-weight:600;color:var(--ink-soft);}
+  .pipeline{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;}
+  .pcol{background:var(--paper-soft);border-radius:12px;padding:12px;}
+  .pcol h4{font-size:0.72rem;color:var(--ink-soft);font-weight:600;margin-bottom:10px;text-transform:uppercase;letter-spacing:0.04em;}
+  .pcard{
+    background:#fff;border:1px solid var(--line);border-radius:10px;
+    padding:10px 12px;margin-bottom:8px;font-size:0.8rem;font-weight:600;
+  }
+  .pcard .score{
+    display:inline-block;margin-top:6px;font-size:0.68rem;font-weight:700;
+    color:var(--blue-700);background:var(--blue-100);padding:2px 8px;border-radius:999px;
+  }
+
+  /* LOGOS / TRUST */
+  .trust{padding:40px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line);}
+  .trust-inner{display:flex;align-items:center;justify-content:space-between;gap:24px;flex-wrap:wrap;}
+  .trust-label{font-size:0.8rem;color:var(--ink-soft);font-weight:600;white-space:nowrap;}
+  .trust-items{display:flex;gap:38px;flex-wrap:wrap;color:var(--ink-soft);font-weight:700;font-size:1.02rem;opacity:0.65;}
+
+  /* FEATURES */
+  .section{padding:100px 0;}
+  .section-head{max-width:640px;margin:0 auto 56px;text-align:center;}
+  .kicker{color:var(--blue-600);font-weight:700;font-size:0.85rem;letter-spacing:0.06em;text-transform:uppercase;margin-bottom:12px;}
+  .section-head h2{font-size:2.2rem;letter-spacing:-0.015em;color:var(--blue-900);line-height:1.2;}
+  .section-head p{margin-top:14px;color:var(--ink-soft);font-size:1.05rem;line-height:1.6;}
+
+  .feature-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:24px;}
+  .feature-card{
+    background:var(--paper-soft);border:1px solid var(--line);border-radius:var(--radius);
+    padding:30px 26px;transition:transform .18s ease, box-shadow .18s ease, border-color .18s ease;
+  }
+  .feature-card:hover{transform:translateY(-4px);box-shadow:var(--shadow);border-color:var(--blue-500);background:#fff;}
+  .fc-icon{
+    width:46px;height:46px;border-radius:12px;background:linear-gradient(135deg,var(--blue-500),var(--blue-700));
+    display:flex;align-items:center;justify-content:center;color:#fff;font-size:1.2rem;margin-bottom:18px;
+  }
+  .feature-card h3{font-size:1.08rem;color:var(--blue-900);margin-bottom:8px;}
+  .feature-card p{color:var(--ink-soft);font-size:0.92rem;line-height:1.55;}
+
+  /* HOW IT WORKS */
+  .steps{background:var(--paper-soft);}
+  .steps-list{display:grid;grid-template-columns:repeat(4,1fr);gap:22px;}
+  .step{position:relative;padding:26px 20px 20px;background:#fff;border:1px solid var(--line);border-radius:var(--radius);}
+  .step-num{
+    font-family:'Sora',sans-serif;font-weight:800;font-size:1.6rem;color:var(--blue-100);
+    -webkit-text-stroke:1.4px var(--blue-500);position:absolute;top:14px;right:18px;
+  }
+  .step h4{color:var(--blue-900);font-size:1rem;margin-bottom:8px;margin-top:8px;}
+  .step p{color:var(--ink-soft);font-size:0.88rem;line-height:1.5;}
+
+  /* CTA BAND */
+  .cta-band{
+    background:linear-gradient(120deg,var(--blue-700),var(--blue-900));
+    border-radius:24px;padding:64px 56px;color:#fff;
+    display:flex;align-items:center;justify-content:space-between;gap:32px;flex-wrap:wrap;
+  }
+  .cta-band h2{font-size:1.9rem;letter-spacing:-0.01em;max-width:480px;}
+  .cta-band p{color:#C9D6FF;margin-top:10px;font-size:0.98rem;}
+  .btn-white{background:#fff;color:var(--blue-700);}
+  .btn-white:hover{background:var(--blue-100);}
+
+  /* FOOTER */
+  footer{border-top:1px solid var(--line);padding:44px 0 32px;}
+  .footer-inner{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:16px;}
+  .footer-links{display:flex;gap:26px;font-size:0.85rem;color:var(--ink-soft);}
+  .copyright{font-size:0.82rem;color:var(--ink-soft);}
+
+  @media (max-width:920px){
+    .hero-grid{grid-template-columns:1fr;}
+    .feature-grid{grid-template-columns:repeat(2,1fr);}
+    .steps-list{grid-template-columns:repeat(2,1fr);}
+    .hero h1{font-size:2.3rem;}
+    .cta-band{padding:44px 28px;}
+  }
+  @media (max-width:600px){
+    .feature-grid,.steps-list{grid-template-columns:1fr;}
+    .nav-links{display:none;}
+    .trust-inner{flex-direction:column;align-items:flex-start;}
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-inner">
+    <a href="{% url 'home' %}" class="brand">
+      <span class="brand-mark">S</span> SHVYA <span style="color:var(--blue-600)">AI</span>
+    </a>
+    <div class="nav-links">
+      <a href="#features">Features</a>
+      <a href="#how-it-works">How it works</a>
+      <a href="#trust">Why SHVYA</a>
+    </div>
+    <div class="nav-cta">
+      <a href="{% url 'one-time-login' %}" class="btn btn-ghost">Login</a>
+      <a href="{% url 'crm-signup' %}" class="btn btn-primary">Get started</a>
+    </div>
+  </div>
+</nav>
+
+<header class="hero">
+  <div class="wrap hero-grid">
+    <div>
+      <span class="eyebrow"><span class="eyebrow-dot"></span> AI-Powered CRM</span>
+      <h1>AI-Powered Qualification<br>That <span>Saves Time</span></h1>
+      <p>Automatically identify lead intent, qualify prospects, and help your sales team focus only on the opportunities that matter.</p>
+      <div class="hero-actions">
+        <a href="{% url 'crm-signup' %}" class="btn btn-primary btn-lg">Get started free</a>
+        <a href="{% url 'one-time-login' %}" class="btn btn-ghost btn-lg">Login</a>
+      </div>
+      <div class="hero-note">No credit card required · Set up your workspace in minutes</div>
+    </div>
+
+    <div class="hero-visual">
+      <div class="hv-head">
+        <span class="hv-title">Pipeline — This week</span>
+        <div class="dot-row"><span class="dotc"></span><span class="dotc"></span><span class="dotc"></span></div>
+      </div>
+      <div class="pipeline">
+        <div class="pcol">
+          <h4>New</h4>
+          <div class="pcard">Aarav Mehta<span class="score">Score 92</span></div>
+          <div class="pcard">Riya Kapoor<span class="score">Score 78</span></div>
+        </div>
+        <div class="pcol">
+          <h4>Qualified</h4>
+          <div class="pcard">Devansh Rao<span class="score">Score 88</span></div>
+          <div class="pcard">Neha Iyer<span class="score">Score 95</span></div>
+        </div>
+        <div class="pcol">
+          <h4>Won</h4>
+          <div class="pcard">Kabir Singh<span class="score">Score 99</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<section class="trust" id="trust">
+  <div class="wrap trust-inner">
+    <span class="trust-label">Built for modern sales teams</span>
+    <div class="trust-items">
+      <span>WhatsApp</span>
+      <span>Instagram</span>
+      <span>Telephony</span>
+      <span>Email</span>
+      <span>Webhooks</span>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="features">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="kicker">Features</div>
+      <h2>Everything your sales team needs, in one place</h2>
+      <p>From first contact to closed deal — SHVYA AI keeps your pipeline organized and your team focused on the leads that matter most.</p>
+    </div>
+    <div class="feature-grid">
+      <div class="feature-card">
+        <div class="fc-icon">✦</div>
+        <h3>AI Lead Qualification</h3>
+        <p>Identify high-value prospects automatically using intelligent, intent-based qualification.</p>
+      </div>
+      <div class="feature-card">
+        <div class="fc-icon">✓</div>
+        <h3>Smarter Sales Workflow</h3>
+        <p>Keep your sales team focused on the right leads with automated prioritization and scoring.</p>
+      </div>
+      <div class="feature-card">
+        <div class="fc-icon">↗</div>
+        <h3>Automated Follow-up</h3>
+        <p>Reduce manual work and never lose track of a prospect with sequenced, automated reminders.</p>
+      </div>
+      <div class="feature-card">
+        <div class="fc-icon">◎</div>
+        <h3>Centralized CRM</h3>
+        <p>Manage leads, pipelines, notes, calls, and stages — all from a single connected workspace.</p>
+      </div>
+      <div class="feature-card">
+        <div class="fc-icon">☎</div>
+        <h3>Calls &amp; Telephony</h3>
+        <p>Log calls, track recordings, and sync call outcomes straight back into the lead timeline.</p>
+      </div>
+      <div class="feature-card">
+        <div class="fc-icon">⌘</div>
+        <h3>AI Copilot</h3>
+        <p>Ask your CRM questions in plain language and get instant answers pulled from your data.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section steps" id="how-it-works">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="kicker">How it works</div>
+      <h2>From new lead to closed deal</h2>
+      <p>A simple, connected flow that keeps every conversation and every stage in sync.</p>
+    </div>
+    <div class="steps-list">
+      <div class="step">
+        <div class="step-num">01</div>
+        <h4>Capture</h4>
+        <p>Leads flow in from WhatsApp, Instagram, calls, and web forms automatically.</p>
+      </div>
+      <div class="step">
+        <div class="step-num">02</div>
+        <h4>Qualify</h4>
+        <p>AI scores intent and readiness so reps know exactly who to prioritize.</p>
+      </div>
+      <div class="step">
+        <div class="step-num">03</div>
+        <h4>Engage</h4>
+        <p>Automated follow-ups and reminders keep every lead moving through the pipeline.</p>
+      </div>
+      <div class="step">
+        <div class="step-num">04</div>
+        <h4>Close</h4>
+        <p>Track calls, notes, and stages in one workspace, right through to the win.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section" style="padding-top:0;">
+  <div class="wrap">
+    <div class="cta-band">
+      <div>
+        <h2>Ready to focus your team on leads that matter?</h2>
+        <p>Set up your SHVYA AI workspace in minutes — no credit card required.</p>
+      </div>
+      <div style="display:flex;gap:12px;">
+        <a href="{% url 'crm-signup' %}" class="btn btn-white btn-lg">Get started free</a>
+        <a href="{% url 'one-time-login' %}" class="btn btn-lg" style="border:1px solid rgba(255,255,255,0.35);color:#fff;">Login</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap footer-inner">
+    <a href="{% url 'home' %}" class="brand" style="font-size:1rem;">
+      <span class="brand-mark" style="width:26px;height:26px;font-size:0.8rem;">S</span> SHVYA AI
+    </a>
+    <div class="footer-links">
+      <a href="#features">Features</a>
+      <a href="#how-it-works">How it works</a>
+      <a href="{% url 'one-time-login' %}">Login</a>
+    </div>
+    <div class="copyright">© 2026 SHVYA AI. All rights reserved.</div>
+  </div>
+</footer>
+
+</body>
+</html>

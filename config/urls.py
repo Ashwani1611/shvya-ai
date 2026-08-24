@@ -7,7 +7,7 @@ from rest_framework_simplejwt.views import (
     TokenObtainPairView,
     TokenRefreshView,
 )
-
+from core.views import HomeView
 
 urlpatterns = [
     # =========================================================
@@ -22,6 +22,12 @@ urlpatterns = [
         "admin/search/",
         admin_global_search,
         name="admin-global-search",
+    ),
+
+    path(
+    "",
+    HomeView.as_view(),
+    name="home",
     ),
 
     # =========================================================
