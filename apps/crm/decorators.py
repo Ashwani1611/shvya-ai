@@ -99,6 +99,7 @@ def crm_login_required(view_func):
         # =====================================================
 
         request.user = user
+        request.crm_user = user
 
         # =====================================================
         # CONTINUE TO VIEW

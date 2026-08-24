@@ -160,6 +160,8 @@ class SHVYAAreaAuthenticationMiddleware:
                 return
 
         request.user = user
+        if area == "dashboard":
+            request.crm_user = user
 
     # ========================================================
     # INVALID SESSION

@@ -8,6 +8,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.crm.authentication import SHVYAAPIKeyAuthentication
+from apps.accounts.models import User
 from apps.crm.models import Lead, Pipeline, Stage, LeadNote
 from apps.crm.serializers import LeadUpsertSerializer
 from services.crm.lead_service import DuplicateLeadError, upsert_lead

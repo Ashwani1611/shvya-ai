@@ -8,6 +8,7 @@ from django.utils import timezone
 from django.views.decorators.http import require_GET, require_POST
 
 from apps.crm.models import Lead, Pipeline, Stage, LeadNote
+from apps.accounts.models import User
 from .api import get_user_pipelines
 
 logger = logging.getLogger(__name__)

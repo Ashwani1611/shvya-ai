@@ -17,6 +17,7 @@ from apps.accounts.session_utils import (
 logger = logging.getLogger(__name__)
 
 from apps.organizations.models import APIKey
+from apps.crm.constants import CRM_SESSION_AREA
 
 
 class APIKeyPrincipal:
