@@ -1,0 +1,21 @@
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "config.settings.testing"
+python_files = ["test_*.py", "*_test.py"]
+testpaths = ["apps", "tests"]
+addopts = "--reuse-db"
+
+[tool.coverage.run]
+source = ["apps", "core", "services"]
+omit = [
+    "*/migrations/*",
+    "*/tests/*",
+    "*/__init__.py",
+]
+
+[tool.coverage.report]
+fail_under = 32
+show_missing = true
+exclude_lines = [
+    "pragma: no cover",
+    "raise NotImplementedError",
+]
