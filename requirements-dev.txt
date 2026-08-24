@@ -9,3 +9,4 @@ Faker==40.37.0
 
 # Architecture / lint
 import-linter==2.13
+ruff==0.16.4
