@@ -26,7 +26,7 @@ class Migration(migrations.Migration):
                 ('name', models.CharField(max_length=150)),
                 ('email', models.EmailField(max_length=254, unique=True)),
                 ('phone', models.CharField(blank=True, max_length=32)),
-                ('role', models.CharField(choices=[('admin', 'Admin'), ('supervisor', 'Supervisor'), ('agent', 'Agent')], default='agent', max_length=20)),
+                ('role', models.CharField(choices=[('admin', 'Admin'),  ('agent', 'Agent')], default='agent', max_length=20)),
                 ('is_active', models.BooleanField(default=True)),
                 ('is_staff', models.BooleanField(default=False)),
                 ('last_login_at', models.DateTimeField(blank=True, null=True)),

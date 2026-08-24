@@ -5,4 +5,4 @@ PRIORITY_SEQUENCE_STEP = 70
 PRIORITY_EMAIL_SEQUENCE = 60
 PRIORITY_WEBHOOK_REMINDER = 50
 
-USER_ROLES = ("admin", "supervisor", "agent")
+USER_ROLES = ("admin",  "agent")

@@ -63,7 +63,6 @@ Never store the raw API key.
 Roles:
 
 - admin
-- supervisor
 - agent
 
 Email is globally unique, not organization-scoped.

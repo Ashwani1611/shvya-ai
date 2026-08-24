@@ -24,6 +24,6 @@ class Migration(migrations.Migration):
         migrations.AlterField(
             model_name='user',
             name='role',
-            field=models.CharField(choices=[('superadmin', 'Superadmin'), ('admin', 'Admin'), ('supervisor', 'Supervisor'), ('agent', 'Agent')], default='agent', max_length=20),
+            field=models.CharField(choices=[('superadmin', 'Superadmin'), ('admin', 'Admin'),  ('agent', 'Agent')], default='agent', max_length=20),
         ),
     ]
