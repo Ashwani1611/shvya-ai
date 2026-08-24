@@ -1,6 +1,6 @@
 from django.apps import AppConfig
 
-class SuperadminConfig(AppConfig):
+class ChannelsConfig(AppConfig):
     default_auto_field = 'django.db.models.BigAutoField'
-    name = 'apps.superadmin'
-    label = 'superadmin'
+    name = 'apps.channels'
+    label = 'channels'

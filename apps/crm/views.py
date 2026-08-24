@@ -27,7 +27,7 @@ from apps.accounts.session_utils import (
     set_authenticated_user,
 )
 
-from services.lead_service import DuplicateLeadError, upsert_lead
+from services.crm.lead_service import DuplicateLeadError, upsert_lead
 
 
 logger = logging.getLogger(__name__)

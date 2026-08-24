@@ -1,6 +1,7 @@
 import secrets
 import uuid
 
+from django.conf import settings
 from django.contrib.auth.hashers import check_password, make_password
 from django.db import models
 
@@ -22,6 +23,7 @@ class OrganizationTag(models.Model):
     )
 
     class Meta:
+        app_label = "organizations"
         ordering = ["name"]
 
     def __str__(self):
@@ -87,6 +89,7 @@ class OrganizationPayment(models.Model):
     )
 
     class Meta:
+        app_label = "organizations"
         ordering = [
             "-payment_date",
             "-created_at",
@@ -149,7 +152,7 @@ class Organization(models.Model):
     # ---------------------------------------------------------
 
     assigned_poc = models.ForeignKey(
-        "accounts.User",
+        settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
@@ -266,6 +269,7 @@ class Organization(models.Model):
     )
 
     class Meta:
+        app_label = "organizations"
         ordering = ["-created_at"]
 
     def __str__(self):
@@ -355,6 +359,7 @@ class APIKey(models.Model):
     )
 
     class Meta:
+        app_label = "organizations"
         ordering = ["-created_at"]
 
         verbose_name = "Integration API Key"

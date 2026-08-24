@@ -1,6 +1,12 @@
 """
-Django settings for SHVYA AI — Phase 1
-Foundation: Organization, User, Pipeline, Stage, Lead on PostgreSQL.
+Django settings for SHVYA AI.
+
+Shared base settings -- imported by:
+
+    config/settings/local.py       (development)
+    config/settings/production.py  (production)
+
+Do not import this module directly as DJANGO_SETTINGS_MODULE.
 """
 
 from pathlib import Path
@@ -9,7 +15,12 @@ from datetime import timedelta
 from decouple import config
 
 
-BASE_DIR = Path(__file__).resolve().parent.parent
+# ---------------------------------------------------------------------------
+# This file lives at config/settings/base.py, so BASE_DIR needs THREE
+# .parent calls to reach the project root (not two).
+# ---------------------------------------------------------------------------
+
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
 
 # ---------------------------------------------------------------------------
@@ -31,7 +42,68 @@ ALLOWED_HOSTS = config(
 
 
 # ---------------------------------------------------------------------------
+# Security hardening
+#
+# No-ops under DEBUG=True (local dev over plain HTTP); activate
+# automatically once DEBUG=False in a real deployment.
+# CSRF_TRUSTED_ORIGINS must be set explicitly per-environment, e.g.
+# CSRF_TRUSTED_ORIGINS=https://app.shvya.ai in that environment's .env.
+# ---------------------------------------------------------------------------
+
+SESSION_COOKIE_SECURE = not DEBUG
+
+CSRF_COOKIE_SECURE = not DEBUG
+
+SECURE_SSL_REDIRECT = not DEBUG
+
+SECURE_HSTS_SECONDS = 31536000 if not DEBUG else 0
+
+SECURE_HSTS_INCLUDE_SUBDOMAINS = not DEBUG
+
+SECURE_HSTS_PRELOAD = not DEBUG
+
+SECURE_CONTENT_TYPE_NOSNIFF = True
+
+X_FRAME_OPTIONS = "DENY"
+
+CSRF_TRUSTED_ORIGINS = [
+    origin
+    for origin in config(
+        "CSRF_TRUSTED_ORIGINS",
+        default="",
+    ).split(",")
+    if origin
+]
+
+
+# ---------------------------------------------------------------------------
+# Cache -- Redis. Used for login rate limiting (core.utils) and will be
+# used by every future app needing caching, instead of each app wiring
+# its own cache client.
+#
+# Native Django Redis backend (Django 4+) -- no extra package needed,
+# `redis` is already a dependency for Celery.
+# ---------------------------------------------------------------------------
+
+REDIS_URL = config(
+    "REDIS_URL",
+    default="redis://localhost:6379/0",
+)
+
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.redis.RedisCache",
+        "LOCATION": REDIS_URL,
+    },
+}
+
+
+# ---------------------------------------------------------------------------
 # Applications
+#
+# Grouped by domain to stay readable as the app count grows. Every new
+# feature app gets added under its matching domain block below --
+# don't add feature apps to the "Core platform" group.
 # ---------------------------------------------------------------------------
 
 INSTALLED_APPS = [
@@ -48,11 +120,22 @@ INSTALLED_APPS = [
     "rest_framework_simplejwt",
     "corsheaders",
 
-    # SHVYA apps — Phase 1
+    # --- Core & Platform Apps ---
     "apps.organizations",
     "apps.accounts",
     "apps.crm",
     "apps.superadmin",
+
+    # --- Business & AI Feature Apps ---
+    "apps.channels",
+    "apps.calls",
+    "apps.copilot",
+    "apps.knowledge",
+    "apps.triggers",
+    "apps.followups",
+    "apps.analytics",
+    "apps.integrations",
+    "apps.teams",
 ]
 
 
@@ -147,19 +230,6 @@ PASSWORD_RESET_TIMEOUT = 3600
 # During local development, password-reset emails are printed directly
 # into the Django development server terminal.
 #
-# Example:
-#
-#     python manage.py runserver
-#
-# Then when a user requests:
-#
-#     /dashboard/login/
-#
-# -> Forgot Password
-#
-# Django will print the password-reset email and reset URL in the
-# terminal window.
-#
 # This allows the complete password-reset flow to be tested without
 # configuring an external SMTP provider yet.
 # ---------------------------------------------------------------------------
@@ -172,18 +242,6 @@ EMAIL_BACKEND = config(
 
 # ---------------------------------------------------------------------------
 # Email Sender
-# ---------------------------------------------------------------------------
-#
-# Used as the "From" address for password-reset emails.
-#
-# In local development this value is only used as the sender displayed
-# inside the console-generated email.
-#
-# Later this can be changed to:
-#
-#     noreply@shvya.ai
-#
-# or another verified SHVYA email address.
 # ---------------------------------------------------------------------------
 
 DEFAULT_FROM_EMAIL = config(
@@ -255,6 +313,7 @@ EMAIL_HOST_PASSWORD = config(
 #
 #     templates/superadmin/
 #     templates/crm/
+#     templates/channels/whatsapp/
 #     etc.
 # ---------------------------------------------------------------------------
 
@@ -293,7 +352,7 @@ TEMPLATES = [
 
 
 # ---------------------------------------------------------------------------
-# Database — PostgreSQL
+# Database -- PostgreSQL
 # SHVYA does not use SQLite, even in development.
 # ---------------------------------------------------------------------------
 
@@ -330,7 +389,7 @@ DATABASES = {
 
 
 # ---------------------------------------------------------------------------
-# Custom user model — multi-tenant
+# Custom user model -- multi-tenant
 # User belongs to an Organization.
 # ---------------------------------------------------------------------------
 
@@ -367,6 +426,10 @@ AUTH_PASSWORD_VALIDATORS = [
 
 # ---------------------------------------------------------------------------
 # REST Framework + JWT
+#
+# DEFAULT_PAGINATION_CLASS and EXCEPTION_HANDLER point at core/ so
+# every app -- current and future -- gets consistent pagination and
+# error-response shape without repeating DRF boilerplate per app.
 # ---------------------------------------------------------------------------
 
 REST_FRAMEWORK = {
@@ -379,7 +442,11 @@ REST_FRAMEWORK = {
     ),
 
     "DEFAULT_PAGINATION_CLASS": (
-        "rest_framework.pagination.LimitOffsetPagination"
+        "core.pagination.StandardResultsPagination"
+    ),
+
+    "EXCEPTION_HANDLER": (
+        "core.exceptions.api_exception_handler"
     ),
 
     "PAGE_SIZE": 25,
