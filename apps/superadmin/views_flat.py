@@ -326,11 +326,18 @@ def organization_create_view(request):
 
             organization = form.save()
 
+            AuditLog.record(
+                actor=request.user,
+                action=AuditLog.Action.ORGANIZATION_CREATED,
+                target=organization,
+                request=request,
+            )
+
             return redirect(
                 "superadmin-organization-detail",
                 organization_id=organization.id,
             )
-
+        
         return render(
             request,
             "superadmin/org_create.html",
@@ -469,10 +476,18 @@ def organization_pipeline_create_view(
 
             form.save()
 
+            AuditLog.record(
+                actor=request.user,
+                action=AuditLog.Action.ORGANIZATION_UPDATED,
+                target=organization,
+                request=request,
+            )
+
             return redirect(
                 "superadmin-organization-detail",
                 organization_id=organization.id,
             )
+        
 
         return render(
             request,
@@ -763,6 +778,14 @@ def organization_user_create_view(
         )
 
         user.refresh_from_db()
+
+        AuditLog.record(
+            actor=request.user,
+            action=AuditLog.Action.USER_CREATED,
+            target=user,
+            request=request,
+            organization_id=str(organization.id),
+        )
 
         return redirect(
             "superadmin-organization-detail",
