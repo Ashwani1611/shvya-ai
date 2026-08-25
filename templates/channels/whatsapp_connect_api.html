@@ -1,0 +1,228 @@
+{% load static %}
+
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+    <meta charset="UTF-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
+
+    <title>SHVYA AI — Connect API</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <link
+        rel="stylesheet"
+        href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css"
+    >
+
+</head>
+
+
+<body class="bg-gray-50 text-gray-900">
+
+<div class="min-h-screen">
+
+
+    <!-- =====================================================
+         HEADER
+         ===================================================== -->
+
+    <header class="border-b border-gray-200 bg-white">
+
+        <div
+            class="mx-auto flex max-w-3xl items-center justify-between px-6 py-4"
+        >
+
+            <div>
+
+                <h1 class="text-xl font-semibold">
+                    Connect API
+                </h1>
+
+                <p class="mt-1 text-sm text-gray-500">
+                    Enter your Meta WhatsApp Business Platform credentials.
+                </p>
+
+            </div>
+
+
+            
+                href="{% url 'whatsapp-connect-choice' %}"
+                class="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
+            >
+
+                <i class="ti ti-arrow-left"></i>
+
+                Back
+
+            </a>
+
+        </div>
+
+    </header>
+
+
+
+    <!-- =====================================================
+         MAIN — FORM
+         ===================================================== -->
+
+    <main class="mx-auto max-w-3xl px-6 py-10">
+
+        <div class="rounded-xl border border-gray-200 bg-white p-8 shadow-sm">
+
+
+            {% if form.non_field_errors %}
+
+                <div class="mb-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+
+                    {% for error in form.non_field_errors %}
+                        {{ error }}
+                    {% endfor %}
+
+                </div>
+
+            {% endif %}
+
+
+            <div class="mb-6 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-700">
+
+                <i class="ti ti-info-circle"></i>
+
+                You'll need a <strong>phone_number_id</strong> and a
+                <strong>system-user access token</strong> from your Meta
+                WhatsApp Business Platform app. Your token is encrypted
+                and never shown again after saving.
+
+            </div>
+
+
+            <form
+                method="post"
+                action="{% url 'whatsapp-connect-api' %}"
+            >
+
+                {% csrf_token %}
+
+
+                <!-- PHONE NUMBER ID -->
+
+                <div class="mb-5">
+
+                    <label class="mb-1.5 block text-sm font-medium text-gray-700">
+                        Phone Number ID
+                    </label>
+
+                    <input
+                        type="text"
+                        name="phone_number_id"
+                        value="{{ form.phone_number_id.value|default:'' }}"
+                        placeholder="e.g. 109876543210987"
+                        class="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    >
+
+                    {% if form.phone_number_id.errors %}
+
+                        <p class="mt-1.5 text-sm text-red-600">
+                            {{ form.phone_number_id.errors.0 }}
+                        </p>
+
+                    {% endif %}
+
+                </div>
+
+
+                <!-- WABA ID -->
+
+                <div class="mb-5">
+
+                    <label class="mb-1.5 block text-sm font-medium text-gray-700">
+                        WhatsApp Business Account ID
+                        <span class="font-normal text-gray-400">(optional)</span>
+                    </label>
+
+                    <input
+                        type="text"
+                        name="waba_id"
+                        value="{{ form.waba_id.value|default:'' }}"
+                        placeholder="e.g. 123456789012345"
+                        class="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    >
+
+                </div>
+
+
+                <!-- DISPLAY PHONE NUMBER -->
+
+                <div class="mb-5">
+
+                    <label class="mb-1.5 block text-sm font-medium text-gray-700">
+                        Display Phone Number
+                        <span class="font-normal text-gray-400">(optional)</span>
+                    </label>
+
+                    <input
+                        type="text"
+                        name="display_phone_number"
+                        value="{{ form.display_phone_number.value|default:'' }}"
+                        placeholder="e.g. +91 98765 43210"
+                        class="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    >
+
+                </div>
+
+
+                <!-- ACCESS TOKEN -->
+
+                <div class="mb-8">
+
+                    <label class="mb-1.5 block text-sm font-medium text-gray-700">
+                        Access Token
+                    </label>
+
+                    <input
+                        type="password"
+                        name="access_token"
+                        placeholder="System-user access token"
+                        class="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    >
+
+                    {% if form.access_token.errors %}
+
+                        <p class="mt-1.5 text-sm text-red-600">
+                            {{ form.access_token.errors.0 }}
+                        </p>
+
+                    {% endif %}
+
+                    <p class="mt-1.5 text-xs text-gray-400">
+                        Stored encrypted. Never displayed again after saving.
+                    </p>
+
+                </div>
+
+
+                <button
+                    type="submit"
+                    class="w-full rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700"
+                >
+                    Connect WhatsApp
+                </button>
+
+            </form>
+
+        </div>
+
+    </main>
+
+</div>
+
+</body>
+
+</html>

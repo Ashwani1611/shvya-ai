@@ -93,6 +93,33 @@ urlpatterns = [
     ),
 
     # =========================================================
+    # WhatsApp Channels
+    #
+    # Includes (see apps/channels/urls.py):
+    #
+    # /dashboard/whatsapp/settings/
+    # /dashboard/whatsapp/connect/
+    # /dashboard/whatsapp/connect/api/
+    # /dashboard/whatsapp/connect/hosted/
+    # /dashboard/whatsapp/disconnect/
+    #
+    # Nested under dashboard/ so it shares the CRM session area
+    # (crm_login_required / request.crm_user).
+    # =========================================================
+
+        path(
+        "dashboard/whatsapp/",
+        include("apps.channels.urls"),
+    ),
+
+    # path(
+    #     "webhooks/whatsapp/",
+    #     views_flat.whatsapp_webhook_view,
+    #     name="whatsapp-webhook",
+    # ),
+
+
+    # =========================================================
     # Super Admin Console
     # =========================================================
 
@@ -100,4 +127,6 @@ urlpatterns = [
         "superadmin/",
         include("apps.superadmin.urls"),
     ),
+
+    
 ]

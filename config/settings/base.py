@@ -523,3 +523,20 @@ MEDIA_ROOT = BASE_DIR / "media"
 # ---------------------------------------------------------------------------
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+# ============================================================
+# WhatsApp (Meta) webhook
+# ============================================================
+#
+# META_VERIFY_TOKEN: shared secret you choose yourself and enter
+# into Meta's App Dashboard webhook config -- Meta echoes it back
+# on the GET verification handshake. One value per SHVYA
+# deployment, not per organization (Meta calls a single webhook
+# URL regardless of how many orgs/numbers are connected).
+#
+# META_APP_SECRET: from Meta App Dashboard > Settings > Basic.
+# Used to verify X-Hub-Signature-256 on incoming webhook POSTs so
+# we can trust the payload actually came from Meta.
+
+META_VERIFY_TOKEN = config("META_VERIFY_TOKEN", default="")
+META_APP_SECRET = config("META_APP_SECRET", default="")
