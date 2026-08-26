@@ -3,7 +3,7 @@ import logging
 from datetime import datetime
 
 from django.core.exceptions import ValidationError as DjangoValidationError
-from django.db.models import Q
+from django.db.models import Q, Max
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, render
 from django.utils import timezone
@@ -22,7 +22,14 @@ from apps.crm.models import (
 
 from .api import STAGE_THEMES, get_user_pipelines
 
+
 logger = logging.getLogger(__name__)
+
+
+# ============================================================
+# DASHBOARD
+# ============================================================
+
 
 @crm_login_required
 def dashboard_view(request):
@@ -30,13 +37,13 @@ def dashboard_view(request):
     user = request.crm_user
 
     pending_reminder_count = (
-    LeadReminder.objects
-    .filter(
-        lead__organization=user.organization,
-        status="pending",
+        LeadReminder.objects
+        .filter(
+            lead__organization=user.organization,
+            status="pending",
+        )
+        .count()
     )
-    .count()
-)
 
     pipelines = get_user_pipelines(
         user
@@ -112,16 +119,20 @@ def dashboard_view(request):
         "crm/dashboard.html",
         {
             "pipelines": pipelines,
+
             "selected_pipeline_id": (
-            str(
-                selected_pipeline_id
-            )
-            if selected_pipeline_id
-            else None
-    ),
-    "crm_user": user,
-    "pending_reminder_count": pending_reminder_count,
-},
+                str(
+                    selected_pipeline_id
+                )
+                if selected_pipeline_id
+                else None
+            ),
+
+            "crm_user": user,
+
+            "pending_reminder_count":
+                pending_reminder_count,
+        },
     )
 
     response["Cache-Control"] = (
@@ -134,59 +145,44 @@ def dashboard_view(request):
     return response
 
 
-@crm_login_required
-@require_GET
-def lead_table_partial(request):
+# ============================================================
+# INTERNAL LEAD TABLE CONTEXT BUILDER
+# ============================================================
 
-    user = request.crm_user
+
+def _build_lead_table_context(
+    request,
+    user,
+    pipeline,
+    active_stage_id="",
+):
+    """
+    Build the complete context required by lead_table.html.
+
+    This reuses the existing CRM lead/filter logic so that
+    normal table requests and stage-management refreshes render
+    the same Lead Cards and stage panels.
+
+    IMPORTANT:
+        This function does not modify Lead Card behavior.
+    """
 
     organization = user.organization
-
-    pipeline_id = request.GET.get(
-        "pipeline"
-    )
 
     search = request.GET.get(
         "search",
         "",
     ).strip()
 
-    if (
-        not pipeline_id
-        or pipeline_id == "None"
-    ):
-
-        return render(
-            request,
-            "crm/partials/lead_table.html",
-            {
-                "stage_groups": [],
-                "all_stages": [],
-            },
+    stages = (
+        Stage.objects
+        .filter(
+            pipeline=pipeline,
+            is_active=True,
         )
-
-    pipeline = get_user_pipelines(
-         user
-        ).filter(
-        id=pipeline_id,
-    ).first()
-
-    if not pipeline:
-
-        return render(
-            request,
-            "crm/partials/lead_table.html",
-            {
-                "stage_groups": [],
-                "all_stages": [],
-            },
+        .order_by(
+            "display_order"
         )
-
-    stages = Stage.objects.filter(
-        pipeline=pipeline,
-        is_active=True,
-    ).order_by(
-        "display_order"
     )
 
     leads_qs = (
@@ -195,8 +191,14 @@ def lead_table_partial(request):
             organization=organization,
             pipeline=pipeline,
         )
-        .select_related("stage")
+        .select_related(
+            "stage"
+        )
     )
+
+    # --------------------------------------------------------
+    # SEARCH
+    # --------------------------------------------------------
 
     if search:
 
@@ -211,6 +213,10 @@ def lead_table_partial(request):
                 email__icontains=search
             )
         )
+
+    # --------------------------------------------------------
+    # CORE FILTERS
+    # --------------------------------------------------------
 
     filter_name = request.GET.get(
         "filter_name",
@@ -266,6 +272,12 @@ def lead_table_partial(request):
             stage_id=filter_stage
         )
 
+    # --------------------------------------------------------
+    # FILTER PIPELINE
+    #
+    # This preserves the existing filter behavior.
+    # --------------------------------------------------------
+
     filter_pipeline = request.GET.get(
         "filter_pipeline"
     )
@@ -273,11 +285,13 @@ def lead_table_partial(request):
     if filter_pipeline:
 
         selected_filter_pipeline = (
-            Pipeline.objects.filter(
+            Pipeline.objects
+            .filter(
                 organization=organization,
                 id=filter_pipeline,
                 is_active=True,
-            ).first()
+            )
+            .first()
         )
 
         if selected_filter_pipeline:
@@ -286,11 +300,15 @@ def lead_table_partial(request):
                 selected_filter_pipeline
             )
 
-            stages = Stage.objects.filter(
-                pipeline=pipeline,
-                is_active=True,
-            ).order_by(
-                "display_order"
+            stages = (
+                Stage.objects
+                .filter(
+                    pipeline=pipeline,
+                    is_active=True,
+                )
+                .order_by(
+                    "display_order"
+                )
             )
 
             leads_qs = (
@@ -299,7 +317,9 @@ def lead_table_partial(request):
                     organization=organization,
                     pipeline=pipeline,
                 )
-                .select_related("stage")
+                .select_related(
+                    "stage"
+                )
             )
 
             if search:
@@ -347,13 +367,15 @@ def lead_table_partial(request):
                 )
 
     # --------------------------------------------------------
-    # Attribute filters
+    # ATTRIBUTE FILTERS
     # --------------------------------------------------------
 
     for key, value in request.GET.items():
 
         if (
-            key.startswith("attr_")
+            key.startswith(
+                "attr_"
+            )
             and value
         ):
 
@@ -369,7 +391,7 @@ def lead_table_partial(request):
             )
 
     # --------------------------------------------------------
-    # Created date
+    # CREATED DATE
     # --------------------------------------------------------
 
     created_after = request.GET.get(
@@ -393,7 +415,7 @@ def lead_table_partial(request):
         )
 
     # --------------------------------------------------------
-    # Stage groups
+    # STAGE GROUPS
     # --------------------------------------------------------
 
     stage_groups = []
@@ -413,6 +435,11 @@ def lead_table_partial(request):
             lead.days_in_stage = (
                 timezone.now()
                 - lead.updated_at
+            ).days
+
+            lead.days_in_pipeline = (
+                timezone.now()
+                - lead.created_at
             ).days
 
             lead.call_count = (
@@ -492,15 +519,715 @@ def lead_table_partial(request):
             }
         )
 
+    # --------------------------------------------------------
+    # ACTIVE STAGE
+    #
+    # The active stage is UI state only.
+    # It does NOT filter the lead queryset.
+    #
+    # That is important because the stage panels must each
+    # retain their own complete lead lists.
+    # --------------------------------------------------------
+
+    valid_stage_ids = {
+        str(stage.id)
+        for stage in stages
+    }
+
+    if (
+        active_stage_id
+        and active_stage_id not in valid_stage_ids
+    ):
+
+        active_stage_id = ""
+
+    if (
+        not active_stage_id
+        and stages.exists()
+    ):
+
+        active_stage_id = str(
+            stages.first().id
+        )
+
+    return {
+        "stage_groups": stage_groups,
+
+        "all_stages": stages,
+
+        "selected_pipeline_id": str(
+            pipeline.id
+        ),
+
+        "active_stage_id":
+            active_stage_id,
+    }
+
+
+# ============================================================
+# LEAD TABLE
+# ============================================================
+
+
+@crm_login_required
+@require_GET
+def lead_table_partial(
+    request
+):
+
+    user = request.crm_user
+
+    organization = user.organization
+
+    pipeline_id = request.GET.get(
+        "pipeline"
+    )
+
+    active_stage_id = (
+        request.GET.get(
+            "stage",
+            "",
+        )
+        .strip()
+    )
+
+    if (
+        not pipeline_id
+        or pipeline_id == "None"
+    ):
+
+        return render(
+            request,
+            "crm/partials/lead_table.html",
+            {
+                "stage_groups": [],
+                "all_stages": [],
+                "selected_pipeline_id": "",
+                "active_stage_id": "",
+            },
+        )
+
+    pipeline = (
+        get_user_pipelines(
+            user
+        )
+        .filter(
+            id=pipeline_id,
+        )
+        .first()
+    )
+
+    if not pipeline:
+
+        return render(
+            request,
+            "crm/partials/lead_table.html",
+            {
+                "stage_groups": [],
+                "all_stages": [],
+                "selected_pipeline_id": "",
+                "active_stage_id": "",
+            },
+        )
+
+    context = _build_lead_table_context(
+        request=request,
+        user=user,
+        pipeline=pipeline,
+        active_stage_id=active_stage_id,
+    )
 
     return render(
         request,
         "crm/partials/lead_table.html",
-        {
-            "stage_groups": stage_groups,
-            "all_stages": stages,
-        },
+        context,
     )
+
+
+# ============================================================
+# CREATE STAGE
+# ============================================================
+
+@crm_login_required
+@require_POST
+def lead_stage_create(
+    request,
+):
+
+    user = request.crm_user
+
+    organization = user.organization
+
+
+    pipeline_id = (
+        request.POST.get(
+            "pipeline",
+            "",
+        )
+        .strip()
+    )
+
+
+    active_stage_id = (
+        request.POST.get(
+            "active_stage",
+            "",
+        )
+        .strip()
+    )
+
+
+    name = (
+        request.POST.get(
+            "name",
+            "",
+        )
+        .strip()
+    )
+
+
+    if not pipeline_id:
+
+        return HttpResponse(
+            "Pipeline is required.",
+            status=400,
+        )
+
+
+    if not name:
+
+        return HttpResponse(
+            "Stage name is required.",
+            status=400,
+        )
+
+
+    # --------------------------------------------------------
+    # ACCESSIBLE PIPELINE
+    # --------------------------------------------------------
+
+    pipeline = (
+        get_user_pipelines(
+            user
+        )
+        .filter(
+            organization=organization,
+            id=pipeline_id,
+            is_active=True,
+        )
+        .first()
+    )
+
+
+    if not pipeline:
+
+        return HttpResponse(
+            "Pipeline not accessible.",
+            status=403,
+        )
+
+
+    # --------------------------------------------------------
+    # DUPLICATE NAME
+    # --------------------------------------------------------
+
+    if (
+        Stage.objects
+        .filter(
+            pipeline=pipeline,
+            is_active=True,
+            name__iexact=name,
+        )
+        .exists()
+    ):
+
+        return HttpResponse(
+            "A stage with this name already exists.",
+            status=400,
+        )
+
+
+    # --------------------------------------------------------
+    # DISPLAY ORDER
+    # --------------------------------------------------------
+
+    max_order = (
+        Stage.objects
+        .filter(
+            pipeline=pipeline,
+        )
+        .aggregate(
+            max_order=Max(
+                "display_order"
+            )
+        )
+        .get(
+            "max_order"
+        )
+    )
+
+
+    Stage.objects.create(
+        pipeline=pipeline,
+        name=name,
+        display_order=(
+            (max_order or 0) + 1
+        ),
+        is_active=True,
+    )
+
+
+    # --------------------------------------------------------
+    # KEEP SELECTED STAGE
+    # --------------------------------------------------------
+
+    context = _build_lead_table_context(
+        request=request,
+        user=user,
+        pipeline=pipeline,
+        active_stage_id=active_stage_id,
+    )
+
+
+    return render(
+        request,
+        "crm/partials/lead_table.html",
+        context,
+    )
+
+
+# ============================================================
+# RENAME STAGE
+# ============================================================
+
+@crm_login_required
+@require_POST
+def lead_stage_rename(
+    request,
+    stage_id,
+):
+
+    user = request.crm_user
+
+    organization = user.organization
+
+
+    name = (
+        request.POST.get(
+            "name",
+            "",
+        )
+        .strip()
+    )
+
+
+    active_stage_id = (
+        request.POST.get(
+            "active_stage",
+            "",
+        )
+        .strip()
+    )
+
+
+    if not name:
+
+        return HttpResponse(
+            "Stage name is required.",
+            status=400,
+        )
+
+
+# ============================================================
+# DELETE STAGE
+# ============================================================
+
+
+@crm_login_required
+@require_POST
+def lead_stage_delete(
+    request,
+    stage_id,
+):
+
+    user = request.crm_user
+
+    organization = user.organization
+
+    pipeline_id = (
+        request.POST.get(
+            "pipeline",
+            "",
+        )
+        .strip()
+    )
+
+    active_stage_id = (
+        request.POST.get(
+            "active_stage",
+            "",
+        )
+        .strip()
+    )
+
+
+    # --------------------------------------------------------
+    # LOAD ONLY A STAGE THE USER CAN ACCESS
+    # --------------------------------------------------------
+
+    allowed_pipelines = (
+        get_user_pipelines(
+            user
+        )
+        .filter(
+            organization=organization,
+            is_active=True,
+        )
+    )
+
+
+    stage = (
+        Stage.objects
+        .filter(
+            id=stage_id,
+            pipeline__in=allowed_pipelines,
+            is_active=True,
+        )
+        .select_related(
+            "pipeline",
+        )
+        .first()
+    )
+
+
+    if not stage:
+
+        return HttpResponse(
+            "Stage not found.",
+            status=404,
+        )
+
+
+    # --------------------------------------------------------
+    # PROTECT LEADS
+    #
+    # Do not delete a stage while leads are still assigned
+    # to it.
+    # --------------------------------------------------------
+
+    has_leads = (
+        Lead.objects
+        .filter(
+            organization=organization,
+            pipeline=stage.pipeline,
+            stage=stage,
+        )
+        .exists()
+    )
+
+
+    if has_leads:
+
+        return HttpResponse(
+            (
+                "This stage cannot be deleted because "
+                "it still contains leads. Move the leads "
+                "to another stage first."
+            ),
+            status=409,
+        )
+
+
+    # --------------------------------------------------------
+    # SOFT DELETE
+    #
+    # Existing architecture already uses is_active=True
+    # when displaying stages, so this safely removes the
+    # stage from the CRM UI without physically deleting it.
+    # --------------------------------------------------------
+
+    stage.is_active = False
+
+    stage.save(
+        update_fields=[
+            "is_active",
+        ]
+    )
+
+
+    # --------------------------------------------------------
+    # IF THE DELETED STAGE WAS ACTIVE, CLEAR THE ACTIVE STAGE
+    # --------------------------------------------------------
+
+    if (
+        active_stage_id
+        == str(stage.id)
+    ):
+
+        active_stage_id = ""
+
+
+    # --------------------------------------------------------
+    # REBUILD THE CURRENT TABLE
+    # --------------------------------------------------------
+
+    context = _build_lead_table_context(
+        request=request,
+        user=user,
+        pipeline=stage.pipeline,
+        active_stage_id=active_stage_id,
+    )
+
+
+    return render(
+        request,
+        "crm/partials/lead_table.html",
+        context,
+    )
+
+    # --------------------------------------------------------
+    # ALLOWED PIPELINES
+    # --------------------------------------------------------
+
+    allowed_pipelines = (
+        get_user_pipelines(
+            user
+        )
+        .filter(
+            organization=organization,
+            is_active=True,
+        )
+    )
+
+
+    # --------------------------------------------------------
+    # LOAD STAGE
+    # --------------------------------------------------------
+
+    stage = (
+        Stage.objects
+        .filter(
+            id=stage_id,
+            pipeline__in=allowed_pipelines,
+            is_active=True,
+        )
+        .select_related(
+            "pipeline",
+        )
+        .first()
+    )
+
+
+    if not stage:
+
+        return HttpResponse(
+            "Stage not found.",
+            status=404,
+        )
+
+
+    # --------------------------------------------------------
+    # DUPLICATE NAME
+    # --------------------------------------------------------
+
+    if (
+        Stage.objects
+        .filter(
+            pipeline=stage.pipeline,
+            is_active=True,
+            name__iexact=name,
+        )
+        .exclude(
+            id=stage.id,
+        )
+        .exists()
+    ):
+
+        return HttpResponse(
+            "A stage with this name already exists.",
+            status=400,
+        )
+
+
+    # --------------------------------------------------------
+    # RENAME
+    # --------------------------------------------------------
+
+    stage.name = name
+
+    stage.save(
+        update_fields=[
+            "name",
+        ]
+    )
+
+
+    # --------------------------------------------------------
+    # RENDER UPDATED TABLE
+    #
+    # No redirect.
+    # No browser navigation.
+    # Only #lead-table-container is replaced.
+    # --------------------------------------------------------
+
+    context = _build_lead_table_context(
+        request=request,
+        user=user,
+        pipeline=stage.pipeline,
+        active_stage_id=(
+            active_stage_id
+            or str(stage.id)
+        ),
+    )
+
+
+    return render(
+        request,
+        "crm/partials/lead_table.html",
+        context,
+    )
+
+
+# ============================================================
+# RENAME STAGE
+# ============================================================
+
+
+@crm_login_required
+@require_POST
+def lead_stage_rename(
+    request,
+    stage_id,
+):
+
+    user = request.crm_user
+
+    organization = user.organization
+
+
+    name = (
+        request.POST.get(
+            "name",
+            "",
+        )
+        .strip()
+    )
+
+    active_stage_id = (
+        request.POST.get(
+            "active_stage",
+            "",
+        )
+        .strip()
+    )
+
+
+    if not name:
+
+        return HttpResponse(
+            "Stage name is required.",
+            status=400,
+        )
+
+
+    # --------------------------------------------------------
+    # PIPELINE ACCESS
+    # --------------------------------------------------------
+
+    allowed_pipelines = (
+        get_user_pipelines(
+            user
+        )
+        .filter(
+            organization=organization,
+            is_active=True,
+        )
+    )
+
+
+    stage = (
+        Stage.objects
+        .filter(
+            id=stage_id,
+            pipeline__in=allowed_pipelines,
+            is_active=True,
+        )
+        .select_related(
+            "pipeline",
+        )
+        .first()
+    )
+
+
+    if not stage:
+
+        return HttpResponse(
+            "Stage not found.",
+            status=404,
+        )
+
+
+    # --------------------------------------------------------
+    # DUPLICATE NAME
+    # --------------------------------------------------------
+
+    if (
+        Stage.objects
+        .filter(
+            pipeline=stage.pipeline,
+            is_active=True,
+            name__iexact=name,
+        )
+        .exclude(
+            id=stage.id,
+        )
+        .exists()
+    ):
+
+        return HttpResponse(
+            "A stage with this name already exists.",
+            status=400,
+        )
+
+
+    # --------------------------------------------------------
+    # RENAME
+    # --------------------------------------------------------
+
+    stage.name = name
+
+    stage.save(
+        update_fields=[
+            "name",
+        ]
+    )
+
+
+    # --------------------------------------------------------
+    # RENDER UPDATED TABLE PARTIAL
+    #
+    # IMPORTANT:
+    # No redirect.
+    # No browser navigation.
+    # --------------------------------------------------------
+
+    context = _build_lead_table_context(
+        request=request,
+        user=user,
+        pipeline=stage.pipeline,
+        active_stage_id=(
+            active_stage_id
+            or str(stage.id)
+        ),
+    )
+
+
+    return render(
+        request,
+        "crm/partials/lead_table.html",
+        context,
+    )
+
 
 # ============================================================
 # LEAD DETAIL
@@ -518,31 +1245,16 @@ def lead_detail(
 
     organization = user.organization
 
-    # --------------------------------------------------------
-    # LOAD LEAD
-    #
-    # Always resolve the lead inside the current organization.
-    # This preserves tenant isolation.
-    # --------------------------------------------------------
-
     lead = get_object_or_404(
         Lead,
         id=lead_id,
         organization=organization,
     )
 
-    # --------------------------------------------------------
-    # CALLS
-    # --------------------------------------------------------
-
     calls = (
         lead.calls
         .order_by("-created_at")
     )
-
-    # --------------------------------------------------------
-    # NOTES
-    # --------------------------------------------------------
 
     notes = (
         LeadNote.objects
@@ -552,27 +1264,15 @@ def lead_detail(
         .order_by("-created_at")
     )
 
-    # --------------------------------------------------------
-    # REMINDERS
-    # --------------------------------------------------------
-
     reminders = (
         lead.reminders
         .order_by("-due_at")
     )
 
-    # --------------------------------------------------------
-    # CONTACTS
-    # --------------------------------------------------------
-
     contacts = (
         lead.contacts
         .all()
     )
-
-    # --------------------------------------------------------
-    # PIPELINE STAGES
-    # --------------------------------------------------------
 
     stages = (
         Stage.objects
@@ -583,10 +1283,6 @@ def lead_detail(
         .order_by("display_order")
     )
 
-    # --------------------------------------------------------
-    # INITIALS
-    # --------------------------------------------------------
-
     initials = "".join(
         [
             part[0]
@@ -594,17 +1290,9 @@ def lead_detail(
         ]
     ).upper() or "?"
 
-    # --------------------------------------------------------
-    # NOTE TEXT
-    # --------------------------------------------------------
-
     lead_note_text = (
         lead.notes or ""
     ).strip()
-
-    # --------------------------------------------------------
-    # RENDER
-    # --------------------------------------------------------
 
     return render(
         request,
@@ -641,6 +1329,9 @@ def _lead_card_context(
         - reminder updates
         - note updates
         - attribute updates
+
+    IMPORTANT:
+        Keep this isolated from stage-management logic.
     """
 
     lead.days_in_stage = (
@@ -698,6 +1389,7 @@ def _lead_card_context(
         not lead.display_note_text
         and latest_note
     ):
+
         lead.display_note_text = (
             latest_note.note or ""
         )
@@ -705,18 +1397,21 @@ def _lead_card_context(
     return {
         "lead": lead,
         "user": user,
+
         "calls": (
             lead.calls
             .order_by(
                 "-called_at",
             )
         ),
+
         "reminders": (
             lead.reminders
             .order_by(
                 "due_at",
             )
         ),
+
         "notes": (
             lead.lead_notes
             .order_by(
@@ -732,11 +1427,6 @@ def lead_card_partial(
     request,
     lead_id,
 ):
-    """
-    Return only the requested Lead Card.
-
-    This is intentionally scoped to the current organization.
-    """
 
     user = request.crm_user
 
@@ -1151,39 +1841,20 @@ def lead_edit_modal(
         organization=organization,
     )
 
-    # --------------------------------------------------------
-    # PIPELINES
-    #
-    # Only expose pipelines the current CRM user is permitted
-    # to access.
-    #
-    # ADMIN
-    #     All active pipelines in their organization.
-    #
-    # AGENT
-    #     Only their owned/assigned pipeline.
-    # --------------------------------------------------------
-
     pipelines = get_user_pipelines(
         user
     )
 
-    # --------------------------------------------------------
-    # STAGES
-    #
-    # Stages are restricted to the lead's current pipeline.
-    # --------------------------------------------------------
-
-    stages = Stage.objects.filter(
-        pipeline=lead.pipeline,
-        is_active=True,
-    ).order_by(
-        "display_order"
+    stages = (
+        Stage.objects
+        .filter(
+            pipeline=lead.pipeline,
+            is_active=True,
+        )
+        .order_by(
+            "display_order"
+        )
     )
-
-    # --------------------------------------------------------
-    # LATEST NOTE
-    # --------------------------------------------------------
 
     latest_note = (
         LeadNote.objects
@@ -1195,14 +1866,6 @@ def lead_edit_modal(
         )
         .first()
     )
-
-    # --------------------------------------------------------
-    # LEAD NOTE TEXT
-    #
-    # Prefer the Lead.notes field when available.
-    # Fall back to the latest LeadNote when Lead.notes is
-    # empty.
-    # --------------------------------------------------------
 
     lead_note_text = ""
 
@@ -1223,10 +1886,6 @@ def lead_edit_modal(
         lead_note_text = (
             latest_note.note or ""
         )
-
-    # --------------------------------------------------------
-    # RENDER MODAL
-    # --------------------------------------------------------
 
     return render(
         request,
@@ -1261,20 +1920,6 @@ def lead_edit_stages(
         "",
     ).strip()
 
-    # --------------------------------------------------------
-    # PIPELINE ACCESS
-    #
-    # ADMIN
-    #     Any active pipeline in their organization.
-    #
-    # AGENT
-    #     Only their permitted/owned pipeline.
-    #
-    # This intentionally reuses the existing CRM pipeline
-    # access logic instead of creating a second permission
-    # system.
-    # --------------------------------------------------------
-
     allowed_pipelines = (
         get_user_pipelines(
             user
@@ -1285,28 +1930,10 @@ def lead_edit_stages(
         )
     )
 
-    # --------------------------------------------------------
-    # SELECTED PIPELINE
-    #
-    # The selected pipeline must be one of the pipelines
-    # this CRM user is actually allowed to access.
-    # --------------------------------------------------------
-
     pipeline = get_object_or_404(
         allowed_pipelines,
         id=pipeline_id,
     )
-
-    # --------------------------------------------------------
-    # STAGES
-    #
-    # IMPORTANT:
-    #
-    # Only active stages belonging to the selected pipeline
-    # are returned.
-    #
-    # No stage from another pipeline can appear here.
-    # --------------------------------------------------------
 
     stages = (
         Stage.objects
@@ -1328,6 +1955,11 @@ def lead_edit_stages(
     )
 
 
+# ============================================================
+# SAVE LEAD EDIT
+# ============================================================
+
+
 @crm_login_required
 @require_POST
 def lead_edit_save(
@@ -1339,24 +1971,11 @@ def lead_edit_save(
 
     organization = user.organization
 
-
-    # --------------------------------------------------------
-    # LOAD LEAD
-    #
-    # Always resolve the lead inside the current organization.
-    # This preserves tenant isolation.
-    # --------------------------------------------------------
-
     lead = get_object_or_404(
         Lead,
         id=lead_id,
         organization=organization,
     )
-
-
-    # --------------------------------------------------------
-    # READ FORM DATA
-    # --------------------------------------------------------
 
     name = request.POST.get(
         "name",
@@ -1388,33 +2007,15 @@ def lead_edit_save(
         "",
     ).strip()
 
-
-    # --------------------------------------------------------
-    # ALLOWED PIPELINES
-    #
-    # ADMIN
-    #     Any active pipeline in their organization.
-    #
-    # AGENT
-    #     Only their owned/assigned pipeline.
-    #
-    # Keep this aligned with the existing CRM permission model.
-    # --------------------------------------------------------
-
-    allowed_pipelines = get_user_pipelines(
-        user
-    ).filter(
-        organization=organization,
-        is_active=True,
+    allowed_pipelines = (
+        get_user_pipelines(
+            user
+        )
+        .filter(
+            organization=organization,
+            is_active=True,
+        )
     )
-
-
-    # --------------------------------------------------------
-    # PIPELINE
-    #
-    # Only allow pipelines the current CRM user is permitted
-    # to access.
-    # --------------------------------------------------------
 
     if pipeline_id:
 
@@ -1424,11 +2025,6 @@ def lead_edit_save(
         )
 
         lead.pipeline = pipeline
-
-
-    # --------------------------------------------------------
-    # STAGE
-    # --------------------------------------------------------
 
     if stage_id:
 
@@ -1440,11 +2036,6 @@ def lead_edit_save(
         )
 
         lead.stage = stage
-
-
-    # --------------------------------------------------------
-    # BASIC FIELDS
-    # --------------------------------------------------------
 
     lead.name = (
         name
@@ -1461,18 +2052,12 @@ def lead_edit_save(
 
         lead.phone = ""
 
-
-    # --------------------------------------------------------
-    # NOTES
-    # --------------------------------------------------------
-
     if hasattr(
         lead,
         "notes",
     ):
 
         lead.notes = notes
-
 
     # --------------------------------------------------------
     # ATTRIBUTES
@@ -1496,21 +2081,11 @@ def lead_edit_save(
 
     lead.attributes = attributes
 
-
-    # --------------------------------------------------------
-    # SAVE
-    # --------------------------------------------------------
-
     try:
 
         lead.full_clean()
 
         lead.save()
-
-
-        # ----------------------------------------------------
-        # MANUAL NOTE
-        # ----------------------------------------------------
 
         latest_manual_note = (
             LeadNote.objects
@@ -1523,7 +2098,6 @@ def lead_edit_save(
             )
             .first()
         )
-
 
         if notes:
 
@@ -1555,7 +2129,6 @@ def lead_edit_save(
 
                 latest_manual_note.delete()
 
-
     except DjangoValidationError as e:
 
         logger.exception(
@@ -1582,7 +2155,6 @@ def lead_edit_save(
             status=400,
         )
 
-
     except Exception as e:
 
         logger.exception(
@@ -1599,11 +2171,6 @@ def lead_edit_save(
             """,
             status=400,
         )
-
-
-    # --------------------------------------------------------
-    # HTMX SUCCESS EVENT
-    # --------------------------------------------------------
 
     response = HttpResponse("")
 
@@ -1643,6 +2210,11 @@ DATE_FILTER_FIELDS = [
     "AI Qualified Date",
     "Days in stage",
 ]
+
+
+# ============================================================
+# LEAD FILTER MODAL
+# ============================================================
 
 
 @crm_login_required
@@ -1685,15 +2257,23 @@ def lead_filters_modal(
             "core_fields": (
                 CORE_FILTER_FIELDS
             ),
+
             "attribute_fields": sorted(
                 attribute_keys
             ),
+
             "date_fields": (
                 DATE_FILTER_FIELDS
             ),
+
             "pipeline_id": pipeline_id,
         },
     )
+
+
+# ============================================================
+# FILTER VALUES
+# ============================================================
 
 
 @crm_login_required
@@ -1715,7 +2295,8 @@ def lead_filters_values(
     organization = user.organization
 
     stages = (
-        Stage.objects.filter(
+        Stage.objects
+        .filter(
             pipeline_id=pipeline_id,
             pipeline__organization=organization,
             is_active=True,
@@ -1724,9 +2305,12 @@ def lead_filters_values(
         else []
     )
 
-    pipelines = Pipeline.objects.filter(
-        organization=organization,
-        is_active=True,
+    pipelines = (
+        Pipeline.objects
+        .filter(
+            organization=organization,
+            is_active=True,
+        )
     )
 
     return render(

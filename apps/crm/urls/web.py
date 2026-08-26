@@ -20,6 +20,9 @@ from apps.crm.views.dashboard import (
     lead_note_save,
     lead_reminder_modal,
     lead_reminder_save,
+    lead_stage_create,
+    lead_stage_delete,
+    lead_stage_rename,
     lead_table_partial,
 )
 
@@ -58,7 +61,6 @@ urlpatterns = [
         dashboard_view,
         name="crm-dashboard",
     ),
-
 
     # ========================================================
     # LEAD TABLE
@@ -182,5 +184,27 @@ urlpatterns = [
         lead_filters_values,
         name="crm-lead-filters-values",
     ),
+
+    # ========================================================
+    # STAGE MANAGEMENT
+    # ========================================================
+
+    path(
+        "stages/create/",
+        lead_stage_create,
+        name="crm-stage-create",
+    ),
+
+    path(
+        "stages/<uuid:stage_id>/rename/",
+        lead_stage_rename,
+        name="crm-stage-rename",
+    ),
+
+    path(
+    "stages/<uuid:stage_id>/delete/",
+    lead_stage_delete,
+    name="crm-stage-delete",
+),
 
 ]

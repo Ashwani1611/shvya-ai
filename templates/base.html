@@ -7,13 +7,21 @@
 <head>
 
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-    <title>{% block title %}SHVYA AI{% endblock %}</title>
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
+
+    <title>
+        {% block title %}
+            SHVYA AI
+        {% endblock %}
+    </title>
 
 
     <!-- ========================================================
-         TAILWIND CSS
+         TAILWIND
          ======================================================== -->
 
     <script src="https://cdn.tailwindcss.com"></script>
@@ -30,7 +38,7 @@
 
 
     <!-- ========================================================
-         TABLER ICON FONT STYLING
+         ICON FONT STYLING
          ======================================================== -->
 
     <style>
@@ -67,7 +75,8 @@
     <script src="https://unpkg.com/htmx.org@1.9.10"></script>
 
 
-    {% block extra_head %}{% endblock %}
+    {% block extra_head %}
+    {% endblock %}
 
 </head>
 
@@ -83,27 +92,32 @@
          ======================================================== -->
 
     <aside
-        class="w-56 bg-white border-r border-gray-200 flex flex-col shrink-0"
+        class="w-56
+               bg-white
+               border-r
+               border-gray-200
+               flex
+               flex-col
+               shrink-0"
     >
 
-
-        <!-- ====================================================
-             LOGO
-             ==================================================== -->
-
         <div
-            class="px-4 py-4 font-bold text-lg border-b border-gray-100"
+            class="px-4
+                   py-4
+                   font-bold
+                   text-lg
+                   border-b
+                   border-gray-100"
         >
             SHVYA AI
         </div>
 
 
-        <!-- ====================================================
-             NAVIGATION
-             ==================================================== -->
-
-        <nav class="flex-1 overflow-y-auto py-2">
-
+        <nav
+            class="flex-1
+                   overflow-y-auto
+                   py-2"
+        >
 
             <!-- ==================================================
                  CRM
@@ -112,7 +126,13 @@
             <a
                 href="{% url 'crm-dashboard' %}"
 
-                class="flex items-center gap-3 px-4 py-2 text-sm font-medium
+                class="flex
+                       items-center
+                       gap-3
+                       px-4
+                       py-2
+                       text-sm
+                       font-medium
                 {% if request.resolver_match.url_name == 'crm-dashboard' %}
                     bg-blue-50 text-blue-700
                 {% else %}
@@ -120,7 +140,11 @@
                 {% endif %}"
             >
 
-                <i class="ti ti-users sidebar-icon"></i>
+                <i
+                    class="ti
+                           ti-users
+                           sidebar-icon"
+                ></i>
 
                 <span>
                     CRM
@@ -130,7 +154,7 @@
 
 
             <!-- ==================================================
-                 MODULES (real link if built, "Coming soon" if not)
+                 OTHER NAV ITEMS
                  ================================================== -->
 
             {% for item in nav_items %}
@@ -140,7 +164,13 @@
                     <a
                         href="{% url item.url_name %}"
 
-                        class="flex items-center gap-3 px-4 py-2 text-sm font-medium
+                        class="flex
+                               items-center
+                               gap-3
+                               px-4
+                               py-2
+                               text-sm
+                               font-medium
                         {% if item.is_active %}
                             bg-blue-50 text-blue-700
                         {% else %}
@@ -149,7 +179,9 @@
                     >
 
                         <i
-                            class="ti {{ item.icon }} sidebar-icon"
+                            class="ti
+                                   {{ item.icon }}
+                                   sidebar-icon"
                         ></i>
 
                         <span>
@@ -161,12 +193,21 @@
                 {% else %}
 
                     <div
-                        class="flex items-center gap-3 px-4 py-2 text-sm text-gray-400 cursor-not-allowed"
+                        class="flex
+                               items-center
+                               gap-3
+                               px-4
+                               py-2
+                               text-sm
+                               text-gray-400
+                               cursor-not-allowed"
                         title="Coming soon"
                     >
 
                         <i
-                            class="ti {{ item.icon }} sidebar-icon"
+                            class="ti
+                                   {{ item.icon }}
+                                   sidebar-icon"
                         ></i>
 
                         <span>
@@ -179,9 +220,7 @@
 
             {% endfor %}
 
-
         </nav>
-
 
     </aside>
 
@@ -190,7 +229,12 @@
          MAIN AREA
          ======================================================== -->
 
-    <div class="flex-1 flex flex-col overflow-hidden">
+    <div
+        class="flex-1
+               flex
+               flex-col
+               overflow-hidden"
+    >
 
 
         <!-- ====================================================
@@ -199,52 +243,59 @@
 
         <header
             class="bg-white
-                   border-b border-gray-200
-                   px-6 py-3
-                   flex items-center justify-between
+                   border-b
+                   border-gray-200
+                   px-6
+                   py-3
+                   flex
+                   items-center
+                   justify-between
                    shrink-0"
         >
 
-
-            <!-- ==================================================
-                 PAGE TITLE
-                 ================================================== -->
-
-            <h1 class="text-lg font-semibold text-gray-900">
+            <h1
+                class="text-lg
+                       font-semibold
+                       text-gray-900"
+            >
 
                 {% block header %}
 
-                    Welcome, {{ request.user.name|default:"User" }}
+                    Welcome,
+                    {{ request.user.name|default:"User" }}
 
                 {% endblock %}
 
             </h1>
 
 
-            <!-- ==================================================
-                 TOPBAR ACTIONS
-                 ================================================== -->
+            <div
+                class="flex
+                       items-center
+                       gap-2"
+            >
 
-            <div class="flex items-center gap-2">
-
-
-                <!-- ==================================================
-                     REMINDERS
-                     ================================================== -->
+                <!-- Reminders -->
 
                 <a
                     href="#"
 
-                    class="inline-flex items-center gap-2
-                           px-3 py-2
-                           text-sm font-medium
+                    class="inline-flex
+                           items-center
+                           gap-2
+                           px-3
+                           py-2
+                           text-sm
+                           font-medium
                            text-gray-700
                            rounded-lg
                            hover:bg-gray-100
                            transition"
                 >
 
-                    <i class="ti ti-bell text-[18px]"></i>
+                    <i
+                        class="ti ti-bell text-[18px]"
+                    ></i>
 
                     <span>
                         Reminders
@@ -252,40 +303,48 @@
 
                     {% if pending_reminder_count %}
 
-                        <span
-                            class="inline-flex items-center justify-center
-                                   min-w-[20px] h-5
-                                   px-1.5
-                                   rounded-full
-                                   bg-red-100
-                                   text-red-700
-                                   text-xs font-semibold"
-                        >
-                            {{ pending_reminder_count }}
-                        </span>
+                    <span
+                        class="inline-flex
+                               items-center
+                               justify-center
+                               min-w-[20px]
+                               h-5
+                               px-1.5
+                               rounded-full
+                               bg-blue-100
+                               text-blue-700
+                               text-xs
+                               font-semibold"
+                    >
+                        {{ pending_reminder_count }}
+                    </span>
 
                     {% endif %}
 
                 </a>
 
 
-                <!-- ==================================================
-                     IMPORT
-                     ================================================== -->
+                <!-- Import -->
 
                 <button
                     type="button"
 
-                    class="inline-flex items-center gap-2
-                           px-3 py-2
-                           text-sm font-medium
+                    class="inline-flex
+                           items-center
+                           gap-2
+                           px-3
+                           py-2
+                           text-sm
+                           font-medium
                            text-gray-700
                            rounded-lg
                            hover:bg-gray-100
                            transition"
                 >
 
-                    <i class="ti ti-upload text-[18px]"></i>
+                    <i
+                        class="ti ti-upload text-[18px]"
+                    ></i>
 
                     <span>
                         Import
@@ -294,49 +353,57 @@
                 </button>
 
 
-                <!-- ==================================================
-                     NEW LEAD
-                     ================================================== -->
+                <!-- New Lead -->
 
                 <button
                     type="button"
 
-                    class="inline-flex items-center gap-2
-                           px-3 py-2
-                           text-sm font-medium
+                    class="inline-flex
+                           items-center
+                           gap-2
+                           px-3
+                           py-2
+                           text-sm
+                           font-medium
                            text-white
-                           bg-blue-600
+                           bg-gray-900
                            rounded-lg
-                           hover:bg-blue-700
+                           hover:bg-gray-800
                            transition"
                 >
 
-                    <i class="ti ti-plus text-[18px]"></i>
+                    <i
+                        class="ti ti-plus text-[18px]"
+                    ></i>
 
                     <span>
-                        New Lead
+                        New lead
                     </span>
 
                 </button>
 
 
-                <!-- ==================================================
-                     PROFILE
-                     ================================================== -->
+                <!-- Profile -->
 
                 <a
                     href="{% url 'crm-profile' %}"
 
-                    class="inline-flex items-center gap-2
-                           px-3 py-2
-                           text-sm font-medium
+                    class="inline-flex
+                           items-center
+                           gap-2
+                           px-3
+                           py-2
+                           text-sm
+                           font-medium
                            text-gray-700
                            rounded-lg
                            hover:bg-gray-100
                            transition"
                 >
 
-                    <i class="ti ti-user text-[18px]"></i>
+                    <i
+                        class="ti ti-user text-[18px]"
+                    ></i>
 
                     <span>
                         Profile
@@ -345,30 +412,33 @@
                 </a>
 
 
-                <!-- ==================================================
-                     LOGOUT
-                     ================================================== -->
+                <!-- Logout -->
 
                 <a
                     href="{% url 'crm-logout' %}"
 
-                    class="inline-flex items-center gap-2
-                           px-3 py-2
-                           text-sm font-medium
-                           text-red-600
+                    class="inline-flex
+                           items-center
+                           gap-2
+                           px-3
+                           py-2
+                           text-sm
+                           font-medium
+                           text-gray-700
                            rounded-lg
-                           hover:bg-red-50
+                           hover:bg-gray-100
                            transition"
                 >
 
-                    <i class="ti ti-logout text-[18px]"></i>
+                    <i
+                        class="ti ti-logout text-[18px]"
+                    ></i>
 
                     <span>
                         Logout
                     </span>
 
                 </a>
-
 
             </div>
 
@@ -379,15 +449,18 @@
              PAGE CONTENT
              ==================================================== -->
 
-        <main class="flex-1 overflow-y-auto p-6">
+        <main
+            class="flex-1
+                   overflow-y-auto
+                   p-6"
+        >
 
-            {% block content %}{% endblock %}
+            {% block content %}
+            {% endblock %}
 
         </main>
 
-
     </div>
-
 
 </div>
 
@@ -400,23 +473,32 @@
 
 
 <!-- ============================================================
-     HTMX EVENT HANDLERS
+     JAVASCRIPT
      ============================================================ -->
 
 <script>
 
+    /* ============================================================
+       LEAD CARD STATE
+       ============================================================ */
+
+    window.shvyaLeadCardState =
+        window.shvyaLeadCardState || {};
+
 
     /* ============================================================
-       LEAD UPDATED
+       LEGACY LEAD UPDATED
        ============================================================ */
 
     document.body.addEventListener(
         'leadUpdated',
         function() {
 
-            const modalRoot = document.getElementById(
-                'modal-root'
-            );
+            const modalRoot =
+                document.getElementById(
+                    'modal-root'
+                );
+
 
             if (modalRoot) {
 
@@ -425,9 +507,11 @@
             }
 
 
-            const container = document.getElementById(
-                'lead-table-container'
-            );
+            const container =
+                document.getElementById(
+                    'lead-table-container'
+                );
+
 
             if (container) {
 
@@ -450,9 +534,11 @@
         'orgUpdated',
         function() {
 
-            const modalRoot = document.getElementById(
-                'modal-root'
-            );
+            const modalRoot =
+                document.getElementById(
+                    'modal-root'
+                );
+
 
             if (modalRoot) {
 
@@ -468,167 +554,30 @@
 
 
     /* ============================================================
-       STAGE TAB SWITCHING
+       DETAILS / ACTIVITY TOGGLE
        ============================================================ */
 
     document.body.addEventListener(
         'click',
-        function(e) {
+        function(event) {
 
-            const tab = e.target.closest(
-                '.stage-tab'
-            );
-
-
-            if (!tab) {
-
-                return;
-
-            }
-
-
-            const panelGroup = tab.closest(
-                '[data-tab-group]'
-            );
-
-
-            if (!panelGroup) {
-
-                return;
-
-            }
-
-
-            /* ----------------------------------------------------
-               RESET ALL TABS
-               ---------------------------------------------------- */
-
-            panelGroup
-                .querySelectorAll('.stage-tab')
-                .forEach(
-                    function(t) {
-
-                        t.classList.remove(
-                            'bg-current-stage',
-                            'text-white'
-                        );
-
-
-                        t.classList.add(
-                            'bg-gray-50',
-                            'text-gray-600'
-                        );
-
-
-                        t.style.backgroundColor = '';
-
-                    }
+            const leadTab =
+                event.target.closest(
+                    '.lead-detail-tab'
                 );
 
 
-            /* ----------------------------------------------------
-               ACTIVATE SELECTED TAB
-               ---------------------------------------------------- */
+            if (!leadTab) {
 
-            tab.classList.remove(
-                'bg-gray-50',
-                'text-gray-600'
-            );
+                return;
+
+            }
 
 
-            tab.classList.add(
-                'bg-current-stage',
-                'text-white'
-            );
-
-
-            tab.style.backgroundColor =
-                tab.dataset.color;
-
-
-            /* ----------------------------------------------------
-               HIDE ALL STAGE PANELS
-               ---------------------------------------------------- */
-
-            panelGroup
-                .querySelectorAll('.stage-panel')
-                .forEach(
-                    function(p) {
-
-                        p.classList.add(
-                            'hidden'
-                        );
-
-                    }
+            const card =
+                leadTab.closest(
+                    '[id^="lead-card-"]'
                 );
-
-
-            /* ----------------------------------------------------
-               SHOW SELECTED STAGE PANEL
-               ---------------------------------------------------- */
-
-            const target = panelGroup.querySelector(
-                '#stage-panel-' + tab.dataset.stageId
-            );
-
-
-            if (target) {
-
-                target.classList.remove(
-                    'hidden'
-                );
-
-            }
-
-        }
-    );
-
-
-    /* ============================================================
-       LEAD DETAILS / ACTIVITY SWITCHING
-       ============================================================ */
-
-    document.body.addEventListener(
-        'click',
-        function(e) {
-
-            const tab = e.target.closest(
-                '.lead-detail-tab'
-            );
-
-
-            if (!tab) {
-
-                return;
-
-            }
-
-
-            const targetId = tab.dataset.target;
-
-
-            if (!targetId) {
-
-                return;
-
-            }
-
-
-            const targetPanel = document.getElementById(
-                targetId
-            );
-
-
-            if (!targetPanel) {
-
-                return;
-
-            }
-
-
-            const card = tab.closest(
-                'article'
-            );
 
 
             if (!card) {
@@ -638,12 +587,124 @@
             }
 
 
+            const leadId =
+                card.id.replace(
+                    'lead-card-',
+                    ''
+                );
+
+
+            const targetId =
+                leadTab.dataset.target;
+
+
+            if (!targetId) {
+
+                return;
+
+            }
+
+
+            const targetPanel =
+                card.querySelector(
+                    '#' + targetId
+                );
+
+
+            if (!targetPanel) {
+
+                return;
+
+            }
+
+
+            const tabName =
+                leadTab.dataset.tabName ||
+                'details';
+
+
+            const isOpen =
+                !targetPanel.classList.contains(
+                    'hidden'
+                );
+
+
             /* ----------------------------------------------------
-               HIDE ALL PANELS IN THIS LEAD CARD
+               CLICK OPEN TAB AGAIN = HIDE
+               ---------------------------------------------------- */
+
+            if (isOpen) {
+
+                targetPanel.classList.add(
+                    'hidden'
+                );
+
+
+                leadTab.classList.remove(
+                    'text-blue-600'
+                );
+
+
+                leadTab.classList.add(
+                    'text-gray-500'
+                );
+
+
+                const icon =
+                    leadTab.querySelector(
+                        '.lead-tab-chevron'
+                    );
+
+
+                if (icon) {
+
+                    icon.classList.remove(
+                        'ti-chevron-up'
+                    );
+
+                    icon.classList.add(
+                        'ti-chevron-down'
+                    );
+
+                }
+
+
+                const label =
+                    leadTab.querySelector(
+                        '.lead-tab-label'
+                    );
+
+
+                if (label) {
+
+                    label.textContent =
+                        tabName === 'activity'
+                            ? 'Activity'
+                            : 'Details';
+
+                }
+
+
+                window.shvyaLeadCardState[
+                    leadId
+                ] = {
+                    activePanel: null
+                };
+
+
+                return;
+
+            }
+
+
+            /* ----------------------------------------------------
+               CLOSE OTHER PANELS
                ---------------------------------------------------- */
 
             card
-                .querySelectorAll('.lead-tab-panel')
+                .querySelectorAll(
+                    '.lead-tab-panel'
+                )
                 .forEach(
                     function(panel) {
 
@@ -656,30 +717,66 @@
 
 
             /* ----------------------------------------------------
-               RESET ALL DETAILS / ACTIVITY TABS
+               RESET OTHER TABS
                ---------------------------------------------------- */
 
             card
-                .querySelectorAll('.lead-detail-tab')
+                .querySelectorAll(
+                    '.lead-detail-tab'
+                )
                 .forEach(
-                    function(button) {
+                    function(tab) {
 
-                        button.classList.remove(
-                            'text-blue-600',
-                            'border-blue-600'
+                        tab.classList.remove(
+                            'text-blue-600'
                         );
 
-
-                        button.classList.add(
+                        tab.classList.add(
                             'text-gray-500'
                         );
+
+
+                        const icon =
+                            tab.querySelector(
+                                '.lead-tab-chevron'
+                            );
+
+
+                        if (icon) {
+
+                            icon.classList.remove(
+                                'ti-chevron-up'
+                            );
+
+                            icon.classList.add(
+                                'ti-chevron-down'
+                            );
+
+                        }
+
+
+                        const label =
+                            tab.querySelector(
+                                '.lead-tab-label'
+                            );
+
+
+                        if (label) {
+
+                            label.textContent =
+                                tab.dataset.tabName ===
+                                'activity'
+                                    ? 'Activity'
+                                    : 'Details';
+
+                        }
 
                     }
                 );
 
 
             /* ----------------------------------------------------
-               SHOW SELECTED PANEL
+               OPEN SELECTED PANEL
                ---------------------------------------------------- */
 
             targetPanel.classList.remove(
@@ -688,43 +785,90 @@
 
 
             /* ----------------------------------------------------
-               ACTIVATE SELECTED TAB
+               ACTIVATE TAB
                ---------------------------------------------------- */
 
-            tab.classList.remove(
+            leadTab.classList.remove(
                 'text-gray-500'
             );
 
 
-            tab.classList.add(
-                'text-blue-600',
-                'border-blue-600'
+            leadTab.classList.add(
+                'text-blue-600'
             );
+
+
+            /* ----------------------------------------------------
+               UP ARROW
+               ---------------------------------------------------- */
+
+            const activeIcon =
+                leadTab.querySelector(
+                    '.lead-tab-chevron'
+                );
+
+
+            if (activeIcon) {
+
+                activeIcon.classList.remove(
+                    'ti-chevron-down'
+                );
+
+                activeIcon.classList.add(
+                    'ti-chevron-up'
+                );
+
+            }
+
+
+            /* ----------------------------------------------------
+               HIDE LABEL
+               ---------------------------------------------------- */
+
+            const activeLabel =
+                leadTab.querySelector(
+                    '.lead-tab-label'
+                );
+
+
+            if (activeLabel) {
+
+                activeLabel.textContent =
+                    tabName === 'activity'
+                        ? 'Hide activity'
+                        : 'Hide details';
+
+            }
+
+
+            /* ----------------------------------------------------
+               SAVE STATE
+               ---------------------------------------------------- */
+
+            window.shvyaLeadCardState[
+                leadId
+            ] = {
+                activePanel:
+                    targetId
+            };
 
         }
     );
 
+
     /* ============================================================
        LEAD CARD UPDATED
+       SAME LEAD + SAME TAB + REINITIALIZE HTMX
        ============================================================ */
 
     document.body.addEventListener(
         'leadCardUpdated',
-        function(event) {
+        async function(event) {
 
             const leadId =
-                event.detail?.lead_id;
+                event.detail &&
+                event.detail.lead_id;
 
-            const modalRoot =
-                document.getElementById(
-                    'modal-root'
-                );
-
-            if (modalRoot) {
-
-                modalRoot.innerHTML = '';
-
-            }
 
             if (!leadId) {
 
@@ -732,30 +876,634 @@
 
             }
 
-            const card =
+
+            const currentCard =
                 document.getElementById(
                     'lead-card-' + leadId
                 );
 
-            if (!card) {
+
+            if (!currentCard) {
 
                 return;
 
             }
 
-            htmx.ajax(
-                'GET',
-                '/dashboard/leads/' +
-                    leadId +
-                    '/card/',
-                {
-                    target:
-                        '#lead-card-' + leadId,
 
-                    swap:
-                        'outerHTML',
+            /* ----------------------------------------------------
+               CAPTURE STATE BEFORE REPLACEMENT
+               ---------------------------------------------------- */
+
+            const savedState =
+                window.shvyaLeadCardState[
+                    leadId
+                ] || {
+                    activePanel: null
+                };
+
+
+            const activePanelId =
+                savedState.activePanel ||
+                null;
+
+
+            /* ----------------------------------------------------
+               CLOSE MODAL
+               ---------------------------------------------------- */
+
+            const modalRoot =
+                document.getElementById(
+                    'modal-root'
+                );
+
+
+            if (modalRoot) {
+
+                modalRoot.innerHTML = '';
+
+            }
+
+
+            try {
+
+                /* ------------------------------------------------
+                   FETCH UPDATED CARD
+                   ------------------------------------------------ */
+
+                const response =
+                    await fetch(
+                        '/dashboard/leads/' +
+                            leadId +
+                            '/card/',
+                        {
+                            method: 'GET',
+
+                            headers: {
+                                'HX-Request':
+                                    'true'
+                            },
+
+                            credentials:
+                                'same-origin'
+                        }
+                    );
+
+
+                if (!response.ok) {
+
+                    console.error(
+                        'Lead card refresh failed:',
+                        response.status
+                    );
+
+                    return;
+
                 }
-            );
+
+
+                const html =
+                    await response.text();
+
+
+                /* ------------------------------------------------
+                   PARSE CARD
+                   ------------------------------------------------ */
+
+                const parser =
+                    new DOMParser();
+
+
+                const parsed =
+                    parser.parseFromString(
+                        html,
+                        'text/html'
+                    );
+
+
+                const newCard =
+                    parsed.querySelector(
+                        '#lead-card-' +
+                        leadId
+                    );
+
+
+                if (!newCard) {
+
+                    console.error(
+                        'Updated lead card was not found.'
+                    );
+
+                    return;
+
+                }
+
+
+                /* ------------------------------------------------
+                   REPLACE OLD CARD
+                   ------------------------------------------------ */
+
+                currentCard.replaceWith(
+                    newCard
+                );
+
+
+                const insertedCard =
+                    document.getElementById(
+                        'lead-card-' +
+                        leadId
+                    );
+
+
+                if (!insertedCard) {
+
+                    return;
+
+                }
+
+
+                /* ------------------------------------------------
+                   REINITIALIZE HTMX
+                   ------------------------------------------------ */
+
+                htmx.process(
+                    insertedCard
+                );
+
+
+                /* ------------------------------------------------
+                   RESET PANELS
+                   ------------------------------------------------ */
+
+                insertedCard
+                    .querySelectorAll(
+                        '.lead-tab-panel'
+                    )
+                    .forEach(
+                        function(panel) {
+
+                            panel.classList.add(
+                                'hidden'
+                            );
+
+                        }
+                    );
+
+
+                /* ------------------------------------------------
+                   RESET TABS
+                   ------------------------------------------------ */
+
+                insertedCard
+                    .querySelectorAll(
+                        '.lead-detail-tab'
+                    )
+                    .forEach(
+                        function(tab) {
+
+                            tab.classList.remove(
+                                'text-blue-600'
+                            );
+
+
+                            tab.classList.add(
+                                'text-gray-500'
+                            );
+
+
+                            const icon =
+                                tab.querySelector(
+                                    '.lead-tab-chevron'
+                                );
+
+
+                            if (icon) {
+
+                                icon.classList.remove(
+                                    'ti-chevron-up'
+                                );
+
+
+                                icon.classList.add(
+                                    'ti-chevron-down'
+                                );
+
+                            }
+
+
+                            const label =
+                                tab.querySelector(
+                                    '.lead-tab-label'
+                                );
+
+
+                            if (label) {
+
+                                label.textContent =
+                                    tab.dataset.tabName ===
+                                    'activity'
+                                        ? 'Activity'
+                                        : 'Details';
+
+                            }
+
+                        }
+                    );
+
+
+                /* ------------------------------------------------
+                   NOTHING WAS OPEN
+                   ------------------------------------------------ */
+
+                if (!activePanelId) {
+
+                    return;
+
+                }
+
+
+                /* ------------------------------------------------
+                   RESTORE SAME PANEL
+                   ------------------------------------------------ */
+
+                const restoredPanel =
+                    insertedCard.querySelector(
+                        '#' +
+                        activePanelId
+                    );
+
+
+                if (!restoredPanel) {
+
+                    return;
+
+                }
+
+
+                restoredPanel.classList.remove(
+                    'hidden'
+                );
+
+
+                /* ------------------------------------------------
+                   RESTORE SAME TAB
+                   ------------------------------------------------ */
+
+                const restoredTab =
+                    insertedCard.querySelector(
+                        '[data-target="' +
+                            activePanelId +
+                        '"]'
+                    );
+
+
+                if (!restoredTab) {
+
+                    return;
+
+                }
+
+
+                restoredTab.classList.remove(
+                    'text-gray-500'
+                );
+
+
+                restoredTab.classList.add(
+                    'text-blue-600'
+                );
+
+
+                /* ------------------------------------------------
+                   RESTORE UP ARROW
+                   ------------------------------------------------ */
+
+                const restoredIcon =
+                    restoredTab.querySelector(
+                        '.lead-tab-chevron'
+                    );
+
+
+                if (restoredIcon) {
+
+                    restoredIcon.classList.remove(
+                        'ti-chevron-down'
+                    );
+
+
+                    restoredIcon.classList.add(
+                        'ti-chevron-up'
+                    );
+
+                }
+
+
+                /* ------------------------------------------------
+                   RESTORE HIDE LABEL
+                   ------------------------------------------------ */
+
+                const restoredLabel =
+                    restoredTab.querySelector(
+                        '.lead-tab-label'
+                    );
+
+
+                if (restoredLabel) {
+
+                    restoredLabel.textContent =
+                        restoredTab.dataset.tabName ===
+                        'activity'
+                            ? 'Hide activity'
+                            : 'Hide details';
+
+                }
+
+
+                /* ------------------------------------------------
+                   KEEP STATE
+                   ------------------------------------------------ */
+
+                window.shvyaLeadCardState[
+                    leadId
+                ] = {
+                    activePanel:
+                        activePanelId
+                };
+
+
+            } catch (error) {
+
+                console.error(
+                    'Unable to refresh lead card:',
+                    error
+                );
+
+            }
+
+        }
+    );
+
+
+    /* ============================================================
+       STAGE MANAGER
+       SINGLE HANDLER
+       ============================================================ */
+
+    document.body.addEventListener(
+        'click',
+        function(event) {
+
+            const trigger =
+                event.target.closest(
+                    '.stage-manager-trigger'
+                );
+
+
+            const closeButton =
+                event.target.closest(
+                    '.stage-manager-close'
+                );
+
+
+            /* ----------------------------------------------------
+               OPEN / CLOSE
+               ---------------------------------------------------- */
+
+            if (trigger) {
+
+                event.preventDefault();
+
+                event.stopPropagation();
+
+
+                const manager =
+                    trigger.closest(
+                        '[data-stage-manager]'
+                    );
+
+
+                if (!manager) {
+
+                    return;
+
+                }
+
+
+                const popover =
+                    manager.querySelector(
+                        '.stage-manager-popover'
+                    );
+
+
+                if (!popover) {
+
+                    return;
+
+                }
+
+
+                /*
+                 * Close any other popovers.
+                 */
+
+                document
+                    .querySelectorAll(
+                        '.stage-manager-popover'
+                    )
+                    .forEach(
+                        function(otherPopover) {
+
+                            if (
+                                otherPopover !==
+                                popover
+                            ) {
+
+                                otherPopover.classList.add(
+                                    'hidden'
+                                );
+
+                            }
+
+                        }
+                    );
+
+
+                /*
+                 * Toggle current popover.
+                 */
+
+                popover.classList.toggle(
+                    'hidden'
+                );
+
+
+                /*
+                 * Detect active stage from the
+                 * stage panel currently visible.
+                 */
+
+                const visiblePanel =
+                    document.querySelector(
+                        '.stage-panel:not(.hidden)'
+                    );
+
+
+                const activeStageId =
+                    visiblePanel
+                        ? visiblePanel.dataset.stagePanel
+                        : '';
+
+
+                /*
+                 * Synchronize forms.
+                 */
+
+                manager
+                    .querySelectorAll(
+                        '[data-active-stage-input]'
+                    )
+                    .forEach(
+                        function(input) {
+
+                            input.value =
+                                activeStageId;
+
+                        }
+                    );
+
+
+                return;
+
+            }
+
+
+            /* ----------------------------------------------------
+               CLOSE BUTTON
+               ---------------------------------------------------- */
+
+            if (closeButton) {
+
+                event.preventDefault();
+
+                event.stopPropagation();
+
+
+                const manager =
+                    closeButton.closest(
+                        '[data-stage-manager]'
+                    );
+
+
+                if (!manager) {
+
+                    return;
+
+                }
+
+
+                const popover =
+                    manager.querySelector(
+                        '.stage-manager-popover'
+                    );
+
+
+                if (popover) {
+
+                    popover.classList.add(
+                        'hidden'
+                    );
+
+                }
+
+
+                return;
+
+            }
+
+        }
+    );
+
+
+    /* ============================================================
+       CLOSE STAGE MANAGER ON OUTSIDE CLICK
+       ============================================================ */
+
+    document.addEventListener(
+        'click',
+        function(event) {
+
+            document
+                .querySelectorAll(
+                    '.stage-manager-popover'
+                )
+                .forEach(
+                    function(popover) {
+
+                        const manager =
+                            popover.closest(
+                                '[data-stage-manager]'
+                            );
+
+
+                        if (!manager) {
+
+                            return;
+
+                        }
+
+
+                        if (
+                            !manager.contains(
+                                event.target
+                            )
+                        ) {
+
+                            popover.classList.add(
+                                'hidden'
+                            );
+
+                        }
+
+                    }
+                );
+
+        }
+    );
+
+
+    /* ============================================================
+       CLOSE STAGE MANAGER AFTER TABLE SWAP
+       ============================================================ */
+
+    document.body.addEventListener(
+        'htmx:afterSwap',
+        function(event) {
+
+            const target =
+                event.detail &&
+                event.detail.target;
+
+
+            if (
+                target &&
+                target.id ===
+                    'lead-table-container'
+            ) {
+
+                const popover =
+                    target.querySelector(
+                        '.stage-manager-popover'
+                    );
+
+
+                if (popover) {
+
+                    popover.classList.add(
+                        'hidden'
+                    );
+
+                }
+
+            }
 
         }
     );
