@@ -1,6 +1,11 @@
 from django.contrib import admin
 
-from .models import WhatsAppAccount, WhatsAppMessage
+from .models import (
+    BulkMessageCampaign,
+    BulkMessageRecipient,
+    WhatsAppAccount,
+    WhatsAppMessage,
+)
 
 
 @admin.register(WhatsAppAccount)
@@ -92,4 +97,70 @@ class WhatsAppMessageAdmin(admin.ModelAdmin):
 
     def has_change_permission(self, request, obj=None):
         # Audit trail -- view only.
+        return False
+
+
+class BulkMessageRecipientInline(admin.TabularInline):
+
+    model = BulkMessageRecipient
+
+    extra = 0
+
+    fields = [
+        "lead",
+        "status",
+        "skip_reason",
+        "message",
+    ]
+
+    readonly_fields = [
+        "lead",
+        "status",
+        "skip_reason",
+        "message",
+    ]
+
+    can_delete = False
+
+    def has_add_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(BulkMessageCampaign)
+class BulkMessageCampaignAdmin(admin.ModelAdmin):
+
+    list_display = [
+        "name",
+        "organization",
+        "pipeline",
+        "stage",
+        "status",
+        "created_by",
+        "created_at",
+    ]
+
+    list_filter = [
+        "status",
+        "organization",
+    ]
+
+    search_fields = [
+        "name",
+        "organization__name",
+    ]
+
+    readonly_fields = [
+        "id",
+        "created_at",
+        "started_at",
+        "completed_at",
+    ]
+
+    inlines = [BulkMessageRecipientInline]
+
+    def has_add_permission(self, request):
+        # Campaigns are created through the CRM compose flow
+        # (services.channels.bulk_service.create_campaign), which
+        # snapshots recipients at creation time -- creating one
+        # directly in admin would skip that step.
         return False

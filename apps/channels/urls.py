@@ -29,13 +29,28 @@ urlpatterns = [
         name="whatsapp-disconnect",
     ),
     path(
-        "webhook/",
-        views_flat.whatsapp_webhook_view,
-        name="whatsapp-webhook",
-    ),
-    path(
         "send/<uuid:lead_id>/",
         views_flat.whatsapp_send_message_view,
         name="whatsapp-send-message",
     ),
+    # path(
+    #     "campaigns/",
+    #     views_flat.whatsapp_campaign_list_view,
+    #     name="whatsapp-campaign-list",
+    # ),
+    # path(
+    #     "campaigns/new/",
+    #     views_flat.whatsapp_campaign_create_view,
+    #     name="whatsapp-campaign-create",
+    # ),
+    # path(
+    #     "campaigns/<uuid:campaign_id>/",
+    #     views_flat.whatsapp_campaign_detail_view,
+    #     name="whatsapp-campaign-detail",
+    # ),
+    # path(
+    #     "campaigns/<uuid:campaign_id>/launch/",
+    #     views_flat.whatsapp_campaign_launch_view,
+    #     name="whatsapp-campaign-launch",
+    # ),
 ]

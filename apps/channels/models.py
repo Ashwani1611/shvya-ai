@@ -255,3 +255,169 @@ class WhatsAppMessage(models.Model):
 
     def __str__(self):
         return f"{self.direction}: {self.from_number} -> {self.to_number}"
+
+
+# ============================================================
+# BULK MESSAGING
+# ============================================================
+
+
+class BulkMessageCampaign(models.Model):
+    """
+    A one-off bulk send to a set of leads (targeted by pipeline
+    and, optionally, stage). Each recipient becomes its own
+    BulkMessageRecipient row, which in turn produces its own
+    WhatsAppMessage once actually sent -- so a campaign is just
+    an organizing/tracking wrapper, not a special send path.
+    """
+
+    class Status(models.TextChoices):
+        DRAFT = "draft", "Draft"
+        QUEUED = "queued", "Queued"
+        SENDING = "sending", "Sending"
+        COMPLETED = "completed", "Completed"
+        FAILED = "failed", "Failed"
+
+    id = models.UUIDField(
+        primary_key=True,
+        default=uuid.uuid4,
+        editable=False,
+    )
+
+    organization = models.ForeignKey(
+        Organization,
+        on_delete=models.CASCADE,
+        related_name="whatsapp_campaigns",
+    )
+
+    account = models.ForeignKey(
+        WhatsAppAccount,
+        on_delete=models.CASCADE,
+        related_name="campaigns",
+    )
+
+    name = models.CharField(max_length=150)
+
+    # Targeting: all leads in this pipeline, optionally narrowed
+    # to one stage. Both are snapshotted at creation time via
+    # BulkMessageRecipient rows, so later pipeline/stage changes
+    # don't retroactively add/remove recipients mid-send.
+    pipeline = models.ForeignKey(
+        "crm.Pipeline",
+        on_delete=models.CASCADE,
+        related_name="whatsapp_campaigns",
+    )
+
+    stage = models.ForeignKey(
+        "crm.Stage",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="whatsapp_campaigns",
+        help_text="Leave blank to target every stage in the pipeline.",
+    )
+
+    body = models.TextField(
+        help_text=(
+            "Free-form text. NOTE: Meta only allows free-form text to "
+            "leads who messaged in the last 24 hours -- leads outside "
+            "that window are skipped unless template_name is set."
+        ),
+    )
+
+    template_name = models.CharField(
+        max_length=100,
+        blank=True,
+        help_text="Meta-approved template name, for leads outside the 24h window.",
+    )
+
+    status = models.CharField(
+        max_length=15,
+        choices=Status.choices,
+        default=Status.DRAFT,
+    )
+
+    created_by = models.ForeignKey(
+        "accounts.User",
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name="whatsapp_campaigns",
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    started_at = models.DateTimeField(null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.name} ({self.organization.name})"
+
+
+class BulkMessageRecipient(models.Model):
+    """
+    One lead's place in a BulkMessageCampaign. Snapshotting
+    campaign -> recipients at creation time (rather than
+    re-querying Lead by pipeline/stage at send time) means the
+    campaign's audience is fixed once queued, and each recipient
+    can be retried/tracked independently.
+    """
+
+    class Status(models.TextChoices):
+        PENDING = "pending", "Pending"
+        SENT = "sent", "Sent"
+        FAILED = "failed", "Failed"
+        SKIPPED = "skipped", "Skipped"
+
+    id = models.UUIDField(
+        primary_key=True,
+        default=uuid.uuid4,
+        editable=False,
+    )
+
+    campaign = models.ForeignKey(
+        BulkMessageCampaign,
+        on_delete=models.CASCADE,
+        related_name="recipients",
+    )
+
+    lead = models.ForeignKey(
+        "crm.Lead",
+        on_delete=models.CASCADE,
+        related_name="whatsapp_bulk_recipients",
+    )
+
+    message = models.ForeignKey(
+        WhatsAppMessage,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="bulk_recipient",
+    )
+
+    status = models.CharField(
+        max_length=10,
+        choices=Status.choices,
+        default=Status.PENDING,
+    )
+
+    skip_reason = models.CharField(
+        max_length=200,
+        blank=True,
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["campaign", "lead"],
+                name="uniq_campaign_lead",
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.campaign.name} -> {self.lead.name}"
