@@ -10,7 +10,6 @@
 
 <div class="w-full">
 
-
     <!-- ============================================================
          STAGE NAVIGATION
          ============================================================ -->
@@ -37,7 +36,7 @@
                 flex-1
                 min-w-0
                 overflow-x-auto
-                overflow-y-hidden
+                overflow-y-visible
             "
         >
 
@@ -52,11 +51,23 @@
                     inline-flex
                     items-center
                     gap-2
+
                     px-4
                     py-3
+
                     text-base
                     whitespace-nowrap
-                    transition-colors
+
+                    transition-all
+                    duration-150
+
+                    {% if active_stage_id == group.stage.id|stringformat:'s' %}
+                        font-medium
+                    {% else %}
+                        font-normal
+                    {% endif %}
+
+                    hover:font-semibold
                 "
 
                 data-stage-id="{{ group.stage.id }}"
@@ -75,11 +86,9 @@
                     {% if active_stage_id == group.stage.id|stringformat:'s' %}
                         color: #111827;
                         border-bottom: 2px solid #2563EB;
-                        font-weight: 500;
                     {% else %}
                         color: #6B7280;
                         border-bottom: 2px solid transparent;
-                        font-weight: 400;
                     {% endif %}
                 "
             >
@@ -89,17 +98,25 @@
                 </span>
 
 
+                <!-- Stage count -->
+
                 <span
+                    data-stage-count
+
                     class="
                         inline-flex
                         items-center
                         justify-center
+
                         min-w-[28px]
                         h-7
                         px-2
+
                         rounded-md
+
                         text-sm
                         font-medium
+
                         tabular-nums
                     "
 
@@ -124,37 +141,64 @@
 
 
         <!-- ========================================================
-             STAGE MANAGER
+             STAGE MANAGEMENT
+             ALWAYS AFTER LAST STAGE
              ======================================================== -->
 
         <div
             class="
                 relative
                 shrink-0
-                ml-4
-                pb-2
+                ml-3
+                pb-1
             "
 
             data-stage-manager
         >
 
-            <!-- Pencil -->
+            <!-- ==================================================
+                 EDIT STAGES BUTTON
+                 ================================================== -->
 
             <button
                 type="button"
 
                 class="
                     stage-manager-trigger
-                    w-8
-                    h-8
+
+                    w-9
+                    h-9
+
                     inline-flex
                     items-center
                     justify-center
-                    rounded-md
-                    text-gray-500
-                    hover:bg-gray-100
-                    hover:text-gray-800
-                    transition
+
+                    rounded-[9px]
+
+                    border
+                    border-gray-200
+
+                    bg-white
+
+                    text-[#6B7280]
+
+                    hover:bg-[#3B82F6]
+                    hover:border-[#3B82F6]
+                    hover:text-white
+
+                    focus:outline-none
+                    focus:bg-[#3B82F6]
+                    focus:border-[#3B82F6]
+                    focus:text-white
+                    focus:ring-2
+                    focus:ring-[#3B82F6]/20
+
+                    active:bg-[#3B82F6]
+                    active:border-[#3B82F6]
+                    active:text-white
+
+                    transition-all
+                    duration-150
                 "
 
                 aria-label="Edit stages"
@@ -164,7 +208,10 @@
 
                 <i
                     class="ti ti-pencil"
-                    style="font-size: 18px;"
+
+                    style="
+                        font-size: 17px;
+                    "
                 ></i>
 
             </button>
@@ -177,22 +224,33 @@
             <div
                 class="
                     stage-manager-popover
+
                     hidden
+
                     absolute
                     right-0
-                    top-10
-                    z-50
+                    top-[calc(100%+8px)]
+
+                    z-[100]
+
                     w-96
+
                     bg-white
+
                     border
-                    border-gray-200
-                    rounded-xl
+                    border-[#d6e2f0]
+
+                    rounded-[11px]
+
                     p-4
-                    shadow-xl
+
+                    shadow-[0_12px_30px_rgba(31,41,55,0.12)]
                 "
             >
 
-                <!-- Header -->
+                <!-- =================================================
+                     HEADER
+                     ================================================= -->
 
                 <div
                     class="
@@ -216,6 +274,7 @@
                             Edit stages
                         </p>
 
+
                         <p
                             class="
                                 text-xs
@@ -229,25 +288,42 @@
                     </div>
 
 
+                    <!-- Close -->
+
                     <button
                         type="button"
 
                         class="
                             stage-manager-close
+
                             w-7
                             h-7
+
                             inline-flex
                             items-center
                             justify-center
+
                             rounded-md
+
                             text-gray-400
+
                             hover:bg-gray-100
+                            hover:text-gray-700
+
+                            transition
                         "
+
+                        aria-label="Close stage manager"
+
+                        title="Close"
                     >
 
                         <i
                             class="ti ti-x"
-                            style="font-size: 15px;"
+
+                            style="
+                                font-size: 15px;
+                            "
                         ></i>
 
                     </button>
@@ -277,7 +353,9 @@
                         "
                     >
 
-                        <!-- Rename -->
+                        <!-- ==================================================
+                             RENAME STAGE
+                             ================================================== -->
 
                         <form
                             method="post"
@@ -334,18 +412,27 @@
                                 class="
                                     flex-1
                                     min-w-0
-                                    h-9
+
+                                    h-10
+
                                     border
-                                    border-gray-200
-                                    rounded-lg
+                                    border-[#d6e2f0]
+
+                                    rounded-[9px]
+
                                     px-3
+
                                     text-sm
                                     text-gray-700
+
                                     bg-white
+
                                     focus:outline-none
                                     focus:ring-2
-                                    focus:ring-blue-100
-                                    focus:border-blue-400
+                                    focus:ring-[#3B82F6]/15
+                                    focus:border-[#3B82F6]
+
+                                    transition
                                 "
                             >
 
@@ -359,12 +446,24 @@
                                     w-9
                                     h-9
                                     shrink-0
+
                                     inline-flex
                                     items-center
                                     justify-center
-                                    rounded-lg
-                                    text-blue-600
-                                    hover:bg-blue-50
+
+                                    rounded-[9px]
+
+                                    text-[#3B82F6]
+
+                                    hover:bg-[#3B82F6]
+                                    hover:text-white
+
+                                    focus:outline-none
+                                    focus:bg-[#3B82F6]
+                                    focus:text-white
+
+                                    transition-all
+                                    duration-150
                                 "
 
                                 title="Save stage name"
@@ -374,7 +473,10 @@
 
                                 <i
                                     class="ti ti-check"
-                                    style="font-size: 17px;"
+
+                                    style="
+                                        font-size: 17px;
+                                    "
                                 ></i>
 
                             </button>
@@ -429,12 +531,24 @@
                                 class="
                                     w-9
                                     h-9
+
                                     inline-flex
                                     items-center
                                     justify-center
-                                    rounded-lg
+
+                                    rounded-[9px]
+
                                     text-red-500
-                                    hover:bg-red-50
+
+                                    hover:bg-red-500
+                                    hover:text-white
+
+                                    focus:outline-none
+                                    focus:bg-red-500
+                                    focus:text-white
+
+                                    transition-all
+                                    duration-150
                                 "
 
                                 title="Delete stage"
@@ -450,7 +564,10 @@
 
                                 <i
                                     class="ti ti-trash"
-                                    style="font-size: 17px;"
+
+                                    style="
+                                        font-size: 17px;
+                                    "
                                 ></i>
 
                             </button>
@@ -472,6 +589,7 @@
                     class="
                         mt-4
                         pt-4
+
                         border-t
                         border-gray-100
                     "
@@ -544,18 +662,29 @@
                             class="
                                 flex-1
                                 min-w-0
-                                h-9
+
+                                h-10
+
                                 border
-                                border-gray-200
-                                rounded-lg
+                                border-[#d6e2f0]
+
+                                rounded-[9px]
+
                                 px-3
+
                                 text-sm
                                 text-gray-700
+
                                 bg-white
+
+                                placeholder:text-gray-400
+
                                 focus:outline-none
                                 focus:ring-2
-                                focus:ring-blue-100
-                                focus:border-blue-400
+                                focus:ring-[#3B82F6]/15
+                                focus:border-[#3B82F6]
+
+                                transition
                             "
                         >
 
@@ -564,23 +693,34 @@
                             type="submit"
 
                             class="
-                                h-9
+                                h-10
+
                                 inline-flex
                                 items-center
                                 gap-1.5
+
                                 px-3
-                                rounded-lg
+
+                                rounded-[9px]
+
                                 text-xs
                                 font-medium
-                                bg-gray-900
+
+                                bg-[#3B82F6]
                                 text-white
-                                hover:bg-gray-800
+
+                                hover:bg-[#2563EB]
+
+                                transition-colors
                             "
                         >
 
                             <i
                                 class="ti ti-plus"
-                                style="font-size: 14px;"
+
+                                style="
+                                    font-size: 14px;
+                                "
                             ></i>
 
                             Add
@@ -636,12 +776,18 @@
 
             {% if group.leads %}
 
+                <!-- ==================================================
+                     LEAD CARDS
+                     ================================================== -->
+
                 <div
                     class="
                         flex
                         flex-col
                         gap-3
                     "
+
+                    data-lead-cards
                 >
 
                     {% for lead in group.leads %}
@@ -659,18 +805,25 @@
                      ================================================== -->
 
                 <div
+                    data-empty-stage
+
                     class="
                         w-full
                         min-h-[220px]
+
                         flex
                         flex-col
                         items-center
                         justify-center
+
                         text-center
+
                         border
                         border-dashed
                         border-gray-200
+
                         rounded-xl
+
                         bg-white
                     "
                 >
@@ -679,11 +832,15 @@
                         class="
                             w-11
                             h-11
+
                             rounded-full
+
                             bg-gray-50
+
                             flex
                             items-center
                             justify-center
+
                             mb-3
                         "
                     >

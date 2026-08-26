@@ -1458,6 +1458,161 @@ def lead_card_partial(
         context,
     )
 
+@crm_login_required
+@require_POST
+def lead_stage_move(
+    request,
+    lead_id,
+):
+
+    user = request.crm_user
+
+    lead = get_object_or_404(
+        Lead,
+        id=lead_id,
+        organization=user.organization,
+    )
+
+    # --------------------------------------------------------
+    # READ TARGET STAGE
+    # --------------------------------------------------------
+
+    stage_id = (
+        request.POST.get(
+            "stage_id",
+            "",
+        )
+        or request.POST.get(
+            "stage",
+            "",
+        )
+    ).strip()
+
+    if not stage_id:
+
+        return HttpResponse(
+            "Stage is required.",
+            status=400,
+        )
+
+    # --------------------------------------------------------
+    # TARGET STAGE
+    # Must belong to the same pipeline.
+    # --------------------------------------------------------
+
+    stage = (
+        Stage.objects
+        .filter(
+            id=stage_id,
+            pipeline=lead.pipeline,
+            is_active=True,
+        )
+        .first()
+    )
+
+    if not stage:
+
+        return HttpResponse(
+            "Invalid stage for this lead.",
+            status=400,
+        )
+
+    old_stage_id = (
+        str(lead.stage_id)
+        if lead.stage_id
+        else ""
+    )
+
+    new_stage_id = str(
+        stage.id
+    )
+
+    # --------------------------------------------------------
+    # NO CHANGE
+    # --------------------------------------------------------
+
+    if old_stage_id == new_stage_id:
+
+        response = HttpResponse("")
+
+        response["HX-Trigger"] = json.dumps(
+            {
+                "leadStageUpdated": {
+                    "lead_id": str(lead.id),
+                    "old_stage_id": old_stage_id,
+                    "stage_id": new_stage_id,
+                    "pipeline_id": str(
+                        lead.pipeline_id
+                    ),
+                }
+            }
+        )
+
+        return response
+
+    # --------------------------------------------------------
+    # SAVE
+    # --------------------------------------------------------
+
+    try:
+
+        lead.stage = stage
+
+        lead.save(
+            update_fields=[
+                "stage",
+                "updated_at",
+            ]
+        )
+
+    except DjangoValidationError as e:
+
+        logger.exception(
+            "Lead stage move validation failed "
+            "for lead %s",
+            lead_id,
+        )
+
+        return HttpResponse(
+            f"Validation error: {e}",
+            status=400,
+        )
+
+    except Exception as e:
+
+        logger.exception(
+            "Lead stage move failed "
+            "for lead %s",
+            lead_id,
+        )
+
+        return HttpResponse(
+            f"Error moving lead: {e}",
+            status=400,
+        )
+
+    # --------------------------------------------------------
+    # SUCCESS
+    # --------------------------------------------------------
+
+    response = HttpResponse("")
+
+    response["HX-Trigger"] = json.dumps(
+        {
+            "leadStageUpdated": {
+                "lead_id": str(
+                    lead.id
+                ),
+                "old_stage_id": old_stage_id,
+                "stage_id": new_stage_id,
+                "pipeline_id": str(
+                    lead.pipeline_id
+                ),
+            }
+        }
+    )
+
+    return response
 
 # ============================================================
 # ADD CALL

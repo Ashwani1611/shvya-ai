@@ -22,6 +22,7 @@ from apps.crm.views.dashboard import (
     lead_reminder_save,
     lead_stage_create,
     lead_stage_delete,
+    lead_stage_move,
     lead_stage_rename,
     lead_table_partial,
 )
@@ -205,6 +206,12 @@ urlpatterns = [
     "stages/<uuid:stage_id>/delete/",
     lead_stage_delete,
     name="crm-stage-delete",
+),
+
+path(
+    "leads/<uuid:lead_id>/stage/",
+    lead_stage_move,
+    name="crm-lead-stage-move",
 ),
 
 ]

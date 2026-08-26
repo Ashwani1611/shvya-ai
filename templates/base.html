@@ -931,22 +931,28 @@
                    ------------------------------------------------ */
 
                 const response =
-                    await fetch(
-                        '/dashboard/leads/' +
-                            leadId +
-                            '/card/',
-                        {
-                            method: 'GET',
+    await fetch(
+        '/dashboard/leads/' +
+            leadId +
+            '/card/?_=' +
+            Date.now(),
+        {
+            method: 'GET',
 
-                            headers: {
-                                'HX-Request':
-                                    'true'
-                            },
+            cache: 'no-store',
 
-                            credentials:
-                                'same-origin'
-                        }
-                    );
+            headers: {
+                'HX-Request':
+                    'true',
+
+                'Cache-Control':
+                    'no-cache'
+            },
+
+            credentials:
+                'same-origin'
+        }
+    );
 
 
                 if (!response.ok) {
@@ -1508,6 +1514,383 @@
         }
     );
 
+/* ============================================================
+   LEAD STAGE UPDATED
+   DIRECT DOM MOVE — NO DASHBOARD REFRESH
+   ============================================================ */
+
+document.body.addEventListener(
+    'leadStageUpdated',
+    function(event) {
+
+        const detail =
+            event.detail || {};
+
+
+        const leadId =
+            detail.lead_id;
+
+
+        const oldStageId =
+            detail.old_stage_id;
+
+
+        const newStageId =
+            detail.stage_id;
+
+
+        if (
+            !leadId ||
+            !newStageId
+        ) {
+
+            return;
+
+        }
+
+
+        const card =
+            document.getElementById(
+                'lead-card-' +
+                leadId
+            );
+
+
+        if (!card) {
+
+            return;
+
+        }
+
+
+        const oldPanel =
+            oldStageId
+                ? document.getElementById(
+                    'stage-panel-' +
+                    oldStageId
+                )
+                : card.closest(
+                    '.stage-panel'
+                );
+
+
+        const newPanel =
+            document.getElementById(
+                'stage-panel-' +
+                newStageId
+            );
+
+
+        if (!newPanel) {
+
+            console.error(
+                'Target stage panel not found:',
+                newStageId
+            );
+
+            return;
+
+        }
+
+
+        /* ======================================================
+           FIND / CREATE TARGET CARD CONTAINER
+           ====================================================== */
+
+        let cardsContainer =
+            newPanel.querySelector(
+                '[data-lead-cards]'
+            );
+
+
+        if (!cardsContainer) {
+
+            cardsContainer =
+                document.createElement(
+                    'div'
+                );
+
+
+            cardsContainer.className =
+                'flex flex-col gap-3';
+
+
+            cardsContainer.setAttribute(
+                'data-lead-cards',
+                ''
+            );
+
+
+            newPanel.innerHTML = '';
+
+            newPanel.appendChild(
+                cardsContainer
+            );
+
+        }
+
+
+        /* ======================================================
+           REMOVE OLD EMPTY STATE
+           ====================================================== */
+
+        const newEmptyState =
+            newPanel.querySelector(
+                '[data-empty-stage]'
+            );
+
+
+        if (newEmptyState) {
+
+            newEmptyState.remove();
+
+        }
+
+
+        /* ======================================================
+           MOVE EXISTING CARD
+           ====================================================== */
+
+        cardsContainer.appendChild(
+            card
+        );
+
+
+        /* ======================================================
+           UPDATE SELECT VALUE
+           ====================================================== */
+
+        card
+            .querySelectorAll(
+                'select[name="stage_id"]'
+            )
+            .forEach(
+                function(select) {
+
+                    select.value =
+                        newStageId;
+
+                }
+            );
+
+
+        /* ======================================================
+           UPDATE OLD STAGE
+           ====================================================== */
+
+        if (oldPanel) {
+
+            const oldCards =
+                oldPanel.querySelectorAll(
+                    '[id^="lead-card-"]'
+                );
+
+
+            if (
+                oldCards.length === 0
+            ) {
+
+                const stageName =
+                    document
+                        .querySelector(
+                            '.stage-tab[data-stage-id="' +
+                            oldStageId +
+                            '"] span:first-child'
+                        )
+                        ?.textContent
+                        ?.trim() ||
+                    'this stage';
+
+
+                const emptyState =
+                    document.createElement(
+                        'div'
+                    );
+
+
+                emptyState.setAttribute(
+                    'data-empty-stage',
+                    ''
+                );
+
+
+                emptyState.className =
+                    `
+                    w-full
+                    min-h-[220px]
+                    flex
+                    flex-col
+                    items-center
+                    justify-center
+                    text-center
+                    border
+                    border-dashed
+                    border-gray-200
+                    rounded-xl
+                    bg-white
+                    `;
+
+
+                emptyState.innerHTML =
+                    `
+                    <div
+                        class="
+                            w-11
+                            h-11
+                            rounded-full
+                            bg-gray-50
+                            flex
+                            items-center
+                            justify-center
+                            mb-3
+                        "
+                    >
+                        <i
+                            class="
+                                ti
+                                ti-inbox
+                                text-gray-400
+                                text-xl
+                            "
+                        ></i>
+                    </div>
+
+                    <p
+                        class="
+                            text-sm
+                            font-medium
+                            text-gray-700
+                        "
+                    >
+                        No leads in ${stageName}
+                    </p>
+
+                    <p
+                        class="
+                            text-xs
+                            text-gray-400
+                            mt-1
+                        "
+                    >
+                        Leads added to this stage will appear here.
+                    </p>
+                    `;
+
+
+                oldPanel
+                    .querySelectorAll(
+                        '[data-lead-cards]'
+                    )
+                    .forEach(
+                        function(container) {
+
+                            if (
+                                container.children.length === 0
+                            ) {
+
+                                container.remove();
+
+                            }
+
+                        }
+                    );
+
+
+                oldPanel.appendChild(
+                    emptyState
+                );
+
+            }
+
+        }
+
+
+        /* ======================================================
+           UPDATE STAGE COUNTS
+           ====================================================== */
+
+        if (
+            oldStageId
+        ) {
+
+            const oldTab =
+                document.querySelector(
+                    '.stage-tab[data-stage-id="' +
+                    oldStageId +
+                    '"]'
+                );
+
+
+            if (oldTab) {
+
+                const oldCount =
+                    oldTab.querySelector(
+                        '[data-stage-count]'
+                    );
+
+
+                if (oldCount) {
+
+                    const count =
+                        oldPanel
+                            ? oldPanel.querySelectorAll(
+                                '[id^="lead-card-"]'
+                            ).length
+                            : 0;
+
+
+                    oldCount.textContent =
+                        count;
+
+                }
+
+            }
+
+        }
+
+
+        const newTab =
+            document.querySelector(
+                '.stage-tab[data-stage-id="' +
+                newStageId +
+                '"]'
+            );
+
+
+        if (newTab) {
+
+            const newCount =
+                newTab.querySelector(
+                    '[data-stage-count]'
+                );
+
+
+            if (newCount) {
+
+                newCount.textContent =
+                    newPanel.querySelectorAll(
+                        '[id^="lead-card-"]'
+                    ).length;
+
+            }
+
+        }
+
+
+        /* ======================================================
+           NO PAGE RELOAD
+           ====================================================== */
+
+        console.debug(
+            'Lead moved:',
+            leadId,
+            oldStageId,
+            '→',
+            newStageId
+        );
+
+    }
+);
 
 </script>
 
