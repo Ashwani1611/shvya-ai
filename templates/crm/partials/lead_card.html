@@ -1,0 +1,1230 @@
+{% load crm_extras %}
+
+
+<!-- ============================================================
+     LEAD CARD
+     ============================================================ -->
+
+<article
+    id="lead-card-{{ lead.id }}"
+
+    class="bg-white
+           border
+           border-gray-200
+           rounded-xl
+           overflow-hidden"
+>
+
+
+    <!-- ========================================================
+         HEADER
+         ======================================================== -->
+
+    <div
+        class="px-5
+               py-4
+               border-b
+               border-gray-100"
+    >
+
+        <div
+            class="flex
+                   items-start
+                   gap-4"
+        >
+
+
+            <!-- ==================================================
+                 AVATAR
+                 ================================================== -->
+
+            <div
+                class="w-11
+                       h-11
+                       rounded-full
+                       bg-blue-100
+                       text-blue-700
+                       flex
+                       items-center
+                       justify-center
+                       font-semibold
+                       text-sm
+                       shrink-0"
+            >
+                {{ lead.initials }}
+            </div>
+
+
+
+            <!-- ==================================================
+                 LEAD IDENTITY
+                 ================================================== -->
+
+            <div
+                class="min-w-0
+                       flex-1"
+            >
+
+                <div
+                    class="flex
+                           items-center
+                           gap-2
+                           flex-wrap"
+                >
+
+                    <h3
+                        class="font-semibold
+                               text-sm
+                               text-gray-900
+                               truncate"
+                    >
+                        {{ lead.name }}
+                    </h3>
+
+
+                    {% if lead.phone %}
+
+                    <a
+                        href="https://wa.me/{{ lead.phone|cut:'+' }}"
+
+                        target="_blank"
+
+                        rel="noopener noreferrer"
+
+                        class="inline-flex
+                               items-center
+                               gap-1
+                               px-2
+                               py-0.5
+                               rounded-full
+                               bg-green-50
+                               text-green-700
+                               text-xs
+                               font-medium
+                               shrink-0"
+                    >
+
+                        <i class="ti ti-brand-whatsapp"></i>
+
+                        <span>
+                            WhatsApp
+                        </span>
+
+                    </a>
+
+                    {% endif %}
+
+                </div>
+
+
+                <!-- Contact -->
+
+                <div
+                    class="mt-1
+                           flex
+                           items-center
+                           gap-2
+                           flex-wrap
+                           text-xs
+                           text-gray-500"
+                >
+
+                    {% if lead.email %}
+
+                    <span>
+                        {{ lead.email }}
+                    </span>
+
+                    <span>
+                        ·
+                    </span>
+
+                    {% endif %}
+
+                    {% if lead.phone %}
+
+                    <span>
+                        {{ lead.phone }}
+                    </span>
+
+                    {% endif %}
+
+                </div>
+
+
+                <!-- Last activity -->
+
+                <p
+                    class="mt-1.5
+                           text-xs
+                           text-gray-400"
+                >
+                    Last activity:
+                    {{ lead.updated_at|date:"M d, Y H:i" }}
+                </p>
+
+
+                <!-- Pipeline timing -->
+
+                <div
+                    class="mt-1
+                           flex
+                           items-center
+                           gap-4
+                           text-xs
+                           text-gray-500"
+                >
+
+                    <span>
+                        Days in Pipeline:
+                        <strong class="font-medium text-gray-700">
+                            {{ lead.days_in_pipeline|default:0 }}d
+                        </strong>
+                    </span>
+
+
+                    <span>
+                        Days in Stage:
+                        <strong class="font-medium text-gray-700">
+                            {{ lead.days_in_stage }}d
+                        </strong>
+                    </span>
+
+                </div>
+
+            </div>
+
+
+
+            <!-- ==================================================
+                 TOP RIGHT ACTIONS
+                 ================================================== -->
+
+            <div
+                class="flex
+                       items-center
+                       gap-2
+                       shrink-0"
+            >
+
+
+                <!-- Edit -->
+
+                <button
+                    type="button"
+
+                    hx-get="{% url 'crm-lead-edit-modal' lead.id %}"
+
+                    hx-target="#modal-root"
+
+                    hx-swap="innerHTML"
+
+                    class="inline-flex
+                           items-center
+                           gap-1.5
+                           px-3
+                           py-1.5
+                           rounded-md
+                           border
+                           border-gray-300
+                           bg-white
+                           text-xs
+                           font-medium
+                           text-gray-700
+                           hover:bg-gray-50"
+                >
+
+                    <i class="ti ti-edit"></i>
+
+                    <span>
+                        Edit
+                    </span>
+
+                </button>
+
+
+                <!-- Stage -->
+
+                <select
+                    class="text-xs
+                           border
+                           border-gray-300
+                           rounded-md
+                           px-2
+                           py-1.5
+                           bg-white
+                           text-gray-700"
+
+                    aria-label="Lead stage"
+                >
+
+                    {% for s in all_stages %}
+
+                    <option
+                        value="{{ s.id }}"
+
+                        {% if s.id == lead.stage_id %}
+                            selected
+                        {% endif %}
+                    >
+                        {{ s.name }}
+                    </option>
+
+                    {% endfor %}
+
+                </select>
+
+            </div>
+
+        </div>
+
+    </div>
+
+
+
+    <!-- ========================================================
+         SUMMARY ROW
+         ======================================================== -->
+
+    <div
+        class="px-5
+               py-3
+               border-b
+               border-gray-100"
+    >
+
+        <div
+            class="grid
+                   grid-cols-3
+                   gap-6"
+        >
+
+
+            <!-- ==================================================
+                 AUTO FOLLOW-UP
+                 ================================================== -->
+
+            <div>
+
+                <p
+                    class="text-[11px]
+                           text-gray-400
+                           mb-1"
+                >
+                    Auto Follow-up
+                </p>
+
+                <p
+                    class="text-xs
+                           font-medium
+                           text-gray-700"
+                >
+                    Coming soon
+                </p>
+
+            </div>
+
+
+
+            <!-- ==================================================
+                 CALLS
+                 ================================================== -->
+
+            <div>
+
+                <p
+                    class="text-[11px]
+                           text-gray-400
+                           mb-1"
+                >
+                    Calls
+                </p>
+
+                <p
+                    class="text-xs
+                           font-medium
+                           text-gray-700"
+                >
+                    {{ lead.call_count }}
+                </p>
+
+            </div>
+
+
+
+            <!-- ==================================================
+                 IN STAGE
+                 ================================================== -->
+
+            <div>
+
+                <p
+                    class="text-[11px]
+                           text-gray-400
+                           mb-1"
+                >
+                    In Stage
+                </p>
+
+                <p
+                    class="text-xs
+                           font-medium
+                           text-gray-700"
+                >
+                    {{ lead.days_in_stage }}d
+                </p>
+
+            </div>
+
+        </div>
+
+    </div>
+
+
+
+    <!-- ========================================================
+         DETAILS / ACTIVITY TABS
+         ======================================================== -->
+
+    <div
+        class="px-5
+               pt-3
+               border-b
+               border-gray-100"
+    >
+
+        <div
+            class="flex
+                   items-center
+                   gap-5"
+        >
+
+
+            <!-- Details -->
+
+            <button
+                type="button"
+
+                class="lead-detail-tab
+                       text-sm
+                       font-medium
+                       text-gray-500
+                       hover:text-gray-700
+                       pb-2
+                       border-b-2
+                       border-transparent"
+
+                data-target="details-{{ lead.id }}"
+            >
+                Details
+            </button>
+
+
+            <!-- Activity -->
+
+            <button
+                type="button"
+
+                class="lead-detail-tab
+                       text-sm
+                       font-medium
+                       text-gray-500
+                       hover:text-gray-700
+                       pb-2
+                       border-b-2
+                       border-transparent"
+
+                data-target="activity-{{ lead.id }}"
+            >
+                Activity
+            </button>
+
+        </div>
+
+    </div>
+
+
+
+    <!-- ========================================================
+         DETAILS PANEL
+         CLOSED BY DEFAULT
+         ======================================================== -->
+
+    <div
+        id="details-{{ lead.id }}"
+
+        class="lead-tab-panel
+               hidden
+               px-5
+               py-4"
+    >
+
+
+        <!-- ====================================================
+             REMINDER
+             ==================================================== -->
+
+        <section
+            class="mb-4
+                   rounded-lg
+                   border
+                   border-gray-200
+                   p-4"
+        >
+
+            <div
+                class="flex
+                       items-center
+                       justify-between
+                       gap-4"
+            >
+
+                <div
+                    class="min-w-0"
+                >
+
+                    <p
+                        class="text-xs
+                               font-semibold
+                               uppercase
+                               tracking-wide
+                               text-gray-500"
+                    >
+                        Reminder
+                    </p>
+
+
+                    {% if lead.next_reminder %}
+
+                    <p
+                        class="mt-1
+                               text-sm
+                               font-medium
+                               text-gray-800"
+                    >
+                        {{ lead.next_reminder.due_at|date:"M d, Y H:i" }}
+                    </p>
+
+
+                    <p
+                        class="mt-0.5
+                               text-xs
+                               text-gray-500"
+                    >
+                        {{ lead.next_reminder.title }}
+                    </p>
+
+                    {% else %}
+
+                    <p
+                        class="mt-1
+                               text-sm
+                               text-gray-400"
+                    >
+                        No upcoming reminder
+                    </p>
+
+                    {% endif %}
+
+                </div>
+
+
+                <!-- Add Reminder -->
+
+                <button
+                    type="button"
+
+                    hx-get="{% url 'crm-lead-reminder-modal' lead.id %}"
+
+                    hx-target="#modal-root"
+
+                    hx-swap="innerHTML"
+
+                    class="inline-flex
+                           items-center
+                           gap-1.5
+                           px-3
+                           py-1.5
+                           rounded-md
+                           border
+                           border-gray-300
+                           bg-white
+                           text-xs
+                           font-medium
+                           text-gray-700
+                           hover:bg-gray-50
+                           shrink-0"
+                >
+
+                    <i class="ti ti-bell-plus"></i>
+
+                    <span>
+                        Add Reminder
+                    </span>
+
+                </button>
+
+            </div>
+
+        </section>
+
+
+
+        <!-- ====================================================
+             DETAILS TWO-COLUMN AREA
+             ==================================================== -->
+
+        <div
+            class="grid
+                   grid-cols-1
+                   lg:grid-cols-2
+                   gap-4"
+        >
+
+
+            <!-- ==================================================
+                 ADDITIONAL INFO
+                 ================================================== -->
+
+            <section
+                class="rounded-lg
+                       border
+                       border-gray-200
+                       p-4"
+            >
+
+                <div
+                    class="flex
+                           items-center
+                           justify-between
+                           gap-3
+                           mb-4"
+                >
+
+                    <h4
+                        class="text-xs
+                               font-semibold
+                               uppercase
+                               tracking-wide
+                               text-gray-500"
+                    >
+                        Additional Info
+                    </h4>
+
+
+                    <!-- Edit Attributes -->
+
+                    <button
+                        type="button"
+
+                        hx-get="{% url 'crm-lead-edit-modal' lead.id %}"
+
+                        hx-target="#modal-root"
+
+                        hx-swap="innerHTML"
+
+                        class="text-xs
+                               font-medium
+                               text-blue-600
+                               hover:text-blue-700"
+                    >
+                        Edit
+                    </button>
+
+                </div>
+
+
+                {% if lead.attributes %}
+
+                <div
+                    class="space-y-3"
+                >
+
+                    {% for key, value in lead.attributes.items %}
+
+                    <div>
+
+                        <p
+                            class="text-[11px]
+                                   uppercase
+                                   tracking-wide
+                                   text-gray-400"
+                        >
+                            {{ key }}
+                        </p>
+
+                        <p
+                            class="mt-0.5
+                                   text-sm
+                                   text-gray-800"
+                        >
+                            {{ value }}
+                        </p>
+
+                    </div>
+
+                    {% endfor %}
+
+                </div>
+
+                {% else %}
+
+                <p
+                    class="text-sm
+                           text-gray-400"
+                >
+                    No additional information available.
+                </p>
+
+                {% endif %}
+
+            </section>
+
+
+
+            <!-- ==================================================
+                 CALL TRACKER
+                 ================================================== -->
+
+            <section
+                class="rounded-lg
+                       border
+                       border-gray-200
+                       p-4"
+            >
+
+                <div
+                    class="flex
+                           items-center
+                           justify-between
+                           gap-3
+                           mb-4"
+                >
+
+                    <h4
+                        class="text-xs
+                               font-semibold
+                               uppercase
+                               tracking-wide
+                               text-gray-500"
+                    >
+                        Call Tracker
+                    </h4>
+
+
+                    <!-- Add Call -->
+
+                    <button
+                        type="button"
+
+                        hx-get="{% url 'crm-lead-call-modal' lead.id %}"
+
+                        hx-target="#modal-root"
+
+                        hx-swap="innerHTML"
+
+                        class="text-xs
+                               font-medium
+                               text-blue-600
+                               hover:text-blue-700"
+                    >
+                        Add Call
+                    </button>
+
+                </div>
+
+
+                {% if calls %}
+
+                    <div
+                        class="space-y-3"
+                    >
+
+                        {% for call in calls %}
+
+                        <div
+                            class="border-b
+                                   border-gray-100
+                                   pb-3
+                                   last:border-b-0
+                                   last:pb-0"
+                        >
+
+                            <div
+                                class="flex
+                                       items-center
+                                       gap-2"
+                            >
+
+                                {% if call.status == "completed" %}
+
+                                <i
+                                    class="ti ti-circle-check
+                                           text-green-600"
+                                ></i>
+
+                                {% elif call.status == "no_response" %}
+
+                                <i
+                                    class="ti ti-circle-x
+                                           text-red-500"
+                                ></i>
+
+                                {% elif call.status == "busy" %}
+
+                                <i
+                                    class="ti ti-phone-off
+                                           text-orange-500"
+                                ></i>
+
+                                {% elif call.status == "scheduled" %}
+
+                                <i
+                                    class="ti ti-calendar-event
+                                           text-blue-600"
+                                ></i>
+
+                                {% else %}
+
+                                <i
+                                    class="ti ti-circle
+                                           text-gray-400"
+                                ></i>
+
+                                {% endif %}
+
+
+                                <p
+                                    class="text-sm
+                                           font-medium
+                                           text-gray-800"
+                                >
+                                    Call {{ forloop.counter }}
+                                </p>
+
+                            </div>
+
+
+                            <p
+                                class="mt-1
+                                       text-xs
+                                       text-gray-500"
+                            >
+
+                                {{ call.called_at|date:"d/m/y | H:i" }}
+
+                                {% if call.duration_seconds %}
+
+                                ·
+                                {{ call.duration_seconds }} sec
+
+                                {% endif %}
+
+                            </p>
+
+
+                            {% if call.notes %}
+
+                            <p
+                                class="mt-1
+                                       text-xs
+                                       text-gray-500"
+                            >
+                                {{ call.notes }}
+                            </p>
+
+                            {% endif %}
+
+                        </div>
+
+                        {% endfor %}
+
+                    </div>
+
+                {% else %}
+
+                    <p
+                        class="text-sm
+                               text-gray-400"
+                    >
+                        No calls recorded yet.
+                    </p>
+
+                {% endif %}
+
+            </section>
+
+        </div>
+
+
+
+        <!-- ====================================================
+             NOTES
+             ==================================================== -->
+
+        <section
+            class="mt-4
+                   rounded-lg
+                   border
+                   border-gray-200
+                   p-4"
+        >
+
+            <div
+                class="flex
+                       items-center
+                       justify-between
+                       gap-3
+                       mb-3"
+            >
+
+                <h4
+                    class="text-xs
+                           font-semibold
+                           uppercase
+                           tracking-wide
+                           text-gray-500"
+                >
+                    Notes
+                </h4>
+
+
+                <!-- Add Note -->
+
+                <button
+                    type="button"
+
+                    hx-get="{% url 'crm-lead-note-modal' lead.id %}"
+
+                    hx-target="#modal-root"
+
+                    hx-swap="innerHTML"
+
+                    class="text-xs
+                           font-medium
+                           text-blue-600
+                           hover:text-blue-700"
+                >
+                    Add Note
+                </button>
+
+            </div>
+
+
+            {% if lead.display_note_text %}
+
+            <p
+                class="text-sm
+                       leading-6
+                       text-gray-700
+                       whitespace-pre-wrap"
+            >
+                {{ lead.display_note_text }}
+            </p>
+
+            {% else %}
+
+            <p
+                class="text-sm
+                       text-gray-400"
+            >
+                No notes added yet.
+            </p>
+
+            {% endif %}
+
+        </section>
+
+    </div>
+
+
+
+    <!-- ========================================================
+         ACTIVITY PANEL
+         CLOSED BY DEFAULT
+         ======================================================== -->
+
+    <div
+        id="activity-{{ lead.id }}"
+
+        class="lead-tab-panel
+               hidden
+               px-5
+               py-4"
+    >
+
+        <div
+            class="flex
+                   items-center
+                   justify-between
+                   mb-4"
+        >
+
+            <div>
+
+                <h4
+                    class="text-sm
+                           font-semibold
+                           text-gray-800"
+                >
+                    Entire Activity
+                </h4>
+
+                <p
+                    class="text-xs
+                           text-gray-400
+                           mt-0.5"
+                >
+                    Calls, notes and reminders for this lead
+                </p>
+
+            </div>
+
+        </div>
+
+
+        <div
+            class="space-y-4"
+        >
+
+
+            <!-- ==================================================
+                 CALL ACTIVITY
+                 ================================================== -->
+
+            {% for call in calls %}
+
+            <div
+                class="flex
+                       gap-3"
+            >
+
+                <div
+                    class="w-7
+                           h-7
+                           rounded-full
+                           bg-blue-50
+                           text-blue-600
+                           flex
+                           items-center
+                           justify-center
+                           shrink-0"
+                >
+
+                    <i class="ti ti-phone"></i>
+
+                </div>
+
+
+                <div
+                    class="min-w-0"
+                >
+
+                    <p
+                        class="text-sm
+                               font-medium
+                               text-gray-800"
+                    >
+                        Call {{ forloop.counter }}
+                    </p>
+
+                    <p
+                        class="text-xs
+                               text-gray-500
+                               mt-0.5"
+                    >
+                        {{ call.called_at|date:"M d, Y H:i" }}
+
+                        {% if call.duration_seconds %}
+                            · {{ call.duration_seconds }} sec
+                        {% endif %}
+                    </p>
+
+                    {% if call.notes %}
+
+                    <p
+                        class="text-xs
+                               text-gray-500
+                               mt-1"
+                    >
+                        {{ call.notes }}
+                    </p>
+
+                    {% endif %}
+
+                </div>
+
+            </div>
+
+            {% endfor %}
+
+
+
+            <!-- ==================================================
+                 NOTE ACTIVITY
+                 ================================================== -->
+
+            {% for note in notes %}
+
+            <div
+                class="flex
+                       gap-3"
+            >
+
+                <div
+                    class="w-7
+                           h-7
+                           rounded-full
+                           bg-yellow-50
+                           text-yellow-600
+                           flex
+                           items-center
+                           justify-center
+                           shrink-0"
+                >
+
+                    <i class="ti ti-note"></i>
+
+                </div>
+
+
+                <div
+                    class="min-w-0"
+                >
+
+                    <p
+                        class="text-sm
+                               font-medium
+                               text-gray-800"
+                    >
+                        Note added
+                    </p>
+
+                    <p
+                        class="text-xs
+                               text-gray-500
+                               mt-0.5"
+                    >
+                        {{ note.created_at|date:"M d, Y H:i" }}
+                    </p>
+
+                    <p
+                        class="text-xs
+                               text-gray-500
+                               mt-1
+                               whitespace-pre-wrap"
+                    >
+                        {{ note.note }}
+                    </p>
+
+                </div>
+
+            </div>
+
+            {% endfor %}
+
+
+
+            <!-- ==================================================
+                 REMINDER ACTIVITY
+                 ================================================== -->
+
+            {% for reminder in reminders %}
+
+            <div
+                class="flex
+                       gap-3"
+            >
+
+                <div
+                    class="w-7
+                           h-7
+                           rounded-full
+                           bg-purple-50
+                           text-purple-600
+                           flex
+                           items-center
+                           justify-center
+                           shrink-0"
+                >
+
+                    <i class="ti ti-bell"></i>
+
+                </div>
+
+
+                <div
+                    class="min-w-0"
+                >
+
+                    <p
+                        class="text-sm
+                               font-medium
+                               text-gray-800"
+                    >
+                        Reminder
+                    </p>
+
+                    <p
+                        class="text-xs
+                               text-gray-500
+                               mt-0.5"
+                    >
+                        {{ reminder.title }}
+                        ·
+                        {{ reminder.due_at|date:"M d, Y H:i" }}
+                    </p>
+
+                    {% if reminder.description %}
+
+                    <p
+                        class="text-xs
+                               text-gray-500
+                               mt-1"
+                    >
+                        {{ reminder.description }}
+                    </p>
+
+                    {% endif %}
+
+                </div>
+
+            </div>
+
+            {% endfor %}
+
+
+
+            <!-- ==================================================
+                 EMPTY ACTIVITY
+                 ================================================== -->
+
+            {% if not calls and not notes and not reminders %}
+
+            <div
+                class="border
+                       border-dashed
+                       border-gray-200
+                       rounded-lg
+                       p-6
+                       text-center"
+            >
+
+                <p
+                    class="text-sm
+                           text-gray-400"
+                >
+                    No activity recorded yet.
+                </p>
+
+            </div>
+
+            {% endif %}
+
+
+        </div>
+
+    </div>
+
+
+</article>

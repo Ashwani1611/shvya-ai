@@ -1,4 +1,6 @@
+import json
 import logging
+from datetime import datetime
 
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db.models import Q
@@ -9,7 +11,14 @@ from django.views.decorators.http import require_GET, require_POST
 
 from apps.accounts.models import User
 from apps.crm.decorators import crm_login_required
-from apps.crm.models import Lead, LeadNote, Pipeline, Stage
+from apps.crm.models import (
+    Lead,
+    LeadCall,
+    LeadNote,
+    LeadReminder,
+    Pipeline,
+    Stage,
+)
 
 from .api import STAGE_THEMES, get_user_pipelines
 
@@ -19,6 +28,15 @@ logger = logging.getLogger(__name__)
 def dashboard_view(request):
 
     user = request.crm_user
+
+    pending_reminder_count = (
+    LeadReminder.objects
+    .filter(
+        lead__organization=user.organization,
+        status="pending",
+    )
+    .count()
+)
 
     pipelines = get_user_pipelines(
         user
@@ -95,14 +113,15 @@ def dashboard_view(request):
         {
             "pipelines": pipelines,
             "selected_pipeline_id": (
-                str(
-                    selected_pipeline_id
-                )
-                if selected_pipeline_id
-                else None
-            ),
-            "crm_user": user,
-        },
+            str(
+                selected_pipeline_id
+            )
+            if selected_pipeline_id
+            else None
+    ),
+    "crm_user": user,
+    "pending_reminder_count": pending_reminder_count,
+},
     )
 
     response["Cache-Control"] = (
@@ -473,6 +492,7 @@ def lead_table_partial(request):
             }
         )
 
+
     return render(
         request,
         "crm/partials/lead_table.html",
@@ -481,6 +501,632 @@ def lead_table_partial(request):
             "all_stages": stages,
         },
     )
+
+# ============================================================
+# LEAD DETAIL
+# ============================================================
+
+
+@crm_login_required
+@require_GET
+def lead_detail(
+    request,
+    lead_id,
+):
+
+    user = request.crm_user
+
+    organization = user.organization
+
+    # --------------------------------------------------------
+    # LOAD LEAD
+    #
+    # Always resolve the lead inside the current organization.
+    # This preserves tenant isolation.
+    # --------------------------------------------------------
+
+    lead = get_object_or_404(
+        Lead,
+        id=lead_id,
+        organization=organization,
+    )
+
+    # --------------------------------------------------------
+    # CALLS
+    # --------------------------------------------------------
+
+    calls = (
+        lead.calls
+        .order_by("-created_at")
+    )
+
+    # --------------------------------------------------------
+    # NOTES
+    # --------------------------------------------------------
+
+    notes = (
+        LeadNote.objects
+        .filter(
+            lead=lead,
+        )
+        .order_by("-created_at")
+    )
+
+    # --------------------------------------------------------
+    # REMINDERS
+    # --------------------------------------------------------
+
+    reminders = (
+        lead.reminders
+        .order_by("-due_at")
+    )
+
+    # --------------------------------------------------------
+    # CONTACTS
+    # --------------------------------------------------------
+
+    contacts = (
+        lead.contacts
+        .all()
+    )
+
+    # --------------------------------------------------------
+    # PIPELINE STAGES
+    # --------------------------------------------------------
+
+    stages = (
+        Stage.objects
+        .filter(
+            pipeline=lead.pipeline,
+            is_active=True,
+        )
+        .order_by("display_order")
+    )
+
+    # --------------------------------------------------------
+    # INITIALS
+    # --------------------------------------------------------
+
+    initials = "".join(
+        [
+            part[0]
+            for part in lead.name.split()[:2]
+        ]
+    ).upper() or "?"
+
+    # --------------------------------------------------------
+    # NOTE TEXT
+    # --------------------------------------------------------
+
+    lead_note_text = (
+        lead.notes or ""
+    ).strip()
+
+    # --------------------------------------------------------
+    # RENDER
+    # --------------------------------------------------------
+
+    return render(
+        request,
+        "crm/partials/lead_detail.html",
+        {
+            "lead": lead,
+            "calls": calls,
+            "notes": notes,
+            "reminders": reminders,
+            "contacts": contacts,
+            "stages": stages,
+            "initials": initials,
+            "lead_note_text": lead_note_text,
+        },
+    )
+
+
+# ============================================================
+# LEAD CARD ACTIONS
+# ============================================================
+
+
+def _lead_card_context(
+    lead,
+    user,
+):
+    """
+    Build the reusable context required by the Lead Card.
+
+    This keeps card rendering consistent across:
+
+        - initial dashboard rendering
+        - call updates
+        - reminder updates
+        - note updates
+        - attribute updates
+    """
+
+    lead.days_in_stage = (
+        timezone.now()
+        - lead.updated_at
+    ).days
+
+    lead.days_in_pipeline = (
+        timezone.now()
+        - lead.created_at
+    ).days
+
+    lead.call_count = (
+        lead.calls.count()
+    )
+
+    lead.next_reminder = (
+        lead.reminders
+        .filter(
+            status="pending",
+        )
+        .order_by(
+            "due_at",
+        )
+        .first()
+    )
+
+    lead.initials = "".join(
+        [
+            part[0]
+            for part in lead.name.split()[:2]
+        ]
+    ).upper() or "?"
+
+    latest_note = (
+        LeadNote.objects
+        .filter(
+            lead=lead,
+        )
+        .order_by(
+            "-created_at",
+        )
+        .first()
+    )
+
+    lead.display_note = (
+        latest_note
+    )
+
+    lead.display_note_text = (
+        lead.notes or ""
+    ).strip()
+
+    if (
+        not lead.display_note_text
+        and latest_note
+    ):
+        lead.display_note_text = (
+            latest_note.note or ""
+        )
+
+    return {
+        "lead": lead,
+        "user": user,
+        "calls": (
+            lead.calls
+            .order_by(
+                "-called_at",
+            )
+        ),
+        "reminders": (
+            lead.reminders
+            .order_by(
+                "due_at",
+            )
+        ),
+        "notes": (
+            lead.lead_notes
+            .order_by(
+                "-created_at",
+            )
+        ),
+    }
+
+
+@crm_login_required
+@require_GET
+def lead_card_partial(
+    request,
+    lead_id,
+):
+    """
+    Return only the requested Lead Card.
+
+    This is intentionally scoped to the current organization.
+    """
+
+    user = request.crm_user
+
+    lead = get_object_or_404(
+        Lead,
+        id=lead_id,
+        organization=user.organization,
+    )
+
+    context = _lead_card_context(
+        lead,
+        user,
+    )
+
+    context["all_stages"] = (
+        Stage.objects
+        .filter(
+            pipeline=lead.pipeline,
+            is_active=True,
+        )
+        .order_by(
+            "display_order",
+        )
+    )
+
+    return render(
+        request,
+        "crm/partials/lead_card.html",
+        context,
+    )
+
+
+# ============================================================
+# ADD CALL
+# ============================================================
+
+
+@crm_login_required
+@require_GET
+def lead_call_modal(
+    request,
+    lead_id,
+):
+
+    user = request.crm_user
+
+    lead = get_object_or_404(
+        Lead,
+        id=lead_id,
+        organization=user.organization,
+    )
+
+    return render(
+        request,
+        "crm/partials/lead_call_modal.html",
+        {
+            "lead": lead,
+        },
+    )
+
+
+@crm_login_required
+@require_POST
+def lead_call_save(
+    request,
+    lead_id,
+):
+
+    user = request.crm_user
+
+    lead = get_object_or_404(
+        Lead,
+        id=lead_id,
+        organization=user.organization,
+    )
+
+    status = request.POST.get(
+        "status",
+        "completed",
+    ).strip()
+
+    allowed_statuses = {
+        choice[0]
+        for choice in LeadCall._meta.get_field(
+            "status"
+        ).choices
+    }
+
+    if status not in allowed_statuses:
+
+        return HttpResponse(
+            "Invalid call status.",
+            status=400,
+        )
+
+    duration_seconds_raw = request.POST.get(
+        "duration_seconds",
+        "0",
+    ).strip()
+
+    try:
+
+        duration_seconds = int(
+            duration_seconds_raw or 0
+        )
+
+    except ValueError:
+
+        return HttpResponse(
+            "Invalid duration.",
+            status=400,
+        )
+
+    if duration_seconds < 0:
+
+        return HttpResponse(
+            "Duration cannot be negative.",
+            status=400,
+        )
+
+    notes = request.POST.get(
+        "notes",
+        "",
+    ).strip()
+
+    called_at_raw = request.POST.get(
+        "called_at",
+        "",
+    ).strip()
+
+    if called_at_raw:
+
+        try:
+
+            called_at = datetime.fromisoformat(
+                called_at_raw
+            )
+
+            if timezone.is_naive(
+                called_at
+            ):
+
+                called_at = (
+                    timezone.make_aware(
+                        called_at,
+                        timezone.get_current_timezone(),
+                    )
+                )
+
+        except ValueError:
+
+            return HttpResponse(
+                "Invalid call date/time.",
+                status=400,
+            )
+
+    else:
+
+        called_at = timezone.now()
+
+    LeadCall.objects.create(
+        lead=lead,
+        user=user,
+        status=status,
+        duration_seconds=duration_seconds,
+        notes=notes,
+        called_at=called_at,
+    )
+
+    response = HttpResponse("")
+
+    response["HX-Trigger"] = json.dumps(
+        {
+            "leadCardUpdated": {
+                "lead_id": str(
+                    lead.id
+                )
+            }
+        }
+    )
+
+    return response
+
+
+# ============================================================
+# ADD REMINDER
+# ============================================================
+
+
+@crm_login_required
+@require_GET
+def lead_reminder_modal(
+    request,
+    lead_id,
+):
+
+    user = request.crm_user
+
+    lead = get_object_or_404(
+        Lead,
+        id=lead_id,
+        organization=user.organization,
+    )
+
+    return render(
+        request,
+        "crm/partials/lead_reminder_modal.html",
+        {
+            "lead": lead,
+        },
+    )
+
+
+@crm_login_required
+@require_POST
+def lead_reminder_save(
+    request,
+    lead_id,
+):
+
+    user = request.crm_user
+
+    lead = get_object_or_404(
+        Lead,
+        id=lead_id,
+        organization=user.organization,
+    )
+
+    title = request.POST.get(
+        "title",
+        "",
+    ).strip()
+
+    description = request.POST.get(
+        "description",
+        "",
+    ).strip()
+
+    due_at_raw = request.POST.get(
+        "due_at",
+        "",
+    ).strip()
+
+    if not title:
+
+        return HttpResponse(
+            "Reminder title is required.",
+            status=400,
+        )
+
+    if not due_at_raw:
+
+        return HttpResponse(
+            "Reminder date/time is required.",
+            status=400,
+        )
+
+    try:
+
+        due_at = datetime.fromisoformat(
+            due_at_raw
+        )
+
+        if timezone.is_naive(
+            due_at
+        ):
+
+            due_at = (
+                timezone.make_aware(
+                    due_at,
+                    timezone.get_current_timezone(),
+                )
+            )
+
+    except ValueError:
+
+        return HttpResponse(
+            "Invalid reminder date/time.",
+            status=400,
+        )
+
+    LeadReminder.objects.create(
+        lead=lead,
+        assigned_to=user,
+        title=title,
+        description=description,
+        due_at=due_at,
+        status="pending",
+    )
+
+    response = HttpResponse("")
+
+    response["HX-Trigger"] = json.dumps(
+        {
+            "leadCardUpdated": {
+                "lead_id": str(
+                    lead.id
+                )
+            }
+        }
+    )
+
+    return response
+
+
+# ============================================================
+# ADD NOTE
+# ============================================================
+
+
+@crm_login_required
+@require_GET
+def lead_note_modal(
+    request,
+    lead_id,
+):
+
+    user = request.crm_user
+
+    lead = get_object_or_404(
+        Lead,
+        id=lead_id,
+        organization=user.organization,
+    )
+
+    return render(
+        request,
+        "crm/partials/lead_note_modal.html",
+        {
+            "lead": lead,
+        },
+    )
+
+
+@crm_login_required
+@require_POST
+def lead_note_save(
+    request,
+    lead_id,
+):
+
+    user = request.crm_user
+
+    lead = get_object_or_404(
+        Lead,
+        id=lead_id,
+        organization=user.organization,
+    )
+
+    note = request.POST.get(
+        "note",
+        "",
+    ).strip()
+
+    if not note:
+
+        return HttpResponse(
+            "Note cannot be empty.",
+            status=400,
+        )
+
+    LeadNote.objects.create(
+        lead=lead,
+        created_by=user,
+        note=note,
+        note_type="manual",
+    )
+
+    lead.notes = note
+
+    lead.save(
+        update_fields=[
+            "notes",
+            "updated_at",
+        ]
+    )
+
+    response = HttpResponse("")
+
+    response["HX-Trigger"] = json.dumps(
+        {
+            "leadCardUpdated": {
+                "lead_id": str(
+                    lead.id
+                )
+            }
+        }
+    )
+
+    return response
 
 
 # ============================================================
@@ -961,8 +1607,14 @@ def lead_edit_save(
 
     response = HttpResponse("")
 
-    response["HX-Trigger"] = (
-        "leadUpdated"
+    response["HX-Trigger"] = json.dumps(
+        {
+            "leadCardUpdated": {
+                "lead_id": str(
+                    lead.id
+                )
+            }
+        }
     )
 
     return response

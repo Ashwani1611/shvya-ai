@@ -1,0 +1,87 @@
+<div
+    class="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
+>
+
+    <div
+        class="bg-white rounded-xl w-full max-w-md"
+    >
+
+        <div
+            class="flex items-center justify-between
+                   px-5 py-4
+                   border-b border-gray-200"
+        >
+
+            <h2 class="font-semibold text-lg">
+                Add Note
+            </h2>
+
+            <button
+                type="button"
+                onclick="document.getElementById('modal-root').innerHTML=''"
+                class="text-gray-400 hover:text-gray-600 text-xl"
+            >
+                &times;
+            </button>
+
+        </div>
+
+
+        <form
+            method="post"
+
+            hx-post="{% url 'crm-lead-note-save' lead.id %}"
+
+            hx-target="#modal-root"
+
+            hx-swap="none"
+
+            class="p-5 space-y-4"
+        >
+
+            {% csrf_token %}
+
+
+            <div>
+
+                <label class="text-xs text-gray-500">
+                    Note
+                </label>
+
+                <textarea
+                    name="note"
+                    rows="6"
+                    required
+                    class="w-full border rounded-md px-3 py-2 text-sm mt-1"
+                    placeholder="Add a note about this lead..."
+                ></textarea>
+
+            </div>
+
+
+            <div
+                class="flex justify-end gap-2 pt-3 border-t"
+            >
+
+                <button
+                    type="button"
+                    onclick="document.getElementById('modal-root').innerHTML=''"
+                    class="px-4 py-2 border rounded-md text-sm"
+                >
+                    Cancel
+                </button>
+
+                <button
+                    type="submit"
+                    class="px-4 py-2 bg-blue-600 text-white rounded-md text-sm"
+                >
+                    Add Note
+                </button>
+
+            </div>
+
+        </form>
+
+    </div>
+
+</div>

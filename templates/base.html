@@ -28,8 +28,13 @@
         href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.34.0/dist/tabler-icons.min.css"
     >
 
-    <!-- Explicit Tabler icon font styling -->
+
+    <!-- ========================================================
+         TABLER ICON FONT STYLING
+         ======================================================== -->
+
     <style>
+
         .ti {
             font-family: "tabler-icons" !important;
             font-style: normal;
@@ -51,6 +56,7 @@
             justify-content: center;
             font-size: 20px;
         }
+
     </style>
 
 
@@ -105,6 +111,7 @@
 
             <a
                 href="{% url 'crm-dashboard' %}"
+
                 class="flex items-center gap-3 px-4 py-2 text-sm font-medium
                 {% if request.resolver_match.url_name == 'crm-dashboard' %}
                     bg-blue-50 text-blue-700
@@ -115,7 +122,9 @@
 
                 <i class="ti ti-users sidebar-icon"></i>
 
-                <span>CRM</span>
+                <span>
+                    CRM
+                </span>
 
             </a>
 
@@ -135,7 +144,9 @@
                         class="ti {{ item.icon }} sidebar-icon"
                     ></i>
 
-                    <span>{{ item.label }}</span>
+                    <span>
+                        {{ item.label }}
+                    </span>
 
                 </div>
 
@@ -146,7 +157,6 @@
 
 
     </aside>
-
 
 
     <!-- ========================================================
@@ -161,10 +171,19 @@
              ==================================================== -->
 
         <header
-            class="bg-white border-b border-gray-200 px-6 py-3 flex items-center justify-between shrink-0"
+            class="bg-white
+                   border-b border-gray-200
+                   px-6 py-3
+                   flex items-center justify-between
+                   shrink-0"
         >
 
-            <h1 class="text-lg font-semibold">
+
+            <!-- ==================================================
+                 PAGE TITLE
+                 ================================================== -->
+
+            <h1 class="text-lg font-semibold text-gray-900">
 
                 {% block header %}
 
@@ -176,37 +195,157 @@
 
 
             <!-- ==================================================
-                 PROFILE + LOGOUT
+                 TOPBAR ACTIONS
                  ================================================== -->
 
             <div class="flex items-center gap-2">
 
-                <!-- Profile -->
+
+                <!-- ==================================================
+                     REMINDERS
+                     ================================================== -->
+
+                <a
+                    href="#"
+
+                    class="inline-flex items-center gap-2
+                           px-3 py-2
+                           text-sm font-medium
+                           text-gray-700
+                           rounded-lg
+                           hover:bg-gray-100
+                           transition"
+                >
+
+                    <i class="ti ti-bell text-[18px]"></i>
+
+                    <span>
+                        Reminders
+                    </span>
+
+                    {% if pending_reminder_count %}
+
+                        <span
+                            class="inline-flex items-center justify-center
+                                   min-w-[20px] h-5
+                                   px-1.5
+                                   rounded-full
+                                   bg-red-100
+                                   text-red-700
+                                   text-xs font-semibold"
+                        >
+                            {{ pending_reminder_count }}
+                        </span>
+
+                    {% endif %}
+
+                </a>
+
+
+                <!-- ==================================================
+                     IMPORT
+                     ================================================== -->
+
+                <button
+                    type="button"
+
+                    class="inline-flex items-center gap-2
+                           px-3 py-2
+                           text-sm font-medium
+                           text-gray-700
+                           rounded-lg
+                           hover:bg-gray-100
+                           transition"
+                >
+
+                    <i class="ti ti-upload text-[18px]"></i>
+
+                    <span>
+                        Import
+                    </span>
+
+                </button>
+
+
+                <!-- ==================================================
+                     NEW LEAD
+                     ================================================== -->
+
+                <button
+                    type="button"
+
+                    class="inline-flex items-center gap-2
+                           px-3 py-2
+                           text-sm font-medium
+                           text-white
+                           bg-blue-600
+                           rounded-lg
+                           hover:bg-blue-700
+                           transition"
+                >
+
+                    <i class="ti ti-plus text-[18px]"></i>
+
+                    <span>
+                        New Lead
+                    </span>
+
+                </button>
+
+
+                <!-- ==================================================
+                     PROFILE
+                     ================================================== -->
 
                 <a
                     href="{% url 'crm-profile' %}"
-                    class="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-700 rounded-lg hover:bg-gray-100"
+
+                    class="inline-flex items-center gap-2
+                           px-3 py-2
+                           text-sm font-medium
+                           text-gray-700
+                           rounded-lg
+                           hover:bg-gray-100
+                           transition"
                 >
-                    <i class="ti ti-user"></i>
-                    Profile
+
+                    <i class="ti ti-user text-[18px]"></i>
+
+                    <span>
+                        Profile
+                    </span>
+
                 </a>
 
 
-                <!-- Logout -->
+                <!-- ==================================================
+                     LOGOUT
+                     ================================================== -->
 
                 <a
                     href="{% url 'crm-logout' %}"
-                    class="flex items-center gap-2 px-3 py-2 text-sm font-medium text-red-600 rounded-lg hover:bg-red-50"
+
+                    class="inline-flex items-center gap-2
+                           px-3 py-2
+                           text-sm font-medium
+                           text-red-600
+                           rounded-lg
+                           hover:bg-red-50
+                           transition"
                 >
-                    <i class="ti ti-logout"></i>
-                    Logout
+
+                    <i class="ti ti-logout text-[18px]"></i>
+
+                    <span>
+                        Logout
+                    </span>
+
                 </a>
+
 
             </div>
 
-
         </header>
-
 
 
         <!-- ====================================================
@@ -226,13 +365,11 @@
 </div>
 
 
-
 <!-- ============================================================
      SHARED MODAL ROOT
      ============================================================ -->
 
 <div id="modal-root"></div>
-
 
 
 <!-- ============================================================
@@ -242,159 +379,359 @@
 <script>
 
 
-/* ============================================================
-   LEAD UPDATED
-   ============================================================ */
+    /* ============================================================
+       LEAD UPDATED
+       ============================================================ */
 
-document.body.addEventListener('leadUpdated', function() {
+    document.body.addEventListener(
+        'leadUpdated',
+        function() {
 
-    const modalRoot = document.getElementById('modal-root');
-
-    if (modalRoot) {
-
-        modalRoot.innerHTML = '';
-
-    }
-
-
-    const container = document.getElementById(
-        'lead-table-container'
-    );
-
-    if (container) {
-
-        htmx.trigger(
-            container,
-            'load'
-        );
-
-    }
-
-});
-
-
-
-/* ============================================================
-   ORGANIZATION UPDATED
-   ============================================================ */
-
-document.body.addEventListener('orgUpdated', function() {
-
-    const modalRoot = document.getElementById('modal-root');
-
-    if (modalRoot) {
-
-        modalRoot.innerHTML = '';
-
-    }
-
-
-    window.location.reload();
-
-});
-
-
-
-/* ============================================================
-   STAGE TAB SWITCHING
-   ============================================================ */
-
-document.body.addEventListener('click', function(e) {
-
-    const tab = e.target.closest('.stage-tab');
-
-
-    if (!tab) {
-
-        return;
-
-    }
-
-
-    const panelGroup = tab.closest(
-        '[data-tab-group]'
-    );
-
-
-    if (!panelGroup) {
-
-        return;
-
-    }
-
-
-    /* --------------------------------------------------------
-       Reset all tabs
-       -------------------------------------------------------- */
-
-    panelGroup
-        .querySelectorAll('.stage-tab')
-        .forEach(function(t) {
-
-            t.classList.remove(
-                'bg-current-stage',
-                'text-white'
+            const modalRoot = document.getElementById(
+                'modal-root'
             );
 
-            t.classList.add(
+            if (modalRoot) {
+
+                modalRoot.innerHTML = '';
+
+            }
+
+
+            const container = document.getElementById(
+                'lead-table-container'
+            );
+
+            if (container) {
+
+                htmx.trigger(
+                    container,
+                    'load'
+                );
+
+            }
+
+        }
+    );
+
+
+    /* ============================================================
+       ORGANIZATION UPDATED
+       ============================================================ */
+
+    document.body.addEventListener(
+        'orgUpdated',
+        function() {
+
+            const modalRoot = document.getElementById(
+                'modal-root'
+            );
+
+            if (modalRoot) {
+
+                modalRoot.innerHTML = '';
+
+            }
+
+
+            window.location.reload();
+
+        }
+    );
+
+
+    /* ============================================================
+       STAGE TAB SWITCHING
+       ============================================================ */
+
+    document.body.addEventListener(
+        'click',
+        function(e) {
+
+            const tab = e.target.closest(
+                '.stage-tab'
+            );
+
+
+            if (!tab) {
+
+                return;
+
+            }
+
+
+            const panelGroup = tab.closest(
+                '[data-tab-group]'
+            );
+
+
+            if (!panelGroup) {
+
+                return;
+
+            }
+
+
+            /* ----------------------------------------------------
+               RESET ALL TABS
+               ---------------------------------------------------- */
+
+            panelGroup
+                .querySelectorAll('.stage-tab')
+                .forEach(
+                    function(t) {
+
+                        t.classList.remove(
+                            'bg-current-stage',
+                            'text-white'
+                        );
+
+
+                        t.classList.add(
+                            'bg-gray-50',
+                            'text-gray-600'
+                        );
+
+
+                        t.style.backgroundColor = '';
+
+                    }
+                );
+
+
+            /* ----------------------------------------------------
+               ACTIVATE SELECTED TAB
+               ---------------------------------------------------- */
+
+            tab.classList.remove(
                 'bg-gray-50',
                 'text-gray-600'
             );
 
-            t.style.backgroundColor = '';
 
-        });
+            tab.classList.add(
+                'bg-current-stage',
+                'text-white'
+            );
 
 
-    /* --------------------------------------------------------
-       Activate selected tab
-       -------------------------------------------------------- */
+            tab.style.backgroundColor =
+                tab.dataset.color;
 
-    tab.classList.remove(
-        'bg-gray-50',
-        'text-gray-600'
+
+            /* ----------------------------------------------------
+               HIDE ALL STAGE PANELS
+               ---------------------------------------------------- */
+
+            panelGroup
+                .querySelectorAll('.stage-panel')
+                .forEach(
+                    function(p) {
+
+                        p.classList.add(
+                            'hidden'
+                        );
+
+                    }
+                );
+
+
+            /* ----------------------------------------------------
+               SHOW SELECTED STAGE PANEL
+               ---------------------------------------------------- */
+
+            const target = panelGroup.querySelector(
+                '#stage-panel-' + tab.dataset.stageId
+            );
+
+
+            if (target) {
+
+                target.classList.remove(
+                    'hidden'
+                );
+
+            }
+
+        }
     );
 
 
-    tab.classList.add(
-        'bg-current-stage',
-        'text-white'
+    /* ============================================================
+       LEAD DETAILS / ACTIVITY SWITCHING
+       ============================================================ */
+
+    document.body.addEventListener(
+        'click',
+        function(e) {
+
+            const tab = e.target.closest(
+                '.lead-detail-tab'
+            );
+
+
+            if (!tab) {
+
+                return;
+
+            }
+
+
+            const targetId = tab.dataset.target;
+
+
+            if (!targetId) {
+
+                return;
+
+            }
+
+
+            const targetPanel = document.getElementById(
+                targetId
+            );
+
+
+            if (!targetPanel) {
+
+                return;
+
+            }
+
+
+            const card = tab.closest(
+                'article'
+            );
+
+
+            if (!card) {
+
+                return;
+
+            }
+
+
+            /* ----------------------------------------------------
+               HIDE ALL PANELS IN THIS LEAD CARD
+               ---------------------------------------------------- */
+
+            card
+                .querySelectorAll('.lead-tab-panel')
+                .forEach(
+                    function(panel) {
+
+                        panel.classList.add(
+                            'hidden'
+                        );
+
+                    }
+                );
+
+
+            /* ----------------------------------------------------
+               RESET ALL DETAILS / ACTIVITY TABS
+               ---------------------------------------------------- */
+
+            card
+                .querySelectorAll('.lead-detail-tab')
+                .forEach(
+                    function(button) {
+
+                        button.classList.remove(
+                            'text-blue-600',
+                            'border-blue-600'
+                        );
+
+
+                        button.classList.add(
+                            'text-gray-500'
+                        );
+
+                    }
+                );
+
+
+            /* ----------------------------------------------------
+               SHOW SELECTED PANEL
+               ---------------------------------------------------- */
+
+            targetPanel.classList.remove(
+                'hidden'
+            );
+
+
+            /* ----------------------------------------------------
+               ACTIVATE SELECTED TAB
+               ---------------------------------------------------- */
+
+            tab.classList.remove(
+                'text-gray-500'
+            );
+
+
+            tab.classList.add(
+                'text-blue-600',
+                'border-blue-600'
+            );
+
+        }
     );
 
+    /* ============================================================
+       LEAD CARD UPDATED
+       ============================================================ */
 
-    tab.style.backgroundColor =
-        tab.dataset.color;
+    document.body.addEventListener(
+        'leadCardUpdated',
+        function(event) {
 
+            const leadId =
+                event.detail?.lead_id;
 
-    /* --------------------------------------------------------
-       Hide all stage panels
-       -------------------------------------------------------- */
+            const modalRoot =
+                document.getElementById(
+                    'modal-root'
+                );
 
-    panelGroup
-        .querySelectorAll('.stage-panel')
-        .forEach(function(p) {
+            if (modalRoot) {
 
-            p.classList.add('hidden');
+                modalRoot.innerHTML = '';
 
-        });
+            }
 
+            if (!leadId) {
 
-    /* --------------------------------------------------------
-       Show selected stage panel
-       -------------------------------------------------------- */
+                return;
 
-    const target = panelGroup.querySelector(
-        '#stage-panel-' + tab.dataset.stageId
+            }
+
+            const card =
+                document.getElementById(
+                    'lead-card-' + leadId
+                );
+
+            if (!card) {
+
+                return;
+
+            }
+
+            htmx.ajax(
+                'GET',
+                '/dashboard/leads/' +
+                    leadId +
+                    '/card/',
+                {
+                    target:
+                        '#lead-card-' + leadId,
+
+                    swap:
+                        'outerHTML',
+                }
+            );
+
+        }
     );
-
-
-    if (target) {
-
-        target.classList.remove('hidden');
-
-    }
-
-});
 
 
 </script>

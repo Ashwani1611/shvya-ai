@@ -1,0 +1,156 @@
+<div
+    class="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
+>
+
+    <div
+        class="bg-white rounded-xl w-full max-w-md"
+    >
+
+        <div
+            class="flex items-center justify-between
+                   px-5 py-4
+                   border-b border-gray-200"
+        >
+
+            <h2 class="font-semibold text-lg">
+                Add Call
+            </h2>
+
+            <button
+                type="button"
+                onclick="document.getElementById('modal-root').innerHTML=''"
+                class="text-gray-400 hover:text-gray-600 text-xl"
+            >
+                &times;
+            </button>
+
+        </div>
+
+
+        <form
+            method="post"
+
+            hx-post="{% url 'crm-lead-call-save' lead.id %}"
+
+            hx-target="#modal-root"
+
+            hx-swap="none"
+
+            class="p-5 space-y-4"
+        >
+
+            {% csrf_token %}
+
+
+            <div>
+
+                <label class="text-xs text-gray-500">
+                    Status
+                </label>
+
+                <select
+                    name="status"
+                    required
+                    class="w-full border rounded-md px-3 py-2 text-sm mt-1"
+                >
+
+                    <option value="completed">
+                        Done
+                    </option>
+
+                    <option value="no_response">
+                        No Response
+                    </option>
+
+                    <option value="busy">
+                        Busy
+                    </option>
+
+                    <option value="scheduled">
+                        Scheduled
+                    </option>
+
+                    <option value="cancelled">
+                        Cancelled
+                    </option>
+
+                </select>
+
+            </div>
+
+
+            <div>
+
+                <label class="text-xs text-gray-500">
+                    Call Date & Time
+                </label>
+
+                <input
+                    type="datetime-local"
+                    name="called_at"
+                    required
+                    class="w-full border rounded-md px-3 py-2 text-sm mt-1"
+                >
+
+            </div>
+
+
+            <div>
+
+                <label class="text-xs text-gray-500">
+                    Duration (seconds)
+                </label>
+
+                <input
+                    type="number"
+                    name="duration_seconds"
+                    min="0"
+                    value="0"
+                    class="w-full border rounded-md px-3 py-2 text-sm mt-1"
+                >
+
+            </div>
+
+
+            <div>
+
+                <label class="text-xs text-gray-500">
+                    Call Notes
+                </label>
+
+                <textarea
+                    name="notes"
+                    rows="4"
+                    class="w-full border rounded-md px-3 py-2 text-sm mt-1"
+                    placeholder="What was discussed?"
+                ></textarea>
+
+            </div>
+
+
+            <div
+                class="flex justify-end gap-2 pt-3 border-t"
+            >
+
+                <button
+                    type="button"
+                    onclick="document.getElementById('modal-root').innerHTML=''"
+                    class="px-4 py-2 border rounded-md text-sm"
+                >
+                    Cancel
+                </button>
+
+                <button
+                    type="submit"
+                    class="px-4 py-2 bg-blue-600 text-white rounded-md text-sm"
+                >
+                    Save Call
+                </button>
+
+            </div>
+
+        </form>
+
+    </div>
+
+</div>
