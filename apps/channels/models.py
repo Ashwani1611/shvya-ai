@@ -421,3 +421,136 @@ class BulkMessageRecipient(models.Model):
 
     def __str__(self):
         return f"{self.campaign.name} -> {self.lead.name}"
+
+
+# ============================================================
+# MESSAGE TEMPLATES
+# ============================================================
+#
+# Mirrors Meta's WhatsApp Business template system: a template
+# must be submitted to Meta and approved before it can be used
+# for template-based sends (outside the 24h free-form window, or
+# for a lead's first message). SHVYA stores its own copy so
+# templates can be listed/edited here, but `status` reflects
+# Meta's actual approval state, not something SHVYA decides on
+# its own -- see the "sync from Meta" note on WhatsAppTemplate.sync_status.
+
+
+class WhatsAppTemplate(models.Model):
+
+    class Category(models.TextChoices):
+        MARKETING = "marketing", "Marketing"
+        UTILITY = "utility", "Utility"
+        AUTHENTICATION = "authentication", "Authentication"
+
+    class Format(models.TextChoices):
+        STANDARD = "standard", "Standard Template"
+        CAROUSEL = "carousel", "Carousel Template"
+
+    class Status(models.TextChoices):
+        DRAFT = "draft", "Draft"
+        PENDING = "pending", "Pending"
+        APPROVED = "approved", "Approved"
+        REJECTED = "rejected", "Rejected"
+        PAUSED = "paused", "Paused"
+        ARCHIVED = "archived", "Archived"
+        PENDING_DELETION = "pending_deletion", "Pending Deletion"
+
+    class AttachmentType(models.TextChoices):
+        NONE = "none", "None"
+        IMAGE = "image", "Image"
+        VIDEO = "video", "Video"
+        DOCUMENT = "document", "Document"
+
+    id = models.UUIDField(
+        primary_key=True,
+        default=uuid.uuid4,
+        editable=False,
+    )
+
+    organization = models.ForeignKey(
+        Organization,
+        on_delete=models.CASCADE,
+        related_name="whatsapp_templates",
+    )
+
+    # Which connected number/business this template is submitted
+    # under -- Meta templates are approved per WABA, not globally,
+    # matching the "Business" filter dropdown in the template list.
+    account = models.ForeignKey(
+        WhatsAppAccount,
+        on_delete=models.CASCADE,
+        related_name="templates",
+    )
+
+    name = models.CharField(max_length=150)
+
+    category = models.CharField(
+        max_length=20,
+        choices=Category.choices,
+        default=Category.MARKETING,
+    )
+
+    template_format = models.CharField(
+        max_length=10,
+        choices=Format.choices,
+        default=Format.STANDARD,
+    )
+
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.DRAFT,
+    )
+
+    body = models.TextField(
+        help_text="Use {{variable_name}} placeholders, e.g. {{lead_name}}.",
+    )
+
+    footer = models.CharField(
+        max_length=60,
+        blank=True,
+    )
+
+    attachment_type = models.CharField(
+        max_length=10,
+        choices=AttachmentType.choices,
+        default=AttachmentType.NONE,
+    )
+
+    # Buttons: list of {"type": "visit_website"|"call_phone"|
+    # "copy_offer"|"text_back"|"request_contact_info", ...config}
+    buttons = models.JSONField(
+        default=list,
+        blank=True,
+    )
+
+    # Meta's own template id, once submitted -- null until then.
+    meta_template_id = models.CharField(
+        max_length=128,
+        blank=True,
+    )
+
+    rejection_reason = models.TextField(blank=True)
+
+    created_by = models.ForeignKey(
+        "accounts.User",
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name="whatsapp_templates",
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-updated_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["account", "name"],
+                name="uniq_account_template_name",
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.name} ({self.account})"
