@@ -1,0 +1,226 @@
+{% load static %}
+
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+    <meta charset="UTF-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
+
+    <title>SHVYA AI — {{ lead.name|default:lead.phone }}</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <link
+        rel="stylesheet"
+        href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css"
+    >
+
+</head>
+
+
+<body class="bg-gray-50 text-gray-900">
+
+<div class="flex h-screen flex-col">
+
+
+    <!-- =====================================================
+         HEADER
+         ===================================================== -->
+
+    <header class="flex items-center justify-between border-b border-gray-200 bg-white px-6 py-4">
+
+        <div class="flex items-center gap-3">
+
+            <a
+                href="{% url 'whatsapp-chats' %}"
+                class="text-gray-400 transition hover:text-gray-700"
+            >
+                <i class="ti ti-arrow-left text-lg"></i>
+            </a>
+
+            <div>
+
+                <p class="font-semibold text-gray-900">
+                    {{ lead.name|default:lead.phone }}
+                </p>
+
+                <p class="text-xs text-gray-500">
+                    {{ lead.phone }} · {{ lead.stage.name|default:"No stage" }}
+                </p>
+
+            </div>
+
+        </div>
+
+
+        <a
+            href="{% url 'crm-dashboard' %}"
+            class="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
+        >
+            <i class="ti ti-layout-dashboard"></i>
+            Dashboard
+        </a>
+
+    </header>
+
+
+
+    <!-- =====================================================
+         MESSAGE THREAD
+         ===================================================== -->
+
+    <div
+        id="thread"
+        class="flex-1 space-y-3 overflow-y-auto bg-[#e5ddd5] px-6 py-6"
+    >
+
+        {% for message in chat_messages %}
+
+            <div class="flex {% if message.direction == 'outbound' %}justify-end{% else %}justify-start{% endif %}">
+
+                <div
+                    class="max-w-[70%] rounded-lg px-4 py-2.5 text-sm shadow
+                    {% if message.direction == 'outbound' %}
+                        bg-[#dcf8c6] text-gray-900
+                    {% else %}
+                        bg-white text-gray-900
+                    {% endif %}"
+                >
+
+                    <p class="whitespace-pre-wrap">{{ message.body }}</p>
+
+                    <p class="mt-1 text-right text-[10px] text-gray-400">
+
+                        {{ message.created_at|date:"h:i A" }}
+
+                        {% if message.direction == 'outbound' %}
+
+                            {% if message.status == 'read' %}
+                                <i class="ti ti-checks text-blue-500"></i>
+                            {% elif message.status == 'delivered' %}
+                                <i class="ti ti-checks"></i>
+                            {% elif message.status == 'sent' %}
+                                <i class="ti ti-check"></i>
+                            {% elif message.status == 'failed' %}
+                                <i class="ti ti-alert-circle text-red-500"></i>
+                            {% endif %}
+
+                        {% endif %}
+
+                    </p>
+
+                </div>
+
+            </div>
+
+        {% empty %}
+
+            <div class="flex h-full items-center justify-center text-sm text-gray-500">
+                No messages yet.
+            </div>
+
+        {% endfor %}
+
+    </div>
+
+
+
+    <!-- =====================================================
+         COMPOSER
+         ===================================================== -->
+
+    <div class="border-t border-gray-200 bg-white px-6 py-4">
+
+        <div id="send-error" class="mb-2 hidden text-sm text-red-600"></div>
+
+        <form id="composer-form" class="flex items-center gap-3">
+
+            {% csrf_token %}
+
+            <input
+                type="text"
+                id="message-body"
+                placeholder="Type a message"
+                class="flex-1 rounded-full border border-gray-300 px-5 py-2.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            >
+
+            <button
+                type="submit"
+                class="flex h-11 w-11 items-center justify-center rounded-full bg-blue-600 text-white transition hover:bg-blue-700"
+            >
+                <i class="ti ti-send text-lg"></i>
+            </button>
+
+        </form>
+
+    </div>
+
+
+</div>
+
+
+<script>
+function getCookie(name) {
+    var match = document.cookie.match('(^|;)\\\\s*' + name + '\\\\s*=\\\\s*([^;]+)');
+    return match ? match.pop() : '';
+}
+
+document.getElementById('composer-form').addEventListener('submit', function (e) {
+    e.preventDefault();
+
+    var input = document.getElementById('message-body');
+    var errorBox = document.getElementById('send-error');
+    var body = input.value.trim();
+
+    if (!body) {
+        return;
+    }
+
+    errorBox.classList.add('hidden');
+
+    var formData = new FormData();
+    formData.append('body', body);
+
+    fetch('{% url "whatsapp-send-message" lead_id=lead.id %}', {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': getCookie('csrftoken'),
+        },
+        body: formData,
+    })
+        .then(function (response) {
+            return response.json().then(function (data) {
+                if (!response.ok) {
+                    throw new Error(data.error || 'Failed to send message.');
+                }
+                return data;
+            });
+        })
+        .then(function () {
+            input.value = '';
+            // Reload the thread to show the new outbound message.
+            // NOTE: this is a simple reload, not real-time push --
+            // a websocket/polling upgrade can replace this later
+            // without changing the send endpoint itself.
+            window.location.reload();
+        })
+        .catch(function (err) {
+            errorBox.textContent = err.message;
+            errorBox.classList.remove('hidden');
+        });
+});
+
+// Auto-scroll to the latest message on load.
+var thread = document.getElementById('thread');
+thread.scrollTop = thread.scrollHeight;
+</script>
+
+</body>
+
+</html>

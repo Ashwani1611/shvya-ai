@@ -91,28 +91,34 @@ class WhatsAppAccount(models.Model):
         API = "api", "Connect API"
         HOSTED = "hosted", "Hosted Account"
 
-    class Status(models.TextChoices):
-        PENDING = "pending", "Pending"
-        CONNECTED = "connected", "Connected"
-        FAILED = "failed", "Failed"
-        DISCONNECTED = "disconnected", "Disconnected"
-
     id = models.UUIDField(
         primary_key=True,
         default=uuid.uuid4,
         editable=False,
     )
 
-    organization = models.OneToOneField(
+    # NOTE: was OneToOneField -- changed to ForeignKey because an
+    # organization can connect multiple WhatsApp numbers (e.g. one
+    # per location/brand), matching the "Connect API" list view
+    # where a single business has several rows.
+    organization = models.ForeignKey(
         Organization,
         on_delete=models.CASCADE,
-        related_name="whatsapp_account",
+        related_name="whatsapp_accounts",
     )
 
     connection_type = models.CharField(
         max_length=10,
         choices=ConnectionType.choices,
         default=ConnectionType.API,
+    )
+
+    # Display name for this connection, shown as "Business Name"
+    # in the Connect API table -- may differ from the org name if
+    # the org runs multiple branded numbers.
+    business_name = models.CharField(
+        max_length=150,
+        blank=True,
     )
 
     phone_number_id = models.CharField(
@@ -136,6 +142,30 @@ class WhatsAppAccount(models.Model):
         blank=True,
         help_text="Meta system-user access token. Stored encrypted.",
     )
+
+    welcome_message = models.TextField(
+        blank=True,
+        help_text="Auto-sent to a lead's first message on this number.",
+    )
+
+    request_contact_info = models.BooleanField(
+        default=False,
+        help_text="Ask the lead to share contact details before continuing.",
+    )
+
+    # ---------------------------------------------------------
+    # Connection lifecycle
+    # ---------------------------------------------------------
+    #
+    # HOSTED accounts go through a provisioning step before
+    # credentials exist; API accounts are considered connected
+    # as soon as valid credentials are saved.
+
+    class Status(models.TextChoices):
+        PENDING = "pending", "Pending"
+        CONNECTED = "connected", "Connected"
+        FAILED = "failed", "Failed"
+        DISCONNECTED = "disconnected", "Disconnected"
 
     status = models.CharField(
         max_length=15,
@@ -242,6 +272,11 @@ class WhatsAppMessage(models.Model):
     )
 
     error = models.TextField(blank=True)
+
+    # Only meaningful for inbound messages -- outbound messages are
+    # created as "already read" (the agent just sent it). Powers
+    # the unread badge in the Chats inbox.
+    is_read = models.BooleanField(default=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

@@ -3,11 +3,11 @@ from django.urls import path
 from . import views_flat
 
 urlpatterns = [
-    # path(
-    #     "accounts/",
-    #     views_flat.whatsapp_account_list_view,
-    #     name="whatsapp-accounts",
-    # ),
+    path(
+        "accounts/",
+        views_flat.whatsapp_account_list_view,
+        name="whatsapp-accounts",
+    ),
     path(
         "connect/",
         views_flat.whatsapp_connect_choice_view,
@@ -33,24 +33,44 @@ urlpatterns = [
         views_flat.whatsapp_send_message_view,
         name="whatsapp-send-message",
     ),
-#     path(
-#         "campaigns/",
-#         views_flat.whatsapp_campaign_list_view,
-#         name="whatsapp-campaign-list",
-#     ),
-#     path(
-#         "campaigns/new/",
-#         views_flat.whatsapp_campaign_create_view,
-#         name="whatsapp-campaign-create",
-#     ),
-#     path(
-#         "campaigns/<uuid:campaign_id>/",
-#         views_flat.whatsapp_campaign_detail_view,
-#         name="whatsapp-campaign-detail",
-#     ),
-#     path(
-#         "campaigns/<uuid:campaign_id>/launch/",
-#         views_flat.whatsapp_campaign_launch_view,
-#         name="whatsapp-campaign-launch",
-#     ),
+    path(
+        "campaigns/",
+        views_flat.whatsapp_campaign_list_view,
+        name="whatsapp-campaign-list",
+    ),
+    path(
+        "campaigns/new/",
+        views_flat.whatsapp_campaign_create_view,
+        name="whatsapp-campaign-create",
+    ),
+    path(
+        "campaigns/<uuid:campaign_id>/",
+        views_flat.whatsapp_campaign_detail_view,
+        name="whatsapp-campaign-detail",
+    ),
+    path(
+        "campaigns/<uuid:campaign_id>/launch/",
+        views_flat.whatsapp_campaign_launch_view,
+        name="whatsapp-campaign-launch",
+    ),
+    path(
+        "templates/",
+        views_flat.whatsapp_template_list_view,
+        name="whatsapp-template-list",
+    ),
+    path(
+        "templates/new/",
+        views_flat.whatsapp_template_create_view,
+        name="whatsapp-template-create",
+    ),
+    path(
+        "chats/",
+        views_flat.whatsapp_chat_list_view,
+        name="whatsapp-chats",
+    ),
+    path(
+        "chats/<uuid:lead_id>/",
+        views_flat.whatsapp_chat_detail_view,
+        name="whatsapp-chat-detail",
+    ),
 ]

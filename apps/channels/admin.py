@@ -5,6 +5,7 @@ from .models import (
     BulkMessageRecipient,
     WhatsAppAccount,
     WhatsAppMessage,
+    WhatsAppTemplate,
 )
 
 
@@ -163,4 +164,44 @@ class BulkMessageCampaignAdmin(admin.ModelAdmin):
         # (services.channels.bulk_service.create_campaign), which
         # snapshots recipients at creation time -- creating one
         # directly in admin would skip that step.
+        return False
+
+
+@admin.register(WhatsAppTemplate)
+class WhatsAppTemplateAdmin(admin.ModelAdmin):
+
+    list_display = [
+        "name",
+        "organization",
+        "account",
+        "category",
+        "status",
+        "template_format",
+        "updated_at",
+    ]
+
+    list_filter = [
+        "category",
+        "status",
+        "template_format",
+        "organization",
+    ]
+
+    search_fields = [
+        "name",
+        "organization__name",
+        "account__display_phone_number",
+    ]
+
+    readonly_fields = [
+        "id",
+        "created_at",
+        "updated_at",
+        "meta_template_id",
+    ]
+
+    def has_add_permission(self, request):
+        # Templates are created through the compose flow
+        # (apps.channels.forms.WhatsAppTemplateForm), not directly
+        # in admin.
         return False

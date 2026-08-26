@@ -36,22 +36,28 @@ def _resolve_target_leads(*, organization, pipeline, stage=None, tag=None):
 
 
 @transaction.atomic
-def create_campaign(*, organization, created_by, name, pipeline, body, stage=None, tag=None, template_name=""):
+def create_campaign(*, organization, created_by, name, pipeline, body, account, stage=None, tag=None, template_name=""):
     """
     Creates a BulkMessageCampaign in draft status and snapshots its
     target leads into BulkMessageRecipient rows. Does NOT send
     anything -- call launch_campaign() separately once the sender
     has confirmed the audience/body.
-    """
-    account = WhatsAppAccount.objects.filter(
-        organization=organization,
-        is_active=True,
-        status=WhatsAppAccount.Status.CONNECTED,
-    ).first()
 
-    if not account:
+    account is required and explicit (not auto-resolved) -- an
+    organization can have several connected WhatsApp numbers, and
+    a bulk campaign sends to many leads at once, so there's no
+    single "right" number to infer per-recipient the way
+    resolve_account_for_lead() does for a one-to-one send. The
+    sender picks which number the campaign goes out from.
+    """
+    if account.organization_id != organization.id:
         raise BulkCampaignError(
-            "No connected WhatsApp account for this organization."
+            "Selected account does not belong to this organization."
+        )
+
+    if account.status != WhatsAppAccount.Status.CONNECTED or not account.is_active:
+        raise BulkCampaignError(
+            "Selected WhatsApp account is not connected."
         )
 
     leads = _resolve_target_leads(
