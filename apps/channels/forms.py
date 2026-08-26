@@ -1,6 +1,8 @@
 from django import forms
 
-from .models import WhatsAppAccount
+from apps.crm.models import Pipeline, Stage, Tag
+
+from .models import WhatsAppAccount, WhatsAppTemplate
 
 
 class WhatsAppConnectAPIForm(forms.ModelForm):
@@ -82,16 +84,169 @@ class WhatsAppHostedRequestForm(forms.Form):
     )
 
     def save(self, organization):
-
-        account, _created = WhatsAppAccount.objects.update_or_create(
+        # NOTE: always creates a new row now -- an organization can
+        # have several WhatsApp numbers (WhatsAppAccount.organization
+        # is a ForeignKey, not OneToOne), so update_or_create by
+        # organization alone would have either crashed
+        # (MultipleObjectsReturned) or silently overwritten an
+        # unrelated existing account.
+        account = WhatsAppAccount.objects.create(
             organization=organization,
-            defaults={
-                "connection_type": WhatsAppAccount.ConnectionType.HOSTED,
-                "status": WhatsAppAccount.Status.PENDING,
-                "display_phone_number": self.cleaned_data.get(
-                    "display_phone_number", ""
-                ),
-            },
+            connection_type=WhatsAppAccount.ConnectionType.HOSTED,
+            status=WhatsAppAccount.Status.PENDING,
+            display_phone_number=self.cleaned_data.get(
+                "display_phone_number", ""
+            ),
         )
 
         return account
+
+
+class BulkCampaignForm(forms.Form):
+    """
+    Compose screen for a bulk WhatsApp send. Pipeline/stage/tag/
+    account querysets are scoped to the requesting organization by
+    the view before this form is instantiated.
+    """
+
+    name = forms.CharField(
+        max_length=150,
+        help_text="Internal name for this campaign, not shown to leads.",
+    )
+
+    account = forms.ModelChoiceField(
+        queryset=WhatsAppAccount.objects.none(),
+        help_text="Which connected WhatsApp number to send this campaign from.",
+    )
+
+    pipeline = forms.ModelChoiceField(
+        queryset=Pipeline.objects.none(),
+    )
+
+    stage = forms.ModelChoiceField(
+        queryset=Stage.objects.none(),
+        required=False,
+        help_text="Leave blank to target every stage in the pipeline.",
+    )
+
+    tag = forms.ModelChoiceField(
+        queryset=Tag.objects.none(),
+        required=False,
+        help_text="Optional: narrow further to leads with this tag.",
+    )
+
+    body = forms.CharField(
+        widget=forms.Textarea(attrs={"rows": 4}),
+        help_text=(
+            "Sent as free text to leads who messaged in the last 24h. "
+            "Leads outside that window are skipped unless a template is set."
+        ),
+    )
+
+    template_name = forms.CharField(
+        max_length=100,
+        required=False,
+        help_text="Meta-approved template name, for leads outside the 24h window.",
+    )
+
+    def __init__(self, *args, organization=None, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self.fields["account"].queryset = WhatsAppAccount.objects.filter(
+            organization=organization,
+            is_active=True,
+            status=WhatsAppAccount.Status.CONNECTED,
+        )
+
+        self.fields["pipeline"].queryset = Pipeline.objects.filter(
+            organization=organization,
+            is_active=True,
+        )
+
+        self.fields["stage"].queryset = Stage.objects.filter(
+            pipeline__organization=organization,
+            is_active=True,
+        )
+
+        self.fields["tag"].queryset = Tag.objects.filter(
+            organization=organization,
+        )
+
+    def clean(self):
+        cleaned_data = super().clean()
+
+        stage = cleaned_data.get("stage")
+        pipeline = cleaned_data.get("pipeline")
+
+        if stage and pipeline and stage.pipeline_id != pipeline.id:
+            raise forms.ValidationError(
+                "Selected stage does not belong to the selected pipeline."
+            )
+
+        return cleaned_data
+
+
+BUTTON_CHOICES = [
+    ("visit_website", "Visit Website"),
+    ("call_phone", "Call Phone"),
+    ("copy_offer", "Copy Offer"),
+    ("text_back", "Text Back"),
+    ("request_contact_info", "Request Contact Info"),
+]
+
+
+class WhatsAppTemplateForm(forms.ModelForm):
+    """
+    Template builder -- matches the Kraya "New Message Template"
+    screen: name/category/business, standard vs carousel format,
+    message body with {{variable}} placeholders, attachment type,
+    footer, and a set of quick-action buttons.
+    """
+
+    buttons = forms.MultipleChoiceField(
+        choices=BUTTON_CHOICES,
+        required=False,
+        widget=forms.CheckboxSelectMultiple,
+    )
+
+    class Meta:
+        model = WhatsAppTemplate
+        fields = [
+            "account",
+            "name",
+            "category",
+            "template_format",
+            "body",
+            "attachment_type",
+            "footer",
+        ]
+        widgets = {
+            "body": forms.Textarea(attrs={"rows": 6, "maxlength": 1024}),
+        }
+
+    def __init__(self, *args, organization=None, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self.fields["account"].queryset = WhatsAppAccount.objects.filter(
+            organization=organization,
+        )
+
+    def clean_buttons(self):
+        # Stored as a JSON list of {"type": <choice>} dicts on the
+        # model, matching WhatsAppTemplate.buttons -- keeps the
+        # door open for per-button config (a URL for visit_website,
+        # a number for call_phone) without a schema change later.
+        return [{"type": value} for value in self.cleaned_data["buttons"]]
+
+    def save(self, organization, created_by, commit=True):
+
+        template = super().save(commit=False)
+
+        template.organization = organization
+        template.created_by = created_by
+        template.buttons = self.cleaned_data.get("buttons", [])
+
+        if commit:
+            template.save()
+
+        return template

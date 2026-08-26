@@ -14,8 +14,13 @@ from apps.accounts.models import User
 from apps.crm.decorators import crm_login_required
 from apps.crm.models import Lead
 
-from .forms import WhatsAppConnectAPIForm, WhatsAppHostedRequestForm
-from .models import WhatsAppAccount
+from .forms import (
+    BulkCampaignForm,
+    WhatsAppConnectAPIForm,
+    WhatsAppHostedRequestForm,
+    WhatsAppTemplateForm,
+)
+from .models import BulkMessageCampaign, WhatsAppAccount, WhatsAppTemplate
 
 logger = logging.getLogger(__name__)
 
@@ -46,15 +51,15 @@ def whatsapp_connect_choice_view(request):
         )
         return redirect("crm-dashboard")
 
-    existing_account = WhatsAppAccount.objects.filter(
+    existing_accounts = WhatsAppAccount.objects.filter(
         organization=user.organization,
-    ).first()
+    )
 
     return render(
         request,
         "channels/whatsapp_connect_choice.html",
         {
-            "existing_account": existing_account,
+            "existing_accounts": existing_accounts,
         },
     )
 
@@ -89,7 +94,7 @@ def whatsapp_connect_api_view(request):
                 "WhatsApp connected successfully.",
             )
 
-            return redirect("whatsapp-settings")
+            return redirect("whatsapp-accounts")
 
     else:
         form = WhatsAppConnectAPIForm()
@@ -134,7 +139,7 @@ def whatsapp_connect_hosted_view(request):
                 "SHVYA will provision it and notify you when it's ready.",
             )
 
-            return redirect("whatsapp-settings")
+            return redirect("whatsapp-accounts")
 
     else:
         form = WhatsAppHostedRequestForm()
@@ -155,19 +160,23 @@ def whatsapp_connect_hosted_view(request):
 
 @crm_login_required
 @require_GET
-def whatsapp_settings_view(request):
-
+def whatsapp_account_list_view(request):
+    """
+    Lists every WhatsApp number connected to this organization
+    (Kraya-style "Connect API" table: Mobile / Business Name /
+    Status / Welcome Message / Request Contact Info / Action).
+    """
     user = request.crm_user
 
-    account = WhatsAppAccount.objects.filter(
+    accounts = WhatsAppAccount.objects.filter(
         organization=user.organization,
-    ).first()
+    )
 
     return render(
         request,
-        "channels/whatsapp_settings.html",
+        "channels/whatsapp_account_list.html",
         {
-            "account": account,
+            "accounts": accounts,
             "can_manage": _admin_required(user),
         },
     )
@@ -180,7 +189,7 @@ def whatsapp_settings_view(request):
 
 @crm_login_required
 @require_POST
-def whatsapp_disconnect_view(request):
+def whatsapp_disconnect_view(request, account_id):
 
     user = request.crm_user
 
@@ -189,21 +198,22 @@ def whatsapp_disconnect_view(request):
             request,
             "Only organization admins can manage WhatsApp connections.",
         )
-        return redirect("whatsapp-settings")
+        return redirect("whatsapp-accounts")
 
-    WhatsAppAccount.objects.filter(
+    updated = WhatsAppAccount.objects.filter(
+        id=account_id,
         organization=user.organization,
     ).update(
         status=WhatsAppAccount.Status.DISCONNECTED,
         is_active=False,
     )
 
-    messages.success(
-        request,
-        "WhatsApp account disconnected.",
-    )
+    if updated:
+        messages.success(request, "WhatsApp account disconnected.")
+    else:
+        messages.error(request, "Account not found.")
 
-    return redirect("whatsapp-settings")
+    return redirect("whatsapp-accounts")
 
 
 # ============================================================
@@ -348,7 +358,10 @@ def _handle_webhook_delivery(request):
 @require_POST
 def whatsapp_send_message_view(request, lead_id):
 
-    from services.channels.whatsapp_service import queue_outbound_message
+    from services.channels.whatsapp_service import (
+        queue_outbound_message,
+        resolve_account_for_lead,
+    )
     from apps.channels.tasks import send_whatsapp_message_task
 
     user = request.crm_user
@@ -364,11 +377,14 @@ def whatsapp_send_message_view(request, lead_id):
     if not lead:
         return JsonResponse({"error": "Lead not found."}, status=404)
 
-    account = WhatsAppAccount.objects.filter(
+    # Picks the number this lead already has a conversation on, or
+    # the pipeline's configured number, or the org's first connected
+    # account -- an org can have several connected numbers now, so
+    # this is no longer a bare .first().
+    account = resolve_account_for_lead(
         organization=user.organization,
-        is_active=True,
-        status=WhatsAppAccount.Status.CONNECTED,
-    ).first()
+        lead=lead,
+    )
 
     if not account:
         return JsonResponse(
@@ -401,4 +417,349 @@ def whatsapp_send_message_view(request, lead_id):
             "status": message.status,
         },
         status=202,
+    )
+
+
+# ============================================================
+# BULK CAMPAIGNS
+# ============================================================
+
+
+@crm_login_required
+@require_GET
+def whatsapp_campaign_list_view(request):
+
+    user = request.crm_user
+
+    campaigns = BulkMessageCampaign.objects.filter(
+        organization=user.organization,
+    ).select_related("pipeline", "stage", "created_by")
+
+    return render(
+        request,
+        "channels/whatsapp_campaign_list.html",
+        {
+            "campaigns": campaigns,
+            "can_manage": _admin_required(user),
+        },
+    )
+
+
+@crm_login_required
+def whatsapp_campaign_create_view(request):
+
+    from services.channels.bulk_service import BulkCampaignError, create_campaign
+
+    user = request.crm_user
+
+    if not _admin_required(user):
+        messages.error(
+            request,
+            "Only organization admins can create bulk campaigns.",
+        )
+        return redirect("whatsapp-campaign-list")
+
+    if request.method == "POST":
+
+        form = BulkCampaignForm(request.POST, organization=user.organization)
+
+        if form.is_valid():
+
+            try:
+                campaign = create_campaign(
+                    organization=user.organization,
+                    created_by=user,
+                    name=form.cleaned_data["name"],
+                    account=form.cleaned_data["account"],
+                    pipeline=form.cleaned_data["pipeline"],
+                    stage=form.cleaned_data.get("stage"),
+                    tag=form.cleaned_data.get("tag"),
+                    body=form.cleaned_data["body"],
+                    template_name=form.cleaned_data.get("template_name", ""),
+                )
+
+            except BulkCampaignError as exc:
+                form.add_error(None, str(exc))
+
+            else:
+                messages.success(
+                    request,
+                    f"Campaign \"{campaign.name}\" created with "
+                    f"{campaign.recipients.count()} recipients. Review and launch it below.",
+                )
+                return redirect("whatsapp-campaign-detail", campaign_id=campaign.id)
+
+    else:
+        form = BulkCampaignForm(organization=user.organization)
+
+    return render(
+        request,
+        "channels/whatsapp_campaign_create.html",
+        {
+            "form": form,
+        },
+    )
+
+
+@crm_login_required
+@require_GET
+def whatsapp_campaign_detail_view(request, campaign_id):
+
+    user = request.crm_user
+
+    campaign = (
+        BulkMessageCampaign.objects.filter(
+            id=campaign_id,
+            organization=user.organization,
+        )
+        .select_related("pipeline", "stage", "created_by")
+        .first()
+    )
+
+    if not campaign:
+        messages.error(request, "Campaign not found.")
+        return redirect("whatsapp-campaign-list")
+
+    recipients = campaign.recipients.select_related("lead", "message")
+
+    return render(
+        request,
+        "channels/whatsapp_campaign_detail.html",
+        {
+            "campaign": campaign,
+            "recipients": recipients,
+            "can_manage": _admin_required(user),
+        },
+    )
+
+
+@crm_login_required
+@require_POST
+def whatsapp_campaign_launch_view(request, campaign_id):
+
+    from services.channels.bulk_service import BulkCampaignError, launch_campaign
+    from apps.channels.tasks import send_bulk_campaign_task
+
+    user = request.crm_user
+
+    if not _admin_required(user):
+        messages.error(
+            request,
+            "Only organization admins can launch bulk campaigns.",
+        )
+        return redirect("whatsapp-campaign-detail", campaign_id=campaign_id)
+
+    campaign = BulkMessageCampaign.objects.filter(
+        id=campaign_id,
+        organization=user.organization,
+    ).first()
+
+    if not campaign:
+        messages.error(request, "Campaign not found.")
+        return redirect("whatsapp-campaign-list")
+
+    try:
+        launch_campaign(campaign=campaign)
+
+    except BulkCampaignError as exc:
+        messages.error(request, str(exc))
+        return redirect("whatsapp-campaign-detail", campaign_id=campaign_id)
+
+    # NOTE: same Celery wiring caveat as whatsapp_send_message_view --
+    # this will raise until config/celery.py is actually activated.
+    send_bulk_campaign_task.delay(str(campaign.id))
+
+    messages.success(request, f"Campaign \"{campaign.name}\" launched.")
+    return redirect("whatsapp-campaign-detail", campaign_id=campaign_id)
+
+
+# ============================================================
+# MESSAGE TEMPLATES
+# ============================================================
+
+
+@crm_login_required
+@require_GET
+def whatsapp_template_list_view(request):
+    """
+    Filterable template list matching Kraya's screen: filter by
+    Category, Status, and Business (which connected account).
+    """
+    user = request.crm_user
+
+    templates = WhatsAppTemplate.objects.filter(
+        organization=user.organization,
+    ).select_related("account")
+
+    category = request.GET.get("category")
+    status = request.GET.get("status")
+    account_id = request.GET.get("account")
+
+    if category:
+        templates = templates.filter(category=category)
+
+    if status:
+        templates = templates.filter(status=status)
+
+    if account_id:
+        templates = templates.filter(account_id=account_id)
+
+    accounts = WhatsAppAccount.objects.filter(
+        organization=user.organization,
+    )
+
+    return render(
+        request,
+        "channels/whatsapp_template_list.html",
+        {
+            "templates": templates,
+            "accounts": accounts,
+            "categories": WhatsAppTemplate.Category.choices,
+            "statuses": WhatsAppTemplate.Status.choices,
+            "selected_category": category or "",
+            "selected_status": status or "",
+            "selected_account": account_id or "",
+            "can_manage": _admin_required(user),
+        },
+    )
+
+
+@crm_login_required
+def whatsapp_template_create_view(request):
+
+    from services.channels.template_service import (
+        AVAILABLE_VARIABLES,
+        TemplateError,
+        create_template,
+    )
+
+    user = request.crm_user
+
+    if not _admin_required(user):
+        messages.error(
+            request,
+            "Only organization admins can create message templates.",
+        )
+        return redirect("whatsapp-template-list")
+
+    if request.method == "POST":
+
+        form = WhatsAppTemplateForm(request.POST, organization=user.organization)
+
+        if form.is_valid():
+
+            try:
+                template = create_template(
+                    organization=user.organization,
+                    account=form.cleaned_data["account"],
+                    created_by=user,
+                    name=form.cleaned_data["name"],
+                    body=form.cleaned_data["body"],
+                    category=form.cleaned_data["category"],
+                    template_format=form.cleaned_data["template_format"],
+                    footer=form.cleaned_data.get("footer", ""),
+                    attachment_type=form.cleaned_data["attachment_type"],
+                    buttons=form.cleaned_data.get("buttons", []),
+                )
+
+            except TemplateError as exc:
+                form.add_error(None, str(exc))
+
+            else:
+                messages.success(
+                    request,
+                    f"Template \"{template.name}\" saved as draft.",
+                )
+                return redirect("whatsapp-template-list")
+
+    else:
+        form = WhatsAppTemplateForm(organization=user.organization)
+
+    return render(
+        request,
+        "channels/whatsapp_template_create.html",
+        {
+            "form": form,
+            "available_variables": AVAILABLE_VARIABLES,
+        },
+    )
+
+
+# ============================================================
+# CHATS INBOX
+# ============================================================
+
+
+@crm_login_required
+@require_GET
+def whatsapp_chat_list_view(request):
+
+    from services.channels.whatsapp_service import list_conversations
+
+    user = request.crm_user
+
+    account_id = request.GET.get("account")
+    account = None
+
+    if account_id:
+        account = WhatsAppAccount.objects.filter(
+            id=account_id,
+            organization=user.organization,
+        ).first()
+
+    conversations = list_conversations(
+        organization=user.organization,
+        account=account,
+    )
+
+    accounts = WhatsAppAccount.objects.filter(
+        organization=user.organization,
+        status=WhatsAppAccount.Status.CONNECTED,
+    )
+
+    return render(
+        request,
+        "channels/whatsapp_chat_list.html",
+        {
+            "conversations": conversations,
+            "accounts": accounts,
+            "selected_account": account,
+        },
+    )
+
+
+@crm_login_required
+@require_GET
+def whatsapp_chat_detail_view(request, lead_id):
+
+    from services.channels.whatsapp_service import (
+        get_conversation_messages,
+        mark_conversation_read,
+    )
+
+    user = request.crm_user
+
+    lead = Lead.objects.filter(
+        id=lead_id,
+        organization=user.organization,
+    ).first()
+
+    if not lead:
+        messages.error(request, "Lead not found.")
+        return redirect("whatsapp-chats")
+
+    chat_messages = get_conversation_messages(
+        organization=user.organization,
+        lead=lead,
+    )
+
+    mark_conversation_read(organization=user.organization, lead=lead)
+
+    return render(
+        request,
+        "channels/whatsapp_chat_detail.html",
+        {
+            "lead": lead,
+            "chat_messages": chat_messages,
+        },
     )

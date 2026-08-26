@@ -10,16 +10,76 @@ Per CLAUDE.md:
             via WhatsAppMessage.external_id (Meta's wamid).
 """
 from django.core.exceptions import ValidationError as DjangoValidationError
-from django.db import transaction
+from django.db import models, transaction
 
-from apps.channels.models import WhatsAppMessage
+from apps.channels.models import WhatsAppAccount, WhatsAppMessage
 from apps.channels.providers.whatsapp import WhatsAppAPIError, WhatsAppClient
 from apps.crm.models import Lead, Pipeline, Stage
+from services.channels.reply_intent_service import Intent, classify_reply
 from services.crm.lead_service import upsert_lead
+from services.crm.stage_service import move_to_next_stage
 
 
 class WhatsAppSendError(Exception):
     """Raised when an outbound message could not be sent."""
+
+
+# ============================================================
+# ACCOUNT RESOLUTION
+# ============================================================
+#
+# An organization can now have several connected WhatsApp numbers
+# (see apps.channels.models.WhatsAppAccount -- ForeignKey, not
+# OneToOne). Anywhere that used to grab "the" account with a bare
+# .first() needs to instead pick the RIGHT one for a given lead.
+
+
+def resolve_account_for_lead(*, organization, lead):
+    """
+    Picks which connected WhatsAppAccount should be used to message
+    a given lead, in priority order:
+
+      1. Whichever account this lead has messaged with before
+         (their most recent WhatsAppMessage) -- keeps a
+         conversation on the same number it started on.
+      2. The account matching the lead's pipeline's configured
+         phone_number (Pipeline.phone_number), if set.
+      3. The organization's first connected account, as a
+         last-resort fallback so sending never hard-fails just
+         because there's more than one number.
+
+    Returns None if the organization has no connected account at all.
+    """
+    last_message = (
+        WhatsAppMessage.objects.filter(
+            lead=lead,
+        )
+        .select_related("account")
+        .order_by("-created_at")
+        .first()
+    )
+
+    if last_message and last_message.account.status == last_message.account.Status.CONNECTED:
+        return last_message.account
+
+    if lead.pipeline_id and lead.pipeline.phone_number:
+        account = WhatsAppAccount.objects.filter(
+            organization=organization,
+            is_active=True,
+            status=WhatsAppAccount.Status.CONNECTED,
+        ).filter(
+            models.Q(display_phone_number=lead.pipeline.phone_number)
+            | models.Q(phone_number_id=lead.pipeline.phone_number)
+        ).first()
+
+        if account:
+            return account
+
+    return WhatsAppAccount.objects.filter(
+        organization=organization,
+        is_active=True,
+        status=WhatsAppAccount.Status.CONNECTED,
+    ).first()
 
 
 # ============================================================
@@ -130,9 +190,41 @@ def handle_inbound_message(*, organization, account, external_id, from_number, t
         body=body,
         status=WhatsAppMessage.Status.RECEIVED,
         raw_payload=raw_payload,
+        is_read=False,
     )
 
+    if lead:
+        _apply_reply_intent(lead=lead, body=body)
+
     return message
+
+
+def _apply_reply_intent(*, lead, body):
+    """
+    A positive reply ("yes" / "+" / "interested" / etc.) auto-advances
+    the lead to the next pipeline stage. A negative reply ("no" /
+    "stop" / etc.) is tagged on the lead so agents/reporting can see
+    it, but the lead is NOT auto-deleted or auto-moved backward --
+    that decision stays with a human.
+
+    Negative replies also feed the 24-hour no-response escalation:
+    they don't count as "no response", but they do mean a human
+    should follow up, which is handled by the calling-escalation
+    task checking WhatsAppMessage history directly rather than a
+    flag here.
+    """
+    intent = classify_reply(body)
+
+    if intent == Intent.POSITIVE:
+        move_to_next_stage(lead=lead)
+
+    elif intent == Intent.NEGATIVE:
+        notes = lead.notes or ""
+        marker = "[WhatsApp] Lead replied negatively -- needs review."
+
+        if marker not in notes:
+            lead.notes = f"{notes}\n{marker}".strip()
+            lead.save(update_fields=["notes", "updated_at"])
 
 
 def handle_status_update(*, external_id, status, raw_payload):
@@ -228,3 +320,82 @@ def send_outbound_message(*, message: WhatsAppMessage):
     )
 
     return message
+
+
+# ============================================================
+# CONVERSATIONS (Chats inbox)
+# ============================================================
+
+
+def list_conversations(*, organization, account=None):
+    """
+    Returns one row per lead that has at least one WhatsApp
+    message, ordered by most recent activity, each annotated with
+    its last message and unread count. Used by the Chats inbox
+    list view.
+    """
+    from django.db.models import Count, Max, Q
+
+    messages = WhatsAppMessage.objects.filter(
+        organization=organization,
+        lead__isnull=False,
+    )
+
+    if account:
+        messages = messages.filter(account=account)
+
+    lead_ids = (
+        messages.values_list("lead_id", flat=True)
+        .distinct()
+    )
+
+    from apps.crm.models import Lead
+
+    leads = (
+        Lead.objects.filter(id__in=lead_ids)
+        .annotate(
+            last_message_at=Max(
+                "whatsapp_messages__created_at",
+                filter=Q(whatsapp_messages__account=account) if account else Q(),
+            ),
+            unread_count=Count(
+                "whatsapp_messages",
+                filter=Q(
+                    whatsapp_messages__direction=WhatsAppMessage.Direction.INBOUND,
+                    whatsapp_messages__is_read=False,
+                )
+                & (Q(whatsapp_messages__account=account) if account else Q()),
+            ),
+        )
+        .order_by("-last_message_at")
+    )
+
+    return leads
+
+
+def get_conversation_messages(*, organization, lead, account=None):
+    """
+    Full message thread for one lead, oldest first (chat order).
+    """
+    messages = WhatsAppMessage.objects.filter(
+        organization=organization,
+        lead=lead,
+    )
+
+    if account:
+        messages = messages.filter(account=account)
+
+    return messages.order_by("created_at")
+
+
+def mark_conversation_read(*, organization, lead):
+    """
+    Marks every unread inbound message for this lead as read --
+    called when an agent opens the conversation.
+    """
+    return WhatsAppMessage.objects.filter(
+        organization=organization,
+        lead=lead,
+        direction=WhatsAppMessage.Direction.INBOUND,
+        is_read=False,
+    ).update(is_read=True)
