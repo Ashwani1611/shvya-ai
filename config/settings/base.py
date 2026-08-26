@@ -346,7 +346,7 @@ TEMPLATES = [
                 # SHVYA Sidebar
                 # Shared sidebar navigation items and Tabler icons.
                 # -----------------------------------------------------------
-                "core.context_processors.sidebar_nav",
+                'apps.core.context_processors.sidebar_nav',
             ],
         },
     },
@@ -444,11 +444,11 @@ REST_FRAMEWORK = {
     ),
 
     "DEFAULT_PAGINATION_CLASS": (
-        "core.pagination.StandardResultsPagination"
+        "apps.core.pagination.StandardResultsPagination"
     ),
 
     "EXCEPTION_HANDLER": (
-        "core.exceptions.api_exception_handler"
+        "apps.core.exceptions.api_exception_handler"
     ),
 
     "PAGE_SIZE": 25,

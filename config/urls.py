@@ -7,7 +7,7 @@ from rest_framework_simplejwt.views import (
     TokenObtainPairView,
     TokenRefreshView,
 )
-from core.views import HomeView
+from apps.core.views import HomeView
 
 urlpatterns = [
     # =========================================================
