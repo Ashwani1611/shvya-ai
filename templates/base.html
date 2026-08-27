@@ -1299,12 +1299,173 @@
 
 
                 /* ------------------------------------------------
-                   REPLACE OLD CARD
+                   DETERMINE THE SAVED STAGE
                    ------------------------------------------------ */
 
-                currentCard.replaceWith(
-                    newCard
-                );
+                const stageSelect =
+                    newCard.querySelector(
+                        'select[name="stage"], select[name="stage_id"]'
+                    );
+
+
+                const savedStageId =
+                    stageSelect
+                        ? stageSelect.value
+                        : '';
+
+
+                /* ------------------------------------------------
+                   FIND OLD AND NEW STAGE PANELS
+                   ------------------------------------------------ */
+
+                const oldPanel =
+                    currentCard.closest(
+                        '.stage-panel'
+                    );
+
+
+                const newPanel =
+                    savedStageId
+                        ? document.getElementById(
+                            'stage-panel-' +
+                            savedStageId
+                        )
+                        : null;
+
+
+                /* ------------------------------------------------
+                   REPLACE OR MOVE THE REFRESHED CARD
+                   ------------------------------------------------ */
+
+                if (
+                    newPanel &&
+                    oldPanel &&
+                    oldPanel !== newPanel
+                ) {
+
+                    let targetCards =
+                        newPanel.querySelector(
+                            '[data-lead-cards]'
+                        );
+
+
+                    if (!targetCards) {
+
+                        targetCards =
+                            document.createElement(
+                                'div'
+                            );
+
+
+                        targetCards.className =
+                            'flex flex-col gap-3';
+
+
+                        targetCards.setAttribute(
+                            'data-lead-cards',
+                            ''
+                        );
+
+
+                        const targetEmpty =
+                            newPanel.querySelector(
+                                '[data-empty-stage]'
+                            );
+
+
+                        if (targetEmpty) {
+
+                            targetEmpty.remove();
+
+                        }
+
+
+                        newPanel.appendChild(
+                            targetCards
+                        );
+
+                    }
+
+
+                    currentCard.remove();
+
+                    targetCards.appendChild(
+                        newCard
+                    );
+
+                } else if (
+                    newPanel &&
+                    !oldPanel
+                ) {
+
+                    let targetCards =
+                        newPanel.querySelector(
+                            '[data-lead-cards]'
+                        );
+
+
+                    if (!targetCards) {
+
+                        targetCards =
+                            document.createElement(
+                                'div'
+                            );
+
+
+                        targetCards.className =
+                            'flex flex-col gap-3';
+
+
+                        targetCards.setAttribute(
+                            'data-lead-cards',
+                            ''
+                        );
+
+
+                        const targetEmpty =
+                            newPanel.querySelector(
+                                '[data-empty-stage]'
+                            );
+
+
+                        if (targetEmpty) {
+
+                            targetEmpty.remove();
+
+                        }
+
+
+                        newPanel.appendChild(
+                            targetCards
+                        );
+
+                    }
+
+
+                    targetCards.appendChild(
+                        newCard
+                    );
+
+                } else if (
+                    newPanel &&
+                    oldPanel === newPanel
+                ) {
+
+                    currentCard.replaceWith(
+                        newCard
+                    );
+
+                } else {
+
+                    /*
+                     * The lead no longer belongs to a stage visible
+                     * in the currently selected pipeline. Remove it
+                     * from the current dashboard view.
+                     */
+
+                    currentCard.remove();
+
+                }
 
 
                 const insertedCard =
@@ -1316,7 +1477,349 @@
 
                 if (!insertedCard) {
 
+                    /*
+                     * The lead moved outside the current pipeline,
+                     * so there is no card to reinitialize or restore.
+                     */
+
+                    if (oldPanel) {
+
+                        const oldCardsContainer =
+                            oldPanel.querySelector(
+                                '[data-lead-cards]'
+                            );
+
+
+                        const remainingOldCards =
+                            oldPanel.querySelectorAll(
+                                '[id^="lead-card-"]'
+                            ).length;
+
+
+                        if (
+                            oldCardsContainer &&
+                            oldCardsContainer.children.length === 0
+                        ) {
+
+                            oldCardsContainer.remove();
+
+                        }
+
+
+                        if (
+                            remainingOldCards === 0 &&
+                            !oldPanel.querySelector(
+                                '[data-empty-stage]'
+                            )
+                        ) {
+
+                            const stageName =
+                                document
+                                    .querySelector(
+                                        '.stage-tab[data-stage-id="' +
+                                        oldPanel.dataset.stagePanel +
+                                        '"] span:first-child'
+                                    )
+                                    ?.textContent
+                                    ?.trim() ||
+                                'this stage';
+
+
+                            const emptyState =
+                                document.createElement(
+                                    'div'
+                                );
+
+
+                            emptyState.setAttribute(
+                                'data-empty-stage',
+                                ''
+                            );
+
+
+                            emptyState.className = `
+                                w-full
+                                min-h-[220px]
+                                flex
+                                flex-col
+                                items-center
+                                justify-center
+                                text-center
+                                border
+                                border-dashed
+                                border-gray-200
+                                rounded-xl
+                                bg-white
+                            `;
+
+
+                            emptyState.innerHTML = `
+                                <div
+                                    class="
+                                        w-11
+                                        h-11
+                                        rounded-full
+                                        bg-gray-50
+                                        flex
+                                        items-center
+                                        justify-center
+                                        mb-3
+                                    "
+                                >
+                                    <i
+                                        class="
+                                            ti
+                                            ti-inbox
+                                            text-gray-400
+                                            text-xl
+                                        "
+                                    ></i>
+                                </div>
+
+                                <p
+                                    class="
+                                        text-sm
+                                        font-medium
+                                        text-gray-700
+                                    "
+                                >
+                                    No leads in ${stageName}
+                                </p>
+
+                                <p
+                                    class="
+                                        text-xs
+                                        text-gray-400
+                                        mt-1
+                                    "
+                                >
+                                    Leads added to this stage will appear here.
+                                </p>
+                            `;
+
+
+                            oldPanel.appendChild(
+                                emptyState
+                            );
+
+                        }
+
+
+                        const oldTab =
+                            document.querySelector(
+                                '.stage-tab[data-stage-id="' +
+                                oldPanel.dataset.stagePanel +
+                                '"]'
+                            );
+
+
+                        if (oldTab) {
+
+                            const oldCount =
+                                oldTab.querySelector(
+                                    '[data-stage-count]'
+                                );
+
+
+                            if (oldCount) {
+
+                                oldCount.textContent =
+                                    remainingOldCards;
+
+                            }
+
+                        }
+
+                    }
+
                     return;
+
+                }
+
+
+                /* ------------------------------------------------
+                   UPDATE OLD / NEW STAGE COUNTS
+                   ------------------------------------------------ */
+
+                if (
+                    oldPanel &&
+                    newPanel &&
+                    oldPanel !== newPanel
+                ) {
+
+                    const oldCardsContainer =
+                        oldPanel.querySelector(
+                            '[data-lead-cards]'
+                        );
+
+
+                    const remainingOldCards =
+                        oldPanel.querySelectorAll(
+                            '[id^="lead-card-"]'
+                        ).length;
+
+
+                    if (
+                        oldCardsContainer &&
+                        oldCardsContainer.children.length === 0
+                    ) {
+
+                        oldCardsContainer.remove();
+
+                    }
+
+
+                    if (
+                        remainingOldCards === 0 &&
+                        !oldPanel.querySelector(
+                            '[data-empty-stage]'
+                        )
+                    ) {
+
+                        const stageName =
+                            document
+                                .querySelector(
+                                    '.stage-tab[data-stage-id="' +
+                                    oldPanel.dataset.stagePanel +
+                                    '"] span:first-child'
+                                )
+                                ?.textContent
+                                ?.trim() ||
+                            'this stage';
+
+
+                        const emptyState =
+                            document.createElement(
+                                'div'
+                            );
+
+
+                        emptyState.setAttribute(
+                            'data-empty-stage',
+                            ''
+                        );
+
+
+                        emptyState.className = `
+                            w-full
+                            min-h-[220px]
+                            flex
+                            flex-col
+                            items-center
+                            justify-center
+                            text-center
+                            border
+                            border-dashed
+                            border-gray-200
+                            rounded-xl
+                            bg-white
+                        `;
+
+
+                        emptyState.innerHTML = `
+                            <div
+                                class="
+                                    w-11
+                                    h-11
+                                    rounded-full
+                                    bg-gray-50
+                                    flex
+                                    items-center
+                                    justify-center
+                                    mb-3
+                                "
+                            >
+                                <i
+                                    class="
+                                        ti
+                                        ti-inbox
+                                        text-gray-400
+                                        text-xl
+                                    "
+                                ></i>
+                            </div>
+
+                            <p
+                                class="
+                                    text-sm
+                                    font-medium
+                                    text-gray-700
+                                "
+                            >
+                                No leads in ${stageName}
+                            </p>
+
+                            <p
+                                class="
+                                    text-xs
+                                    text-gray-400
+                                    mt-1
+                                "
+                            >
+                                Leads added to this stage will appear here.
+                            </p>
+                        `;
+
+
+                        oldPanel.appendChild(
+                            emptyState
+                        );
+
+                    }
+
+
+                    const oldTab =
+                        document.querySelector(
+                            '.stage-tab[data-stage-id="' +
+                            oldPanel.dataset.stagePanel +
+                            '"]'
+                        );
+
+
+                    if (oldTab) {
+
+                        const oldCount =
+                            oldTab.querySelector(
+                                '[data-stage-count]'
+                            );
+
+
+                        if (oldCount) {
+
+                            oldCount.textContent =
+                                remainingOldCards;
+
+                        }
+
+                    }
+
+
+                    const newTab =
+                        document.querySelector(
+                            '.stage-tab[data-stage-id="' +
+                            savedStageId +
+                            '"]'
+                        );
+
+
+                    if (newTab) {
+
+                        const newCount =
+                            newTab.querySelector(
+                                '[data-stage-count]'
+                            );
+
+
+                        if (newCount) {
+
+                            newCount.textContent =
+                                newPanel.querySelectorAll(
+                                    '[id^="lead-card-"]'
+                                ).length;
+
+                        }
+
+                    }
 
                 }
 

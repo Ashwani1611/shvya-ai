@@ -8,6 +8,11 @@ from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, render
 from django.utils import timezone
 from django.views.decorators.http import require_GET, require_POST
+from django.db import transaction
+
+from services.crm_activity_service import (
+    record_stage_changed,
+)
 
 from apps.accounts.models import User
 from apps.crm.decorators import crm_login_required
@@ -1418,6 +1423,31 @@ def _lead_card_context(
                 "-created_at",
             )
         ),
+
+        # ----------------------------------------------------
+        # ENTIRE LEAD ACTIVITY
+        #
+        # Activity is permanently attached to the Lead.
+        # It is independent of the Lead's current pipeline/stage.
+        #
+        # Related pipeline/stage objects are selected for efficient
+        # rendering, while the historical snapshot fields remain
+        # available on each LeadActivity record.
+        # ----------------------------------------------------
+
+        "activities": (
+            lead.activities
+            .select_related(
+                "actor",
+                "old_pipeline",
+                "new_pipeline",
+                "old_stage",
+                "new_stage",
+            )
+            .order_by(
+                "-created_at",
+            )
+        ),
     }
 
 
@@ -1497,7 +1527,11 @@ def lead_stage_move(
 
     # --------------------------------------------------------
     # TARGET STAGE
-    # Must belong to the same pipeline.
+    #
+    # The new stage must:
+    #   - exist
+    #   - be active
+    #   - belong to the Lead's current pipeline
     # --------------------------------------------------------
 
     stage = (
@@ -1517,6 +1551,10 @@ def lead_stage_move(
             status=400,
         )
 
+    # --------------------------------------------------------
+    # CAPTURE OLD STATE BEFORE MUTATION
+    # --------------------------------------------------------
+
     old_stage_id = (
         str(lead.stage_id)
         if lead.stage_id
@@ -1526,6 +1564,9 @@ def lead_stage_move(
     new_stage_id = str(
         stage.id
     )
+
+    old_stage = lead.stage
+    pipeline = lead.pipeline
 
     # --------------------------------------------------------
     # NO CHANGE
@@ -1538,9 +1579,15 @@ def lead_stage_move(
         response["HX-Trigger"] = json.dumps(
             {
                 "leadStageUpdated": {
-                    "lead_id": str(lead.id),
-                    "old_stage_id": old_stage_id,
-                    "stage_id": new_stage_id,
+                    "lead_id": str(
+                        lead.id
+                    ),
+                    "old_stage_id": (
+                        old_stage_id
+                    ),
+                    "stage_id": (
+                        new_stage_id
+                    ),
                     "pipeline_id": str(
                         lead.pipeline_id
                     ),
@@ -1551,19 +1598,41 @@ def lead_stage_move(
         return response
 
     # --------------------------------------------------------
-    # SAVE
+    # SAVE LEAD + ACTIVITY ATOMICALLY
     # --------------------------------------------------------
 
     try:
 
-        lead.stage = stage
+        with transaction.atomic():
 
-        lead.save(
-            update_fields=[
-                "stage",
-                "updated_at",
-            ]
-        )
+            # ------------------------------------------------
+            # MOVE LEAD
+            # ------------------------------------------------
+
+            lead.stage = stage
+
+            lead.save(
+                update_fields=[
+                    "stage",
+                    "updated_at",
+                ]
+            )
+
+            # ------------------------------------------------
+            # CREATE PERMANENT ACTIVITY
+            #
+            # IMPORTANT:
+            # old_stage and pipeline were captured BEFORE
+            # changing the Lead.
+            # ------------------------------------------------
+
+            record_stage_changed(
+                lead=lead,
+                actor=user,
+                pipeline=pipeline,
+                old_stage=old_stage,
+                new_stage=stage,
+            )
 
     except DjangoValidationError as e:
 
@@ -1593,6 +1662,9 @@ def lead_stage_move(
 
     # --------------------------------------------------------
     # SUCCESS
+    #
+    # Keep the existing frontend stage-movement event.
+    # This must NOT be replaced by the Activity event.
     # --------------------------------------------------------
 
     response = HttpResponse("")

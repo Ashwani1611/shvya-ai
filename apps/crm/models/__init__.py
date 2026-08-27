@@ -1,22 +1,25 @@
-from .call import LeadCall
-from .contact import LeadContact
-from .lead import Lead
-from .note import LeadNote
-from .permission import PipelinePermission
 from .pipeline import Pipeline
-from .reminder import LeadReminder
 from .stage import Stage
-from .tag import LeadTag, Tag
+from .lead import Lead
+from .contact import LeadContact
+from .permission import PipelinePermission
+from .note import LeadNote
+from .call import LeadCall
+from .reminder import LeadReminder
+from .tag import Tag, LeadTag
+from .activity import LeadActivity
+
 
 __all__ = [
-    "Lead",
-    "LeadCall",
-    "LeadContact",
-    "LeadNote",
-    "LeadReminder",
-    "LeadTag",
     "Pipeline",
-    "PipelinePermission",
     "Stage",
+    "Lead",
+    "LeadContact",
+    "PipelinePermission",
+    "LeadNote",
+    "LeadCall",
+    "LeadReminder",
     "Tag",
+    "LeadTag",
+    "LeadActivity",
 ]
