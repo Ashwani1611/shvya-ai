@@ -440,7 +440,7 @@ def _build_lead_table_context(
 
             lead.days_in_stage = (
                 timezone.now()
-                - lead.updated_at
+                - lead.stage_entered_at
             ).days
 
             lead.days_in_pipeline = (
@@ -1364,7 +1364,7 @@ def _lead_card_context(
 
     lead.days_in_stage = (
         timezone.now()
-        - lead.updated_at
+        - lead.stage_entered_at
     ).days
 
     lead.days_in_pipeline = (
@@ -1633,10 +1633,12 @@ def lead_stage_move(
             # ------------------------------------------------
 
             lead.stage = stage
+            lead.stage_entered_at = timezone.now()
 
             lead.save(
                 update_fields=[
                     "stage",
+                    "stage_entered_at",
                     "updated_at",
                 ]
             )
@@ -2232,6 +2234,11 @@ def lead_edit_save(
         organization=organization,
     )
 
+    old_pipeline = lead.pipeline
+    old_stage = lead.stage
+    old_pipeline_id = lead.pipeline_id
+    old_stage_id = lead.stage_id
+
     name = request.POST.get(
         "name",
         "",
@@ -2292,6 +2299,10 @@ def lead_edit_save(
 
         lead.stage = stage
 
+        stage_changed = (
+        old_stage_id != lead.stage_id
+    )
+
     lead.name = (
         name
         or lead.name
@@ -2337,6 +2348,10 @@ def lead_edit_save(
     lead.attributes = attributes
 
     try:
+
+        if old_stage_id != lead.stage_id:
+
+            lead.stage_entered_at = timezone.now()
 
         lead.full_clean()
 

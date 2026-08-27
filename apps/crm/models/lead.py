@@ -3,6 +3,7 @@ import uuid
 
 from django.core.exceptions import ValidationError
 from django.db import models
+from django.utils import timezone
 
 from apps.organizations.models import Organization
 
@@ -59,6 +60,9 @@ class Lead(models.Model):
         Organization,
         on_delete=models.CASCADE,
         related_name="leads",
+    )
+    stage_entered_at = models.DateTimeField(
+    default=timezone.now,
     )
 
     pipeline = models.ForeignKey(
