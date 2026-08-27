@@ -1,329 +1,245 @@
+{% extends "base.html" %}
 {% load static %}
 
-<!DOCTYPE html>
-<html lang="en">
+{% block title %}SHVYA AI — Connect WhatsApp{% endblock %}
 
-<head>
+{% block header %}
+    Connect WhatsApp
+{% endblock %}
 
-    <meta charset="UTF-8">
-
-    <meta
-        name="viewport"
-        content="width=device-width, initial-scale=1.0"
-    >
-
-    <title>SHVYA AI — Connect WhatsApp</title>
-
-    <script src="https://cdn.tailwindcss.com"></script>
-
-    <link
-        rel="stylesheet"
-        href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css"
-    >
-
-</head>
-
-
-<body class="bg-gray-50 text-gray-900">
-
-<div class="min-h-screen">
+{% block content %}
 
 
     <!-- =====================================================
-         HEADER
+         PAGE HEADER
          ===================================================== -->
 
-    <header class="border-b border-gray-200 bg-white">
+    <div class="mb-6 flex items-center justify-between">
 
-        <div
-            class="mx-auto flex max-w-6xl items-center justify-between px-6 py-4"
-        >
+        <div class="flex items-center gap-2">
 
-            <div class="flex items-center gap-2">
+            <i class="ti ti-brand-whatsapp text-2xl text-green-600"></i>
 
-                <i class="ti ti-brand-whatsapp text-2xl text-green-600"></i>
+            <h2 class="text-lg font-semibold">
+                Connected Numbers
+            </h2>
 
-                <h1 class="text-xl font-semibold">
-                    Connect WhatsApp
-                </h1>
+        </div>
+
+        {% if can_manage %}
+
+            <a
+                href="{% url 'whatsapp-connect-choice' %}"
+                class="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700"
+            >
+
+                <i class="ti ti-plus"></i>
+
+                Connect Number
+
+            </a>
+
+        {% endif %}
+
+    </div>
+
+
+    <!-- =====================================================
+         ACCOUNTS TABLE
+         ===================================================== -->
+
+    {% if accounts %}
+
+        <div class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+
+            <table class="w-full text-left text-sm">
+
+                <thead class="bg-blue-50/60 text-xs font-semibold uppercase tracking-wide text-gray-500">
+
+                    <tr>
+                        <th class="px-5 py-3">Mobile</th>
+                        <th class="px-5 py-3">Business Name</th>
+                        <th class="px-5 py-3">Status</th>
+                        <th class="px-5 py-3">Welcome Message</th>
+                        <th class="px-5 py-3">Request Contact Info</th>
+                        <th class="px-5 py-3 text-right">Action</th>
+                    </tr>
+
+                </thead>
+
+
+                <tbody class="divide-y divide-gray-100">
+
+                    {% for account in accounts %}
+
+                        <tr class="hover:bg-gray-50">
+
+                            <td class="px-5 py-4 font-medium text-gray-900">
+                                {{ account.display_phone_number|default:"—" }}
+                            </td>
+
+                            <td class="px-5 py-4 text-gray-700">
+                                {{ account.business_name|default:account.get_connection_type_display }}
+                            </td>
+
+                            <td class="px-5 py-4">
+
+                                <span
+                                    class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold
+                                    {% if account.status == 'connected' %}
+                                        bg-green-50 text-green-700
+                                    {% elif account.status == 'pending' %}
+                                        bg-yellow-50 text-yellow-700
+                                    {% elif account.status == 'failed' %}
+                                        bg-red-50 text-red-700
+                                    {% else %}
+                                        bg-gray-100 text-gray-600
+                                    {% endif %}"
+                                >
+
+                                    <span
+                                        class="h-1.5 w-1.5 rounded-full
+                                        {% if account.status == 'connected' %}
+                                            bg-green-500
+                                        {% elif account.status == 'pending' %}
+                                            bg-yellow-500
+                                        {% elif account.status == 'failed' %}
+                                            bg-red-500
+                                        {% else %}
+                                            bg-gray-400
+                                        {% endif %}"
+                                    ></span>
+
+                                    {{ account.get_status_display }}
+
+                                </span>
+
+                            </td>
+
+                            <td class="px-5 py-4 text-gray-600">
+
+                                {% if account.welcome_message %}
+
+                                    <span class="inline-flex items-center gap-1 text-blue-600">
+                                        {{ account.welcome_message|truncatechars:30 }}
+                                        <i class="ti ti-pencil text-xs"></i>
+                                    </span>
+
+                                {% else %}
+
+                                    <span class="text-gray-400">Not set</span>
+
+                                {% endif %}
+
+                            </td>
+
+                            <td class="px-5 py-4">
+
+                                {% if account.request_contact_info %}
+
+                                    <i class="ti ti-check text-green-600"></i>
+
+                                {% else %}
+
+                                    <i class="ti ti-minus text-gray-400"></i>
+
+                                {% endif %}
+
+                            </td>
+
+                            <td class="px-5 py-4">
+
+                                <div class="flex items-center justify-end gap-3">
+
+                                    {% if can_manage %}
+
+                                        <form
+                                            method="post"
+                                            action="{% url 'whatsapp-disconnect' account_id=account.id %}"
+                                            onsubmit="return confirm('Disconnect {{ account.display_phone_number|default:account.business_name }}? Message history will be kept.');"
+                                        >
+
+                                            {% csrf_token %}
+
+                                            <button
+                                                type="submit"
+                                                class="text-gray-400 transition hover:text-red-600"
+                                                title="Disconnect"
+                                            >
+
+                                                <i class="ti ti-trash"></i>
+
+                                            </button>
+
+                                        </form>
+
+                                    {% endif %}
+
+                                </div>
+
+                            </td>
+
+                        </tr>
+
+                    {% endfor %}
+
+                </tbody>
+
+            </table>
+
+        </div>
+
+
+    {% else %}
+
+
+        <!-- =================================================
+             NO ACCOUNTS CONNECTED
+             ================================================= -->
+
+        <div class="rounded-xl border border-dashed border-gray-300 bg-white p-10 text-center">
+
+            <div
+                class="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-gray-100 text-2xl text-gray-400"
+            >
+
+                <i class="ti ti-brand-whatsapp"></i>
 
             </div>
 
+            <h2 class="mt-4 text-base font-semibold text-gray-900">
+                No WhatsApp numbers connected
+            </h2>
 
-            <div class="flex items-center gap-3">
+            <p class="mt-1 text-sm text-gray-500">
+                Connect a number to start messaging your leads.
+            </p>
+
+            {% if can_manage %}
 
                 <a
-                    href="{% url 'crm-dashboard' %}"
-                    class="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
+                    href="{% url 'whatsapp-connect-choice' %}"
+                    class="mt-6 inline-flex items-center gap-2 rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700"
                 >
 
-                    <i class="ti ti-arrow-left"></i>
+                    <i class="ti ti-plug-connected"></i>
 
-                    Dashboard
+                    Connect WhatsApp
 
                 </a>
 
-                {% if can_manage %}
+            {% else %}
 
-                    <a
-                        href="{% url 'whatsapp-connect-choice' %}"
-                        class="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700"
-                    >
+                <p class="mt-4 text-xs text-gray-400">
+                    Ask an organization admin to connect WhatsApp.
+                </p>
 
-                        <i class="ti ti-plus"></i>
-
-                        Connect Number
-
-                    </a>
-
-                {% endif %}
-
-            </div>
+            {% endif %}
 
         </div>
 
-    </header>
-
-
-
-    <!-- =====================================================
-         MESSAGES
-         ===================================================== -->
-
-    {% if messages %}
-
-        <div class="mx-auto mt-6 max-w-6xl px-6">
-
-            {% for message in messages %}
-
-                <div
-                    class="mb-3 rounded-lg border px-4 py-3 text-sm
-                    {% if message.tags == 'success' %}
-                        border-green-200 bg-green-50 text-green-700
-                    {% elif message.tags == 'error' %}
-                        border-red-200 bg-red-50 text-red-700
-                    {% else %}
-                        border-gray-200 bg-gray-50 text-gray-700
-                    {% endif %}"
-                >
-
-                    {{ message }}
-
-                </div>
-
-            {% endfor %}
-
-        </div>
 
     {% endif %}
 
 
-
-    <!-- =====================================================
-         MAIN — ACCOUNTS TABLE
-         ===================================================== -->
-
-    <main class="mx-auto max-w-6xl px-6 py-8">
-
-
-        {% if accounts %}
-
-            <div class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
-
-                <table class="w-full text-left text-sm">
-
-                    <thead class="bg-blue-50/60 text-xs font-semibold uppercase tracking-wide text-gray-500">
-
-                        <tr>
-                            <th class="px-5 py-3">Mobile</th>
-                            <th class="px-5 py-3">Business Name</th>
-                            <th class="px-5 py-3">Status</th>
-                            <th class="px-5 py-3">Welcome Message</th>
-                            <th class="px-5 py-3">Request Contact Info</th>
-                            <th class="px-5 py-3 text-right">Action</th>
-                        </tr>
-
-                    </thead>
-
-
-                    <tbody class="divide-y divide-gray-100">
-
-                        {% for account in accounts %}
-
-                            <tr class="hover:bg-gray-50">
-
-                                <td class="px-5 py-4 font-medium text-gray-900">
-                                    {{ account.display_phone_number|default:"—" }}
-                                </td>
-
-                                <td class="px-5 py-4 text-gray-700">
-                                    {{ account.business_name|default:account.get_connection_type_display }}
-                                </td>
-
-                                <td class="px-5 py-4">
-
-                                    <span
-                                        class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold
-                                        {% if account.status == 'connected' %}
-                                            bg-green-50 text-green-700
-                                        {% elif account.status == 'pending' %}
-                                            bg-yellow-50 text-yellow-700
-                                        {% elif account.status == 'failed' %}
-                                            bg-red-50 text-red-700
-                                        {% else %}
-                                            bg-gray-100 text-gray-600
-                                        {% endif %}"
-                                    >
-
-                                        <span
-                                            class="h-1.5 w-1.5 rounded-full
-                                            {% if account.status == 'connected' %}
-                                                bg-green-500
-                                            {% elif account.status == 'pending' %}
-                                                bg-yellow-500
-                                            {% elif account.status == 'failed' %}
-                                                bg-red-500
-                                            {% else %}
-                                                bg-gray-400
-                                            {% endif %}"
-                                        ></span>
-
-                                        {{ account.get_status_display }}
-
-                                    </span>
-
-                                </td>
-
-                                <td class="px-5 py-4 text-gray-600">
-
-                                    {% if account.welcome_message %}
-
-                                        <span class="inline-flex items-center gap-1 text-blue-600">
-                                            {{ account.welcome_message|truncatechars:30 }}
-                                            <i class="ti ti-pencil text-xs"></i>
-                                        </span>
-
-                                    {% else %}
-
-                                        <span class="text-gray-400">Not set</span>
-
-                                    {% endif %}
-
-                                </td>
-
-                                <td class="px-5 py-4">
-
-                                    {% if account.request_contact_info %}
-
-                                        <i class="ti ti-check text-green-600"></i>
-
-                                    {% else %}
-
-                                        <i class="ti ti-minus text-gray-400"></i>
-
-                                    {% endif %}
-
-                                </td>
-
-                                <td class="px-5 py-4">
-
-                                    <div class="flex items-center justify-end gap-3">
-
-                                        {% if can_manage %}
-
-                                            <form
-                                                method="post"
-                                                action="{% url 'whatsapp-disconnect' account_id=account.id %}"
-                                                onsubmit="return confirm('Disconnect {{ account.display_phone_number|default:account.business_name }}? Message history will be kept.');"
-                                            >
-
-                                                {% csrf_token %}
-
-                                                <button
-                                                    type="submit"
-                                                    class="text-gray-400 transition hover:text-red-600"
-                                                    title="Disconnect"
-                                                >
-
-                                                    <i class="ti ti-trash"></i>
-
-                                                </button>
-
-                                            </form>
-
-                                        {% endif %}
-
-                                    </div>
-
-                                </td>
-
-                            </tr>
-
-                        {% endfor %}
-
-                    </tbody>
-
-                </table>
-
-            </div>
-
-
-        {% else %}
-
-
-            <!-- =================================================
-                 NO ACCOUNTS CONNECTED
-                 ================================================= -->
-
-            <div class="rounded-xl border border-dashed border-gray-300 bg-white p-10 text-center">
-
-                <div
-                    class="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-gray-100 text-2xl text-gray-400"
-                >
-
-                    <i class="ti ti-brand-whatsapp"></i>
-
-                </div>
-
-                <h2 class="mt-4 text-base font-semibold text-gray-900">
-                    No WhatsApp numbers connected
-                </h2>
-
-                <p class="mt-1 text-sm text-gray-500">
-                    Connect a number to start messaging your leads.
-                </p>
-
-                {% if can_manage %}
-
-                    <a
-                        href="{% url 'whatsapp-connect-choice' %}"
-                        class="mt-6 inline-flex items-center gap-2 rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700"
-                    >
-
-                        <i class="ti ti-plug-connected"></i>
-
-                        Connect WhatsApp
-
-                    </a>
-
-                {% else %}
-
-                    <p class="mt-4 text-xs text-gray-400">
-                        Ask an organization admin to connect WhatsApp.
-                    </p>
-
-                {% endif %}
-
-            </div>
-
-
-        {% endif %}
-
-
-    </main>
-
-</div>
-
-</body>
-
-</html>
+{% endblock %}

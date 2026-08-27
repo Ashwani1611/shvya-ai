@@ -65,6 +65,44 @@
             font-size: 20px;
         }
 
+
+        /* ============================================================
+           SIDEBAR EXPAND / COLLAPSE
+           "collapsed" hides labels, chevrons, and any open group's
+           sub-links, leaving just the icon rail -- same behaviour as
+           the "«" toggle in the reference design. State persists
+           across page loads via localStorage (see script below),
+           since this is a normal multi-page Django app, not an SPA.
+           ============================================================ */
+
+        #app-sidebar {
+            width: 15rem;
+            transition: width 150ms ease;
+        }
+
+        #app-sidebar.sidebar-collapsed {
+            width: 4.25rem;
+        }
+
+        #app-sidebar.sidebar-collapsed .nav-label,
+        #app-sidebar.sidebar-collapsed .nav-chevron,
+        #app-sidebar.sidebar-collapsed .nav-group-children,
+        #app-sidebar.sidebar-collapsed .brand-label {
+            display: none;
+        }
+
+        #app-sidebar.sidebar-collapsed .nav-row {
+            justify-content: center;
+        }
+
+        #sidebar-toggle .ti {
+            transition: transform 150ms ease;
+        }
+
+        #app-sidebar.sidebar-collapsed #sidebar-toggle .ti {
+            transform: rotate(180deg);
+        }
+
     </style>
 
 
@@ -92,8 +130,8 @@
          ======================================================== -->
 
     <aside
-        class="w-56
-               bg-white
+        id="app-sidebar"
+        class="bg-white
                border-r
                border-gray-200
                flex
@@ -102,20 +140,47 @@
     >
 
         <div
-            class="px-4
+            class="flex
+                   items-center
+                   justify-between
+                   px-4
                    py-4
-                   font-bold
-                   text-lg
                    border-b
                    border-gray-100"
         >
-            SHVYA AI
+
+            <span class="brand-label font-bold text-lg">
+                SHVYA AI
+            </span>
+
+            <button
+                type="button"
+                id="sidebar-toggle"
+                title="Collapse sidebar"
+
+                class="flex
+                       items-center
+                       justify-center
+                       w-7
+                       h-7
+                       rounded-md
+                       text-gray-400
+                       hover:bg-gray-100
+                       hover:text-gray-600
+                       shrink-0"
+            >
+
+                <i class="ti ti-layout-sidebar-left-collapse text-[18px]"></i>
+
+            </button>
+
         </div>
 
 
         <nav
             class="flex-1
                    overflow-y-auto
+                   overflow-x-hidden
                    py-2"
         >
 
@@ -126,7 +191,8 @@
             <a
                 href="{% url 'crm-dashboard' %}"
 
-                class="flex
+                class="nav-row
+                       flex
                        items-center
                        gap-3
                        px-4
@@ -146,7 +212,7 @@
                            sidebar-icon"
                 ></i>
 
-                <span>
+                <span class="nav-label">
                     CRM
                 </span>
 
@@ -159,12 +225,119 @@
 
             {% for item in nav_items %}
 
-                {% if item.url_name %}
+                {% if item.children %}
+
+                    <!-- ==========================================
+                         DROPDOWN GROUP (e.g. WhatsApp)
+                         "data-nav-group" toggles open/closed on
+                         click; starts open when item.is_active
+                         (one of its children is the current page)
+                         so navigating straight to a child page
+                         doesn't land with its own section collapsed.
+                         ========================================== -->
+
+                    <div data-nav-group>
+
+                        <button
+                            type="button"
+                            data-nav-group-toggle
+
+                            class="nav-row
+                                   flex
+                                   w-full
+                                   items-center
+                                   gap-3
+                                   px-4
+                                   py-2
+                                   text-sm
+                                   font-medium
+                            {% if item.is_active %}
+                                text-blue-700
+                            {% else %}
+                                text-gray-700 hover:bg-gray-50
+                            {% endif %}"
+                        >
+
+                            <i
+                                class="ti
+                                       {{ item.icon }}
+                                       sidebar-icon"
+                            ></i>
+
+                            <span class="nav-label flex-1 text-left">
+                                {{ item.label }}
+                            </span>
+
+                            <i
+                                class="ti
+                                       ti-chevron-down
+                                       nav-chevron
+                                       text-[14px]
+                                       transition-transform
+                                {% if item.is_active %}
+                                    rotate-180
+                                {% endif %}"
+                            ></i>
+
+                        </button>
+
+
+                        <div
+                            data-nav-group-children
+
+                            class="nav-group-children
+                                   flex
+                                   flex-col
+                            {% if not item.is_active %}
+                                hidden
+                            {% endif %}"
+                        >
+
+                            {% for child in item.children %}
+
+                                <a
+                                    href="{% url child.url_name %}"
+
+                                    class="nav-row
+                                           flex
+                                           items-center
+                                           gap-3
+                                           py-2
+                                           pl-11
+                                           pr-4
+                                           text-sm
+                                    {% if child.is_active %}
+                                        bg-blue-50 text-blue-700 font-medium
+                                    {% else %}
+                                        text-gray-600 hover:bg-gray-50
+                                    {% endif %}"
+                                >
+
+                                    <i
+                                        class="ti
+                                               {{ child.icon }}
+                                               text-[16px]"
+                                    ></i>
+
+                                    <span class="nav-label">
+                                        {{ child.label }}
+                                    </span>
+
+                                </a>
+
+                            {% endfor %}
+
+                        </div>
+
+                    </div>
+
+                {% elif item.url_name %}
 
                     <a
                         href="{% url item.url_name %}"
 
-                        class="flex
+                        class="nav-row
+                               flex
                                items-center
                                gap-3
                                px-4
@@ -184,7 +357,7 @@
                                    sidebar-icon"
                         ></i>
 
-                        <span>
+                        <span class="nav-label">
                             {{ item.label }}
                         </span>
 
@@ -193,7 +366,8 @@
                 {% else %}
 
                     <div
-                        class="flex
+                        class="nav-row
+                               flex
                                items-center
                                gap-3
                                px-4
@@ -210,7 +384,7 @@
                                    sidebar-icon"
                         ></i>
 
-                        <span>
+                        <span class="nav-label">
                             {{ item.label }}
                         </span>
 
@@ -455,6 +629,33 @@
                    p-6"
         >
 
+            {% if messages %}
+
+                <div class="mb-4 space-y-2">
+
+                    {% for message in messages %}
+
+                        <div
+                            class="rounded-lg border px-4 py-3 text-sm
+                            {% if message.tags == 'success' %}
+                                border-green-200 bg-green-50 text-green-700
+                            {% elif message.tags == 'error' %}
+                                border-red-200 bg-red-50 text-red-700
+                            {% else %}
+                                border-gray-200 bg-gray-50 text-gray-700
+                            {% endif %}"
+                        >
+
+                            {{ message }}
+
+                        </div>
+
+                    {% endfor %}
+
+                </div>
+
+            {% endif %}
+
             {% block content %}
             {% endblock %}
 
@@ -477,6 +678,99 @@
      ============================================================ -->
 
 <script>
+
+    /* ============================================================
+       SIDEBAR EXPAND / COLLAPSE
+       Persisted in localStorage so it stays consistent as the user
+       moves between pages (this is a normal server-rendered app,
+       not an SPA, so state has to survive a full page load).
+       ============================================================ */
+
+    (function () {
+
+        var STORAGE_KEY = 'shvya-sidebar-collapsed';
+
+        var sidebar = document.getElementById('app-sidebar');
+
+        var toggleButton = document.getElementById('sidebar-toggle');
+
+
+        if (!sidebar) {
+
+            return;
+
+        }
+
+
+        if (window.localStorage.getItem(STORAGE_KEY) === '1') {
+
+            sidebar.classList.add('sidebar-collapsed');
+
+        }
+
+
+        if (toggleButton) {
+
+            toggleButton.addEventListener('click', function () {
+
+                var isCollapsed =
+                    sidebar.classList.toggle('sidebar-collapsed');
+
+                window.localStorage.setItem(
+                    STORAGE_KEY,
+                    isCollapsed ? '1' : '0'
+                );
+
+            });
+
+        }
+
+
+        /* ========================================================
+           DROPDOWN NAV GROUPS (e.g. WhatsApp)
+           Each group toggles its own children open/closed
+           independently -- more than one section can be open at
+           once, same as the reference sidebar.
+           ======================================================== */
+
+        document
+            .querySelectorAll('[data-nav-group-toggle]')
+            .forEach(function (button) {
+
+                button.addEventListener('click', function () {
+
+                    var group = button.closest('[data-nav-group]');
+
+                    if (!group) {
+
+                        return;
+
+                    }
+
+                    var children = group.querySelector(
+                        '[data-nav-group-children]'
+                    );
+
+                    var chevron = button.querySelector('.nav-chevron');
+
+                    if (children) {
+
+                        children.classList.toggle('hidden');
+
+                    }
+
+                    if (chevron) {
+
+                        chevron.classList.toggle('rotate-180');
+
+                    }
+
+                });
+
+            });
+
+    })();
+
 
     /* ============================================================
        LEAD CARD STATE

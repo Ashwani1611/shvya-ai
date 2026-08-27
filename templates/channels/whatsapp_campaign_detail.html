@@ -1,114 +1,50 @@
+{% extends "base.html" %}
 {% load static %}
 
-<!DOCTYPE html>
-<html lang="en">
+{% block title %}SHVYA AI — {{ campaign.name }}{% endblock %}
 
-<head>
+{% block header %}
+    {{ campaign.name }}
+{% endblock %}
 
-    <meta charset="UTF-8">
-
-    <meta
-        name="viewport"
-        content="width=device-width, initial-scale=1.0"
-    >
-
-    <title>SHVYA AI — {{ campaign.name }}</title>
-
-    <script src="https://cdn.tailwindcss.com"></script>
-
-    <link
-        rel="stylesheet"
-        href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css"
-    >
-
-</head>
-
-
-<body class="bg-gray-50 text-gray-900">
-
-<div class="min-h-screen">
+{% block content %}
 
 
     <!-- =====================================================
-         HEADER
+         PAGE HEADER
          ===================================================== -->
 
-    <header class="border-b border-gray-200 bg-white">
+    <div class="mb-6 flex items-center justify-between">
 
-        <div
-            class="mx-auto flex max-w-5xl items-center justify-between px-6 py-4"
+        <div>
+
+            <h2 class="text-lg font-semibold">
+                {{ campaign.name }}
+            </h2>
+
+            <p class="mt-1 text-sm text-gray-500">
+                {{ campaign.pipeline.name }}
+                {% if campaign.stage %}
+                    → {{ campaign.stage.name }}
+                {% endif %}
+            </p>
+
+        </div>
+
+        <a
+            href="{% url 'whatsapp-campaign-list' %}"
+            class="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
         >
 
-            <div>
+            <i class="ti ti-arrow-left"></i>
 
-                <h1 class="text-xl font-semibold">
-                    {{ campaign.name }}
-                </h1>
+            Back to Campaigns
 
-                <p class="mt-1 text-sm text-gray-500">
-                    {{ campaign.pipeline.name }}
-                    {% if campaign.stage %}
-                        → {{ campaign.stage.name }}
-                    {% endif %}
-                </p>
+        </a>
 
-            </div>
-
-            <a
-                href="{% url 'whatsapp-campaign-list' %}"
-                class="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
-            >
-
-                <i class="ti ti-arrow-left"></i>
-
-                Back to Campaigns
-
-            </a>
-
-        </div>
-
-    </header>
+    </div>
 
 
-
-    <!-- =====================================================
-         MESSAGES
-         ===================================================== -->
-
-    {% if messages %}
-
-        <div class="mx-auto mt-6 max-w-5xl px-6">
-
-            {% for message in messages %}
-
-                <div
-                    class="mb-3 rounded-lg border px-4 py-3 text-sm
-                    {% if message.tags == 'success' %}
-                        border-green-200 bg-green-50 text-green-700
-                    {% elif message.tags == 'error' %}
-                        border-red-200 bg-red-50 text-red-700
-                    {% else %}
-                        border-gray-200 bg-gray-50 text-gray-700
-                    {% endif %}"
-                >
-
-                    {{ message }}
-
-                </div>
-
-            {% endfor %}
-
-        </div>
-
-    {% endif %}
-
-
-
-    <!-- =====================================================
-         MAIN
-         ===================================================== -->
-
-    <main class="mx-auto max-w-5xl px-6 py-8">
 
 
         <!-- =================================================
@@ -289,10 +225,4 @@
         {% endif %}
 
 
-    </main>
-
-</div>
-
-</body>
-
-</html>
+{% endblock %}

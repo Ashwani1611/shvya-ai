@@ -1,105 +1,26 @@
+{% extends "base.html" %}
 {% load static %}
 
-<!DOCTYPE html>
-<html lang="en">
+{% block title %}SHVYA AI — Connect WhatsApp{% endblock %}
 
-<head>
+{% block header %}
+    Connect WhatsApp
+{% endblock %}
 
-    <meta charset="UTF-8">
-
-    <meta
-        name="viewport"
-        content="width=device-width, initial-scale=1.0"
-    >
-
-    <title>SHVYA AI — Connect WhatsApp</title>
-
-    <script src="https://cdn.tailwindcss.com"></script>
-
-    <link
-        rel="stylesheet"
-        href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css"
-    >
-
-</head>
-
-
-<body class="bg-gray-50 text-gray-900">
-
-<div class="min-h-screen">
+{% block content %}
 
 
     <!-- =====================================================
-         HEADER
+         PAGE HEADER
          ===================================================== -->
 
-    <header class="border-b border-gray-200 bg-white">
+    <div class="mb-6">
 
-        <div
-            class="mx-auto flex max-w-5xl items-center justify-between px-6 py-4"
-        >
+        <h2 class="text-lg font-semibold">
+            Choose how you want to connect WhatsApp for your organization.
+        </h2>
 
-            <div>
-
-                <h1 class="text-xl font-semibold">
-                    Connect WhatsApp
-                </h1>
-
-                <p class="mt-1 text-sm text-gray-500">
-                    Choose how you want to connect WhatsApp for your organization.
-                </p>
-
-            </div>
-
-
-            <a
-                href="{% url 'crm-dashboard' %}"
-                class="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
-            >
-
-                <i class="ti ti-arrow-left"></i>
-
-                Back to Dashboard
-
-            </a>
-
-        </div>
-
-    </header>
-
-
-
-    <!-- =====================================================
-         MESSAGES
-         ===================================================== -->
-
-    {% if messages %}
-
-        <div class="mx-auto mt-6 max-w-5xl px-6">
-
-            {% for message in messages %}
-
-                <div
-                    class="mb-3 rounded-lg border px-4 py-3 text-sm
-                    {% if message.tags == 'success' %}
-                        border-green-200 bg-green-50 text-green-700
-                    {% elif message.tags == 'error' %}
-                        border-red-200 bg-red-50 text-red-700
-                    {% else %}
-                        border-gray-200 bg-gray-50 text-gray-700
-                    {% endif %}"
-                >
-
-                    {{ message }}
-
-                </div>
-
-            {% endfor %}
-
-        </div>
-
-    {% endif %}
-
+    </div>
 
 
     <!-- =====================================================
@@ -108,160 +29,148 @@
 
     {% if existing_accounts %}
 
-        <div class="mx-auto mt-6 max-w-5xl px-6">
+        <div class="mb-6 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-700">
 
-            <div class="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-700">
+            <i class="ti ti-info-circle"></i>
 
-                <i class="ti ti-info-circle"></i>
+            Your organization already has
+            {{ existing_accounts.count }}
+            connected WhatsApp number{{ existing_accounts.count|pluralize }}.
+            This will add another one alongside {{ existing_accounts.count|pluralize:"it,them" }}.
 
-                Your organization already has
-                {{ existing_accounts.count }}
-                connected WhatsApp number{{ existing_accounts.count|pluralize }}.
-                This will add another one alongside {{ existing_accounts.count|pluralize:"it,them" }}.
-
-                <a
-                    href="{% url 'whatsapp-accounts' %}"
-                    class="ml-2 font-semibold underline"
-                >
-                    View connected numbers
-                </a>
-
-            </div>
+            <a
+                href="{% url 'whatsapp-accounts' %}"
+                class="ml-2 font-semibold underline"
+            >
+                View connected numbers
+            </a>
 
         </div>
 
     {% endif %}
 
 
-
     <!-- =====================================================
-         MAIN — CHOICE CARDS
+         CHOICE CARDS
          ===================================================== -->
 
-    <main class="mx-auto max-w-5xl px-6 py-10">
-
-        <div class="grid grid-cols-1 gap-6 md:grid-cols-2">
+    <div class="grid grid-cols-1 gap-6 md:grid-cols-2">
 
 
-            <!-- =================================================
-                 CONNECT API
-                 ================================================= -->
+        <!-- =================================================
+             CONNECT API
+             ================================================= -->
 
-            <a
-                href="{% url 'whatsapp-connect-api' %}"
-                class="group rounded-xl border border-gray-200 bg-white p-8 shadow-sm transition hover:border-blue-400 hover:shadow-md"
+        <a
+            href="{% url 'whatsapp-connect-api' %}"
+            class="group rounded-xl border border-gray-200 bg-white p-8 shadow-sm transition hover:border-blue-400 hover:shadow-md"
+        >
+
+            <div
+                class="flex h-12 w-12 items-center justify-center rounded-lg bg-blue-50 text-2xl text-blue-600"
             >
 
-                <div
-                    class="flex h-12 w-12 items-center justify-center rounded-lg bg-blue-50 text-2xl text-blue-600"
-                >
+                <i class="ti ti-plug-connected"></i>
 
-                    <i class="ti ti-plug-connected"></i>
-
-                </div>
+            </div>
 
 
-                <h2 class="mt-5 text-lg font-semibold text-gray-900">
-                    Connect API
-                </h2>
+            <h2 class="mt-5 text-lg font-semibold text-gray-900">
+                Connect API
+            </h2>
 
-                <p class="mt-2 text-sm text-gray-500">
-                    Already have a Meta WhatsApp Business Platform account?
-                    Connect it directly using your own phone number ID
-                    and access token.
-                </p>
+            <p class="mt-2 text-sm text-gray-500">
+                Already have a Meta WhatsApp Business Platform account?
+                Connect it directly using your own phone number ID
+                and access token.
+            </p>
 
-                <ul class="mt-4 space-y-2 text-sm text-gray-600">
+            <ul class="mt-4 space-y-2 text-sm text-gray-600">
 
-                    <li class="flex items-center gap-2">
-                        <i class="ti ti-check text-green-600"></i>
-                        Full control over your Meta app
-                    </li>
+                <li class="flex items-center gap-2">
+                    <i class="ti ti-check text-green-600"></i>
+                    Full control over your Meta app
+                </li>
 
-                    <li class="flex items-center gap-2">
-                        <i class="ti ti-check text-green-600"></i>
-                        Connects instantly
-                    </li>
+                <li class="flex items-center gap-2">
+                    <i class="ti ti-check text-green-600"></i>
+                    Connects instantly
+                </li>
 
-                    <li class="flex items-center gap-2">
-                        <i class="ti ti-check text-green-600"></i>
-                        Best if you already send WhatsApp traffic
-                    </li>
+                <li class="flex items-center gap-2">
+                    <i class="ti ti-check text-green-600"></i>
+                    Best if you already send WhatsApp traffic
+                </li>
 
-                </ul>
-
-
-                <span
-                    class="mt-6 inline-flex items-center gap-1 text-sm font-semibold text-blue-600 group-hover:gap-2 transition-all"
-                >
-                    Connect now <i class="ti ti-arrow-right"></i>
-                </span>
-
-            </a>
+            </ul>
 
 
-            <!-- =================================================
-                 HOSTED ACCOUNT
-                 ================================================= -->
+            <span
+                class="mt-6 inline-flex items-center gap-1 text-sm font-semibold text-blue-600 group-hover:gap-2 transition-all"
+            >
+                Connect now <i class="ti ti-arrow-right"></i>
+            </span>
 
-            <a
-                href="{% url 'whatsapp-connect-hosted' %}"
-                class="group rounded-xl border border-gray-200 bg-white p-8 shadow-sm transition hover:border-blue-400 hover:shadow-md"
+        </a>
+
+
+        <!-- =================================================
+             HOSTED ACCOUNT
+             ================================================= -->
+
+        <a
+            href="{% url 'whatsapp-connect-hosted' %}"
+            class="group rounded-xl border border-gray-200 bg-white p-8 shadow-sm transition hover:border-blue-400 hover:shadow-md"
+        >
+
+            <div
+                class="flex h-12 w-12 items-center justify-center rounded-lg bg-purple-50 text-2xl text-purple-600"
             >
 
-                <div
-                    class="flex h-12 w-12 items-center justify-center rounded-lg bg-purple-50 text-2xl text-purple-600"
-                >
+                <i class="ti ti-cloud"></i>
 
-                    <i class="ti ti-cloud"></i>
-
-                </div>
+            </div>
 
 
-                <h2 class="mt-5 text-lg font-semibold text-gray-900">
-                    Hosted Account
-                </h2>
+            <h2 class="mt-5 text-lg font-semibold text-gray-900">
+                Hosted Account
+            </h2>
 
-                <p class="mt-2 text-sm text-gray-500">
-                    New to WhatsApp Business? Let SHVYA set up and manage
-                    a WhatsApp number for you — no Meta setup required.
-                </p>
+            <p class="mt-2 text-sm text-gray-500">
+                New to WhatsApp Business? Let SHVYA set up and manage
+                a WhatsApp number for you — no Meta setup required.
+            </p>
 
-                <ul class="mt-4 space-y-2 text-sm text-gray-600">
+            <ul class="mt-4 space-y-2 text-sm text-gray-600">
 
-                    <li class="flex items-center gap-2">
-                        <i class="ti ti-check text-green-600"></i>
-                        No technical setup needed
-                    </li>
+                <li class="flex items-center gap-2">
+                    <i class="ti ti-check text-green-600"></i>
+                    No technical setup needed
+                </li>
 
-                    <li class="flex items-center gap-2">
-                        <i class="ti ti-check text-green-600"></i>
-                        SHVYA handles Meta configuration
-                    </li>
+                <li class="flex items-center gap-2">
+                    <i class="ti ti-check text-green-600"></i>
+                    SHVYA handles Meta configuration
+                </li>
 
-                    <li class="flex items-center gap-2">
-                        <i class="ti ti-check text-green-600"></i>
-                        Best if you're starting from scratch
-                    </li>
+                <li class="flex items-center gap-2">
+                    <i class="ti ti-check text-green-600"></i>
+                    Best if you're starting from scratch
+                </li>
 
-                </ul>
-
-
-                <span
-                    class="mt-6 inline-flex items-center gap-1 text-sm font-semibold text-purple-600 group-hover:gap-2 transition-all"
-                >
-                    Request hosted number <i class="ti ti-arrow-right"></i>
-                </span>
-
-            </a>
+            </ul>
 
 
-        </div>
+            <span
+                class="mt-6 inline-flex items-center gap-1 text-sm font-semibold text-purple-600 group-hover:gap-2 transition-all"
+            >
+                Request hosted number <i class="ti ti-arrow-right"></i>
+            </span>
 
-    </main>
+        </a>
 
-</div>
 
-</body>
+    </div>
 
-</html>
+
+{% endblock %}

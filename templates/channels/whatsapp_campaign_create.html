@@ -1,110 +1,63 @@
+{% extends "base.html" %}
 {% load static %}
 
-<!DOCTYPE html>
-<html lang="en">
+{% block title %}SHVYA AI — New Bulk Campaign{% endblock %}
 
-<head>
+{% block header %}
+    New Bulk Campaign
+{% endblock %}
 
-    <meta charset="UTF-8">
+{% block extra_head %}
 
-    <meta
-        name="viewport"
-        content="width=device-width, initial-scale=1.0"
-    >
+    <!-- ========================================================
+         SCOPED FORM FIELD STYLING
+         (form.py fields render as plain <select>/<input>/<textarea>
+         with no Tailwind classes attached server-side; scoped to
+         .wa-campaign-form so it doesn't leak onto other pages'
+         inputs sharing this same base.html layout)
+         ======================================================== -->
 
-    <title>SHVYA AI — New Bulk Campaign</title>
+    <style>
 
-    <script src="https://cdn.tailwindcss.com"></script>
+        .wa-campaign-form input[type="text"],
+        .wa-campaign-form textarea,
+        .wa-campaign-form select {
+            width: 100%;
+            border: 1px solid rgb(209 213 219);
+            border-radius: 0.5rem;
+            padding: 0.5rem 0.75rem;
+            font-size: 0.875rem;
+            background-color: white;
+        }
 
-    <link
-        rel="stylesheet"
-        href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css"
-    >
+        .wa-campaign-form input[type="text"]:focus,
+        .wa-campaign-form textarea:focus,
+        .wa-campaign-form select:focus {
+            outline: none;
+            border-color: rgb(59 130 246);
+            box-shadow: 0 0 0 1px rgb(59 130 246);
+        }
 
-</head>
+    </style>
 
+{% endblock %}
 
-<body class="bg-gray-50 text-gray-900">
+{% block content %}
 
-<div class="min-h-screen">
+    <div class="mx-auto max-w-2xl">
 
+        <div class="mb-6">
 
-    <!-- =====================================================
-         HEADER
-         ===================================================== -->
-
-    <header class="border-b border-gray-200 bg-white">
-
-        <div
-            class="mx-auto flex max-w-3xl items-center justify-between px-6 py-4"
-        >
-
-            <div>
-
-                <h1 class="text-xl font-semibold">
-                    New Bulk Campaign
-                </h1>
-
-                <p class="mt-1 text-sm text-gray-500">
-                    Send one message to every lead in a pipeline or stage.
-                </p>
-
-            </div>
-
-            <a
-                href="{% url 'whatsapp-campaign-list' %}"
-                class="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
-            >
-
-                <i class="ti ti-arrow-left"></i>
-
-                Back
-
-            </a>
+            <h2 class="text-lg font-semibold">
+                Send one message to every lead in a pipeline or stage.
+            </h2>
 
         </div>
 
-    </header>
 
+        {% if form.non_field_errors %}
 
-
-    <!-- =====================================================
-         MESSAGES
-         ===================================================== -->
-
-    {% if messages %}
-
-        <div class="mx-auto mt-6 max-w-3xl px-6">
-
-            {% for message in messages %}
-
-                <div
-                    class="mb-3 rounded-lg border px-4 py-3 text-sm
-                    {% if message.tags == 'success' %}
-                        border-green-200 bg-green-50 text-green-700
-                    {% elif message.tags == 'error' %}
-                        border-red-200 bg-red-50 text-red-700
-                    {% else %}
-                        border-gray-200 bg-gray-50 text-gray-700
-                    {% endif %}"
-                >
-
-                    {{ message }}
-
-                </div>
-
-            {% endfor %}
-
-        </div>
-
-    {% endif %}
-
-
-    {% if form.non_field_errors %}
-
-        <div class="mx-auto mt-6 max-w-3xl px-6">
-
-            <div class="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            <div class="mb-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
 
                 {% for error in form.non_field_errors %}
                     <p>{{ error }}</p>
@@ -112,19 +65,11 @@
 
             </div>
 
-        </div>
-
-    {% endif %}
+        {% endif %}
 
 
 
-    <!-- =====================================================
-         MAIN — FORM
-         ===================================================== -->
-
-    <main class="mx-auto max-w-3xl px-6 py-8">
-
-        <form method="post" class="space-y-6 rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+        <form method="post" class="wa-campaign-form space-y-6 rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
 
             {% csrf_token %}
 
@@ -288,41 +233,6 @@
 
         </form>
 
-    </main>
+    </div>
 
-</div>
-
-
-<!-- =====================================================
-     LIGHTWEIGHT WIDGET STYLING
-     (form.py fields render as plain <select>/<input>/<textarea>
-     with no Tailwind classes attached server-side, so style them
-     generically here rather than touching every field's widget)
-     ===================================================== -->
-
-<style>
-
-    input[type="text"],
-    textarea,
-    select {
-        width: 100%;
-        border: 1px solid rgb(209 213 219);
-        border-radius: 0.5rem;
-        padding: 0.5rem 0.75rem;
-        font-size: 0.875rem;
-        background-color: white;
-    }
-
-    input[type="text"]:focus,
-    textarea:focus,
-    select:focus {
-        outline: none;
-        border-color: rgb(59 130 246);
-        box-shadow: 0 0 0 1px rgb(59 130 246);
-    }
-
-</style>
-
-</body>
-
-</html>
+{% endblock %}

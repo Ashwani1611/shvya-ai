@@ -1,443 +1,403 @@
+{% extends "base.html" %}
 {% load static %}
 
-<!DOCTYPE html>
-<html lang="en">
+{% block title %}SHVYA AI — New Message Template{% endblock %}
 
-<head>
+{% block header %}
+    New Message Template
+{% endblock %}
 
-    <meta charset="UTF-8">
-
-    <meta
-        name="viewport"
-        content="width=device-width, initial-scale=1.0"
-    >
-
-    <title>SHVYA AI — New Message Template</title>
-
-    <script src="https://cdn.tailwindcss.com"></script>
-
-    <link
-        rel="stylesheet"
-        href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css"
-    >
-
-</head>
-
-
-<body class="bg-gray-50 text-gray-900">
-
-<div class="min-h-screen">
-
-
-    <!-- =====================================================
-         HEADER
-         ===================================================== -->
-
-    <header class="border-b border-gray-200 bg-white">
-
-        <div
-            class="mx-auto flex max-w-6xl items-center justify-between px-6 py-4"
-        >
-
-            <div class="flex items-center gap-3">
-
-                <a
-                    href="{% url 'whatsapp-template-list' %}"
-                    class="text-gray-400 transition hover:text-gray-700"
-                >
-                    <i class="ti ti-arrow-left text-lg"></i>
-                </a>
-
-                <h1 class="text-xl font-semibold">
-                    New Message Template
-                </h1>
-
-            </div>
-
-        </div>
-
-    </header>
-
-
+{% block content %}
 
     {% if form.non_field_errors %}
 
-        <div class="mx-auto mt-6 max-w-6xl px-6">
+        <div class="mb-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
 
-            <div class="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-
-                {% for error in form.non_field_errors %}
-                    {{ error }}
-                {% endfor %}
-
-            </div>
+            {% for error in form.non_field_errors %}
+                {{ error }}
+            {% endfor %}
 
         </div>
 
     {% endif %}
 
 
-
     <!-- =====================================================
-         MAIN — TWO COLUMN: FORM + PREVIEW
+         TWO COLUMN: FORM + PREVIEW
          ===================================================== -->
 
-    <main class="mx-auto max-w-6xl px-6 py-8">
+    <form method="post">
 
-        <form method="post">
+        {% csrf_token %}
 
-            {% csrf_token %}
-
-            <div class="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_320px]">
+        <div class="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_320px]">
 
 
-                <!-- =============================================
-                     LEFT — FORM FIELDS
-                     ============================================= -->
+            <!-- =============================================
+                 LEFT — FORM FIELDS
+                 ============================================= -->
 
-                <div class="space-y-6">
+            <div class="space-y-6">
 
 
-                    <!-- TOP ROW: name / category / business -->
+                <!-- TOP ROW: name / category / business -->
 
-                    <div class="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+                <div class="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
 
-                        <div class="grid grid-cols-1 gap-5 sm:grid-cols-3">
+                    <div class="grid grid-cols-1 gap-5 sm:grid-cols-3">
 
-                            <div>
+                        <div>
 
-                                <label class="mb-1.5 block text-sm font-medium text-gray-700">
-                                    Template Name <span class="text-red-500">*</span>
-                                </label>
+                            <label class="mb-1.5 block text-sm font-medium text-gray-700">
+                                Template Name <span class="text-red-500">*</span>
+                            </label>
+
+                            <input
+                                type="text"
+                                name="name"
+                                value="{{ form.name.value|default:'' }}"
+                                placeholder="Enter the template name"
+                                class="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            >
+
+                            {% if form.name.errors %}
+                                <p class="mt-1.5 text-sm text-red-600">{{ form.name.errors.0 }}</p>
+                            {% endif %}
+
+                        </div>
+
+
+                        <div>
+
+                            <label class="mb-1.5 block text-sm font-medium text-gray-700">
+                                Category
+                            </label>
+
+                            <select
+                                name="category"
+                                class="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            >
+
+                                {% for value, label in form.fields.category.choices %}
+
+                                    <option value="{{ value }}" {% if form.category.value == value %}selected{% endif %}>
+                                        {{ label }}
+                                    </option>
+
+                                {% endfor %}
+
+                            </select>
+
+                        </div>
+
+
+                        <div>
+
+                            <label class="mb-1.5 block text-sm font-medium text-gray-700">
+                                Business
+                            </label>
+
+                            <select
+                                name="account"
+                                class="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            >
+
+                                {% for account in form.fields.account.queryset %}
+
+                                    <option value="{{ account.id }}" {% if form.account.value|stringformat:"s" == account.id|stringformat:"s" %}selected{% endif %}>
+                                        {{ account.business_name|default:account.display_phone_number }}
+                                    </option>
+
+                                {% endfor %}
+
+                            </select>
+
+                            {% if form.account.errors %}
+                                <p class="mt-1.5 text-sm text-red-600">{{ form.account.errors.0 }}</p>
+                            {% endif %}
+
+                        </div>
+
+                    </div>
+
+                </div>
+
+
+                <!-- TEMPLATE FORMAT -->
+
+                <div class="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+
+                    <label class="mb-3 block text-sm font-medium text-gray-700">
+                        Template Format
+                    </label>
+
+                    <div class="space-y-3">
+
+                        {% for value, label in form.fields.template_format.choices %}
+
+                            <label class="flex cursor-pointer items-start gap-3 rounded-lg border border-gray-200 p-4 has-[:checked]:border-blue-500 has-[:checked]:bg-blue-50/50">
 
                                 <input
-                                    type="text"
-                                    name="name"
-                                    value="{{ form.name.value|default:'' }}"
-                                    placeholder="Enter the template name"
-                                    class="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                    type="radio"
+                                    name="template_format"
+                                    value="{{ value }}"
+                                    {% if forloop.first %}checked{% endif %}
+                                    class="mt-1"
                                 >
 
-                                {% if form.name.errors %}
-                                    <p class="mt-1.5 text-sm text-red-600">{{ form.name.errors.0 }}</p>
-                                {% endif %}
+                                <div>
 
-                            </div>
+                                    <span class="text-sm font-medium text-gray-900">{{ label }}</span>
 
+                                    <p class="mt-0.5 text-xs text-gray-500">
 
-                            <div>
+                                        {% if value == 'standard' %}
+                                            Send a single message with one image, video, or document and buttons.
+                                        {% else %}
+                                            Send a swipeable set of media cards with different actions on each card.
+                                        {% endif %}
 
-                                <label class="mb-1.5 block text-sm font-medium text-gray-700">
-                                    Category
-                                </label>
+                                    </p>
 
-                                <select
-                                    name="category"
-                                    class="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                                >
-
-                                    {% for value, label in form.fields.category.choices %}
-
-                                        <option value="{{ value }}" {% if form.category.value == value %}selected{% endif %}>
-                                            {{ label }}
-                                        </option>
-
-                                    {% endfor %}
-
-                                </select>
-
-                            </div>
-
-
-                            <div>
-
-                                <label class="mb-1.5 block text-sm font-medium text-gray-700">
-                                    Business
-                                </label>
-
-                                <select
-                                    name="account"
-                                    class="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                                >
-
-                                    {% for account in form.fields.account.queryset %}
-
-                                        <option value="{{ account.id }}" {% if form.account.value|stringformat:"s" == account.id|stringformat:"s" %}selected{% endif %}>
-                                            {{ account.business_name|default:account.display_phone_number }}
-                                        </option>
-
-                                    {% endfor %}
-
-                                </select>
-
-                                {% if form.account.errors %}
-                                    <p class="mt-1.5 text-sm text-red-600">{{ form.account.errors.0 }}</p>
-                                {% endif %}
-
-                            </div>
-
-                        </div>
-
-                    </div>
-
-
-                    <!-- TEMPLATE FORMAT -->
-
-                    <div class="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-
-                        <label class="mb-3 block text-sm font-medium text-gray-700">
-                            Template Format
-                        </label>
-
-                        <div class="space-y-3">
-
-                            {% for value, label in form.fields.template_format.choices %}
-
-                                <label class="flex cursor-pointer items-start gap-3 rounded-lg border border-gray-200 p-4 has-[:checked]:border-blue-500 has-[:checked]:bg-blue-50/50">
-
-                                    <input
-                                        type="radio"
-                                        name="template_format"
-                                        value="{{ value }}"
-                                        {% if forloop.first %}checked{% endif %}
-                                        class="mt-1"
-                                    >
-
-                                    <div>
-
-                                        <span class="text-sm font-medium text-gray-900">{{ label }}</span>
-
-                                        <p class="mt-0.5 text-xs text-gray-500">
-
-                                            {% if value == 'standard' %}
-                                                Send a single message with one image, video, or document and buttons.
-                                            {% else %}
-                                                Send a swipeable set of media cards with different actions on each card.
-                                            {% endif %}
-
-                                        </p>
-
-                                    </div>
-
-                                </label>
-
-                            {% endfor %}
-
-                        </div>
-
-                    </div>
-
-
-                    <!-- MESSAGE BODY -->
-
-                    <div class="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-
-                        <label class="mb-2 block text-sm font-medium text-gray-700">
-                            Message
-                        </label>
-
-                        <textarea
-                            name="body"
-                            rows="6"
-                            maxlength="1024"
-                            id="template-body"
-                            placeholder="Type your message here."
-                            class="w-full rounded-lg border border-gray-300 px-4 py-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                        >{{ form.body.value|default:'' }}</textarea>
-
-                        {% if form.body.errors %}
-                            <p class="mt-1.5 text-sm text-red-600">{{ form.body.errors.0 }}</p>
-                        {% endif %}
-
-
-                        <!-- VARIABLE CHIPS -->
-
-                        <div class="mt-3 flex flex-wrap gap-2">
-
-                            {% for variable in available_variables %}
-
-                                <button
-                                    type="button"
-                                    onclick="insertVariable('{{ variable }}')"
-                                    class="rounded-md border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700 transition hover:bg-blue-100"
-                                >
-                                    + {{ '{{' }}{{ variable }}{{ '}}' }}
-                                </button>
-
-                            {% endfor %}
-
-                        </div>
-
-                    </div>
-
-
-                    <!-- ATTACHMENTS -->
-
-                    <div class="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-
-                        <label class="mb-3 block text-sm font-medium text-gray-700">
-                            Attachments
-                        </label>
-
-                        <div class="flex flex-wrap gap-4">
-
-                            {% for value, label in form.fields.attachment_type.choices %}
-
-                                <label class="flex items-center gap-2 text-sm text-gray-700">
-
-                                    <input
-                                        type="radio"
-                                        name="attachment_type"
-                                        value="{{ value }}"
-                                        {% if forloop.first %}checked{% endif %}
-                                    >
-
-                                    {{ label }}
-
-                                </label>
-
-                            {% endfor %}
-
-                        </div>
-
-                    </div>
-
-
-                    <!-- FOOTER -->
-
-                    <div class="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-
-                        <label class="mb-2 block text-sm font-medium text-gray-700">
-                            Footer
-                        </label>
-
-                        <input
-                            type="text"
-                            name="footer"
-                            maxlength="60"
-                            value="{{ form.footer.value|default:'' }}"
-                            placeholder="Type your message here"
-                            class="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                        >
-
-                    </div>
-
-
-                    <!-- BUTTONS -->
-
-                    <div class="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-
-                        <label class="mb-3 block text-sm font-medium text-gray-700">
-                            Button
-                        </label>
-
-                        <div class="flex flex-wrap gap-5">
-
-                            {% for value, label in form.fields.buttons.choices %}
-
-                                <label class="flex items-center gap-2 text-sm text-gray-700">
-
-                                    <input
-                                        type="checkbox"
-                                        name="buttons"
-                                        value="{{ value }}"
-                                    >
-
-                                    {{ label }}
-
-                                </label>
-
-                            {% endfor %}
-
-                        </div>
-
-                    </div>
-
-
-                    <div class="flex justify-end gap-3">
-
-                        <a
-                            href="{% url 'whatsapp-template-list' %}"
-                            class="rounded-lg border border-gray-200 bg-white px-5 py-2.5 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
-                        >
-                            Cancel
-                        </a>
-
-                        <button
-                            type="submit"
-                            class="rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700"
-                        >
-                            Save Template
-                        </button>
-
-                    </div>
-
-                </div>
-
-
-
-                <!-- =============================================
-                     RIGHT — LIVE PREVIEW
-                     ============================================= -->
-
-                <div>
-
-                    <div class="sticky top-6 rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
-
-                        <p class="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-400">
-                            Preview
-                        </p>
-
-                        <div class="overflow-hidden rounded-2xl border border-gray-800 bg-[#e5ddd5]">
-
-                            <div class="bg-[#075e54] px-4 py-3 text-sm font-semibold text-white">
-                                ← WhatsApp
-                            </div>
-
-                            <div class="min-h-[280px] p-4">
-
-                                <div class="max-w-[85%] rounded-lg bg-white p-3 text-sm text-gray-800 shadow">
-                                    <span id="preview-body">Type your message here.</span>
                                 </div>
 
-                            </div>
+                            </label>
 
-                        </div>
+                        {% endfor %}
 
                     </div>
 
                 </div>
 
+
+                <!-- MESSAGE BODY -->
+
+                <div class="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+
+                    <label class="mb-2 block text-sm font-medium text-gray-700">
+                        Message
+                    </label>
+
+                    <textarea
+                        name="body"
+                        rows="6"
+                        maxlength="1024"
+                        id="template-body"
+                        placeholder="Type your message here."
+                        class="w-full rounded-lg border border-gray-300 px-4 py-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    >{{ form.body.value|default:'' }}</textarea>
+
+                    {% if form.body.errors %}
+                        <p class="mt-1.5 text-sm text-red-600">{{ form.body.errors.0 }}</p>
+                    {% endif %}
+
+
+                    <!-- VARIABLE CHIPS -->
+
+                    <div class="mt-3 flex flex-wrap gap-2">
+
+                        {% for variable in available_variables %}
+
+                            <button
+                                type="button"
+                                onclick="insertVariable('{{ variable }}')"
+                                class="rounded-md border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700 transition hover:bg-blue-100"
+                            >
+                                <!--
+                                    templatetag openvariable/closevariable is
+                                    Django's own self-contained way to emit a
+                                    literal double-brace pair -- not raw
+                                    double-brace literals, which the template
+                                    engine tries to tokenize as a variable tag
+                                    and mis-parses (this exact spot previously
+                                    threw a TemplateSyntaxError on every render
+                                    via the quote-trick version that was here).
+                                -->
+                                + {% templatetag openvariable %}{{ variable }}{% templatetag closevariable %}
+                            </button>
+
+                        {% endfor %}
+
+                    </div>
+
+                </div>
+
+
+                <!-- ATTACHMENTS -->
+
+                <div class="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+
+                    <label class="mb-3 block text-sm font-medium text-gray-700">
+                        Attachments
+                    </label>
+
+                    <div class="flex flex-wrap gap-4">
+
+                        {% for value, label in form.fields.attachment_type.choices %}
+
+                            <label class="flex items-center gap-2 text-sm text-gray-700">
+
+                                <input
+                                    type="radio"
+                                    name="attachment_type"
+                                    value="{{ value }}"
+                                    {% if forloop.first %}checked{% endif %}
+                                >
+
+                                {{ label }}
+
+                            </label>
+
+                        {% endfor %}
+
+                    </div>
+
+                </div>
+
+
+                <!-- FOOTER -->
+
+                <div class="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+
+                    <label class="mb-2 block text-sm font-medium text-gray-700">
+                        Footer
+                    </label>
+
+                    <input
+                        type="text"
+                        name="footer"
+                        maxlength="60"
+                        value="{{ form.footer.value|default:'' }}"
+                        placeholder="Type your message here"
+                        class="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    >
+
+                </div>
+
+
+                <!-- BUTTONS -->
+
+                <div class="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+
+                    <label class="mb-3 block text-sm font-medium text-gray-700">
+                        Button
+                    </label>
+
+                    <div class="flex flex-wrap gap-5">
+
+                        {% for value, label in form.fields.buttons.choices %}
+
+                            <label class="flex items-center gap-2 text-sm text-gray-700">
+
+                                <input
+                                    type="checkbox"
+                                    name="buttons"
+                                    value="{{ value }}"
+                                >
+
+                                {{ label }}
+
+                            </label>
+
+                        {% endfor %}
+
+                    </div>
+
+                </div>
+
+
+                <div class="flex justify-end gap-3">
+
+                    <a
+                        href="{% url 'whatsapp-template-list' %}"
+                        class="rounded-lg border border-gray-200 bg-white px-5 py-2.5 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
+                    >
+                        Cancel
+                    </a>
+
+                    <button
+                        type="submit"
+                        class="rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700"
+                    >
+                        Save Template
+                    </button>
+
+                </div>
 
             </div>
 
-        </form>
-
-    </main>
-
-</div>
 
 
-<script>
-function insertVariable(name) {
-    var textarea = document.getElementById('template-body');
-    var placeholder = '{{' + name + '}}';
-    var start = textarea.selectionStart;
-    var end = textarea.selectionEnd;
-    var text = textarea.value;
-    textarea.value = text.slice(0, start) + placeholder + text.slice(end);
-    textarea.focus();
-    updatePreview();
-}
+            <!-- =============================================
+                 RIGHT — LIVE PREVIEW
+                 ============================================= -->
 
-function updatePreview() {
-    var body = document.getElementById('template-body').value;
-    document.getElementById('preview-body').textContent = body || 'Type your message here.';
-}
+            <div>
 
-document.getElementById('template-body').addEventListener('input', updatePreview);
-</script>
+                <div class="sticky top-6 rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
 
-</body>
+                    <p class="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-400">
+                        Preview
+                    </p>
 
-</html>
+                    <div class="overflow-hidden rounded-2xl border border-gray-800 bg-[#e5ddd5]">
+
+                        <div class="bg-[#075e54] px-4 py-3 text-sm font-semibold text-white">
+                            ← WhatsApp
+                        </div>
+
+                        <div class="min-h-[280px] p-4">
+
+                            <div class="max-w-[85%] rounded-lg bg-white p-3 text-sm text-gray-800 shadow">
+                                <span id="preview-body">Type your message here.</span>
+                            </div>
+
+                        </div>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+
+        </div>
+
+    </form>
+
+
+    <script>
+    function insertVariable(name) {
+        var textarea = document.getElementById('template-body');
+
+        /*
+         * Built one brace at a time rather than as two adjacent
+         * literal open/close-brace pairs -- Django's template
+         * engine tokenizes this .html file's raw source before it
+         * ever reaches the browser, so writing the pair directly
+         * in this file (even inside a JS comment) gets read as a
+         * template variable tag and stripped or mis-parsed. Adding
+         * each brace character separately keeps that pair from
+         * ever appearing contiguously in the template source.
+         */
+        var openBrace = String.fromCharCode(123);
+        var closeBrace = String.fromCharCode(125);
+        var placeholder = openBrace + openBrace + name + closeBrace + closeBrace;
+
+        var start = textarea.selectionStart;
+        var end = textarea.selectionEnd;
+        var text = textarea.value;
+        textarea.value = text.slice(0, start) + placeholder + text.slice(end);
+        textarea.focus();
+        updatePreview();
+    }
+
+    function updatePreview() {
+        var body = document.getElementById('template-body').value;
+        document.getElementById('preview-body').textContent = body || 'Type your message here.';
+    }
+
+    document.getElementById('template-body').addEventListener('input', updatePreview);
+    </script>
+
+{% endblock %}

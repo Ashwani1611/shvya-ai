@@ -1,122 +1,39 @@
+{% extends "base.html" %}
 {% load static %}
 
-<!DOCTYPE html>
-<html lang="en">
+{% block title %}SHVYA AI — Bulk Campaigns{% endblock %}
 
-<head>
+{% block header %}
+    Bulk Campaigns
+{% endblock %}
 
-    <meta charset="UTF-8">
-
-    <meta
-        name="viewport"
-        content="width=device-width, initial-scale=1.0"
-    >
-
-    <title>SHVYA AI — Bulk Campaigns</title>
-
-    <script src="https://cdn.tailwindcss.com"></script>
-
-    <link
-        rel="stylesheet"
-        href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css"
-    >
-
-</head>
-
-
-<body class="bg-gray-50 text-gray-900">
-
-<div class="min-h-screen">
+{% block content %}
 
 
     <!-- =====================================================
-         HEADER
+         PAGE HEADER
          ===================================================== -->
 
-    <header class="border-b border-gray-200 bg-white">
+    <div class="mb-6 flex items-center justify-end">
 
-        <div
-            class="mx-auto flex max-w-6xl items-center justify-between px-6 py-4"
-        >
+        {% if can_manage %}
 
-            <h1 class="text-xl font-semibold">
-                Bulk Campaigns
-            </h1>
+            <a
+                href="{% url 'whatsapp-campaign-create' %}"
+                class="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700"
+            >
 
-            <div class="flex items-center gap-3">
+                <i class="ti ti-plus"></i>
 
-                <a
-                    href="{% url 'crm-dashboard' %}"
-                    class="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
-                >
+                New Campaign
 
-                    <i class="ti ti-arrow-left"></i>
+            </a>
 
-                    Dashboard
+        {% endif %}
 
-                </a>
-
-                {% if can_manage %}
-
-                    <a
-                        href="{% url 'whatsapp-campaign-create' %}"
-                        class="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700"
-                    >
-
-                        <i class="ti ti-plus"></i>
-
-                        New Campaign
-
-                    </a>
-
-                {% endif %}
-
-            </div>
-
-        </div>
-
-    </header>
+    </div>
 
 
-
-    <!-- =====================================================
-         MESSAGES
-         ===================================================== -->
-
-    {% if messages %}
-
-        <div class="mx-auto mt-6 max-w-6xl px-6">
-
-            {% for message in messages %}
-
-                <div
-                    class="mb-3 rounded-lg border px-4 py-3 text-sm
-                    {% if message.tags == 'success' %}
-                        border-green-200 bg-green-50 text-green-700
-                    {% elif message.tags == 'error' %}
-                        border-red-200 bg-red-50 text-red-700
-                    {% else %}
-                        border-gray-200 bg-gray-50 text-gray-700
-                    {% endif %}"
-                >
-
-                    {{ message }}
-
-                </div>
-
-            {% endfor %}
-
-        </div>
-
-    {% endif %}
-
-
-
-    <!-- =====================================================
-         MAIN — CAMPAIGNS TABLE
-         ===================================================== -->
-
-    <main class="mx-auto max-w-6xl px-6 py-8">
 
 
         {% if campaigns %}
@@ -275,10 +192,4 @@
         {% endif %}
 
 
-    </main>
-
-</div>
-
-</body>
-
-</html>
+{% endblock %}
