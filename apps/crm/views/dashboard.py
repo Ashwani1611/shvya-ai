@@ -12,6 +12,7 @@ from django.db import transaction
 
 from services.crm_activity_service import (
     record_stage_changed,
+    record_reminder_created,
 )
 
 from apps.accounts.models import User
@@ -510,6 +511,28 @@ def _build_lead_table_context(
             else:
 
                 lead.display_note_text = ""
+
+                            # ----------------------------------------------------
+            # ENTIRE LEAD ACTIVITY
+            #
+            # Activity belongs permanently to the Lead.
+            # It is independent of the Lead's current pipeline
+            # and stage.
+            # ----------------------------------------------------
+
+            lead.activities_for_card = (
+                lead.activities
+                .select_related(
+                    "actor",
+                    "old_pipeline",
+                    "new_pipeline",
+                    "old_stage",
+                    "new_stage",
+                )
+                .order_by(
+                    "-created_at",
+                )
+            )
 
         theme = STAGE_THEMES[
             i % len(STAGE_THEMES)
@@ -1935,13 +1958,19 @@ def lead_reminder_save(
             status=400,
         )
 
-    LeadReminder.objects.create(
+    reminder = LeadReminder.objects.create(
         lead=lead,
         assigned_to=user,
         title=title,
         description=description,
         due_at=due_at,
         status="pending",
+    )
+
+    record_reminder_created(
+        lead=lead,
+        actor=user,
+        reminder=reminder,
     )
 
     response = HttpResponse("")
@@ -2044,7 +2073,6 @@ def lead_note_save(
     )
 
     return response
-
 
 # ============================================================
 # PHASE 3 PART B — EDIT LEAD MODAL

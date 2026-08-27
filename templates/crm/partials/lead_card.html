@@ -1085,302 +1085,618 @@
     </div>
 
 
-    <!-- ========================================================
-         ACTIVITY PANEL
-         CLOSED BY DEFAULT
-         ======================================================== -->
+<!-- ========================================================
+     ACTIVITY PANEL
+     CLOSED BY DEFAULT
+     ======================================================== -->
 
-    <div
-        id="activity-{{ lead.id }}"
+<div
+    id="activity-{{ lead.id }}"
 
+    class="
+        lead-tab-panel
+        hidden
+        px-5
+        py-4
+        bg-gray-50/40
+    "
+>
+
+    <section
         class="
-            lead-tab-panel
-            hidden
-            px-5
-            py-4
-            bg-gray-50/40
+            rounded-lg
+            border
+            border-gray-200
+            bg-white
+            p-4
         "
     >
 
-        <section
-            class="
-                rounded-lg
-                border
-                border-gray-200
-                bg-white
-                p-4
-            "
-        >
+        <!-- ====================================================
+             ACTIVITY HEADER
+             ==================================================== -->
 
-            <div class="mb-4">
+        <div class="mb-4">
 
-                <h4
-                    class="
-                        text-sm
-                        font-semibold
-                        text-gray-800
-                    "
-                >
-                    Entire Activity
-                </h4>
+            <h4
+                class="
+                    text-sm
+                    font-semibold
+                    text-gray-800
+                "
+            >
+                Entire Activity
+            </h4>
 
-                <p
-                    class="
-                        text-xs
-                        text-gray-400
-                        mt-0.5
-                    "
-                >
-                    Calls, notes and reminders for this lead
-                </p>
+            <p
+                class="
+                    text-xs
+                    text-gray-400
+                    mt-0.5
+                "
+            >
+                Complete historical activity for this lead
+            </p>
 
-            </div>
+        </div>
 
 
-            <div class="space-y-4">
+        <!-- ====================================================
+             ACTIVITY HISTORY
+             ==================================================== -->
 
-                <!-- Call activity -->
+        {% if lead.activities_for_card %}
 
-                {% for call in calls %}
+        <div class="space-y-4">
 
-                <div class="flex gap-3">
+            {% for activity in lead.activities_for_card %}
 
-                    <div
-                        class="
-                            w-7
-                            h-7
-                            rounded-full
-                            bg-blue-50
-                            text-blue-600
-                            flex
-                            items-center
-                            justify-center
-                            shrink-0
-                        "
-                    >
+            <div
+                class="
+                    flex
+                    gap-3
+                    pb-4
+                    border-b
+                    border-gray-100
+                    last:border-b-0
+                    last:pb-0
+                "
+            >
 
-                        <i class="ti ti-phone"></i>
-
-                    </div>
-
-
-                    <div class="min-w-0">
-
-                        <p
-                            class="
-                                text-sm
-                                font-medium
-                                text-gray-800
-                            "
-                        >
-                            Call {{ forloop.counter }}
-                        </p>
-
-                        <p
-                            class="
-                                text-xs
-                                text-gray-500
-                                mt-0.5
-                            "
-                        >
-
-                            {{ call.called_at|date:"M d, Y H:i" }}
-
-                            {% if call.duration_seconds %}
-                                · {{ call.duration_seconds }} sec
-                            {% endif %}
-
-                        </p>
-
-
-                        {% if call.notes %}
-
-                        <p
-                            class="
-                                text-xs
-                                text-gray-500
-                                mt-1
-                            "
-                        >
-                            {{ call.notes }}
-                        </p>
-
-                        {% endif %}
-
-                    </div>
-
-                </div>
-
-                {% endfor %}
-
-
-                <!-- Note activity -->
-
-                {% for note in notes %}
-
-                <div class="flex gap-3">
-
-                    <div
-                        class="
-                            w-7
-                            h-7
-                            rounded-full
-                            bg-yellow-50
-                            text-yellow-600
-                            flex
-                            items-center
-                            justify-center
-                            shrink-0
-                        "
-                    >
-
-                        <i class="ti ti-note"></i>
-
-                    </div>
-
-
-                    <div class="min-w-0">
-
-                        <p
-                            class="
-                                text-sm
-                                font-medium
-                                text-gray-800
-                            "
-                        >
-                            Note added
-                        </p>
-
-                        <p
-                            class="
-                                text-xs
-                                text-gray-500
-                                mt-0.5
-                            "
-                        >
-                            {{ note.created_at|date:"M d, Y H:i" }}
-                        </p>
-
-                        <p
-                            class="
-                                text-xs
-                                text-gray-500
-                                mt-1
-                                whitespace-pre-wrap
-                            "
-                        >
-                            {{ note.note }}
-                        </p>
-
-                    </div>
-
-                </div>
-
-                {% endfor %}
-
-
-                <!-- Reminder activity -->
-
-                {% for reminder in reminders %}
-
-                <div class="flex gap-3">
-
-                    <div
-                        class="
-                            w-7
-                            h-7
-                            rounded-full
-                            bg-purple-50
-                            text-purple-600
-                            flex
-                            items-center
-                            justify-center
-                            shrink-0
-                        "
-                    >
-
-                        <i class="ti ti-bell"></i>
-
-                    </div>
-
-
-                    <div class="min-w-0">
-
-                        <p
-                            class="
-                                text-sm
-                                font-medium
-                                text-gray-800
-                            "
-                        >
-                            Reminder
-                        </p>
-
-                        <p
-                            class="
-                                text-xs
-                                text-gray-500
-                                mt-0.5
-                            "
-                        >
-                            {{ reminder.title }}
-                            ·
-                            {{ reminder.due_at|date:"M d, Y H:i" }}
-                        </p>
-
-
-                        {% if reminder.description %}
-
-                        <p
-                            class="
-                                text-xs
-                                text-gray-500
-                                mt-1
-                            "
-                        >
-                            {{ reminder.description }}
-                        </p>
-
-                        {% endif %}
-
-                    </div>
-
-                </div>
-
-                {% endfor %}
-
-
-                {% if not calls and not notes and not reminders %}
+                <!-- ==================================================
+                     ICON
+                     ================================================== -->
 
                 <div
                     class="
-                        border
-                        border-dashed
-                        border-gray-200
-                        rounded-lg
-                        p-6
-                        text-center
+                        w-7
+                        h-7
+                        rounded-full
+                        bg-blue-50
+                        text-blue-600
+                        flex
+                        items-center
+                        justify-center
+                        shrink-0
                     "
                 >
+
+                    {% if activity.topic == "stage_changed" %}
+
+                    <i class="ti ti-arrows-transfer-up"></i>
+
+                    {% elif activity.topic == "pipeline_changed" %}
+
+                    <i class="ti ti-git-branch"></i>
+
+                    {% elif activity.topic == "lead_created" %}
+
+                    <i class="ti ti-user-plus"></i>
+
+                    {% elif activity.topic == "lead_updated" %}
+
+                    <i class="ti ti-edit"></i>
+
+                    {% elif activity.topic == "note_added" %}
+
+                    <i class="ti ti-note"></i>
+
+                    {% elif activity.topic == "call_logged" %}
+
+                    <i class="ti ti-phone"></i>
+
+                    {% elif activity.topic == "reminder_created" %}
+
+                    <i class="ti ti-bell"></i>
+
+                    {% elif activity.topic == "reminder_completed" %}
+
+                    <i class="ti ti-bell-check"></i>
+
+                    {% else %}
+
+                    <i class="ti ti-activity"></i>
+
+                    {% endif %}
+
+                </div>
+
+
+                <!-- ==================================================
+                     CONTENT
+                     ================================================== -->
+
+                <div
+                    class="
+                        min-w-0
+                        flex-1
+                    "
+                >
+
+                    <!-- ==================================================
+                         TOPIC
+                         ================================================== -->
 
                     <p
                         class="
                             text-sm
+                            font-semibold
+                            text-gray-800
+                        "
+                    >
+                        {{ activity.get_topic_display }}
+                    </p>
+
+
+                    <!-- ==================================================
+                         STAGE CHANGE
+                         ================================================== -->
+
+                    {% if activity.topic == "stage_changed" %}
+
+                    <p
+                        class="
+                            mt-1
+                            text-xs
+                            text-gray-500
+                        "
+                    >
+
+                        <span
+                            class="
+                                font-medium
+                                text-gray-700
+                            "
+                        >
+                            Pipeline:
+                        </span>
+
+                        {{ activity.new_pipeline_name }}
+
+                    </p>
+
+
+                    <p
+                        class="
+                            mt-0.5
+                            text-xs
+                            text-gray-500
+                        "
+                    >
+
+                        <span
+                            class="
+                                font-medium
+                                text-gray-700
+                            "
+                        >
+                            Stage:
+                        </span>
+
+                        {{ activity.old_stage_name }}
+
+                        <span
+                            class="
+                                mx-1
+                                text-gray-400
+                            "
+                        >
+                            →
+                        </span>
+
+                        <span
+                            class="
+                                font-medium
+                                text-gray-700
+                            "
+                        >
+                            {{ activity.new_stage_name }}
+                        </span>
+
+                    </p>
+
+
+                    <!-- ==================================================
+                         PIPELINE CHANGE
+                         ================================================== -->
+
+                    {% elif activity.topic == "pipeline_changed" %}
+
+                    <p
+                        class="
+                            mt-1
+                            text-xs
+                            text-gray-500
+                        "
+                    >
+
+                        <span
+                            class="
+                                font-medium
+                                text-gray-700
+                            "
+                        >
+                            Pipeline:
+                        </span>
+
+                        {{ activity.old_pipeline_name }}
+
+                        <span
+                            class="
+                                mx-1
+                                text-gray-400
+                            "
+                        >
+                            →
+                        </span>
+
+                        <span
+                            class="
+                                font-medium
+                                text-gray-700
+                            "
+                        >
+                            {{ activity.new_pipeline_name }}
+                        </span>
+
+                    </p>
+
+
+                    {% if activity.old_stage_name or activity.new_stage_name %}
+
+                    <p
+                        class="
+                            mt-0.5
+                            text-xs
+                            text-gray-500
+                        "
+                    >
+
+                        <span
+                            class="
+                                font-medium
+                                text-gray-700
+                            "
+                        >
+                            Stage:
+                        </span>
+
+                        {{ activity.old_stage_name }}
+
+                        <span
+                            class="
+                                mx-1
+                                text-gray-400
+                            "
+                        >
+                            →
+                        </span>
+
+                        {{ activity.new_stage_name }}
+
+                    </p>
+
+                    {% endif %}
+
+
+                    <!-- ==================================================
+                         LEAD CREATED
+                         ================================================== -->
+
+                    {% elif activity.topic == "lead_created" %}
+
+                    {% if activity.new_pipeline_name or activity.new_stage_name %}
+
+                    <p
+                        class="
+                            mt-1
+                            text-xs
+                            text-gray-500
+                        "
+                    >
+
+                        {% if activity.new_pipeline_name %}
+
+                        <span
+                            class="
+                                font-medium
+                                text-gray-700
+                            "
+                        >
+                            Pipeline:
+                        </span>
+
+                        {{ activity.new_pipeline_name }}
+
+                        {% endif %}
+
+
+                        {% if activity.new_stage_name %}
+
+                        <span
+                            class="
+                                mx-1
+                                text-gray-400
+                            "
+                        >
+                            ·
+                        </span>
+
+                        <span
+                            class="
+                                font-medium
+                                text-gray-700
+                            "
+                        >
+                            Stage:
+                        </span>
+
+                        {{ activity.new_stage_name }}
+
+                        {% endif %}
+
+                    </p>
+
+                    {% endif %}
+
+
+                    <!-- ==================================================
+                         LEAD UPDATED
+                         ================================================== -->
+
+                    {% elif activity.topic == "lead_updated" %}
+
+                    {% if activity.new_pipeline_name or activity.new_stage_name %}
+
+                    <p
+                        class="
+                            mt-1
+                            text-xs
+                            text-gray-500
+                        "
+                    >
+
+                        {% if activity.new_pipeline_name %}
+
+                        <span
+                            class="
+                                font-medium
+                                text-gray-700
+                            "
+                        >
+                            Pipeline:
+                        </span>
+
+                        {{ activity.new_pipeline_name }}
+
+                        {% endif %}
+
+
+                        {% if activity.new_stage_name %}
+
+                        <span
+                            class="
+                                mx-1
+                                text-gray-400
+                            "
+                        >
+                            ·
+                        </span>
+
+                        <span
+                            class="
+                                font-medium
+                                text-gray-700
+                            "
+                        >
+                            Stage:
+                        </span>
+
+                        {{ activity.new_stage_name }}
+
+                        {% endif %}
+
+                    </p>
+
+                    {% endif %}
+
+                    {% endif %}
+
+
+                    <!-- ==================================================
+                         CALL DETAILS
+                         ================================================== -->
+
+                    {% if activity.topic == "call_logged" %}
+
+                    {% if activity.details.status %}
+
+                    <p
+                        class="
+                            mt-1
+                            text-xs
+                            text-gray-500
+                        "
+                    >
+                        Status:
+                        {{ activity.details.status }}
+                    </p>
+
+                    {% endif %}
+
+
+                    {% if activity.details.duration_seconds %}
+
+                    <p
+                        class="
+                            mt-0.5
+                            text-xs
+                            text-gray-500
+                        "
+                    >
+                        Duration:
+                        {{ activity.details.duration_seconds }} sec
+                    </p>
+
+                    {% endif %}
+
+                    {% endif %}
+
+
+                    <!-- ==================================================
+                         NOTE DETAILS
+                         ================================================== -->
+
+                    {% if activity.topic == "note_added" %}
+
+                    {% if activity.details.note_text %}
+
+                    <p
+                        class="
+                            mt-1
+                            text-xs
+                            leading-5
+                            text-gray-500
+                            whitespace-pre-wrap
+                        "
+                    >
+                        {{ activity.details.note_text }}
+                    </p>
+
+                    {% endif %}
+
+                    {% endif %}
+
+
+                    <!-- ==================================================
+                         REMINDER DETAILS
+                         ================================================== -->
+
+                    {% if activity.topic == "reminder_created" %}
+
+                    {% if activity.details.title %}
+
+                    <p
+                        class="
+                            mt-1
+                            text-xs
+                            text-gray-500
+                        "
+                    >
+                        {{ activity.details.title }}
+                    </p>
+
+                    {% endif %}
+
+                    {% endif %}
+
+
+                    {% if activity.topic == "reminder_completed" %}
+
+                    {% if activity.details.title %}
+
+                    <p
+                        class="
+                            mt-1
+                            text-xs
+                            text-gray-500
+                        "
+                    >
+                        {{ activity.details.title }}
+                    </p>
+
+                    {% endif %}
+
+                    {% endif %}
+
+
+                    <!-- ==================================================
+                         ACTOR + TIMESTAMP
+                         ================================================== -->
+
+                    <p
+                        class="
+                            mt-1.5
+                            text-xs
                             text-gray-400
                         "
                     >
-                        No activity recorded yet.
+
+                        {% if activity.actor_name %}
+
+                        <span
+                            class="
+                                font-medium
+                                text-gray-500
+                            "
+                        >
+                            By {{ activity.actor_name }}
+                        </span>
+
+                        <span class="mx-1">
+                            ·
+                        </span>
+
+                        {% endif %}
+
+                        {{ activity.created_at|date:"M d, Y H:i" }}
+
                     </p>
 
                 </div>
 
-                {% endif %}
-
             </div>
 
-        </section>
+            {% endfor %}
 
-    </div>
+        </div>
 
+        {% else %}
 
-</article>
+        <div
+            class="
+                border
+                border-dashed
+                border-gray-200
+                rounded-lg
+                p-6
+                text-center
+            "
+        >
+
+            <p
+                class="
+                    text-sm
+                    text-gray-400
+                "
+            >
+                No activity recorded yet.
+            </p>
+
+        </div>
+
+        {% endif %}
+
+    </section>
+
+</div>
