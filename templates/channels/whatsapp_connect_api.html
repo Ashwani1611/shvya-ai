@@ -11,14 +11,22 @@
 
     <div class="mx-auto max-w-2xl">
 
-        <div class="mb-6">
 
-            <h2 class="text-lg font-semibold">
-                Meta WhatsApp Business Platform
+        <!-- =====================================================
+             HERO
+             ===================================================== -->
+
+        <div class="mb-6 text-center">
+
+            <h2 class="text-xl font-bold">
+                Connect WhatsApp Business API
+                <i class="ti ti-bolt text-yellow-500"></i>
             </h2>
 
-            <p class="mt-1 text-sm text-gray-500">
-                Enter your Meta WhatsApp Business Platform credentials.
+            <p class="mt-2 text-sm text-gray-500">
+                Connect your WhatsApp and start replying to leads
+                instantly, tracking conversations, and scaling
+                follow-ups, all in one place.
             </p>
 
         </div>
@@ -40,134 +48,376 @@
             {% endif %}
 
 
-            <div class="mb-6 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-700">
-
-                <i class="ti ti-info-circle"></i>
-
-                You'll need a <strong>phone_number_id</strong> and a
-                <strong>system-user access token</strong> from your Meta
-                WhatsApp Business Platform app. Your token is encrypted
-                and never shown again after saving.
-
-            </div>
+            <div id="embedded-signup-error" class="mb-6 hidden rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"></div>
 
 
-            <form
-                method="post"
-                action="{% url 'whatsapp-connect-api' %}"
-            >
+            <ul class="mb-8 space-y-4 text-sm text-gray-700">
 
-                {% csrf_token %}
+                <li class="flex gap-3">
+                    <i class="ti ti-bolt mt-0.5 text-blue-600"></i>
+                    <span><strong>Always active</strong> — your WhatsApp responds instantly even when you're offline.</span>
+                </li>
 
+                <li class="flex gap-3">
+                    <i class="ti ti-refresh mt-0.5 text-blue-600"></i>
+                    <span><strong>Smart follow-ups</strong> — automated sequences nudge every lead until they reply.</span>
+                </li>
 
-                <!-- PHONE NUMBER ID -->
+                <li class="flex gap-3">
+                    <i class="ti ti-inbox-down mt-0.5 text-blue-600"></i>
+                    <span><strong>Unified inbox</strong> — your whole team replies from one official number.</span>
+                </li>
 
-                <div class="mb-5">
-
-                    <label class="mb-1.5 block text-sm font-medium text-gray-700">
-                        Phone Number ID
-                    </label>
-
-                    <input
-                        type="text"
-                        name="phone_number_id"
-                        value="{{ form.phone_number_id.value|default:'' }}"
-                        placeholder="e.g. 109876543210987"
-                        class="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    >
-
-                    {% if form.phone_number_id.errors %}
-
-                        <p class="mt-1.5 text-sm text-red-600">
-                            {{ form.phone_number_id.errors.0 }}
-                        </p>
-
-                    {% endif %}
-
-                </div>
+            </ul>
 
 
-                <!-- WABA ID -->
+            {% if embedded_signup_available %}
 
-                <div class="mb-5">
-
-                    <label class="mb-1.5 block text-sm font-medium text-gray-700">
-                        WhatsApp Business Account ID
-                        <span class="font-normal text-gray-400">(optional)</span>
-                    </label>
-
-                    <input
-                        type="text"
-                        name="waba_id"
-                        value="{{ form.waba_id.value|default:'' }}"
-                        placeholder="e.g. 123456789012345"
-                        class="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    >
-
-                </div>
-
-
-                <!-- DISPLAY PHONE NUMBER -->
-
-                <div class="mb-5">
-
-                    <label class="mb-1.5 block text-sm font-medium text-gray-700">
-                        Display Phone Number
-                        <span class="font-normal text-gray-400">(optional)</span>
-                    </label>
-
-                    <input
-                        type="text"
-                        name="display_phone_number"
-                        value="{{ form.display_phone_number.value|default:'' }}"
-                        placeholder="e.g. +91 98765 43210"
-                        class="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    >
-
-                </div>
-
-
-                <!-- ACCESS TOKEN -->
-
-                <div class="mb-8">
-
-                    <label class="mb-1.5 block text-sm font-medium text-gray-700">
-                        Access Token
-                    </label>
-
-                    <input
-                        type="password"
-                        name="access_token"
-                        placeholder="System-user access token"
-                        class="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    >
-
-                    {% if form.access_token.errors %}
-
-                        <p class="mt-1.5 text-sm text-red-600">
-                            {{ form.access_token.errors.0 }}
-                        </p>
-
-                    {% endif %}
-
-                    <p class="mt-1.5 text-xs text-gray-400">
-                        Stored encrypted. Never displayed again after saving.
-                    </p>
-
-                </div>
-
+                <!-- =========================================
+                     PRIMARY -- META EMBEDDED SIGNUP
+                     ========================================= -->
 
                 <button
-                    type="submit"
-                    class="w-full rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700"
+                    type="button"
+                    id="embedded-signup-btn"
+                    class="w-full rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                    Connect WhatsApp
+                    Connect WhatsApp Now
                 </button>
 
-            </form>
+                <p class="mt-3 text-center text-xs text-gray-400">
+                    <i class="ti ti-lock"></i>
+                    Secure connection via Meta. No coding required · Takes less than 2 minutes.
+                </p>
+
+
+                <div class="my-6 flex items-center gap-3 text-xs text-gray-400">
+                    <div class="h-px flex-1 bg-gray-200"></div>
+                    or connect manually
+                    <div class="h-px flex-1 bg-gray-200"></div>
+                </div>
+
+            {% else %}
+
+                <div class="mb-6 rounded-lg border border-yellow-200 bg-yellow-50 px-4 py-3 text-sm text-yellow-800">
+                    <i class="ti ti-alert-triangle"></i>
+                    One-click connect via Meta isn't set up on this server yet
+                    (needs <code class="rounded bg-yellow-100 px-1">META_APP_ID</code> and
+                    <code class="rounded bg-yellow-100 px-1">META_WA_EMBEDDED_SIGNUP_CONFIG_ID</code>).
+                    Use the manual form below for now.
+                </div>
+
+            {% endif %}
+
+
+            <!-- =============================================
+                 FALLBACK -- MANUAL CREDENTIALS
+                 ============================================= -->
+
+            <details {% if not embedded_signup_available %}open{% endif %}>
+
+                {% if embedded_signup_available %}
+
+                    <summary class="cursor-pointer text-sm font-medium text-gray-600 hover:text-gray-900">
+                        Enter phone_number_id / access_token manually instead
+                    </summary>
+
+                {% endif %}
+
+                <div class="{% if embedded_signup_available %}mt-5{% endif %}">
+
+                    <div class="mb-6 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-700">
+
+                        <i class="ti ti-info-circle"></i>
+
+                        You'll need a <strong>phone_number_id</strong> and a
+                        <strong>system-user access token</strong> from your Meta
+                        WhatsApp Business Platform app. Your token is encrypted
+                        and never shown again after saving.
+
+                    </div>
+
+
+                    <form
+                        method="post"
+                        action="{% url 'whatsapp-connect-api' %}"
+                    >
+
+                        {% csrf_token %}
+
+
+                        <!-- PHONE NUMBER ID -->
+
+                        <div class="mb-5">
+
+                            <label class="mb-1.5 block text-sm font-medium text-gray-700">
+                                Phone Number ID
+                            </label>
+
+                            <input
+                                type="text"
+                                name="phone_number_id"
+                                value="{{ form.phone_number_id.value|default:'' }}"
+                                placeholder="e.g. 109876543210987"
+                                class="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            >
+
+                            {% if form.phone_number_id.errors %}
+
+                                <p class="mt-1.5 text-sm text-red-600">
+                                    {{ form.phone_number_id.errors.0 }}
+                                </p>
+
+                            {% endif %}
+
+                        </div>
+
+
+                        <!-- WABA ID -->
+
+                        <div class="mb-5">
+
+                            <label class="mb-1.5 block text-sm font-medium text-gray-700">
+                                WhatsApp Business Account ID
+                                <span class="font-normal text-gray-400">(optional)</span>
+                            </label>
+
+                            <input
+                                type="text"
+                                name="waba_id"
+                                value="{{ form.waba_id.value|default:'' }}"
+                                placeholder="e.g. 123456789012345"
+                                class="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            >
+
+                        </div>
+
+
+                        <!-- DISPLAY PHONE NUMBER -->
+
+                        <div class="mb-5">
+
+                            <label class="mb-1.5 block text-sm font-medium text-gray-700">
+                                Display Phone Number
+                                <span class="font-normal text-gray-400">(optional)</span>
+                            </label>
+
+                            <input
+                                type="text"
+                                name="display_phone_number"
+                                value="{{ form.display_phone_number.value|default:'' }}"
+                                placeholder="e.g. +91 98765 43210"
+                                class="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            >
+
+                        </div>
+
+
+                        <!-- ACCESS TOKEN -->
+
+                        <div class="mb-8">
+
+                            <label class="mb-1.5 block text-sm font-medium text-gray-700">
+                                Access Token
+                            </label>
+
+                            <input
+                                type="password"
+                                name="access_token"
+                                placeholder="System-user access token"
+                                class="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            >
+
+                            {% if form.access_token.errors %}
+
+                                <p class="mt-1.5 text-sm text-red-600">
+                                    {{ form.access_token.errors.0 }}
+                                </p>
+
+                            {% endif %}
+
+                            <p class="mt-1.5 text-xs text-gray-400">
+                                Stored encrypted. Never displayed again after saving.
+                            </p>
+
+                        </div>
+
+
+                        <button
+                            type="submit"
+                            class="w-full rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
+                        >
+                            Connect WhatsApp
+                        </button>
+
+                    </form>
+
+                </div>
+
+            </details>
 
         </div>
 
     </div>
+
+
+    {% if embedded_signup_available %}
+
+        <script>
+
+            /* ============================================================
+               META EMBEDDED SIGNUP
+               Docs: https://developers.facebook.com/docs/whatsapp/embedded-signup
+               (verify against Meta's current docs before going live --
+               this SDK/flow shape does change between API versions.)
+
+               Two independent things come back from Meta and BOTH are
+               needed before the server-side exchange can run:
+
+               1. postMessage from the popup with type "WA_EMBEDDED_SIGNUP"
+                  -- carries waba_id and phone_number_id once the person
+                  finishes picking/creating their WABA and number.
+
+               2. FB.login()'s own callback -- carries the short-lived
+                  `code` used to get an access token. This fires
+                  separately (usually after #1, when the popup closes).
+
+               Until both have arrived, "Connect WhatsApp Now" can't
+               finish -- the code below waits for whichever arrives last.
+               ============================================================ */
+
+            var signupData = {
+                code: null,
+                waba_id: null,
+                phone_number_id: null,
+            };
+
+            function getCookie(name) {
+                var match = document.cookie.match('(^|;)\\s*' + name + '\\s*=\\s*([^;]+)');
+                return match ? match.pop() : '';
+            }
+
+            function showSignupError(message) {
+                var box = document.getElementById('embedded-signup-error');
+                box.textContent = message;
+                box.classList.remove('hidden');
+            }
+
+            function maybeFinishSignup() {
+                if (!signupData.code || !signupData.waba_id || !signupData.phone_number_id) {
+                    return;
+                }
+
+                var btn = document.getElementById('embedded-signup-btn');
+                btn.disabled = true;
+                btn.textContent = 'Connecting...';
+
+                var formData = new FormData();
+                formData.append('code', signupData.code);
+                formData.append('waba_id', signupData.waba_id);
+                formData.append('phone_number_id', signupData.phone_number_id);
+
+                fetch('{% url "whatsapp-embedded-signup-callback" %}', {
+                    method: 'POST',
+                    headers: {'X-CSRFToken': getCookie('csrftoken')},
+                    body: formData,
+                })
+                    .then(function (response) {
+                        return response.json().then(function (data) {
+                            if (!response.ok) {
+                                throw new Error(data.error || 'Could not finish connecting WhatsApp.');
+                            }
+                            return data;
+                        });
+                    })
+                    .then(function (data) {
+                        window.location.href = data.redirect_url;
+                    })
+                    .catch(function (err) {
+                        btn.disabled = false;
+                        btn.textContent = 'Connect WhatsApp Now';
+                        showSignupError(err.message);
+                    });
+            }
+
+            // Meta posts progress/result events here while the popup is open.
+            window.addEventListener('message', function (event) {
+                if (!event.origin.endsWith('facebook.com')) {
+                    return;
+                }
+
+                try {
+                    var data = JSON.parse(event.data);
+                } catch (e) {
+                    return;
+                }
+
+                if (data.type !== 'WA_EMBEDDED_SIGNUP') {
+                    return;
+                }
+
+                if (data.event === 'FINISH' && data.data) {
+                    signupData.waba_id = data.data.waba_id;
+                    signupData.phone_number_id = data.data.phone_number_id;
+                    maybeFinishSignup();
+                } else if (data.event === 'CANCEL') {
+                    showSignupError('WhatsApp connection was cancelled.');
+                } else if (data.event === 'ERROR') {
+                    showSignupError((data.data && data.data.error_message) || 'Meta reported an error during signup.');
+                }
+            });
+
+            window.fbAsyncInit = function () {
+                FB.init({
+                    appId: '{{ meta_app_id }}',
+                    autoLogAppEvents: true,
+                    xfbml: false,
+                    version: 'v21.0',
+                });
+            };
+
+            (function (d, s, id) {
+                var js, fjs = d.getElementsByTagName(s)[0];
+                if (d.getElementById(id)) { return; }
+                js = d.createElement(s); js.id = id;
+                js.src = 'https://connect.facebook.net/en_US/sdk.js';
+                fjs.parentNode.insertBefore(js, fjs);
+            }(document, 'script', 'facebook-jssdk'));
+
+            document.getElementById('embedded-signup-btn').addEventListener('click', function () {
+                if (typeof FB === 'undefined') {
+                    showSignupError('Still loading Meta — please try again in a moment.');
+                    return;
+                }
+
+                FB.login(
+                    function (response) {
+                        if (response.authResponse && response.authResponse.code) {
+                            signupData.code = response.authResponse.code;
+                            maybeFinishSignup();
+                        } else if (!signupData.waba_id) {
+                            // Only complain here if the postMessage listener
+                            // hasn't already reported a cancel/error -- avoids
+                            // showing two different error messages for the
+                            // same popup-closed-early event.
+                            showSignupError('WhatsApp connection was not completed.');
+                        }
+                    },
+                    {
+                        config_id: '{{ meta_config_id }}',
+                        response_type: 'code',
+                        override_default_response_type: true,
+                        extras: {
+                            setup: {},
+                            featureType: '',
+                            sessionInfoVersion: '3',
+                        },
+                    }
+                );
+            });
+
+        </script>
+
+    {% endif %}
 
 {% endblock %}

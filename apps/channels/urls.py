@@ -19,6 +19,11 @@ urlpatterns = [
         name="whatsapp-connect-api",
     ),
     path(
+        "connect/api/embedded-signup/",
+        views_flat.whatsapp_embedded_signup_callback_view,
+        name="whatsapp-embedded-signup-callback",
+    ),
+    path(
         "connect/hosted/",
         views_flat.whatsapp_connect_hosted_view,
         name="whatsapp-connect-hosted",

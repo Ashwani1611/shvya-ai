@@ -540,3 +540,33 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 META_VERIFY_TOKEN = config("META_VERIFY_TOKEN", default="")
 META_APP_SECRET = config("META_APP_SECRET", default="")
+
+# ============================================================
+# WhatsApp (Meta) Embedded Signup
+# ============================================================
+#
+# Lets "Connect WhatsApp Now" open Meta's own Facebook-hosted
+# onboarding popup (pick/create a WABA, verify the number, accept
+# Meta's terms) instead of asking the person to paste a
+# phone_number_id / access_token by hand. Both values below come
+# from Meta App Dashboard, NOT something this codebase can
+# generate on its own:
+#
+# META_APP_ID: App Dashboard > Settings > Basic > "App ID". Public
+# -- this is fine to ship to the browser (it's rendered into the
+# connect-api page to init the Facebook JS SDK).
+#
+# META_WA_EMBEDDED_SIGNUP_CONFIG_ID: App Dashboard > WhatsApp >
+# Configuration > Embedded Signup > create a "Configuration" there
+# (requires the app to have the WhatsApp product added, a
+# connected Meta Business Manager, and -- for use with real
+# customers rather than test numbers -- App Review approval for
+# the whatsapp_business_management and whatsapp_business_messaging
+# permissions). Until this is set, the connect-api page falls back
+# to the manual phone_number_id / access_token form further down
+# this same page.
+
+META_APP_ID = config("META_APP_ID", default="")
+META_WA_EMBEDDED_SIGNUP_CONFIG_ID = config(
+    "META_WA_EMBEDDED_SIGNUP_CONFIG_ID", default=""
+)

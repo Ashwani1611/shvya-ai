@@ -7,6 +7,7 @@ from django.conf import settings
 from django.contrib import messages
 from django.http import HttpResponse, HttpResponseForbidden, JsonResponse
 from django.shortcuts import redirect, render
+from django.urls import reverse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
@@ -104,7 +105,69 @@ def whatsapp_connect_api_view(request):
         "channels/whatsapp_connect_api.html",
         {
             "form": form,
+            "meta_app_id": settings.META_APP_ID,
+            "meta_config_id": settings.META_WA_EMBEDDED_SIGNUP_CONFIG_ID,
+            "embedded_signup_available": bool(
+                settings.META_APP_ID and settings.META_WA_EMBEDDED_SIGNUP_CONFIG_ID
+            ),
         },
+    )
+
+
+@crm_login_required
+@require_POST
+def whatsapp_embedded_signup_callback_view(request):
+    """
+    Called from the browser (fetch, not a form submit) once Meta's
+    embedded signup popup finishes and hands back a `code`,
+    `waba_id`, and `phone_number_id` -- see the JS in
+    whatsapp_connect_api.html. Returns JSON; the page itself
+    handles the redirect on success.
+    """
+    from services.channels.whatsapp_service import (
+        WhatsAppEmbeddedSignupError,
+        complete_embedded_signup,
+    )
+
+    user = request.crm_user
+
+    if not _admin_required(user):
+        return JsonResponse(
+            {"error": "Only organization admins can connect WhatsApp."},
+            status=403,
+        )
+
+    code = request.POST.get("code", "").strip()
+    waba_id = request.POST.get("waba_id", "").strip()
+    phone_number_id = request.POST.get("phone_number_id", "").strip()
+
+    if not code or not waba_id or not phone_number_id:
+        return JsonResponse(
+            {"error": "Meta's popup didn't return all required details. Please try again."},
+            status=400,
+        )
+
+    try:
+        account = complete_embedded_signup(
+            organization=user.organization,
+            code=code,
+            waba_id=waba_id,
+            phone_number_id=phone_number_id,
+        )
+
+    except WhatsAppEmbeddedSignupError as exc:
+        logger.warning("Embedded signup failed for org %s: %s", user.organization_id, exc)
+
+        return JsonResponse(
+            {"error": str(exc)},
+            status=502,
+        )
+
+    return JsonResponse(
+        {
+            "redirect_url": reverse("whatsapp-accounts"),
+            "account_id": str(account.id),
+        }
     )
 
 

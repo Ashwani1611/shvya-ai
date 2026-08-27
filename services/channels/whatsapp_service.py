@@ -9,10 +9,12 @@ Per CLAUDE.md:
   - rule 5: idempotency for webhook/task retries is enforced here
             via WhatsAppMessage.external_id (Meta's wamid).
 """
+from django.conf import settings
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import models, transaction
 
 from apps.channels.models import WhatsAppAccount, WhatsAppMessage
+from apps.channels.providers import whatsapp as whatsapp_provider
 from apps.channels.providers.whatsapp import WhatsAppAPIError, WhatsAppClient
 from apps.crm.models import Lead, Pipeline, Stage
 from services.channels.reply_intent_service import Intent, classify_reply
@@ -22,6 +24,10 @@ from services.crm.stage_service import move_to_next_stage
 
 class WhatsAppSendError(Exception):
     """Raised when an outbound message could not be sent."""
+
+
+class WhatsAppEmbeddedSignupError(Exception):
+    """Raised when the embedded signup callback couldn't be completed."""
 
 
 # ============================================================
@@ -80,6 +86,75 @@ def resolve_account_for_lead(*, organization, lead):
         is_active=True,
         status=WhatsAppAccount.Status.CONNECTED,
     ).first()
+
+
+# ============================================================
+# EMBEDDED SIGNUP
+# ============================================================
+
+
+def complete_embedded_signup(*, organization, code, waba_id, phone_number_id):
+    """
+    Finishes the "Connect WhatsApp Now" flow after Meta's embedded
+    signup popup hands the browser a `code`, `waba_id`, and
+    `phone_number_id`. Trades the code for a token, fetches the
+    number's display details, subscribes SHVYA's app to the WABA's
+    webhooks, and creates/updates the WhatsAppAccount -- the same
+    end state WhatsAppConnectAPIForm.save() reaches for the manual
+    path, just without asking the person to type any of this in.
+
+    Raises WhatsAppEmbeddedSignupError on any failure -- the view
+    catches it and shows the message; nothing partial is saved
+    (wrapped in a transaction) if a later step fails.
+    """
+    if not settings.META_APP_ID or not settings.META_APP_SECRET:
+        raise WhatsAppEmbeddedSignupError(
+            "Embedded signup isn't configured on this server yet "
+            "(META_APP_ID / META_APP_SECRET missing)."
+        )
+
+    try:
+        access_token = whatsapp_provider.exchange_code_for_access_token(
+            app_id=settings.META_APP_ID,
+            app_secret=settings.META_APP_SECRET,
+            code=code,
+        )
+
+        phone_details = whatsapp_provider.get_phone_number_details(
+            phone_number_id=phone_number_id,
+            access_token=access_token,
+        )
+
+        # Not fatal on its own -- the number is still usable for
+        # sending even if the subscribe call fails, it just means
+        # inbound webhooks won't arrive until this is retried. Still
+        # surfaced as an error so the person knows to fix it, rather
+        # than silently connecting a half-working number.
+        whatsapp_provider.subscribe_app_to_waba(
+            waba_id=waba_id,
+            access_token=access_token,
+        )
+
+    except WhatsAppAPIError as exc:
+        raise WhatsAppEmbeddedSignupError(str(exc)) from exc
+
+    with transaction.atomic():
+        account, _created = WhatsAppAccount.objects.update_or_create(
+            organization=organization,
+            phone_number_id=phone_number_id,
+            defaults={
+                "connection_type": WhatsAppAccount.ConnectionType.API,
+                "waba_id": waba_id,
+                "display_phone_number": phone_details.get(
+                    "display_phone_number", ""
+                ),
+                "business_name": phone_details.get("verified_name", ""),
+                "access_token": access_token,
+                "status": WhatsAppAccount.Status.CONNECTED,
+            },
+        )
+
+    return account
 
 
 # ============================================================
