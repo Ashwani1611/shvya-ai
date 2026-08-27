@@ -80,9 +80,10 @@
                 <button
                     type="button"
                     id="embedded-signup-btn"
+                    disabled
                     class="w-full rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                    Connect WhatsApp Now
+                    Loading Meta…
                 </button>
 
                 <p class="mt-3 text-center text-xs text-gray-400">
@@ -374,24 +375,78 @@
                     xfbml: false,
                     version: 'v21.0',
                 });
+
+                sdkLoaded = true;
+
+                var btn = document.getElementById('embedded-signup-btn');
+                btn.disabled = false;
+                btn.textContent = 'Connect WhatsApp Now';
             };
+
+            var sdkLoaded = false;
+
+            // If Meta's SDK hasn't called fbAsyncInit within 8s, something
+            // is blocking connect.facebook.net before our code ever gets a
+            // chance to show its own error -- most commonly an ad blocker,
+            // Safari's cross-site tracking prevention, or a network/CSP
+            // rule on this server blocking the request outright. This is
+            // the #1 cause of "the button does nothing, no popup, no
+            // error" -- without this timeout, that failure is silent.
+            setTimeout(function () {
+                if (sdkLoaded) {
+                    return;
+                }
+
+                console.error(
+                    'SHVYA: Meta JS SDK (connect.facebook.net/en_US/sdk.js) ' +
+                    'never called fbAsyncInit. Likely blocked by an ad ' +
+                    'blocker / browser tracking-prevention, or this domain ' +
+                    'is not in the Meta App\'s allowed domains.'
+                );
+
+                showSignupError(
+                    "Meta's connect script didn't load. This is usually an " +
+                    'ad blocker or a browser privacy setting blocking ' +
+                    'connect.facebook.net -- try disabling it for this site, ' +
+                    'or use a different browser. You can also use the ' +
+                    'manual form below in the meantime.'
+                );
+
+                var btn = document.getElementById('embedded-signup-btn');
+                btn.textContent = 'Connect WhatsApp Now';
+                // Leave it enabled despite the failed load -- clicking will
+                // hit the "typeof FB === 'undefined'" check below and show
+                // a second, more specific message rather than doing nothing.
+                btn.disabled = false;
+            }, 8000);
 
             (function (d, s, id) {
                 var js, fjs = d.getElementsByTagName(s)[0];
                 if (d.getElementById(id)) { return; }
                 js = d.createElement(s); js.id = id;
                 js.src = 'https://connect.facebook.net/en_US/sdk.js';
+                js.onerror = function () {
+                    console.error('SHVYA: connect.facebook.net/en_US/sdk.js failed to load (network error).');
+                };
                 fjs.parentNode.insertBefore(js, fjs);
             }(document, 'script', 'facebook-jssdk'));
 
             document.getElementById('embedded-signup-btn').addEventListener('click', function () {
                 if (typeof FB === 'undefined') {
-                    showSignupError('Still loading Meta — please try again in a moment.');
+                    showSignupError(
+                        "Meta's connect script isn't available -- check the " +
+                        'browser console for a blocked-request error (often ' +
+                        'an ad blocker), or use the manual form below.'
+                    );
                     return;
                 }
 
+                console.log('SHVYA: calling FB.login with config_id={{ meta_config_id }}');
+
                 FB.login(
                     function (response) {
+                        console.log('SHVYA: FB.login callback fired', response);
+
                         if (response.authResponse && response.authResponse.code) {
                             signupData.code = response.authResponse.code;
                             maybeFinishSignup();
@@ -400,7 +455,12 @@
                             // hasn't already reported a cancel/error -- avoids
                             // showing two different error messages for the
                             // same popup-closed-early event.
-                            showSignupError('WhatsApp connection was not completed.');
+                            showSignupError(
+                                'WhatsApp connection was not completed. If no ' +
+                                'popup appeared at all, check whether your ' +
+                                "browser blocked it (look for a popup-blocked " +
+                                'icon in the address bar) and allow popups for this site.'
+                            );
                         }
                     },
                     {

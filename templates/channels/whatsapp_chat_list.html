@@ -94,13 +94,70 @@
 
             {% else %}
 
-                <div class="flex h-full flex-col items-center justify-center text-center">
+                <div class="flex h-full flex-col items-center justify-center px-8 text-center">
 
                     <i class="ti ti-message-circle text-4xl text-gray-300"></i>
 
-                    <p class="mt-3 text-sm text-gray-500">
-                        No conversations yet.
-                    </p>
+                    {% if not accounts %}
+
+                        <p class="mt-3 text-sm text-gray-500">
+                            No WhatsApp number connected yet.
+                        </p>
+
+                        <a
+                            href="{% url 'whatsapp-connect-choice' %}"
+                            class="mt-4 inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700"
+                        >
+                            Connect WhatsApp
+                        </a>
+
+                    {% else %}
+
+                        <p class="mt-3 text-sm font-medium text-gray-700">
+                            No conversations yet.
+                        </p>
+
+                        <p class="mt-1 max-w-sm text-sm text-gray-500">
+                            A number being connected doesn't mean messages are
+                            arriving yet. If leads have already messaged this
+                            number and nothing shows up here, check:
+                        </p>
+
+                        <ul class="mt-3 max-w-sm space-y-1.5 text-left text-xs text-gray-500">
+
+                            <li class="flex gap-2">
+                                <i class="ti ti-circle-check mt-0.5 text-gray-300"></i>
+                                <span>
+                                    On <strong>Connect API</strong>, the
+                                    <i class="ti ti-refresh"></i> refresh icon
+                                    next to this number has been clicked at
+                                    least once since it was connected.
+                                </span>
+                            </li>
+
+                            <li class="flex gap-2">
+                                <i class="ti ti-circle-check mt-0.5 text-gray-300"></i>
+                                <span>
+                                    In Meta App Dashboard → WhatsApp →
+                                    Configuration, the Callback URL points to
+                                    this server's <code>/webhooks/whatsapp/</code>
+                                    and the Verify Token matches
+                                    <code>META_VERIFY_TOKEN</code>.
+                                </span>
+                            </li>
+
+                            <li class="flex gap-2">
+                                <i class="ti ti-circle-check mt-0.5 text-gray-300"></i>
+                                <span>
+                                    A pipeline exists to route new leads
+                                    into (Chats only shows messages that got
+                                    attached to a lead).
+                                </span>
+                            </li>
+
+                        </ul>
+
+                    {% endif %}
 
                 </div>
 
