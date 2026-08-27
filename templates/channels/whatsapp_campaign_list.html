@@ -12,7 +12,7 @@
         content="width=device-width, initial-scale=1.0"
     >
 
-    <title>SHVYA AI — Connect WhatsApp</title>
+    <title>SHVYA AI — Bulk Campaigns</title>
 
     <script src="https://cdn.tailwindcss.com"></script>
 
@@ -39,16 +39,9 @@
             class="mx-auto flex max-w-6xl items-center justify-between px-6 py-4"
         >
 
-            <div class="flex items-center gap-2">
-
-                <i class="ti ti-brand-whatsapp text-2xl text-green-600"></i>
-
-                <h1 class="text-xl font-semibold">
-                    Connect WhatsApp
-                </h1>
-
-            </div>
-
+            <h1 class="text-xl font-semibold">
+                Bulk Campaigns
+            </h1>
 
             <div class="flex items-center gap-3">
 
@@ -66,13 +59,13 @@
                 {% if can_manage %}
 
                     <a
-                        href="{% url 'whatsapp-connect-choice' %}"
+                        href="{% url 'whatsapp-campaign-create' %}"
                         class="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700"
                     >
 
                         <i class="ti ti-plus"></i>
 
-                        Connect Number
+                        New Campaign
 
                     </a>
 
@@ -120,13 +113,13 @@
 
 
     <!-- =====================================================
-         MAIN — ACCOUNTS TABLE
+         MAIN — CAMPAIGNS TABLE
          ===================================================== -->
 
     <main class="mx-auto max-w-6xl px-6 py-8">
 
 
-        {% if accounts %}
+        {% if campaigns %}
 
             <div class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
 
@@ -135,11 +128,11 @@
                     <thead class="bg-blue-50/60 text-xs font-semibold uppercase tracking-wide text-gray-500">
 
                         <tr>
-                            <th class="px-5 py-3">Mobile</th>
-                            <th class="px-5 py-3">Business Name</th>
+                            <th class="px-5 py-3">Campaign</th>
+                            <th class="px-5 py-3">Pipeline / Stage</th>
                             <th class="px-5 py-3">Status</th>
-                            <th class="px-5 py-3">Welcome Message</th>
-                            <th class="px-5 py-3">Request Contact Info</th>
+                            <th class="px-5 py-3">Recipients</th>
+                            <th class="px-5 py-3">Created</th>
                             <th class="px-5 py-3 text-right">Action</th>
                         </tr>
 
@@ -148,112 +141,74 @@
 
                     <tbody class="divide-y divide-gray-100">
 
-                        {% for account in accounts %}
+                        {% for campaign in campaigns %}
 
                             <tr class="hover:bg-gray-50">
 
-                                <td class="px-5 py-4 font-medium text-gray-900">
-                                    {{ account.display_phone_number|default:"—" }}
+                                <td class="px-5 py-4">
+
+                                    <a
+                                        href="{% url 'whatsapp-campaign-detail' campaign_id=campaign.id %}"
+                                        class="font-medium text-blue-600 hover:underline"
+                                    >
+                                        {{ campaign.name }}
+                                    </a>
+
+                                    {% if campaign.created_by %}
+                                        <div class="text-xs text-gray-400">
+                                            by {{ campaign.created_by.get_full_name|default:campaign.created_by.email }}
+                                        </div>
+                                    {% endif %}
+
                                 </td>
 
                                 <td class="px-5 py-4 text-gray-700">
-                                    {{ account.business_name|default:account.get_connection_type_display }}
+                                    {{ campaign.pipeline.name }}
+                                    {% if campaign.stage %}
+                                        <span class="text-gray-400">→ {{ campaign.stage.name }}</span>
+                                    {% endif %}
                                 </td>
 
                                 <td class="px-5 py-4">
 
                                     <span
                                         class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold
-                                        {% if account.status == 'connected' %}
+                                        {% if campaign.status == 'completed' %}
                                             bg-green-50 text-green-700
-                                        {% elif account.status == 'pending' %}
+                                        {% elif campaign.status == 'sending' or campaign.status == 'queued' %}
                                             bg-yellow-50 text-yellow-700
-                                        {% elif account.status == 'failed' %}
+                                        {% elif campaign.status == 'failed' %}
                                             bg-red-50 text-red-700
                                         {% else %}
                                             bg-gray-100 text-gray-600
                                         {% endif %}"
                                     >
 
-                                        <span
-                                            class="h-1.5 w-1.5 rounded-full
-                                            {% if account.status == 'connected' %}
-                                                bg-green-500
-                                            {% elif account.status == 'pending' %}
-                                                bg-yellow-500
-                                            {% elif account.status == 'failed' %}
-                                                bg-red-500
-                                            {% else %}
-                                                bg-gray-400
-                                            {% endif %}"
-                                        ></span>
-
-                                        {{ account.get_status_display }}
+                                        {{ campaign.get_status_display }}
 
                                     </span>
 
                                 </td>
 
                                 <td class="px-5 py-4 text-gray-600">
-
-                                    {% if account.welcome_message %}
-
-                                        <span class="inline-flex items-center gap-1 text-blue-600">
-                                            {{ account.welcome_message|truncatechars:30 }}
-                                            <i class="ti ti-pencil text-xs"></i>
-                                        </span>
-
-                                    {% else %}
-
-                                        <span class="text-gray-400">Not set</span>
-
-                                    {% endif %}
-
+                                    {{ campaign.recipients.count }}
                                 </td>
 
-                                <td class="px-5 py-4">
-
-                                    {% if account.request_contact_info %}
-
-                                        <i class="ti ti-check text-green-600"></i>
-
-                                    {% else %}
-
-                                        <i class="ti ti-minus text-gray-400"></i>
-
-                                    {% endif %}
-
+                                <td class="px-5 py-4 text-gray-500">
+                                    {{ campaign.created_at|date:"d/m/y" }}
                                 </td>
 
-                                <td class="px-5 py-4">
+                                <td class="px-5 py-4 text-right">
 
-                                    <div class="flex items-center justify-end gap-3">
+                                    <a
+                                        href="{% url 'whatsapp-campaign-detail' campaign_id=campaign.id %}"
+                                        class="text-gray-400 transition hover:text-blue-600"
+                                        title="View campaign"
+                                    >
 
-                                        {% if can_manage %}
+                                        <i class="ti ti-eye"></i>
 
-                                            <form
-                                                method="post"
-                                                action="{% url 'whatsapp-disconnect' account_id=account.id %}"
-                                                onsubmit="return confirm('Disconnect {{ account.display_phone_number|default:account.business_name }}? Message history will be kept.');"
-                                            >
-
-                                                {% csrf_token %}
-
-                                                <button
-                                                    type="submit"
-                                                    class="text-gray-400 transition hover:text-red-600"
-                                                    title="Disconnect"
-                                                >
-
-                                                    <i class="ti ti-trash"></i>
-
-                                                </button>
-
-                                            </form>
-
-                                        {% endif %}
-
-                                    </div>
+                                    </a>
 
                                 </td>
 
@@ -272,7 +227,7 @@
 
 
             <!-- =================================================
-                 NO ACCOUNTS CONNECTED
+                 NO CAMPAIGNS YET
                  ================================================= -->
 
             <div class="rounded-xl border border-dashed border-gray-300 bg-white p-10 text-center">
@@ -281,35 +236,35 @@
                     class="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-gray-100 text-2xl text-gray-400"
                 >
 
-                    <i class="ti ti-brand-whatsapp"></i>
+                    <i class="ti ti-speakerphone"></i>
 
                 </div>
 
                 <h2 class="mt-4 text-base font-semibold text-gray-900">
-                    No WhatsApp numbers connected
+                    No bulk campaigns yet
                 </h2>
 
                 <p class="mt-1 text-sm text-gray-500">
-                    Connect a number to start messaging your leads.
+                    Send one message to every lead in a pipeline or stage.
                 </p>
 
                 {% if can_manage %}
 
                     <a
-                        href="{% url 'whatsapp-connect-choice' %}"
+                        href="{% url 'whatsapp-campaign-create' %}"
                         class="mt-6 inline-flex items-center gap-2 rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700"
                     >
 
-                        <i class="ti ti-plug-connected"></i>
+                        <i class="ti ti-plus"></i>
 
-                        Connect WhatsApp
+                        New Campaign
 
                     </a>
 
                 {% else %}
 
                     <p class="mt-4 text-xs text-gray-400">
-                        Ask an organization admin to connect WhatsApp.
+                        Ask an organization admin to create a campaign.
                     </p>
 
                 {% endif %}

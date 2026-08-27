@@ -1,0 +1,328 @@
+{% load static %}
+
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+    <meta charset="UTF-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
+
+    <title>SHVYA AI — New Bulk Campaign</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <link
+        rel="stylesheet"
+        href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css"
+    >
+
+</head>
+
+
+<body class="bg-gray-50 text-gray-900">
+
+<div class="min-h-screen">
+
+
+    <!-- =====================================================
+         HEADER
+         ===================================================== -->
+
+    <header class="border-b border-gray-200 bg-white">
+
+        <div
+            class="mx-auto flex max-w-3xl items-center justify-between px-6 py-4"
+        >
+
+            <div>
+
+                <h1 class="text-xl font-semibold">
+                    New Bulk Campaign
+                </h1>
+
+                <p class="mt-1 text-sm text-gray-500">
+                    Send one message to every lead in a pipeline or stage.
+                </p>
+
+            </div>
+
+            <a
+                href="{% url 'whatsapp-campaign-list' %}"
+                class="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
+            >
+
+                <i class="ti ti-arrow-left"></i>
+
+                Back
+
+            </a>
+
+        </div>
+
+    </header>
+
+
+
+    <!-- =====================================================
+         MESSAGES
+         ===================================================== -->
+
+    {% if messages %}
+
+        <div class="mx-auto mt-6 max-w-3xl px-6">
+
+            {% for message in messages %}
+
+                <div
+                    class="mb-3 rounded-lg border px-4 py-3 text-sm
+                    {% if message.tags == 'success' %}
+                        border-green-200 bg-green-50 text-green-700
+                    {% elif message.tags == 'error' %}
+                        border-red-200 bg-red-50 text-red-700
+                    {% else %}
+                        border-gray-200 bg-gray-50 text-gray-700
+                    {% endif %}"
+                >
+
+                    {{ message }}
+
+                </div>
+
+            {% endfor %}
+
+        </div>
+
+    {% endif %}
+
+
+    {% if form.non_field_errors %}
+
+        <div class="mx-auto mt-6 max-w-3xl px-6">
+
+            <div class="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+
+                {% for error in form.non_field_errors %}
+                    <p>{{ error }}</p>
+                {% endfor %}
+
+            </div>
+
+        </div>
+
+    {% endif %}
+
+
+
+    <!-- =====================================================
+         MAIN — FORM
+         ===================================================== -->
+
+    <main class="mx-auto max-w-3xl px-6 py-8">
+
+        <form method="post" class="space-y-6 rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+
+            {% csrf_token %}
+
+
+            <!-- NAME -->
+
+            <div>
+
+                <label class="mb-1.5 block text-sm font-medium text-gray-700">
+                    Campaign Name
+                </label>
+
+                {{ form.name }}
+
+                <p class="mt-1 text-xs text-gray-400">
+                    {{ form.name.help_text }}
+                </p>
+
+                {% for error in form.name.errors %}
+                    <p class="mt-1 text-xs text-red-600">{{ error }}</p>
+                {% endfor %}
+
+            </div>
+
+
+            <!-- ACCOUNT -->
+
+            <div>
+
+                <label class="mb-1.5 block text-sm font-medium text-gray-700">
+                    Send From
+                </label>
+
+                {{ form.account }}
+
+                <p class="mt-1 text-xs text-gray-400">
+                    {{ form.account.help_text }}
+                </p>
+
+                {% for error in form.account.errors %}
+                    <p class="mt-1 text-xs text-red-600">{{ error }}</p>
+                {% endfor %}
+
+            </div>
+
+
+            <!-- PIPELINE / STAGE / TAG -->
+
+            <div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
+
+                <div>
+
+                    <label class="mb-1.5 block text-sm font-medium text-gray-700">
+                        Pipeline
+                    </label>
+
+                    {{ form.pipeline }}
+
+                    {% for error in form.pipeline.errors %}
+                        <p class="mt-1 text-xs text-red-600">{{ error }}</p>
+                    {% endfor %}
+
+                </div>
+
+                <div>
+
+                    <label class="mb-1.5 block text-sm font-medium text-gray-700">
+                        Stage
+                    </label>
+
+                    {{ form.stage }}
+
+                    <p class="mt-1 text-xs text-gray-400">
+                        {{ form.stage.help_text }}
+                    </p>
+
+                    {% for error in form.stage.errors %}
+                        <p class="mt-1 text-xs text-red-600">{{ error }}</p>
+                    {% endfor %}
+
+                </div>
+
+                <div>
+
+                    <label class="mb-1.5 block text-sm font-medium text-gray-700">
+                        Tag
+                    </label>
+
+                    {{ form.tag }}
+
+                    <p class="mt-1 text-xs text-gray-400">
+                        {{ form.tag.help_text }}
+                    </p>
+
+                    {% for error in form.tag.errors %}
+                        <p class="mt-1 text-xs text-red-600">{{ error }}</p>
+                    {% endfor %}
+
+                </div>
+
+            </div>
+
+
+            <!-- BODY -->
+
+            <div>
+
+                <label class="mb-1.5 block text-sm font-medium text-gray-700">
+                    Message
+                </label>
+
+                {{ form.body }}
+
+                <p class="mt-1 text-xs text-gray-400">
+                    {{ form.body.help_text }}
+                </p>
+
+                {% for error in form.body.errors %}
+                    <p class="mt-1 text-xs text-red-600">{{ error }}</p>
+                {% endfor %}
+
+            </div>
+
+
+            <!-- TEMPLATE NAME -->
+
+            <div>
+
+                <label class="mb-1.5 block text-sm font-medium text-gray-700">
+                    Fallback Template Name
+                    <span class="font-normal text-gray-400">(optional)</span>
+                </label>
+
+                {{ form.template_name }}
+
+                <p class="mt-1 text-xs text-gray-400">
+                    {{ form.template_name.help_text }}
+                </p>
+
+                {% for error in form.template_name.errors %}
+                    <p class="mt-1 text-xs text-red-600">{{ error }}</p>
+                {% endfor %}
+
+            </div>
+
+
+            <div class="flex justify-end border-t border-gray-100 pt-5">
+
+                <button
+                    type="submit"
+                    class="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700"
+                >
+
+                    <i class="ti ti-send"></i>
+
+                    Create Campaign
+
+                </button>
+
+            </div>
+
+        </form>
+
+    </main>
+
+</div>
+
+
+<!-- =====================================================
+     LIGHTWEIGHT WIDGET STYLING
+     (form.py fields render as plain <select>/<input>/<textarea>
+     with no Tailwind classes attached server-side, so style them
+     generically here rather than touching every field's widget)
+     ===================================================== -->
+
+<style>
+
+    input[type="text"],
+    textarea,
+    select {
+        width: 100%;
+        border: 1px solid rgb(209 213 219);
+        border-radius: 0.5rem;
+        padding: 0.5rem 0.75rem;
+        font-size: 0.875rem;
+        background-color: white;
+    }
+
+    input[type="text"]:focus,
+    textarea:focus,
+    select:focus {
+        outline: none;
+        border-color: rgb(59 130 246);
+        box-shadow: 0 0 0 1px rgb(59 130 246);
+    }
+
+</style>
+
+</body>
+
+</html>

@@ -52,7 +52,7 @@
             </div>
 
 
-            
+            <a
                 href="{% url 'crm-dashboard' %}"
                 class="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
             >
@@ -106,7 +106,7 @@
          EXISTING ACCOUNT NOTICE
          ===================================================== -->
 
-    {% if existing_account %}
+    {% if existing_accounts %}
 
         <div class="mx-auto mt-6 max-w-5xl px-6">
 
@@ -114,16 +114,16 @@
 
                 <i class="ti ti-info-circle"></i>
 
-                Your organization already has a WhatsApp connection
-                ({{ existing_account.get_connection_type_display }} —
-                {{ existing_account.get_status_display }}).
-                Connecting a new one will replace it.
+                Your organization already has
+                {{ existing_accounts.count }}
+                connected WhatsApp number{{ existing_accounts.count|pluralize }}.
+                This will add another one alongside {{ existing_accounts.count|pluralize:"it,them" }}.
 
-                
-                    href="{% url 'whatsapp-settings' %}"
+                <a
+                    href="{% url 'whatsapp-accounts' %}"
                     class="ml-2 font-semibold underline"
                 >
-                    View current connection
+                    View connected numbers
                 </a>
 
             </div>
@@ -147,7 +147,7 @@
                  CONNECT API
                  ================================================= -->
 
-            
+            <a
                 href="{% url 'whatsapp-connect-api' %}"
                 class="group rounded-xl border border-gray-200 bg-white p-8 shadow-sm transition hover:border-blue-400 hover:shadow-md"
             >
@@ -204,7 +204,7 @@
                  HOSTED ACCOUNT
                  ================================================= -->
 
-            
+            <a
                 href="{% url 'whatsapp-connect-hosted' %}"
                 class="group rounded-xl border border-gray-200 bg-white p-8 shadow-sm transition hover:border-blue-400 hover:shadow-md"
             >

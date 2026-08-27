@@ -1,6 +1,7 @@
 from django.contrib import admin
 from django.urls import include, path
 
+from apps.channels import views_flat as channels_views_flat
 from apps.superadmin.views import admin_global_search
 
 from rest_framework_simplejwt.views import (
@@ -112,11 +113,15 @@ urlpatterns = [
         include("apps.channels.urls"),
     ),
 
-    # path(
-    #     "webhooks/whatsapp/",
-    #     views_flat.whatsapp_webhook_view,
-    #     name="whatsapp-webhook",
-    # ),
+    # Meta calls this directly (verification handshake + message/status
+    # delivery) -- it is NOT nested under dashboard/ or crm_login_required,
+    # since Meta has no CRM session. Authenticity is instead checked via
+    # X-Hub-Signature-256 inside whatsapp_webhook_view itself.
+    path(
+        "webhooks/whatsapp/",
+        channels_views_flat.whatsapp_webhook_view,
+        name="whatsapp-webhook",
+    ),
 
 
     # =========================================================
