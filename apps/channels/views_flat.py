@@ -88,7 +88,58 @@ def whatsapp_connect_api_view(request):
 
         if form.is_valid():
 
-            form.save(organization=user.organization)
+            account = form.save(organization=user.organization)
+
+            # The manual credentials form only creates the
+            # WhatsAppAccount row -- it doesn't tell Meta to actually
+            # start sending webhook events for this WABA. Without
+            # this call, the number connects fine and can SEND
+            # messages, but inbound messages/statuses never arrive
+            # and the Chats page stays empty forever, with nothing
+            # in the UI to explain why.
+            if account.waba_id:
+
+                from apps.channels.providers.whatsapp import (
+                    WhatsAppAPIError,
+                    subscribe_app_to_waba,
+                )
+
+                try:
+                    subscribe_app_to_waba(
+                        waba_id=account.waba_id,
+                        access_token=account.access_token,
+                    )
+
+                except WhatsAppAPIError as exc:
+                    logger.warning(
+                        "Failed to subscribe app to WABA %s for org %s: %s",
+                        account.waba_id,
+                        user.organization_id,
+                        exc,
+                    )
+
+                    messages.warning(
+                        request,
+                        "WhatsApp connected, but SHVYA couldn't subscribe to "
+                        "message notifications for it -- incoming chats won't "
+                        "show up until this is fixed. Double-check the access "
+                        "token has whatsapp_business_management permission, "
+                        "then reconnect.",
+                    )
+
+                    return redirect("whatsapp-accounts")
+
+            else:
+
+                messages.warning(
+                    request,
+                    "WhatsApp connected, but no WhatsApp Business Account ID "
+                    "was provided, so SHVYA couldn't subscribe to message "
+                    "notifications -- incoming chats won't show up. Add the "
+                    "WABA ID and reconnect to fix this.",
+                )
+
+                return redirect("whatsapp-accounts")
 
             messages.success(
                 request,
@@ -275,6 +326,83 @@ def whatsapp_disconnect_view(request, account_id):
         messages.success(request, "WhatsApp account disconnected.")
     else:
         messages.error(request, "Account not found.")
+
+    return redirect("whatsapp-accounts")
+
+
+@crm_login_required
+@require_POST
+def whatsapp_resubscribe_view(request, account_id):
+    """
+    Re-sends the "subscribe this app to that WABA's webhooks" call
+    for an ALREADY-connected account. Exists because accounts
+    connected via the manual credentials form before this endpoint
+    was added (or any account where that call failed the first
+    time) can otherwise never receive inbound messages/statuses --
+    there was no way to fix that without disconnecting and
+    reconnecting, which would have created a duplicate account row
+    since phone_number_id isn't unique on this model.
+    """
+    from apps.channels.providers.whatsapp import (
+        WhatsAppAPIError,
+        subscribe_app_to_waba,
+    )
+
+    user = request.crm_user
+
+    if not _admin_required(user):
+        messages.error(
+            request,
+            "Only organization admins can manage WhatsApp connections.",
+        )
+        return redirect("whatsapp-accounts")
+
+    account = WhatsAppAccount.objects.filter(
+        id=account_id,
+        organization=user.organization,
+    ).first()
+
+    if not account:
+        messages.error(request, "Account not found.")
+        return redirect("whatsapp-accounts")
+
+    if not account.waba_id:
+        messages.error(
+            request,
+            "This account has no WhatsApp Business Account ID on file, "
+            "so SHVYA can't subscribe to its message notifications. "
+            "Disconnect it and reconnect with the WABA ID filled in.",
+        )
+        return redirect("whatsapp-accounts")
+
+    try:
+        subscribe_app_to_waba(
+            waba_id=account.waba_id,
+            access_token=account.access_token,
+        )
+
+    except WhatsAppAPIError as exc:
+        logger.warning(
+            "Resubscribe failed for account %s (org %s): %s",
+            account.id,
+            user.organization_id,
+            exc,
+        )
+
+        messages.error(
+            request,
+            "Couldn't subscribe to message notifications: "
+            f"{exc}. Check that the access token still has "
+            "whatsapp_business_management permission.",
+        )
+        return redirect("whatsapp-accounts")
+
+    messages.success(
+        request,
+        "Subscribed to message notifications. New incoming messages "
+        "should now show up in Chats -- messages sent to this number "
+        "before now won't retroactively appear.",
+    )
 
     return redirect("whatsapp-accounts")
 

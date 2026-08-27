@@ -34,6 +34,11 @@ urlpatterns = [
         name="whatsapp-disconnect",
     ),
     path(
+        "accounts/<uuid:account_id>/resubscribe/",
+        views_flat.whatsapp_resubscribe_view,
+        name="whatsapp-resubscribe",
+    ),
+    path(
         "send/<uuid:lead_id>/",
         views_flat.whatsapp_send_message_view,
         name="whatsapp-send-message",

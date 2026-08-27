@@ -153,6 +153,29 @@
 
                                     {% if can_manage %}
 
+                                        {% if account.connection_type == 'api' %}
+
+                                            <form
+                                                method="post"
+                                                action="{% url 'whatsapp-resubscribe' account_id=account.id %}"
+                                            >
+
+                                                {% csrf_token %}
+
+                                                <button
+                                                    type="submit"
+                                                    class="text-gray-400 transition hover:text-blue-600"
+                                                    title="Resubscribe to message notifications (fixes 'connected but no chats showing')"
+                                                >
+
+                                                    <i class="ti ti-refresh"></i>
+
+                                                </button>
+
+                                            </form>
+
+                                        {% endif %}
+
                                         <form
                                             method="post"
                                             action="{% url 'whatsapp-disconnect' account_id=account.id %}"
