@@ -123,6 +123,7 @@ class LeadUpsertAPIView(APIView):
                     "attributes",
                     {},
                 ),
+                lead_source="external_api",
             )
 
         except DuplicateLeadError as exc:

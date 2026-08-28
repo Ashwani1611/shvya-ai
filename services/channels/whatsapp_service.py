@@ -243,6 +243,7 @@ def handle_inbound_message(*, organization, account, external_id, from_number, t
                     stage=stage,
                     name=from_number,
                     phone=from_number,
+                    lead_source="whatsapp_api",
                 )
             except DjangoValidationError:
                 # Lead already exists under a different pipeline/stage --

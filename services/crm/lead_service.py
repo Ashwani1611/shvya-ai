@@ -39,7 +39,7 @@ def create_lead(*, organization, pipeline, stage, name, phone, **extra_fields):
 
 
 def upsert_lead(*, organization, pipeline=None, stage=None, name, phone,
-                 email="", notes="", attributes=None):
+                 email="", notes="", attributes=None, lead_source="system"):
     """
     Create a Lead if (organization, phone) doesn't exist yet, otherwise
     update the existing one. Used by the Lead Upsert API and future
@@ -89,6 +89,7 @@ def upsert_lead(*, organization, pipeline=None, stage=None, name, phone,
                 email=email,
                 notes=notes,
                 attributes=attributes,
+                lead_source=lead_source,
             )
             lead.full_clean()
             lead.save()

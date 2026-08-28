@@ -8,6 +8,7 @@ from .call import LeadCall
 from .reminder import LeadReminder
 from .tag import Tag, LeadTag
 from .activity import LeadActivity
+from .attribute import AttributeDefinition
 
 
 __all__ = [
@@ -22,4 +23,5 @@ __all__ = [
     "Tag",
     "LeadTag",
     "LeadActivity",
+    "AttributeDefinition",
 ]

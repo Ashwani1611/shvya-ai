@@ -27,6 +27,7 @@ from apps.crm.models import (
     LeadReminder,
     Pipeline,
     Stage,
+    AttributeDefinition,
 )
 
 from .api import STAGE_THEMES, get_user_pipelines
@@ -1665,6 +1666,9 @@ def lead_call_save(
         "duration_seconds",
         "0",
     ).strip()
+    duration_seconds = int(
+    duration_seconds_raw or 0
+    )
 
     try:
 
@@ -1685,6 +1689,7 @@ def lead_call_save(
             "Duration cannot be negative.",
             status=400,
         )
+    duration_seconds = duration_seconds * 60
 
     if status == "no_response":
 

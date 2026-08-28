@@ -98,6 +98,18 @@ class Lead(models.Model):
         blank=True,
     )
 
+    lead_source = models.CharField(
+    max_length=30,
+    choices=[
+        ("system", "System"),
+        ("external_api", "External API"),
+        ("whatsapp_api", "WhatsApp API"),
+        ("google_sheets", "Google Sheets"),
+        ("csv_import", "CSV Import"),
+    ],
+    default="system",
+    )
+
     created_at = models.DateTimeField(
         auto_now_add=True,
     )
