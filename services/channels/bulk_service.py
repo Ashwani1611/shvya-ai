@@ -4,7 +4,6 @@ leads as BulkMessageRecipient rows, and hand off actual sending to
 Celery tasks (apps.channels.tasks) so a large campaign never blocks
 a request/response cycle.
 """
-from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.utils import timezone
 

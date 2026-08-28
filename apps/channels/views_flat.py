@@ -549,11 +549,11 @@ def _handle_webhook_delivery(request):
 @require_POST
 def whatsapp_send_message_view(request, lead_id):
 
+    from apps.channels.tasks import send_whatsapp_message_task
     from services.channels.whatsapp_service import (
         queue_outbound_message,
         resolve_account_for_lead,
     )
-    from apps.channels.tasks import send_whatsapp_message_task
 
     user = request.crm_user
 
@@ -728,8 +728,8 @@ def whatsapp_campaign_detail_view(request, campaign_id):
 @require_POST
 def whatsapp_campaign_launch_view(request, campaign_id):
 
-    from services.channels.bulk_service import BulkCampaignError, launch_campaign
     from apps.channels.tasks import send_bulk_campaign_task
+    from services.channels.bulk_service import BulkCampaignError, launch_campaign
 
     user = request.crm_user
 
