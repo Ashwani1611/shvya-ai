@@ -29,8 +29,19 @@ class LeadCall(models.Model):
             ("cancelled", "Cancelled"),
         ],
     )
-    duration_seconds = models.PositiveIntegerField(default=0)
-    notes = models.TextField(blank=True)
+
+    call_name = models.CharField(
+        max_length=150,
+        blank=True,
+    )
+
+    duration_seconds = models.PositiveIntegerField(
+        default=0
+    )
+
+    notes = models.TextField(
+        blank=True
+    )
     called_at = models.DateTimeField()
     created_at = models.DateTimeField(auto_now_add=True)
 

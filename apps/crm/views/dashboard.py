@@ -12,7 +12,10 @@ from django.db import transaction
 
 from services.crm_activity_service import (
     record_stage_changed,
+    record_pipeline_changed,
     record_reminder_created,
+    record_note_added,
+    record_call_logged,
 )
 
 from apps.accounts.models import User
@@ -1314,7 +1317,7 @@ def _lead_card_context(
         # available on each LeadActivity record.
         # ----------------------------------------------------
 
-        "activities": (
+        "activities_for_card": (
             lead.activities
             .select_related(
                 "actor",
@@ -1611,16 +1614,38 @@ def lead_call_save(
         organization=user.organization,
     )
 
+    # --------------------------------------------------------
+    # CALL NAME
+    # --------------------------------------------------------
+
+    call_name = request.POST.get(
+        "call_name",
+        "",
+    ).strip()
+
+    if not call_name:
+
+        return HttpResponse(
+            "Call name is required.",
+            status=400,
+        )
+
+    # --------------------------------------------------------
+    # CALL STATUS
+    #
+    # Only two statuses are allowed for the CRM Call Tracker:
+    #   - completed
+    #   - no_response
+    # --------------------------------------------------------
+
     status = request.POST.get(
         "status",
         "completed",
     ).strip()
 
     allowed_statuses = {
-        choice[0]
-        for choice in LeadCall._meta.get_field(
-            "status"
-        ).choices
+        "completed",
+        "no_response",
     }
 
     if status not in allowed_statuses:
@@ -1629,6 +1654,12 @@ def lead_call_save(
             "Invalid call status.",
             status=400,
         )
+
+    # --------------------------------------------------------
+    # DURATION
+    #
+    # Duration applies only to completed calls.
+    # --------------------------------------------------------
 
     duration_seconds_raw = request.POST.get(
         "duration_seconds",
@@ -1655,10 +1686,28 @@ def lead_call_save(
             status=400,
         )
 
+    if status == "no_response":
+
+        duration_seconds = 0
+
+    # --------------------------------------------------------
+    # CALL NOTES
+    #
+    # Notes apply only to completed calls.
+    # --------------------------------------------------------
+
     notes = request.POST.get(
         "notes",
         "",
     ).strip()
+
+    if status == "no_response":
+
+        notes = ""
+
+    # --------------------------------------------------------
+    # CALL DATE / TIME
+    # --------------------------------------------------------
 
     called_at_raw = request.POST.get(
         "called_at",
@@ -1695,14 +1744,33 @@ def lead_call_save(
 
         called_at = timezone.now()
 
-    LeadCall.objects.create(
+    # --------------------------------------------------------
+    # SAVE CALL
+    # --------------------------------------------------------
+
+    call = LeadCall.objects.create(
         lead=lead,
         user=user,
+        call_name=call_name,
         status=status,
         duration_seconds=duration_seconds,
         notes=notes,
         called_at=called_at,
     )
+
+    # --------------------------------------------------------
+    # PERMANENT ACTIVITY
+    # --------------------------------------------------------
+
+    record_call_logged(
+        lead=lead,
+        actor=user,
+        call=call,
+    )
+
+    # --------------------------------------------------------
+    # REFRESH LEAD CARD
+    # --------------------------------------------------------
 
     response = HttpResponse("")
 
@@ -1902,11 +1970,17 @@ def lead_note_save(
             status=400,
         )
 
-    LeadNote.objects.create(
+    created_note = LeadNote.objects.create(
         lead=lead,
         created_by=user,
         note=note,
         note_type="manual",
+    )
+
+    record_note_added(
+        lead=lead,
+        actor=user,
+        note=created_note,
     )
 
     lead.notes = note
@@ -2155,8 +2229,12 @@ def lead_edit_save(
 
         lead.stage = stage
 
-        stage_changed = (
+    stage_changed = (
         old_stage_id != lead.stage_id
+    )
+
+    pipeline_changed = (
+        old_pipeline_id != lead.pipeline_id
     )
 
     lead.name = (
@@ -2205,13 +2283,24 @@ def lead_edit_save(
 
     try:
 
-        if old_stage_id != lead.stage_id:
+        if stage_changed:
 
             lead.stage_entered_at = timezone.now()
 
         lead.full_clean()
 
         lead.save()
+
+        if pipeline_changed:
+
+            record_pipeline_changed(
+                lead=lead,
+                actor=user,
+                old_pipeline=old_pipeline,
+                new_pipeline=lead.pipeline,
+                old_stage=old_stage,
+                new_stage=lead.stage,
+            )
 
         latest_manual_note = (
             LeadNote.objects
@@ -2248,6 +2337,7 @@ def lead_edit_save(
                     note=notes,
                     note_type="manual",
                 )
+
 
         else:
 

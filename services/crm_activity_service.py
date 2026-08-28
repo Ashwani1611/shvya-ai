@@ -283,10 +283,12 @@ def record_call_logged(
             "call_id": str(
                 call.id
             ),
+            "call_name": call.call_name,
             "status": call.status,
             "duration_seconds": (
                 call.duration_seconds
             ),
+            "notes": call.notes or "",
             "called_at": (
                 call.called_at.isoformat()
                 if call.called_at
@@ -294,6 +296,8 @@ def record_call_logged(
             ),
         },
     )
+
+
 
 
 def record_reminder_created(

@@ -6,6 +6,7 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import IntegrityError, transaction
 
 from apps.crm.models import Lead
+from services.crm_activity_service import record_lead_created
 
 
 class DuplicateLeadError(Exception):
@@ -28,6 +29,12 @@ def create_lead(*, organization, pipeline, stage, name, phone, **extra_fields):
     )
     lead.full_clean()
     lead.save()
+
+    record_lead_created(
+        lead=lead,
+        actor=None,
+    )
+
     return lead
 
 
@@ -85,6 +92,12 @@ def upsert_lead(*, organization, pipeline=None, stage=None, name, phone,
             )
             lead.full_clean()
             lead.save()
+
+            record_lead_created(
+                lead=lead,
+                actor=None,
+            )
+
             return lead, True
 
     except IntegrityError as exc:

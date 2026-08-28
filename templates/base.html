@@ -847,307 +847,259 @@
     );
 
 
-    /* ============================================================
-       DETAILS / ACTIVITY TOGGLE
-       ============================================================ */
-
-    document.body.addEventListener(
-        'click',
-        function(event) {
-
-            const leadTab =
-                event.target.closest(
-                    '.lead-detail-tab'
-                );
-
-
-            if (!leadTab) {
-
-                return;
-
-            }
-
-
-            const card =
-                leadTab.closest(
-                    '[id^="lead-card-"]'
-                );
-
-
-            if (!card) {
-
-                return;
-
-            }
-
-
-            const leadId =
-                card.id.replace(
-                    'lead-card-',
-                    ''
-                );
-
-
-            const targetId =
-                leadTab.dataset.target;
-
-
-            if (!targetId) {
-
-                return;
-
-            }
-
-
-            const targetPanel =
-                card.querySelector(
-                    '#' + targetId
-                );
-
-
-            if (!targetPanel) {
-
-                return;
-
-            }
-
-
-            const tabName =
-                leadTab.dataset.tabName ||
-                'details';
-
-
-            const isOpen =
-                !targetPanel.classList.contains(
-                    'hidden'
-                );
-
-
-            /* ----------------------------------------------------
-               CLICK OPEN TAB AGAIN = HIDE
-               ---------------------------------------------------- */
-
-            if (isOpen) {
-
-                targetPanel.classList.add(
-                    'hidden'
-                );
-
-
-                leadTab.classList.remove(
-                    'text-blue-600'
-                );
-
-
-                leadTab.classList.add(
-                    'text-gray-500'
-                );
-
-
-                const icon =
-                    leadTab.querySelector(
-                        '.lead-tab-chevron'
-                    );
-
-
-                if (icon) {
-
-                    icon.classList.remove(
-                        'ti-chevron-up'
-                    );
-
-                    icon.classList.add(
-                        'ti-chevron-down'
-                    );
-
-                }
-
-
-                const label =
-                    leadTab.querySelector(
-                        '.lead-tab-label'
-                    );
-
-
-                if (label) {
-
-                    label.textContent =
-                        tabName === 'activity'
-                            ? 'Activity'
-                            : 'Details';
-
-                }
-
-
-                window.shvyaLeadCardState[
-                    leadId
-                ] = {
-                    activePanel: null
-                };
-
-
-                return;
-
-            }
-
-
-            /* ----------------------------------------------------
-               CLOSE OTHER PANELS
-               ---------------------------------------------------- */
-
-            card
-                .querySelectorAll(
-                    '.lead-tab-panel'
-                )
-                .forEach(
-                    function(panel) {
-
-                        panel.classList.add(
-                            'hidden'
-                        );
-
-                    }
-                );
-
-
-            /* ----------------------------------------------------
-               RESET OTHER TABS
-               ---------------------------------------------------- */
-
-            card
-                .querySelectorAll(
-                    '.lead-detail-tab'
-                )
-                .forEach(
-                    function(tab) {
-
-                        tab.classList.remove(
-                            'text-blue-600'
-                        );
-
-                        tab.classList.add(
-                            'text-gray-500'
-                        );
-
-
-                        const icon =
-                            tab.querySelector(
-                                '.lead-tab-chevron'
-                            );
-
-
-                        if (icon) {
-
-                            icon.classList.remove(
-                                'ti-chevron-up'
-                            );
-
-                            icon.classList.add(
-                                'ti-chevron-down'
-                            );
-
-                        }
-
-
-                        const label =
-                            tab.querySelector(
-                                '.lead-tab-label'
-                            );
-
-
-                        if (label) {
-
-                            label.textContent =
-                                tab.dataset.tabName ===
-                                'activity'
-                                    ? 'Activity'
-                                    : 'Details';
-
-                        }
-
-                    }
-                );
-
-
-            /* ----------------------------------------------------
-               OPEN SELECTED PANEL
-               ---------------------------------------------------- */
-
-            targetPanel.classList.remove(
+/* ============================================================
+   DETAILS / ACTIVITY TOGGLE
+   ============================================================ */
+
+document.body.addEventListener(
+    'click',
+    function(event) {
+
+        const leadTab =
+            event.target.closest(
+                '.lead-detail-tab'
+            );
+
+        if (!leadTab) {
+            return;
+        }
+
+        event.preventDefault();
+        event.stopPropagation();
+
+        const card =
+            leadTab.closest(
+                'article[id^="lead-card-"]'
+            );
+
+        if (!card) {
+            return;
+        }
+
+        const targetId =
+            leadTab.getAttribute(
+                'data-target'
+            );
+
+        if (!targetId) {
+            return;
+        }
+
+        const targetPanel =
+            card.querySelector(
+                '[id="' + targetId + '"]'
+            );
+
+        if (!targetPanel) {
+            return;
+        }
+
+        const tabName =
+            leadTab.getAttribute(
+                'data-tab-name'
+            ) || 'details';
+
+        const isCurrentlyOpen =
+            !targetPanel.classList.contains(
                 'hidden'
             );
 
+        /* ----------------------------------------------------
+           IF CURRENT TAB IS OPEN → CLOSE IT
+           ---------------------------------------------------- */
 
-            /* ----------------------------------------------------
-               ACTIVATE TAB
-               ---------------------------------------------------- */
+        if (isCurrentlyOpen) {
 
-            leadTab.classList.remove(
-                'text-gray-500'
+            targetPanel.classList.add(
+                'hidden'
             );
 
-
-            leadTab.classList.add(
+            leadTab.classList.remove(
                 'text-blue-600'
             );
 
+            leadTab.classList.add(
+                'text-gray-500'
+            );
 
-            /* ----------------------------------------------------
-               UP ARROW
-               ---------------------------------------------------- */
-
-            const activeIcon =
+            const icon =
                 leadTab.querySelector(
                     '.lead-tab-chevron'
                 );
 
+            if (icon) {
 
-            if (activeIcon) {
-
-                activeIcon.classList.remove(
-                    'ti-chevron-down'
-                );
-
-                activeIcon.classList.add(
+                icon.classList.remove(
                     'ti-chevron-up'
                 );
 
+                icon.classList.add(
+                    'ti-chevron-down'
+                );
             }
 
-
-            /* ----------------------------------------------------
-               HIDE LABEL
-               ---------------------------------------------------- */
-
-            const activeLabel =
+            const label =
                 leadTab.querySelector(
                     '.lead-tab-label'
                 );
 
+            if (label) {
 
-            if (activeLabel) {
-
-                activeLabel.textContent =
+                label.textContent =
                     tabName === 'activity'
-                        ? 'Hide activity'
-                        : 'Hide details';
-
+                        ? 'Activity'
+                        : 'Details';
             }
 
-
-            /* ----------------------------------------------------
-               SAVE STATE
-               ---------------------------------------------------- */
-
             window.shvyaLeadCardState[
-                leadId
+                card.id.replace(
+                    'lead-card-',
+                    ''
+                )
             ] = {
-                activePanel:
-                    targetId
+                activePanel: null
             };
 
+            return;
         }
-    );
+
+        /* ----------------------------------------------------
+           CLOSE ALL PANELS IN THIS LEAD CARD
+           ---------------------------------------------------- */
+
+        card
+            .querySelectorAll(
+                '.lead-tab-panel'
+            )
+            .forEach(
+                function(panel) {
+
+                    panel.classList.add(
+                        'hidden'
+                    );
+
+                }
+            );
+
+        /* ----------------------------------------------------
+           RESET ALL TABS
+           ---------------------------------------------------- */
+
+        card
+            .querySelectorAll(
+                '.lead-detail-tab'
+            )
+            .forEach(
+                function(tab) {
+
+                    tab.classList.remove(
+                        'text-blue-600'
+                    );
+
+                    tab.classList.add(
+                        'text-gray-500'
+                    );
+
+                    const icon =
+                        tab.querySelector(
+                            '.lead-tab-chevron'
+                        );
+
+                    if (icon) {
+
+                        icon.classList.remove(
+                            'ti-chevron-up'
+                        );
+
+                        icon.classList.add(
+                            'ti-chevron-down'
+                        );
+                    }
+
+                    const label =
+                        tab.querySelector(
+                            '.lead-tab-label'
+                        );
+
+                    if (label) {
+
+                        label.textContent =
+                            tab.dataset.tabName ===
+                            'activity'
+                                ? 'Activity'
+                                : 'Details';
+                    }
+
+                }
+            );
+
+        /* ----------------------------------------------------
+           OPEN SELECTED PANEL
+           ---------------------------------------------------- */
+
+        targetPanel.classList.remove(
+            'hidden'
+        );
+
+        /* ----------------------------------------------------
+           ACTIVATE SELECTED TAB
+           ---------------------------------------------------- */
+
+        leadTab.classList.remove(
+            'text-gray-500'
+        );
+
+        leadTab.classList.add(
+            'text-blue-600'
+        );
+
+        const activeIcon =
+            leadTab.querySelector(
+                '.lead-tab-chevron'
+            );
+
+        if (activeIcon) {
+
+            activeIcon.classList.remove(
+                'ti-chevron-down'
+            );
+
+            activeIcon.classList.add(
+                'ti-chevron-up'
+            );
+        }
+
+        const activeLabel =
+            leadTab.querySelector(
+                '.lead-tab-label'
+            );
+
+        if (activeLabel) {
+
+            activeLabel.textContent =
+                tabName === 'activity'
+                    ? 'Hide activity'
+                    : 'Hide details';
+        }
+
+        /* ----------------------------------------------------
+           SAVE STATE
+           ---------------------------------------------------- */
+
+        const leadId =
+            card.id.replace(
+                'lead-card-',
+                ''
+            );
+
+        window.shvyaLeadCardState[
+            leadId
+        ] = {
+            activePanel: targetId
+        };
+
+    }
+);
 
 
     /* ============================================================

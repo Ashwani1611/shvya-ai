@@ -1,31 +1,80 @@
 <div
-    class="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
+    class="
+        fixed
+        inset-0
+        bg-black/40
+        flex
+        items-center
+        justify-center
+        z-50
+        p-4
+    "
 >
 
     <div
-        class="bg-white rounded-xl w-full max-w-md"
+        class="
+            bg-white
+            rounded-xl
+            w-full
+            max-w-md
+            shadow-xl
+        "
     >
 
+        <!-- ====================================================
+             HEADER
+             ==================================================== -->
+
         <div
-            class="flex items-center justify-between
-                   px-5 py-4
-                   border-b border-gray-200"
+            class="
+                flex
+                items-center
+                justify-between
+                px-5
+                py-4
+                border-b
+                border-gray-200
+            "
         >
 
-            <h2 class="font-semibold text-lg">
+            <h2
+                class="
+                    font-semibold
+                    text-lg
+                    text-gray-900
+                "
+            >
                 Add Call
             </h2>
 
             <button
                 type="button"
-                onclick="document.getElementById('modal-root').innerHTML=''"
-                class="text-gray-400 hover:text-gray-600 text-xl"
+
+                onclick="
+                    document.getElementById('modal-root').innerHTML=''
+                "
+
+                class="
+                    w-8
+                    h-8
+                    rounded-md
+                    flex
+                    items-center
+                    justify-center
+                    text-gray-400
+                    hover:bg-gray-100
+                    hover:text-gray-700
+                "
             >
-                &times;
+                <i class="ti ti-x text-lg"></i>
             </button>
 
         </div>
 
+
+        <!-- ====================================================
+             FORM
+             ==================================================== -->
 
         <form
             method="post"
@@ -36,42 +85,106 @@
 
             hx-swap="none"
 
-            class="p-5 space-y-4"
+            class="
+                p-5
+                space-y-5
+            "
         >
 
             {% csrf_token %}
 
 
+            <!-- ==================================================
+                 CALL NAME
+                 ================================================== -->
+
             <div>
 
-                <label class="text-xs text-gray-500">
-                    Status
+                <label
+                    class="
+                        block
+                        text-xs
+                        font-medium
+                        text-gray-600
+                        mb-1.5
+                    "
+                >
+                    Call Name
+                </label>
+
+                <input
+                    type="text"
+                    name="call_name"
+                    required
+                    maxlength="150"
+
+                    placeholder="e.g. Introductory Call"
+
+                    class="
+                        w-full
+                        border
+                        border-gray-300
+                        rounded-lg
+                        px-3
+                        py-2.5
+                        text-sm
+                        text-gray-800
+                        outline-none
+                        focus:border-blue-500
+                        focus:ring-2
+                        focus:ring-blue-500/10
+                    "
+                >
+
+            </div>
+
+
+            <!-- ==================================================
+                 STATUS
+                 ================================================== -->
+
+            <div>
+
+                <label
+                    class="
+                        block
+                        text-xs
+                        font-medium
+                        text-gray-600
+                        mb-1.5
+                    "
+                >
+                    Call Status
                 </label>
 
                 <select
                     name="status"
+                    id="call-status-{{ lead.id }}"
                     required
-                    class="w-full border rounded-md px-3 py-2 text-sm mt-1"
+
+                    class="
+                        w-full
+                        border
+                        border-gray-300
+                        rounded-lg
+                        px-3
+                        py-2.5
+                        text-sm
+                        text-gray-800
+                        bg-white
+                        outline-none
+                        focus:border-blue-500
+                        focus:ring-2
+                        focus:ring-blue-500/10
+                    "
                 >
 
                     <option value="completed">
-                        Done
+                        Call Done
                     </option>
 
                     <option value="no_response">
                         No Response
-                    </option>
-
-                    <option value="busy">
-                        Busy
-                    </option>
-
-                    <option value="scheduled">
-                        Scheduled
-                    </option>
-
-                    <option value="cancelled">
-                        Cancelled
                     </option>
 
                 </select>
@@ -79,9 +192,21 @@
             </div>
 
 
+            <!-- ==================================================
+                 CALL DATE / TIME
+                 ================================================== -->
+
             <div>
 
-                <label class="text-xs text-gray-500">
+                <label
+                    class="
+                        block
+                        text-xs
+                        font-medium
+                        text-gray-600
+                        mb-1.5
+                    "
+                >
                     Call Date & Time
                 </label>
 
@@ -89,62 +214,190 @@
                     type="datetime-local"
                     name="called_at"
                     required
-                    class="w-full border rounded-md px-3 py-2 text-sm mt-1"
+
+                    class="
+                        w-full
+                        border
+                        border-gray-300
+                        rounded-lg
+                        px-3
+                        py-2.5
+                        text-sm
+                        text-gray-800
+                        outline-none
+                        focus:border-blue-500
+                        focus:ring-2
+                        focus:ring-blue-500/10
+                    "
                 >
 
             </div>
 
 
-            <div>
-
-                <label class="text-xs text-gray-500">
-                    Duration (seconds)
-                </label>
-
-                <input
-                    type="number"
-                    name="duration_seconds"
-                    min="0"
-                    value="0"
-                    class="w-full border rounded-md px-3 py-2 text-sm mt-1"
-                >
-
-            </div>
-
-
-            <div>
-
-                <label class="text-xs text-gray-500">
-                    Call Notes
-                </label>
-
-                <textarea
-                    name="notes"
-                    rows="4"
-                    class="w-full border rounded-md px-3 py-2 text-sm mt-1"
-                    placeholder="What was discussed?"
-                ></textarea>
-
-            </div>
-
+            <!-- ==================================================
+                 DONE-ONLY FIELDS
+                 ================================================== -->
 
             <div
-                class="flex justify-end gap-2 pt-3 border-t"
+                id="call-done-fields-{{ lead.id }}"
+                class="space-y-5"
+            >
+
+                <!-- Duration -->
+
+                <div>
+
+                    <label
+                        class="
+                            block
+                            text-xs
+                            font-medium
+                            text-gray-600
+                            mb-1.5
+                        "
+                    >
+                        Call Duration
+                    </label>
+
+                    <input
+                        type="number"
+                        name="duration_seconds"
+                        min="0"
+                        value="0"
+
+                        class="
+                            w-full
+                            border
+                            border-gray-300
+                            rounded-lg
+                            px-3
+                            py-2.5
+                            text-sm
+                            text-gray-800
+                            outline-none
+                            focus:border-blue-500
+                            focus:ring-2
+                            focus:ring-blue-500/10
+                        "
+                    >
+
+                    <p
+                        class="
+                            mt-1
+                            text-[11px]
+                            text-gray-400
+                        "
+                    >
+                        Enter duration in minutes.
+                    </p>
+
+                </div>
+
+
+                <!-- Notes -->
+
+                <div>
+
+                    <label
+                        class="
+                            block
+                            text-xs
+                            font-medium
+                            text-gray-600
+                            mb-1.5
+                        "
+                    >
+                        Call Notes
+                    </label>
+
+                    <textarea
+                        name="notes"
+                        rows="4"
+
+                        placeholder="What was discussed during the call?"
+
+                        class="
+                            w-full
+                            border
+                            border-gray-300
+                            rounded-lg
+                            px-3
+                            py-2.5
+                            text-sm
+                            text-gray-800
+                            resize-none
+                            outline-none
+                            focus:border-blue-500
+                            focus:ring-2
+                            focus:ring-blue-500/10
+                        "
+                    ></textarea>
+
+                </div>
+
+            </div>
+
+
+            <!-- ==================================================
+                 ACTIONS
+                 ================================================== -->
+
+            <div
+                class="
+                    flex
+                    justify-end
+                    gap-2
+                    pt-3
+                    border-t
+                    border-gray-100
+                "
             >
 
                 <button
                     type="button"
-                    onclick="document.getElementById('modal-root').innerHTML=''"
-                    class="px-4 py-2 border rounded-md text-sm"
+
+                    onclick="
+                        document.getElementById('modal-root').innerHTML=''
+                    "
+
+                    class="
+                        px-4
+                        py-2
+                        rounded-lg
+                        border
+                        border-gray-300
+                        bg-white
+                        text-sm
+                        font-medium
+                        text-gray-700
+                        hover:bg-gray-50
+                    "
                 >
                     Cancel
                 </button>
 
                 <button
                     type="submit"
-                    class="px-4 py-2 bg-blue-600 text-white rounded-md text-sm"
+
+                    class="
+                        inline-flex
+                        items-center
+                        gap-2
+                        px-4
+                        py-2
+                        rounded-lg
+                        bg-gray-900
+                        text-white
+                        text-sm
+                        font-medium
+                        hover:bg-gray-800
+                    "
                 >
+
+                    <i class="ti ti-check"></i>
+
                     Save Call
+
                 </button>
 
             </div>
@@ -154,3 +407,59 @@
     </div>
 
 </div>
+
+
+<script>
+
+(function () {
+
+    const statusSelect =
+        document.getElementById(
+            'call-status-{{ lead.id }}'
+        );
+
+    const doneFields =
+        document.getElementById(
+            'call-done-fields-{{ lead.id }}'
+        );
+
+    if (
+        !statusSelect ||
+        !doneFields
+    ) {
+
+        return;
+
+    }
+
+    function updateCallFields() {
+
+        const isCompleted =
+            statusSelect.value === 'completed';
+
+        if (isCompleted) {
+
+            doneFields.classList.remove(
+                'hidden'
+            );
+
+        } else {
+
+            doneFields.classList.add(
+                'hidden'
+            );
+
+        }
+
+    }
+
+    statusSelect.addEventListener(
+        'change',
+        updateCallFields
+    );
+
+    updateCallFields();
+
+})();
+
+</script>
