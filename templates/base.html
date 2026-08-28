@@ -2340,7 +2340,7 @@ document.body.addEventListener(
             return;
 
         }
-
+        
 
         /* ======================================================
            FIND / CREATE TARGET CARD CONTAINER
@@ -2636,6 +2636,161 @@ document.body.addEventListener(
             oldStageId,
             '→',
             newStageId
+        );
+
+    }
+);
+
+/* ============================================================
+   ADDITIONAL INFO ATTRIBUTE MENU
+   ============================================================ */
+
+document.body.addEventListener(
+    'click',
+    function(event) {
+
+        const trigger =
+            event.target.closest(
+                '[data-attribute-menu-trigger]'
+            );
+
+        const menus =
+            document.querySelectorAll(
+                '[data-attribute-menu]'
+            );
+
+
+        if (trigger) {
+
+            const wrapper =
+                trigger.closest(
+                    '.relative'
+                );
+
+            if (!wrapper) {
+                return;
+            }
+
+            const menu =
+                wrapper.querySelector(
+                    '[data-attribute-menu]'
+                );
+
+            if (!menu) {
+                return;
+            }
+
+            const isOpen =
+                !menu.classList.contains(
+                    'hidden'
+                );
+
+
+            /* Close all other attribute menus */
+
+            menus.forEach(
+                function(otherMenu) {
+
+                    if (otherMenu !== menu) {
+
+                        otherMenu.classList.add(
+                            'hidden'
+                        );
+
+                        const otherWrapper =
+                            otherMenu.closest(
+                                '.relative'
+                            );
+
+                        const otherTrigger =
+                            otherWrapper &&
+                            otherWrapper.querySelector(
+                                '[data-attribute-menu-trigger]'
+                            );
+
+                        if (otherTrigger) {
+
+                            otherTrigger.setAttribute(
+                                'aria-expanded',
+                                'false'
+                            );
+
+                        }
+
+                    }
+
+                }
+            );
+
+
+            if (isOpen) {
+
+                menu.classList.add(
+                    'hidden'
+                );
+
+                trigger.setAttribute(
+                    'aria-expanded',
+                    'false'
+                );
+
+            } else {
+
+                menu.classList.remove(
+                    'hidden'
+                );
+
+                trigger.setAttribute(
+                    'aria-expanded',
+                    'true'
+                );
+
+            }
+
+            return;
+        }
+
+
+        /* ----------------------------------------------------
+           CLICK OUTSIDE
+           ---------------------------------------------------- */
+
+        menus.forEach(
+            function(menu) {
+
+                if (
+                    !menu.contains(
+                        event.target
+                    )
+                ) {
+
+                    menu.classList.add(
+                        'hidden'
+                    );
+
+                    const wrapper =
+                        menu.closest(
+                            '.relative'
+                        );
+
+                    const menuTrigger =
+                        wrapper &&
+                        wrapper.querySelector(
+                            '[data-attribute-menu-trigger]'
+                        );
+
+                    if (menuTrigger) {
+
+                        menuTrigger.setAttribute(
+                            'aria-expanded',
+                            'false'
+                        );
+
+                    }
+
+                }
+
+            }
         );
 
     }

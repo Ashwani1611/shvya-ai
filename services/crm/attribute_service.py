@@ -420,3 +420,70 @@ def delete_attribute_definition(
             )
 
         attribute.delete()
+
+def update_lead_attribute_values(
+    *,
+    organization,
+    lead,
+    values,
+):
+    """
+    Update custom attribute values for one Lead.
+
+    Only AttributeDefinition keys belonging to the Lead's
+    organization are accepted.
+
+    This function updates Lead.attributes only.
+    It does not modify Lead Source or any other Lead fields.
+    """
+
+    if lead.organization_id != organization.id:
+
+        raise ValidationError(
+            {
+                "lead": (
+                    "Lead does not belong "
+                    "to this organization."
+                )
+            }
+        )
+
+    attribute_definitions = list(
+        AttributeDefinition.objects
+        .filter(
+            organization=organization,
+        )
+        .order_by(
+            "display_order",
+            "created_at",
+        )
+    )
+
+    allowed_keys = {
+        attribute.key
+        for attribute in attribute_definitions
+    }
+
+    current_attributes = dict(
+        lead.attributes or {}
+    )
+
+    for key, value in values.items():
+
+        if key not in allowed_keys:
+            continue
+
+        current_attributes[key] = (
+            "" if value is None else str(value).strip()
+        )
+
+    lead.attributes = current_attributes
+
+    lead.save(
+        update_fields=[
+            "attributes",
+            "updated_at",
+        ]
+    )
+
+    return lead       

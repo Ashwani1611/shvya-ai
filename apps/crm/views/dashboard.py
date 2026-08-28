@@ -34,6 +34,7 @@ from services.crm.attribute_service import (
     create_attribute_definition,
     update_attribute_definition,
     delete_attribute_definition,
+    update_lead_attribute_values,
 )
 from .api import STAGE_THEMES, get_user_pipelines
 
@@ -2609,6 +2610,126 @@ def attribute_delete(
 ):
     ...
 
+@crm_login_required
+@require_GET
+def lead_attribute_values_modal(
+    request,
+    lead_id,
+):
+    user = request.crm_user
+
+    lead = get_object_or_404(
+        Lead,
+        id=lead_id,
+        organization=user.organization,
+    )
+
+    attribute_definitions = (
+        AttributeDefinition.objects
+        .filter(
+            organization=user.organization,
+        )
+        .order_by(
+            "display_order",
+            "created_at",
+        )
+    )
+
+    return render(
+        request,
+        "crm/partials/lead_attribute_values_modal.html",
+        {
+            "lead": lead,
+            "attribute_definitions": attribute_definitions,
+        },
+    )
+
+
+@crm_login_required
+@require_POST
+def lead_attribute_values_save(
+    request,
+    lead_id,
+):
+    user = request.crm_user
+
+    lead = get_object_or_404(
+        Lead,
+        id=lead_id,
+        organization=user.organization,
+    )
+
+    attribute_definitions = (
+        AttributeDefinition.objects
+        .filter(
+            organization=user.organization,
+        )
+    )
+
+    values = {}
+
+    for attribute in attribute_definitions:
+
+        field_name = (
+            f"attr_{attribute.key}"
+        )
+
+        if field_name in request.POST:
+
+            values[attribute.key] = (
+                request.POST.get(
+                    field_name,
+                    "",
+                )
+            )
+
+    try:
+
+        update_lead_attribute_values(
+            organization=user.organization,
+            lead=lead,
+            values=values,
+        )
+
+    except DjangoValidationError as exc:
+
+        error_message = (
+            exc.message_dict
+            if hasattr(
+                exc,
+                "message_dict",
+            )
+            else exc.messages
+        )
+
+        return HttpResponse(
+            f"""
+            <div
+                class="
+                    p-4
+                    text-sm
+                    text-red-600
+                "
+            >
+                Validation error: {error_message}
+            </div>
+            """,
+            status=400,
+        )
+
+    response = HttpResponse("")
+
+    response["HX-Trigger"] = json.dumps(
+        {
+            "leadAttributeValuesUpdated": {
+                "lead_id": str(
+                    lead.id
+                )
+            }
+        }
+    )
+
+    return response
 
 # ============================================================
 # FILTER CONFIGURATION

@@ -1,0 +1,372 @@
+{% load crm_extras %}
+
+<div
+    class="
+        fixed
+        inset-0
+        z-50
+        bg-black/40
+        flex
+        items-center
+        justify-center
+        p-4
+    "
+>
+    <div
+        class="
+            bg-white
+            rounded-xl
+            w-full
+            max-w-lg
+            max-h-[90vh]
+            overflow-hidden
+            shadow-xl
+        "
+    >
+
+        <!-- ====================================================
+             HEADER
+             ==================================================== -->
+
+        <div
+            class="
+                flex
+                items-center
+                justify-between
+                px-5
+                py-4
+                border-b
+                border-gray-200
+            "
+        >
+
+            <div>
+
+                <h2
+                    class="
+                        text-lg
+                        font-semibold
+                        text-gray-900
+                    "
+                >
+                    Edit Values
+                </h2>
+
+                <p
+                    class="
+                        mt-0.5
+                        text-xs
+                        text-gray-400
+                    "
+                >
+                    {{ lead.name }}
+                </p>
+
+            </div>
+
+            <button
+                type="button"
+                onclick="
+                    document.getElementById('modal-root').innerHTML=''
+                "
+                class="
+                    w-8
+                    h-8
+                    rounded-md
+                    flex
+                    items-center
+                    justify-center
+                    text-gray-400
+                    hover:bg-gray-100
+                    hover:text-gray-700
+                "
+                title="Close"
+            >
+                <i class="ti ti-x text-lg"></i>
+            </button>
+
+        </div>
+
+
+        <!-- ====================================================
+             FORM
+             ==================================================== -->
+
+        <form
+            method="post"
+            hx-post="{% url 'crm-lead-attribute-values-save' lead.id %}"
+            hx-target="#modal-root"
+            hx-swap="none"
+            class="
+                overflow-y-auto
+                max-h-[calc(90vh-140px)]
+                p-5
+                space-y-5
+            "
+        >
+
+            {% csrf_token %}
+
+
+            {% if attribute_definitions %}
+
+                {% for attribute in attribute_definitions %}
+
+                <div>
+
+                    <label
+                        for="lead-attribute-{{ attribute.key }}"
+                        class="
+                            block
+                            text-xs
+                            font-medium
+                            text-gray-600
+                            mb-1.5
+                        "
+                    >
+                        {{ attribute.name }}
+                    </label>
+
+
+                    {% if attribute.field_type == "text" %}
+
+                        <input
+                            id="lead-attribute-{{ attribute.key }}"
+                            type="text"
+                            name="attr_{{ attribute.key }}"
+                            value="{{ lead.attributes|get_item:attribute.key }}"
+                            class="
+                                w-full
+                                border
+                                border-gray-300
+                                rounded-lg
+                                px-3
+                                py-2.5
+                                text-sm
+                                text-gray-800
+                                outline-none
+                                focus:border-blue-500
+                                focus:ring-2
+                                focus:ring-blue-500/10
+                            "
+                        >
+
+                    {% elif attribute.field_type == "numeric" %}
+
+                        <input
+                            id="lead-attribute-{{ attribute.key }}"
+                            type="number"
+                            name="attr_{{ attribute.key }}"
+                            value="{{ lead.attributes|get_item:attribute.key }}"
+                            class="
+                                w-full
+                                border
+                                border-gray-300
+                                rounded-lg
+                                px-3
+                                py-2.5
+                                text-sm
+                                text-gray-800
+                                outline-none
+                                focus:border-blue-500
+                                focus:ring-2
+                                focus:ring-blue-500/10
+                            "
+                        >
+
+                    {% elif attribute.field_type == "date" %}
+
+                        <input
+                            id="lead-attribute-{{ attribute.key }}"
+                            type="date"
+                            name="attr_{{ attribute.key }}"
+                            value="{{ lead.attributes|get_item:attribute.key }}"
+                            class="
+                                w-full
+                                border
+                                border-gray-300
+                                rounded-lg
+                                px-3
+                                py-2.5
+                                text-sm
+                                text-gray-800
+                                outline-none
+                                focus:border-blue-500
+                                focus:ring-2
+                                focus:ring-blue-500/10
+                            "
+                        >
+
+                    {% elif attribute.field_type == "datetime" %}
+
+                        <input
+                            id="lead-attribute-{{ attribute.key }}"
+                            type="datetime-local"
+                            name="attr_{{ attribute.key }}"
+                            value="{{ lead.attributes|get_item:attribute.key }}"
+                            class="
+                                w-full
+                                border
+                                border-gray-300
+                                rounded-lg
+                                px-3
+                                py-2.5
+                                text-sm
+                                text-gray-800
+                                outline-none
+                                focus:border-blue-500
+                                focus:ring-2
+                                focus:ring-blue-500/10
+                            "
+                        >
+
+                    {% elif attribute.field_type == "option" %}
+
+                        <select
+                            id="lead-attribute-{{ attribute.key }}"
+                            name="attr_{{ attribute.key }}"
+                            class="
+                                w-full
+                                border
+                                border-gray-300
+                                rounded-lg
+                                px-3
+                                py-2.5
+                                text-sm
+                                text-gray-800
+                                bg-white
+                                outline-none
+                                focus:border-blue-500
+                                focus:ring-2
+                                focus:ring-blue-500/10
+                            "
+                        >
+
+                            <option value="">
+                                Select {{ attribute.name }}
+                            </option>
+
+                            {% for option in attribute.options %}
+
+                            <option
+                                value="{{ option }}"
+                                {% if lead.attributes|get_item:attribute.key == option %}
+                                    selected
+                                {% endif %}
+                            >
+                                {{ option }}
+                            </option>
+
+                            {% endfor %}
+
+                        </select>
+
+                    {% endif %}
+
+
+                    {% if attribute.description %}
+
+                    <p
+                        class="
+                            mt-1
+                            text-[11px]
+                            text-gray-400
+                        "
+                    >
+                        {{ attribute.description }}
+                    </p>
+
+                    {% endif %}
+
+                </div>
+
+                {% endfor %}
+
+            {% else %}
+
+                <div
+                    class="
+                        py-10
+                        text-center
+                    "
+                >
+
+                    <p
+                        class="
+                            text-sm
+                            text-gray-400
+                        "
+                    >
+                        No custom attributes available.
+                    </p>
+
+                </div>
+
+            {% endif %}
+
+
+            <!-- ==================================================
+                 ACTIONS
+                 ================================================== -->
+
+            <div
+                class="
+                    flex
+                    justify-end
+                    gap-2
+                    pt-3
+                    border-t
+                    border-gray-100
+                "
+            >
+
+                <button
+                    type="button"
+                    onclick="
+                        document.getElementById('modal-root').innerHTML=''
+                    "
+                    class="
+                        px-4
+                        py-2
+                        rounded-lg
+                        border
+                        border-gray-300
+                        bg-white
+                        text-sm
+                        font-medium
+                        text-gray-700
+                        hover:bg-gray-50
+                    "
+                >
+                    Cancel
+                </button>
+
+                <button
+                    type="submit"
+                    class="
+                        inline-flex
+                        items-center
+                        gap-2
+                        px-4
+                        py-2
+                        rounded-lg
+                        bg-gray-900
+                        text-white
+                        text-sm
+                        font-medium
+                        hover:bg-gray-800
+                    "
+                >
+
+                    <i class="ti ti-check"></i>
+
+                    Save Changes
+
+                </button>
+
+            </div>
+
+        </form>
+
+    </div>
+</div>

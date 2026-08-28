@@ -31,6 +31,8 @@ from apps.crm.views.dashboard import (
     attribute_delete,
     attribute_create_modal,
     attribute_create_save,
+    lead_attribute_values_modal,
+    lead_attribute_values_save,
 )
 
 
@@ -215,6 +217,18 @@ urlpatterns = [
         "attributes/<uuid:attribute_id>/delete/",
         attribute_delete,
         name="crm-attribute-delete",
+    ),
+
+    path(
+        "leads/<uuid:lead_id>/attributes/edit/",
+        lead_attribute_values_modal,
+        name="crm-lead-attribute-values-modal",
+    ),
+
+    path(
+        "leads/<uuid:lead_id>/attributes/edit/save/",
+        lead_attribute_values_save,
+        name="crm-lead-attribute-values-save",
     ),
 
     # ========================================================
