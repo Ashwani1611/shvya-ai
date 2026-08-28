@@ -32,3 +32,20 @@ def format_duration(value):
     seconds = total_seconds % 60
 
     return f"{minutes}:{seconds:02d} min"
+
+@register.filter
+def get_item(value, key):
+    """
+    Return a dictionary value by key.
+
+    Safely returns an empty string when the value is not
+    a dictionary or the key does not exist.
+    """
+
+    if not isinstance(value, dict):
+        return ""
+
+    return value.get(
+        key,
+        "",
+    )    

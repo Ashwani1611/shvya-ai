@@ -25,6 +25,12 @@ from apps.crm.views.dashboard import (
     lead_stage_move,
     lead_stage_rename,
     lead_table_partial,
+    attribute_manage_modal,
+    attribute_edit_modal,
+    attribute_update_save,
+    attribute_delete,
+    attribute_create_modal,
+    attribute_create_save,
 )
 
 
@@ -62,6 +68,7 @@ urlpatterns = [
         dashboard_view,
         name="crm-dashboard",
     ),
+
 
     # ========================================================
     # LEAD TABLE
@@ -171,6 +178,46 @@ urlpatterns = [
 
 
     # ========================================================
+    # ATTRIBUTE MANAGEMENT
+    # ========================================================
+
+    path(
+        "attributes/create/",
+        attribute_create_modal,
+        name="crm-attribute-create-modal",
+    ),
+
+    path(
+        "attributes/create/save/",
+        attribute_create_save,
+        name="crm-attribute-create-save",
+    ),
+
+    path(
+        "attributes/manage/",
+        attribute_manage_modal,
+        name="crm-attribute-manage-modal",
+    ),
+
+    path(
+        "attributes/<uuid:attribute_id>/edit/",
+        attribute_edit_modal,
+        name="crm-attribute-edit-modal",
+    ),
+
+    path(
+        "attributes/<uuid:attribute_id>/edit/save/",
+        attribute_update_save,
+        name="crm-attribute-update-save",
+    ),
+
+    path(
+        "attributes/<uuid:attribute_id>/delete/",
+        attribute_delete,
+        name="crm-attribute-delete",
+    ),
+
+    # ========================================================
     # FILTERS
     # ========================================================
 
@@ -185,6 +232,7 @@ urlpatterns = [
         lead_filters_values,
         name="crm-lead-filters-values",
     ),
+
 
     # ========================================================
     # STAGE MANAGEMENT
@@ -203,15 +251,15 @@ urlpatterns = [
     ),
 
     path(
-    "stages/<uuid:stage_id>/delete/",
-    lead_stage_delete,
-    name="crm-stage-delete",
-),
+        "stages/<uuid:stage_id>/delete/",
+        lead_stage_delete,
+        name="crm-stage-delete",
+    ),
 
-path(
-    "leads/<uuid:lead_id>/stage/",
-    lead_stage_move,
-    name="crm-lead-stage-move",
-),
+    path(
+        "leads/<uuid:lead_id>/stage/",
+        lead_stage_move,
+        name="crm-lead-stage-move",
+    ),
 
 ]

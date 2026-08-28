@@ -30,6 +30,11 @@ from apps.crm.models import (
     AttributeDefinition,
 )
 
+from services.crm.attribute_service import (
+    create_attribute_definition,
+    update_attribute_definition,
+    delete_attribute_definition,
+)
 from .api import STAGE_THEMES, get_user_pipelines
 
 
@@ -535,6 +540,17 @@ def _build_lead_table_context(
                 )
                 .order_by(
                     "-created_at",
+                )
+            )
+
+            lead.attribute_definitions = (
+                AttributeDefinition.objects
+                .filter(
+                    organization=lead.organization,
+                )
+                .order_by(
+                    "display_order",
+                    "created_at",
                 )
             )
 
@@ -1281,6 +1297,24 @@ def _lead_card_context(
         lead.display_note_text = (
             latest_note.note or ""
         )
+           
+    # ----------------------------------------------------
+    # CUSTOM ATTRIBUTE DEFINITIONS
+    #
+    # Definitions belong to the Lead's organization.
+    # Actual Lead values remain in lead.attributes.
+    # ----------------------------------------------------
+
+    attribute_definitions = (
+        AttributeDefinition.objects
+        .filter(
+            organization=lead.organization,
+        )
+        .order_by(
+            "display_order",
+            "created_at",
+        )
+    )
 
     return {
         "lead": lead,
@@ -1306,6 +1340,8 @@ def _lead_card_context(
                 "-created_at",
             )
         ),
+
+        "attribute_definitions": attribute_definitions,
 
         # ----------------------------------------------------
         # ENTIRE LEAD ACTIVITY
@@ -2406,6 +2442,172 @@ def lead_edit_save(
     )
 
     return response
+
+
+# ============================================================
+# ATTRIBUTE MANAGEMENT
+# ============================================================
+
+@crm_login_required
+@require_GET
+def attribute_create_modal(
+    request,
+):
+
+    user = request.crm_user
+
+    attributes_count = (
+        AttributeDefinition.objects
+        .filter(
+            organization=user.organization,
+        )
+        .count()
+    )
+
+    return render(
+        request,
+        "crm/partials/attribute_create_modal.html",
+        {
+            "attribute_types": (
+                AttributeDefinition.FieldType.choices
+            ),
+            "attribute_count": attributes_count,
+            "max_attributes": 15,
+        },
+    )
+
+
+@crm_login_required
+@require_POST
+def attribute_create_save(
+    request,
+):
+
+    user = request.crm_user
+
+    name = request.POST.get(
+        "name",
+        "",
+    ).strip()
+
+    field_type = request.POST.get(
+        "field_type",
+        "",
+    ).strip()
+
+    description = request.POST.get(
+        "description",
+        "",
+    ).strip()
+
+    options = [
+        value.strip()
+        for value in request.POST.getlist(
+            "options",
+        )
+        if value.strip()
+    ]
+
+    try:
+
+        attribute = create_attribute_definition(
+            organization=user.organization,
+            name=name,
+            field_type=field_type,
+            description=description,
+            options=options,
+        )
+
+    except DjangoValidationError as exc:
+
+        error_message = (
+            exc.message_dict
+            if hasattr(
+                exc,
+                "message_dict",
+            )
+            else exc.messages
+        )
+
+        return HttpResponse(
+            f"""
+            <div
+                class="
+                    p-4
+                    text-sm
+                    text-red-600
+                "
+            >
+                Validation error: {error_message}
+            </div>
+            """,
+            status=400,
+        )
+
+    response = HttpResponse("")
+
+    response["HX-Trigger"] = json.dumps(
+        {
+            "attributeCreated": {
+                "attribute_id": str(
+                    attribute.id
+                )
+            }
+        }
+    )
+
+    return response
+
+
+@crm_login_required
+@require_GET
+def attribute_manage_modal(
+    request,
+):
+    ...
+    
+@crm_login_required
+@require_GET
+def attribute_edit_modal(
+    request,
+    attribute_id,
+):
+    user = request.crm_user
+
+    attribute = get_object_or_404(
+        AttributeDefinition,
+        id=attribute_id,
+        organization=user.organization,
+    )
+
+    return render(
+        request,
+        "crm/partials/attribute_edit_modal.html",
+        {
+            "attribute": attribute,
+            "attribute_types": (
+                AttributeDefinition.FieldType.choices
+            ),
+        },
+    )
+
+
+@crm_login_required
+@require_POST
+def attribute_update_save(
+    request,
+    attribute_id,
+):
+    ...
+
+
+@crm_login_required
+@require_POST
+def attribute_delete(
+    request,
+    attribute_id,
+):
+    ...
 
 
 # ============================================================

@@ -1,0 +1,318 @@
+<div
+    class="
+        fixed
+        inset-0
+        z-50
+        bg-black/40
+        flex
+        items-center
+        justify-center
+        p-4
+    "
+>
+
+    <div
+        class="
+            bg-white
+            rounded-xl
+            w-full
+            max-w-2xl
+            max-h-[85vh]
+            overflow-hidden
+            shadow-xl
+        "
+    >
+
+        <!-- ====================================================
+             HEADER
+             ==================================================== -->
+
+        <div
+            class="
+                flex
+                items-center
+                justify-between
+                px-5
+                py-4
+                border-b
+                border-gray-200
+            "
+        >
+
+            <div>
+
+                <h2
+                    class="
+                        text-lg
+                        font-semibold
+                        text-gray-900
+                    "
+                >
+                    Manage Attributes
+                </h2>
+
+                <p
+                    class="
+                        mt-0.5
+                        text-xs
+                        text-gray-400
+                    "
+                >
+                    {{ attribute_count }} of {{ max_attributes }} attributes
+                </p>
+
+            </div>
+
+
+            <button
+                type="button"
+
+                onclick="
+                    document.getElementById('modal-root').innerHTML=''
+                "
+
+                class="
+                    w-8
+                    h-8
+                    rounded-md
+                    flex
+                    items-center
+                    justify-center
+                    text-gray-400
+                    hover:bg-gray-100
+                    hover:text-gray-700
+                "
+            >
+                <i class="ti ti-x text-lg"></i>
+            </button>
+
+        </div>
+
+
+        <!-- ====================================================
+             ATTRIBUTE LIST
+             ==================================================== -->
+
+        <div
+            class="
+                overflow-y-auto
+                max-h-[calc(85vh-80px)]
+            "
+        >
+
+            {% if attributes %}
+
+            <div class="divide-y divide-gray-100">
+
+                {% for attribute in attributes %}
+
+                <div
+                    class="
+                        px-5
+                        py-4
+                        flex
+                        items-center
+                        gap-4
+                    "
+                >
+
+                    <!-- INFORMATION -->
+
+                    <div class="min-w-0 flex-1">
+
+                        <div
+                            class="
+                                flex
+                                items-center
+                                gap-2
+                                min-w-0
+                            "
+                        >
+
+                            <p
+                                class="
+                                    text-sm
+                                    font-medium
+                                    text-gray-800
+                                    truncate
+                                "
+                            >
+                                {{ attribute.name }}
+                            </p>
+
+                            <span
+                                class="
+                                    shrink-0
+                                    inline-flex
+                                    items-center
+                                    px-2
+                                    py-0.5
+                                    rounded-md
+                                    bg-gray-50
+                                    text-[11px]
+                                    font-medium
+                                    text-gray-500
+                                "
+                            >
+                                {{ attribute.get_field_type_display }}
+                            </span>
+
+                        </div>
+
+
+                        {% if attribute.description %}
+
+                        <p
+                            class="
+                                mt-1
+                                text-xs
+                                text-gray-400
+                                truncate
+                            "
+                        >
+                            {{ attribute.description }}
+                        </p>
+
+                        {% endif %}
+
+                    </div>
+
+
+                    <!-- ACTIONS -->
+
+                    <div
+                        class="
+                            flex
+                            items-center
+                            gap-1
+                            shrink-0
+                        "
+                    >
+
+                        <button
+                            type="button"
+
+                            hx-get="/attributes/{{ attribute.id }}/edit/"
+
+                            hx-target="#modal-root"
+
+                            hx-swap="innerHTML"
+
+                            class="
+                                w-8
+                                h-8
+                                rounded-md
+                                flex
+                                items-center
+                                justify-center
+                                text-gray-400
+                                hover:bg-gray-100
+                                hover:text-gray-700
+                                transition
+                            "
+
+                            title="Edit attribute"
+                        >
+                            <i class="ti ti-pencil text-base"></i>
+                        </button>
+
+
+                        <button
+                            type="button"
+
+                            hx-post="/attributes/{{ attribute.id }}/delete/"
+
+                            hx-target="#modal-root"
+
+                            hx-swap="none"
+
+                            class="
+                                w-8
+                                h-8
+                                rounded-md
+                                flex
+                                items-center
+                                justify-center
+                                text-gray-400
+                                hover:bg-red-50
+                                hover:text-red-600
+                                transition
+                            "
+
+                            title="Delete attribute"
+                        >
+                            <i class="ti ti-trash text-base"></i>
+                        </button>
+
+                    </div>
+
+                </div>
+
+                {% endfor %}
+
+            </div>
+
+            {% else %}
+
+            <!-- EMPTY STATE -->
+
+            <div
+                class="
+                    px-5
+                    py-12
+                    text-center
+                "
+            >
+
+                <div
+                    class="
+                        w-12
+                        h-12
+                        mx-auto
+                        rounded-full
+                        bg-gray-50
+                        flex
+                        items-center
+                        justify-center
+                    "
+                >
+                    <i
+                        class="
+                            ti
+                            ti-adjustments-horizontal
+                            text-xl
+                            text-gray-400
+                        "
+                    ></i>
+                </div>
+
+                <p
+                    class="
+                        mt-3
+                        text-sm
+                        font-medium
+                        text-gray-700
+                    "
+                >
+                    No custom attributes yet
+                </p>
+
+                <p
+                    class="
+                        mt-1
+                        text-xs
+                        text-gray-400
+                    "
+                >
+                    Create your first attribute from the Add Attribute option.
+                </p>
+
+            </div>
+
+            {% endif %}
+
+        </div>
+
+    </div>
+
+</div>
