@@ -1,0 +1,725 @@
+{% load crm_extras %}
+
+<div
+    class="
+        fixed
+        inset-0
+        z-50
+        bg-black/40
+        flex
+        items-center
+        justify-center
+        p-4
+    "
+>
+
+    <div
+        class="
+            bg-white
+            rounded-xl
+            w-full
+            max-w-lg
+            max-h-[90vh]
+            overflow-hidden
+            shadow-xl
+        "
+    >
+
+        <!-- ====================================================
+             HEADER
+             ==================================================== -->
+
+        <div
+            class="
+                flex
+                items-center
+                justify-between
+                px-5
+                py-4
+                border-b
+                border-gray-200
+            "
+        >
+
+            <div>
+
+                <h2
+                    class="
+                        text-lg
+                        font-semibold
+                        text-gray-900
+                    "
+                >
+                    Edit Attribute
+                </h2>
+
+                <p
+                    class="
+                        mt-0.5
+                        text-xs
+                        text-gray-400
+                    "
+                >
+                    Update the attribute definition
+                </p>
+
+            </div>
+
+
+            <button
+                type="button"
+
+                onclick="
+                    document.getElementById('modal-root').innerHTML=''
+                "
+
+                class="
+                    w-8
+                    h-8
+                    rounded-md
+                    flex
+                    items-center
+                    justify-center
+                    text-gray-400
+                    hover:bg-gray-100
+                    hover:text-gray-700
+                "
+
+                aria-label="Close"
+            >
+                <i class="ti ti-x text-lg"></i>
+            </button>
+
+        </div>
+
+
+        <!-- ====================================================
+             FORM
+             ==================================================== -->
+
+        <form
+            method="post"
+
+            hx-post="{% url 'crm-attribute-update-save' attribute.id %}"
+
+            hx-target="#modal-root"
+
+            hx-swap="innerHTML"
+
+            class="
+                p-5
+                space-y-5
+                overflow-y-auto
+                max-h-[calc(90vh-80px)]
+            "
+        >
+
+            {% csrf_token %}
+
+
+            <!-- ==================================================
+                 ATTRIBUTE NAME
+                 ================================================== -->
+
+            <div>
+
+                <label
+                    for="edit-attribute-name"
+                    class="
+                        block
+                        text-xs
+                        font-medium
+                        text-gray-600
+                        mb-1.5
+                    "
+                >
+                    Attribute Name
+                </label>
+
+                <input
+                    id="edit-attribute-name"
+
+                    type="text"
+
+                    name="name"
+
+                    required
+
+                    maxlength="100"
+
+                    value="{{ attribute.name }}"
+
+                    class="
+                        w-full
+                        border
+                        border-gray-300
+                        rounded-lg
+                        px-3
+                        py-2.5
+                        text-sm
+                        text-gray-800
+                        outline-none
+                        focus:border-blue-500
+                        focus:ring-2
+                        focus:ring-blue-500/10
+                    "
+                >
+
+            </div>
+
+
+            <!-- ==================================================
+                 ATTRIBUTE TYPE
+                 ================================================== -->
+
+            <div>
+
+                <label
+                    for="edit-attribute-type"
+                    class="
+                        block
+                        text-xs
+                        font-medium
+                        text-gray-600
+                        mb-1.5
+                    "
+                >
+                    Attribute Type
+                </label>
+
+                <select
+                    id="edit-attribute-type"
+
+                    name="field_type"
+
+                    required
+
+                    class="
+                        w-full
+                        border
+                        border-gray-300
+                        rounded-lg
+                        px-3
+                        py-2.5
+                        text-sm
+                        text-gray-800
+                        bg-white
+                        outline-none
+                        focus:border-blue-500
+                        focus:ring-2
+                        focus:ring-blue-500/10
+                    "
+                >
+
+                    {% for value, label in attribute_types %}
+
+                    <option
+                        value="{{ value }}"
+                        {% if attribute.field_type == value %}
+                            selected
+                        {% endif %}
+                    >
+                        {{ label }}
+                    </option>
+
+                    {% endfor %}
+
+                </select>
+
+            </div>
+
+
+            <!-- ==================================================
+                 DESCRIPTION
+                 ================================================== -->
+
+            <div>
+
+                <label
+                    for="edit-attribute-description"
+                    class="
+                        block
+                        text-xs
+                        font-medium
+                        text-gray-600
+                        mb-1.5
+                    "
+                >
+                    Description
+                </label>
+
+                <textarea
+                    id="edit-attribute-description"
+
+                    name="description"
+
+                    rows="3"
+
+                    placeholder="Describe what this attribute is used for."
+
+                    class="
+                        w-full
+                        border
+                        border-gray-300
+                        rounded-lg
+                        px-3
+                        py-2.5
+                        text-sm
+                        text-gray-800
+                        resize-none
+                        outline-none
+                        focus:border-blue-500
+                        focus:ring-2
+                        focus:ring-blue-500/10
+                    "
+                >{{ attribute.description }}</textarea>
+
+            </div>
+
+
+            <!-- ==================================================
+                 OPTIONS
+                 ================================================== -->
+
+            <div
+                id="edit-attribute-options-section"
+
+                class="{% if attribute.field_type != 'option' %}hidden{% endif %}"
+            >
+
+                <div
+                    class="
+                        flex
+                        items-center
+                        justify-between
+                        mb-1.5
+                    "
+                >
+
+                    <label
+                        class="
+                            block
+                            text-xs
+                            font-medium
+                            text-gray-600
+                        "
+                    >
+                        Options
+                    </label>
+
+                    <button
+                        type="button"
+
+                        id="edit-add-attribute-option"
+
+                        class="
+                            text-xs
+                            font-medium
+                            text-blue-600
+                            hover:text-blue-700
+                        "
+                    >
+                        + Add Option
+                    </button>
+
+                </div>
+
+
+                <div
+                    id="edit-attribute-options-list"
+
+                    class="space-y-2"
+                >
+
+                    {% if attribute.options %}
+
+                        {% for option in attribute.options %}
+
+                        <div
+                            class="
+                                flex
+                                items-center
+                                gap-2
+                                attribute-option-row
+                            "
+                        >
+
+                            <input
+                                type="text"
+
+                                name="options"
+
+                                value="{{ option }}"
+
+                                class="
+                                    flex-1
+                                    border
+                                    border-gray-300
+                                    rounded-lg
+                                    px-3
+                                    py-2.5
+                                    text-sm
+                                    text-gray-800
+                                    outline-none
+                                    focus:border-blue-500
+                                    focus:ring-2
+                                    focus:ring-blue-500/10
+                                "
+                            >
+
+                            <button
+                                type="button"
+
+                                class="
+                                    option-remove
+                                    w-8
+                                    h-8
+                                    rounded-md
+                                    flex
+                                    items-center
+                                    justify-center
+                                    text-gray-400
+                                    hover:bg-red-50
+                                    hover:text-red-600
+                                "
+                            >
+                                <i class="ti ti-x"></i>
+                            </button>
+
+                        </div>
+
+                        {% endfor %}
+
+                    {% else %}
+
+                        <div
+                            class="
+                                flex
+                                items-center
+                                gap-2
+                                attribute-option-row
+                            "
+                        >
+
+                            <input
+                                type="text"
+
+                                name="options"
+
+                                placeholder="Option 1"
+
+                                class="
+                                    flex-1
+                                    border
+                                    border-gray-300
+                                    rounded-lg
+                                    px-3
+                                    py-2.5
+                                    text-sm
+                                    text-gray-800
+                                    outline-none
+                                    focus:border-blue-500
+                                    focus:ring-2
+                                    focus:ring-blue-500/10
+                                "
+                            >
+
+                            <button
+                                type="button"
+
+                                class="
+                                    option-remove
+                                    hidden
+                                    w-8
+                                    h-8
+                                    rounded-md
+                                    flex
+                                    items-center
+                                    justify-center
+                                    text-gray-400
+                                    hover:bg-red-50
+                                    hover:text-red-600
+                                "
+                            >
+                                <i class="ti ti-x"></i>
+                            </button>
+
+                        </div>
+
+                    {% endif %}
+
+                </div>
+
+            </div>
+
+
+            <!-- ==================================================
+                 ACTIONS
+                 ================================================== -->
+
+            <div
+                class="
+                    flex
+                    justify-end
+                    gap-2
+                    pt-3
+                    border-t
+                    border-gray-100
+                "
+            >
+
+                <button
+                    type="button"
+
+                    onclick="
+                        document.getElementById('modal-root').innerHTML=''
+                    "
+
+                    class="
+                        px-4
+                        py-2
+                        rounded-lg
+                        border
+                        border-gray-300
+                        bg-white
+                        text-sm
+                        font-medium
+                        text-gray-700
+                        hover:bg-gray-50
+                    "
+                >
+                    Cancel
+                </button>
+
+
+                <button
+                    type="submit"
+
+                    class="
+                        inline-flex
+                        items-center
+                        gap-2
+                        px-4
+                        py-2
+                        rounded-lg
+                        bg-gray-900
+                        text-white
+                        text-sm
+                        font-medium
+                        hover:bg-gray-800
+                    "
+                >
+
+                    <i class="ti ti-check"></i>
+
+                    Save Changes
+
+                </button>
+
+            </div>
+
+        </form>
+
+    </div>
+
+</div>
+
+
+<script>
+
+(function () {
+
+    const fieldType =
+        document.getElementById(
+            'edit-attribute-type'
+        );
+
+    const optionsSection =
+        document.getElementById(
+            'edit-attribute-options-section'
+        );
+
+    const optionsList =
+        document.getElementById(
+            'edit-attribute-options-list'
+        );
+
+    const addOptionButton =
+        document.getElementById(
+            'edit-add-attribute-option'
+        );
+
+
+    if (
+        !fieldType ||
+        !optionsSection ||
+        !optionsList ||
+        !addOptionButton
+    ) {
+        return;
+    }
+
+
+    function updateOptionsVisibility() {
+
+        const isOptionPicker =
+            fieldType.value === 'option';
+
+        if (isOptionPicker) {
+
+            optionsSection.classList.remove(
+                'hidden'
+            );
+
+        } else {
+
+            optionsSection.classList.add(
+                'hidden'
+            );
+
+        }
+
+    }
+
+
+    function updateRemoveButtons() {
+
+        const rows =
+            optionsList.querySelectorAll(
+                '.attribute-option-row'
+            );
+
+        rows.forEach(
+            function(row) {
+
+                const removeButton =
+                    row.querySelector(
+                        '.option-remove'
+                    );
+
+                if (!removeButton) {
+                    return;
+                }
+
+                if (rows.length > 1) {
+
+                    removeButton.classList.remove(
+                        'hidden'
+                    );
+
+                } else {
+
+                    removeButton.classList.add(
+                        'hidden'
+                    );
+
+                }
+
+            }
+        );
+
+    }
+
+
+    addOptionButton.addEventListener(
+        'click',
+        function() {
+
+            const row =
+                document.createElement(
+                    'div'
+                );
+
+            row.className =
+                'flex items-center gap-2 attribute-option-row';
+
+            row.innerHTML = `
+                <input
+                    type="text"
+                    name="options"
+                    placeholder="Option"
+                    class="
+                        flex-1
+                        border
+                        border-gray-300
+                        rounded-lg
+                        px-3
+                        py-2.5
+                        text-sm
+                        text-gray-800
+                        outline-none
+                        focus:border-blue-500
+                        focus:ring-2
+                        focus:ring-blue-500/10
+                    "
+                >
+
+                <button
+                    type="button"
+                    class="
+                        option-remove
+                        w-8
+                        h-8
+                        rounded-md
+                        flex
+                        items-center
+                        justify-center
+                        text-gray-400
+                        hover:bg-red-50
+                        hover:text-red-600
+                    "
+                >
+                    <i class="ti ti-x"></i>
+                </button>
+            `;
+
+            optionsList.appendChild(
+                row
+            );
+
+            updateRemoveButtons();
+
+        }
+    );
+
+
+    optionsList.addEventListener(
+        'click',
+        function(event) {
+
+            const removeButton =
+                event.target.closest(
+                    '.option-remove'
+                );
+
+            if (!removeButton) {
+                return;
+            }
+
+            const row =
+                removeButton.closest(
+                    '.attribute-option-row'
+                );
+
+            if (row) {
+                row.remove();
+            }
+
+            updateRemoveButtons();
+
+        }
+    );
+
+
+    fieldType.addEventListener(
+        'change',
+        updateOptionsVisibility
+    );
+
+
+    updateOptionsVisibility();
+    updateRemoveButtons();
+
+})();
+
+</script>

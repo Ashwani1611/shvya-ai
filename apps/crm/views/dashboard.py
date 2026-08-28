@@ -2449,12 +2449,12 @@ def lead_edit_save(
 # ATTRIBUTE MANAGEMENT
 # ============================================================
 
+
 @crm_login_required
 @require_GET
 def attribute_create_modal(
     request,
 ):
-
     user = request.crm_user
 
     attributes_count = (
@@ -2465,6 +2465,11 @@ def attribute_create_modal(
         .count()
     )
 
+    lead_id = request.GET.get(
+        "lead_id",
+        "",
+    ).strip()
+
     return render(
         request,
         "crm/partials/attribute_create_modal.html",
@@ -2474,6 +2479,7 @@ def attribute_create_modal(
             ),
             "attribute_count": attributes_count,
             "max_attributes": 15,
+            "lead_id": lead_id,
         },
     )
 
@@ -2483,7 +2489,6 @@ def attribute_create_modal(
 def attribute_create_save(
     request,
 ):
-
     user = request.crm_user
 
     name = request.POST.get(
@@ -2508,6 +2513,11 @@ def attribute_create_save(
         )
         if value.strip()
     ]
+
+    lead_id = request.POST.get(
+        "lead_id",
+        "",
+    ).strip()
 
     try:
 
@@ -2552,7 +2562,8 @@ def attribute_create_save(
             "attributeCreated": {
                 "attribute_id": str(
                     attribute.id
-                )
+                ),
+                "lead_id": lead_id,
             }
         }
     )
@@ -2565,8 +2576,30 @@ def attribute_create_save(
 def attribute_manage_modal(
     request,
 ):
-    ...
-    
+    user = request.crm_user
+
+    attributes = (
+        AttributeDefinition.objects
+        .filter(
+            organization=user.organization,
+        )
+        .order_by(
+            "display_order",
+            "created_at",
+        )
+    )
+
+    return render(
+        request,
+        "crm/partials/manage_attributes_modal.html",
+        {
+            "attributes": attributes,
+            "attribute_count": attributes.count(),
+            "max_attributes": 15,
+        },
+    )
+
+
 @crm_login_required
 @require_GET
 def attribute_edit_modal(
@@ -2599,7 +2632,87 @@ def attribute_update_save(
     request,
     attribute_id,
 ):
-    ...
+    user = request.crm_user
+
+    attribute = get_object_or_404(
+        AttributeDefinition,
+        id=attribute_id,
+        organization=user.organization,
+    )
+
+    name = request.POST.get(
+        "name",
+        "",
+    ).strip()
+
+    field_type = request.POST.get(
+        "field_type",
+        "",
+    ).strip()
+
+    description = request.POST.get(
+        "description",
+        "",
+    ).strip()
+
+    options = [
+        value.strip()
+        for value in request.POST.getlist(
+            "options",
+        )
+        if value.strip()
+    ]
+
+    try:
+
+        update_attribute_definition(
+            organization=user.organization,
+            attribute=attribute,
+            name=name,
+            field_type=field_type,
+            description=description,
+            options=options,
+        )
+
+    except DjangoValidationError as exc:
+
+        error_message = (
+            exc.message_dict
+            if hasattr(
+                exc,
+                "message_dict",
+            )
+            else exc.messages
+        )
+
+        return HttpResponse(
+            f"""
+            <div
+                class="
+                    p-4
+                    text-sm
+                    text-red-600
+                "
+            >
+                Validation error: {error_message}
+            </div>
+            """,
+            status=400,
+        )
+
+    response = HttpResponse("")
+
+    response["HX-Trigger"] = json.dumps(
+        {
+            "attributeUpdated": {
+                "attribute_id": str(
+                    attribute.id
+                )
+            }
+        }
+    )
+
+    return response
 
 
 @crm_login_required
@@ -2608,7 +2721,61 @@ def attribute_delete(
     request,
     attribute_id,
 ):
-    ...
+    user = request.crm_user
+
+    attribute = get_object_or_404(
+        AttributeDefinition,
+        id=attribute_id,
+        organization=user.organization,
+    )
+
+    try:
+
+        delete_attribute_definition(
+            organization=user.organization,
+            attribute=attribute,
+        )
+
+    except DjangoValidationError as exc:
+
+        error_message = (
+            exc.message_dict
+            if hasattr(
+                exc,
+                "message_dict",
+            )
+            else exc.messages
+        )
+
+        return HttpResponse(
+            f"""
+            <div
+                class="
+                    p-4
+                    text-sm
+                    text-red-600
+                "
+            >
+                Validation error: {error_message}
+            </div>
+            """,
+            status=400,
+        )
+
+    response = HttpResponse("")
+
+    response["HX-Trigger"] = json.dumps(
+        {
+            "attributeDeleted": {
+                "attribute_id": str(
+                    attribute.id
+                )
+            }
+        }
+    )
+
+    return response
+
 
 @crm_login_required
 @require_GET

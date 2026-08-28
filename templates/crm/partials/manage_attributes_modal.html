@@ -1,3 +1,5 @@
+{% load crm_extras %}
+
 <div
     class="
         fixed
@@ -82,6 +84,7 @@
                     hover:bg-gray-100
                     hover:text-gray-700
                 "
+                aria-label="Close"
             >
                 <i class="ti ti-x text-lg"></i>
             </button>
@@ -189,10 +192,12 @@
                         "
                     >
 
+                        <!-- EDIT -->
+
                         <button
                             type="button"
 
-                            hx-get="/attributes/{{ attribute.id }}/edit/"
+                            hx-get="{% url 'crm-attribute-edit-modal' attribute.id %}"
 
                             hx-target="#modal-root"
 
@@ -212,15 +217,18 @@
                             "
 
                             title="Edit attribute"
+                            aria-label="Edit {{ attribute.name }}"
                         >
                             <i class="ti ti-pencil text-base"></i>
                         </button>
 
 
+                        <!-- DELETE -->
+
                         <button
                             type="button"
 
-                            hx-post="/attributes/{{ attribute.id }}/delete/"
+                            hx-post="{% url 'crm-attribute-delete' attribute.id %}"
 
                             hx-target="#modal-root"
 
@@ -240,6 +248,7 @@
                             "
 
                             title="Delete attribute"
+                            aria-label="Delete {{ attribute.name }}"
                         >
                             <i class="ti ti-trash text-base"></i>
                         </button>
@@ -254,7 +263,9 @@
 
             {% else %}
 
-            <!-- EMPTY STATE -->
+            <!-- ====================================================
+                 EMPTY STATE
+                 ==================================================== -->
 
             <div
                 class="
@@ -304,7 +315,7 @@
                         text-gray-400
                     "
                 >
-                    Create your first attribute from the Add Attribute option.
+                    Create your first attribute from Add Attribute.
                 </p>
 
             </div>
