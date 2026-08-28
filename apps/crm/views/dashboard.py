@@ -512,7 +512,7 @@ def _build_lead_table_context(
 
                 lead.display_note_text = ""
 
-                            # ----------------------------------------------------
+            # ----------------------------------------------------
             # ENTIRE LEAD ACTIVITY
             #
             # Activity belongs permanently to the Lead.
@@ -825,48 +825,6 @@ def lead_stage_create(
 
 
 # ============================================================
-# RENAME STAGE
-# ============================================================
-
-@crm_login_required
-@require_POST
-def lead_stage_rename(
-    request,
-    stage_id,
-):
-
-    user = request.crm_user
-
-    organization = user.organization
-
-
-    name = (
-        request.POST.get(
-            "name",
-            "",
-        )
-        .strip()
-    )
-
-
-    active_stage_id = (
-        request.POST.get(
-            "active_stage",
-            "",
-        )
-        .strip()
-    )
-
-
-    if not name:
-
-        return HttpResponse(
-            "Stage name is required.",
-            status=400,
-        )
-
-
-# ============================================================
 # DELETE STAGE
 # ============================================================
 
@@ -1004,108 +962,6 @@ def lead_stage_delete(
         user=user,
         pipeline=stage.pipeline,
         active_stage_id=active_stage_id,
-    )
-
-
-    return render(
-        request,
-        "crm/partials/lead_table.html",
-        context,
-    )
-
-    # --------------------------------------------------------
-    # ALLOWED PIPELINES
-    # --------------------------------------------------------
-
-    allowed_pipelines = (
-        get_user_pipelines(
-            user
-        )
-        .filter(
-            organization=organization,
-            is_active=True,
-        )
-    )
-
-
-    # --------------------------------------------------------
-    # LOAD STAGE
-    # --------------------------------------------------------
-
-    stage = (
-        Stage.objects
-        .filter(
-            id=stage_id,
-            pipeline__in=allowed_pipelines,
-            is_active=True,
-        )
-        .select_related(
-            "pipeline",
-        )
-        .first()
-    )
-
-
-    if not stage:
-
-        return HttpResponse(
-            "Stage not found.",
-            status=404,
-        )
-
-
-    # --------------------------------------------------------
-    # DUPLICATE NAME
-    # --------------------------------------------------------
-
-    if (
-        Stage.objects
-        .filter(
-            pipeline=stage.pipeline,
-            is_active=True,
-            name__iexact=name,
-        )
-        .exclude(
-            id=stage.id,
-        )
-        .exists()
-    ):
-
-        return HttpResponse(
-            "A stage with this name already exists.",
-            status=400,
-        )
-
-
-    # --------------------------------------------------------
-    # RENAME
-    # --------------------------------------------------------
-
-    stage.name = name
-
-    stage.save(
-        update_fields=[
-            "name",
-        ]
-    )
-
-
-    # --------------------------------------------------------
-    # RENDER UPDATED TABLE
-    #
-    # No redirect.
-    # No browser navigation.
-    # Only #lead-table-container is replaced.
-    # --------------------------------------------------------
-
-    context = _build_lead_table_context(
-        request=request,
-        user=user,
-        pipeline=stage.pipeline,
-        active_stage_id=(
-            active_stage_id
-            or str(stage.id)
-        ),
     )
 
 
