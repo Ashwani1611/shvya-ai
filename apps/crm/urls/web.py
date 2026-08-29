@@ -37,6 +37,15 @@ from apps.crm.views.dashboard import (
     lead_attribute_values_save,
     lead_import_start_modal,
     lead_import_start,
+    lead_import_upload_modal,
+    lead_import_upload,
+    lead_import_sample_file,
+    lead_import_mapping_modal,
+    lead_import_mapping_save,
+    lead_import_destination_modal,
+    lead_import_destination_save,
+    lead_import_review_modal,
+    lead_import_execute,
 )
 
 
@@ -311,4 +320,74 @@ urlpatterns = [
         lead_import_start,
         name="crm-lead-import-start",
     ),
+
+    # ========================================================
+    # IMPORT LEADS — FILE UPLOAD
+    # ========================================================
+
+    path(
+        "leads/import/upload/",
+        lead_import_upload_modal,
+        name="crm-lead-import-upload-modal",
+    ),
+
+    path(
+        "leads/import/upload/save/",
+        lead_import_upload,
+        name="crm-lead-import-upload",
+    ),
+
+    path(
+        "leads/import/sample/",
+        lead_import_sample_file,
+        name="crm-lead-import-sample",
+    ),
+# ========================================================
+# IMPORT LEADS — FIELD MAPPING
+# ========================================================
+
+path(
+    "leads/import/mapping/",
+    lead_import_mapping_modal,
+    name="crm-lead-import-mapping-modal",
+),
+
+path(
+    "leads/import/mapping/save/",
+    lead_import_mapping_save,
+    name="crm-lead-import-mapping-save",
+),
+
+# ========================================================
+# IMPORT LEADS — DESTINATION / ASSIGNMENT
+# ========================================================
+
+path(
+    "leads/import/destination/",
+    lead_import_destination_modal,
+    name="crm-lead-import-destination-modal",
+),
+
+path(
+    "leads/import/destination/save/",
+    lead_import_destination_save,
+    name="crm-lead-import-destination-save",
+),
+
+# ========================================================
+# IMPORT LEADS — REVIEW / EXECUTE
+# ========================================================
+
+path(
+    "leads/import/review/",
+    lead_import_review_modal,
+    name="crm-lead-import-review-modal",
+),
+
+path(
+    "leads/import/execute/",
+    lead_import_execute,
+    name="crm-lead-import-execute",
+),
+
 ]

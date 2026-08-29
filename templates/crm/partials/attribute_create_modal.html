@@ -82,10 +82,10 @@
                     hover:bg-gray-100
                     hover:text-gray-700
                 "
+
+                aria-label="Close"
             >
-
                 <i class="ti ti-x text-lg"></i>
-
             </button>
 
         </div>
@@ -96,13 +96,17 @@
              ==================================================== -->
 
         <form
+            id="attribute-create-form"
+
             method="post"
+
+            action="{% url 'crm-attribute-create-save' %}"
 
             hx-post="{% url 'crm-attribute-create-save' %}"
 
             hx-target="#modal-root"
 
-            hx-swap="innerHTML"
+            hx-swap="none"
 
             class="
                 p-5
@@ -112,10 +116,20 @@
             "
         >
 
+            <!-- =================================================
+                 CONTEXT
+                 ================================================= -->
+
             <input
                 type="hidden"
                 name="lead_id"
                 value="{{ lead_id }}"
+            >
+
+            <input
+                type="hidden"
+                name="import_token"
+                value="{{ import_token }}"
             >
 
             {% csrf_token %}
@@ -128,6 +142,7 @@
             <div>
 
                 <label
+                    for="attribute-name"
                     class="
                         block
                         text-xs
@@ -140,10 +155,17 @@
                 </label>
 
                 <input
+                    id="attribute-name"
+
                     type="text"
+
                     name="name"
+
                     required
+
                     maxlength="100"
+
+                    autocomplete="off"
 
                     placeholder="e.g. Company"
 
@@ -173,6 +195,7 @@
             <div>
 
                 <label
+                    for="attribute-field-type"
                     class="
                         block
                         text-xs
@@ -186,7 +209,9 @@
 
                 <select
                     name="field_type"
+
                     id="attribute-field-type"
+
                     required
 
                     class="
@@ -228,6 +253,7 @@
             <div>
 
                 <label
+                    for="attribute-description"
                     class="
                         block
                         text-xs
@@ -240,7 +266,10 @@
                 </label>
 
                 <textarea
+                    id="attribute-description"
+
                     name="description"
+
                     rows="3"
 
                     placeholder="Describe what this attribute is used for."
@@ -295,6 +324,7 @@
                         Options
                     </label>
 
+
                     <button
                         type="button"
 
@@ -329,7 +359,9 @@
 
                         <input
                             type="text"
+
                             name="options"
+
                             placeholder="Option 1"
 
                             class="
@@ -348,6 +380,7 @@
                             "
                         >
 
+
                         <button
                             type="button"
 
@@ -364,6 +397,8 @@
                                 hover:bg-red-50
                                 hover:text-red-600
                             "
+
+                            aria-label="Remove option"
                         >
                             <i class="ti ti-x"></i>
                         </button>
@@ -451,6 +486,11 @@
 
 (function () {
 
+    const form =
+        document.getElementById(
+            'attribute-create-form'
+        );
+
     const fieldType =
         document.getElementById(
             'attribute-field-type'
@@ -473,6 +513,7 @@
 
 
     if (
+        !form ||
         !fieldType ||
         !optionsSection ||
         !optionsList ||
@@ -483,6 +524,10 @@
 
     }
 
+
+    /* =========================================================
+       OPTION VISIBILITY
+       ========================================================= */
 
     function updateOptionsVisibility() {
 
@@ -506,6 +551,10 @@
     }
 
 
+    /* =========================================================
+       REMOVE BUTTONS
+       ========================================================= */
+
     function updateRemoveButtons() {
 
         const rows =
@@ -514,7 +563,7 @@
             );
 
         rows.forEach(
-            function(row, index) {
+            function (row) {
 
                 const removeButton =
                     row.querySelector(
@@ -522,7 +571,9 @@
                     );
 
                 if (!removeButton) {
+
                     return;
+
                 }
 
                 if (rows.length > 1) {
@@ -545,9 +596,13 @@
     }
 
 
+    /* =========================================================
+       ADD OPTION
+       ========================================================= */
+
     addOptionButton.addEventListener(
         'click',
-        function() {
+        function () {
 
             const row =
                 document.createElement(
@@ -592,6 +647,7 @@
                         hover:bg-red-50
                         hover:text-red-600
                     "
+                    aria-label="Remove option"
                 >
                     <i class="ti ti-x"></i>
                 </button>
@@ -607,9 +663,13 @@
     );
 
 
+    /* =========================================================
+       REMOVE OPTION
+       ========================================================= */
+
     optionsList.addEventListener(
         'click',
-        function(event) {
+        function (event) {
 
             const removeButton =
                 event.target.closest(
@@ -617,7 +677,9 @@
                 );
 
             if (!removeButton) {
+
                 return;
+
             }
 
             const row =
@@ -637,13 +699,91 @@
     );
 
 
+    /* =========================================================
+       FIELD TYPE
+       ========================================================= */
+
     fieldType.addEventListener(
         'change',
         updateOptionsVisibility
     );
 
 
+    /* =========================================================
+       IMPORT FLOW
+       =========================================================
+
+       When this Attribute Create modal was opened from
+       Import Mapping, the hidden import_token exists.
+
+       After successful creation we explicitly return to the
+       mapping screen.
+
+       Normal Attribute Create continues using the existing
+       global attributeCreated event.
+       ========================================================= */
+
+    form.addEventListener(
+        'htmx:afterRequest',
+        function (event) {
+
+            if (
+                !event.detail ||
+                !event.detail.successful
+            ) {
+
+                return;
+
+            }
+
+
+            const importToken =
+                form.querySelector(
+                    'input[name="import_token"]'
+                )?.value ||
+                '';
+
+
+            if (!importToken) {
+
+                return;
+
+            }
+
+
+            const mappingUrl =
+                '/dashboard/leads/import/mapping/?token=' +
+                encodeURIComponent(
+                    importToken
+                );
+
+
+            /*
+             * Return directly to the import mapping screen.
+             *
+             * The AttributeDefinition has already been
+             * created by this point.
+             */
+
+            htmx.ajax(
+                'GET',
+                mappingUrl,
+                {
+                    target: '#modal-root',
+                    swap: 'innerHTML'
+                }
+            );
+
+        }
+    );
+
+
+    /* =========================================================
+       INITIALIZE
+       ========================================================= */
+
     updateOptionsVisibility();
+
     updateRemoveButtons();
 
 })();

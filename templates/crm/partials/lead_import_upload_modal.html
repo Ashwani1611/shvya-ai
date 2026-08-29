@@ -1,0 +1,377 @@
+<div
+    class="
+        fixed
+        inset-0
+        z-50
+        bg-black/40
+        flex
+        items-center
+        justify-center
+        p-4
+    "
+>
+
+    <div
+        class="
+            bg-white
+            rounded-xl
+            w-full
+            max-w-lg
+            shadow-xl
+        "
+    >
+
+        <!-- =================================================
+             HEADER
+             ================================================= -->
+
+        <div
+            class="
+                px-5
+                py-4
+                border-b
+                border-gray-200
+                flex
+                items-center
+                justify-between
+            "
+        >
+
+            <div>
+
+                <h2
+                    class="
+                        text-lg
+                        font-semibold
+                        text-gray-900
+                    "
+                >
+                    Import Leads
+                </h2>
+
+                <p
+                    class="
+                        mt-0.5
+                        text-xs
+                        text-gray-400
+                    "
+                >
+                    Upload your file
+                </p>
+
+            </div>
+
+
+            <button
+                type="button"
+
+                onclick="
+                    document.getElementById('modal-root').innerHTML=''
+                "
+
+                class="
+                    w-8
+                    h-8
+                    rounded-md
+                    flex
+                    items-center
+                    justify-center
+                    text-gray-400
+                    hover:bg-gray-100
+                    hover:text-gray-700
+                "
+
+                aria-label="Close"
+            >
+                <i class="ti ti-x text-lg"></i>
+            </button>
+
+        </div>
+
+
+        <!-- =================================================
+             UPLOAD FORM
+             ================================================= -->
+
+        <form
+            method="post"
+
+            enctype="multipart/form-data"
+
+            hx-post="{% url 'crm-lead-import-upload' %}"
+
+            hx-target="#modal-root"
+
+            hx-swap="none"
+
+            hx-encoding="multipart/form-data"
+
+            class="
+                p-5
+                space-y-5
+            "
+        >
+
+            {% csrf_token %}
+
+
+            <input
+                type="hidden"
+                name="import_token"
+                value="{{ import_token }}"
+            >
+
+
+            <!-- =================================================
+                 FILE DROP / SELECT
+                 ================================================= -->
+
+            <label
+                for="lead-import-file"
+                class="
+                    block
+                    cursor-pointer
+                    border-2
+                    border-dashed
+                    border-gray-200
+                    rounded-xl
+                    p-8
+                    text-center
+                    hover:border-gray-300
+                    hover:bg-gray-50
+                    transition
+                "
+            >
+
+                <div
+                    class="
+                        w-12
+                        h-12
+                        mx-auto
+                        rounded-full
+                        bg-gray-50
+                        flex
+                        items-center
+                        justify-center
+                    "
+                >
+                    <i
+                        class="
+                            ti
+                            ti-upload
+                            text-xl
+                            text-gray-500
+                        "
+                    ></i>
+                </div>
+
+
+                <p
+                    class="
+                        mt-3
+                        text-sm
+                        font-medium
+                        text-gray-700
+                    "
+                >
+                    Browse file to Upload
+                </p>
+
+
+                <p
+                    id="lead-import-file-name"
+                    class="
+                        mt-1
+                        text-xs
+                        text-gray-400
+                    "
+                >
+                    CSV, XLS or XLSX file
+                    · Maximum 10 MB
+                </p>
+
+
+                <input
+                    id="lead-import-file"
+
+                    type="file"
+
+                    name="file"
+
+                    required
+
+                    accept=".csv,.xls,.xlsx"
+
+                    class="hidden"
+
+                    onchange="
+                        const file = this.files[0];
+                        const label = document.getElementById('lead-import-file-name');
+
+                        if (file) {
+                            label.textContent =
+                                file.name +
+                                ' · ' +
+                                (file.size / 1024 / 1024).toFixed(2) +
+                                ' MB';
+                        } else {
+                            label.textContent =
+                                'CSV, XLS or XLSX file · Maximum 10 MB';
+                        }
+                    "
+                >
+
+            </label>
+
+
+            <!-- =================================================
+                 SAMPLE FILE
+                 ================================================= -->
+
+            <div
+                class="
+                    flex
+                    items-center
+                    justify-between
+                    rounded-lg
+                    bg-gray-50
+                    border
+                    border-gray-100
+                    px-4
+                    py-3
+                "
+            >
+
+                <div>
+
+                    <p
+                        class="
+                            text-sm
+                            font-medium
+                            text-gray-700
+                        "
+                    >
+                        Need a sample?
+                    </p>
+
+                    <p
+                        class="
+                            mt-0.5
+                            text-xs
+                            text-gray-400
+                        "
+                    >
+                        Use the recommended column format.
+                    </p>
+
+                </div>
+
+
+                <a
+                    href="{% url 'crm-lead-import-sample' %}"
+
+                    class="
+                        inline-flex
+                        items-center
+                        gap-1.5
+                        text-sm
+                        font-medium
+                        text-blue-600
+                        hover:text-blue-700
+                    "
+                >
+                    <i class="ti ti-download"></i>
+                    Download sample file
+                </a>
+
+            </div>
+
+
+            <!-- =================================================
+                 FOOTER
+                 ================================================= -->
+
+            <div
+                class="
+                    flex
+                    items-center
+                    justify-between
+                    pt-3
+                    border-t
+                    border-gray-100
+                "
+            >
+
+                <button
+                    type="button"
+
+                    hx-get="{% url 'crm-lead-import-start-modal' %}"
+
+                    hx-target="#modal-root"
+
+                    hx-swap="innerHTML"
+
+                    class="
+                        px-4
+                        py-2
+                        rounded-lg
+                        border
+                        border-gray-300
+                        text-sm
+                        font-medium
+                        text-gray-700
+                        hover:bg-gray-50
+                    "
+                >
+                    Back
+                </button>
+
+
+                <div
+                    class="
+                        flex
+                        items-center
+                        gap-3
+                    "
+                >
+
+                    <span
+                        class="
+                            text-xs
+                            text-gray-400
+                        "
+                    >
+                        2 of 5
+                    </span>
+
+
+                    <button
+                        type="submit"
+
+                        class="
+                            inline-flex
+                            items-center
+                            gap-2
+                            px-4
+                            py-2
+                            rounded-lg
+                            bg-gray-900
+                            text-white
+                            text-sm
+                            font-medium
+                            hover:bg-gray-800
+                        "
+                    >
+                        Next
+                        <i class="ti ti-arrow-right"></i>
+                    </button>
+
+                </div>
+
+            </div>
+
+        </form>
+
+    </div>
+
+</div>

@@ -1,0 +1,194 @@
+<div
+    class="
+        fixed
+        inset-0
+        z-50
+        bg-black/40
+        flex
+        items-center
+        justify-center
+        p-4
+    "
+>
+
+    <div
+        class="
+            bg-white
+            rounded-xl
+            w-full
+            max-w-md
+            shadow-xl
+            p-6
+            text-center
+        "
+    >
+
+        <div
+            class="
+                w-12
+                h-12
+                mx-auto
+                rounded-full
+                bg-gray-50
+                flex
+                items-center
+                justify-center
+            "
+        >
+            <i
+                class="
+                    ti
+                    ti-check
+                    text-xl
+                    text-green-600
+                "
+            ></i>
+        </div>
+
+
+        <h2
+            class="
+                mt-4
+                text-lg
+                font-semibold
+                text-gray-900
+            "
+        >
+            Import started
+        </h2>
+
+
+        <p
+            class="
+                mt-2
+                text-sm
+                text-gray-500
+            "
+        >
+            Your leads have been processed.
+        </p>
+
+
+        <div
+            class="
+                mt-5
+                text-left
+                space-y-2
+                rounded-xl
+                bg-gray-50
+                p-4
+            "
+        >
+
+            <div
+                class="
+                    flex
+                    justify-between
+                    text-sm
+                "
+            >
+                <span class="text-gray-500">
+                    Created
+                </span>
+
+                <span class="font-medium text-gray-800">
+                    {{ created_count }}
+                </span>
+            </div>
+
+
+            <div
+                class="
+                    flex
+                    justify-between
+                    text-sm
+                "
+            >
+                <span class="text-gray-500">
+                    Updated
+                </span>
+
+                <span class="font-medium text-gray-800">
+                    {{ updated_count }}
+                </span>
+            </div>
+
+
+            <div
+                class="
+                    flex
+                    justify-between
+                    text-sm
+                "
+            >
+                <span class="text-gray-500">
+                    Skipped
+                </span>
+
+                <span class="font-medium text-gray-800">
+                    {{ skipped_count }}
+                </span>
+            </div>
+
+
+            {% if invalid_count %}
+
+            <div
+                class="
+                    flex
+                    justify-between
+                    text-sm
+                "
+            >
+                <span class="text-gray-500">
+                    Invalid
+                </span>
+
+                <span class="font-medium text-red-600">
+                    {{ invalid_count }}
+                </span>
+            </div>
+
+            {% endif %}
+
+        </div>
+
+
+        <p
+            class="
+                mt-5
+                text-sm
+                font-medium
+                text-gray-700
+            "
+        >
+            Refresh the page in a moment to view the newly added leads.
+        </p>
+
+
+        <button
+            type="button"
+
+            onclick="
+                document.getElementById('modal-root').innerHTML=''
+            "
+
+            class="
+                mt-5
+                w-full
+                px-4
+                py-2.5
+                rounded-lg
+                bg-gray-900
+                text-white
+                text-sm
+                font-medium
+                hover:bg-gray-800
+            "
+        >
+            Done
+        </button>
+
+    </div>
+
+</div>

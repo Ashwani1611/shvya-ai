@@ -6,6 +6,7 @@ This service is responsible only for:
     - reading uploaded CSV/XLS/XLSX files
     - validating import files
     - normalizing headers/cells
+    - normalizing imported phone numbers
     - storing temporary Import Leads wizard state in Redis
 
 Lead creation/update logic remains in:
@@ -17,11 +18,13 @@ Attribute definition logic remains in:
 
 import csv
 import io
+import re
 import uuid
 from pathlib import Path
 
 from django.core.cache import cache
 from django.core.exceptions import ValidationError
+
 from openpyxl import load_workbook
 import xlrd
 
@@ -57,13 +60,17 @@ def _normalize_header(
     Normalize a spreadsheet header.
 
     Example:
+
         " First Name " -> "First Name"
     """
 
     if value is None:
+
         return ""
 
-    return str(value).strip()
+    return str(
+        value
+    ).strip()
 
 
 def _normalize_cell(
@@ -77,9 +84,13 @@ def _normalize_cell(
     """
 
     if value is None:
+
         return ""
 
-    if isinstance(value, float):
+    if isinstance(
+        value,
+        float,
+    ):
 
         if value.is_integer():
 
@@ -87,7 +98,221 @@ def _normalize_cell(
                 int(value)
             )
 
-    return str(value).strip()
+    return str(
+        value
+    ).strip()
+
+
+# ============================================================
+# IMPORT PHONE NORMALIZATION
+# ============================================================
+
+
+def normalize_import_phone(
+    value,
+):
+    """
+    Normalize phone numbers coming from imported
+    CSV/XLS/XLSX files.
+
+    Supported examples:
+
+        +919164543255
+        +91 9164543255
+        +91-9164543255
+        919164543255
+        p:+919164543255
+        p:9164543255
+        p:+91**9164543255
+
+    All of the above normalize to:
+
+        +919164543255
+
+    Other international country codes are also supported,
+    for example:
+
+        +1
+        +44
+        +61
+        +81
+        +971
+
+    This function performs import formatting normalization
+    only.
+
+    It does not perform:
+
+        - carrier validation
+        - live-number verification
+        - country-specific subscriber validation
+
+    The importer treats the international country code as
+    already being present when supplied in the source value.
+
+    Special rule:
+
+        p:9164543255
+
+    is interpreted as an Indian mobile number because the
+    explicit `p:` prefix is present and the remaining value
+    is a 10-digit Indian mobile-style number.
+    """
+
+    original_value = _normalize_cell(
+        value
+    )
+
+    if not original_value:
+
+        return ""
+
+    # --------------------------------------------------------
+    # DETECT THE SPECIAL p: PREFIX
+    # --------------------------------------------------------
+
+    had_p_prefix = (
+        original_value
+        .lower()
+        .startswith("p:")
+    )
+
+    value = original_value
+
+    if had_p_prefix:
+
+        value = value[2:].strip()
+
+    # --------------------------------------------------------
+    # KEEP DIGITS ONLY
+    #
+    # Examples:
+    #
+    #     +91 9164543255
+    #         -> 919164543255
+    #
+    #     +91-9164543255
+    #         -> 919164543255
+    #
+    #     +91**9164543255
+    #         -> 919164543255
+    #
+    #     p:+91**9164543255
+    #         -> 919164543255
+    # --------------------------------------------------------
+
+    digits = re.sub(
+        r"\D",
+        "",
+        value,
+    )
+
+    if not digits:
+
+        raise ValidationError(
+            {
+                "phone": (
+                    "Phone number must contain digits."
+                )
+            }
+        )
+
+    # --------------------------------------------------------
+    # SPECIAL p: INDIAN MOBILE RULE
+    #
+    # Only an explicit p: prefix triggers this rule.
+    #
+    #     p:9164543255
+    #
+    # becomes:
+    #
+    #     +919164543255
+    #
+    # This prevents us from assuming that every 10-digit
+    # number belongs to India.
+    # --------------------------------------------------------
+
+    if (
+        had_p_prefix
+        and len(digits) == 10
+        and digits[0] in "6789"
+    ):
+
+        digits = (
+            "91"
+            + digits
+        )
+
+    # --------------------------------------------------------
+    # BASIC LENGTH CHECK
+    # --------------------------------------------------------
+
+    if len(digits) < 8:
+
+        raise ValidationError(
+            {
+                "phone": (
+                    "Phone number is too short."
+                )
+            }
+        )
+
+    # --------------------------------------------------------
+    # E.164 MAXIMUM DIGIT LENGTH
+    #
+    # '+' is not counted.
+    # --------------------------------------------------------
+
+    if len(digits) > 15:
+
+        raise ValidationError(
+            {
+                "phone": (
+                    "Phone number cannot contain more "
+                    "than 15 digits."
+                )
+            }
+        )
+
+    # --------------------------------------------------------
+    # VALID COUNTRY-CODE STYLE PREFIX
+    #
+    # We do not maintain a hard-coded list of country codes
+    # here. The importer only requires that the supplied
+    # international digits have a plausible country-code
+    # prefix length.
+    #
+    # Supported examples include:
+    #
+    #     +1
+    #     +44
+    #     +61
+    #     +81
+    #     +91
+    #     +971
+    #
+    # A 1-to-3 digit international prefix is expected.
+    # --------------------------------------------------------
+
+    if len(digits) < 9:
+
+        raise ValidationError(
+            {
+                "phone": (
+                    "Phone number must contain a country "
+                    "code and subscriber number."
+                )
+            }
+        )
+
+    # --------------------------------------------------------
+    # RETURN CANONICAL SHVYA FORMAT
+    # --------------------------------------------------------
+
+    return (
+        "+"
+        + digits
+    )
 
 
 # ============================================================
@@ -145,7 +370,9 @@ def _validate_uploaded_file(
     )
 
     extension = (
-        Path(filename)
+        Path(
+            filename
+        )
         .suffix
         .lower()
     )
@@ -256,7 +483,9 @@ def _parse_csv(
 
     else:
 
-        text = str(raw)
+        text = str(
+            raw
+        )
 
     reader = csv.reader(
         io.StringIO(

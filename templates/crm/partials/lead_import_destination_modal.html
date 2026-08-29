@@ -1,0 +1,769 @@
+<div
+    class="
+        fixed
+        inset-0
+        z-50
+        bg-black/40
+        flex
+        items-center
+        justify-center
+        p-4
+    "
+>
+
+    <div
+        class="
+            bg-white
+            rounded-xl
+            w-full
+            max-w-3xl
+            max-h-[90vh]
+            overflow-hidden
+            shadow-xl
+            flex
+            flex-col
+        "
+    >
+
+        <!-- =================================================
+             HEADER
+             ================================================= -->
+
+        <div
+            class="
+                px-5
+                py-4
+                border-b
+                border-gray-200
+                flex
+                items-center
+                justify-between
+                shrink-0
+            "
+        >
+
+            <div>
+
+                <h2
+                    class="
+                        text-lg
+                        font-semibold
+                        text-gray-900
+                    "
+                >
+                    Import Leads
+                </h2>
+
+                <p
+                    class="
+                        mt-0.5
+                        text-xs
+                        text-gray-400
+                    "
+                >
+                    Choose where these leads should be added
+                </p>
+
+            </div>
+
+
+            <button
+                type="button"
+
+                onclick="
+                    document.getElementById('modal-root').innerHTML=''
+                "
+
+                class="
+                    w-8
+                    h-8
+                    rounded-md
+                    flex
+                    items-center
+                    justify-center
+                    text-gray-400
+                    hover:bg-gray-100
+                "
+
+                aria-label="Close"
+            >
+                <i class="ti ti-x text-lg"></i>
+            </button>
+
+        </div>
+
+
+        <!-- =================================================
+             CONTENT
+             ================================================= -->
+
+        <form
+            id="lead-import-destination-form"
+
+            method="post"
+        
+            action="{% url 'crm-lead-import-destination-save' %}"
+
+            class="
+                flex
+                flex-col
+                min-h-0
+            "
+        >
+
+            {% csrf_token %}
+
+            <input
+                type="hidden"
+                name="import_token"
+                value="{{ import_token }}"
+            >
+
+
+            <div
+                class="
+                    overflow-y-auto
+                    p-5
+                    space-y-6
+                "
+            >
+
+                <!-- =================================================
+                     MAPPING SUMMARY
+                     ================================================= -->
+
+                <div>
+
+                    <div
+                        class="
+                            text-sm
+                            font-medium
+                            text-gray-700
+                            mb-3
+                        "
+                    >
+                        Field Mapping
+                    </div>
+
+
+                    <div
+                        class="
+                            border
+                            border-gray-200
+                            rounded-xl
+                            overflow-hidden
+                        "
+                    >
+
+                        <!-- HEADER -->
+
+                        <div
+                            class="
+                                grid
+                                grid-cols-2
+                                gap-4
+                                px-4
+                                py-2.5
+                                bg-gray-50
+                                border-b
+                                border-gray-200
+                                text-[11px]
+                                uppercase
+                                tracking-wide
+                                font-medium
+                                text-gray-400
+                            "
+                        >
+
+                            <div>
+                                SHVYA Field
+                            </div>
+
+                            <div>
+                                Sheet Column
+                            </div>
+
+                        </div>
+
+
+                        {% for row in mapping_rows %}
+
+                        <div
+                            class="
+                                grid
+                                grid-cols-2
+                                gap-4
+                                items-center
+                                px-4
+                                py-3
+                                border-b
+                                border-gray-100
+                                last:border-b-0
+                            "
+                        >
+
+                            <div
+                                class="
+                                    text-sm
+                                    text-gray-700
+                                "
+                            >
+                                {{ row.label }}
+
+                                {% if row.key == "name" or row.key == "phone" %}
+
+                                <span class="text-red-500">
+                                    *
+                                </span>
+
+                                {% endif %}
+
+                            </div>
+
+
+                            <div
+                                class="
+                                    text-sm
+                                    text-gray-500
+                                    truncate
+                                "
+                            >
+                                {{ row.sheet_column }}
+                            </div>
+
+                        </div>
+
+                        {% empty %}
+
+                        <div
+                            class="
+                                px-4
+                                py-6
+                                text-sm
+                                text-gray-400
+                                text-center
+                            "
+                        >
+                            No field mappings available.
+                        </div>
+
+                        {% endfor %}
+
+                    </div>
+
+                </div>
+
+
+                <!-- =================================================
+                     DESTINATION
+                     ================================================= -->
+
+                <div>
+
+                    <div
+                        class="
+                            text-sm
+                            font-medium
+                            text-gray-700
+                            mb-3
+                        "
+                    >
+                        Lead Destination
+                    </div>
+
+
+                    <div
+                        class="
+                            grid
+                            grid-cols-1
+                            md:grid-cols-2
+                            gap-4
+                        "
+                    >
+
+                        <!-- PIPELINE -->
+
+                        <div>
+
+                            <label
+                                for="lead-import-pipeline"
+                                class="
+                                    text-xs
+                                    text-gray-500
+                                "
+                            >
+                                Pipeline *
+                            </label>
+
+
+                            <select
+                                
+                                name="pipeline"
+                                id="lead-import-pipeline"
+
+                                required
+
+                                hx-get="{% url 'crm-lead-edit-stages' %}"
+
+                                hx-trigger="change"
+
+                                hx-target="#lead-import-stage"
+
+                                hx-swap="innerHTML"
+
+                                hx-include="#lead-import-pipeline"
+
+                                class="
+                                    w-full
+                                    border
+                                    border-gray-300
+                                    rounded-lg
+                                    px-3
+                                    py-2.5
+                                    text-sm
+                                    mt-1
+                                    bg-white
+                                "
+                            >
+
+                                <option value="">
+                                    Select pipeline
+                                </option>
+
+                                {% for pipeline in pipelines %}
+
+                                <option
+                                    value="{{ pipeline.id }}"
+                                    {% if pipeline.id|stringformat:"s" == selected_pipeline_id %}
+                                        selected
+                                    {% endif %}
+                                >
+                                    {{ pipeline.name }}
+                                </option>
+
+                                {% endfor %}
+
+                            </select>
+
+                        </div>
+
+
+                        <!-- STAGE -->
+
+                        <div>
+
+                            <label
+                                for="lead-import-stage"
+                                class="
+                                    text-xs
+                                    text-gray-500
+                                "
+                            >
+                                Stage *
+                            </label>
+
+
+                            <select
+
+                                name="stage"
+                                id="lead-import-stage"
+
+                                required
+
+                                class="
+                                    w-full
+                                    border
+                                    border-gray-300
+                                    rounded-lg
+                                    px-3
+                                    py-2.5
+                                    text-sm
+                                    mt-1
+                                    bg-white
+                                "
+                            >
+
+                                <option value="">
+                                    Select stage
+                                </option>
+
+                                {% for stage in stages %}
+
+                                <option
+                                    value="{{ stage.id }}"
+                                    {% if stage.id|stringformat:"s" == selected_stage_id %}
+                                        selected
+                                    {% endif %}
+                                >
+                                    {{ stage.name }}
+                                </option>
+
+                                {% endfor %}
+
+                            </select>
+
+                        </div>
+
+                    </div>
+
+                </div>
+
+
+                <!-- =================================================
+                     FOLLOW-UP
+                     INTENTIONALLY OMITTED
+                     ================================================= -->
+
+            </div>
+
+
+            <!-- =================================================
+                 FOOTER
+                 ================================================= -->
+
+            <div
+                class="
+                    shrink-0
+                    px-5
+                    py-4
+                    border-t
+                    border-gray-100
+                    flex
+                    items-center
+                    justify-between
+                "
+            >
+
+                <button
+                    type="button"
+
+                    hx-get="{% url 'crm-lead-import-mapping-modal' %}?token={{ import_token|urlencode }}"
+
+                    hx-target="#modal-root"
+
+                    hx-swap="innerHTML"
+
+                    class="
+                        px-4
+                        py-2
+                        rounded-lg
+                        border
+                        border-gray-300
+                        text-sm
+                        font-medium
+                        text-gray-700
+                        hover:bg-gray-50
+                    "
+                >
+                    Back
+                </button>
+
+
+                <div
+                    class="
+                        flex
+                        items-center
+                        gap-3
+                    "
+                >
+
+                    <span
+                        class="
+                            text-xs
+                            text-gray-400
+                        "
+                    >
+                        4 of 5
+                    </span>
+
+
+                    <button
+                        type="submit"
+
+                        id="lead-import-destination-next"
+
+                        class="
+                            inline-flex
+                            items-center
+                            gap-2
+                            px-4
+                            py-2
+                            rounded-lg
+                            bg-gray-900
+                            text-white
+                            text-sm
+                            font-medium
+                            hover:bg-gray-800
+                            cursor-pointer
+                        "
+                    >
+                        Next
+                        <i class="ti ti-arrow-right"></i>
+                    </button>
+
+                </div>
+
+            </div>
+
+        </form>
+
+    </div>
+
+</div>
+
+<script>
+
+(function () {
+
+    const form =
+        document.getElementById(
+            'lead-import-destination-form'
+        );
+
+    const nextButton =
+        document.getElementById(
+            'lead-import-destination-next'
+        );
+
+    if (
+        !form ||
+        !nextButton
+    ) {
+        return;
+    }
+
+
+    nextButton.addEventListener(
+        'click',
+        async function () {
+
+            /* ====================================================
+               NATIVE VALIDATION
+               ==================================================== */
+
+            if (
+                !form.reportValidity()
+            ) {
+                return;
+            }
+
+
+            /* ====================================================
+               PREVENT DOUBLE CLICK
+               ==================================================== */
+
+            if (
+                nextButton.dataset.submitting === 'true'
+            ) {
+                return;
+            }
+
+            nextButton.dataset.submitting =
+                'true';
+
+
+            const originalHTML =
+                nextButton.innerHTML;
+
+
+            nextButton.disabled = true;
+
+            nextButton.classList.add(
+                'opacity-70',
+                'cursor-not-allowed'
+            );
+
+            nextButton.innerHTML = `
+                <i class="ti ti-loader-2 animate-spin"></i>
+                <span>Loading...</span>
+            `;
+
+
+            try {
+
+                /* =================================================
+                   BUILD FORM DATA
+                   ================================================= */
+
+                const formData =
+                    new FormData(
+                        form
+                    );
+
+
+                /* =================================================
+                   SEND REQUEST DIRECTLY
+                   ================================================= */
+
+                const response =
+                    await fetch(
+                        form.action,
+                        {
+                            method: 'POST',
+
+                            body: formData,
+
+                            credentials:
+                                'same-origin',
+
+                            headers: {
+                                'HX-Request':
+                                    'true'
+                            }
+                        }
+                    );
+
+
+                const html =
+                    await response.text();
+
+
+                /* =================================================
+                   RESPONSE HANDLING
+                   ================================================= */
+
+                if (!response.ok) {
+
+                    const modalRoot =
+                        document.getElementById(
+                            'modal-root'
+                        );
+
+                    if (
+                        modalRoot
+                    ) {
+
+                        modalRoot.innerHTML = `
+                            <div
+                                class="
+                                    fixed
+                                    inset-0
+                                    z-50
+                                    bg-black/40
+                                    flex
+                                    items-center
+                                    justify-center
+                                    p-4
+                                "
+                            >
+                                <div
+                                    class="
+                                        bg-white
+                                        rounded-xl
+                                        shadow-xl
+                                        p-6
+                                        w-full
+                                        max-w-lg
+                                    "
+                                >
+
+                                    <div
+                                        class="
+                                            text-sm
+                                            text-red-600
+                                        "
+                                    >
+                                        ${html}
+                                    </div>
+
+                                    <button
+                                        type="button"
+                                        onclick="
+                                            document
+                                                .getElementById(
+                                                    'modal-root'
+                                                )
+                                                .innerHTML = ''
+                                        "
+                                        class="
+                                            mt-5
+                                            px-4
+                                            py-2
+                                            rounded-lg
+                                            bg-gray-900
+                                            text-white
+                                            text-sm
+                                            font-medium
+                                        "
+                                    >
+                                        Close
+                                    </button>
+
+                                </div>
+                            </div>
+                        `;
+
+                    }
+
+                    return;
+                }
+
+
+                /* =================================================
+                   DIRECTLY SHOW STEP 5
+                   ================================================= */
+
+                const modalRoot =
+                    document.getElementById(
+                        'modal-root'
+                    );
+
+                if (!modalRoot) {
+                    return;
+                }
+
+
+                modalRoot.innerHTML =
+                    html;
+
+
+                /*
+                 * Process the newly inserted Step 5 HTML so
+                 * HTMX attributes inside the Review modal work.
+                 */
+
+                if (
+                    window.htmx
+                ) {
+
+                    htmx.process(
+                        modalRoot
+                    );
+
+                }
+
+            } catch (error) {
+
+                console.error(
+                    'Lead import destination failed:',
+                    error
+                );
+
+                alert(
+                    'Unable to continue the import. Please try again.'
+                );
+
+            } finally {
+
+                nextButton.dataset.submitting =
+                    'false';
+
+                nextButton.disabled =
+                    false;
+
+                nextButton.classList.remove(
+                    'opacity-70',
+                    'cursor-not-allowed'
+                );
+
+                nextButton.innerHTML =
+                    originalHTML;
+
+            }
+
+        }
+    );
+
+})();
+
+</script>

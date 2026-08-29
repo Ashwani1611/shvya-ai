@@ -2930,6 +2930,45 @@ document.body.addEventListener(
 );
 
 /* ============================================================
+   ATTRIBUTE CREATED FROM IMPORT MAPPING
+   ============================================================ */
+
+document.body.addEventListener(
+    'attributeCreatedForImport',
+    function(event) {
+
+        const detail =
+            event.detail || {};
+
+        const importToken =
+            detail.import_token;
+
+        if (!importToken) {
+
+            console.error(
+                'Missing import token after attribute creation.'
+            );
+
+            return;
+
+        }
+
+        htmx.ajax(
+            'GET',
+            '/dashboard/leads/import/mapping/?token=' +
+            encodeURIComponent(
+                importToken
+            ),
+            {
+                target: '#modal-root',
+                swap: 'innerHTML'
+            }
+        );
+
+    }
+);
+
+/* ============================================================
    NEW LEAD CREATED
    INSERT INTO CURRENT PIPELINE / STAGE
    NO BROWSER REFRESH
@@ -3299,13 +3338,21 @@ document.body.addEventListener(
             detail.import_token;
 
         if (!importToken) {
+
+            console.error(
+                'Missing import token.'
+            );
+
             return;
+
         }
 
         htmx.ajax(
             'GET',
             '/dashboard/leads/import/upload/?token=' +
-            encodeURIComponent(importToken),
+            encodeURIComponent(
+                importToken
+            ),
             {
                 target: '#modal-root',
                 swap: 'innerHTML'
@@ -3314,6 +3361,85 @@ document.body.addEventListener(
 
     }
 );
+
+/* ============================================================
+   IMPORT LEADS — STEP 2 → STEP 3
+   ============================================================ */
+
+document.body.addEventListener(
+    'leadImportMapping',
+    function(event) {
+
+        const detail =
+            event.detail || {};
+
+        const importToken =
+            detail.import_token;
+
+        if (!importToken) {
+
+            console.error(
+                'Missing import token.'
+            );
+
+            return;
+
+        }
+
+        htmx.ajax(
+            'GET',
+            '/dashboard/leads/import/mapping/?token=' +
+            encodeURIComponent(
+                importToken
+            ),
+            {
+                target: '#modal-root',
+                swap: 'innerHTML'
+            }
+        );
+
+    }
+);
+
+/* ============================================================
+   IMPORT LEADS — STEP 3 → STEP 4
+   ============================================================ */
+
+document.body.addEventListener(
+    'leadImportDestination',
+    function(event) {
+
+        const detail =
+            event.detail || {};
+
+        const importToken =
+            detail.import_token;
+
+        if (!importToken) {
+
+            console.error(
+                'Missing import token.'
+            );
+
+            return;
+
+        }
+
+        htmx.ajax(
+            'GET',
+            '/dashboard/leads/import/destination/?token=' +
+            encodeURIComponent(
+                importToken
+            ),
+            {
+                target: '#modal-root',
+                swap: 'innerHTML'
+            }
+        );
+
+    }
+);
+
 
 </script>
 
