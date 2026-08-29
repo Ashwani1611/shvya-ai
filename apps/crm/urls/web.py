@@ -7,6 +7,8 @@ from apps.crm.authentication import (
 )
 from apps.crm.views.dashboard import (
     dashboard_view,
+    lead_create_modal,
+    lead_create_save,
     lead_call_modal,
     lead_call_save,
     lead_card_partial,
@@ -69,6 +71,22 @@ urlpatterns = [
         "",
         dashboard_view,
         name="crm-dashboard",
+    ),
+
+        # ========================================================
+    # NEW LEAD
+    # ========================================================
+
+    path(
+        "leads/create/",
+        lead_create_modal,
+        name="crm-lead-create-modal",
+    ),
+
+    path(
+        "leads/create/save/",
+        lead_create_save,
+        name="crm-lead-create-save",
     ),
 
 

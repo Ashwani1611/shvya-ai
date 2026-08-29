@@ -36,6 +36,11 @@ from services.crm.attribute_service import (
     delete_attribute_definition,
     update_lead_attribute_values,
 )
+
+from services.crm.lead_service import (
+    create_lead,
+)
+
 from .api import STAGE_THEMES, get_user_pipelines
 
 
@@ -157,6 +162,277 @@ def dashboard_view(request):
 
     response["Pragma"] = "no-cache"
     response["Expires"] = "0"
+
+    return response
+
+# ============================================================
+# NEW LEAD
+# ============================================================
+
+
+@crm_login_required
+@require_GET
+def lead_create_modal(
+    request,
+):
+    user = request.crm_user
+
+    pipelines = (
+        get_user_pipelines(
+            user
+        )
+        .filter(
+            organization=user.organization,
+            is_active=True,
+        )
+    )
+
+    selected_pipeline = (
+        pipelines.first()
+    )
+
+    stages = (
+        Stage.objects
+        .filter(
+            pipeline=selected_pipeline,
+            is_active=True,
+        )
+        .order_by(
+            "display_order",
+        )
+        if selected_pipeline
+        else Stage.objects.none()
+    )
+
+    attribute_definitions = (
+        AttributeDefinition.objects
+        .filter(
+            organization=user.organization,
+        )
+        .order_by(
+            "display_order",
+            "created_at",
+        )
+    )
+
+    return render(
+        request,
+        "crm/partials/lead_create_modal.html",
+        {
+            "pipelines": pipelines,
+            "stages": stages,
+            "attribute_definitions": attribute_definitions,
+        },
+    )
+
+
+@crm_login_required
+@require_POST
+def lead_create_save(
+    request,
+):
+    user = request.crm_user
+
+    organization = user.organization
+
+    name = request.POST.get(
+        "name",
+        "",
+    ).strip()
+
+    phone = request.POST.get(
+        "phone",
+        "",
+    ).strip()
+
+    email = request.POST.get(
+        "email",
+        "",
+    ).strip()
+
+    pipeline_id = request.POST.get(
+        "pipeline",
+        "",
+    ).strip()
+
+    stage_id = request.POST.get(
+        "stage",
+        "",
+    ).strip()
+
+    notes = request.POST.get(
+        "notes",
+        "",
+    ).strip()
+
+    # --------------------------------------------------------
+    # REQUIRED FIELDS
+    # --------------------------------------------------------
+
+    if not name:
+
+        return HttpResponse(
+            "Name is required.",
+            status=400,
+        )
+
+    if not phone:
+
+        return HttpResponse(
+            "Phone number is required.",
+            status=400,
+        )
+
+    if not pipeline_id:
+
+        return HttpResponse(
+            "Pipeline is required.",
+            status=400,
+        )
+
+    if not stage_id:
+
+        return HttpResponse(
+            "Stage is required.",
+            status=400,
+        )
+
+    # --------------------------------------------------------
+    # PIPELINE
+    #
+    # Reuse the existing CRM permission logic.
+    # --------------------------------------------------------
+
+    allowed_pipelines = (
+        get_user_pipelines(
+            user
+        )
+        .filter(
+            organization=organization,
+            is_active=True,
+        )
+    )
+
+    pipeline = get_object_or_404(
+        allowed_pipelines,
+        id=pipeline_id,
+    )
+
+    # --------------------------------------------------------
+    # STAGE
+    #
+    # Stage must belong to the selected pipeline.
+    # --------------------------------------------------------
+
+    stage = get_object_or_404(
+        Stage,
+        id=stage_id,
+        pipeline=pipeline,
+        is_active=True,
+    )
+
+    # --------------------------------------------------------
+    # CUSTOM ATTRIBUTE VALUES
+    #
+    # Only currently defined attributes for this
+    # organization are accepted.
+    # --------------------------------------------------------
+
+    attribute_definitions = (
+        AttributeDefinition.objects
+        .filter(
+            organization=organization,
+        )
+    )
+
+    attributes = {}
+
+    for attribute in attribute_definitions:
+
+        field_name = (
+            f"attr_{attribute.key}"
+        )
+
+        if field_name in request.POST:
+
+            attributes[attribute.key] = (
+                request.POST.get(
+                    field_name,
+                    "",
+                ).strip()
+            )
+
+    # --------------------------------------------------------
+    # CREATE LEAD
+    #
+    # Manual Lead creation always has source = system.
+    # --------------------------------------------------------
+
+    try:
+
+        lead = create_lead(
+            organization=organization,
+            pipeline=pipeline,
+            stage=stage,
+            name=name,
+            phone=phone,
+            email=email,
+            notes=notes,
+            attributes=attributes,
+            lead_source="system",
+        )
+
+    except DjangoValidationError as exc:
+
+        error_message = (
+            exc.message_dict
+            if hasattr(
+                exc,
+                "message_dict",
+            )
+            else exc.messages
+        )
+
+        return HttpResponse(
+            f"""
+            <div
+                class="
+                    p-4
+                    text-sm
+                    text-red-600
+                "
+            >
+                Validation error: {error_message}
+            </div>
+            """,
+            status=400,
+        )
+
+    # --------------------------------------------------------
+    # SUCCESS
+    #
+    # The frontend will use these values to insert the
+    # newly-created card into the correct stage without
+    # refreshing the browser.
+    # --------------------------------------------------------
+
+    response = HttpResponse("")
+
+    response["HX-Trigger"] = json.dumps(
+        {
+            "leadCreated": {
+                "lead_id": str(
+                    lead.id
+                ),
+                "pipeline_id": str(
+                    pipeline.id
+                ),
+                "stage_id": str(
+                    stage.id
+                ),
+            }
+        }
+    )
 
     return response
 

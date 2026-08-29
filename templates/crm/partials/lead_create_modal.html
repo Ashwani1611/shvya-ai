@@ -1,0 +1,696 @@
+{% load crm_extras %}
+
+<div
+    id="lead-create-modal-overlay"
+    class="
+        fixed
+        inset-0
+        bg-black/40
+        flex
+        items-center
+        justify-center
+        z-50
+        p-4
+    "
+>
+
+    <div
+        class="
+            bg-white
+            rounded-lg
+            w-full
+            max-w-md
+            max-h-[90vh]
+            overflow-y-auto
+            shadow-xl
+        "
+    >
+
+        <!-- =====================================================
+             MODAL HEADER
+             ===================================================== -->
+
+        <div
+            class="
+                flex
+                items-center
+                justify-between
+                px-5
+                py-4
+                border-b
+                border-gray-200
+            "
+        >
+
+            <h2
+                class="
+                    font-semibold
+                    text-lg
+                    text-gray-900
+                "
+            >
+                New Lead
+            </h2>
+
+
+            <button
+                type="button"
+
+                onclick="
+                    document.getElementById('modal-root').innerHTML=''
+                "
+
+                class="
+                    w-8
+                    h-8
+                    rounded-md
+                    flex
+                    items-center
+                    justify-center
+                    text-gray-400
+                    hover:bg-gray-100
+                    hover:text-gray-700
+                    text-xl
+                "
+
+                aria-label="Close"
+            >
+                &times;
+            </button>
+
+        </div>
+
+
+        <!-- =====================================================
+             CREATE FORM
+             ===================================================== -->
+
+        <form
+            id="lead-create-form"
+
+            method="post"
+
+            action="{% url 'crm-lead-create-save' %}"
+
+            hx-post="{% url 'crm-lead-create-save' %}"
+
+            hx-target="#modal-root"
+
+            hx-swap="none"
+
+            class="
+                px-5
+                py-4
+                space-y-4
+            "
+        >
+
+            {% csrf_token %}
+
+
+            <!-- =================================================
+                 NAME
+                 ================================================= -->
+
+            <div>
+
+                <label
+                    for="lead-create-name"
+                    class="text-xs text-gray-500"
+                >
+                    Name *
+                </label>
+
+                <input
+                    id="lead-create-name"
+
+                    type="text"
+
+                    name="name"
+
+                    required
+
+                    maxlength="150"
+
+                    autocomplete="name"
+
+                    placeholder="Enter lead name"
+
+                    class="
+                        w-full
+                        border
+                        border-gray-300
+                        rounded-md
+                        px-3
+                        py-2
+                        text-sm
+                        mt-1
+                        outline-none
+                        focus:border-blue-500
+                        focus:ring-2
+                        focus:ring-blue-500/10
+                    "
+                >
+
+            </div>
+
+
+            <!-- =================================================
+                 PHONE
+                 ================================================= -->
+
+            <div>
+
+                <label
+                    for="lead-create-phone"
+                    class="text-xs text-gray-500"
+                >
+                    Phone *
+                </label>
+
+                <input
+                    id="lead-create-phone"
+
+                    type="text"
+
+                    name="phone"
+
+                    required
+
+                    maxlength="32"
+
+                    autocomplete="tel"
+
+                    placeholder="+91-9876543210"
+
+                    class="
+                        w-full
+                        border
+                        border-gray-300
+                        rounded-md
+                        px-3
+                        py-2
+                        text-sm
+                        mt-1
+                        outline-none
+                        focus:border-blue-500
+                        focus:ring-2
+                        focus:ring-blue-500/10
+                    "
+                >
+
+                <p
+                    class="
+                        mt-1
+                        text-[11px]
+                        text-gray-400
+                    "
+                >
+                    Include the country code.
+                </p>
+
+            </div>
+
+
+            <!-- =================================================
+                 EMAIL
+                 ================================================= -->
+
+            <div>
+
+                <label
+                    for="lead-create-email"
+                    class="text-xs text-gray-500"
+                >
+                    Email
+                </label>
+
+                <input
+                    id="lead-create-email"
+
+                    type="email"
+
+                    name="email"
+
+                    maxlength="254"
+
+                    autocomplete="email"
+
+                    placeholder="name@example.com"
+
+                    class="
+                        w-full
+                        border
+                        border-gray-300
+                        rounded-md
+                        px-3
+                        py-2
+                        text-sm
+                        mt-1
+                        outline-none
+                        focus:border-blue-500
+                        focus:ring-2
+                        focus:ring-blue-500/10
+                    "
+                >
+
+            </div>
+
+
+            <!-- =================================================
+                 PIPELINE
+                 ================================================= -->
+
+            <div>
+
+                <label
+                    for="lead-create-pipeline"
+                    class="text-xs text-gray-500"
+                >
+                    Pipeline *
+                </label>
+
+                <select
+                    id="lead-create-pipeline"
+
+                    name="pipeline"
+
+                    required
+
+                    hx-get="{% url 'crm-lead-edit-stages' %}"
+
+                    hx-trigger="change"
+
+                    hx-target="#lead-create-stage"
+
+                    hx-swap="innerHTML"
+
+                    hx-include="#lead-create-pipeline"
+
+                    class="
+                        w-full
+                        border
+                        border-gray-300
+                        rounded-md
+                        px-3
+                        py-2
+                        text-sm
+                        mt-1
+                        bg-white
+                        outline-none
+                        focus:border-blue-500
+                        focus:ring-2
+                        focus:ring-blue-500/10
+                    "
+                >
+
+                    {% for pipeline in pipelines %}
+
+                    <option
+                        value="{{ pipeline.id }}"
+                        {% if forloop.first %}
+                            selected
+                        {% endif %}
+                    >
+                        {{ pipeline.name }}
+                    </option>
+
+                    {% endfor %}
+
+                </select>
+
+            </div>
+
+
+            <!-- =================================================
+                 STAGE
+                 ================================================= -->
+
+            <div>
+
+                <label
+                    for="lead-create-stage"
+                    class="text-xs text-gray-500"
+                >
+                    Stage *
+                </label>
+
+                <select
+                    id="lead-create-stage"
+
+                    name="stage"
+
+                    required
+
+                    class="
+                        w-full
+                        border
+                        border-gray-300
+                        rounded-md
+                        px-3
+                        py-2
+                        text-sm
+                        mt-1
+                        bg-white
+                        outline-none
+                        focus:border-blue-500
+                        focus:ring-2
+                        focus:ring-blue-500/10
+                    "
+                >
+
+                    {% for stage in stages %}
+
+                    <option
+                        value="{{ stage.id }}"
+                        {% if forloop.first %}
+                            selected
+                        {% endif %}
+                    >
+                        {{ stage.name }}
+                    </option>
+
+                    {% empty %}
+
+                    <option value="">
+                        No stages available
+                    </option>
+
+                    {% endfor %}
+
+                </select>
+
+            </div>
+
+
+            <!-- =================================================
+                 CUSTOM ATTRIBUTES
+                 ================================================= -->
+
+            {% if attribute_definitions %}
+
+            <div class="border-t pt-3">
+
+                <div
+                    class="
+                        text-sm
+                        font-medium
+                        text-gray-700
+                        mb-3
+                    "
+                >
+                    Additional Attributes
+                </div>
+
+
+                {% for attribute in attribute_definitions %}
+
+                <div class="mb-3">
+
+                    <label
+                        for="lead-create-attribute-{{ attribute.key }}"
+                        class="
+                            text-xs
+                            text-gray-500
+                        "
+                    >
+                        {{ attribute.name }}
+                    </label>
+
+
+                    {% if attribute.field_type == "text" %}
+
+                    <input
+                        id="lead-create-attribute-{{ attribute.key }}"
+
+                        type="text"
+
+                        name="attr_{{ attribute.key }}"
+
+                        placeholder="{{ attribute.name }}"
+
+                        class="
+                            w-full
+                            border
+                            border-gray-300
+                            rounded-md
+                            px-3
+                            py-2
+                            text-sm
+                            mt-1
+                            outline-none
+                            focus:border-blue-500
+                            focus:ring-2
+                            focus:ring-blue-500/10
+                        "
+                    >
+
+
+                    {% elif attribute.field_type == "numeric" %}
+
+                    <input
+                        id="lead-create-attribute-{{ attribute.key }}"
+
+                        type="number"
+
+                        name="attr_{{ attribute.key }}"
+
+                        placeholder="{{ attribute.name }}"
+
+                        class="
+                            w-full
+                            border
+                            border-gray-300
+                            rounded-md
+                            px-3
+                            py-2
+                            text-sm
+                            mt-1
+                            outline-none
+                            focus:border-blue-500
+                            focus:ring-2
+                            focus:ring-blue-500/10
+                        "
+                    >
+
+
+                    {% elif attribute.field_type == "date" %}
+
+                    <input
+                        id="lead-create-attribute-{{ attribute.key }}"
+
+                        type="date"
+
+                        name="attr_{{ attribute.key }}"
+
+                        class="
+                            w-full
+                            border
+                            border-gray-300
+                            rounded-md
+                            px-3
+                            py-2
+                            text-sm
+                            mt-1
+                            outline-none
+                            focus:border-blue-500
+                            focus:ring-2
+                            focus:ring-blue-500/10
+                        "
+                    >
+
+
+                    {% elif attribute.field_type == "datetime" %}
+
+                    <input
+                        id="lead-create-attribute-{{ attribute.key }}"
+
+                        type="datetime-local"
+
+                        name="attr_{{ attribute.key }}"
+
+                        class="
+                            w-full
+                            border
+                            border-gray-300
+                            rounded-md
+                            px-3
+                            py-2
+                            text-sm
+                            mt-1
+                            outline-none
+                            focus:border-blue-500
+                            focus:ring-2
+                            focus:ring-blue-500/10
+                        "
+                    >
+
+
+                    {% elif attribute.field_type == "option" %}
+
+                    <select
+                        id="lead-create-attribute-{{ attribute.key }}"
+
+                        name="attr_{{ attribute.key }}"
+
+                        class="
+                            w-full
+                            border
+                            border-gray-300
+                            rounded-md
+                            px-3
+                            py-2
+                            text-sm
+                            mt-1
+                            bg-white
+                            outline-none
+                            focus:border-blue-500
+                            focus:ring-2
+                            focus:ring-blue-500/10
+                        "
+                    >
+
+                        <option value="">
+                            Select {{ attribute.name }}
+                        </option>
+
+                        {% for option in attribute.options %}
+
+                        <option value="{{ option }}">
+                            {{ option }}
+                        </option>
+
+                        {% endfor %}
+
+                    </select>
+
+                    {% endif %}
+
+
+                    {% if attribute.description %}
+
+                    <p
+                        class="
+                            mt-1
+                            text-[11px]
+                            text-gray-400
+                        "
+                    >
+                        {{ attribute.description }}
+                    </p>
+
+                    {% endif %}
+
+                </div>
+
+                {% endfor %}
+
+            </div>
+
+            {% endif %}
+
+
+            <!-- =================================================
+                 NOTES
+                 ================================================= -->
+
+            <div>
+
+                <label
+                    for="lead-create-notes"
+                    class="text-xs text-gray-500"
+                >
+                    Notes
+                </label>
+
+                <textarea
+                    id="lead-create-notes"
+
+                    name="notes"
+
+                    rows="4"
+
+                    placeholder="Enter notes about this lead..."
+
+                    class="
+                        w-full
+                        border
+                        border-gray-300
+                        rounded-md
+                        px-3
+                        py-2
+                        text-sm
+                        mt-1
+                        resize-y
+                        outline-none
+                        focus:border-blue-500
+                        focus:ring-2
+                        focus:ring-blue-500/10
+                    "
+                ></textarea>
+
+            </div>
+
+
+            <!-- =================================================
+                 BUTTONS
+                 ================================================= -->
+
+            <div
+                class="
+                    flex
+                    justify-end
+                    gap-2
+                    pt-3
+                    border-t
+                    border-gray-100
+                "
+            >
+
+                <button
+                    type="button"
+
+                    onclick="
+                        document.getElementById('modal-root').innerHTML=''
+                    "
+
+                    class="
+                        px-4
+                        py-2
+                        border
+                        border-gray-300
+                        rounded-md
+                        text-sm
+                        font-medium
+                        text-gray-700
+                        hover:bg-gray-50
+                    "
+                >
+                    Cancel
+                </button>
+
+
+                <button
+                    type="submit"
+
+                    class="
+                        px-4
+                        py-2
+                        bg-gray-900
+                        text-white
+                        rounded-md
+                        text-sm
+                        font-medium
+                        hover:bg-gray-800
+                    "
+                >
+                    Create Lead
+                </button>
+
+            </div>
+
+        </form>
+
+    </div>
+
+</div>

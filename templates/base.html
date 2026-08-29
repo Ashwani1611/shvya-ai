@@ -532,6 +532,12 @@
                 <button
                     type="button"
 
+                    hx-get="{% url 'crm-lead-create-modal' %}"
+
+                    hx-target="#modal-root"
+
+                    hx-swap="innerHTML"
+
                     class="inline-flex
                            items-center
                            gap-2
@@ -2925,6 +2931,361 @@ document.body.addEventListener(
                 swap: 'innerHTML'
             }
         );
+
+    }
+);
+
+/* ============================================================
+   NEW LEAD CREATED
+   INSERT INTO CURRENT PIPELINE / STAGE
+   NO BROWSER REFRESH
+   ============================================================ */
+
+document.body.addEventListener(
+    'leadCreated',
+    async function(event) {
+
+        const detail =
+            event.detail || {};
+
+        const leadId =
+            detail.lead_id;
+
+        const pipelineId =
+            detail.pipeline_id;
+
+        const stageId =
+            detail.stage_id;
+
+
+        if (
+            !leadId ||
+            !pipelineId ||
+            !stageId
+        ) {
+
+            console.error(
+                'Invalid leadCreated event:',
+                detail
+            );
+
+            return;
+
+        }
+
+
+        /* ----------------------------------------------------
+           CLOSE NEW LEAD MODAL
+           ---------------------------------------------------- */
+
+        const modalRoot =
+            document.getElementById(
+                'modal-root'
+            );
+
+        if (modalRoot) {
+
+            modalRoot.innerHTML = '';
+
+        }
+
+
+        /* ----------------------------------------------------
+           READ CURRENTLY DISPLAYED PIPELINE
+           FROM EXISTING LEAD TABLE REQUEST
+           ---------------------------------------------------- */
+
+        const leadTable =
+            document.getElementById(
+                'lead-table-container'
+            );
+
+        if (!leadTable) {
+
+            return;
+
+        }
+
+
+        const tableRequest =
+            leadTable.getAttribute(
+                'hx-get'
+            );
+
+        if (!tableRequest) {
+
+            return;
+
+        }
+
+
+        let currentPipelineId = '';
+
+
+        try {
+
+            const requestUrl =
+                new URL(
+                    tableRequest,
+                    window.location.origin
+                );
+
+            currentPipelineId =
+                requestUrl.searchParams.get(
+                    'pipeline'
+                ) || '';
+
+        } catch (error) {
+
+            console.error(
+                'Unable to determine current pipeline:',
+                error
+            );
+
+            return;
+
+        }
+
+
+        /* ----------------------------------------------------
+           DON'T INSERT INTO A DIFFERENT PIPELINE
+           ---------------------------------------------------- */
+
+        if (
+            currentPipelineId &&
+            currentPipelineId !== pipelineId
+        ) {
+
+            return;
+
+        }
+
+
+        /* ----------------------------------------------------
+           FIND TARGET STAGE PANEL
+           ---------------------------------------------------- */
+
+        const targetPanel =
+            document.getElementById(
+                'stage-panel-' +
+                stageId
+            );
+
+
+        if (!targetPanel) {
+
+            console.warn(
+                'Target stage panel not found:',
+                stageId
+            );
+
+            return;
+
+        }
+
+
+        try {
+
+            /* ------------------------------------------------
+               FETCH THE NEW LEAD CARD
+               ------------------------------------------------ */
+
+            const response =
+                await fetch(
+                    '/dashboard/leads/' +
+                    leadId +
+                    '/card/?_=' +
+                    Date.now(),
+                    {
+                        method: 'GET',
+
+                        cache: 'no-store',
+
+                        headers: {
+                            'HX-Request': 'true',
+                            'Cache-Control': 'no-cache'
+                        },
+
+                        credentials:
+                            'same-origin'
+                    }
+                );
+
+
+            if (!response.ok) {
+
+                console.error(
+                    'New lead card fetch failed:',
+                    response.status
+                );
+
+                return;
+
+            }
+
+
+            const html =
+                await response.text();
+
+
+            /* ------------------------------------------------
+               PARSE NEW CARD
+               ------------------------------------------------ */
+
+            const parser =
+                new DOMParser();
+
+
+            const parsed =
+                parser.parseFromString(
+                    html,
+                    'text/html'
+                );
+
+
+            const newCard =
+                parsed.querySelector(
+                    '#lead-card-' +
+                    leadId
+                );
+
+
+            if (!newCard) {
+
+                console.error(
+                    'New lead card not found.'
+                );
+
+                return;
+
+            }
+
+
+            /* ------------------------------------------------
+               PREVENT DUPLICATE
+               ------------------------------------------------ */
+
+            if (
+                document.getElementById(
+                    'lead-card-' +
+                    leadId
+                )
+            ) {
+
+                return;
+
+            }
+
+
+            /* ------------------------------------------------
+               FIND / CREATE CARD CONTAINER
+               ------------------------------------------------ */
+
+            let cardsContainer =
+                targetPanel.querySelector(
+                    '[data-lead-cards]'
+                );
+
+
+            if (!cardsContainer) {
+
+                cardsContainer =
+                    document.createElement(
+                        'div'
+                    );
+
+                cardsContainer.className =
+                    'flex flex-col gap-3';
+
+                cardsContainer.setAttribute(
+                    'data-lead-cards',
+                    ''
+                );
+
+
+                const emptyState =
+                    targetPanel.querySelector(
+                        '[data-empty-stage]'
+                    );
+
+
+                if (emptyState) {
+
+                    emptyState.remove();
+
+                }
+
+
+                targetPanel.appendChild(
+                    cardsContainer
+                );
+
+            }
+
+
+            /* ------------------------------------------------
+               INSERT NEW LEAD
+               ------------------------------------------------ */
+
+            cardsContainer.appendChild(
+                newCard
+            );
+
+
+            /* ------------------------------------------------
+               INITIALIZE HTMX BEHAVIOR
+               ------------------------------------------------ */
+
+            if (
+                typeof htmx !== 'undefined'
+            ) {
+
+                htmx.process(
+                    newCard
+                );
+
+            }
+
+
+            /* ------------------------------------------------
+               UPDATE STAGE COUNT
+               ------------------------------------------------ */
+
+            const stageTab =
+                document.querySelector(
+                    '.stage-tab[data-stage-id="' +
+                    stageId +
+                    '"]'
+                );
+
+
+            if (stageTab) {
+
+                const stageCount =
+                    stageTab.querySelector(
+                        '[data-stage-count]'
+                    );
+
+
+                if (stageCount) {
+
+                    stageCount.textContent =
+                        targetPanel.querySelectorAll(
+                            '[id^="lead-card-"]'
+                        ).length;
+
+                }
+
+            }
+
+        } catch (error) {
+
+            console.error(
+                'Unable to insert new lead:',
+                error
+            );
+
+        }
 
     }
 );
