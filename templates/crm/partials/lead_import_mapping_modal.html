@@ -1,5 +1,88 @@
 {% load crm_extras %}
 
+<style>
+
+    /* ========================================================
+       IMPORT MAPPING
+       UI ONLY
+       ======================================================== */
+
+    .lead-import-map-card {
+        transition:
+            border-color 150ms ease,
+            background-color 150ms ease,
+            box-shadow 150ms ease;
+    }
+
+    .lead-import-map-card:hover {
+        border-color: #bfdbfe !important;
+        background-color: #eff6ff !important;
+        box-shadow:
+            0 4px 12px rgba(59, 130, 246, 0.08);
+    }
+
+
+    /* ========================================================
+       SHEET SELECT
+       ======================================================== */
+
+    .lead-import-map-select {
+        transition:
+            border-color 150ms ease,
+            background-color 150ms ease,
+            box-shadow 150ms ease;
+    }
+
+    .lead-import-map-select:hover {
+        border-color: #93c5fd !important;
+        background-color: #f8fbff !important;
+    }
+
+    .lead-import-map-select:focus {
+        border-color: #3b82f6 !important;
+        background-color: #ffffff !important;
+        box-shadow:
+            0 0 0 3px rgba(59, 130, 246, 0.12);
+        outline: none;
+    }
+
+
+    /* ========================================================
+       DETAILS / ADDITIONAL FIELDS
+       ======================================================== */
+
+    .lead-import-additional-summary {
+        list-style: none;
+    }
+
+    .lead-import-additional-summary::-webkit-details-marker {
+        display: none;
+    }
+
+    .lead-import-additional-chevron {
+        transition:
+            transform 150ms ease;
+    }
+
+    .lead-import-additional[open]
+    .lead-import-additional-chevron {
+        transform: rotate(180deg);
+    }
+
+
+    /* ========================================================
+       CREATE ATTRIBUTE
+       ======================================================== */
+
+    .lead-import-create-attribute {
+        transition:
+            background-color 150ms ease,
+            color 150ms ease;
+    }
+
+</style>
+
+
 <div
     class="
         fixed
@@ -16,12 +99,12 @@
     <div
         class="
             bg-white
-            rounded-xl
+            rounded-2xl
             w-full
             max-w-3xl
             max-h-[90vh]
             overflow-hidden
-            shadow-xl
+            shadow-2xl
             flex
             flex-col
         "
@@ -33,14 +116,14 @@
 
         <div
             class="
+                shrink-0
+                flex
+                items-center
+                justify-between
                 px-5
                 py-4
                 border-b
                 border-gray-200
-                flex
-                items-center
-                justify-between
-                shrink-0
             "
         >
 
@@ -50,6 +133,7 @@
                     class="
                         text-lg
                         font-semibold
+                        tracking-tight
                         text-gray-900
                     "
                 >
@@ -58,7 +142,7 @@
 
                 <p
                     class="
-                        mt-0.5
+                        mt-1
                         text-xs
                         text-gray-400
                     "
@@ -77,15 +161,20 @@
                 "
 
                 class="
-                    w-8
-                    h-8
-                    rounded-md
                     flex
+                    h-8
+                    w-8
                     items-center
                     justify-center
+                    rounded-lg
                     text-gray-400
-                    hover:bg-gray-100
+                    transition-all
+                    duration-150
+
+                    hover:bg-blue-50
+                    hover:text-[#3B82F6]
                 "
+
                 aria-label="Close"
             >
                 <i class="ti ti-x text-lg"></i>
@@ -117,6 +206,10 @@
             {% csrf_token %}
 
 
+            <!-- =================================================
+                 IMPORT TOKEN
+                 ================================================= -->
+
             <input
                 type="hidden"
                 name="import_token"
@@ -125,39 +218,143 @@
 
 
             <!-- =================================================
-                 MAPPING TABLE
+                 SCROLLABLE CONTENT
                  ================================================= -->
 
             <div
                 class="
+                    flex-1
+                    min-h-0
                     overflow-y-auto
                     p-5
                     space-y-5
                 "
             >
 
-                <!-- TABLE HEADER -->
+                <!-- =================================================
+                     FIELD MAPPING HEADER
+                     ================================================= -->
 
                 <div
                     class="
                         grid
-                        grid-cols-2
-                        gap-4
-                        text-[11px]
-                        uppercase
-                        tracking-wide
-                        font-medium
-                        text-gray-400
-                        px-1
+                        grid-cols-1
+                        sm:grid-cols-2
+                        gap-3
                     "
                 >
 
-                    <div>
-                        SHVYA Field
+                    <!-- =================================================
+                         SHVYA FIELD TILE
+                         ================================================= -->
+
+                    <div
+                        class="
+                            rounded-xl
+                            border
+                            border-blue-100
+                            bg-blue-50
+                            px-4
+                            py-3
+                        "
+                    >
+
+                        <div
+                            class="
+                                flex
+                                items-center
+                                gap-2
+                                text-sm
+                                font-semibold
+                                text-[#3B82F6]
+                            "
+                        >
+
+                            <span
+                                class="
+                                    h-2
+                                    w-2
+                                    shrink-0
+                                    rounded-full
+                                    bg-[#3B82F6]
+                                "
+                            ></span>
+
+                            <span>
+                                SHVYA Field
+                            </span>
+
+                        </div>
+
+                        <p
+                            class="
+                                mt-1
+                                pl-4
+                                text-xs
+                                italic
+                                text-gray-500
+                            "
+                        >
+                            Fields in your SHVYA CRM
+                        </p>
+
                     </div>
 
-                    <div>
-                        Sheet Column
+
+                    <!-- =================================================
+                         SHEET COLUMN TILE
+                         ================================================= -->
+
+                    <div
+                        class="
+                            rounded-xl
+                            border
+                            border-purple-100
+                            bg-purple-50
+                            px-4
+                            py-3
+                        "
+                    >
+
+                        <div
+                            class="
+                                flex
+                                items-center
+                                gap-2
+                                text-sm
+                                font-semibold
+                                text-purple-600
+                            "
+                        >
+
+                            <span
+                                class="
+                                    h-2
+                                    w-2
+                                    shrink-0
+                                    rounded-full
+                                    bg-purple-500
+                                "
+                            ></span>
+
+                            <span>
+                                Sheet Column
+                            </span>
+
+                        </div>
+
+                        <p
+                            class="
+                                mt-1
+                                pl-4
+                                text-xs
+                                italic
+                                text-gray-500
+                            "
+                        >
+                            Columns in your uploaded file
+                        </p>
+
                     </div>
 
                 </div>
@@ -171,67 +368,122 @@
 
                     <div
                         class="
-                            text-xs
-                            font-medium
-                            text-gray-500
-                            mb-2
+                            mb-3
+                            flex
+                            items-center
+                            gap-2
                         "
                     >
-                        Required Fields
+
+                        <span
+                            class="
+                                text-sm
+                                font-semibold
+                                text-gray-800
+                            "
+                        >
+                            Required Fields
+                        </span>
+
+                        <span
+                            class="
+                                rounded-full
+                                bg-blue-50
+                                px-2
+                                py-0.5
+                                text-[10px]
+                                font-semibold
+                                text-[#3B82F6]
+                            "
+                        >
+                            Required
+                        </span>
+
                     </div>
 
 
-                    <!-- NAME -->
+                    <!-- =================================================
+                         NAME
+                         ================================================= -->
 
                     <div
                         class="
+                            lead-import-map-card
                             grid
-                            grid-cols-2
-                            gap-4
+                            grid-cols-1
+                            sm:grid-cols-2
+                            gap-3
                             items-center
+                            rounded-xl
+                            border
+                            border-gray-200
+                            bg-white
+                            p-3
                             mb-2
                         "
                     >
 
+                        <!-- SHVYA FIELD -->
+
                         <div
                             class="
+                                flex
+                                items-center
+                                gap-2
                                 rounded-lg
-                                border
-                                border-gray-200
+                                bg-gray-50
                                 px-3
                                 py-2.5
                                 text-sm
+                                font-medium
                                 text-gray-700
                             "
                         >
+
+                            <span
+                                class="
+                                    h-2
+                                    w-2
+                                    shrink-0
+                                    rounded-full
+                                    bg-[#3B82F6]
+                                "
+                            ></span>
+
                             <span>
                                 Name
                             </span>
 
                             <span
                                 class="
-                                    ml-1
                                     text-red-500
                                 "
                             >
                                 *
                             </span>
+
                         </div>
 
+
+                        <!-- SHEET COLUMN -->
 
                         <select
                             name="mapping_name"
                             required
 
                             class="
+                                lead-import-map-select
                                 w-full
+                                rounded-xl
                                 border
                                 border-gray-300
-                                rounded-lg
+                                bg-white
                                 px-3
                                 py-2.5
                                 text-sm
-                                bg-white
+                                font-medium
+                                text-gray-700
+                                outline-none
                             "
                         >
 
@@ -257,56 +509,87 @@
                     </div>
 
 
-                    <!-- PHONE -->
+                    <!-- =================================================
+                         PHONE
+                         ================================================= -->
 
                     <div
                         class="
+                            lead-import-map-card
                             grid
-                            grid-cols-2
-                            gap-4
+                            grid-cols-1
+                            sm:grid-cols-2
+                            gap-3
                             items-center
+                            rounded-xl
+                            border
+                            border-gray-200
+                            bg-white
+                            p-3
                         "
                     >
 
+                        <!-- SHVYA FIELD -->
+
                         <div
                             class="
+                                flex
+                                items-center
+                                gap-2
                                 rounded-lg
-                                border
-                                border-gray-200
+                                bg-gray-50
                                 px-3
                                 py-2.5
                                 text-sm
+                                font-medium
                                 text-gray-700
                             "
                         >
+
+                            <span
+                                class="
+                                    h-2
+                                    w-2
+                                    shrink-0
+                                    rounded-full
+                                    bg-[#3B82F6]
+                                "
+                            ></span>
+
                             <span>
                                 Phone
                             </span>
 
                             <span
                                 class="
-                                    ml-1
                                     text-red-500
                                 "
                             >
                                 *
                             </span>
+
                         </div>
 
+
+                        <!-- SHEET COLUMN -->
 
                         <select
                             name="mapping_phone"
                             required
 
                             class="
+                                lead-import-map-select
                                 w-full
+                                rounded-xl
                                 border
                                 border-gray-300
-                                rounded-lg
+                                bg-white
                                 px-3
                                 py-2.5
                                 text-sm
-                                bg-white
+                                font-medium
+                                text-gray-700
+                                outline-none
                             "
                         >
 
@@ -336,186 +619,379 @@
 
                 <!-- =================================================
                      ADDITIONAL FIELDS
+                     COLLAPSED BY DEFAULT
                      ================================================= -->
 
-                <div>
+                <details
+                    class="
+                        lead-import-additional
+                        rounded-2xl
+                        border
+                        border-gray-200
+                        bg-white
+                        overflow-hidden
+                    "
+                >
 
-                    <div
+                    <!-- SUMMARY -->
+
+                    <summary
                         class="
-                            text-xs
-                            font-medium
-                            text-gray-500
-                            mb-2
-                        "
-                    >
-                        Additional Fields
-                    </div>
-
-
-                    <!-- EMAIL -->
-
-                    <div
-                        class="
-                            grid
-                            grid-cols-2
-                            gap-4
+                            lead-import-additional-summary
+                            flex
+                            cursor-pointer
                             items-center
-                            mb-2
+                            justify-between
+                            gap-4
+                            px-4
+                            py-4
+                            transition-all
+                            duration-150
+
+                            hover:bg-blue-50
                         "
                     >
 
                         <div
                             class="
-                                rounded-lg
-                                border
-                                border-gray-200
-                                px-3
-                                py-2.5
-                                text-sm
-                                text-gray-700
+                                min-w-0
                             "
                         >
-                            Email
+
+                            <div
+                                class="
+                                    flex
+                                    items-center
+                                    gap-2
+                                "
+                            >
+
+                                <span
+                                    class="
+                                        text-sm
+                                        font-semibold
+                                        text-gray-800
+                                    "
+                                >
+                                    Additional Fields
+                                </span>
+
+                                <span
+                                    class="
+                                        rounded-full
+                                        bg-gray-100
+                                        px-2
+                                        py-0.5
+                                        text-[10px]
+                                        font-medium
+                                        text-gray-500
+                                    "
+                                >
+                                    Optional
+                                </span>
+
+                            </div>
+
+                            <p
+                                class="
+                                    mt-1
+                                    text-xs
+                                    text-gray-400
+                                "
+                            >
+                                Map optional fields or skip them.
+                            </p>
+
                         </div>
 
 
-                        <select
-                            name="mapping_email"
-
+                        <i
                             class="
-                                w-full
-                                border
-                                border-gray-300
-                                rounded-lg
-                                px-3
-                                py-2.5
-                                text-sm
-                                bg-white
+                                lead-import-additional-chevron
+                                ti
+                                ti-chevron-down
+                                shrink-0
+                                text-lg
+                                text-gray-400
                             "
-                        >
+                        ></i>
 
-                            <option value="">
-                                Skip the field
-                            </option>
-
-                            {% for header in headers %}
-
-                            <option
-                                value="{{ header }}"
-                                {% if mapping.email == header %}
-                                    selected
-                                {% endif %}
-                            >
-                                {{ header }}
-                            </option>
-
-                            {% endfor %}
-
-                        </select>
-
-                    </div>
+                    </summary>
 
 
-                    <!-- CUSTOM ATTRIBUTES -->
-
-                    {% for attribute in attribute_definitions %}
+                    <!-- =================================================
+                         ADDITIONAL CONTENT
+                         ================================================= -->
 
                     <div
                         class="
-                            grid
-                            grid-cols-2
-                            gap-4
-                            items-center
-                            mb-2
+                            border-t
+                            border-gray-100
+                            bg-gray-50/70
+                            p-3
+                            space-y-2
                         "
                     >
+
+                        <!-- =================================================
+                             EMAIL
+                             ================================================= -->
 
                         <div
                             class="
-                                rounded-lg
+                                lead-import-map-card
+                                grid
+                                grid-cols-1
+                                sm:grid-cols-2
+                                gap-3
+                                items-center
+                                rounded-xl
                                 border
                                 border-gray-200
-                                px-3
-                                py-2.5
-                                text-sm
-                                text-gray-700
+                                bg-white
+                                p-3
                             "
                         >
-                            {{ attribute.name }}
+
+                            <!-- SHVYA FIELD -->
+
+                            <div
+                                class="
+                                    flex
+                                    items-center
+                                    gap-2
+                                    rounded-lg
+                                    bg-gray-50
+                                    px-3
+                                    py-2.5
+                                    text-sm
+                                    font-medium
+                                    text-gray-700
+                                "
+                            >
+
+                                <span
+                                    class="
+                                        h-2
+                                        w-2
+                                        shrink-0
+                                        rounded-full
+                                        bg-[#3B82F6]
+                                    "
+                                ></span>
+
+                                Email
+
+                            </div>
+
+
+                            <!-- SHEET COLUMN -->
+
+                            <select
+                                name="mapping_email"
+
+                                class="
+                                    lead-import-map-select
+                                    w-full
+                                    rounded-xl
+                                    border
+                                    border-gray-300
+                                    bg-white
+                                    px-3
+                                    py-2.5
+                                    text-sm
+                                    font-medium
+                                    text-gray-700
+                                    outline-none
+                                "
+                            >
+
+                                <option value="">
+                                    Skip the field
+                                </option>
+
+                                {% for header in headers %}
+
+                                <option
+                                    value="{{ header }}"
+                                    {% if mapping.email == header %}
+                                        selected
+                                    {% endif %}
+                                >
+                                    {{ header }}
+                                </option>
+
+                                {% endfor %}
+
+                            </select>
+
                         </div>
 
 
-                        <select
-                            name="mapping_{{ attribute.key }}"
+                        <!-- =================================================
+                             CUSTOM ATTRIBUTES
+                             ================================================= -->
 
+                        {% for attribute in attribute_definitions %}
+
+                        <div
                             class="
-                                w-full
+                                lead-import-map-card
+                                grid
+                                grid-cols-1
+                                sm:grid-cols-2
+                                gap-3
+                                items-center
+                                rounded-xl
                                 border
-                                border-gray-300
-                                rounded-lg
-                                px-3
-                                py-2.5
-                                text-sm
+                                border-gray-200
                                 bg-white
+                                p-3
                             "
                         >
 
-                            <option value="">
-                                Skip the field
-                            </option>
+                            <!-- SHVYA FIELD -->
 
-                            {% for header in headers %}
-
-                            <option
-                                value="{{ header }}"
-                                {% if mapping|get_item:attribute.key == header %}
-                                    selected
-                                {% endif %}
+                            <div
+                                class="
+                                    flex
+                                    items-center
+                                    gap-2
+                                    rounded-lg
+                                    bg-gray-50
+                                    px-3
+                                    py-2.5
+                                    text-sm
+                                    font-medium
+                                    text-gray-700
+                                "
                             >
-                                {{ header }}
-                            </option>
 
-                            {% endfor %}
+                                <span
+                                    class="
+                                        h-2
+                                        w-2
+                                        shrink-0
+                                        rounded-full
+                                        bg-[#3B82F6]
+                                    "
+                                ></span>
 
-                        </select>
+                                <span
+                                    class="
+                                        truncate
+                                    "
+                                >
+                                    {{ attribute.name }}
+                                </span>
+
+                            </div>
+
+
+                            <!-- SHEET COLUMN -->
+
+                            <select
+                                name="mapping_{{ attribute.key }}"
+
+                                class="
+                                    lead-import-map-select
+                                    w-full
+                                    rounded-xl
+                                    border
+                                    border-gray-300
+                                    bg-white
+                                    px-3
+                                    py-2.5
+                                    text-sm
+                                    font-medium
+                                    text-gray-700
+                                    outline-none
+                                "
+                            >
+
+                                <option value="">
+                                    Skip the field
+                                </option>
+
+                                {% for header in headers %}
+
+                                <option
+                                    value="{{ header }}"
+                                    {% if mapping|get_item:attribute.key == header %}
+                                        selected
+                                    {% endif %}
+                                >
+                                    {{ header }}
+                                </option>
+
+                                {% endfor %}
+
+                            </select>
+
+                        </div>
+
+                        {% endfor %}
+
+
+                        <!-- =================================================
+                             CREATE NEW ATTRIBUTE
+                             ================================================= -->
+
+                        <button
+                            type="button"
+
+                            class="
+                                lead-import-create-attribute
+                                mt-2
+                                inline-flex
+                                items-center
+                                gap-2
+                                rounded-xl
+                                px-3
+                                py-2
+                                text-sm
+                                font-semibold
+                                text-[#3B82F6]
+
+                                hover:bg-blue-50
+                                hover:text-blue-600
+                            "
+
+                            onclick="
+                                htmx.ajax(
+                                    'GET',
+                                    '{% url "crm-attribute-create-modal" %}?import_token={{ import_token|urlencode }}',
+                                    {
+                                        target: '#modal-root',
+                                        swap: 'innerHTML'
+                                    }
+                                )
+                            "
+                        >
+
+                            <span
+                                class="
+                                    flex
+                                    h-7
+                                    w-7
+                                    items-center
+                                    justify-center
+                                    rounded-lg
+                                    bg-blue-50
+                                    text-[#3B82F6]
+                                    transition
+                                "
+                            >
+                                <i class="ti ti-plus"></i>
+                            </span>
+
+                            Create New Attribute
+
+                        </button>
 
                     </div>
 
-                    {% endfor %}
-
-
-                    <!-- CREATE ATTRIBUTE -->
-
-                    <button
-                        type="button"
-
-                        class="
-                            mt-2
-                            inline-flex
-                            items-center
-                            gap-1.5
-                            text-sm
-                            font-medium
-                            text-blue-600
-                            hover:text-blue-700
-                        "
-
-                        onclick="
-                            htmx.ajax(
-                                'GET',
-                                '{% url "crm-attribute-create-modal" %}?import_token={{ import_token|urlencode }}',
-                                {
-                                    target: '#modal-root',
-                                    swap: 'innerHTML'
-                                }
-                            )
-                        "
-                    >
-                        <i class="ti ti-plus"></i>
-                        Create New Attribute
-                    </button>
-
-                </div>
+                </details>
 
 
                 <!-- =================================================
@@ -524,20 +1000,47 @@
 
                 <div
                     class="
-                        rounded-lg
-                        bg-gray-50
+                        rounded-xl
                         border
-                        border-gray-100
+                        border-blue-100
+                        bg-blue-50/50
                         px-4
                         py-3
-                        text-xs
-                        text-gray-500
                     "
                 >
 
-                    Map each SHVYA field to the matching
-                    column from your uploaded file. Name and
-                    Phone are required.
+                    <div
+                        class="
+                            flex
+                            items-start
+                            gap-2.5
+                        "
+                    >
+
+                        <i
+                            class="
+                                ti
+                                ti-info-circle
+                                mt-0.5
+                                text-base
+                                text-[#3B82F6]
+                            "
+                        ></i>
+
+                        <p
+                            class="
+                                text-xs
+                                leading-5
+                                text-gray-500
+                            "
+                        >
+                            Map each SHVYA field to the matching
+                            column from your uploaded file.
+                            Name and Phone are required.
+                        </p>
+
+                    </div>
+
                 </div>
 
             </div>
@@ -550,15 +1053,18 @@
             <div
                 class="
                     shrink-0
-                    px-5
-                    py-4
-                    border-t
-                    border-gray-100
                     flex
                     items-center
                     justify-between
+                    border-t
+                    border-gray-100
+                    px-5
+                    py-4
+                    bg-white
                 "
             >
+
+                <!-- BACK -->
 
                 <button
                     type="button"
@@ -570,20 +1076,35 @@
                     hx-swap="innerHTML"
 
                     class="
-                        px-4
-                        py-2
-                        rounded-lg
+                        inline-flex
+                        items-center
+                        gap-2
+                        rounded-xl
                         border
                         border-gray-300
+                        bg-white
+                        px-4
+                        py-2.5
                         text-sm
                         font-medium
                         text-gray-700
-                        hover:bg-gray-50
+                        transition-all
+                        duration-150
+
+                        hover:border-blue-200
+                        hover:bg-blue-50
+                        hover:text-[#3B82F6]
                     "
                 >
+
+                    <i class="ti ti-arrow-left"></i>
+
                     Back
+
                 </button>
 
+
+                <!-- NEXT -->
 
                 <div
                     class="
@@ -596,6 +1117,7 @@
                     <span
                         class="
                             text-xs
+                            font-medium
                             text-gray-400
                         "
                     >
@@ -610,18 +1132,31 @@
                             inline-flex
                             items-center
                             gap-2
-                            px-4
-                            py-2
-                            rounded-lg
-                            bg-gray-900
-                            text-white
+                            rounded-xl
+                            bg-[#3B82F6]
+                            px-5
+                            py-2.5
                             text-sm
-                            font-medium
-                            hover:bg-gray-800
+                            font-semibold
+                            text-white
+                            shadow-sm
+                            transition-all
+                            duration-150
+
+                            hover:bg-blue-600
+                            hover:shadow-md
+                            hover:shadow-blue-200
+
+                            focus:outline-none
+                            focus:ring-4
+                            focus:ring-blue-100
                         "
                     >
+
                         Next
+
                         <i class="ti ti-arrow-right"></i>
+
                     </button>
 
                 </div>

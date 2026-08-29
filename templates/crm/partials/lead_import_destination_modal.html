@@ -1,3 +1,159 @@
+<style>
+
+    /* ========================================================
+       IMPORT DESTINATION
+       UI ONLY
+       ======================================================== */
+
+
+    /* ========================================================
+       GENERAL TILE HOVER
+       ======================================================== */
+
+    .lead-import-tile {
+        transition:
+            border-color 150ms ease,
+            background-color 150ms ease,
+            box-shadow 150ms ease,
+            transform 150ms ease;
+    }
+
+    .lead-import-tile:hover {
+        border-color: #bfdbfe !important;
+        background-color: #eff6ff !important;
+        box-shadow:
+            0 5px 16px rgba(59, 130, 246, 0.08);
+        transform: translateY(-1px);
+    }
+
+
+    /* ========================================================
+       FIELD MAPPING ROWS
+       ======================================================== */
+
+    .lead-import-mapping-tile {
+        transition:
+            border-color 150ms ease,
+            background-color 150ms ease,
+            box-shadow 150ms ease;
+    }
+
+    .lead-import-mapping-tile:hover {
+        border-color: #bfdbfe !important;
+        background-color: #f8fbff !important;
+        box-shadow:
+            0 4px 12px rgba(59, 130, 246, 0.06);
+    }
+
+
+    /* ========================================================
+       DESTINATION SELECT
+       ======================================================== */
+
+    .lead-import-destination-select {
+        transition:
+            border-color 150ms ease,
+            background-color 150ms ease,
+            box-shadow 150ms ease;
+    }
+
+    .lead-import-destination-select:hover {
+        border-color: #93c5fd !important;
+        background-color: #f8fbff !important;
+    }
+
+    .lead-import-destination-select:focus {
+        border-color: #3b82f6 !important;
+        background-color: #ffffff !important;
+        box-shadow:
+            0 0 0 4px rgba(59, 130, 246, 0.12);
+        outline: none;
+    }
+
+
+    /* ========================================================
+       DESTINATION TILE
+       ======================================================== */
+
+    .lead-import-destination-card {
+        transition:
+            border-color 150ms ease,
+            background-color 150ms ease,
+            box-shadow 150ms ease,
+            transform 150ms ease;
+    }
+
+    .lead-import-destination-card:hover {
+        border-color: #93c5fd !important;
+        background-color: #f8fbff !important;
+        box-shadow:
+            0 5px 16px rgba(59, 130, 246, 0.07);
+        transform: translateY(-1px);
+    }
+
+
+    /* ========================================================
+       SECTION LABEL
+       ======================================================== */
+
+    .lead-import-section-label {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .lead-import-section-dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 9999px;
+        background: #3b82f6;
+        flex-shrink: 0;
+    }
+
+
+    /* ========================================================
+       FOOTER BUTTONS
+       ======================================================== */
+
+    .lead-import-back-button {
+        transition:
+            border-color 150ms ease,
+            background-color 150ms ease,
+            color 150ms ease,
+            box-shadow 150ms ease;
+    }
+
+    .lead-import-back-button:hover {
+        border-color: #bfdbfe !important;
+        background-color: #eff6ff !important;
+        color: #3b82f6 !important;
+    }
+
+
+    .lead-import-next-button {
+        transition:
+            background-color 150ms ease,
+            box-shadow 150ms ease,
+            transform 150ms ease;
+    }
+
+    .lead-import-next-button:hover {
+        background-color: #2563eb !important;
+        box-shadow:
+            0 6px 16px rgba(59, 130, 246, 0.20);
+        transform: translateY(-1px);
+    }
+
+    .lead-import-next-button:focus {
+        outline: none;
+        box-shadow:
+            0 0 0 4px rgba(59, 130, 246, 0.12),
+            0 6px 16px rgba(59, 130, 246, 0.16);
+    }
+
+</style>
+
+
 <div
     class="
         fixed
@@ -14,12 +170,12 @@
     <div
         class="
             bg-white
-            rounded-xl
+            rounded-2xl
             w-full
             max-w-3xl
             max-h-[90vh]
             overflow-hidden
-            shadow-xl
+            shadow-2xl
             flex
             flex-col
         "
@@ -31,14 +187,14 @@
 
         <div
             class="
+                shrink-0
+                flex
+                items-center
+                justify-between
                 px-5
                 py-4
                 border-b
                 border-gray-200
-                flex
-                items-center
-                justify-between
-                shrink-0
             "
         >
 
@@ -48,6 +204,7 @@
                     class="
                         text-lg
                         font-semibold
+                        tracking-tight
                         text-gray-900
                     "
                 >
@@ -56,7 +213,7 @@
 
                 <p
                     class="
-                        mt-0.5
+                        mt-1
                         text-xs
                         text-gray-400
                     "
@@ -75,33 +232,39 @@
                 "
 
                 class="
-                    w-8
-                    h-8
-                    rounded-md
                     flex
+                    h-8
+                    w-8
                     items-center
                     justify-center
+                    rounded-lg
                     text-gray-400
-                    hover:bg-gray-100
+                    transition-all
+                    duration-150
+
+                    hover:bg-blue-50
+                    hover:text-[#3B82F6]
                 "
 
                 aria-label="Close"
             >
+
                 <i class="ti ti-x text-lg"></i>
+
             </button>
 
         </div>
 
 
         <!-- =================================================
-             CONTENT
+             CONTENT FORM
              ================================================= -->
 
         <form
             id="lead-import-destination-form"
 
             method="post"
-        
+
             action="{% url 'crm-lead-import-destination-save' %}"
 
             class="
@@ -113,6 +276,11 @@
 
             {% csrf_token %}
 
+
+            <!-- =================================================
+                 IMPORT TOKEN
+                 ================================================= -->
+
             <input
                 type="hidden"
                 name="import_token"
@@ -120,100 +288,260 @@
             >
 
 
+            <!-- =================================================
+                 SCROLLABLE CONTENT
+                 ================================================= -->
+
             <div
                 class="
+                    flex-1
+                    min-h-0
                     overflow-y-auto
                     p-5
                     space-y-6
                 "
             >
 
+
                 <!-- =================================================
-                     MAPPING SUMMARY
+                     FIELD MAPPING
                      ================================================= -->
 
                 <div>
 
                     <div
                         class="
-                            text-sm
-                            font-medium
-                            text-gray-700
+                            lead-import-section-label
                             mb-3
                         "
                     >
-                        Field Mapping
+
+                        <span
+                            class="
+                                lead-import-section-dot
+                            "
+                        ></span>
+
+                        <span
+                            class="
+                                text-sm
+                                font-semibold
+                                text-gray-800
+                            "
+                        >
+                            Field Mapping
+                        </span>
+
                     </div>
 
 
+                    <!-- =================================================
+                         MAPPING HEADER TILES
+                         ================================================= -->
+
                     <div
                         class="
-                            border
-                            border-gray-200
-                            rounded-xl
-                            overflow-hidden
+                            grid
+                            grid-cols-1
+                            sm:grid-cols-2
+                            gap-3
+                            mb-3
                         "
                     >
 
-                        <!-- HEADER -->
-
                         <div
                             class="
-                                grid
-                                grid-cols-2
-                                gap-4
-                                px-4
-                                py-2.5
-                                bg-gray-50
-                                border-b
-                                border-gray-200
-                                text-[11px]
-                                uppercase
-                                tracking-wide
-                                font-medium
-                                text-gray-400
-                            "
-                        >
-
-                            <div>
-                                SHVYA Field
-                            </div>
-
-                            <div>
-                                Sheet Column
-                            </div>
-
-                        </div>
-
-
-                        {% for row in mapping_rows %}
-
-                        <div
-                            class="
-                                grid
-                                grid-cols-2
-                                gap-4
-                                items-center
+                                rounded-xl
+                                border
+                                border-blue-100
+                                bg-blue-50
                                 px-4
                                 py-3
-                                border-b
-                                border-gray-100
-                                last:border-b-0
                             "
                         >
 
                             <div
                                 class="
-                                    text-sm
-                                    text-gray-700
+                                    flex
+                                    items-center
+                                    gap-2
+                                    text-xs
+                                    font-semibold
+                                    uppercase
+                                    tracking-wide
+                                    text-[#3B82F6]
                                 "
                             >
-                                {{ row.label }}
+
+                                <span
+                                    class="
+                                        h-2
+                                        w-2
+                                        rounded-full
+                                        bg-[#3B82F6]
+                                    "
+                                ></span>
+
+                                SHVYA Field
+
+                            </div>
+
+                            <p
+                                class="
+                                    mt-1
+                                    text-xs
+                                    text-gray-500
+                                "
+                            >
+                                Fields in your SHVYA CRM
+                            </p>
+
+                        </div>
+
+
+                        <div
+                            class="
+                                rounded-xl
+                                border
+                                border-purple-100
+                                bg-purple-50
+                                px-4
+                                py-3
+                            "
+                        >
+
+                            <div
+                                class="
+                                    flex
+                                    items-center
+                                    gap-2
+                                    text-xs
+                                    font-semibold
+                                    uppercase
+                                    tracking-wide
+                                    text-purple-600
+                                "
+                            >
+
+                                <span
+                                    class="
+                                        h-2
+                                        w-2
+                                        rounded-full
+                                        bg-purple-500
+                                    "
+                                ></span>
+
+                                Sheet Column
+
+                            </div>
+
+                            <p
+                                class="
+                                    mt-1
+                                    text-xs
+                                    text-gray-500
+                                "
+                            >
+                                Columns from your uploaded file
+                            </p>
+
+                        </div>
+
+                    </div>
+
+
+                    <!-- =================================================
+                         MAPPING ROWS
+                         ================================================= -->
+
+                    <div
+                        class="
+                            space-y-2
+                        "
+                    >
+
+                        {% for row in mapping_rows %}
+
+                        <div
+                            class="
+                                lead-import-mapping-tile
+                                grid
+                                grid-cols-1
+                                sm:grid-cols-2
+                                gap-3
+                                items-center
+                                rounded-xl
+                                border
+                                border-gray-200
+                                bg-white
+                                p-3
+                            "
+                        >
+
+                            <!-- SHVYA FIELD TILE -->
+
+                            <div
+                                class="
+                                    flex
+                                    items-center
+                                    justify-between
+                                    gap-3
+                                    rounded-lg
+                                    bg-gray-50
+                                    px-3
+                                    py-2.5
+                                "
+                            >
+
+                                <div
+                                    class="
+                                        flex
+                                        min-w-0
+                                        items-center
+                                        gap-2
+                                    "
+                                >
+
+                                    <span
+                                        class="
+                                            h-2
+                                            w-2
+                                            shrink-0
+                                            rounded-full
+                                            bg-[#3B82F6]
+                                        "
+                                    ></span>
+
+                                    <span
+                                        class="
+                                            truncate
+                                            text-sm
+                                            font-medium
+                                            text-gray-700
+                                        "
+                                    >
+                                        {{ row.label }}
+                                    </span>
+
+                                </div>
+
 
                                 {% if row.key == "name" or row.key == "phone" %}
 
-                                <span class="text-red-500">
-                                    *
+                                <span
+                                    class="
+                                        shrink-0
+                                        rounded-full
+                                        bg-red-50
+                                        px-2
+                                        py-0.5
+                                        text-[10px]
+                                        font-semibold
+                                        text-red-500
+                                    "
+                                >
+                                    Required
                                 </span>
 
                                 {% endif %}
@@ -221,14 +549,44 @@
                             </div>
 
 
+                            <!-- SHEET COLUMN TILE -->
+
                             <div
                                 class="
-                                    text-sm
-                                    text-gray-500
-                                    truncate
+                                    flex
+                                    min-w-0
+                                    items-center
+                                    gap-2
+                                    rounded-lg
+                                    border
+                                    border-purple-100
+                                    bg-purple-50/60
+                                    px-3
+                                    py-2.5
                                 "
                             >
-                                {{ row.sheet_column }}
+
+                                <span
+                                    class="
+                                        h-2
+                                        w-2
+                                        shrink-0
+                                        rounded-full
+                                        bg-purple-500
+                                    "
+                                ></span>
+
+                                <span
+                                    class="
+                                        truncate
+                                        text-sm
+                                        font-medium
+                                        text-gray-600
+                                    "
+                                >
+                                    {{ row.sheet_column }}
+                                </span>
+
                             </div>
 
                         </div>
@@ -237,11 +595,15 @@
 
                         <div
                             class="
+                                rounded-xl
+                                border
+                                border-gray-200
+                                bg-gray-50
                                 px-4
                                 py-6
+                                text-center
                                 text-sm
                                 text-gray-400
-                                text-center
                             "
                         >
                             No field mappings available.
@@ -255,20 +617,34 @@
 
 
                 <!-- =================================================
-                     DESTINATION
+                     LEAD DESTINATION
                      ================================================= -->
 
                 <div>
 
                     <div
                         class="
-                            text-sm
-                            font-medium
-                            text-gray-700
+                            lead-import-section-label
                             mb-3
                         "
                     >
-                        Lead Destination
+
+                        <span
+                            class="
+                                lead-import-section-dot
+                            "
+                        ></span>
+
+                        <span
+                            class="
+                                text-sm
+                                font-semibold
+                                text-gray-800
+                            "
+                        >
+                            Lead Destination
+                        </span>
+
                     </div>
 
 
@@ -281,24 +657,103 @@
                         "
                     >
 
-                        <!-- PIPELINE -->
+                        <!-- =================================================
+                             PIPELINE TILE
+                             ================================================= -->
 
-                        <div>
+                        <div
+                            class="
+                                lead-import-destination-card
+                                rounded-2xl
+                                border
+                                border-gray-200
+                                bg-white
+                                p-4
+                            "
+                        >
 
-                            <label
-                                for="lead-import-pipeline"
+                            <div
                                 class="
-                                    text-xs
-                                    text-gray-500
+                                    flex
+                                    items-center
+                                    justify-between
+                                    mb-3
                                 "
                             >
-                                Pipeline *
-                            </label>
+
+                                <div
+                                    class="
+                                        flex
+                                        items-center
+                                        gap-2
+                                    "
+                                >
+
+                                    <span
+                                        class="
+                                            flex
+                                            h-8
+                                            w-8
+                                            items-center
+                                            justify-center
+                                            rounded-lg
+                                            bg-blue-50
+                                            text-[#3B82F6]
+                                        "
+                                    >
+                                        <i class="ti ti-git-branch"></i>
+                                    </span>
+
+                                    <div>
+
+                                        <label
+                                            for="lead-import-pipeline"
+                                            class="
+                                                block
+                                                text-sm
+                                                font-semibold
+                                                text-gray-800
+                                            "
+                                        >
+                                            Pipeline
+                                        </label>
+
+                                        <p
+                                            class="
+                                                mt-0.5
+                                                text-[11px]
+                                                text-gray-400
+                                            "
+                                        >
+                                            Select destination pipeline
+                                        </p>
+
+                                    </div>
+
+                                </div>
+
+
+                                <span
+                                    class="
+                                        rounded-full
+                                        bg-red-50
+                                        px-2
+                                        py-0.5
+                                        text-[10px]
+                                        font-semibold
+                                        text-red-500
+                                    "
+                                >
+                                    Required
+                                </span>
+
+                            </div>
 
 
                             <select
-                                
+
                                 name="pipeline"
+
                                 id="lead-import-pipeline"
 
                                 required
@@ -314,15 +769,18 @@
                                 hx-include="#lead-import-pipeline"
 
                                 class="
+                                    lead-import-destination-select
                                     w-full
+                                    rounded-xl
                                     border
                                     border-gray-300
-                                    rounded-lg
-                                    px-3
-                                    py-2.5
-                                    text-sm
-                                    mt-1
                                     bg-white
+                                    px-3
+                                    py-3
+                                    text-sm
+                                    font-medium
+                                    text-gray-700
+                                    outline-none
                                 "
                             >
 
@@ -348,38 +806,120 @@
                         </div>
 
 
-                        <!-- STAGE -->
+                        <!-- =================================================
+                             STAGE TILE
+                             ================================================= -->
 
-                        <div>
+                        <div
+                            class="
+                                lead-import-destination-card
+                                rounded-2xl
+                                border
+                                border-gray-200
+                                bg-white
+                                p-4
+                            "
+                        >
 
-                            <label
-                                for="lead-import-stage"
+                            <div
                                 class="
-                                    text-xs
-                                    text-gray-500
+                                    flex
+                                    items-center
+                                    justify-between
+                                    mb-3
                                 "
                             >
-                                Stage *
-                            </label>
+
+                                <div
+                                    class="
+                                        flex
+                                        items-center
+                                        gap-2
+                                    "
+                                >
+
+                                    <span
+                                        class="
+                                            flex
+                                            h-8
+                                            w-8
+                                            items-center
+                                            justify-center
+                                            rounded-lg
+                                            bg-blue-50
+                                            text-[#3B82F6]
+                                        "
+                                    >
+                                        <i class="ti ti-layout-kanban"></i>
+                                    </span>
+
+                                    <div>
+
+                                        <label
+                                            for="lead-import-stage"
+                                            class="
+                                                block
+                                                text-sm
+                                                font-semibold
+                                                text-gray-800
+                                            "
+                                        >
+                                            Stage
+                                        </label>
+
+                                        <p
+                                            class="
+                                                mt-0.5
+                                                text-[11px]
+                                                text-gray-400
+                                            "
+                                        >
+                                            Select destination stage
+                                        </p>
+
+                                    </div>
+
+                                </div>
+
+
+                                <span
+                                    class="
+                                        rounded-full
+                                        bg-red-50
+                                        px-2
+                                        py-0.5
+                                        text-[10px]
+                                        font-semibold
+                                        text-red-500
+                                    "
+                                >
+                                    Required
+                                </span>
+
+                            </div>
 
 
                             <select
 
                                 name="stage"
+
                                 id="lead-import-stage"
 
                                 required
 
                                 class="
+                                    lead-import-destination-select
                                     w-full
+                                    rounded-xl
                                     border
                                     border-gray-300
-                                    rounded-lg
-                                    px-3
-                                    py-2.5
-                                    text-sm
-                                    mt-1
                                     bg-white
+                                    px-3
+                                    py-3
+                                    text-sm
+                                    font-medium
+                                    text-gray-700
+                                    outline-none
                                 "
                             >
 
@@ -410,9 +950,10 @@
 
 
                 <!-- =================================================
-                     FOLLOW-UP
+                     NO FOLLOW-UP
                      INTENTIONALLY OMITTED
                      ================================================= -->
+
 
             </div>
 
@@ -424,15 +965,18 @@
             <div
                 class="
                     shrink-0
-                    px-5
-                    py-4
-                    border-t
-                    border-gray-100
                     flex
                     items-center
                     justify-between
+                    border-t
+                    border-gray-100
+                    bg-white
+                    px-5
+                    py-4
                 "
             >
+
+                <!-- BACK -->
 
                 <button
                     type="button"
@@ -444,20 +988,30 @@
                     hx-swap="innerHTML"
 
                     class="
-                        px-4
-                        py-2
-                        rounded-lg
+                        lead-import-back-button
+                        inline-flex
+                        items-center
+                        gap-2
+                        rounded-xl
                         border
                         border-gray-300
+                        bg-white
+                        px-4
+                        py-2.5
                         text-sm
                         font-medium
                         text-gray-700
-                        hover:bg-gray-50
                     "
                 >
+
+                    <i class="ti ti-arrow-left"></i>
+
                     Back
+
                 </button>
 
+
+                <!-- NEXT -->
 
                 <div
                     class="
@@ -470,6 +1024,7 @@
                     <span
                         class="
                             text-xs
+                            font-medium
                             text-gray-400
                         "
                     >
@@ -483,22 +1038,26 @@
                         id="lead-import-destination-next"
 
                         class="
+                            lead-import-next-button
                             inline-flex
                             items-center
                             gap-2
-                            px-4
-                            py-2
-                            rounded-lg
-                            bg-gray-900
-                            text-white
+                            rounded-xl
+                            bg-[#3B82F6]
+                            px-5
+                            py-2.5
                             text-sm
-                            font-medium
-                            hover:bg-gray-800
+                            font-semibold
+                            text-white
+                            shadow-sm
                             cursor-pointer
                         "
                     >
+
                         Next
+
                         <i class="ti ti-arrow-right"></i>
+
                     </button>
 
                 </div>
@@ -510,6 +1069,7 @@
     </div>
 
 </div>
+
 
 <script>
 
@@ -525,11 +1085,14 @@
             'lead-import-destination-next'
         );
 
+
     if (
         !form ||
         !nextButton
     ) {
+
         return;
+
     }
 
 
@@ -544,7 +1107,9 @@
             if (
                 !form.reportValidity()
             ) {
+
                 return;
+
             }
 
 
@@ -555,7 +1120,9 @@
             if (
                 nextButton.dataset.submitting === 'true'
             ) {
+
                 return;
+
             }
 
             nextButton.dataset.submitting =
@@ -566,7 +1133,8 @@
                 nextButton.innerHTML;
 
 
-            nextButton.disabled = true;
+            nextButton.disabled =
+                true;
 
             nextButton.classList.add(
                 'opacity-70',
@@ -622,12 +1190,15 @@
                    RESPONSE HANDLING
                    ================================================= */
 
-                if (!response.ok) {
+                if (
+                    !response.ok
+                ) {
 
                     const modalRoot =
                         document.getElementById(
                             'modal-root'
                         );
+
 
                     if (
                         modalRoot
@@ -646,11 +1217,12 @@
                                     p-4
                                 "
                             >
+
                                 <div
                                     class="
                                         bg-white
-                                        rounded-xl
-                                        shadow-xl
+                                        rounded-2xl
+                                        shadow-2xl
                                         p-6
                                         w-full
                                         max-w-lg
@@ -659,6 +1231,11 @@
 
                                     <div
                                         class="
+                                            rounded-xl
+                                            border
+                                            border-red-100
+                                            bg-red-50
+                                            p-4
                                             text-sm
                                             text-red-600
                                         "
@@ -666,8 +1243,10 @@
                                         ${html}
                                     </div>
 
+
                                     <button
                                         type="button"
+
                                         onclick="
                                             document
                                                 .getElementById(
@@ -675,27 +1254,34 @@
                                                 )
                                                 .innerHTML = ''
                                         "
+
                                         class="
                                             mt-5
+                                            inline-flex
+                                            items-center
+                                            justify-center
+                                            rounded-xl
+                                            bg-[#3B82F6]
                                             px-4
-                                            py-2
-                                            rounded-lg
-                                            bg-gray-900
-                                            text-white
+                                            py-2.5
                                             text-sm
-                                            font-medium
+                                            font-semibold
+                                            text-white
+                                            hover:bg-blue-600
                                         "
                                     >
                                         Close
                                     </button>
 
                                 </div>
+
                             </div>
                         `;
 
                     }
 
                     return;
+
                 }
 
 
@@ -708,8 +1294,13 @@
                         'modal-root'
                     );
 
-                if (!modalRoot) {
+
+                if (
+                    !modalRoot
+                ) {
+
                     return;
+
                 }
 
 
@@ -718,8 +1309,8 @@
 
 
                 /*
-                 * Process the newly inserted Step 5 HTML so
-                 * HTMX attributes inside the Review modal work.
+                 * Process newly inserted Step 5 HTML so that
+                 * HTMX attributes continue to work.
                  */
 
                 if (
@@ -739,6 +1330,7 @@
                     error
                 );
 
+
                 alert(
                     'Unable to continue the import. Please try again.'
                 );
@@ -748,13 +1340,16 @@
                 nextButton.dataset.submitting =
                     'false';
 
+
                 nextButton.disabled =
                     false;
+
 
                 nextButton.classList.remove(
                     'opacity-70',
                     'cursor-not-allowed'
                 );
+
 
                 nextButton.innerHTML =
                     originalHTML;

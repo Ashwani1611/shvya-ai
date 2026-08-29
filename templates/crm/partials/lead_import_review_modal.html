@@ -1,3 +1,206 @@
+<style>
+
+    /* ========================================================
+       LEAD IMPORT — REVIEW
+       UI ONLY
+       ======================================================== */
+
+
+    /* ========================================================
+       GENERAL
+       ======================================================== */
+
+    .lead-import-review-tile {
+        transition:
+            border-color 150ms ease,
+            background-color 150ms ease,
+            box-shadow 150ms ease,
+            transform 150ms ease;
+    }
+
+
+    /* ========================================================
+       STAT TILES
+       ======================================================== */
+
+    .lead-import-stat-tile {
+        transition:
+            border-color 150ms ease,
+            background-color 150ms ease,
+            box-shadow 150ms ease,
+            transform 150ms ease;
+    }
+
+    .lead-import-stat-tile:hover {
+        border-color: #bfdbfe !important;
+        background-color: #eff6ff !important;
+        box-shadow:
+            0 6px 18px rgba(59, 130, 246, 0.08);
+        transform: translateY(-1px);
+    }
+
+
+    /* ========================================================
+       ASSIGNMENT TILE
+       ======================================================== */
+
+    .lead-import-assignment-tile {
+        transition:
+            border-color 150ms ease,
+            background-color 150ms ease,
+            box-shadow 150ms ease;
+    }
+
+    .lead-import-assignment-tile:hover {
+        border-color: #bfdbfe !important;
+        background-color: #f8fbff !important;
+        box-shadow:
+            0 5px 16px rgba(59, 130, 246, 0.07);
+    }
+
+
+    /* ========================================================
+       APPLY CHANGES OPTION
+       ======================================================== */
+
+    .lead-import-apply-option {
+        transition:
+            border-color 150ms ease,
+            background-color 150ms ease,
+            box-shadow 150ms ease,
+            transform 150ms ease;
+    }
+
+    .lead-import-apply-option:hover {
+        border-color: #93c5fd !important;
+        background-color: #eff6ff !important;
+    }
+
+
+    /*
+     * The whole option becomes blue when selected.
+     */
+
+    .lead-import-apply-option:has(
+        input[type="radio"]:checked
+    ) {
+
+        border-color: #3b82f6 !important;
+        background-color: #eff6ff !important;
+
+        box-shadow:
+            0 0 0 3px rgba(59, 130, 246, 0.10),
+            0 6px 18px rgba(59, 130, 246, 0.08);
+
+        transform: translateY(-1px);
+
+        animation:
+            leadImportOptionPulse
+            400ms
+            ease-out;
+    }
+
+
+    .lead-import-apply-option
+    input[type="radio"] {
+
+        accent-color: #3b82f6;
+    }
+
+
+    @keyframes leadImportOptionPulse {
+
+        0% {
+            box-shadow:
+                0 0 0 0 rgba(59, 130, 246, 0);
+        }
+
+        50% {
+            box-shadow:
+                0 0 0 5px rgba(59, 130, 246, 0.13),
+                0 6px 18px rgba(59, 130, 246, 0.08);
+        }
+
+        100% {
+            box-shadow:
+                0 0 0 3px rgba(59, 130, 246, 0.10),
+                0 6px 18px rgba(59, 130, 246, 0.08);
+        }
+
+    }
+
+
+    /* ========================================================
+       REQUIRED / STATUS BADGES
+       ======================================================== */
+
+    .lead-import-blue-badge {
+        background-color: #eff6ff;
+        color: #3b82f6;
+    }
+
+
+    /* ========================================================
+       FOOTER BUTTONS
+       ======================================================== */
+
+    .lead-import-review-back {
+        transition:
+            border-color 150ms ease,
+            background-color 150ms ease,
+            color 150ms ease;
+    }
+
+    .lead-import-review-back:hover {
+        border-color: #bfdbfe !important;
+        background-color: #eff6ff !important;
+        color: #3b82f6 !important;
+    }
+
+
+    .lead-import-review-import {
+        transition:
+            background-color 150ms ease,
+            box-shadow 150ms ease,
+            transform 150ms ease;
+    }
+
+    .lead-import-review-import:hover {
+        background-color: #2563eb !important;
+        box-shadow:
+            0 7px 18px rgba(59, 130, 246, 0.20);
+        transform: translateY(-1px);
+    }
+
+    .lead-import-review-import:focus {
+        outline: none;
+        box-shadow:
+            0 0 0 4px rgba(59, 130, 246, 0.12),
+            0 7px 18px rgba(59, 130, 246, 0.16);
+    }
+
+
+    /* ========================================================
+       SECTION LABEL
+       ======================================================== */
+
+    .lead-import-review-section {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .lead-import-review-section-dot {
+        width: 7px;
+        height: 7px;
+        flex-shrink: 0;
+        border-radius: 9999px;
+        background-color: #3b82f6;
+    }
+
+</style>
+
+
 <div
     class="
         fixed
@@ -14,12 +217,12 @@
     <div
         class="
             bg-white
-            rounded-xl
+            rounded-2xl
             w-full
             max-w-2xl
             max-h-[90vh]
             overflow-hidden
-            shadow-xl
+            shadow-2xl
             flex
             flex-col
         "
@@ -31,14 +234,14 @@
 
         <div
             class="
+                shrink-0
+                flex
+                items-center
+                justify-between
                 px-5
                 py-4
                 border-b
                 border-gray-200
-                flex
-                items-center
-                justify-between
-                shrink-0
             "
         >
 
@@ -48,6 +251,7 @@
                     class="
                         text-lg
                         font-semibold
+                        tracking-tight
                         text-gray-900
                     "
                 >
@@ -56,7 +260,7 @@
 
                 <p
                     class="
-                        mt-0.5
+                        mt-1
                         text-xs
                         text-gray-400
                     "
@@ -75,17 +279,25 @@
                 "
 
                 class="
-                    w-8
-                    h-8
-                    rounded-md
                     flex
+                    h-8
+                    w-8
                     items-center
                     justify-center
+                    rounded-lg
                     text-gray-400
-                    hover:bg-gray-100
+                    transition-all
+                    duration-150
+
+                    hover:bg-blue-50
+                    hover:text-[#3B82F6]
                 "
+
+                aria-label="Close"
             >
-                <i class="ti ti-x"></i>
+
+                <i class="ti ti-x text-lg"></i>
+
             </button>
 
         </div>
@@ -113,6 +325,7 @@
 
             {% csrf_token %}
 
+
             <input
                 type="hidden"
                 name="import_token"
@@ -121,110 +334,302 @@
 
 
             <!-- =================================================
-                 CONTENT
+                 SCROLLABLE CONTENT
                  ================================================= -->
 
             <div
                 class="
+                    flex-1
+                    min-h-0
                     overflow-y-auto
                     p-5
-                    space-y-5
+                    space-y-6
                 "
             >
 
-                <!-- COUNTS -->
 
-                <div
-                    class="
-                        grid
-                        grid-cols-2
-                        gap-3
-                    "
-                >
+                <!-- =================================================
+                     IMPORT SUMMARY
+                     ================================================= -->
+
+                <div>
 
                     <div
                         class="
-                            rounded-xl
-                            border
-                            border-gray-200
-                            p-4
+                            lead-import-review-section
+                            mb-3
                         "
                     >
 
-                        <p
+                        <span
                             class="
-                                text-2xl
-                                font-semibold
-                                text-gray-900
+                                lead-import-review-section-dot
                             "
-                        >
-                            {{ new_lead_count }}
-                        </p>
+                        ></span>
 
-                        <p
+                        <span
                             class="
-                                mt-1
-                                text-xs
-                                text-gray-500
+                                text-sm
+                                font-semibold
+                                text-gray-800
                             "
                         >
-                            Lead will be created
-                        </p>
+                            Import Summary
+                        </span>
 
                     </div>
 
 
+                    <!-- =================================================
+                         STAT TILES
+                         ================================================= -->
+
                     <div
                         class="
-                            rounded-xl
-                            border
-                            border-gray-200
-                            p-4
+                            grid
+                            grid-cols-1
+                            sm:grid-cols-2
+                            gap-3
                         "
                     >
 
-                        <p
-                            class="
-                                text-2xl
-                                font-semibold
-                                text-gray-900
-                            "
-                        >
-                            {{ existing_lead_count }}
-                        </p>
+                        <!-- NEW LEADS -->
 
-                        <p
+                        <div
                             class="
-                                mt-1
-                                text-xs
-                                text-gray-500
+                                lead-import-stat-tile
+                                rounded-2xl
+                                border
+                                border-blue-100
+                                bg-blue-50/50
+                                p-4
                             "
                         >
-                            Existing Lead Found
-                        </p>
+
+                            <div
+                                class="
+                                    flex
+                                    items-start
+                                    justify-between
+                                "
+                            >
+
+                                <div
+                                    class="
+                                        flex
+                                        h-10
+                                        w-10
+                                        items-center
+                                        justify-center
+                                        rounded-xl
+                                        bg-blue-100
+                                        text-[#3B82F6]
+                                    "
+                                >
+                                    <i class="ti ti-user-plus text-lg"></i>
+                                </div>
+
+
+                                <span
+                                    class="
+                                        rounded-full
+                                        bg-white
+                                        px-2
+                                        py-1
+                                        text-[10px]
+                                        font-semibold
+                                        text-[#3B82F6]
+                                        shadow-sm
+                                    "
+                                >
+                                    New
+                                </span>
+
+                            </div>
+
+
+                            <p
+                                class="
+                                    mt-4
+                                    text-3xl
+                                    font-semibold
+                                    tracking-tight
+                                    text-gray-900
+                                "
+                            >
+                                {{ new_lead_count }}
+                            </p>
+
+
+                            <p
+                                class="
+                                    mt-1
+                                    text-sm
+                                    font-medium
+                                    text-gray-500
+                                "
+                            >
+                                Lead will be created
+                            </p>
+
+                        </div>
+
+
+                        <!-- EXISTING LEADS -->
+
+                        <div
+                            class="
+                                lead-import-stat-tile
+                                rounded-2xl
+                                border
+                                border-gray-200
+                                bg-white
+                                p-4
+                            "
+                        >
+
+                            <div
+                                class="
+                                    flex
+                                    items-start
+                                    justify-between
+                                "
+                            >
+
+                                <div
+                                    class="
+                                        flex
+                                        h-10
+                                        w-10
+                                        items-center
+                                        justify-center
+                                        rounded-xl
+                                        bg-gray-100
+                                        text-gray-500
+                                    "
+                                >
+                                    <i class="ti ti-user-check text-lg"></i>
+                                </div>
+
+
+                                <span
+                                    class="
+                                        rounded-full
+                                        bg-gray-100
+                                        px-2
+                                        py-1
+                                        text-[10px]
+                                        font-semibold
+                                        text-gray-500
+                                    "
+                                >
+                                    Existing
+                                </span>
+
+                            </div>
+
+
+                            <p
+                                class="
+                                    mt-4
+                                    text-3xl
+                                    font-semibold
+                                    tracking-tight
+                                    text-gray-900
+                                "
+                            >
+                                {{ existing_lead_count }}
+                            </p>
+
+
+                            <p
+                                class="
+                                    mt-1
+                                    text-sm
+                                    font-medium
+                                    text-gray-500
+                                "
+                            >
+                                Existing Lead Found
+                            </p>
+
+                        </div>
 
                     </div>
 
                 </div>
 
 
+                <!-- =================================================
+                     INVALID PHONE WARNING
+                     ================================================= -->
+
                 {% if invalid_phone_count %}
 
                 <div
                     class="
-                        rounded-lg
+                        rounded-2xl
                         border
                         border-red-100
                         bg-red-50
-                        px-4
-                        py-3
-                        text-xs
-                        text-red-600
+                        p-4
                     "
                 >
-                    {{ invalid_phone_count }}
-                    row{{ invalid_phone_count|pluralize }}
-                    contain invalid phone numbers and will be skipped.
+
+                    <div
+                        class="
+                            flex
+                            items-start
+                            gap-3
+                        "
+                    >
+
+                        <div
+                            class="
+                                flex
+                                h-9
+                                w-9
+                                shrink-0
+                                items-center
+                                justify-center
+                                rounded-xl
+                                bg-white
+                                text-red-500
+                            "
+                        >
+                            <i class="ti ti-alert-triangle"></i>
+                        </div>
+
+
+                        <div>
+
+                            <p
+                                class="
+                                    text-sm
+                                    font-semibold
+                                    text-red-700
+                                "
+                            >
+                                {{ invalid_phone_count }}
+                                row{{ invalid_phone_count|pluralize }}
+                                will be skipped
+                            </p>
+
+                            <p
+                                class="
+                                    mt-0.5
+                                    text-xs
+                                    leading-5
+                                    text-red-500
+                                "
+                            >
+                                These rows contain invalid phone numbers.
+                            </p>
+
+                        </div>
+
+                    </div>
+
                 </div>
 
                 {% endif %}
@@ -234,59 +639,166 @@
                      ASSIGNMENT
                      ================================================= -->
 
-                <div
-                    class="
-                        rounded-xl
-                        border
-                        border-gray-200
-                        p-4
-                    "
-                >
+                <div>
 
-                    <p
+                    <div
                         class="
-                            text-sm
-                            font-medium
-                            text-gray-700
+                            lead-import-review-section
+                            mb-3
                         "
                     >
-                        Assignment
-                    </p>
 
-                    <p
+                        <span
+                            class="
+                                lead-import-review-section-dot
+                            "
+                        ></span>
+
+                        <span
+                            class="
+                                text-sm
+                                font-semibold
+                                text-gray-800
+                            "
+                        >
+                            Assignment
+                        </span>
+
+                    </div>
+
+
+                    <div
                         class="
-                            mt-2
-                            text-xs
-                            text-gray-500
+                            lead-import-assignment-tile
+                            rounded-2xl
+                            border
+                            border-gray-200
+                            bg-white
+                            p-4
                         "
                     >
-                        Distribution:
-                        <span class="font-medium text-gray-700">
-                            Specific pipeline & stage
-                        </span>
-                    </p>
 
-                    <p
-                        class="
-                            mt-1
-                            text-xs
-                            text-gray-500
-                        "
-                    >
-                        Pipeline:
-                        <span class="font-medium text-gray-700">
-                            {{ pipeline.name }}
-                        </span>
+                        <div
+                            class="
+                                grid
+                                grid-cols-1
+                                sm:grid-cols-3
+                                gap-3
+                            "
+                        >
 
-                        <span class="mx-1 text-gray-300">
-                            |
-                        </span>
+                            <!-- DISTRIBUTION -->
 
-                        Stage:
-                        <span class="font-medium text-gray-700">
-                            {{ stage.name }}
-                        </span>
-                    </p>
+                            <div
+                                class="
+                                    rounded-xl
+                                    bg-gray-50
+                                    p-3
+                                "
+                            >
+
+                                <p
+                                    class="
+                                        text-[11px]
+                                        font-medium
+                                        uppercase
+                                        tracking-wide
+                                        text-gray-400
+                                    "
+                                >
+                                    Distribution
+                                </p>
+
+                                <p
+                                    class="
+                                        mt-1.5
+                                        text-sm
+                                        font-semibold
+                                        text-gray-800
+                                    "
+                                >
+                                    Specific pipeline & stage
+                                </p>
+
+                            </div>
+
+
+                            <!-- PIPELINE -->
+
+                            <div
+                                class="
+                                    rounded-xl
+                                    bg-blue-50
+                                    p-3
+                                "
+                            >
+
+                                <p
+                                    class="
+                                        text-[11px]
+                                        font-medium
+                                        uppercase
+                                        tracking-wide
+                                        text-blue-500
+                                    "
+                                >
+                                    Pipeline
+                                </p>
+
+                                <p
+                                    class="
+                                        mt-1.5
+                                        text-sm
+                                        font-semibold
+                                        text-gray-800
+                                        truncate
+                                    "
+                                >
+                                    {{ pipeline.name }}
+                                </p>
+
+                            </div>
+
+
+                            <!-- STAGE -->
+
+                            <div
+                                class="
+                                    rounded-xl
+                                    bg-blue-50
+                                    p-3
+                                "
+                            >
+
+                                <p
+                                    class="
+                                        text-[11px]
+                                        font-medium
+                                        uppercase
+                                        tracking-wide
+                                        text-blue-500
+                                    "
+                                >
+                                    Stage
+                                </p>
+
+                                <p
+                                    class="
+                                        mt-1.5
+                                        text-sm
+                                        font-semibold
+                                        text-gray-800
+                                        truncate
+                                    "
+                                >
+                                    {{ stage.name }}
+                                </p>
+
+                            </div>
+
+                        </div>
+
+                    </div>
 
                 </div>
 
@@ -297,136 +809,305 @@
 
                 <div>
 
-                    <p
+                    <div
                         class="
-                            text-sm
-                            font-medium
-                            text-gray-700
+                            lead-import-review-section
                             mb-3
                         "
                     >
-                        Apply changes to:
-                    </p>
+
+                        <span
+                            class="
+                                lead-import-review-section-dot
+                            "
+                        ></span>
+
+                        <span
+                            class="
+                                text-sm
+                                font-semibold
+                                text-gray-800
+                            "
+                        >
+                            Apply changes to
+                        </span>
+
+                    </div>
 
 
-                    <label
+                    <div
                         class="
-                            flex
-                            items-start
-                            gap-3
-                            border
-                            border-gray-200
-                            rounded-xl
-                            p-4
-                            cursor-pointer
-                            hover:bg-gray-50
+                            space-y-3
                         "
                     >
 
-                        <input
-                            type="radio"
+                        <!-- =================================================
+                             NEW LEADS ONLY
+                             ================================================= -->
 
-                            name="import_mode"
-
-                            value="new_only"
-
-                            checked
-
-                            class="mt-1"
+                        <label
+                            class="
+                                lead-import-apply-option
+                                flex
+                                cursor-pointer
+                                items-start
+                                gap-3
+                                rounded-2xl
+                                border
+                                border-gray-200
+                                bg-white
+                                p-4
+                            "
                         >
 
-                        <div>
+                            <input
+                                type="radio"
 
-                            <p
-                                class="
-                                    text-sm
-                                    font-medium
-                                    text-gray-700
-                                "
-                            >
-                                New leads only
-                            </p>
+                                name="import_mode"
 
-                            <p
+                                value="new_only"
+
+                                checked
+
                                 class="
                                     mt-1
-                                    text-xs
+                                    h-4
+                                    w-4
+                                    shrink-0
+                                "
+                            >
+
+
+                            <div
+                                class="
+                                    min-w-0
+                                    flex-1
+                                "
+                            >
+
+                                <div
+                                    class="
+                                        flex
+                                        items-center
+                                        gap-2
+                                        flex-wrap
+                                    "
+                                >
+
+                                    <p
+                                        class="
+                                            text-sm
+                                            font-semibold
+                                            text-gray-800
+                                        "
+                                    >
+                                        New leads only
+                                    </p>
+
+                                    <span
+                                        class="
+                                            lead-import-blue-badge
+                                            rounded-full
+                                            px-2
+                                            py-0.5
+                                            text-[10px]
+                                            font-semibold
+                                        "
+                                    >
+                                        Recommended
+                                    </span>
+
+                                </div>
+
+                                <p
+                                    class="
+                                        mt-1
+                                        text-xs
+                                        leading-5
+                                        text-gray-400
+                                    "
+                                >
+                                    Existing leads will not be changed.
+                                </p>
+
+                            </div>
+
+
+                            <span
+                                class="
+                                    flex
+                                    h-8
+                                    w-8
+                                    shrink-0
+                                    items-center
+                                    justify-center
+                                    rounded-lg
+                                    bg-gray-50
                                     text-gray-400
                                 "
                             >
-                                Existing leads will not be changed.
-                            </p>
+                                <i class="ti ti-user-plus"></i>
+                            </span>
 
-                        </div>
-
-                    </label>
+                        </label>
 
 
-                    <label
-                        class="
-                            mt-2
-                            flex
-                            items-start
-                            gap-3
-                            border
-                            border-gray-200
-                            rounded-xl
-                            p-4
-                            cursor-pointer
-                            hover:bg-gray-50
-                        "
-                    >
+                        <!-- =================================================
+                             NEW & EXISTING
+                             ================================================= -->
 
-                        <input
-                            type="radio"
-
-                            name="import_mode"
-
-                            value="new_and_existing"
-
-                            class="mt-1"
+                        <label
+                            class="
+                                lead-import-apply-option
+                                flex
+                                cursor-pointer
+                                items-start
+                                gap-3
+                                rounded-2xl
+                                border
+                                border-gray-200
+                                bg-white
+                                p-4
+                            "
                         >
 
-                        <div>
+                            <input
+                                type="radio"
 
-                            <p
-                                class="
-                                    text-sm
-                                    font-medium
-                                    text-gray-700
-                                "
-                            >
-                                New & existing leads
-                            </p>
+                                name="import_mode"
 
-                            <p
+                                value="new_and_existing"
+
                                 class="
                                     mt-1
-                                    text-xs
+                                    h-4
+                                    w-4
+                                    shrink-0
+                                "
+                            >
+
+
+                            <div
+                                class="
+                                    min-w-0
+                                    flex-1
+                                "
+                            >
+
+                                <p
+                                    class="
+                                        text-sm
+                                        font-semibold
+                                        text-gray-800
+                                    "
+                                >
+                                    New & existing leads
+                                </p>
+
+                                <p
+                                    class="
+                                        mt-1
+                                        text-xs
+                                        leading-5
+                                        text-gray-400
+                                    "
+                                >
+                                    Update mapped fields on existing leads.
+                                </p>
+
+                            </div>
+
+
+                            <span
+                                class="
+                                    flex
+                                    h-8
+                                    w-8
+                                    shrink-0
+                                    items-center
+                                    justify-center
+                                    rounded-lg
+                                    bg-gray-50
                                     text-gray-400
                                 "
                             >
-                                Update mapped fields on existing leads.
-                            </p>
+                                <i class="ti ti-refresh"></i>
+                            </span>
 
-                        </div>
+                        </label>
 
-                    </label>
+                    </div>
 
                 </div>
 
 
-                <!-- FILE -->
+                <!-- =================================================
+                     FILE SUMMARY
+                     ================================================= -->
 
                 <div
                     class="
-                        text-xs
-                        text-gray-400
+                        rounded-xl
+                        border
+                        border-gray-200
+                        bg-gray-50
+                        px-4
+                        py-3
                     "
                 >
-                    {{ filename }}
-                    ·
-                    {{ row_count }} row{{ row_count|pluralize }}
+
+                    <div
+                        class="
+                            flex
+                            items-center
+                            gap-2
+                            min-w-0
+                        "
+                    >
+
+                        <i
+                            class="
+                                ti
+                                ti-file-spreadsheet
+                                shrink-0
+                                text-gray-400
+                            "
+                        ></i>
+
+                        <p
+                            class="
+                                truncate
+                                text-xs
+                                font-medium
+                                text-gray-500
+                            "
+                        >
+                            {{ filename }}
+                        </p>
+
+                        <span
+                            class="
+                                shrink-0
+                                text-xs
+                                text-gray-300
+                            "
+                        >
+                            ·
+                        </span>
+
+                        <p
+                            class="
+                                shrink-0
+                                text-xs
+                                text-gray-400
+                            "
+                        >
+                            {{ row_count }}
+                            row{{ row_count|pluralize }}
+                        </p>
+
+                    </div>
+
                 </div>
 
             </div>
@@ -439,15 +1120,18 @@
             <div
                 class="
                     shrink-0
-                    px-5
-                    py-4
-                    border-t
-                    border-gray-100
                     flex
                     items-center
                     justify-between
+                    border-t
+                    border-gray-100
+                    bg-white
+                    px-5
+                    py-4
                 "
             >
+
+                <!-- BACK -->
 
                 <button
                     type="button"
@@ -459,20 +1143,30 @@
                     hx-swap="innerHTML"
 
                     class="
-                        px-4
-                        py-2
-                        rounded-lg
+                        lead-import-review-back
+                        inline-flex
+                        items-center
+                        gap-2
+                        rounded-xl
                         border
                         border-gray-300
+                        bg-white
+                        px-4
+                        py-2.5
                         text-sm
                         font-medium
                         text-gray-700
-                        hover:bg-gray-50
                     "
                 >
+
+                    <i class="ti ti-arrow-left"></i>
+
                     Back
+
                 </button>
 
+
+                <!-- IMPORT -->
 
                 <div
                     class="
@@ -485,6 +1179,7 @@
                     <span
                         class="
                             text-xs
+                            font-medium
                             text-gray-400
                         "
                     >
@@ -496,21 +1191,25 @@
                         type="submit"
 
                         class="
+                            lead-import-review-import
                             inline-flex
                             items-center
                             gap-2
+                            rounded-xl
+                            bg-[#3B82F6]
                             px-5
-                            py-2
-                            rounded-lg
-                            bg-gray-900
-                            text-white
+                            py-2.5
                             text-sm
-                            font-medium
-                            hover:bg-gray-800
+                            font-semibold
+                            text-white
+                            shadow-sm
                         "
                     >
+
                         Import
+
                         <i class="ti ti-upload"></i>
+
                     </button>
 
                 </div>
