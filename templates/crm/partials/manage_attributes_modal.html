@@ -84,6 +84,7 @@
                     hover:bg-gray-100
                     hover:text-gray-700
                 "
+
                 aria-label="Close"
             >
                 <i class="ti ti-x text-lg"></i>
@@ -225,8 +226,8 @@
 
                         <!-- DELETE -->
 
-                        <button
-                            type="button"
+                        <form
+                            method="post"
 
                             hx-post="{% url 'crm-attribute-delete' attribute.id %}"
 
@@ -234,24 +235,39 @@
 
                             hx-swap="none"
 
-                            class="
-                                w-8
-                                h-8
-                                rounded-md
-                                flex
-                                items-center
-                                justify-center
-                                text-gray-400
-                                hover:bg-red-50
-                                hover:text-red-600
-                                transition
-                            "
+                            hx-confirm="Delete {{ attribute.name }}? This will also remove this attribute's values from all leads."
 
-                            title="Delete attribute"
-                            aria-label="Delete {{ attribute.name }}"
+                            class="
+                                m-0
+                                p-0
+                            "
                         >
-                            <i class="ti ti-trash text-base"></i>
-                        </button>
+
+                            {% csrf_token %}
+
+                            <button
+                                type="submit"
+
+                                class="
+                                    w-8
+                                    h-8
+                                    rounded-md
+                                    flex
+                                    items-center
+                                    justify-center
+                                    text-gray-400
+                                    hover:bg-red-50
+                                    hover:text-red-600
+                                    transition
+                                "
+
+                                title="Delete attribute"
+                                aria-label="Delete {{ attribute.name }}"
+                            >
+                                <i class="ti ti-trash text-base"></i>
+                            </button>
+
+                        </form>
 
                     </div>
 
