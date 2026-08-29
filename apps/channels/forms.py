@@ -49,7 +49,26 @@ class WhatsAppConnectAPIForm(forms.ModelForm):
 
     def save(self, organization, commit=True):
 
-        account = super().save(commit=False)
+        phone_number_id = self.cleaned_data["phone_number_id"]
+
+        # Update the existing account for this number if one already
+        # exists, instead of always creating a new row. Without this,
+        # every resubmit (e.g. pasting a fresh token after the old one
+        # expired) created a duplicate WhatsAppAccount, and any lead
+        # that had already messaged through the old row stayed stuck
+        # on it via resolve_account_for_lead()'s "reuse this lead's
+        # existing account" priority.
+        account = WhatsAppAccount.objects.filter(
+            organization=organization,
+            phone_number_id=phone_number_id,
+        ).first()
+
+        if account is None:
+            account = super().save(commit=False)
+        else:
+            account.waba_id = self.cleaned_data["waba_id"]
+            account.display_phone_number = self.cleaned_data["display_phone_number"]
+            account.access_token = self.cleaned_data["access_token"]
 
         account.organization = organization
         account.connection_type = WhatsAppAccount.ConnectionType.API
