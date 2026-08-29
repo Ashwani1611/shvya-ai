@@ -2858,7 +2858,27 @@ document.body.addEventListener(
 
 document.body.addEventListener(
     'attributeUpdated',
-    function() {
+    function(event) {
+
+        const detail =
+            event.detail || {};
+
+        const leadId =
+            detail.lead_id;
+
+        if (leadId) {
+
+            htmx.trigger(
+                document.body,
+                'leadCardUpdated',
+                {
+                    lead_id: leadId
+                }
+            );
+
+            return;
+
+        }
 
         htmx.ajax(
             'GET',
@@ -2875,7 +2895,27 @@ document.body.addEventListener(
 
 document.body.addEventListener(
     'attributeDeleted',
-    function() {
+    function(event) {
+
+        const detail =
+            event.detail || {};
+
+        const leadId =
+            detail.lead_id;
+
+        if (leadId) {
+
+            htmx.trigger(
+                document.body,
+                'leadCardUpdated',
+                {
+                    lead_id: leadId
+                }
+            );
+
+            return;
+
+        }
 
         htmx.ajax(
             'GET',

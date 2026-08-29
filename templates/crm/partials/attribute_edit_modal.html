@@ -112,7 +112,12 @@
                 overflow-y-auto
                 max-h-[calc(90vh-80px)]
             "
-        >
+        > 
+            <input
+                type="hidden"
+                name="lead_id"
+                value="{{ lead_id }}"
+            >
 
             {% csrf_token %}
 

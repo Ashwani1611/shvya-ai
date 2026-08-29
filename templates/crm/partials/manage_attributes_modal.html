@@ -198,7 +198,7 @@
                         <button
                             type="button"
 
-                            hx-get="{% url 'crm-attribute-edit-modal' attribute.id %}"
+                            hx-get="{% url 'crm-attribute-edit-modal' attribute.id %}?lead_id={{ lead_id }}"
 
                             hx-target="#modal-root"
 
@@ -242,7 +242,12 @@
                                 p-0
                             "
                         >
-
+                        
+                            <input
+                                type="hidden"
+                                name="lead_id"
+                                value="{{ lead_id }}"
+                            >
                             {% csrf_token %}
 
                             <button

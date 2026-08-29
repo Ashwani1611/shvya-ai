@@ -2607,6 +2607,11 @@ def attribute_manage_modal(
         )
     )
 
+    lead_id = request.GET.get(
+        "lead_id",
+        "",
+    ).strip()
+
     return render(
         request,
         "crm/partials/manage_attributes_modal.html",
@@ -2614,9 +2619,9 @@ def attribute_manage_modal(
             "attributes": attributes,
             "attribute_count": attributes.count(),
             "max_attributes": 15,
+            "lead_id": lead_id,
         },
     )
-
 
 @crm_login_required
 @require_GET
@@ -2632,6 +2637,11 @@ def attribute_edit_modal(
         organization=user.organization,
     )
 
+    lead_id = request.GET.get(
+        "lead_id",
+        "",
+    ).strip()
+
     return render(
         request,
         "crm/partials/attribute_edit_modal.html",
@@ -2640,6 +2650,7 @@ def attribute_edit_modal(
             "attribute_types": (
                 AttributeDefinition.FieldType.choices
             ),
+            "lead_id": lead_id,
         },
     )
 
@@ -2651,6 +2662,11 @@ def attribute_update_save(
     attribute_id,
 ):
     user = request.crm_user
+
+    lead_id = request.POST.get(
+        "lead_id",
+        "",
+    ).strip()
 
     attribute = get_object_or_404(
         AttributeDefinition,
@@ -2725,7 +2741,8 @@ def attribute_update_save(
             "attributeUpdated": {
                 "attribute_id": str(
                     attribute.id
-                )
+                ),
+                "lead_id": lead_id,
             }
         }
     )
@@ -2740,6 +2757,11 @@ def attribute_delete(
     attribute_id,
 ):
     user = request.crm_user
+
+    lead_id = request.POST.get(
+        "lead_id",
+        "",
+    ).strip()
 
     attribute = get_object_or_404(
         AttributeDefinition,
@@ -2787,7 +2809,8 @@ def attribute_delete(
             "attributeDeleted": {
                 "attribute_id": str(
                     attribute.id
-                )
+                ),
+                "lead_id": lead_id,
             }
         }
     )
