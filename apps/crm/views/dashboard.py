@@ -18,6 +18,11 @@ from services.crm_activity_service import (
     record_call_logged,
 )
 
+from services.crm.lead_import_service import (
+    create_import_token,
+    save_import_state,
+)
+
 from apps.accounts.models import User
 from apps.crm.decorators import crm_login_required
 from apps.crm.models import (
@@ -436,6 +441,76 @@ def lead_create_save(
 
     return response
 
+
+# ============================================================
+# IMPORT LEADS
+# STEP 1 — LEAD RECENCY
+# ============================================================
+
+
+@crm_login_required
+@require_GET
+def lead_import_start_modal(
+    request,
+):
+    return render(
+        request,
+        "crm/partials/lead_import_start_modal.html",
+        {
+            "default_recency": "recent",
+        },
+    )
+
+
+@crm_login_required
+@require_POST
+def lead_import_start(
+    request,
+):
+    recency = request.POST.get(
+        "recency",
+        "recent",
+    ).strip()
+
+    if recency not in {
+        "recent",
+        "older",
+    }:
+        return HttpResponse(
+            "Invalid lead recency selection.",
+            status=400,
+        )
+
+    import_token = create_import_token()
+
+    save_import_state(
+        import_token,
+        {
+            "step": 1,
+            "recency": recency,
+            "filename": "",
+            "extension": "",
+            "headers": [],
+            "rows": [],
+            "row_count": 0,
+            "mapping": {},
+            "pipeline_id": None,
+            "stage_id": None,
+            "import_mode": "new_only",
+        },
+    )
+
+    response = HttpResponse("")
+
+    response["HX-Trigger"] = json.dumps(
+        {
+            "leadImportUpload": {
+                "import_token": import_token,
+            }
+        }
+    )
+
+    return response
 
 # ============================================================
 # INTERNAL LEAD TABLE CONTEXT BUILDER

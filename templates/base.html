@@ -503,6 +503,10 @@
                 <button
                     type="button"
 
+                    hx-get="{% url 'crm-lead-import-start-modal' %}"
+                    hx-target="#modal-root"
+                    hx-swap="innerHTML"
+
                     class="inline-flex
                            items-center
                            gap-2
@@ -3286,6 +3290,37 @@ document.body.addEventListener(
             );
 
         }
+
+    }
+);
+
+/* ============================================================
+   IMPORT LEADS — STEP 1 → STEP 2
+   ============================================================ */
+
+document.body.addEventListener(
+    'leadImportUpload',
+    function(event) {
+
+        const detail =
+            event.detail || {};
+
+        const importToken =
+            detail.import_token;
+
+        if (!importToken) {
+            return;
+        }
+
+        htmx.ajax(
+            'GET',
+            '/dashboard/leads/import/upload/?token=' +
+            encodeURIComponent(importToken),
+            {
+                target: '#modal-root',
+                swap: 'innerHTML'
+            }
+        );
 
     }
 );

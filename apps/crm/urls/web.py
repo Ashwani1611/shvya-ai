@@ -35,6 +35,8 @@ from apps.crm.views.dashboard import (
     attribute_create_save,
     lead_attribute_values_modal,
     lead_attribute_values_save,
+    lead_import_start_modal,
+    lead_import_start,
 )
 
 
@@ -293,5 +295,20 @@ urlpatterns = [
         lead_stage_move,
         name="crm-lead-stage-move",
     ),
+    
+    # ========================================================
+    # IMPORT LEADS
+    # ========================================================
 
+    path(
+        "leads/import/",
+        lead_import_start_modal,
+        name="crm-lead-import-start-modal",
+    ),
+
+    path(
+        "leads/import/start/",
+        lead_import_start,
+        name="crm-lead-import-start",
+    ),
 ]
