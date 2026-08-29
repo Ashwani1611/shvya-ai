@@ -2796,6 +2796,99 @@ document.body.addEventListener(
     }
 );
 
+/* ============================================================
+   ATTRIBUTE / LEAD VALUE EVENTS
+   ============================================================ */
+
+document.body.addEventListener(
+    'attributeCreated',
+    function(event) {
+
+        const detail =
+            event.detail || {};
+
+        const leadId =
+            detail.lead_id;
+
+        if (!leadId) {
+
+            return;
+
+        }
+
+        htmx.trigger(
+            document.body,
+            'leadCardUpdated',
+            {
+                lead_id: leadId
+            }
+        );
+
+    }
+);
+
+
+document.body.addEventListener(
+    'leadAttributeValuesUpdated',
+    function(event) {
+
+        const detail =
+            event.detail || {};
+
+        const leadId =
+            detail.lead_id;
+
+        if (!leadId) {
+
+            return;
+
+        }
+
+        htmx.trigger(
+            document.body,
+            'leadCardUpdated',
+            {
+                lead_id: leadId
+            }
+        );
+
+    }
+);
+
+
+document.body.addEventListener(
+    'attributeUpdated',
+    function() {
+
+        htmx.ajax(
+            'GET',
+            '/dashboard/attributes/manage/',
+            {
+                target: '#modal-root',
+                swap: 'innerHTML'
+            }
+        );
+
+    }
+);
+
+
+document.body.addEventListener(
+    'attributeDeleted',
+    function() {
+
+        htmx.ajax(
+            'GET',
+            '/dashboard/attributes/manage/',
+            {
+                target: '#modal-root',
+                swap: 'innerHTML'
+            }
+        );
+
+    }
+);
+
 </script>
 
 

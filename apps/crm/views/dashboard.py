@@ -1317,6 +1317,24 @@ def _lead_card_context(
         )
     )
 
+    lead.attribute_definitions = (
+        attribute_definitions
+    )
+
+    lead.activities_for_card = (
+    lead.activities
+    .select_related(
+        "actor",
+        "old_pipeline",
+        "new_pipeline",
+        "old_stage",
+        "new_stage",
+    )
+    .order_by(
+        "-created_at",
+    )
+   )
+
     return {
         "lead": lead,
         "user": user,
