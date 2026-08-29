@@ -69,9 +69,10 @@ def send_whatsapp_message_task(self, message_id):
             raise self.retry(exc=exc)
 
         logger.error(
-            "send_whatsapp_message_task: permanent failure for message %s: %s",
+            "send_whatsapp_message_task: permanent failure for message %s: %s (meta response: %s)",
             message_id,
             exc,
+            getattr(original, "response_body", None),
         )
 
 
