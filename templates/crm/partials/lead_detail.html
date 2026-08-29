@@ -51,10 +51,8 @@
 
             {% if lead.phone %}
 
-            <a
-                href="https://wa.me/{{ lead.phone|cut:'+' }}"
-                target="_blank"
-                rel="noopener noreferrer"
+            
+                href="{% url 'whatsapp-chat-detail' lead_id=lead.id %}"
                 class="inline-flex items-center gap-2
                        px-3 py-2
                        text-xs font-medium
