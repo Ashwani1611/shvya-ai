@@ -1,13 +1,115 @@
 {% load crm_extras %}
 
+<style>
+
+    /* ========================================================
+       LEAD CARD — SOFT 3D + VERY LIGHT INDIVIDUAL GLOW
+       ======================================================== */
+
+    .lead-card {
+        border-left: 6px solid #3b82f6 !important;
+        border-radius: 18px !important;
+
+        box-shadow:
+            0 4px 14px rgba(59, 130, 246, 0.055),
+            0 12px 28px rgba(59, 130, 246, 0.025);
+
+        transition:
+            transform 180ms ease,
+            box-shadow 180ms ease;
+    }
+
+
+    /* ========================================================
+       CARD 1 — SOFT BLUE
+       ======================================================== */
+
+    .lead-card:nth-of-type(5n + 1) {
+        box-shadow:
+            0 4px 14px rgba(59, 130, 246, 0.060),
+            0 12px 28px rgba(59, 130, 246, 0.028);
+    }
+
+
+    /* ========================================================
+       CARD 2 — SOFT VIOLET
+       ======================================================== */
+
+    .lead-card:nth-of-type(5n + 2) {
+        box-shadow:
+            0 4px 14px rgba(139, 92, 246, 0.055),
+            0 12px 28px rgba(139, 92, 246, 0.025);
+    }
+
+
+    /* ========================================================
+       CARD 3 — SOFT CYAN
+       ======================================================== */
+
+    .lead-card:nth-of-type(5n + 3) {
+        box-shadow:
+            0 4px 14px rgba(6, 182, 212, 0.055),
+            0 12px 28px rgba(6, 182, 212, 0.025);
+    }
+
+
+    /* ========================================================
+       CARD 4 — SOFT GREEN
+       ======================================================== */
+
+    .lead-card:nth-of-type(5n + 4) {
+        box-shadow:
+            0 4px 14px rgba(34, 197, 94, 0.050),
+            0 12px 28px rgba(34, 197, 94, 0.022);
+    }
+
+
+    /* ========================================================
+       CARD 5 — SOFT AMBER
+       ======================================================== */
+
+    .lead-card:nth-of-type(5n + 5) {
+        box-shadow:
+            0 4px 14px rgba(245, 158, 11, 0.050),
+            0 12px 28px rgba(245, 158, 11, 0.022);
+    }
+
+
+    /* ========================================================
+       HOVER — VERY SUBTLE 3D LIFT
+       ======================================================== */
+
+    .lead-card:hover {
+        transform: translateY(-1px);
+
+        box-shadow:
+            0 7px 20px rgba(59, 130, 246, 0.075),
+            0 16px 34px rgba(59, 130, 246, 0.035);
+    }
+
+</style>
+
+
+
 <!-- ============================================================
      LEAD CARD
      ============================================================ -->
 
 <article
     id="lead-card-{{ lead.id }}"
-    class="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm"
+    class="
+        lead-card
+        bg-white
+        border
+        border-gray-200
+        border-l-[6px]
+        border-l-[#3b82f6]
+        rounded-2xl
+        overflow-hidden
+        shadow-sm
+    "
 >
+
 
     <!-- ========================================================
          HEADER
@@ -47,12 +149,26 @@
 
                     <a
                         href="{% url 'whatsapp-chat-detail' lead_id=lead.id %}"
-                        class="inline-flex items-center gap-1
-                               px-2 py-0.5 rounded-md
-                               border border-gray-200
-                               bg-white
-                               text-xs font-medium text-gray-500
-                               hover:bg-gray-50 hover:text-gray-700"
+                        class="
+                            inline-flex
+                            items-center
+                            gap-1                    
+                            rounded-md
+                            border
+                            border-green-200
+                            bg-green-50
+                            px-2
+                            py-0.5
+                            text-xs
+                            font-medium
+                            text-green-600
+                            transition-all
+                            duration-150
+
+                            hover:border-green-300
+                            hover:bg-green-100
+                            hover:text-green-700
+                        "
                     >
                         <span>
                             WhatsApp
@@ -65,15 +181,19 @@
 
 
                 <div
-                    class="mt-2 grid grid-cols-1 md:grid-cols-2
-                           gap-x-8 gap-y-1"
+                    class="mt-2 flex items-center gap-5 min-w-0
+                           text-sm text-gray-500"
                 >
 
                     {% if lead.email %}
 
                     <div
-                        class="flex items-center gap-2 min-w-0
-                               text-sm text-gray-500"
+                        class="
+                            inline-flex
+                            min-w-0
+                            items-center
+                            gap-2
+                        "    
                     >
 
                         <i
@@ -323,79 +443,231 @@
     </div>
 
 
-    <!-- ========================================================
-         SUMMARY ROW
-         ======================================================== -->
+<!-- ========================================================
+     MINI STATS — INSIDE LEAD CARD
+     ======================================================== -->
 
-    <div class="px-5 py-3 border-b border-gray-100">
+<div
+    class="
+        px-5
+        py-3
+        border-b
+        border-gray-100
+    "
+>
+
+    <div
+        class="
+            grid
+            grid-cols-1
+            sm:grid-cols-3
+            gap-2
+        "
+    >
+
+        <!-- ==================================================
+             AUTO FOLLOW-UP
+             ================================================== -->
 
         <div
-            class="grid grid-cols-3
-                   divide-x divide-gray-100"
+            class="
+                rounded-lg
+                border
+                border-blue-100
+                bg-blue-50/40
+                px-3
+                py-2.5
+                transition-all
+                duration-150
+
+                hover:border-blue-200
+                hover:bg-blue-50
+            "
         >
 
-            <!-- Auto Follow-up -->
+            <div
+                class="
+                    flex
+                    items-center
+                    justify-between
+                    gap-2
+                "
+            >
 
-            <div class="pr-5">
-
-                <p
-                    class="text-[11px] uppercase tracking-wide
-                           text-gray-400 mb-1"
+                <span
+                    class="
+                        text-[10px]
+                        font-semibold
+                        uppercase
+                        tracking-wide
+                        text-blue-500
+                    "
                 >
                     Auto Follow-up
-                </p>
+                </span>
 
-                <p
-                    class="text-sm font-medium text-gray-700"
-                >
-                    Coming soon
-                </p>
+                <i
+                    class="
+                        ti
+                        ti-bolt
+                        text-sm
+                        text-[#3B82F6]
+                    "
+                ></i>
 
             </div>
 
 
-            <!-- Calls -->
+            <p
+                class="
+                    mt-1
+                    text-sm
+                    font-semibold
+                    text-gray-700
+                "
+            >
+                Coming soon
+            </p>
 
-            <div class="px-5">
+        </div>
 
-                <p
-                    class="text-[11px] uppercase tracking-wide
-                           text-gray-400 mb-1"
+
+        <!-- ==================================================
+             CALLS
+             ================================================== -->
+
+        <div
+            class="
+                rounded-lg
+                border
+                border-blue-100
+                bg-blue-50/40
+                px-3
+                py-2.5
+                transition-all
+                duration-150
+
+                hover:border-blue-200
+                hover:bg-blue-50
+            "
+        >
+
+            <div
+                class="
+                    flex
+                    items-center
+                    justify-between
+                    gap-2
+                "
+            >
+
+                <span
+                    class="
+                        text-[10px]
+                        font-semibold
+                        uppercase
+                        tracking-wide
+                        text-blue-500
+                    "
                 >
                     Calls
-                </p>
+                </span>
 
-                <p
-                    class="text-sm font-medium text-gray-700"
-                >
-                    {{ lead.call_count }}
-                </p>
+                <i
+                    class="
+                        ti
+                        ti-phone
+                        text-sm
+                        text-[#3B82F6]
+                    "
+                ></i>
 
             </div>
 
 
-            <!-- In Stage -->
+            <p
+                class="
+                    mt-1
+                    text-sm
+                    font-semibold
+                    text-gray-700
+                "
+            >
+                {{ lead.call_count }}
+            </p>
 
-            <div class="pl-5">
+        </div>
 
-                <p
-                    class="text-[11px] uppercase tracking-wide
-                           text-gray-400 mb-1"
+
+        <!-- ==================================================
+             IN STAGE
+             ================================================== -->
+
+        <div
+            class="
+                rounded-lg
+                border
+                border-blue-100
+                bg-blue-50/40
+                px-3
+                py-2.5
+                transition-all
+                duration-150
+
+                hover:border-blue-200
+                hover:bg-blue-50
+            "
+        >
+
+            <div
+                class="
+                    flex
+                    items-center
+                    justify-between
+                    gap-2
+                "
+            >
+
+                <span
+                    class="
+                        text-[10px]
+                        font-semibold
+                        uppercase
+                        tracking-wide
+                        text-blue-500
+                    "
                 >
                     In Stage
-                </p>
+                </span>
 
-                <p
-                    class="text-sm font-medium text-gray-700"
-                >
-                    {{ lead.days_in_stage }}d
-                </p>
+                <i
+                    class="
+                        ti
+                        ti-clock
+                        text-sm
+                        text-[#3B82F6]
+                    "
+                ></i>
 
             </div>
+
+
+            <p
+                class="
+                    mt-1
+                    text-sm
+                    font-semibold
+                    text-gray-700
+                "
+            >
+                {{ lead.days_in_stage }}d
+            </p>
 
         </div>
 
     </div>
+
+</div>
 
 
     <!-- ========================================================
