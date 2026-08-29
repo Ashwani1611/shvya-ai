@@ -185,42 +185,32 @@
         >
 
             <!-- ==================================================
-                 CRM
+                 NOTE:
+                 The hardcoded "CRM" link that used to live here
+                 has been removed. It was rendering in addition to
+                 the CRM entry already coming from `nav_items`,
+                 which produced two "CRM" rows in the sidebar.
+
+                 `nav_items` (built in your view / context
+                 processor) is now the single source of truth for
+                 every sidebar entry, including CRM. Make sure it
+                 contains an entry like:
+
+                     {
+                         'label': 'CRM',
+                         'icon': 'ti-users',
+                         'url_name': 'crm-dashboard',
+                         'is_active': request.resolver_match.url_name == 'crm-dashboard',
+                     }
+
+                 as the first item in the list, and this loop will
+                 render it exactly once, in the same style as every
+                 other item.
                  ================================================== -->
-
-            <a
-                href="{% url 'crm-dashboard' %}"
-
-                class="nav-row
-                       flex
-                       items-center
-                       gap-3
-                       px-4
-                       py-2
-                       text-sm
-                       font-medium
-                {% if request.resolver_match.url_name == 'crm-dashboard' %}
-                    bg-blue-50 text-blue-700
-                {% else %}
-                    text-gray-700 hover:bg-gray-50
-                {% endif %}"
-            >
-
-                <i
-                    class="ti
-                           ti-users
-                           sidebar-icon"
-                ></i>
-
-                <span class="nav-label">
-                    CRM
-                </span>
-
-            </a>
 
 
             <!-- ==================================================
-                 OTHER NAV ITEMS
+                 NAV ITEMS (including CRM)
                  ================================================== -->
 
             {% for item in nav_items %}
