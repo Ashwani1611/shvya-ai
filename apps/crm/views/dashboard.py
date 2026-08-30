@@ -1,6 +1,6 @@
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db.models import Q, Max
@@ -18,6 +18,7 @@ from services.crm_activity_service import (
     record_stage_changed,
     record_pipeline_changed,
     record_reminder_created,
+    record_reminder_completed,
     record_note_added,
     record_call_logged,
     record_lead_updated,
@@ -182,6 +183,264 @@ def dashboard_view(request):
     response["Expires"] = "0"
 
     return response
+
+# ============================================================
+# GLOBAL REMINDERS
+# ============================================================
+
+
+@crm_login_required
+@require_GET
+def global_reminders_modal(
+    request,
+):
+    user = request.crm_user
+
+    reminders = (
+        LeadReminder.objects
+        .filter(
+            lead__organization=user.organization,
+            status="pending",
+        )
+        .select_related(
+            "lead",
+            "lead__pipeline",
+            "lead__stage",
+        )
+        .order_by(
+            "due_at",
+        )
+    )
+
+    now = timezone.now()
+
+    overdue_reminders = []
+    today_reminders = []
+    upcoming_reminders = []
+
+    for reminder in reminders:
+
+        local_due_at = timezone.localtime(
+            reminder.due_at
+        )
+
+        if local_due_at < timezone.localtime(now):
+
+            overdue_reminders.append(
+                reminder
+            )
+
+        elif local_due_at.date() == timezone.localtime(
+            now
+        ).date():
+
+            today_reminders.append(
+                reminder
+            )
+
+        else:
+
+            upcoming_reminders.append(
+                reminder
+            )
+
+    return render(
+        request,
+        "crm/partials/global_reminders_modal.html",
+        {
+            "overdue_reminders": overdue_reminders,
+            "today_reminders": today_reminders,
+            "upcoming_reminders": upcoming_reminders,
+            "overdue_count": len(
+                overdue_reminders
+            ),
+            "today_count": len(
+                today_reminders
+            ),
+            "upcoming_count": len(
+                upcoming_reminders
+            ),
+            "total_count": (
+                len(overdue_reminders)
+                + len(today_reminders)
+                + len(upcoming_reminders)
+            ),
+        },
+    )
+
+@crm_login_required
+@require_POST
+def global_reminder_complete(
+    request,
+    reminder_id,
+):
+    user = request.crm_user
+
+    reminder = get_object_or_404(
+        LeadReminder,
+        id=reminder_id,
+        lead__organization=user.organization,
+        status="pending",
+    )
+
+    reminder.status = "completed"
+    reminder.completed_at = timezone.now()
+
+    reminder.save(
+        update_fields=[
+            "status",
+            "completed_at",
+            "updated_at",
+        ]
+    )
+
+    record_reminder_completed(
+        lead=reminder.lead,
+        actor=user,
+        reminder=reminder,
+    )
+
+    return HttpResponse(
+        status=204
+    )
+
+@crm_login_required
+@require_POST
+def global_reminder_snooze(
+    request,
+    reminder_id,
+):
+    user = request.crm_user
+
+    reminder = get_object_or_404(
+        LeadReminder,
+        id=reminder_id,
+        lead__organization=user.organization,
+        status="pending",
+    )
+
+    reminder.due_at = (
+        reminder.due_at
+        + timedelta(
+            minutes=30
+        )
+    )
+
+    reminder.save(
+        update_fields=[
+            "due_at",
+            "updated_at",
+        ]
+    )
+
+    return HttpResponse(
+        status=204
+    )
+
+@crm_login_required
+@require_POST
+def global_reminder_delete(
+    request,
+    reminder_id,
+):
+    user = request.crm_user
+
+    reminder = get_object_or_404(
+        LeadReminder,
+        id=reminder_id,
+        lead__organization=user.organization,
+    )
+
+    reminder.delete()
+
+    return HttpResponse(
+        status=204
+    )
+
+@crm_login_required
+@require_GET
+def global_reminder_edit_modal(
+    request,
+    reminder_id,
+):
+    user = request.crm_user
+
+    reminder = get_object_or_404(
+        LeadReminder,
+        id=reminder_id,
+        lead__organization=user.organization,
+        status="pending",
+    )
+
+    return render(
+        request,
+        "crm/partials/global_reminder_edit_modal.html",
+        {
+            "reminder": reminder,
+        },
+    )
+
+@crm_login_required
+@require_POST
+def global_reminder_edit_save(
+    request,
+    reminder_id,
+):
+    user = request.crm_user
+
+    reminder = get_object_or_404(
+        LeadReminder,
+        id=reminder_id,
+        lead__organization=user.organization,
+        status="pending",
+    )
+
+    due_at_raw = request.POST.get(
+        "due_at",
+        "",
+    ).strip()
+
+    if not due_at_raw:
+
+        return HttpResponse(
+            "Reminder date/time is required.",
+            status=400,
+        )
+
+    try:
+
+        due_at = datetime.fromisoformat(
+            due_at_raw
+        )
+
+        if timezone.is_naive(
+            due_at
+        ):
+
+            due_at = timezone.make_aware(
+                due_at,
+                timezone.get_current_timezone(),
+            )
+
+    except ValueError:
+
+        return HttpResponse(
+            "Invalid reminder date/time.",
+            status=400,
+        )
+
+    reminder.due_at = due_at
+
+    reminder.save(
+        update_fields=[
+            "due_at",
+            "updated_at",
+        ]
+    )
+
+    return HttpResponse(
+        status=204
+    )                   
 
 # ============================================================
 # NEW LEAD

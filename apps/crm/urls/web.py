@@ -47,6 +47,11 @@ from apps.crm.views.dashboard import (
     lead_import_destination_save,
     lead_import_review_modal,
     lead_import_execute,
+    global_reminders_modal,
+    global_reminder_complete,
+    global_reminder_delete,
+    global_reminder_edit_save,
+    global_reminder_snooze,
 )
 
 
@@ -392,6 +397,39 @@ urlpatterns = [
         name="crm-lead-import-execute",
     ),
 
+# ========================================================
+# GLOBAL REMINDERS
+# ========================================================
+
+path(
+    "reminders/",
+    global_reminders_modal,
+    name="crm-global-reminders-modal",
+),
+
+path(
+    "reminders/<uuid:reminder_id>/complete/",
+    global_reminder_complete,
+    name="crm-global-reminder-complete",
+),
+
+path(
+    "reminders/<uuid:reminder_id>/snooze/",
+    global_reminder_snooze,
+    name="crm-global-reminder-snooze",
+),
+
+path(
+    "reminders/<uuid:reminder_id>/delete/",
+    global_reminder_delete,
+    name="crm-global-reminder-delete",
+),
+
+path(
+    "reminders/<uuid:reminder_id>/edit/save/",
+    global_reminder_edit_save,
+    name="crm-global-reminder-edit-save",
+),
 ]
 
 urlpatterns += coming_soon_urlpatterns

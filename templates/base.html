@@ -443,6 +443,11 @@
 
                 <a
                     href="#"
+                     hx-get="{% url 'crm-global-reminders-modal' %}"
+
+                    hx-target="#modal-root"
+
+                    hx-swap="innerHTML"
 
                     class="group
                            inline-flex
