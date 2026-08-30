@@ -10,7 +10,6 @@ coming_soon_urlpatterns = [
     path("integrations-hub/", coming_soon, {"feature": "integrations-hub"}, name="crm-integrations-hub"),
     path("call-scheduler/", coming_soon, {"feature": "call-scheduler"}, name="crm-call-scheduler"),
     path("call-tracker/", coming_soon, {"feature": "call-tracker"}, name="crm-call-tracker"),
-    path("teams/", coming_soon, {"feature": "teams"}, name="crm-teams"),
 
     # Auto Follow-ups
     path("auto-follow-ups/sequences/", coming_soon, {"feature": "auto-follow-ups-sequences"}, name="crm-auto-follow-ups-sequences"),

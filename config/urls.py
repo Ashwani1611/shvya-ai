@@ -66,6 +66,15 @@ urlpatterns = [
     ),
 
     # =========================================================
+    # Teams API
+    # =========================================================
+
+    path(
+        "api/v1/teams/",
+        include("apps.teams.urls.api_v1"),
+    ),
+
+    # =========================================================
     # Accounts
     #
     # Includes:
@@ -113,6 +122,18 @@ urlpatterns = [
         include("apps.channels.urls"),
     ),
 
+    # =========================================================
+    # Teams
+    #
+    # Nested under dashboard/ so it shares the CRM session area
+    # (crm_login_required / request.crm_user), same as WhatsApp.
+    # =========================================================
+
+    path(
+        "dashboard/teams/",
+        include("apps.teams.urls.web"),
+    ),
+
     # Meta calls this directly (verification handshake + message/status
     # delivery) -- it is NOT nested under dashboard/ or crm_login_required,
     # since Meta has no CRM session. Authenticity is instead checked via
@@ -132,13 +153,5 @@ urlpatterns = [
         "superadmin/",
         include("apps.superadmin.urls"),
     ),
-    # =========================================================
-    # Teams API
-    # =========================================================
 
-    path(
-        "api/v1/teams/",
-        include("apps.teams.urls.api_v1"),
-    ),
-    
 ]

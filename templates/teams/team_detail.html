@@ -1,0 +1,337 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}SHVYA AI — {{ team.name }}{% endblock %}
+
+{% block header %}
+    {{ team.name }}
+{% endblock %}
+
+{% block content %}
+
+
+    <!-- =====================================================
+         PAGE HEADER
+         ===================================================== -->
+
+    <div class="mb-6 flex items-start justify-between">
+
+        <div class="flex items-start gap-3">
+
+            <a
+                href="{% url 'crm-teams' %}"
+                class="mt-1 text-gray-400 transition hover:text-gray-700"
+            >
+                <i class="ti ti-arrow-left"></i>
+            </a>
+
+            <div>
+
+                <div class="flex items-center gap-2">
+
+                    <h2 class="text-lg font-semibold text-gray-900">
+                        {{ team.name }}
+                    </h2>
+
+                    <span
+                        class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold
+                        {% if team.is_active %}
+                            bg-green-50 text-green-700
+                        {% else %}
+                            bg-gray-100 text-gray-600
+                        {% endif %}"
+                    >
+                        {% if team.is_active %}Active{% else %}Inactive{% endif %}
+                    </span>
+
+                </div>
+
+                {% if team.description %}
+
+                    <p class="mt-1 text-sm text-gray-500">
+                        {{ team.description }}
+                    </p>
+
+                {% endif %}
+
+            </div>
+
+        </div>
+
+        {% if can_manage %}
+
+            <div class="flex items-center gap-3">
+
+                <a
+                    href="{% url 'crm-team-edit' team_id=team.id %}"
+                    class="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
+                >
+                    <i class="ti ti-pencil"></i>
+                    Edit
+                </a>
+
+                <form
+                    method="post"
+                    action="{% url 'crm-team-delete' team_id=team.id %}"
+                    onsubmit="return confirm('Delete {{ team.name }}? This removes all its memberships too.');"
+                >
+                    {% csrf_token %}
+
+                    <button
+                        type="submit"
+                        class="inline-flex items-center gap-2 rounded-lg border border-red-200 bg-white px-4 py-2 text-sm font-semibold text-red-600 transition hover:bg-red-50"
+                    >
+                        <i class="ti ti-trash"></i>
+                        Delete
+                    </button>
+                </form>
+
+            </div>
+
+        {% endif %}
+
+    </div>
+
+
+    <!-- =====================================================
+         ADD MEMBER
+         ===================================================== -->
+
+    {% if can_manage %}
+
+        <div class="mb-6 rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+
+            <h3 class="mb-3 text-sm font-semibold text-gray-900">
+                Add Member
+            </h3>
+
+            {% if available_users %}
+
+                <form
+                    method="post"
+                    action="{% url 'crm-team-member-add' team_id=team.id %}"
+                    class="flex flex-wrap items-end gap-3"
+                >
+
+                    {% csrf_token %}
+
+                    <div class="min-w-[220px] flex-1">
+
+                        <label class="mb-1.5 block text-xs font-medium text-gray-600">
+                            User
+                        </label>
+
+                        <select
+                            name="user_id"
+                            required
+                            class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        >
+
+                            {% for candidate in available_users %}
+
+                                <option value="{{ candidate.id }}">
+                                    {{ candidate.name }} ({{ candidate.email }})
+                                </option>
+
+                            {% endfor %}
+
+                        </select>
+
+                    </div>
+
+                    <div class="min-w-[150px]">
+
+                        <label class="mb-1.5 block text-xs font-medium text-gray-600">
+                            Role
+                        </label>
+
+                        <select
+                            name="role"
+                            class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        >
+
+                            {% for value, label in role_choices %}
+
+                                <option value="{{ value }}">
+                                    {{ label }}
+                                </option>
+
+                            {% endfor %}
+
+                        </select>
+
+                    </div>
+
+                    <button
+                        type="submit"
+                        class="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700"
+                    >
+                        <i class="ti ti-plus"></i>
+                        Add
+                    </button>
+
+                </form>
+
+            {% else %}
+
+                <p class="text-sm text-gray-500">
+                    Every user in your organization is already on this team.
+                </p>
+
+            {% endif %}
+
+        </div>
+
+    {% endif %}
+
+
+    <!-- =====================================================
+         MEMBERS TABLE
+         ===================================================== -->
+
+    {% if memberships %}
+
+        <div class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+
+            <table class="w-full text-left text-sm">
+
+                <thead class="bg-blue-50/60 text-xs font-semibold uppercase tracking-wide text-gray-500">
+
+                    <tr>
+                        <th class="px-5 py-3">Name</th>
+                        <th class="px-5 py-3">Email</th>
+                        <th class="px-5 py-3">Role</th>
+                        <th class="px-5 py-3">Joined</th>
+                        {% if can_manage %}
+                            <th class="px-5 py-3 text-right">Action</th>
+                        {% endif %}
+                    </tr>
+
+                </thead>
+
+
+                <tbody class="divide-y divide-gray-100">
+
+                    {% for membership in memberships %}
+
+                        <tr class="hover:bg-gray-50">
+
+                            <td class="px-5 py-4 font-medium text-gray-900">
+                                {{ membership.user.name }}
+                            </td>
+
+                            <td class="px-5 py-4 text-gray-600">
+                                {{ membership.user.email }}
+                            </td>
+
+                            <td class="px-5 py-4">
+
+                                {% if can_manage %}
+
+                                    <form
+                                        method="post"
+                                        action="{% url 'crm-team-member-role' team_id=team.id user_id=membership.user.id %}"
+                                        class="inline"
+                                    >
+
+                                        {% csrf_token %}
+
+                                        <select
+                                            name="role"
+                                            onchange="this.form.submit()"
+                                            class="rounded-lg border border-gray-300 px-2 py-1 text-xs focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                        >
+
+                                            {% for value, label in role_choices %}
+
+                                                <option
+                                                    value="{{ value }}"
+                                                    {% if membership.role == value %}selected{% endif %}
+                                                >
+                                                    {{ label }}
+                                                </option>
+
+                                            {% endfor %}
+
+                                        </select>
+
+                                    </form>
+
+                                {% else %}
+
+                                    <span class="inline-flex items-center gap-1.5 rounded-full bg-gray-100 px-2.5 py-1 text-xs font-semibold text-gray-600">
+                                        {{ membership.get_role_display }}
+                                    </span>
+
+                                {% endif %}
+
+                            </td>
+
+                            <td class="px-5 py-4 text-gray-500">
+                                {{ membership.joined_at|date:"M j, Y" }}
+                            </td>
+
+                            {% if can_manage %}
+
+                                <td class="px-5 py-4">
+
+                                    <div class="flex items-center justify-end">
+
+                                        <form
+                                            method="post"
+                                            action="{% url 'crm-team-member-remove' team_id=team.id user_id=membership.user.id %}"
+                                            onsubmit="return confirm('Remove {{ membership.user.name }} from {{ team.name }}?');"
+                                        >
+
+                                            {% csrf_token %}
+
+                                            <button
+                                                type="submit"
+                                                class="text-gray-400 transition hover:text-red-600"
+                                                title="Remove"
+                                            >
+                                                <i class="ti ti-x"></i>
+                                            </button>
+
+                                        </form>
+
+                                    </div>
+
+                                </td>
+
+                            {% endif %}
+
+                        </tr>
+
+                    {% endfor %}
+
+                </tbody>
+
+            </table>
+
+        </div>
+
+    {% else %}
+
+        <div class="rounded-xl border border-dashed border-gray-300 bg-white p-10 text-center">
+
+            <div
+                class="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-gray-100 text-2xl text-gray-400"
+            >
+                <i class="ti ti-user-plus"></i>
+            </div>
+
+            <h2 class="mt-4 text-base font-semibold text-gray-900">
+                No members yet
+            </h2>
+
+            <p class="mt-1 text-sm text-gray-500">
+                Add users from your organization to this team.
+            </p>
+
+        </div>
+
+    {% endif %}
+
+
+{% endblock %}
