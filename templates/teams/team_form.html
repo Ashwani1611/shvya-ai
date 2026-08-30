@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}
+    SHVYA AI — {% if mode == "edit" %}Edit Team{% else %}New Team{% endif %}
+{% endblock %}
+
+{% block header %}
+    {% if mode == "edit" %}Edit Team{% else %}New Team{% endif %}
+{% endblock %}
+
+{% block content %}
+
+
+    <div class="mb-6 flex items-center gap-2">
+
+        <a
+            href="{% if mode == 'edit' %}{% url 'crm-team-detail' team_id=team.id %}{% else %}{% url 'crm-teams' %}{% endif %}"
+            class="text-gray-400 transition hover:text-gray-700"
+        >
+            <i class="ti ti-arrow-left"></i>
+        </a>
+
+        <h2 class="text-lg font-semibold">
+            {% if mode == "edit" %}Edit "{{ team.name }}"{% else %}New Team{% endif %}
+        </h2>
+
+    </div>
+
+
+    <div class="max-w-lg rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+
+        <form
+            method="post"
+            action="{% if mode == 'edit' %}{% url 'crm-team-edit' team_id=team.id %}{% else %}{% url 'crm-team-create' %}{% endif %}"
+        >
+
+            {% csrf_token %}
+
+            <div class="mb-4">
+
+                <label class="mb-1.5 block text-sm font-medium text-gray-700">
+                    Team Name
+                </label>
+
+                <input
+                    type="text"
+                    name="name"
+                    value="{{ name|default:team.name }}"
+                    required
+                    maxlength="100"
+                    placeholder="e.g. Inbound Sales"
+                    class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                />
+
+            </div>
+
+            <div class="mb-4">
+
+                <label class="mb-1.5 block text-sm font-medium text-gray-700">
+                    Description
+                    <span class="font-normal text-gray-400">(optional)</span>
+                </label>
+
+                <textarea
+                    name="description"
+                    rows="3"
+                    placeholder="What does this team handle?"
+                    class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                >{{ description|default:team.description }}</textarea>
+
+            </div>
+
+            {% if mode == "edit" %}
+
+                <div class="mb-6 flex items-center gap-2">
+
+                    <input
+                        type="checkbox"
+                        id="is_active"
+                        name="is_active"
+                        {% if team.is_active %}checked{% endif %}
+                        class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    />
+
+                    <label for="is_active" class="text-sm text-gray-700">
+                        Active
+                    </label>
+
+                </div>
+
+            {% endif %}
+
+            <div class="flex items-center gap-3">
+
+                <button
+                    type="submit"
+                    class="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700"
+                >
+                    {% if mode == "edit" %}Save Changes{% else %}Create Team{% endif %}
+                </button>
+
+                <a
+                    href="{% if mode == 'edit' %}{% url 'crm-team-detail' team_id=team.id %}{% else %}{% url 'crm-teams' %}{% endif %}"
+                    class="text-sm font-medium text-gray-500 hover:text-gray-700"
+                >
+                    Cancel
+                </a>
+
+            </div>
+
+        </form>
+
+    </div>
+
+
+{% endblock %}
