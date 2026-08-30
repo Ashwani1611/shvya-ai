@@ -61,7 +61,10 @@ class Stage(models.Model):
                     "pipeline",
                     "name",
                 ],
-                name="uniq_pipeline_stage_name",
+                condition=models.Q(
+                    is_active=True,
+                ),
+                name="uniq_active_pipeline_stage_name",
             ),
 
             models.UniqueConstraint(
