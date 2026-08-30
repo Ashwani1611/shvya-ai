@@ -155,8 +155,17 @@
                        text-sm
                        font-medium
                        text-gray-700
-                       hover:bg-gray-50
-                       transition"
+                       transition-all
+                       duration-150
+
+                       hover:bg-blue-50
+                       hover:border-blue-100
+                       hover:text-[#3B82F6]
+
+                       focus:outline-none
+                       focus:ring-4
+                       focus:ring-blue-100
+                "       
 
                 hx-get="{% url 'crm-lead-filters-modal' %}?pipeline={{ selected_pipeline_id }}"
 

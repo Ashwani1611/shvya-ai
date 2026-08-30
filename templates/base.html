@@ -444,7 +444,8 @@
                 <a
                     href="#"
 
-                    class="inline-flex
+                    class="group
+                           inline-flex
                            items-center
                            gap-2
                            px-3
@@ -453,12 +454,29 @@
                            font-medium
                            text-gray-700
                            rounded-lg
-                           hover:bg-gray-100
-                           transition"
+                           border
+                           border-transparent
+                           transition-all
+                           duration-150
+
+                           hover:bg-blue-50
+                           hover:border-blue-100
+                           hover:text-[#3B82F6]
+                    "
                 >
 
                     <i
-                        class="ti ti-bell text-[18px]"
+                        class="
+                            ti
+                            ti-bell
+                            text-[18px]
+                            text-red-500
+                            transition-colors
+                            duration-150
+
+                            group-hover:text-[#3B82F6]
+
+                       "     
                     ></i>
 
                     <span>
@@ -478,7 +496,13 @@
                                bg-blue-100
                                text-blue-700
                                text-xs
-                               font-semibold"
+                               font-semibold
+                               transition-all
+                               duration-150
+
+                               group-hover:bg-blue-100
+                               group-hover:text-[#3B82F6]
+                        "
                     >
                         {{ pending_reminder_count }}
                     </span>
@@ -506,8 +530,13 @@
                            font-medium
                            text-gray-700
                            rounded-lg
-                           hover:bg-gray-100
-                           transition"
+                           transition-all
+                           duration-150
+
+                           hover:bg-blue-50
+                           hover:border-blue-100
+                           hover:text-[#3B82F6]
+                    "
                 >
 
                     <i
@@ -571,8 +600,13 @@
                            font-medium
                            text-gray-700
                            rounded-lg
-                           hover:bg-gray-100
-                           transition"
+                           transition-all
+                           duration-150
+
+                           hover:bg-blue-50
+                        hover:border-blue-100
+                        hover:text-[#3B82F6]
+                    "    
                 >
 
                     <i
@@ -600,8 +634,13 @@
                            font-medium
                            text-gray-700
                            rounded-lg
-                           hover:bg-gray-100
-                           transition"
+                           transition-all
+                           duration-150
+
+                           hover:bg-blue-50
+                           hover:border-blue-100
+                           hover:text-[#3B82F6]
+                    "       
                 >
 
                     <i
