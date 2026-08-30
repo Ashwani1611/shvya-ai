@@ -23,6 +23,14 @@ class Stage(models.Model):
         max_length=100,
     )
 
+    description = models.TextField(
+        blank=True,
+        help_text=(
+            "Describe what this stage means and what should happen "
+            "while a lead is in this stage."
+        ),
+    )
+
     display_order = models.PositiveIntegerField(
         default=0,
     )

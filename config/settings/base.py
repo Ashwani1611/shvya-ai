@@ -140,7 +140,7 @@ INSTALLED_APPS = [
     "apps.channels",
     "apps.calls",
     "apps.copilot",
-    "apps.knowledge",
+    "apps.ai_engagement",
     "apps.triggers",
     "apps.followups",
     "apps.analytics",
