@@ -1980,8 +1980,10 @@ def lead_import_execute(
                 )
             )
 
-            normalized_phone = normalize_phone(
-                normalized_phone
+            normalized_phone = (
+                normalize_phone(
+                    normalized_phone
+                )
             )
 
         except DjangoValidationError:
@@ -2035,11 +2037,28 @@ def lead_import_execute(
 
         if existing_lead:
 
+            # ------------------------------------------------
+            # NEW LEADS ONLY
+            #
+            # Existing leads are completely untouched.
+            # ------------------------------------------------
+
             if import_mode == "new_only":
 
                 skipped_count += 1
 
                 continue
+
+            # ------------------------------------------------
+            # NEW & EXISTING LEADS
+            #
+            # Move the existing lead to the selected
+            # pipeline and stage.
+            # ------------------------------------------------
+
+            existing_lead.pipeline = pipeline
+
+            existing_lead.stage = stage
 
             existing_lead.name = (
                 name
@@ -2101,7 +2120,6 @@ def lead_import_execute(
             "updated_count": updated_count,
             "skipped_count": skipped_count,
             "invalid_count": invalid_count,
-            "total_count": len(rows),
         },
     )
 
