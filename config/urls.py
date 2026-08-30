@@ -132,6 +132,13 @@ urlpatterns = [
         "superadmin/",
         include("apps.superadmin.urls"),
     ),
+    # =========================================================
+    # Teams API
+    # =========================================================
 
+    path(
+        "api/v1/teams/",
+        include("apps.teams.urls.api_v1"),
+    ),
     
 ]
