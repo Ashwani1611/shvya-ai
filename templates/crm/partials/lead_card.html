@@ -232,24 +232,6 @@
 
 
                 <div
-                    class="flex items-center gap-2 mt-2
-                           text-xs text-gray-400"
-                >
-
-                    <i class="ti ti-clock"></i>
-
-                    <span>
-                        Last activity
-                    </span>
-
-                    <span>
-                        {{ lead.updated_at|timesince }} ago
-                    </span>
-
-                </div>
-
-
-                <div
                     class="mt-1 flex items-center gap-4
                            text-xs text-gray-500"
                 >
@@ -477,11 +459,13 @@
                 bg-blue-50/40
                 px-3
                 py-2.5
+
                 transition-all
                 duration-150
 
                 hover:border-blue-200
                 hover:bg-blue-50
+                hover:shadow-sm
             "
         >
 
@@ -544,11 +528,13 @@
                 bg-blue-50/40
                 px-3
                 py-2.5
+
                 transition-all
                 duration-150
 
                 hover:border-blue-200
                 hover:bg-blue-50
+                hover:shadow-sm
             "
         >
 
@@ -600,7 +586,7 @@
 
 
         <!-- ==================================================
-             IN STAGE
+             LAST ACTIVITY
              ================================================== -->
 
         <div
@@ -611,11 +597,13 @@
                 bg-blue-50/40
                 px-3
                 py-2.5
+
                 transition-all
                 duration-150
 
                 hover:border-blue-200
                 hover:bg-blue-50
+                hover:shadow-sm
             "
         >
 
@@ -637,7 +625,7 @@
                         text-blue-500
                     "
                 >
-                    In Stage
+                    Last Activity
                 </span>
 
                 <i
@@ -660,7 +648,7 @@
                     text-gray-700
                 "
             >
-                {{ lead.days_in_stage }}d
+                {{ lead.updated_at|timesince }} ago
             </p>
 
         </div>
@@ -668,7 +656,6 @@
     </div>
 
 </div>
-
 
     <!-- ========================================================
          DETAILS / ACTIVITY CONTROL ROW
