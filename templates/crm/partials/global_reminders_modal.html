@@ -861,6 +861,124 @@
     }
 
 
+    /* ============================================================
+       SUMMARY TILES AS IN-MODAL FILTERS
+       ============================================================ */
+
+    .global-reminder-filter-tile {
+
+        cursor: pointer;
+        user-select: none;
+
+    }
+
+
+    .global-reminder-filter-tile:focus-visible {
+
+        outline: none;
+
+        box-shadow:
+            0 0 0 4px
+            rgba(59, 130, 246, 0.10),
+
+            0 8px 20px
+            rgba(59, 130, 246, 0.06);
+
+    }
+
+
+    .global-reminder-filter-tile.active {
+
+        transform:
+            translateY(-2px);
+
+    }
+
+
+    .global-reminder-filter-tile.active.global-reminder-stat-overdue {
+
+        border-color:
+            #fca5a5;
+
+        background:
+            linear-gradient(145deg, #fff7f7, #fff1f1);
+
+        box-shadow:
+            0 8px 20px
+            rgba(239, 68, 68, 0.09),
+
+            0 16px 34px
+            rgba(239, 68, 68, 0.04);
+
+    }
+
+
+    .global-reminder-filter-tile.active.global-reminder-stat-today {
+
+        border-color:
+            #93c5fd;
+
+        background:
+            linear-gradient(145deg, #f0f7ff, #eaf3ff);
+
+        box-shadow:
+            0 8px 20px
+            rgba(59, 130, 246, 0.09),
+
+            0 16px 34px
+            rgba(59, 130, 246, 0.04);
+
+    }
+
+
+    .global-reminder-filter-tile.active.global-reminder-stat-upcoming {
+
+        border-color:
+            #fcd34d;
+
+        background:
+            linear-gradient(145deg, #fffdf2, #fff9dc);
+
+        box-shadow:
+            0 8px 20px
+            rgba(245, 158, 11, 0.09),
+
+            0 16px 34px
+            rgba(245, 158, 11, 0.04);
+
+    }
+
+
+    .global-reminder-filter-tile .global-reminder-stat-icon {
+
+        transition:
+            transform 160ms ease,
+            background-color 160ms ease,
+            color 160ms ease,
+            box-shadow 160ms ease;
+
+    }
+
+
+    .global-reminder-filter-tile:hover
+    .global-reminder-stat-icon {
+
+        box-shadow:
+            0 4px 10px
+            rgba(59, 130, 246, 0.06);
+
+    }
+
+
+    .global-reminder-filter-clear {
+
+        transition:
+            opacity 150ms ease,
+            color 150ms ease;
+
+    }
+
+
 </style>
 
 
@@ -1058,7 +1176,13 @@
                     class="
                         global-reminder-stat
                         global-reminder-stat-overdue
+                        global-reminder-filter-tile
                     "
+                    data-reminder-filter="overdue"
+                    role="button"
+                    tabindex="0"
+                    aria-pressed="false"
+                    aria-label="Show overdue reminders"
                 >
 
                     <div
@@ -1136,7 +1260,13 @@
                     class="
                         global-reminder-stat
                         global-reminder-stat-today
+                        global-reminder-filter-tile
                     "
+                    data-reminder-filter="today"
+                    role="button"
+                    tabindex="0"
+                    aria-pressed="false"
+                    aria-label="Show today's reminders"
                 >
 
                     <div
@@ -1214,7 +1344,13 @@
                     class="
                         global-reminder-stat
                         global-reminder-stat-upcoming
+                        global-reminder-filter-tile
                     "
+                    data-reminder-filter="upcoming"
+                    role="button"
+                    tabindex="0"
+                    aria-pressed="false"
+                    aria-label="Show upcoming reminders"
                 >
 
                     <div
@@ -1297,7 +1433,9 @@
             <section
                 class="
                     mb-6
+                    global-reminder-filter-section
                 "
+                data-reminder-section="overdue"
             >
 
                 <div
@@ -1936,7 +2074,9 @@
             <section
                 class="
                     mb-6
+                    global-reminder-filter-section
                 "
+                data-reminder-section="today"
             >
 
                 <div
@@ -2551,7 +2691,9 @@
             <section
                 class="
                     mb-2
+                    global-reminder-filter-section
                 "
+                data-reminder-section="upcoming"
             >
 
                 <div
@@ -3247,19 +3389,47 @@
             "
         >
 
-            <span
+            <div
                 class="
-                    text-xs
-                    font-medium
-                    text-gray-400
+                    flex
+                    items-center
+                    gap-2
                 "
             >
 
-                {{ overdue_count|add:today_count|add:upcoming_count }}
+                <span
+                    class="
+                        text-xs
+                        font-medium
+                        text-gray-400
+                    "
+                >
 
-                pending reminder{{ overdue_count|add:today_count|add:upcoming_count|pluralize }}
+                    {{ overdue_count|add:today_count|add:upcoming_count }}
 
-            </span>
+                    pending reminder{{ overdue_count|add:today_count|add:upcoming_count|pluralize }}
+
+                </span>
+
+
+                <button
+                    type="button"
+
+                    data-reminder-filter-clear
+
+                    class="
+                        global-reminder-filter-clear
+                        hidden
+                        text-[11px]
+                        font-semibold
+                        text-[#3B82F6]
+                        hover:text-blue-700
+                    "
+                >
+                    Show all
+                </button>
+
+            </div>
 
 
             <button
@@ -3309,6 +3479,177 @@
 <script>
 
 (function () {
+
+    /* ========================================================
+       REMINDER FILTERS
+       ======================================================== */
+
+    function updateReminderFilterUi(filter) {
+
+        const sections =
+            document.querySelectorAll(
+                '[data-reminder-section]'
+            );
+
+        const tiles =
+            document.querySelectorAll(
+                '[data-reminder-filter]'
+            );
+
+        const clearButton =
+            document.querySelector(
+                '[data-reminder-filter-clear]'
+            );
+
+
+        sections.forEach(
+            function (section) {
+
+                const sectionFilter =
+                    section.dataset.reminderSection;
+
+                const shouldShow =
+                    !filter ||
+                    filter === 'all' ||
+                    sectionFilter === filter;
+
+                section.classList.toggle(
+                    'hidden',
+                    !shouldShow
+                );
+
+            }
+        );
+
+
+        tiles.forEach(
+            function (tile) {
+
+                const isActive =
+                    tile.dataset.reminderFilter === filter;
+
+                tile.classList.toggle(
+                    'active',
+                    isActive
+                );
+
+                tile.setAttribute(
+                    'aria-pressed',
+                    isActive ? 'true' : 'false'
+                );
+
+            }
+        );
+
+
+        if (clearButton) {
+
+            clearButton.classList.toggle(
+                'hidden',
+                !filter || filter === 'all'
+            );
+
+        }
+
+    }
+
+
+    function toggleReminderFilter(filter) {
+
+        const activeTile =
+            document.querySelector(
+                '[data-reminder-filter="' +
+                filter +
+                '"].active'
+            );
+
+        if (activeTile) {
+
+            updateReminderFilterUi(
+                'all'
+            );
+
+        } else {
+
+            updateReminderFilterUi(
+                filter
+            );
+
+        }
+
+    }
+
+
+    document.addEventListener(
+        'click',
+        function (event) {
+
+            const tile =
+                event.target.closest(
+                    '[data-reminder-filter]'
+                );
+
+            if (tile) {
+
+                toggleReminderFilter(
+                    tile.dataset.reminderFilter
+                );
+
+                return;
+
+            }
+
+
+            const clearButton =
+                event.target.closest(
+                    '[data-reminder-filter-clear]'
+                );
+
+            if (clearButton) {
+
+                updateReminderFilterUi(
+                    'all'
+                );
+
+            }
+
+        }
+    );
+
+
+    document.addEventListener(
+        'keydown',
+        function (event) {
+
+            if (
+                event.key !== 'Enter' &&
+                event.key !== ' '
+            ) {
+                return;
+            }
+
+            const tile =
+                event.target.closest(
+                    '[data-reminder-filter]'
+                );
+
+            if (!tile) {
+                return;
+            }
+
+            event.preventDefault();
+
+            toggleReminderFilter(
+                tile.dataset.reminderFilter
+            );
+
+        }
+    );
+
+
+    /* ========================================================
+       INLINE EDIT
+       ======================================================== */
 
     function openEditor(
         reminderId
