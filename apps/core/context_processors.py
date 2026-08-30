@@ -5,16 +5,63 @@ NAV_ITEMS = [
         "url_name": "crm-dashboard",
         "path_exact": "/dashboard/",
     },
-    {"label": "Co-Pilot", "icon": "ti-user-star"},
-    {"label": "Auto Follow-ups", "icon": "ti-camera-plus"},
-    {"label": "Knowledge Base", "icon": "ti-clipboard-list"},
-    {"label": "Smart Triggers", "icon": "ti-target-arrow"},
-    {"label": "Analytics", "icon": "ti-chart-line"},
     {
-        # A "group" item has no url_name of its own -- clicking it
-        # expands/collapses its "children" instead of navigating.
-        # is_active (and therefore auto-expanded) when ANY child's
-        # own path matches, computed below from path_prefix.
+        "label": "Co-Pilot",
+        "icon": "ti-user-star",
+        "url_name": "crm-copilot",
+        "path_exact": "/dashboard/copilot/",
+    },
+    {
+        "label": "Auto Follow-ups",
+        "icon": "ti-camera-plus",
+        "path_prefix": "/dashboard/auto-follow-ups/",
+        "children": [
+            {
+                "label": "Sequences",
+                "icon": "ti-repeat",
+                "url_name": "crm-auto-follow-ups-sequences",
+                "path_prefix": "/dashboard/auto-follow-ups/sequences/",
+            },
+            {
+                "label": "Workflows",
+                "icon": "ti-git-branch",
+                "url_name": "crm-auto-follow-ups-workflows",
+                "path_prefix": "/dashboard/auto-follow-ups/workflows/",
+            },
+        ],
+    },
+    {
+        "label": "Knowledge Base",
+        "icon": "ti-clipboard-list",
+        "path_prefix": "/dashboard/knowledge-base/",
+        "children": [
+            {
+                "label": "AI Setup",
+                "icon": "ti-settings",
+                "url_name": "crm-knowledge-base-ai-setup",
+                "path_prefix": "/dashboard/knowledge-base/ai-setup/",
+            },
+            {
+                "label": "FAQ",
+                "icon": "ti-help-circle",
+                "url_name": "crm-knowledge-base-faq",
+                "path_prefix": "/dashboard/knowledge-base/faq/",
+            },
+        ],
+    },
+    {
+        "label": "Smart Triggers",
+        "icon": "ti-target-arrow",
+        "url_name": "crm-smart-triggers",
+        "path_exact": "/dashboard/smart-triggers/",
+    },
+    {
+        "label": "Analytics",
+        "icon": "ti-chart-line",
+        "url_name": "crm-analytics",
+        "path_exact": "/dashboard/analytics/",
+    },
+    {
         "label": "WhatsApp",
         "icon": "ti-brand-whatsapp",
         "path_prefix": "/dashboard/whatsapp/",
@@ -38,24 +85,66 @@ NAV_ITEMS = [
                 "path_prefix": "/dashboard/whatsapp/templates/",
             },
             {
-                "label": "Campaigns",
+                "label": "Broadcasts",
                 "icon": "ti-speakerphone",
                 "url_name": "whatsapp-campaign-list",
                 "path_prefix": "/dashboard/whatsapp/campaigns/",
+            },
+            {
+                # TODO: confirm the real url_name + path for Hosted
+                # Accounts (templates/channels/whatsapp_connect_hosted.html
+                # already exists, so this view likely already exists too —
+                # run: grep -n "hosted" apps/channels/urls.py
+                "label": "Hosted Accounts",
+                "icon": "ti-server",
+                "url_name": "whatsapp-connect-hosted",
+                "path_prefix": "/dashboard/whatsapp/hosted/",
             },
         ],
     },
     {
         "label": "Instagram",
         "icon": "ti-brand-instagram",
-        # No children built yet -- Instagram has no views/urls of its
-        # own in apps.channels yet, so this stays a flat "coming
-        # soon" placeholder (no url_name) until that work exists.
+        "path_prefix": "/dashboard/instagram/",
+        "children": [
+            {
+                "label": "Connect Instagram",
+                "icon": "ti-plug-connected",
+                "url_name": "crm-instagram-connect",
+                "path_prefix": "/dashboard/instagram/connect/",
+            },
+            {
+                "label": "Chats",
+                "icon": "ti-message-circle",
+                "url_name": "crm-instagram-chats",
+                "path_prefix": "/dashboard/instagram/chats/",
+            },
+        ],
     },
-    {"label": "Integrations Hub", "icon": "ti-plug-connected"},
-    {"label": "Call Scheduler", "icon": "ti-phone-plus"},
-    {"label": "Call Tracker", "icon": "ti-phone-check"},
-    {"label": "Teams", "icon": "ti-users-group"},
+    {
+        "label": "Integrations Hub",
+        "icon": "ti-plug-connected",
+        "url_name": "crm-integrations-hub",
+        "path_exact": "/dashboard/integrations-hub/",
+    },
+    {
+        "label": "Call Scheduler",
+        "icon": "ti-phone-plus",
+        "url_name": "crm-call-scheduler",
+        "path_exact": "/dashboard/call-scheduler/",
+    },
+    {
+        "label": "Call Tracker",
+        "icon": "ti-phone-check",
+        "url_name": "crm-call-tracker",
+        "path_exact": "/dashboard/call-tracker/",
+    },
+    {
+        "label": "Teams",
+        "icon": "ti-users-group",
+        "url_name": "crm-teams",
+        "path_exact": "/dashboard/teams/",
+    },
 ]
 
 

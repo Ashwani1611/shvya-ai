@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+
+{% block title %}
+    {{ feature_label }} — SHVYA AI
+{% endblock %}
+
+{% block header %}
+    {{ feature_label }}
+{% endblock %}
+
+{% block content %}
+
+    <div class="flex flex-col items-center justify-center text-center min-h-[60vh]">
+
+        <div class="w-16 h-16 rounded-2xl bg-blue-50 flex items-center justify-center mb-5">
+            <i class="ti {{ feature_icon }} text-blue-600 text-3xl"></i>
+        </div>
+
+        <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-50 text-amber-700 text-xs font-semibold mb-4">
+            <i class="ti ti-clock text-[14px]"></i>
+            Coming soon
+        </span>
+
+        <h2 class="text-2xl font-bold text-gray-900 mb-2">
+            {{ feature_label }}
+        </h2>
+
+        <p class="text-sm text-gray-500 max-w-md mb-6">
+            {{ feature_description }}
+        </p>
+
+        <a href="{% url 'crm-dashboard' %}"
+           class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-gray-900 rounded-lg hover:bg-gray-800 transition">
+            <i class="ti ti-arrow-left text-[16px]"></i>
+            Back to dashboard
+        </a>
+
+    </div>
+
+{% endblock %}

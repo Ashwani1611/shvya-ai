@@ -1,5 +1,6 @@
 from django.urls import path
 
+from .coming_soon import coming_soon_urlpatterns
 from apps.accounts.views import crm_signup_view
 from apps.crm.authentication import (
     crm_login_view,
@@ -84,7 +85,7 @@ urlpatterns = [
         name="crm-dashboard",
     ),
 
-        # ========================================================
+    # ========================================================
     # NEW LEAD
     # ========================================================
 
@@ -304,7 +305,7 @@ urlpatterns = [
         lead_stage_move,
         name="crm-lead-stage-move",
     ),
-    
+
     # ========================================================
     # IMPORT LEADS
     # ========================================================
@@ -342,52 +343,55 @@ urlpatterns = [
         lead_import_sample_file,
         name="crm-lead-import-sample",
     ),
-# ========================================================
-# IMPORT LEADS — FIELD MAPPING
-# ========================================================
 
-path(
-    "leads/import/mapping/",
-    lead_import_mapping_modal,
-    name="crm-lead-import-mapping-modal",
-),
+    # ========================================================
+    # IMPORT LEADS — FIELD MAPPING
+    # ========================================================
 
-path(
-    "leads/import/mapping/save/",
-    lead_import_mapping_save,
-    name="crm-lead-import-mapping-save",
-),
+    path(
+        "leads/import/mapping/",
+        lead_import_mapping_modal,
+        name="crm-lead-import-mapping-modal",
+    ),
 
-# ========================================================
-# IMPORT LEADS — DESTINATION / ASSIGNMENT
-# ========================================================
+    path(
+        "leads/import/mapping/save/",
+        lead_import_mapping_save,
+        name="crm-lead-import-mapping-save",
+    ),
 
-path(
-    "leads/import/destination/",
-    lead_import_destination_modal,
-    name="crm-lead-import-destination-modal",
-),
+    # ========================================================
+    # IMPORT LEADS — DESTINATION / ASSIGNMENT
+    # ========================================================
 
-path(
-    "leads/import/destination/save/",
-    lead_import_destination_save,
-    name="crm-lead-import-destination-save",
-),
+    path(
+        "leads/import/destination/",
+        lead_import_destination_modal,
+        name="crm-lead-import-destination-modal",
+    ),
 
-# ========================================================
-# IMPORT LEADS — REVIEW / EXECUTE
-# ========================================================
+    path(
+        "leads/import/destination/save/",
+        lead_import_destination_save,
+        name="crm-lead-import-destination-save",
+    ),
 
-path(
-    "leads/import/review/",
-    lead_import_review_modal,
-    name="crm-lead-import-review-modal",
-),
+    # ========================================================
+    # IMPORT LEADS — REVIEW / EXECUTE
+    # ========================================================
 
-path(
-    "leads/import/execute/",
-    lead_import_execute,
-    name="crm-lead-import-execute",
-),
+    path(
+        "leads/import/review/",
+        lead_import_review_modal,
+        name="crm-lead-import-review-modal",
+    ),
+
+    path(
+        "leads/import/execute/",
+        lead_import_execute,
+        name="crm-lead-import-execute",
+    ),
 
 ]
+
+urlpatterns += coming_soon_urlpatterns
