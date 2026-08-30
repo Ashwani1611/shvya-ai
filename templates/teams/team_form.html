@@ -46,7 +46,7 @@
                 <input
                     type="text"
                     name="name"
-                    value="{{ name|default:team.name }}"
+                    value="{{ name }}"
                     required
                     maxlength="100"
                     placeholder="e.g. Inbound Sales"
@@ -67,7 +67,7 @@
                     rows="3"
                     placeholder="What does this team handle?"
                     class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                >{{ description|default:team.description }}</textarea>
+                >{{ description }}</textarea>
 
             </div>
 
