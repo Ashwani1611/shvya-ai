@@ -12,6 +12,7 @@ from apps.crm.views.dashboard import (
     lead_create_save,
     lead_call_modal,
     lead_call_save,
+    lead_conversation_summary_modal,
     lead_card_partial,
     lead_detail,
     lead_edit_modal,
@@ -429,6 +430,16 @@ path(
     "reminders/<uuid:reminder_id>/edit/save/",
     global_reminder_edit_save,
     name="crm-global-reminder-edit-save",
+),
+
+# ========================================================
+# CONVERSATION SUMMARY
+# ========================================================
+
+path(
+    "leads/<uuid:lead_id>/conversation-summary/",
+    lead_conversation_summary_modal,
+    name="crm-lead-conversation-summary-modal",
 ),
 ]
 

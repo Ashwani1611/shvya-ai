@@ -516,73 +516,89 @@
         </div>
 
 
-        <!-- ==================================================
-             CALLS
-             ================================================== -->
+    <!-- ==================================================
+     CONVERSATION SUMMARY
+     ================================================== -->
+
+    <button
+        type="button"
+        hx-get="{% url 'crm-lead-conversation-summary-modal' lead.id %}"
+        hx-target="#modal-root"
+        hx-swap="innerHTML"
+        class="
+            w-full
+            rounded-lg
+            border
+            border-blue-100
+            bg-blue-50/40
+            px-3
+            py-2.5
+            text-left
+
+            transition-all
+            duration-150
+
+            hover:border-blue-200
+            hover:bg-blue-50
+            hover:shadow-sm
+
+            focus:outline-none
+            focus:ring-2
+            focus:ring-blue-200
+            focus:ring-offset-1
+        "
+        aria-label="View conversation summary for {{ lead.name }}"
+    >
 
         <div
             class="
-                rounded-lg
-                border
-                border-blue-100
-                bg-blue-50/40
-                px-3
-                py-2.5
-
-                transition-all
-                duration-150
-
-                hover:border-blue-200
-                hover:bg-blue-50
-                hover:shadow-sm
+                flex
+                items-center
+                justify-between
+                gap-2
             "
         >
 
-            <div
+            <span
                 class="
-                    flex
-                    items-center
-                    justify-between
-                    gap-2
-                "
-            >
-
-                <span
-                    class="
-                        text-[10px]
-                        font-semibold
-                        uppercase
-                        tracking-wide
-                        text-blue-500
-                    "
-                >
-                    Calls
-                </span>
-
-                <i
-                    class="
-                        ti
-                        ti-phone
-                        text-sm
-                        text-[#3B82F6]
-                    "
-                ></i>
-
-            </div>
-
-
-            <p
-                class="
-                    mt-1
-                    text-sm
+                    text-[10px]
                     font-semibold
-                    text-gray-700
-                "
+                    uppercase
+                    tracking-wide
+                    text-blue-500
+                " 
             >
-                {{ lead.call_count }}
-            </p>
+                Conversation Summary
+            </span>
+
+            <i
+                class="
+                    ti
+                    ti-message-circle
+                    text-sm
+                    text-[#3B82F6]
+                "
+            ></i>
 
         </div>
+
+        <p
+            class="
+                mt-1
+                text-sm
+                font-semibold
+                text-gray-700
+            "
+        >
+            {% if conversation_summary %}
+                View summary
+            {% else %}
+                No summary yet
+            {% endif %}
+        </p>
+
+    </button>
+
 
 
         <!-- ==================================================

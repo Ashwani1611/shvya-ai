@@ -4099,6 +4099,62 @@ def lead_call_save(
 
     return response
 
+# ============================================================
+# CONVERSATION SUMMARY
+# ============================================================
+
+
+@crm_login_required
+@require_GET
+def lead_conversation_summary_modal(
+    request,
+    lead_id,
+):
+    """
+    Render the latest internal conversation summary for a Lead.
+
+    This is a read-only UI endpoint.
+
+    The summary is:
+        InternalConversationSummary
+
+    It is intentionally separate from:
+        LeadNote / Qualification Summary
+    """
+
+    user = request.crm_user
+
+    lead = get_object_or_404(
+        Lead,
+        id=lead_id,
+        organization=user.organization,
+    )
+
+    from apps.ai_engagement.models import (
+        InternalConversationSummary,
+    )
+
+    conversation_summary = (
+        InternalConversationSummary.objects
+        .filter(
+            organization=user.organization,
+            lead=lead,
+            is_active=True,
+        )
+        .order_by(
+            "-generated_at",
+        )
+        .first()
+    )
+
+    return render(
+        request,
+        "crm/partials/lead_conversation_summary_modal.html",
+        {
+            "lead": lead,
+            "conversation_summary": summary,
+        },
+    )
 
 # ============================================================
 # ADD REMINDER

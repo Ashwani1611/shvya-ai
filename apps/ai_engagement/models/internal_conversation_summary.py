@@ -20,6 +20,16 @@ class InternalConversationSummary(models.Model):
     The summary is intended for internal CRM users and is
     displayed from the Lead Card through a dedicated summary
     action/icon.
+
+    Conversation Summary and Qualification Summary are separate:
+
+        Conversation Summary
+            -> InternalConversationSummary
+            -> Lead Card -> Conversation Summary icon/modal
+
+        Qualification Summary
+            -> LeadNote
+            -> Lead Card -> Notes section
     """
 
     id = models.UUIDField(
@@ -63,6 +73,24 @@ class InternalConversationSummary(models.Model):
         help_text=(
             "Number of conversation messages considered when "
             "this summary was generated."
+        ),
+    )
+
+    source_last_message_id = models.UUIDField(
+        null=True,
+        blank=True,
+        help_text=(
+            "ID of the latest conversation message included "
+            "in this summary."
+        ),
+    )
+
+    source_last_message_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text=(
+            "Timestamp of the latest conversation message included "
+            "in this summary."
         ),
     )
 
