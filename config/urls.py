@@ -103,6 +103,15 @@ urlpatterns = [
     ),
 
     # =========================================================
+    # CRM Analytics
+    # =========================================================
+
+    path(
+        "dashboard/analytics/",
+        include("apps.analytics.urls.web"),
+    ),
+
+    # =========================================================
     # WhatsApp Channels
     #
     # Includes (see apps/channels/urls.py):
