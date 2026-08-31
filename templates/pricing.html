@@ -1,311 +1,471 @@
-{% extends "base.html" %}
 {% load static %}
-
-{% block title %}Pricing — SHVYA AI{% endblock %}
-
-{% block content %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pricing — SHVYA AI</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
-  .pr-page{ --blue:#2563EB; --blue-dk:#1D4ED8; --blue-lt:#EFF6FF; --blue-100:#DBEAFE;
-    --ink:#0F172A; --gray:#64748B; --gray-lt:#94A3B8; --line:#E2E8F0; --bg-soft:#F8FAFC;
-    --green:#16A34A; --green-lt:#F0FDF4;
-    font-family:'Inter',system-ui,sans-serif; color:var(--ink); }
-  .pr-page *{ box-sizing:border-box; }
-  .pr-page a{ text-decoration:none; color:inherit; }
+  :root{
+    --blue-900:#0B1E4D;
+    --blue-700:#1E3FA8;
+    --blue-600:#2C55D6;
+    --blue-500:#3D6BF0;
+    --blue-100:#E8EEFF;
+    --ink:#0F1830;
+    --ink-soft:#5A6483;
+    --paper:#FFFFFF;
+    --paper-soft:#F6F8FE;
+    --line:#E2E8F8;
+    --green:#16A34A;
+    --red:#E64545;
+    --radius:16px;
+    --shadow:0 20px 40px -18px rgba(20,42,110,0.25);
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  html{scroll-behavior:smooth;}
+  body{font-family:'Inter',sans-serif;color:var(--ink);background:var(--paper);-webkit-font-smoothing:antialiased;}
+  h1,h2,h3,.brand{font-family:'Sora',sans-serif;}
+  a{text-decoration:none;color:inherit;}
+  .wrap{max-width:1180px;margin:0 auto;padding:0 32px;}
 
-  /* Hero */
-  .pr-hero{ text-align:center; padding:64px 24px 40px; background:linear-gradient(180deg,var(--blue-lt) 0%, #fff 100%); }
-  .pr-pill{ display:inline-flex; align-items:center; gap:6px; background:var(--blue-100); color:var(--blue-dk);
-    font-size:.75rem; font-weight:700; padding:5px 14px; border-radius:99px; margin-bottom:16px; }
-  .pr-hero h1{ font-size:2.1rem; font-weight:800; letter-spacing:-.03em; line-height:1.2; max-width:620px; margin:0 auto 12px; }
-  .pr-hero h1 span{ color:var(--blue); }
-  .pr-hero p{ color:var(--gray); font-size:.98rem; max-width:520px; margin:0 auto; }
+  /* NAV (same as home.html) */
+  nav{position:sticky;top:0;z-index:50;background:rgba(255,255,255,0.85);backdrop-filter:blur(10px);border-bottom:1px solid var(--line);}
+  .nav-inner{display:flex;align-items:center;justify-content:space-between;padding:18px 32px;max-width:1180px;margin:0 auto;}
+  .brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:1.15rem;letter-spacing:-0.01em;}
+  .brand-mark{width:34px;height:34px;border-radius:9px;background:linear-gradient(135deg,var(--blue-500),var(--blue-700));color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:0.95rem;}
+  .nav-links{display:flex;gap:34px;font-size:0.94rem;font-weight:500;color:var(--ink-soft);}
+  .nav-links a:hover, .nav-links a.active{color:var(--blue-700);}
+  .nav-cta{display:flex;gap:12px;align-items:center;}
+  .btn{display:inline-flex;align-items:center;justify-content:center;padding:11px 22px;border-radius:10px;font-weight:600;font-size:0.92rem;transition:.15s;border:1px solid transparent;cursor:pointer;}
+  .btn-primary{background:var(--blue-600);color:#fff;box-shadow:0 10px 24px -10px rgba(44,85,214,0.55);}
+  .btn-primary:hover{background:var(--blue-700);transform:translateY(-1px);}
+  .btn-ghost{color:var(--blue-700);border-color:var(--line);background:#fff;}
+  .btn-ghost:hover{border-color:var(--blue-500);}
+  @media (max-width:600px){ .nav-links{display:none;} }
 
-  /* Billing + seats controls */
-  .pr-controls{ max-width:900px; margin:32px auto 0; padding:0 20px; display:flex; flex-wrap:wrap;
-    align-items:center; justify-content:center; gap:14px 24px; }
-  .pr-toggle{ display:inline-flex; background:var(--bg-soft); border:1px solid var(--line); border-radius:10px; padding:4px; gap:2px; }
-  .pr-toggle button{ border:none; background:transparent; padding:8px 14px; border-radius:7px; font-size:.82rem;
-    font-weight:600; color:var(--gray); cursor:pointer; position:relative; }
-  .pr-toggle button.active{ background:var(--blue); color:#fff; }
-  .pr-toggle button .save{ position:absolute; top:-9px; right:-6px; background:var(--green); color:#fff;
-    font-size:.6rem; font-weight:800; padding:1px 5px; border-radius:99px; }
-  .pr-seats{ display:inline-flex; align-items:center; gap:10px; background:var(--bg-soft); border:1px solid var(--line);
-    border-radius:10px; padding:6px 10px; }
-  .pr-seats span.lbl{ font-size:.82rem; color:var(--gray); font-weight:600; }
-  .pr-seats button{ width:26px; height:26px; border-radius:6px; border:1px solid var(--line); background:#fff;
-    font-size:1rem; font-weight:700; color:var(--ink); cursor:pointer; }
-  .pr-seats button:hover{ border-color:var(--blue); color:var(--blue); }
-  .pr-seats .count{ font-size:.9rem; font-weight:700; min-width:18px; text-align:center; }
+  /* HERO */
+  .pr-hero{text-align:center;padding:72px 24px 40px;background:radial-gradient(900px 500px at 85% -10%, var(--blue-100), transparent);}
+  .pr-pill{display:inline-flex;align-items:center;gap:6px;background:var(--blue-100);color:var(--blue-700);font-size:0.8rem;font-weight:700;padding:6px 14px;border-radius:999px;margin-bottom:18px;}
+  .pr-hero h1{font-size:2.6rem;font-weight:800;letter-spacing:-0.02em;line-height:1.15;max-width:680px;margin:0 auto 14px;color:var(--blue-900);}
+  .pr-hero h1 span{color:var(--blue-600);}
+  .pr-hero p{color:var(--ink-soft);font-size:1.05rem;max-width:540px;margin:0 auto;}
 
-  /* Cards */
-  .pr-cards{ max-width:1080px; margin:36px auto 0; padding:0 20px; display:grid; grid-template-columns:repeat(3,1fr); gap:20px; }
-  @media(max-width:900px){ .pr-cards{ grid-template-columns:1fr; max-width:480px; } }
-  .pr-card{ border:1.5px solid var(--line); border-radius:16px; padding:28px 24px; background:#fff; display:flex; flex-direction:column; }
-  .pr-card.feat{ border-color:var(--blue); box-shadow:0 8px 28px rgba(37,99,235,.12); position:relative; }
-  .pr-badge{ position:absolute; top:-13px; left:50%; transform:translateX(-50%); background:var(--blue); color:#fff;
-    font-size:.65rem; font-weight:800; letter-spacing:.06em; text-transform:uppercase; padding:5px 14px; border-radius:99px; }
-  .pr-card .icon{ font-size:1.5rem; margin-bottom:10px; }
-  .pr-card h3{ font-size:1.15rem; font-weight:800; }
-  .pr-card .tag{ font-size:.82rem; color:var(--gray); margin-top:6px; margin-bottom:20px; min-height:38px; }
-  .pr-price-row{ display:flex; align-items:baseline; gap:4px; }
-  .pr-price{ font-size:1.9rem; font-weight:800; }
-  .pr-price-unit{ font-size:.8rem; color:var(--gray); font-weight:600; }
-  .pr-setup-note{ font-size:.76rem; color:var(--gray-lt); margin-top:4px; margin-bottom:20px; }
-  .pr-cta{ display:block; text-align:center; padding:11px; border-radius:9px; font-weight:700; font-size:.88rem;
-    border:1.5px solid var(--blue); color:var(--blue); margin-bottom:22px; cursor:pointer; background:#fff; transition:.15s; }
-  .pr-card.feat .pr-cta{ background:var(--blue); color:#fff; }
-  .pr-cta:hover{ opacity:.88; }
-  .pr-feats{ list-style:none; padding:0; margin:0; flex:1; }
-  .pr-feats li{ display:flex; gap:9px; font-size:.85rem; color:var(--ink); padding:7px 0; align-items:flex-start; }
-  .pr-feats li .tick{ color:var(--green); font-weight:800; margin-top:1px; }
-  .pr-feats li .cross{ color:var(--gray-lt); font-weight:800; margin-top:1px; }
-  .pr-feats li.dim{ color:var(--gray); }
+  /* CONTROLS */
+  .pr-controls{max-width:900px;margin:32px auto 0;padding:0 20px;display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:14px 24px;}
+  .pr-toggle{display:inline-flex;background:var(--paper-soft);border:1px solid var(--line);border-radius:10px;padding:4px;gap:2px;}
+  .pr-toggle button{border:none;background:transparent;padding:8px 14px;border-radius:7px;font-size:0.82rem;font-weight:600;color:var(--ink-soft);cursor:pointer;position:relative;}
+  .pr-toggle button.active{background:var(--blue-600);color:#fff;}
+  .pr-toggle button .save{position:absolute;top:-9px;right:-6px;background:var(--green);color:#fff;font-size:0.6rem;font-weight:800;padding:1px 5px;border-radius:999px;}
+  .pr-seats{display:inline-flex;align-items:center;gap:10px;background:var(--paper-soft);border:1px solid var(--line);border-radius:10px;padding:6px 10px;}
+  .pr-seats span.lbl{font-size:0.82rem;color:var(--ink-soft);font-weight:600;}
+  .pr-seats button{width:26px;height:26px;border-radius:6px;border:1px solid var(--line);background:#fff;font-size:1rem;font-weight:700;color:var(--ink);cursor:pointer;}
+  .pr-seats button:hover{border-color:var(--blue-500);color:var(--blue-600);}
+  .pr-seats .count{font-size:0.9rem;font-weight:700;min-width:18px;text-align:center;}
 
-  /* Guarantee */
-  .pr-guarantee{ max-width:760px; margin:52px auto 0; padding:0 20px; }
-  .pr-guarantee-inner{ border:1.5px solid var(--blue-100); background:var(--blue-lt); border-radius:16px; padding:28px 32px; text-align:center; }
-  .pr-guarantee-inner h2{ font-size:1.2rem; font-weight:800; margin-bottom:8px; }
-  .pr-guarantee-inner h2 span{ color:var(--blue); }
-  .pr-guarantee-inner p{ font-size:.86rem; color:var(--gray); line-height:1.6; }
-  .pr-guarantee-inner .fine{ font-size:.74rem; color:var(--gray-lt); margin-top:8px; }
+  /* CARDS */
+  .pr-cards{max-width:1120px;margin:44px auto 0;padding:0 20px;display:grid;grid-template-columns:repeat(3,1fr);gap:22px;align-items:start;}
+  @media(max-width:920px){ .pr-cards{grid-template-columns:1fr;max-width:480px;} }
+  .pr-card{border:1.5px solid var(--line);border-radius:20px;padding:30px 26px;background:#fff;display:flex;flex-direction:column;position:relative;}
+  .pr-card.feat{border-color:var(--blue-600);box-shadow:var(--shadow);}
+  .pr-badge{position:absolute;top:-14px;left:50%;transform:translateX(-50%);background:#DC2626;color:#fff;font-size:0.65rem;font-weight:800;letter-spacing:0.06em;text-transform:uppercase;padding:6px 16px;border-radius:999px;white-space:nowrap;}
+  .pr-card .icon{width:44px;height:44px;border-radius:12px;background:var(--blue-100);display:flex;align-items:center;justify-content:center;font-size:1.3rem;margin-bottom:14px;}
+  .pr-card h3{font-size:1.25rem;font-weight:800;color:var(--blue-900);}
+  .pr-fits{display:inline-block;font-size:0.72rem;font-weight:700;color:var(--blue-700);background:var(--blue-100);padding:4px 10px;border-radius:999px;margin:10px 0 12px;}
+  .pr-card .tag{font-size:0.86rem;color:var(--ink-soft);line-height:1.5;margin-bottom:20px;min-height:42px;}
+  .pr-price-row{display:flex;align-items:baseline;gap:6px;}
+  .pr-price{font-size:2.1rem;font-weight:800;color:var(--ink);}
+  .pr-price-unit{font-size:0.78rem;color:var(--ink-soft);font-weight:600;}
+  .pr-setup-note{font-size:0.78rem;color:var(--ink-soft);margin-top:2px;}
+  .pr-run-note{display:flex;align-items:center;justify-content:space-between;background:var(--paper-soft);border:1px solid var(--line);border-radius:9px;padding:9px 12px;font-size:0.82rem;font-weight:600;margin:16px 0 20px;}
+  .pr-run-note .approx{color:var(--ink-soft);font-weight:600;font-size:0.78rem;}
+  .pr-cta{display:block;text-align:center;padding:12px;border-radius:10px;font-weight:700;font-size:0.9rem;border:1.5px solid var(--blue-600);color:var(--blue-600);margin-bottom:22px;cursor:pointer;background:#fff;transition:.15s;}
+  .pr-card.feat .pr-cta{background:var(--blue-600);color:#fff;}
+  .pr-cta:hover{opacity:.88;}
+  .pr-feats{list-style:none;padding:0;margin:0;flex:1;}
+  .pr-feats li{display:flex;gap:10px;padding:10px 0;border-top:1px solid var(--line);align-items:flex-start;}
+  .pr-feats li:first-child{border-top:none;}
+  .pr-feats li .ico{flex-shrink:0;width:18px;height:18px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:0.7rem;font-weight:800;margin-top:1px;}
+  .pr-feats li .ico.yes{background:#DCFCE7;color:var(--green);}
+  .pr-feats li .ico.no{background:#FEE2E2;color:var(--red);}
+  .pr-feats li .txt b{font-size:0.86rem;color:var(--ink);}
+  .pr-feats li .txt span{display:block;font-size:0.78rem;color:var(--ink-soft);margin-top:2px;line-height:1.4;}
+  .pr-feats li.dim .txt b, .pr-feats li.dim .txt span{color:var(--ink-soft);}
 
-  /* Compare table (collapsible) */
-  .pr-compare{ max-width:1000px; margin:48px auto 0; padding:0 20px; }
-  .pr-compare summary{ cursor:pointer; list-style:none; display:flex; align-items:center; justify-content:center;
-    gap:8px; font-size:.88rem; font-weight:700; color:var(--blue); padding:14px; border:1.5px solid var(--line);
-    border-radius:10px; background:#fff; }
-  .pr-compare summary::-webkit-details-marker{ display:none; }
-  .pr-compare summary .arrow{ transition:transform .2s; }
-  .pr-compare[open] summary .arrow{ transform:rotate(180deg); }
-  .pr-compare-body{ overflow-x:auto; border:1.5px solid var(--line); border-top:none; border-radius:0 0 10px 10px; }
-  table.pr-table{ width:100%; border-collapse:collapse; min-width:680px; font-size:.84rem; }
-  table.pr-table th, table.pr-table td{ padding:12px 16px; text-align:left; border-top:1px solid var(--line); }
-  table.pr-table thead th{ background:var(--bg-soft); font-weight:700; text-align:center; }
-  table.pr-table thead th:first-child{ text-align:left; }
-  table.pr-table td:not(:first-child), table.pr-table th:not(:first-child){ text-align:center; }
-  table.pr-table tbody tr td:first-child{ font-weight:600; color:var(--ink); }
-  table.pr-table .section-hd td{ background:var(--bg-soft); font-weight:800; font-size:.72rem; text-transform:uppercase;
-    letter-spacing:.06em; color:var(--gray); }
-  table.pr-table .y{ color:var(--green); font-weight:800; }
-  table.pr-table .n{ color:var(--gray-lt); font-weight:800; }
+  /* GUARANTEE */
+  .pr-guarantee{max-width:760px;margin:52px auto 0;padding:0 20px;}
+  .pr-guarantee-inner{border:1.5px solid var(--blue-100);background:var(--blue-100);border-radius:16px;padding:28px 32px;text-align:center;}
+  .pr-guarantee-inner h2{font-size:1.2rem;font-weight:800;margin-bottom:8px;color:var(--blue-900);}
+  .pr-guarantee-inner h2 span{color:var(--blue-600);}
+  .pr-guarantee-inner p{font-size:0.86rem;color:var(--ink-soft);line-height:1.6;}
+  .pr-guarantee-inner .fine{font-size:0.74rem;color:var(--ink-soft);margin-top:8px;opacity:.8;}
+
+  /* COMPARE TABLE */
+  .pr-compare{max-width:1100px;margin:60px auto 0;padding:0 20px;}
+  .pr-compare > h2{text-align:center;font-size:1.6rem;font-weight:800;color:var(--blue-900);margin-bottom:8px;}
+  .pr-compare > p{text-align:center;color:var(--ink-soft);font-size:0.92rem;margin-bottom:28px;}
+  .pr-compare-body{overflow-x:auto;border:1.5px solid var(--line);border-radius:16px;}
+  table.pr-table{width:100%;border-collapse:collapse;min-width:760px;font-size:0.84rem;}
+  table.pr-table th, table.pr-table td{padding:14px 18px;text-align:left;border-top:1px solid var(--line);vertical-align:top;}
+  table.pr-table thead th{background:var(--paper-soft);font-weight:700;text-align:center;}
+  table.pr-table thead th:first-child{text-align:left;}
+  table.pr-table td:not(:first-child), table.pr-table th:not(:first-child){text-align:center;}
+  table.pr-table tbody tr td:first-child{font-weight:600;color:var(--ink);}
+  table.pr-table .section-hd td{background:var(--paper-soft);font-weight:800;font-size:0.72rem;text-transform:uppercase;letter-spacing:0.06em;color:var(--ink-soft);}
+  table.pr-table .y{color:var(--green);font-weight:800;}
+  table.pr-table .n{color:var(--ink-soft);font-weight:800;}
+  table.pr-table td small{display:block;color:var(--ink-soft);font-size:0.74rem;margin-top:2px;font-weight:400;}
+  .pr-table .feat-col{background:var(--blue-100);}
 
   /* FAQ */
-  .pr-faq{ max-width:760px; margin:52px auto 0; padding:0 20px; }
-  .pr-faq h2{ font-size:1.3rem; font-weight:800; text-align:center; margin-bottom:6px; }
-  .pr-faq > p{ text-align:center; font-size:.85rem; color:var(--gray); margin-bottom:22px; }
-  .pr-faq-item{ border-top:1px solid var(--line); }
-  .pr-faq-item:first-of-type{ border-top:none; }
-  .pr-faq-list{ border:1.5px solid var(--line); border-radius:12px; overflow:hidden; }
-  .pr-faq-q{ display:flex; align-items:center; gap:12px; padding:16px 20px; cursor:pointer; }
-  .pr-faq-q span.txt{ font-size:.88rem; font-weight:600; flex:1; }
-  .pr-faq-q span.arrow{ color:var(--gray-lt); transition:transform .2s; }
-  .pr-faq-q span.arrow.open{ transform:rotate(180deg); }
-  .pr-faq-a{ display:none; padding:0 20px 16px 20px; font-size:.83rem; color:var(--gray); line-height:1.65; }
-  .pr-faq-a.open{ display:block; }
-  .pr-faq-a ul{ padding-left:18px; margin-top:6px; }
-  .pr-faq-a ul li{ margin-bottom:5px; }
-  .pr-faq-a b{ color:var(--ink); }
+  .pr-faq{max-width:760px;margin:60px auto 0;padding:0 20px;}
+  .pr-faq h2{font-size:1.3rem;font-weight:800;text-align:center;margin-bottom:6px;color:var(--blue-900);}
+  .pr-faq > p{text-align:center;font-size:0.85rem;color:var(--ink-soft);margin-bottom:22px;}
+  .pr-faq-item{border-top:1px solid var(--line);}
+  .pr-faq-item:first-of-type{border-top:none;}
+  .pr-faq-list{border:1.5px solid var(--line);border-radius:12px;overflow:hidden;}
+  .pr-faq-q{display:flex;align-items:center;gap:12px;padding:16px 20px;cursor:pointer;}
+  .pr-faq-q span.txt{font-size:0.88rem;font-weight:600;flex:1;}
+  .pr-faq-q span.arrow{color:var(--ink-soft);transition:.2s;}
+  .pr-faq-q span.arrow.open{transform:rotate(180deg);}
+  .pr-faq-a{display:none;padding:0 20px 16px;font-size:0.83rem;color:var(--ink-soft);line-height:1.65;}
+  .pr-faq-a.open{display:block;}
+  .pr-faq-a ul{padding-left:18px;margin-top:6px;}
+  .pr-faq-a ul li{margin-bottom:5px;}
+  .pr-faq-a b{color:var(--ink);}
 
-  /* CTA footer */
-  .pr-cta-footer{ text-align:center; padding:60px 24px 70px; }
-  .pr-cta-footer h2{ font-size:1.5rem; font-weight:800; margin-bottom:8px; }
-  .pr-cta-footer p{ font-size:.88rem; color:var(--gray); margin-bottom:22px; }
-  .pr-cta-footer a{ display:inline-block; background:var(--blue); color:#fff; padding:12px 30px; border-radius:9px; font-weight:700; font-size:.9rem; }
-  .pr-cta-footer a:hover{ opacity:.9; }
+  /* CTA FOOTER BAND */
+  .cta-band-wrap{padding:64px 24px 0;}
+  .cta-band{max-width:1100px;margin:0 auto;background:linear-gradient(120deg,var(--blue-700),var(--blue-900));border-radius:24px;padding:56px 48px;color:#fff;text-align:center;}
+  .cta-band h2{font-size:1.8rem;letter-spacing:-0.01em;margin-bottom:10px;}
+  .cta-band p{color:#C9D6FF;font-size:0.98rem;margin-bottom:26px;}
+  .btn-white{background:#fff;color:var(--blue-700);}
+  .btn-white:hover{background:var(--blue-100);}
+
+  /* FOOTER */
+  footer{border-top:1px solid var(--line);padding:44px 0 32px;margin-top:60px;}
+  .footer-inner{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:16px;max-width:1180px;margin:0 auto;padding:0 32px;}
+  .footer-links{display:flex;gap:26px;font-size:0.85rem;color:var(--ink-soft);}
+  .copyright{font-size:0.82rem;color:var(--ink-soft);}
 </style>
+</head>
+<body>
 
-<div class="pr-page">
-
-  <!-- HERO -->
-  <section class="pr-hero">
-    <span class="pr-pill">Pricing</span>
-    <h1>Simple pricing for <span>every stage of growth</span></h1>
-    <p>Pick a plan based on how many products you sell and how much of the setup you want done for you. Switch or upgrade anytime.</p>
-  </section>
-
-  <!-- CONTROLS -->
-  <div class="pr-controls">
-    <div class="pr-toggle" id="pr-billing-toggle">
-      <button data-cycle="monthly" onclick="prSetBilling('monthly', this)">Monthly</button>
-      <button data-cycle="quarterly" class="active" onclick="prSetBilling('quarterly', this)">Quarterly<span class="save">-5%</span></button>
-      <button data-cycle="halfyearly" onclick="prSetBilling('halfyearly', this)">Half-yearly<span class="save">-10%</span></button>
-      <button data-cycle="annually" onclick="prSetBilling('annually', this)">Annual<span class="save">-15%</span></button>
+<nav>
+  <div class="nav-inner">
+    <a href="{% url 'home' %}" class="brand">
+      <span class="brand-mark">S</span> SHVYA <span style="color:var(--blue-600)">AI</span>
+    </a>
+    <div class="nav-links">
+      <a href="{% url 'home' %}#features">Features</a>
+      <a href="{% url 'home' %}#how-it-works">How it works</a>
+      <a href="{% url 'pricing' %}" class="active">Pricing</a>
+      <a href="{% url 'home' %}#trust">Why SHVYA</a>
     </div>
-    <div class="pr-seats">
-      <span class="lbl">Seats</span>
-      <button onclick="prChangeSeats(-1)">−</button>
-      <span class="count" id="pr-seat-count">1</span>
-      <button onclick="prChangeSeats(1)">+</button>
+    <div class="nav-cta">
+      <a href="/dashboard/login/" class="btn btn-ghost">Login</a>
+      <a href="{% url 'crm-signup' %}" class="btn btn-primary">Get started</a>
     </div>
   </div>
+</nav>
 
-  <!-- CARDS -->
-  <div class="pr-cards">
+<!-- HERO -->
+<section class="pr-hero">
+  <span class="pr-pill">Pricing</span>
+  <h1>Simple pricing for <span>every stage of growth</span></h1>
+  <p>Pick a plan based on how many products you sell and how much of the setup you want done for you. Switch or upgrade anytime.</p>
+</section>
 
-    <!-- DIY -->
-    <div class="pr-card">
-      <div class="icon">💼</div>
-      <h3>DIY</h3>
-      <div class="tag">You set the system up and run it yourself.</div>
-      <div class="pr-price-row"><span class="pr-price" data-base="2999">₹2,999</span><span class="pr-price-unit">/seat/mo</span></div>
-      <div class="pr-setup-note">No setup fee</div>
-      <a href="{% url 'crm-signup' %}" class="pr-cta">Get started</a>
-      <ul class="pr-feats">
-        <li><span class="tick">✓</span> Full lead management &amp; tracking dashboard</li>
-        <li><span class="tick">✓</span> Bring your own AI qualification prompts</li>
-        <li><span class="cross">–</span> <span class="dim">Automation rules configured manually</span></li>
-        <li><span class="cross">✕</span> <span class="dim">No pre-built follow-up sequences</span></li>
-        <li><span class="cross">✕</span> <span class="dim">No lead capture widgets or bot knowledge base</span></li>
-        <li><span class="tick">✓</span> Email support, 2–3 business day response</li>
-      </ul>
-    </div>
-
-    <!-- ESSENTIALS -->
-    <div class="pr-card feat">
-      <span class="pr-badge">Most popular</span>
-      <div class="icon">🚀</div>
-      <h3>Industry Essentials</h3>
-      <div class="tag">A ready-built sales system for one product or service.</div>
-      <div class="pr-price-row"><span class="pr-price" data-base="2999">₹2,999</span><span class="pr-price-unit">/seat/mo</span></div>
-      <div class="pr-setup-note">+ ₹14,999 one-time setup</div>
-      <a href="{% url 'crm-signup' %}" class="pr-cta">Start with Essentials</a>
-      <ul class="pr-feats">
-        <li><span class="tick">✓</span> AI qualification agent, trained for your business</li>
-        <li><span class="tick">✓</span> Bot knowledge base — up to 20 Q&amp;A pairs</li>
-        <li><span class="tick">✓</span> 5 ready-to-use follow-up sequences</li>
-        <li><span class="tick">✓</span> Lead capture widget + banners</li>
-        <li><span class="tick">✓</span> Full setup, onboarding &amp; go-live review</li>
-        <li><span class="tick">✓</span> WhatsApp support during business hours</li>
-      </ul>
-    </div>
-
-    <!-- GROWTH -->
-    <div class="pr-card">
-      <div class="icon">🛰️</div>
-      <h3>Growth Lab</h3>
-      <div class="tag">Advanced setup for teams selling multiple products.</div>
-      <div class="pr-price-row"><span class="pr-price" data-base="2999">₹2,999</span><span class="pr-price-unit">/seat/mo</span></div>
-      <div class="pr-setup-note">+ ₹39,999 one-time setup</div>
-      <a href="{% url 'crm-signup' %}" class="pr-cta">Talk to us</a>
-      <ul class="pr-feats">
-        <li><span class="tick">✓</span> A dedicated AI agent per product line (up to 10)</li>
-        <li><span class="tick">✓</span> Bot knowledge base — up to 100 Q&amp;A pairs</li>
-        <li><span class="tick">✓</span> 10 advanced, behaviour-based sequences</li>
-        <li><span class="tick">✓</span> Custom CRM integration</li>
-        <li><span class="tick">✓</span> Direct founder support &amp; strategy sessions</li>
-        <li><span class="tick">✓</span> Priority support with scheduled calls</li>
-      </ul>
-    </div>
-
+<!-- CONTROLS -->
+<div class="pr-controls">
+  <div class="pr-toggle" id="pr-billing-toggle">
+    <button data-cycle="monthly" onclick="prSetBilling('monthly', this)">Monthly</button>
+    <button data-cycle="quarterly" class="active" onclick="prSetBilling('quarterly', this)">Quarterly<span class="save">-5%</span></button>
+    <button data-cycle="halfyearly" onclick="prSetBilling('halfyearly', this)">Half-yearly<span class="save">-10%</span></button>
+    <button data-cycle="annually" onclick="prSetBilling('annually', this)">Annual<span class="save">-15%</span></button>
   </div>
-  <p style="text-align:center;font-size:.78rem;color:var(--gray-lt);margin-top:18px;">
-    ₹2,999/seat/month includes 5,000 AI credits on the main seat, plus 1,000 credits and ₹1,299/month per additional seat. Prices exclude GST.
-  </p>
+  <div class="pr-seats">
+    <span class="lbl">Seats</span>
+    <button onclick="prChangeSeats(-1)">−</button>
+    <span class="count" id="pr-seat-count">1</span>
+    <button onclick="prChangeSeats(1)">+</button>
+  </div>
+</div>
 
-  <!-- GUARANTEE -->
-  <div class="pr-guarantee">
-    <div class="pr-guarantee-inner">
-      <h2>🏆 <span>90-day</span> money-back guarantee</h2>
-      <p>Use the system as intended for 90 days on Industry Essentials or Growth Lab. If your lead conversion doesn't improve, we'll refund you in full.</p>
-      <p class="fine">Applies to 3-month-or-longer commitments.</p>
+<!-- CARDS -->
+<div class="pr-cards">
+
+  <!-- DIY -->
+  <div class="pr-card">
+    <div class="icon">💼</div>
+    <h3>DIY</h3>
+    <span class="pr-fits">Fixes problem 1</span>
+    <div class="tag">You want the core CRM and lead tracking — you configure and manage the rest yourself.</div>
+    <div class="pr-price-row"><span class="pr-price" data-base="0">₹0</span></div>
+    <div class="pr-setup-note">No setup fee</div>
+    <div class="pr-run-note">
+      <span class="pr-price" data-base="2999">then ₹2,999</span>/seat/mo to run it
+      <span class="approx">≈ ₹100/day</span>
     </div>
+    <a href="{% url 'crm-signup' %}" class="pr-cta">Get started</a>
+    <ul class="pr-feats">
+      <li><span class="ico yes">✓</span><div class="txt"><b>Lead management</b><span>Full lead tracking dashboard, stages and pipeline.</span></div></li>
+      <li><span class="ico no">✕</span><div class="txt"><b>AI qualification agent</b><span>Bring your own prompts — you write and manage the bot.</span></div></li>
+      <li class="dim"><span class="ico no">✕</span><div class="txt"><b>Follow-up sequences</b><span>Not included — automation rules are configured manually.</span></div></li>
+      <li class="dim"><span class="ico no">✕</span><div class="txt"><b>Lead capture widgets</b><span>No pre-built widget, banner, or knowledge base.</span></div></li>
+      <li><span class="ico yes">✓</span><div class="txt"><b>Support</b><span>Email support, 2–3 business day response.</span></div></li>
+    </ul>
   </div>
 
-  <!-- COMPARE TABLE -->
-  <details class="pr-compare">
-    <summary>Compare all features in detail <span class="arrow">▾</span></summary>
-    <div class="pr-compare-body">
-      <table class="pr-table">
-        <thead>
-          <tr><th>Feature</th><th>DIY</th><th>Industry Essentials</th><th>Growth Lab</th></tr>
-        </thead>
-        <tbody>
-          <tr class="section-hd"><td colspan="4">AI Agent</td></tr>
-          <tr><td>AI qualification agent</td><td>DIY prompts</td><td>1 trained bot</td><td>Per-product bot</td></tr>
-          <tr><td>Bot knowledge base</td><td class="n">✕</td><td>20 Q&amp;A pairs</td><td>100 Q&amp;A pairs</td></tr>
-          <tr><td>Team quick replies</td><td class="n">✕</td><td>15 replies</td><td>70 replies</td></tr>
-
-          <tr class="section-hd"><td colspan="4">Follow-up &amp; recovery</td></tr>
-          <tr><td>Product customisation</td><td class="n">✕</td><td>1 product line</td><td>Up to 10 product lines</td></tr>
-          <tr><td>Automation triggers</td><td>DIY rules</td><td>Essential triggers</td><td>Advanced automations</td></tr>
-          <tr><td>Follow-up sequences</td><td>DIY</td><td>5 core sequences</td><td>10 advanced sequences</td></tr>
-          <tr><td>Dormant lead recovery</td><td class="n">✕</td><td>1 broadcast sequence</td><td>5 broadcast sequences</td></tr>
-
-          <tr class="section-hd"><td colspan="4">Lead management</td></tr>
-          <tr><td>Lead tracking dashboard</td><td class="y">✓</td><td class="y">✓</td><td class="y">✓</td></tr>
-          <tr><td>Lead capture (widget/banner/popup)</td><td>DIY</td><td>Widget + banners</td><td>Widget + banners + popup</td></tr>
-          <tr><td>CRM integration</td><td class="n">✕</td><td>DIY</td><td>Custom integration</td></tr>
-
-          <tr class="section-hd"><td colspan="4">Support</td></tr>
-          <tr><td>Onboarding</td><td>DIY</td><td>Full setup + go-live review</td><td>Full setup + growth plan</td></tr>
-          <tr><td>Founder access</td><td class="n">✕</td><td class="n">✕</td><td class="y">✓</td></tr>
-          <tr><td>Support channel</td><td>Email, 2–3 days</td><td>WhatsApp</td><td>Priority + calls</td></tr>
-        </tbody>
-      </table>
+  <!-- ESSENTIALS -->
+  <div class="pr-card feat">
+    <span class="pr-badge">Most popular</span>
+    <div class="icon">🚀</div>
+    <h3>Industry Essentials</h3>
+    <span class="pr-fits">Fixes all 3</span>
+    <div class="tag">A ready-built sales system for one product or service — fully set up for you.</div>
+    <div class="pr-price-row"><span class="pr-price" data-base="14999">₹14,999</span></div>
+    <div class="pr-setup-note">one-time build</div>
+    <div class="pr-run-note">
+      <span class="pr-price" data-base="2999">then ₹2,999</span>/seat/mo to run it
+      <span class="approx">≈ ₹100/day</span>
     </div>
-  </details>
-
-  <!-- FAQ -->
-  <div class="pr-faq">
-    <h2>Which plan is right for you?</h2>
-    <p>A few quick answers before you pick.</p>
-    <div class="pr-faq-list">
-
-      <div class="pr-faq-item">
-        <div class="pr-faq-q" onclick="prToggleFaq(this)">
-          <span class="txt">Essentials or Growth Lab — how do I decide?</span>
-          <span class="arrow">▾</span>
-        </div>
-        <div class="pr-faq-a">
-          It comes down to how many products or services you sell.
-          <ul>
-            <li>One product, and you want a ready-to-run system without overthinking it — <b>Industry Essentials</b>.</li>
-            <li>Multiple products, each needing its own bot and sequences — <b>Growth Lab</b>.</li>
-          </ul>
-        </div>
-      </div>
-
-      <div class="pr-faq-item">
-        <div class="pr-faq-q" onclick="prToggleFaq(this)">
-          <span class="txt">Is DIY actually enough to get results?</span>
-          <span class="arrow">▾</span>
-        </div>
-        <div class="pr-faq-a">
-          DIY gives you the full CRM and lead tracking, but you're building and maintaining the AI agent, sequences, and integrations yourself. It works if you have the time and technical comfort for that. Most teams that want a faster, done-for-you result start with Essentials instead.
-        </div>
-      </div>
-
-      <div class="pr-faq-item">
-        <div class="pr-faq-q" onclick="prToggleFaq(this)">
-          <span class="txt">How long does setup take?</span>
-          <span class="arrow">▾</span>
-        </div>
-        <div class="pr-faq-a">
-          Industry Essentials is typically built and live in 7–10 working days, including your AI agent, sequences, pipeline, and onboarding calls. Growth Lab takes a bit longer since it covers multiple product lines — we'll give you a timeline before you commit.
-        </div>
-      </div>
-
-      <div class="pr-faq-item">
-        <div class="pr-faq-q" onclick="prToggleFaq(this)">
-          <span class="txt">Will my team need training?</span>
-          <span class="arrow">▾</span>
-        </div>
-        <div class="pr-faq-a">
-          Not much, on Essentials or Growth Lab — the system is built and handed to your team, who mostly work from the pipeline and tap to send replies. Onboarding calls cover the rest. DIY needs more upfront time since your team configures the flows themselves.
-        </div>
-      </div>
-
-    </div>
+    <a href="{% url 'crm-signup' %}" class="pr-cta">Start with Essentials</a>
+    <ul class="pr-feats">
+      <li><span class="ico yes">✓</span><div class="txt"><b>AI qualification agent</b><span>One bot trained for your business, qualifies every lead automatically.</span></div></li>
+      <li><span class="ico yes">✓</span><div class="txt"><b>Bot knowledge base</b><span>Up to 20 Q&amp;A pairs, answers instantly.</span></div></li>
+      <li><span class="ico yes">✓</span><div class="txt"><b>Follow-up sequences</b><span>5 ready-to-use sequences: welcome, DNP, re-engage &amp; more.</span></div></li>
+      <li><span class="ico yes">✓</span><div class="txt"><b>Lead capture</b><span>Widget + banners, ready to embed.</span></div></li>
+      <li><span class="ico yes">✓</span><div class="txt"><b>Onboarding</b><span>Full setup, go-live review, live in 7–10 working days.</span></div></li>
+      <li><span class="ico yes">✓</span><div class="txt"><b>Support</b><span>WhatsApp support during business hours.</span></div></li>
+    </ul>
   </div>
 
-  <!-- CTA -->
-  <div class="pr-cta-footer">
-    <h2>Ready to get started?</h2>
-    <p>Book a free demo and we'll help you pick the right plan.</p>
-    <a href="{% url 'crm-signup' %}">Book a free demo</a>
+  <!-- GROWTH -->
+  <div class="pr-card">
+    <div class="icon">🛰️</div>
+    <h3>Growth Lab</h3>
+    <span class="pr-fits">All 3, per product</span>
+    <div class="tag">You sell several products — advanced automation and AI calling on top.</div>
+    <div class="pr-price-row"><span class="pr-price" data-base="39999">₹39,999</span></div>
+    <div class="pr-setup-note">one-time build</div>
+    <div class="pr-run-note">
+      <span class="pr-price" data-base="2999">then ₹2,999</span>/seat/mo to run it
+      <span class="approx">≈ ₹100/day</span>
+    </div>
+    <a href="{% url 'crm-signup' %}" class="pr-cta">Talk to us</a>
+    <ul class="pr-feats">
+      <li><span class="ico yes">✓</span><div class="txt"><b>Per-product AI agent</b><span>A dedicated, trained bot per product line — up to 10.</span></div></li>
+      <li><span class="ico yes">✓</span><div class="txt"><b>Bot knowledge base</b><span>Up to 100 Q&amp;A pairs across all products.</span></div></li>
+      <li><span class="ico yes">✓</span><div class="txt"><b>Advanced sequences</b><span>10 behaviour-based sequences, built to your process.</span></div></li>
+      <li><span class="ico yes">✓</span><div class="txt"><b>Custom CRM integration</b><span>Integrated with your existing tools and workflows.</span></div></li>
+      <li><span class="ico yes">✓</span><div class="txt"><b>Founder access</b><span>Direct founder support &amp; strategy sessions.</span></div></li>
+      <li><span class="ico yes">✓</span><div class="txt"><b>Support</b><span>Priority support with scheduled calls.</span></div></li>
+    </ul>
   </div>
 
 </div>
+<p style="text-align:center;font-size:0.78rem;color:var(--ink-soft);margin:18px auto 0;max-width:640px;padding:0 20px;">
+  ₹2,999/seat/month includes 5,000 AI credits on the main seat, plus 1,000 credits and ₹1,299/month per additional seat. Prices exclude GST.
+</p>
+
+<!-- GUARANTEE -->
+<div class="pr-guarantee">
+  <div class="pr-guarantee-inner">
+    <h2>🏆 <span>90-day</span> money-back guarantee</h2>
+    <p>Use the system as intended for 90 days on Industry Essentials or Growth Lab. If your lead conversion doesn't improve, we'll refund you in full.</p>
+    <p class="fine">Applies to 3-month-or-longer commitments.</p>
+  </div>
+</div>
+
+<!-- COMPARE TABLE -->
+<div class="pr-compare">
+  <h2>Compare all features in detail</h2>
+  <p>Everything included in each plan, side by side.</p>
+  <div class="pr-compare-body">
+    <table class="pr-table">
+      <thead>
+        <tr>
+          <th>Feature</th>
+          <th>DIY</th>
+          <th class="feat-col">Industry Essentials</th>
+          <th>Growth Lab</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr class="section-hd"><td colspan="4">AI Agent</td></tr>
+        <tr>
+          <td>AI qualification agent</td>
+          <td>DIY setup<br><small>You write and manage bot prompts</small></td>
+          <td class="feat-col">Qualification agent<br><small>One bot trained for your business</small></td>
+          <td>Advanced sales agent<br><small>Separate bot per product</small></td>
+        </tr>
+        <tr>
+          <td>Qualification logic</td>
+          <td>DIY prompts</td>
+          <td class="feat-col">Structured prompts + FAQs</td>
+          <td>Deep custom logic</td>
+        </tr>
+        <tr>
+          <td>Bot knowledge base</td>
+          <td class="n">✕</td>
+          <td class="feat-col y">Up to 20 Q&amp;A pairs</td>
+          <td class="y">Up to 100 Q&amp;A pairs</td>
+        </tr>
+        <tr>
+          <td>Team quick replies</td>
+          <td class="n">✕</td>
+          <td class="feat-col y">Up to 15 replies</td>
+          <td class="y">70 replies</td>
+        </tr>
+
+        <tr class="section-hd"><td colspan="4">Follow-up &amp; Recovery</td></tr>
+        <tr>
+          <td>Product customisation</td>
+          <td class="n">✕</td>
+          <td class="feat-col">Single product line</td>
+          <td>Up to 10 product lines</td>
+        </tr>
+        <tr>
+          <td>Smart triggers &amp; automation</td>
+          <td>DIY rules</td>
+          <td class="feat-col">Essential triggers</td>
+          <td>Advanced automations</td>
+        </tr>
+        <tr>
+          <td>Follow-up sequences</td>
+          <td>DIY</td>
+          <td class="feat-col">5 core sequences</td>
+          <td>10 advanced sequences</td>
+        </tr>
+        <tr>
+          <td>Lead recovery</td>
+          <td class="n">✕</td>
+          <td class="feat-col">1 broadcast sequence</td>
+          <td>5 broadcast sequences</td>
+        </tr>
+
+        <tr class="section-hd"><td colspan="4">Lead Management</td></tr>
+        <tr>
+          <td>Lead management &amp; tracking</td>
+          <td class="y">Full access</td>
+          <td class="feat-col y">Structured pipeline</td>
+          <td class="y">Optimized tracking</td>
+        </tr>
+        <tr>
+          <td>Lead capture</td>
+          <td>DIY</td>
+          <td class="feat-col">Widget + banners</td>
+          <td>Widget + banners + popup</td>
+        </tr>
+        <tr>
+          <td>Integrations &amp; custom setup</td>
+          <td class="n">✕</td>
+          <td class="feat-col">DIY</td>
+          <td>Custom CRM integration</td>
+        </tr>
+
+        <tr class="section-hd"><td colspan="4">Support</td></tr>
+        <tr>
+          <td>Guided onboarding &amp; setup</td>
+          <td>DIY setup</td>
+          <td class="feat-col">Full setup + onboarding</td>
+          <td>Full setup + review calls</td>
+        </tr>
+        <tr>
+          <td>Founder support</td>
+          <td class="n">✕</td>
+          <td class="feat-col n">✕</td>
+          <td class="y">✓</td>
+        </tr>
+        <tr>
+          <td>Support access</td>
+          <td>Email, 2–3 days</td>
+          <td class="feat-col">WhatsApp support</td>
+          <td>Priority + calls</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- FAQ -->
+<div class="pr-faq">
+  <h2>Which plan is right for you?</h2>
+  <p>A few quick answers before you pick.</p>
+  <div class="pr-faq-list">
+
+    <div class="pr-faq-item">
+      <div class="pr-faq-q" onclick="prToggleFaq(this)">
+        <span class="txt">Essentials or Growth Lab — how do I decide?</span>
+        <span class="arrow">▾</span>
+      </div>
+      <div class="pr-faq-a">
+        It comes down to how many products or services you sell.
+        <ul>
+          <li>One product, and you want a ready-to-run system without overthinking it — <b>Industry Essentials</b>.</li>
+          <li>Multiple products, each needing its own bot and sequences — <b>Growth Lab</b>.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="pr-faq-item">
+      <div class="pr-faq-q" onclick="prToggleFaq(this)">
+        <span class="txt">Is DIY actually enough to get results?</span>
+        <span class="arrow">▾</span>
+      </div>
+      <div class="pr-faq-a">
+        DIY gives you the full CRM and lead tracking, but you're building and maintaining the AI agent, sequences, and integrations yourself. It works if you have the time and technical comfort for that. Most teams that want a faster, done-for-you result start with Essentials instead.
+      </div>
+    </div>
+
+    <div class="pr-faq-item">
+      <div class="pr-faq-q" onclick="prToggleFaq(this)">
+        <span class="txt">How long does setup take?</span>
+        <span class="arrow">▾</span>
+      </div>
+      <div class="pr-faq-a">
+        Industry Essentials is typically built and live in 7–10 working days, including your AI agent, sequences, pipeline, and onboarding calls. Growth Lab takes a bit longer since it covers multiple product lines — we'll give you a timeline before you commit.
+      </div>
+    </div>
+
+    <div class="pr-faq-item">
+      <div class="pr-faq-q" onclick="prToggleFaq(this)">
+        <span class="txt">Will my team need training?</span>
+        <span class="arrow">▾</span>
+      </div>
+      <div class="pr-faq-a">
+        Not much, on Essentials or Growth Lab — the system is built and handed to your team, who mostly work from the pipeline and tap to send replies. Onboarding calls cover the rest. DIY needs more upfront time since your team configures the flows themselves.
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- CTA BAND -->
+<div class="cta-band-wrap">
+  <div class="cta-band">
+    <h2>Ready to get started?</h2>
+    <p>Book a free demo and we'll help you pick the right plan.</p>
+    <a href="{% url 'crm-signup' %}" class="btn btn-white btn-lg" style="padding:14px 28px;">Book a free demo</a>
+  </div>
+</div>
+
+<footer>
+  <div class="footer-inner">
+    <a href="{% url 'home' %}" class="brand" style="font-size:1rem;">
+      <span class="brand-mark" style="width:26px;height:26px;font-size:0.8rem;">S</span> SHVYA AI
+    </a>
+    <div class="footer-links">
+      <a href="{% url 'home' %}#features">Features</a>
+      <a href="{% url 'home' %}#how-it-works">How it works</a>
+      <a href="/dashboard/login/">Login</a>
+    </div>
+    <div class="copyright">© 2026 SHVYA AI. All rights reserved.</div>
+  </div>
+</footer>
 
 <script>
 (function(){
@@ -331,8 +491,8 @@
     const extraSeats = Math.max(0, seats - 1);
     const perSeatEffective = Math.round(monthly * (1 - disc/100));
     const totalMonthly = perSeatEffective + Math.round(extraPerSeat * (1 - disc/100)) * extraSeats;
-    document.querySelectorAll('.pr-price').forEach(el => {
-      el.textContent = '₹' + totalMonthly.toLocaleString('en-IN');
+    document.querySelectorAll('[data-base="2999"]').forEach(el => {
+      el.textContent = 'then ₹' + totalMonthly.toLocaleString('en-IN');
     });
   }
 
@@ -348,4 +508,6 @@ window.prToggleFaq = function(qEl){
   if(!isOpen){ answer.classList.add('open'); arrow.classList.add('open'); }
 };
 </script>
-{% endblock %}
+
+</body>
+</html>
