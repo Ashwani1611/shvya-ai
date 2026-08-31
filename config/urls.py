@@ -1,5 +1,6 @@
 from django.contrib import admin
 from django.urls import include, path
+from django.views.generic import TemplateView
 
 from apps.channels import views_flat as channels_views_flat
 from apps.superadmin.views import admin_global_search
@@ -26,9 +27,9 @@ urlpatterns = [
     ),
 
     path(
-    "",
-    HomeView.as_view(),
-    name="home",
+        "",
+        HomeView.as_view(),
+        name="home",
     ),
 
     # =========================================================
@@ -117,7 +118,7 @@ urlpatterns = [
     # (crm_login_required / request.crm_user).
     # =========================================================
 
-        path(
+    path(
         "dashboard/whatsapp/",
         include("apps.channels.urls"),
     ),
@@ -156,7 +157,6 @@ urlpatterns = [
         name="whatsapp-webhook",
     ),
 
-
     # =========================================================
     # Super Admin Console
     # =========================================================
@@ -166,4 +166,13 @@ urlpatterns = [
         include("apps.superadmin.urls"),
     ),
 
+    # =========================================================
+    # Marketing Pages
+    # =========================================================
+
+    path(
+        "pricing/",
+        TemplateView.as_view(template_name="pricing.html"),
+        name="pricing",
+    ),
 ]
