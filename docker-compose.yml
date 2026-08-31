@@ -2,92 +2,132 @@ services:
   db:
     image: pgvector/pgvector:pg17
     restart: unless-stopped
+
     environment:
       POSTGRES_DB: ${DB_NAME}
       POSTGRES_USER: ${DB_USER}
       POSTGRES_PASSWORD: ${DB_PASSWORD}
+
     volumes:
       - postgres_data:/var/lib/postgresql/data
+
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${DB_USER} -d ${DB_NAME}",
+        ]
       interval: 5s
       timeout: 5s
       retries: 5
+
     expose:
       - "5432"
+
 
   redis:
     image: redis:8-alpine
     restart: unless-stopped
+
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test:
+        [
+          "CMD",
+          "redis-cli",
+          "ping",
+        ]
       interval: 5s
       timeout: 5s
       retries: 5
+
     expose:
       - "6379"
+
 
   web:
     build: .
     restart: unless-stopped
+
     env_file:
       - .env
+
     environment:
       DB_HOST: db
       REDIS_URL: redis://redis:6379/0
+
     volumes:
       - static_volume:/app/staticfiles
       - media_volume:/app/media
+
     depends_on:
       db:
         condition: service_healthy
+
       redis:
         condition: service_healthy
-    command: >
-      sh -c "python manage.py migrate &&
-             python manage.py collectstatic --noinput &&
-             gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 3"
+
+    command:
+      - sh
+      - -c
+      - >
+        python manage.py migrate &&
+        python manage.py collectstatic --noinput &&
+        gunicorn config.wsgi:application
+        --bind 0.0.0.0:8000
+        --workers 3
+
     expose:
       - "8000"
+
 
   worker:
     build: .
     restart: unless-stopped
+
     env_file:
       - .env
+
     environment:
       DB_HOST: db
       REDIS_URL: redis://redis:6379/0
+
     volumes:
       - media_volume:/app/media
+
     depends_on:
       db:
         condition: service_healthy
+
       redis:
         condition: service_healthy
-    command: celery -A config worker -l info
 
-  nginx:
-    image: nginx:1.27-alpine
-    restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./nginx/conf.d:/etc/nginx/conf.d
-      - ./nginx/certbot/conf:/etc/letsencrypt
-      - ./nginx/certbot/www:/var/www/certbot
-      - static_volume:/app/staticfiles
-      - media_volume:/app/media
-    depends_on:
-      - web
+    command:
+      - celery
+      - -A
+      - config
+      - worker
+      - -l
+      - info
+
 
   certbot:
     image: certbot/certbot
+
     volumes:
       - ./nginx/certbot/conf:/etc/letsencrypt
       - ./nginx/certbot/www:/var/www/certbot
-    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
+
+    entrypoint:
+      - /bin/sh
+      - -c
+      - >
+        trap exit TERM;
+        while :;
+        do
+          certbot renew;
+          sleep 12h & wait $${!};
+        done;
+
 
 volumes:
   postgres_data:

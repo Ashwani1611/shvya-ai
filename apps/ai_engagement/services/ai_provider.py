@@ -4,19 +4,62 @@ from dataclasses import dataclass
 from typing import Any
 
 from django.conf import settings
-from openai import OpenAI
+from openai import (
+    APIConnectionError,
+    APIStatusError,
+    AuthenticationError,
+    BadRequestError,
+    OpenAI,
+    PermissionDeniedError,
+    RateLimitError,
+)
 
 
 class AIProviderError(Exception):
     """
-    Raised when an AI provider cannot produce a valid result.
+    Base exception for AI provider failures.
     """
+
+    retryable = False
+
+
+class AIProviderConfigurationError(AIProviderError):
+    """
+    Local configuration error.
+
+    These failures should not be retried automatically.
+    """
+
+    retryable = False
+
+
+class AIProviderPermanentError(AIProviderError):
+    """
+    Provider rejected the request permanently.
+
+    Examples:
+        - invalid authentication
+        - invalid request
+        - permission/model access problems
+    """
+
+    retryable = False
+
+
+class AIProviderTransientError(AIProviderError):
+    """
+    Temporary provider/network failure.
+
+    These failures are safe for Celery retry handling.
+    """
+
+    retryable = True
 
 
 @dataclass(frozen=True)
 class AITextResult:
     """
-    Normalized result returned by an AI provider.
+    Normalized text response returned by an AI provider.
     """
 
     text: str
@@ -27,13 +70,11 @@ class OpenAIProvider:
     """
     OpenAI provider adapter for SHVYA AI.
 
-    Application services should depend on this abstraction
-    rather than importing the OpenAI SDK directly.
-
-    This keeps provider-specific implementation isolated.
+    Business services should depend on this adapter rather than
+    importing the OpenAI SDK directly.
     """
 
-    DEFAULT_MODEL = "gpt-5.4"
+    DEFAULT_MODEL = "gpt-4.1-nano"
 
     def __init__(
         self,
@@ -49,7 +90,7 @@ class OpenAIProvider:
         )
 
         if not api_key:
-            raise AIProviderError(
+            raise AIProviderConfigurationError(
                 "OPENAI_API_KEY is not configured."
             )
 
@@ -80,13 +121,21 @@ class OpenAIProvider:
         Generate text using the OpenAI Responses API.
         """
 
-        if not instructions.strip():
-            raise AIProviderError(
+        instructions = (
+            instructions or ""
+        ).strip()
+
+        input_text = (
+            input_text or ""
+        ).strip()
+
+        if not instructions:
+            raise AIProviderConfigurationError(
                 "AI instructions cannot be empty."
             )
 
-        if not input_text.strip():
-            raise AIProviderError(
+        if not input_text:
+            raise AIProviderConfigurationError(
                 "AI input cannot be empty."
             )
 
@@ -107,10 +156,57 @@ class OpenAIProvider:
                 )
             )
 
+        except RateLimitError as exc:
+
+            raise AIProviderTransientError(
+                f"OpenAI rate limit: {exc}"
+            ) from exc
+
+        except APIConnectionError as exc:
+
+            raise AIProviderTransientError(
+                f"OpenAI connection failure: {exc}"
+            ) from exc
+
+        except AuthenticationError as exc:
+
+            raise AIProviderPermanentError(
+                f"OpenAI authentication failed: {exc}"
+            ) from exc
+
+        except PermissionDeniedError as exc:
+
+            raise AIProviderPermanentError(
+                f"OpenAI permission denied: {exc}"
+            ) from exc
+
+        except BadRequestError as exc:
+
+            raise AIProviderPermanentError(
+                f"OpenAI rejected the request: {exc}"
+            ) from exc
+
+        except APIStatusError as exc:
+
+            status_code = getattr(
+                exc,
+                "status_code",
+                None,
+            )
+
+            if status_code is not None and status_code >= 500:
+                raise AIProviderTransientError(
+                    f"OpenAI server error: {exc}"
+                ) from exc
+
+            raise AIProviderPermanentError(
+                f"OpenAI API error: {exc}"
+            ) from exc
+
         except Exception as exc:
 
-            raise AIProviderError(
-                f"OpenAI request failed: {exc}"
+            raise AIProviderTransientError(
+                f"Unexpected OpenAI failure: {exc}"
             ) from exc
 
         output_text = (
@@ -123,7 +219,7 @@ class OpenAIProvider:
         ).strip()
 
         if not output_text:
-            raise AIProviderError(
+            raise AIProviderPermanentError(
                 "OpenAI returned an empty response."
             )
 

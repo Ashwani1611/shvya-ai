@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-import os
 from typing import Sequence
 
+from django.conf import settings
 from openai import OpenAI
 
 
@@ -39,14 +39,20 @@ class EmbeddingService:
 
         self.api_key = (
             api_key
-            or os.getenv("OPENAI_API_KEY")
+            or getattr(
+                settings,
+                "OPENAI_API_KEY",
+                "",
+            )
             or ""
         ).strip()
 
         self.model = (
             model
-            or os.getenv(
-                "OPENAI_EMBEDDING_MODEL"
+            or getattr(
+                settings,
+                "OPENAI_EMBEDDING_MODEL",
+                self.DEFAULT_MODEL,
             )
             or self.DEFAULT_MODEL
         ).strip()
@@ -56,8 +62,13 @@ class EmbeddingService:
                 "OPENAI_API_KEY is not configured."
             )
 
+        if not self.model:
+            raise EmbeddingError(
+                "OPENAI_EMBEDDING_MODEL is not configured."
+            )
+
         self.client = OpenAI(
-            api_key=self.api_key
+            api_key=self.api_key,
         )
 
     def embed_text(
@@ -79,9 +90,11 @@ class EmbeddingService:
 
         try:
 
-            response = self.client.embeddings.create(
-                model=self.model,
-                input=normalized,
+            response = (
+                self.client.embeddings.create(
+                    model=self.model,
+                    input=normalized,
+                )
             )
 
         except Exception as exc:
@@ -95,16 +108,27 @@ class EmbeddingService:
                 "Embedding provider returned no data."
             )
 
-        embedding = response.data[0].embedding
+        embedding = (
+            response.data[0].embedding
+        )
 
         if not embedding:
             raise EmbeddingError(
                 "Embedding provider returned an empty vector."
             )
 
-        return list(
+        vector = list(
             embedding
         )
+
+        if len(vector) != self.DEFAULT_DIMENSIONS:
+            raise EmbeddingError(
+                "Embedding provider returned an unexpected "
+                f"vector dimension: {len(vector)}. "
+                f"Expected {self.DEFAULT_DIMENSIONS}."
+            )
+
+        return vector
 
     def embed_texts(
         self,
@@ -135,9 +159,11 @@ class EmbeddingService:
 
         try:
 
-            response = self.client.embeddings.create(
-                model=self.model,
-                input=normalized_texts,
+            response = (
+                self.client.embeddings.create(
+                    model=self.model,
+                    input=normalized_texts,
+                )
             )
 
         except Exception as exc:
@@ -160,7 +186,9 @@ class EmbeddingService:
         )
 
         embeddings = [
-            list(item.embedding)
+            list(
+                item.embedding
+            )
             for item in ordered
         ]
 
@@ -170,6 +198,16 @@ class EmbeddingService:
         ):
             raise EmbeddingError(
                 "Embedding provider returned an empty vector."
+            )
+
+        if any(
+            len(embedding) != self.DEFAULT_DIMENSIONS
+            for embedding in embeddings
+        ):
+            raise EmbeddingError(
+                "Embedding provider returned an unexpected "
+                f"vector dimension. Expected "
+                f"{self.DEFAULT_DIMENSIONS}."
             )
 
         return embeddings

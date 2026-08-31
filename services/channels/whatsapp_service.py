@@ -9,6 +9,7 @@ Per CLAUDE.md:
   - rule 5: idempotency for webhook/task retries is enforced here
             via WhatsAppMessage.external_id (Meta's wamid).
 """
+
 from django.conf import settings
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import models, transaction
@@ -65,27 +66,42 @@ def resolve_account_for_lead(*, organization, lead):
         .first()
     )
 
-    if last_message and last_message.account.status == last_message.account.Status.CONNECTED:
+    if (
+        last_message
+        and last_message.account.status
+        == last_message.account.Status.CONNECTED
+    ):
         return last_message.account
 
     if lead.pipeline_id and lead.pipeline.phone_number:
-        account = WhatsAppAccount.objects.filter(
-            organization=organization,
-            is_active=True,
-            status=WhatsAppAccount.Status.CONNECTED,
-        ).filter(
-            models.Q(display_phone_number=lead.pipeline.phone_number)
-            | models.Q(phone_number_id=lead.pipeline.phone_number)
-        ).first()
+        account = (
+            WhatsAppAccount.objects.filter(
+                organization=organization,
+                is_active=True,
+                status=WhatsAppAccount.Status.CONNECTED,
+            )
+            .filter(
+                models.Q(
+                    display_phone_number=lead.pipeline.phone_number
+                )
+                | models.Q(
+                    phone_number_id=lead.pipeline.phone_number
+                )
+            )
+            .first()
+        )
 
         if account:
             return account
 
-    return WhatsAppAccount.objects.filter(
-        organization=organization,
-        is_active=True,
-        status=WhatsAppAccount.Status.CONNECTED,
-    ).first()
+    return (
+        WhatsAppAccount.objects.filter(
+            organization=organization,
+            is_active=True,
+            status=WhatsAppAccount.Status.CONNECTED,
+        )
+        .first()
+    )
 
 
 # ============================================================
@@ -93,7 +109,13 @@ def resolve_account_for_lead(*, organization, lead):
 # ============================================================
 
 
-def complete_embedded_signup(*, organization, code, waba_id, phone_number_id):
+def complete_embedded_signup(
+    *,
+    organization,
+    code,
+    waba_id,
+    phone_number_id,
+):
     """
     Finishes the "Connect WhatsApp Now" flow after Meta's embedded
     signup popup hands the browser a `code`, `waba_id`, and
@@ -114,15 +136,19 @@ def complete_embedded_signup(*, organization, code, waba_id, phone_number_id):
         )
 
     try:
-        access_token = whatsapp_provider.exchange_code_for_access_token(
-            app_id=settings.META_APP_ID,
-            app_secret=settings.META_APP_SECRET,
-            code=code,
+        access_token = (
+            whatsapp_provider.exchange_code_for_access_token(
+                app_id=settings.META_APP_ID,
+                app_secret=settings.META_APP_SECRET,
+                code=code,
+            )
         )
 
-        phone_details = whatsapp_provider.get_phone_number_details(
-            phone_number_id=phone_number_id,
-            access_token=access_token,
+        phone_details = (
+            whatsapp_provider.get_phone_number_details(
+                phone_number_id=phone_number_id,
+                access_token=access_token,
+            )
         )
 
         # Not fatal on its own -- the number is still usable for
@@ -136,22 +162,34 @@ def complete_embedded_signup(*, organization, code, waba_id, phone_number_id):
         )
 
     except WhatsAppAPIError as exc:
-        raise WhatsAppEmbeddedSignupError(str(exc)) from exc
+        raise WhatsAppEmbeddedSignupError(
+            str(exc)
+        ) from exc
 
     with transaction.atomic():
-        account, _created = WhatsAppAccount.objects.update_or_create(
-            organization=organization,
-            phone_number_id=phone_number_id,
-            defaults={
-                "connection_type": WhatsAppAccount.ConnectionType.API,
-                "waba_id": waba_id,
-                "display_phone_number": phone_details.get(
-                    "display_phone_number", ""
-                ),
-                "business_name": phone_details.get("verified_name", ""),
-                "access_token": access_token,
-                "status": WhatsAppAccount.Status.CONNECTED,
-            },
+        account, _created = (
+            WhatsAppAccount.objects.update_or_create(
+                organization=organization,
+                phone_number_id=phone_number_id,
+                defaults={
+                    "connection_type": (
+                        WhatsAppAccount.ConnectionType.API
+                    ),
+                    "waba_id": waba_id,
+                    "display_phone_number": phone_details.get(
+                        "display_phone_number",
+                        "",
+                    ),
+                    "business_name": phone_details.get(
+                        "verified_name",
+                        "",
+                    ),
+                    "access_token": access_token,
+                    "status": (
+                        WhatsAppAccount.Status.CONNECTED
+                    ),
+                },
+            )
         )
 
     return account
@@ -162,7 +200,11 @@ def complete_embedded_signup(*, organization, code, waba_id, phone_number_id):
 # ============================================================
 
 
-def resolve_pipeline(*, organization, to_number):
+def resolve_pipeline(
+    *,
+    organization,
+    to_number,
+):
     """
     Route an inbound message to a Pipeline based on which
     business number it was sent to (Pipeline.phone_number).
@@ -171,35 +213,74 @@ def resolve_pipeline(*, organization, to_number):
     organization's first active pipeline, so a new inbound
     message never fails just because no number was configured.
     """
-    pipeline = Pipeline.objects.filter(
-        organization=organization,
-        phone_number=to_number,
-        is_active=True,
-    ).first()
+    pipeline = (
+        Pipeline.objects.filter(
+            organization=organization,
+            phone_number=to_number,
+            is_active=True,
+        )
+        .first()
+    )
 
     if pipeline:
         return pipeline
 
-    pipeline = Pipeline.objects.filter(
-        organization=organization,
-        name="Leads",
-        is_active=True,
-    ).first()
+    pipeline = (
+        Pipeline.objects.filter(
+            organization=organization,
+            name="Leads",
+            is_active=True,
+        )
+        .first()
+    )
 
     if pipeline:
         return pipeline
 
-    return Pipeline.objects.filter(
-        organization=organization,
-        is_active=True,
-    ).order_by("name").first()
+    return (
+        Pipeline.objects.filter(
+            organization=organization,
+            is_active=True,
+        )
+        .order_by("name")
+        .first()
+    )
 
 
 def _first_stage(pipeline):
-    return Stage.objects.filter(
-        pipeline=pipeline,
-        is_active=True,
-    ).order_by("display_order").first()
+    return (
+        Stage.objects.filter(
+            pipeline=pipeline,
+            is_active=True,
+        )
+        .order_by("display_order")
+        .first()
+    )
+
+
+# ============================================================
+# INTERNAL CONVERSATION SUMMARY TRIGGER
+# ============================================================
+
+
+def _queue_internal_conversation_summary(
+    *,
+    lead_id,
+):
+    """
+    Queue internal conversation-summary generation for a Lead.
+
+    The AI task is imported locally so the WhatsApp service does
+    not create a module-level dependency on the AI task module.
+    """
+
+    from apps.ai_engagement.tasks import (
+        generate_internal_conversation_summary,
+    )
+
+    generate_internal_conversation_summary.delay(
+        str(lead_id)
+    )
 
 
 # ============================================================
@@ -208,7 +289,16 @@ def _first_stage(pipeline):
 
 
 @transaction.atomic
-def handle_inbound_message(*, organization, account, external_id, from_number, to_number, body, raw_payload):
+def handle_inbound_message(
+    *,
+    organization,
+    account,
+    external_id,
+    from_number,
+    to_number,
+    body,
+    raw_payload,
+):
     """
     Record an inbound WhatsApp message and attach it to a Lead,
     creating the Lead (and a pipeline/stage assignment) if this
@@ -217,13 +307,30 @@ def handle_inbound_message(*, organization, account, external_id, from_number, t
     Idempotent on external_id -- Meta retries webhook deliveries,
     so a repeat call with the same wamid must be a no-op, not a
     duplicate row.
+
+    After the inbound-message transaction commits successfully,
+    an asynchronous Celery task is queued to refresh the Lead's
+    internal conversation summary.
     """
-    existing = WhatsAppMessage.objects.filter(
-        external_id=external_id,
-    ).first()
+
+    # --------------------------------------------------------
+    # IDEMPOTENCY
+    # --------------------------------------------------------
+
+    existing = (
+        WhatsAppMessage.objects
+        .filter(
+            external_id=external_id,
+        )
+        .first()
+    )
 
     if existing:
         return existing
+
+    # --------------------------------------------------------
+    # RESOLVE / CREATE LEAD
+    # --------------------------------------------------------
 
     lead = None
 
@@ -233,10 +340,15 @@ def handle_inbound_message(*, organization, account, external_id, from_number, t
     )
 
     if pipeline:
-        stage = _first_stage(pipeline)
+
+        stage = _first_stage(
+            pipeline
+        )
 
         if stage:
+
             try:
+
                 lead, _created = upsert_lead(
                     organization=organization,
                     pipeline=pipeline,
@@ -245,37 +357,87 @@ def handle_inbound_message(*, organization, account, external_id, from_number, t
                     phone=from_number,
                     lead_source="whatsapp_api",
                 )
-            except DjangoValidationError:
-                # Lead already exists under a different pipeline/stage --
-                # don't fight the CRM's existing assignment, just log
-                # the message against whatever lead already matches
-                # this phone number for this organization.
-                lead = Lead.objects.filter(
-                    organization=organization,
-                    phone=from_number,
-                ).first()
 
-    message = WhatsAppMessage.objects.create(
-        organization=organization,
-        account=account,
-        lead=lead,
-        direction=WhatsAppMessage.Direction.INBOUND,
-        external_id=external_id,
-        from_number=from_number,
-        to_number=to_number,
-        body=body,
-        status=WhatsAppMessage.Status.RECEIVED,
-        raw_payload=raw_payload,
-        is_read=False,
+            except DjangoValidationError:
+
+                # Lead already exists under a different
+                # pipeline/stage. Do not fight the existing
+                # CRM assignment.
+
+                lead = (
+                    Lead.objects
+                    .filter(
+                        organization=organization,
+                        phone=from_number,
+                    )
+                    .first()
+                )
+
+    # --------------------------------------------------------
+    # CREATE INBOUND MESSAGE
+    # --------------------------------------------------------
+
+    message = (
+        WhatsAppMessage.objects.create(
+            organization=organization,
+            account=account,
+            lead=lead,
+            direction=(
+                WhatsAppMessage.Direction.INBOUND
+            ),
+            external_id=external_id,
+            from_number=from_number,
+            to_number=to_number,
+            body=body,
+            status=(
+                WhatsAppMessage.Status.RECEIVED
+            ),
+            raw_payload=raw_payload,
+            is_read=False,
+        )
     )
 
+    # --------------------------------------------------------
+    # EXISTING REPLY-INTENT LOGIC
+    # --------------------------------------------------------
+
     if lead:
-        _apply_reply_intent(lead=lead, body=body)
+
+        _apply_reply_intent(
+            lead=lead,
+            body=body,
+        )
+
+        # ----------------------------------------------------
+        # INTERNAL CONVERSATION SUMMARY
+        #
+        # Queue the AI task only after the database transaction
+        # successfully commits.
+        #
+        # This guarantees the worker can see the newly-created
+        # WhatsAppMessage in PostgreSQL.
+        # ----------------------------------------------------
+
+        lead_id = str(
+            lead.id
+        )
+
+        transaction.on_commit(
+            lambda lead_id=lead_id: (
+                _queue_internal_conversation_summary(
+                    lead_id=lead_id,
+                )
+            )
+        )
 
     return message
 
 
-def _apply_reply_intent(*, lead, body):
+def _apply_reply_intent(
+    *,
+    lead,
+    body,
+):
     """
     A positive reply ("yes" / "+" / "interested" / etc.) auto-advances
     the lead to the next pipeline stage. A negative reply ("no" /
@@ -292,18 +454,39 @@ def _apply_reply_intent(*, lead, body):
     intent = classify_reply(body)
 
     if intent == Intent.POSITIVE:
-        move_to_next_stage(lead=lead)
+
+        move_to_next_stage(
+            lead=lead,
+        )
 
     elif intent == Intent.NEGATIVE:
+
         notes = lead.notes or ""
-        marker = "[WhatsApp] Lead replied negatively -- needs review."
+
+        marker = (
+            "[WhatsApp] Lead replied negatively -- needs review."
+        )
 
         if marker not in notes:
-            lead.notes = f"{notes}\n{marker}".strip()
-            lead.save(update_fields=["notes", "updated_at"])
+
+            lead.notes = (
+                f"{notes}\n{marker}"
+            ).strip()
+
+            lead.save(
+                update_fields=[
+                    "notes",
+                    "updated_at",
+                ]
+            )
 
 
-def handle_status_update(*, external_id, status, raw_payload):
+def handle_status_update(
+    *,
+    external_id,
+    status,
+    raw_payload,
+):
     """
     Update an outbound message's delivery status from a Meta
     status-callback webhook event (sent/delivered/read/failed).
@@ -319,16 +502,22 @@ def handle_status_update(*, external_id, status, raw_payload):
         "failed": WhatsAppMessage.Status.FAILED,
     }
 
-    mapped_status = status_map.get(status)
+    mapped_status = status_map.get(
+        status
+    )
 
     if not mapped_status:
         return None
 
-    updated = WhatsAppMessage.objects.filter(
-        external_id=external_id,
-    ).update(
-        status=mapped_status,
-        raw_payload=raw_payload,
+    updated = (
+        WhatsAppMessage.objects
+        .filter(
+            external_id=external_id,
+        )
+        .update(
+            status=mapped_status,
+            raw_payload=raw_payload,
+        )
     )
 
     return updated
@@ -339,12 +528,19 @@ def handle_status_update(*, external_id, status, raw_payload):
 # ============================================================
 
 
-def queue_outbound_message(*, organization, account, to_number, body, lead=None):
+def queue_outbound_message(
+    *,
+    organization,
+    account,
+    to_number,
+    body,
+    lead=None,
+):
     """
     Create the WhatsAppMessage row in `queued` status. The actual
     Meta API call happens later, in a Celery task
     (apps.channels.tasks.send_whatsapp_message_task) -- never
-    synchronously from a view, per CLAUDE.md rule 3.
+    synchronously in a view, per CLAUDE.md rule 3.
     """
     return WhatsAppMessage.objects.create(
         organization=organization,
@@ -358,7 +554,10 @@ def queue_outbound_message(*, organization, account, to_number, body, lead=None)
     )
 
 
-def send_outbound_message(*, message: WhatsAppMessage):
+def send_outbound_message(
+    *,
+    message: WhatsAppMessage,
+):
     """
     Actually call Meta's API for an already-queued WhatsAppMessage.
     Called from inside the Celery task, not directly from a view.
@@ -371,28 +570,62 @@ def send_outbound_message(*, message: WhatsAppMessage):
     )
 
     try:
+
         response = client.send_text_message(
             to=message.to_number,
             body=message.body,
         )
 
     except WhatsAppAPIError as exc:
-        message.status = WhatsAppMessage.Status.FAILED
-        message.error = str(exc)
-        message.save(update_fields=["status", "error", "updated_at"])
-        raise WhatsAppSendError(str(exc)) from exc
+
+        message.status = (
+            WhatsAppMessage.Status.FAILED
+        )
+
+        message.error = str(
+            exc
+        )
+
+        message.save(
+            update_fields=[
+                "status",
+                "error",
+                "updated_at",
+            ]
+        )
+
+        raise WhatsAppSendError(
+            str(exc)
+        ) from exc
 
     external_id = None
-    messages = response.get("messages") or []
+
+    messages = (
+        response.get("messages")
+        or []
+    )
 
     if messages:
-        external_id = messages[0].get("id")
 
-    message.status = WhatsAppMessage.Status.SENT
+        external_id = messages[0].get(
+            "id"
+        )
+
+    message.status = (
+        WhatsAppMessage.Status.SENT
+    )
+
     message.external_id = external_id
+
     message.raw_payload = response
+
     message.save(
-        update_fields=["status", "external_id", "raw_payload", "updated_at"]
+        update_fields=[
+            "status",
+            "external_id",
+            "raw_payload",
+            "updated_at",
+        ]
     )
 
     return message
@@ -403,7 +636,11 @@ def send_outbound_message(*, message: WhatsAppMessage):
 # ============================================================
 
 
-def list_conversations(*, organization, account=None):
+def list_conversations(
+    *,
+    organization,
+    account=None,
+):
     """
     Returns one row per lead that has at least one WhatsApp
     message, ordered by most recent activity, each annotated with
@@ -418,38 +655,67 @@ def list_conversations(*, organization, account=None):
     )
 
     if account:
-        messages = messages.filter(account=account)
+        messages = messages.filter(
+            account=account
+        )
 
     lead_ids = (
-        messages.values_list("lead_id", flat=True)
+        messages
+        .values_list(
+            "lead_id",
+            flat=True,
+        )
         .distinct()
     )
 
-    from apps.crm.models import Lead
-
     leads = (
-        Lead.objects.filter(id__in=lead_ids)
+        Lead.objects.filter(
+            id__in=lead_ids
+        )
         .annotate(
             last_message_at=Max(
                 "whatsapp_messages__created_at",
-                filter=Q(whatsapp_messages__account=account) if account else Q(),
+                filter=(
+                    Q(
+                        whatsapp_messages__account=account
+                    )
+                    if account
+                    else Q()
+                ),
             ),
             unread_count=Count(
                 "whatsapp_messages",
-                filter=Q(
-                    whatsapp_messages__direction=WhatsAppMessage.Direction.INBOUND,
-                    whatsapp_messages__is_read=False,
-                )
-                & (Q(whatsapp_messages__account=account) if account else Q()),
+                filter=(
+                    Q(
+                        whatsapp_messages__direction=(
+                            WhatsAppMessage.Direction.INBOUND
+                        ),
+                        whatsapp_messages__is_read=False,
+                    )
+                    & (
+                        Q(
+                            whatsapp_messages__account=account
+                        )
+                        if account
+                        else Q()
+                    )
+                ),
             ),
         )
-        .order_by("-last_message_at")
+        .order_by(
+            "-last_message_at"
+        )
     )
 
     return leads
 
 
-def get_conversation_messages(*, organization, lead, account=None):
+def get_conversation_messages(
+    *,
+    organization,
+    lead,
+    account=None,
+):
     """
     Full message thread for one lead, oldest first (chat order).
     """
@@ -459,19 +725,32 @@ def get_conversation_messages(*, organization, lead, account=None):
     )
 
     if account:
-        messages = messages.filter(account=account)
+        messages = messages.filter(
+            account=account
+        )
 
-    return messages.order_by("created_at")
+    return messages.order_by(
+        "created_at"
+    )
 
 
-def mark_conversation_read(*, organization, lead):
+def mark_conversation_read(
+    *,
+    organization,
+    lead,
+):
     """
     Marks every unread inbound message for this lead as read --
     called when an agent opens the conversation.
     """
-    return WhatsAppMessage.objects.filter(
-        organization=organization,
-        lead=lead,
-        direction=WhatsAppMessage.Direction.INBOUND,
-        is_read=False,
-    ).update(is_read=True)
+    return (
+        WhatsAppMessage.objects.filter(
+            organization=organization,
+            lead=lead,
+            direction=WhatsAppMessage.Direction.INBOUND,
+            is_read=False,
+        )
+        .update(
+            is_read=True
+        )
+    )

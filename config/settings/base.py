@@ -42,6 +42,30 @@ ALLOWED_HOSTS = config(
 
 
 # ---------------------------------------------------------------------------
+# OpenAI
+#
+# Provider configuration is centralized here so all AI services use the
+# same Django settings layer rather than reading environment variables
+# independently.
+# ---------------------------------------------------------------------------
+
+OPENAI_API_KEY = config(
+    "OPENAI_API_KEY",
+    default="",
+)
+
+OPENAI_AI_MODEL = config(
+    "OPENAI_AI_MODEL",
+    default="gpt-4.1-nano",
+)
+
+OPENAI_EMBEDDING_MODEL = config(
+    "OPENAI_EMBEDDING_MODEL",
+    default="text-embedding-3-small",
+)
+
+
+# ---------------------------------------------------------------------------
 # Security hardening
 #
 # No-ops under DEBUG=True (local dev over plain HTTP); activate
@@ -100,13 +124,23 @@ CACHES = {
 }
 
 # Celery -- uses the same Redis instance as the cache above.
-CELERY_BROKER_URL = config("CELERY_BROKER_URL", default=REDIS_URL)
-CELERY_RESULT_BACKEND = config("CELERY_RESULT_BACKEND", default=REDIS_URL)
-CELERY_ACCEPT_CONTENT = ["json"]
-CELERY_TASK_SERIALIZER = "json"
-CELERY_RESULT_SERIALIZER = "json"
-CELERY_TIMEZONE = "Asia/Kolkata"
+CELERY_BROKER_URL = config(
+    "CELERY_BROKER_URL",
+    default=REDIS_URL,
+)
 
+CELERY_RESULT_BACKEND = config(
+    "CELERY_RESULT_BACKEND",
+    default=REDIS_URL,
+)
+
+CELERY_ACCEPT_CONTENT = ["json"]
+
+CELERY_TASK_SERIALIZER = "json"
+
+CELERY_RESULT_SERIALIZER = "json"
+
+CELERY_TIMEZONE = "Asia/Kolkata"
 
 
 # ---------------------------------------------------------------------------
@@ -131,7 +165,7 @@ INSTALLED_APPS = [
     "rest_framework_simplejwt",
     "rest_framework_simplejwt.token_blacklist",
     "corsheaders",
-    
+
     # --- Core & Platform Apps ---
     "apps.organizations",
     "apps.accounts",
@@ -197,38 +231,12 @@ LOGIN_URL = "/superadmin/login/"
 # ---------------------------------------------------------------------------
 # CRM Authentication
 # ---------------------------------------------------------------------------
-#
-# The CRM uses:
-#
-#     /dashboard/login/
-#
-# for its dedicated login page.
-#
-# The CRM authentication session is isolated from:
-#
-#     /admin/
-#     /superadmin/
-#
-# and uses the dedicated:
-#
-#     shvya_crm_sessionid
-#
-# cookie.
-# ---------------------------------------------------------------------------
 
 CRM_LOGIN_URL = "/dashboard/login/"
 
 
 # ---------------------------------------------------------------------------
 # Password Reset
-# ---------------------------------------------------------------------------
-#
-# Django's built-in password reset functionality uses this timeout
-# for password-reset tokens.
-#
-# 3600 seconds = 1 hour.
-#
-# The token automatically becomes invalid after this period.
 # ---------------------------------------------------------------------------
 
 PASSWORD_RESET_TIMEOUT = 3600
@@ -316,19 +324,6 @@ EMAIL_HOST_PASSWORD = config(
 # ---------------------------------------------------------------------------
 # Templates
 # ---------------------------------------------------------------------------
-#
-# The project-level templates directory is intentionally included here.
-# This allows us to override Django Admin templates from:
-#
-#     templates/admin/
-#
-# It also supports:
-#
-#     templates/superadmin/
-#     templates/crm/
-#     templates/channels/whatsapp/
-#     etc.
-# ---------------------------------------------------------------------------
 
 TEMPLATES = [
     {
@@ -357,7 +352,7 @@ TEMPLATES = [
                 # SHVYA Sidebar
                 # Shared sidebar navigation items and Tabler icons.
                 # -----------------------------------------------------------
-                'apps.core.context_processors.sidebar_nav',
+                "apps.core.context_processors.sidebar_nav",
             ],
         },
     },
@@ -465,23 +460,25 @@ REST_FRAMEWORK = {
     "PAGE_SIZE": 25,
 
     "DEFAULT_THROTTLE_RATES": {
-    "jwt_login": "10/min",
+        "jwt_login": "10/min",
     },
 }
 
 
 SIMPLE_JWT = {
-     "ACCESS_TOKEN_LIFETIME": timedelta(
-         hours=8,
-     ),
+    "ACCESS_TOKEN_LIFETIME": timedelta(
+        hours=8,
+    ),
 
-     "REFRESH_TOKEN_LIFETIME": timedelta(
-         days=7,
-     ),
+    "REFRESH_TOKEN_LIFETIME": timedelta(
+        days=7,
+    ),
 
-     "ROTATE_REFRESH_TOKENS": True,
-     "BLACKLIST_AFTER_ROTATION": True,
+    "ROTATE_REFRESH_TOKENS": True,
+
+    "BLACKLIST_AFTER_ROTATION": True,
 }
+
 
 CORS_ALLOW_ALL_ORIGINS = DEBUG
 
@@ -491,7 +488,6 @@ CORS_ALLOW_ALL_ORIGINS = DEBUG
 # ---------------------------------------------------------------------------
 
 SESSION_COOKIE_AGE = 86400  # 1 day, per SHVYA's session requirement
-
 
 
 # ---------------------------------------------------------------------------
@@ -535,27 +531,36 @@ MEDIA_ROOT = BASE_DIR / "media"
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
+
 # ============================================================
 # WhatsApp (Meta) webhook
 # ============================================================
-#
+
 # META_VERIFY_TOKEN: shared secret you choose yourself and enter
 # into Meta's App Dashboard webhook config -- Meta echoes it back
 # on the GET verification handshake. One value per SHVYA
 # deployment, not per organization (Meta calls a single webhook
 # URL regardless of how many orgs/numbers are connected).
-#
+
 # META_APP_SECRET: from Meta App Dashboard > Settings > Basic.
 # Used to verify X-Hub-Signature-256 on incoming webhook POSTs so
 # we can trust the payload actually came from Meta.
 
-META_VERIFY_TOKEN = config("META_VERIFY_TOKEN", default="")
-META_APP_SECRET = config("META_APP_SECRET", default="")
+META_VERIFY_TOKEN = config(
+    "META_VERIFY_TOKEN",
+    default="",
+)
+
+META_APP_SECRET = config(
+    "META_APP_SECRET",
+    default="",
+)
+
 
 # ============================================================
 # WhatsApp (Meta) Embedded Signup
 # ============================================================
-#
+
 # Lets "Connect WhatsApp Now" open Meta's own Facebook-hosted
 # onboarding popup (pick/create a WABA, verify the number, accept
 # Meta's terms) instead of asking the person to paste a
@@ -577,7 +582,12 @@ META_APP_SECRET = config("META_APP_SECRET", default="")
 # to the manual phone_number_id / access_token form further down
 # this same page.
 
-META_APP_ID = config("META_APP_ID", default="")
+META_APP_ID = config(
+    "META_APP_ID",
+    default="",
+)
+
 META_WA_EMBEDDED_SIGNUP_CONFIG_ID = config(
-    "META_WA_EMBEDDED_SIGNUP_CONFIG_ID", default=""
+    "META_WA_EMBEDDED_SIGNUP_CONFIG_ID",
+    default="",
 )
