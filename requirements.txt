@@ -37,3 +37,4 @@ openpyxl==3.1.5
 pgvector==0.5.0
 pypdf==6.16.2
 python-docx==1.2.0
+gunicorn==23.0.0
