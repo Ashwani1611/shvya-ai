@@ -83,3 +83,6 @@ coverage.xml
 .pyright/
 .dmypy.json
 dmypy.json
+
+# Nginx runtime data (certs, secrets) - never commit
+nginx/certbot/
