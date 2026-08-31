@@ -82,6 +82,11 @@ COMING_SOON_FEATURES = {
         "icon": "ti-message-circle",
         "description": "View and reply to Instagram conversations from your inbox.",
     },
+        "team-member-settings": {
+        "label": "Agent Settings",
+        "icon": "ti-settings",
+        "description": "Per-agent send limits, AI auto-reply, and follow-up automation controls.",
+    },
 }
 
 

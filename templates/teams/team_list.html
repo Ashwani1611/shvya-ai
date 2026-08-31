@@ -14,41 +14,22 @@
          PAGE HEADER
          ===================================================== -->
 
-    <div class="mb-6 flex items-center justify-between">
+    <div class="mb-6 flex items-center gap-2">
 
-        <div class="flex items-center gap-2">
+        <i class="ti ti-users-group text-2xl text-blue-600"></i>
 
-            <i class="ti ti-users-group text-2xl text-blue-600"></i>
-
-            <h2 class="text-lg font-semibold">
-                Teams
-            </h2>
-
-        </div>
-
-        {% if can_manage %}
-
-            <a
-                href="{% url 'crm-team-create' %}"
-                class="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700"
-            >
-
-                <i class="ti ti-plus"></i>
-
-                New Team
-
-            </a>
-
-        {% endif %}
+        <h2 class="text-lg font-semibold">
+            Teams
+        </h2>
 
     </div>
 
 
     <!-- =====================================================
-         TEAMS TABLE
+         MEMBERS TABLE
          ===================================================== -->
 
-    {% if teams %}
+    {% if members %}
 
         <div class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
 
@@ -57,10 +38,10 @@
                 <thead class="bg-blue-50/60 text-xs font-semibold uppercase tracking-wide text-gray-500">
 
                     <tr>
+                        <th class="px-5 py-3">S.No.</th>
                         <th class="px-5 py-3">Name</th>
-                        <th class="px-5 py-3">Description</th>
-                        <th class="px-5 py-3">Members</th>
-                        <th class="px-5 py-3">Status</th>
+                        <th class="px-5 py-3">Email</th>
+                        <th class="px-5 py-3">Phone Number</th>
                         <th class="px-5 py-3 text-right">Action</th>
                     </tr>
 
@@ -69,96 +50,37 @@
 
                 <tbody class="divide-y divide-gray-100">
 
-                    {% for team in teams %}
+                    {% for member in members %}
 
                         <tr class="hover:bg-gray-50">
 
+                            <td class="px-5 py-4 text-gray-500">
+                                {{ forloop.counter }}
+                            </td>
+
                             <td class="px-5 py-4 font-medium text-gray-900">
-
-                                <a
-                                    href="{% url 'crm-team-detail' team_id=team.id %}"
-                                    class="hover:text-blue-600 hover:underline"
-                                >
-                                    {{ team.name }}
-                                </a>
-
+                                {{ member.name }}
                             </td>
 
                             <td class="px-5 py-4 text-gray-600">
-                                {{ team.description|default:"—"|truncatechars:60 }}
+                                {{ member.email }}
                             </td>
 
-                            <td class="px-5 py-4 text-gray-700">
-                                {{ team.memberships.count }}
-                            </td>
-
-                            <td class="px-5 py-4">
-
-                                <span
-                                    class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold
-                                    {% if team.is_active %}
-                                        bg-green-50 text-green-700
-                                    {% else %}
-                                        bg-gray-100 text-gray-600
-                                    {% endif %}"
-                                >
-
-                                    <span
-                                        class="h-1.5 w-1.5 rounded-full
-                                        {% if team.is_active %}
-                                            bg-green-500
-                                        {% else %}
-                                            bg-gray-400
-                                        {% endif %}"
-                                    ></span>
-
-                                    {% if team.is_active %}Active{% else %}Inactive{% endif %}
-
-                                </span>
-
+                            <td class="px-5 py-4 text-gray-600">
+                                {{ member.phone|default:"—" }}
                             </td>
 
                             <td class="px-5 py-4">
 
-                                <div class="flex items-center justify-end gap-3">
+                                <div class="flex items-center justify-end">
 
                                     <a
-                                        href="{% url 'crm-team-detail' team_id=team.id %}"
-                                        class="text-gray-400 transition hover:text-blue-600"
-                                        title="View"
+                                        href="{% url 'crm-team-settings' %}"
+                                        class="flex h-8 w-8 items-center justify-center rounded-full text-gray-400 transition hover:bg-gray-100 hover:text-blue-600"
+                                        title="Settings"
                                     >
-                                        <i class="ti ti-eye"></i>
+                                        <i class="ti ti-settings"></i>
                                     </a>
-
-                                    {% if can_manage %}
-
-                                        <a
-                                            href="{% url 'crm-team-edit' team_id=team.id %}"
-                                            class="text-gray-400 transition hover:text-blue-600"
-                                            title="Edit"
-                                        >
-                                            <i class="ti ti-pencil"></i>
-                                        </a>
-
-                                        <form
-                                            method="post"
-                                            action="{% url 'crm-team-delete' team_id=team.id %}"
-                                            onsubmit="return confirm('Delete {{ team.name }}? This removes all its memberships too.');"
-                                        >
-
-                                            {% csrf_token %}
-
-                                            <button
-                                                type="submit"
-                                                class="text-gray-400 transition hover:text-red-600"
-                                                title="Delete"
-                                            >
-                                                <i class="ti ti-trash"></i>
-                                            </button>
-
-                                        </form>
-
-                                    {% endif %}
 
                                 </div>
 
@@ -179,7 +101,7 @@
 
 
         <!-- =================================================
-             NO TEAMS YET
+             NO MEMBERS
              ================================================= -->
 
         <div class="rounded-xl border border-dashed border-gray-300 bg-white p-10 text-center">
@@ -193,33 +115,12 @@
             </div>
 
             <h2 class="mt-4 text-base font-semibold text-gray-900">
-                No teams yet
+                No team members yet
             </h2>
 
             <p class="mt-1 text-sm text-gray-500">
-                Group your agents into teams to organize ownership and reporting.
+                Invite agents to your organization to see them here.
             </p>
-
-            {% if can_manage %}
-
-                <a
-                    href="{% url 'crm-team-create' %}"
-                    class="mt-6 inline-flex items-center gap-2 rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700"
-                >
-
-                    <i class="ti ti-plus"></i>
-
-                    Create Team
-
-                </a>
-
-            {% else %}
-
-                <p class="mt-4 text-xs text-gray-400">
-                    Ask an organization admin to create a team.
-                </p>
-
-            {% endif %}
 
         </div>
 

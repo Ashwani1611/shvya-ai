@@ -25,15 +25,24 @@ def _can_manage(user):
 
 @crm_login_required
 def team_list_view(request):
+    """
+    "Teams" page -- currently a flat list of every user in the org
+    (matches the org-members-with-per-agent-settings pattern the
+    product wants), not the Team/TeamMembership grouping model.
+    """
     user = request.crm_user
-    teams = (
-        Team.objects.filter(organization=user.organization)
-        .prefetch_related("memberships__user")
-    )
+
+    members = User.objects.filter(
+        organization=user.organization,
+    ).order_by("name")
+
     return render(
         request,
         "teams/team_list.html",
-        {"teams": teams, "can_manage": _can_manage(user)},
+        {
+            "members": members,
+            "can_manage": _can_manage(user),
+        },
     )
 
 
