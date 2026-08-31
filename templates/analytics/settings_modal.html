@@ -1,0 +1,83 @@
+<div class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+
+    <div class="w-full max-w-lg rounded-xl bg-white shadow-xl">
+
+        <div class="flex items-center justify-between border-b border-gray-100 px-6 py-4">
+            <h3 class="text-lg font-semibold text-gray-900">Analytics Settings</h3>
+            <button type="button" onclick="document.getElementById('analytics-settings-modal-slot').innerHTML=''" class="text-gray-400 hover:text-gray-700">
+                <i class="ti ti-x"></i>
+            </button>
+        </div>
+
+        <form method="post" action="{% url 'crm-analytics-settings' %}" class="px-6 py-5">
+
+            {% csrf_token %}
+
+            <p class="mb-5 text-sm text-gray-500">
+                Set up the key stages and thresholds that power your analytics. All fields are required, analytics insights will be generated based on these settings.
+            </p>
+
+            <div class="mb-4">
+                <label class="mb-1.5 block text-sm font-medium text-gray-700">Hot Lead Stage <span class="text-red-500">*</span></label>
+                <select name="hot_lead_stage" required class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+                    <option value="">Select a stage</option>
+                    {% regroup stages_by_pipeline by pipeline as pipeline_groups %}
+                    {% for group in pipeline_groups %}
+                        <optgroup label="{{ group.grouper.name }}">
+                            {% for stage in group.list %}
+                                <option value="{{ stage.id }}" {% if settings_obj.hot_lead_stage_id == stage.id %}selected{% endif %}>{{ stage.name }}</option>
+                            {% endfor %}
+                        </optgroup>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="mb-4">
+                <label class="mb-1.5 block text-sm font-medium text-gray-700">Lead Won Stage <span class="text-red-500">*</span></label>
+                <select name="lead_won_stage" required class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+                    <option value="">Select a stage</option>
+                    {% regroup stages_by_pipeline by pipeline as pipeline_groups2 %}
+                    {% for group in pipeline_groups2 %}
+                        <optgroup label="{{ group.grouper.name }}">
+                            {% for stage in group.list %}
+                                <option value="{{ stage.id }}" {% if settings_obj.lead_won_stage_id == stage.id %}selected{% endif %}>{{ stage.name }}</option>
+                            {% endfor %}
+                        </optgroup>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="mb-4">
+                <label class="mb-1.5 block text-sm font-medium text-gray-700">Lead Lost Stage <span class="text-red-500">*</span></label>
+                <select name="lead_lost_stage" required class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+                    <option value="">Select a stage</option>
+                    {% regroup stages_by_pipeline by pipeline as pipeline_groups3 %}
+                    {% for group in pipeline_groups3 %}
+                        <optgroup label="{{ group.grouper.name }}">
+                            {% for stage in group.list %}
+                                <option value="{{ stage.id }}" {% if settings_obj.lead_lost_stage_id == stage.id %}selected{% endif %}>{{ stage.name }}</option>
+                            {% endfor %}
+                        </optgroup>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="mb-6">
+                <label class="mb-1.5 block text-sm font-medium text-gray-700">Stall Day Threshold <span class="text-red-500">*</span></label>
+                <input type="number" name="stall_day_threshold" min="1" max="90" required value="{{ settings_obj.stall_day_threshold }}" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+            </div>
+
+            <div class="flex items-center justify-end gap-3">
+                <button type="button" onclick="document.getElementById('analytics-settings-modal-slot').innerHTML=''" class="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
+                    Cancel
+                </button>
+                <button type="submit" class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">
+                    Save
+                </button>
+            </div>
+
+        </form>
+
+    </div>
+
+</div>

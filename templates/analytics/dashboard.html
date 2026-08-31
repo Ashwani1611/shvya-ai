@@ -1,0 +1,344 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}SHVYA AI — Analytics{% endblock %}
+
+{% block header %}
+    Sales Analytics
+{% endblock %}
+
+{% block content %}
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
+
+    <!-- =====================================================
+         FILTER BAR
+         ===================================================== -->
+
+    <form method="get" class="mb-6 flex flex-wrap items-center justify-between gap-3">
+
+        <div class="flex flex-wrap items-center gap-3">
+
+            <select name="pipeline" multiple class="hidden" id="pipeline-select">
+                {% for pipeline in pipelines %}
+                    <option value="{{ pipeline.id }}" {% if pipeline.id|stringformat:"s" in selected_pipeline_ids %}selected{% endif %}>
+                        {{ pipeline.name }}
+                    </option>
+                {% endfor %}
+            </select>
+
+            <div class="relative">
+
+                <button
+                    type="button"
+                    onclick="document.getElementById('pipeline-dropdown').classList.toggle('hidden')"
+                    class="flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                >
+                    {% if selected_pipeline_ids %}{{ selected_pipeline_ids|length }} Pipeline{{ selected_pipeline_ids|length|pluralize }} Selected{% else %}All Pipelines{% endif %}
+                    <i class="ti ti-chevron-down text-xs"></i>
+                </button>
+
+                <div id="pipeline-dropdown" class="absolute z-10 mt-2 hidden w-64 rounded-lg border border-gray-200 bg-white p-3 shadow-lg">
+
+                    {% for pipeline in pipelines %}
+                        <label class="flex items-center gap-2 py-1.5 text-sm text-gray-700">
+                            <input type="checkbox" name="pipeline" value="{{ pipeline.id }}" {% if pipeline.id|stringformat:"s" in selected_pipeline_ids %}checked{% endif %} class="rounded border-gray-300 text-blue-600" />
+                            {{ pipeline.name }}
+                        </label>
+                    {% endfor %}
+
+                    <button type="submit" class="mt-2 w-full rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-blue-700">
+                        Apply
+                    </button>
+
+                </div>
+
+            </div>
+
+            <input type="date" name="date_from" value="{{ date_from }}" class="rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+            <span class="text-gray-400">to</span>
+            <input type="date" name="date_to" value="{{ date_to }}" class="rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+
+            <button type="submit" class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">
+                Filter
+            </button>
+
+        </div>
+
+        {% if can_manage %}
+
+            <button
+                type="button"
+                hx-get="{% url 'crm-analytics-settings' %}"
+                hx-target="#analytics-settings-modal-slot"
+                hx-swap="innerHTML"
+                class="flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+            >
+                <i class="ti ti-settings"></i>
+                Analytics Settings
+            </button>
+
+        {% endif %}
+
+    </form>
+
+    <div id="analytics-settings-modal-slot"></div>
+
+
+    <!-- =====================================================
+         ALERTS & MISSES
+         ===================================================== -->
+
+    <div class="mb-6 rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+
+        <h3 class="flex items-center gap-2 text-base font-semibold text-gray-900">
+            <i class="ti ti-alert-triangle text-blue-600"></i>
+            Alerts &amp; Misses
+        </h3>
+
+        <p class="mt-1 text-sm text-gray-500">
+            Identify leads that slipped through or need urgent attention.
+        </p>
+
+        <div class="mt-4 flex items-center justify-between rounded-lg border border-red-100 bg-red-50/50 p-5">
+
+            <div class="flex items-center gap-3">
+                <i class="ti ti-mail text-red-500"></i>
+                <div>
+                    <p class="font-medium text-gray-900">Follow-Up Triggered, No Reply in 24h</p>
+                    <p class="text-sm italic text-gray-500">24+ hrs passed after follow-up, no reply yet</p>
+                </div>
+            </div>
+
+            <div class="flex items-center gap-6">
+                <div class="text-right">
+                    <span class="text-2xl font-bold text-gray-900">{{ no_reply_24h_count }}</span>
+                    <span class="text-sm text-gray-500">Leads</span>
+                </div>
+            </div>
+
+        </div>
+
+    </div>
+
+
+    <!-- =====================================================
+         OVERVIEW
+         ===================================================== -->
+
+    <div class="mb-6 rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+
+        <h3 class="flex items-center gap-2 text-base font-semibold text-gray-900">
+            <i class="ti ti-layout-grid text-blue-600"></i>
+            Overview
+        </h3>
+
+        <p class="mt-1 text-sm text-gray-500">
+            Track overall lead volume and call activity at a glance.
+        </p>
+
+        <div class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
+
+            <div class="rounded-lg border border-gray-200 p-5">
+                <p class="flex items-center gap-2 text-sm text-gray-500"><i class="ti ti-users"></i> Total Leads</p>
+                <p class="mt-2 text-3xl font-bold text-gray-900">{{ overview.total_leads }} <span class="text-sm font-normal text-gray-500">Leads</span></p>
+            </div>
+
+            <div class="rounded-lg border border-gray-200 p-5">
+                <p class="flex items-center gap-2 text-sm text-gray-500"><i class="ti ti-trending-up"></i> Total Call Time</p>
+                <p class="mt-2 text-3xl font-bold text-gray-900">{{ overview.total_call_minutes }} <span class="text-sm font-normal text-gray-500">Minutes</span></p>
+            </div>
+
+            <div class="rounded-lg border border-gray-200 p-5">
+                <p class="flex items-center gap-2 text-sm text-gray-500"><i class="ti ti-phone"></i> Calls Done</p>
+                <p class="mt-2 text-3xl font-bold text-gray-900">{{ overview.calls_done }} <span class="text-sm font-normal text-gray-500">Calls</span></p>
+            </div>
+
+        </div>
+
+    </div>
+
+
+    <!-- =====================================================
+         FOLLOW-UPS
+         ===================================================== -->
+
+    <div class="mb-6 rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+
+        <h3 class="flex items-center gap-2 text-base font-semibold text-gray-900">
+            <i class="ti ti-repeat text-blue-600"></i>
+            Follow-Ups
+        </h3>
+
+        <p class="mt-1 text-sm text-gray-500">
+            Monitor pending reminders and replies to keep follow-ups on track.
+        </p>
+
+        <div class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+
+            <div class="rounded-lg border border-gray-200 p-5">
+                <p class="flex items-center gap-2 text-sm text-gray-500"><i class="ti ti-bell"></i> Pending Reminder</p>
+                <p class="mt-2 text-3xl font-bold text-gray-900">{{ pending_reminder_count }} <span class="text-sm font-normal text-gray-500">Leads</span></p>
+            </div>
+
+            <div class="rounded-lg border border-gray-200 p-5">
+                <p class="flex items-center gap-2 text-sm text-gray-500"><i class="ti ti-message-circle"></i> Pending Replies</p>
+                <p class="mt-2 text-3xl font-bold text-gray-900">{{ pending_replies_count }} <span class="text-sm font-normal text-gray-500">Leads</span></p>
+            </div>
+
+        </div>
+
+        <div class="mt-4 rounded-lg border border-dashed border-gray-300 bg-gray-50 p-4 text-sm text-gray-500">
+            Auto-follow-up metrics (sent count, no-automation count) aren't available yet — the Auto Follow-ups engine hasn't been built.
+        </div>
+
+    </div>
+
+
+    <!-- =====================================================
+         LEAD & MESSAGING OVERVIEW
+         ===================================================== -->
+
+    <div class="mb-6 rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+
+        <h3 class="flex items-center gap-2 text-base font-semibold text-gray-900">
+            <i class="ti ti-chart-bar text-blue-600"></i>
+            Lead &amp; Messaging Overview
+        </h3>
+
+        <p class="mt-1 text-sm text-gray-500">
+            Analyze new leads and failed messages.
+        </p>
+
+        <div class="mt-4 grid grid-cols-1 gap-6 lg:grid-cols-2">
+
+            <div class="rounded-lg border border-gray-200 p-5">
+                <p class="mb-3 text-sm font-semibold text-gray-900">New Leads</p>
+                <canvas id="newLeadsChart" height="180"></canvas>
+            </div>
+
+            <div class="rounded-lg border border-gray-200 p-5">
+                <p class="mb-3 text-sm font-semibold text-gray-900">Failed Messages</p>
+                <canvas id="failedMessagesChart" height="180"></canvas>
+            </div>
+
+        </div>
+
+        <div class="mt-4 rounded-lg border border-dashed border-gray-300 bg-gray-50 p-4 text-sm text-gray-500">
+            AI Qualified Leads and Auto Follow-Ups Sent charts aren't available yet — they need the Co-Pilot and Auto Follow-ups features built first.
+        </div>
+
+    </div>
+
+
+    <!-- =====================================================
+         PIPELINE DISTRIBUTION & LEAD FLOW
+         ===================================================== -->
+
+    <div class="mb-6 rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+
+        <h3 class="flex items-center gap-2 text-base font-semibold text-gray-900">
+            <i class="ti ti-git-branch text-blue-600"></i>
+            Pipeline Distribution &amp; Lead Flow
+        </h3>
+
+        <p class="mt-1 text-sm text-gray-500">
+            Get a quick snapshot of how leads are distributed across pipelines and stages.
+        </p>
+
+        <div class="mt-4 grid grid-cols-1 gap-6 lg:grid-cols-2">
+
+            <div class="rounded-lg border border-gray-200 p-5">
+                <p class="mb-3 text-sm font-semibold text-gray-900">Leads By Pipeline</p>
+                <canvas id="leadsByPipelineChart" height="220"></canvas>
+            </div>
+
+            <div class="rounded-lg border border-gray-200 p-5">
+                <p class="mb-3 text-sm font-semibold text-gray-900">Leads By Stage</p>
+                <canvas id="leadsByStageChart" height="220"></canvas>
+            </div>
+
+        </div>
+
+    </div>
+
+
+    {{ new_leads_labels|json_script:"new-leads-labels" }}
+    {{ new_leads_values|json_script:"new-leads-values" }}
+    {{ failed_messages_labels|json_script:"failed-messages-labels" }}
+    {{ failed_messages_values|json_script:"failed-messages-values" }}
+    {{ leads_by_pipeline|json_script:"leads-by-pipeline" }}
+    {{ leads_by_stage|json_script:"leads-by-stage" }}
+
+    <script>
+        function readJSON(elementId) {
+            return JSON.parse(document.getElementById(elementId).textContent);
+        }
+
+        const newLeadsLabels = readJSON('new-leads-labels');
+        const newLeadsValues = readJSON('new-leads-values');
+        const failedMessagesLabels = readJSON('failed-messages-labels');
+        const failedMessagesValues = readJSON('failed-messages-values');
+        const leadsByPipeline = readJSON('leads-by-pipeline');
+        const leadsByStage = readJSON('leads-by-stage');
+
+        const newLeadsCtx = document.getElementById('newLeadsChart');
+        new Chart(newLeadsCtx, {
+            type: 'line',
+            data: {
+                labels: newLeadsLabels,
+                datasets: [{
+                    label: 'New Leads',
+                    data: newLeadsValues,
+                    borderColor: '#7c3aed',
+                    tension: 0.3,
+                    fill: false,
+                }]
+            },
+            options: { plugins: { legend: { display: false } } }
+        });
+
+        const failedMessagesCtx = document.getElementById('failedMessagesChart');
+        new Chart(failedMessagesCtx, {
+            type: 'line',
+            data: {
+                labels: failedMessagesLabels,
+                datasets: [{
+                    label: 'Failed Messages',
+                    data: failedMessagesValues,
+                    borderColor: '#ef4444',
+                    tension: 0.3,
+                    fill: false,
+                }]
+            },
+            options: { plugins: { legend: { display: false } } }
+        });
+
+        const leadsByPipelineCtx = document.getElementById('leadsByPipelineChart');
+        new Chart(leadsByPipelineCtx, {
+            type: 'bar',
+            data: {
+                labels: leadsByPipeline.map(row => row.label),
+                datasets: [{
+                    label: 'Leads',
+                    data: leadsByPipeline.map(row => row.count),
+                    backgroundColor: '#0ea5a3',
+                }]
+            },
+            options: { plugins: { legend: { display: false } } }
+        });
+
+        const leadsByStageCtx = document.getElementById('leadsByStageChart');
+        new Chart(leadsByStageCtx, {
+            type: 'pie',
+            data: {
+                labels: leadsByStage.map(row => row.label),
+                datasets: [{
+                    data: leadsByStage.map(row => row.count),
+                    backgroundColor: ['#3b82f6','#f97316','#22c55e','#a855f7','#ef4444','#06b6d4','#eab308','#64748b'],
+                }]
+            }
+        });
+    </script>
+
+{% endblock %}
