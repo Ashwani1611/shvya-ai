@@ -103,15 +103,6 @@ urlpatterns = [
     ),
 
     # =========================================================
-    # CRM Analytics
-    # =========================================================
-
-    path(
-        "dashboard/analytics/",
-        include("apps.analytics.urls.web"),
-    ),
-
-    # =========================================================
     # WhatsApp Channels
     #
     # Includes (see apps/channels/urls.py):
@@ -141,6 +132,18 @@ urlpatterns = [
     path(
         "dashboard/teams/",
         include("apps.teams.urls.web"),
+    ),
+
+    # =========================================================
+    # Analytics
+    #
+    # Nested under dashboard/ so it shares the CRM session area
+    # (crm_login_required / request.crm_user), same as Teams.
+    # =========================================================
+
+    path(
+        "dashboard/analytics/",
+        include("apps.analytics.urls.web"),
     ),
 
     # Meta calls this directly (verification handshake + message/status

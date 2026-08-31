@@ -22,11 +22,6 @@ COMING_SOON_FEATURES = {
         "icon": "ti-bolt",
         "description": "Fire automations the moment a lead does something worth acting on.",
     },
-    "analytics": {
-        "label": "Analytics",
-        "icon": "ti-chart-bar",
-        "description": "See conversion, response time, and pipeline health at a glance.",
-    },
     "instagram": {
         "label": "Instagram",
         "icon": "ti-brand-instagram",
@@ -46,6 +41,11 @@ COMING_SOON_FEATURES = {
         "label": "Call Tracker",
         "icon": "ti-phone",
         "description": "Log, record, and review calls tied directly to each lead.",
+    },
+    "team-member-settings": {
+        "label": "Agent Settings",
+        "icon": "ti-settings",
+        "description": "Per-agent send limits, AI auto-reply, and follow-up automation controls.",
     },
     "teams": {
         "label": "Teams",
@@ -81,11 +81,6 @@ COMING_SOON_FEATURES = {
         "label": "Chats",
         "icon": "ti-message-circle",
         "description": "View and reply to Instagram conversations from your inbox.",
-    },
-        "team-member-settings": {
-        "label": "Agent Settings",
-        "icon": "ti-settings",
-        "description": "Per-agent send limits, AI auto-reply, and follow-up automation controls.",
     },
 }
 
