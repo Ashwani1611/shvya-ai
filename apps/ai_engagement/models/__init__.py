@@ -5,3 +5,4 @@ from .chunk import Chunk
 from .internal_conversation_summary import (
     InternalConversationSummary,
 )
+from .faq import FAQ

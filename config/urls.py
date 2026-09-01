@@ -9,7 +9,9 @@ from rest_framework_simplejwt.views import (
     TokenObtainPairView,
     TokenRefreshView,
 )
+
 from apps.core.views import HomeView
+
 
 urlpatterns = [
     # =========================================================
@@ -73,6 +75,22 @@ urlpatterns = [
     path(
         "api/v1/teams/",
         include("apps.teams.urls.api_v1"),
+    ),
+
+    # =========================================================
+    # AI ENGAGEMENT API
+    #
+    # Includes:
+    #
+    # /api/v1/ai-engagement/org-info/
+    #
+    # Organization ownership is resolved from the authenticated
+    # user's organization.
+    # =========================================================
+
+    path(
+        "api/v1/ai-engagement/",
+        include("apps.ai_engagement.urls.api_v1"),
     ),
 
     # =========================================================
@@ -147,10 +165,15 @@ urlpatterns = [
         include("apps.analytics.urls.web"),
     ),
 
+    # =========================================================
+    # WhatsApp Webhook
+    #
     # Meta calls this directly (verification handshake + message/status
     # delivery) -- it is NOT nested under dashboard/ or crm_login_required,
     # since Meta has no CRM session. Authenticity is instead checked via
     # X-Hub-Signature-256 inside whatsapp_webhook_view itself.
+    # =========================================================
+
     path(
         "webhooks/whatsapp/",
         channels_views_flat.whatsapp_webhook_view,
@@ -174,5 +197,14 @@ urlpatterns = [
         "pricing/",
         TemplateView.as_view(template_name="pricing.html"),
         name="pricing",
+    ),
+
+    # =========================================================
+    # AI ENGAGEMENT API
+    # =========================================================
+
+    path(
+        "api/v1/ai-engagement/",
+        include("apps.ai_engagement.urls.api_v1"),
     ),
 ]

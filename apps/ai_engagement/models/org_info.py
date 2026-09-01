@@ -46,6 +46,14 @@ class OrgInfo(models.Model):
         ),
     )
 
+    engagement_instructions = models.TextField(
+        blank=True,
+        help_text=(
+            "Instructions SHVYA AI should follow when engaging "
+            "with leads in customer-facing conversations."
+        ),
+    )
+
     # =========================================================
     # GLOBAL AI CONTROL
     # =========================================================
