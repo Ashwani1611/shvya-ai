@@ -1002,6 +1002,24 @@ class KnowledgeIngestionService:
     # URL HELPERS
     # ============================================================
 
+    def normalize_url(
+        self,
+        url: str,
+    ) -> str:
+        """
+        Public wrapper around URL normalization.
+
+        ingest_url() publishes the new Document under
+        source_key == this normalized URL but does not return the
+        Document itself. Callers (e.g. the ingestion Celery task)
+        use this method to resolve that same source_key afterwards
+        instead of reaching into the private normalizer.
+        """
+
+        return self._normalize_url(
+            url
+        )
+
     def _normalize_url(
         self,
         url: str,

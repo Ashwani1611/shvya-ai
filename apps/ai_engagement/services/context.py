@@ -7,6 +7,10 @@ from apps.ai_engagement.models import (
     InternalConversationSummary,
     OrgInfo,
 )
+from apps.ai_engagement.services.embeddings import (
+    EmbeddingError,
+    EmbeddingService,
+)
 from apps.ai_engagement.services.retrieval import (
     KnowledgeRetrievalService,
 )
@@ -159,17 +163,9 @@ class AIContextBuilder:
         """
         Build the complete runtime AI context for one Lead.
 
-        Knowledge retrieval currently supports query_vector.
-
-        Later, when the embedding provider is available:
-
-            knowledge_query
-                ↓
-            EmbeddingService
-                ↓
-            query vector
-                ↓
-            KnowledgeRetrievalService
+        Knowledge retrieval accepts either a pre-computed
+        query_vector, or a raw knowledge_query string that is
+        embedded internally via EmbeddingService.
         """
 
         self._validate_lead_scope(
@@ -731,25 +727,36 @@ class AIContextBuilder:
         """
         Retrieve relevant Knowledge Base context.
 
-        Current executable mode:
+        Resolution order:
 
-            query_vector
+            1. query_vector, if the caller already computed one.
 
-        Future provider-backed mode:
+            2. knowledge_query, embedded here via EmbeddingService.
 
-            knowledge_query
-                ↓
-            EmbeddingService
-                ↓
-            query vector
-                ↓
-            KnowledgeRetrievalService
+            3. Neither supplied, or embedding fails: return no
+               knowledge rather than fabricate a vector.
         """
 
-        # No provider key / query embedding:
-        # return no knowledge rather than fabricate a vector.
         if query_vector is None:
-            return []
+
+            normalized_query = (
+                knowledge_query or ""
+            ).strip()
+
+            if not normalized_query:
+                return []
+
+            try:
+                query_vector = (
+                    EmbeddingService().embed_text(
+                        normalized_query
+                    )
+                )
+            except EmbeddingError:
+                # No provider key, or the provider call failed:
+                # degrade to no knowledge rather than break the
+                # whole AI context build.
+                return []
 
         results = (
             KnowledgeRetrievalService()

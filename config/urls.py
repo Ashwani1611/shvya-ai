@@ -78,22 +78,6 @@ urlpatterns = [
     ),
 
     # =========================================================
-    # AI ENGAGEMENT API
-    #
-    # Includes:
-    #
-    # /api/v1/ai-engagement/org-info/
-    #
-    # Organization ownership is resolved from the authenticated
-    # user's organization.
-    # =========================================================
-
-    path(
-        "api/v1/ai-engagement/",
-        include("apps.ai_engagement.urls.api_v1"),
-    ),
-
-    # =========================================================
     # Accounts
     #
     # Includes:

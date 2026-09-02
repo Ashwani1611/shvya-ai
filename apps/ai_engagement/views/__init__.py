@@ -1,5 +1,7 @@
-from .org_info import OrgInfoView
-
-__all__ = [
-    "OrgInfoView",
-]
+from .document_views import (  # noqa: F401
+    DocumentDetailAPIView,
+    DocumentListAPIView,
+    DocumentReindexAPIView,
+    KnowledgeSourceDetailAPIView,
+    KnowledgeSourceListAPIView,
+)

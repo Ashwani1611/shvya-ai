@@ -331,7 +331,6 @@ def generate_internal_conversation_summary(
         "model_name": summary.model_name,
     }
 
-
 # ============================================================
 # LEAD QUALIFICATION
 # ============================================================
@@ -554,4 +553,437 @@ def generate_lead_qualification(
             note.id
         ),
         "note_type": note.note_type,
+    }
+
+
+# ============================================================
+# KNOWLEDGE INGESTION — UPLOADED DOCUMENT
+# ============================================================
+
+
+@shared_task(
+    bind=True,
+    max_retries=3,
+    default_retry_delay=30,
+    name="ai.ingest_and_index_document",
+)
+def ingest_and_index_document(
+    self,
+    document_id: int,
+):
+    """
+    Extract, chunk, and embed one uploaded knowledge Document.
+
+    Runs off the request thread: file parsing (PDF/DOCX/XLSX) and
+    OpenAI embedding calls are both too slow for a request/response
+    cycle.
+
+    Extraction failures are permanent (bad file, unsupported
+    content) and are NOT retried — KnowledgeIngestionService has
+    already persisted FAILED + processing_error on the Document.
+
+    Embedding failures are reported as a partial success: the
+    Document and its chunks are safely persisted, and embeddings
+    can be retried later via reindex_document_embeddings without
+    re-parsing the source file.
+    """
+
+    from apps.ai_engagement.models import Document
+    from apps.ai_engagement.services.embedding_index import (
+        EmbeddingIndexError,
+        EmbeddingIndexService,
+    )
+    from apps.ai_engagement.services.knowledge import (
+        KnowledgeExtractionError,
+        KnowledgeIngestionService,
+    )
+
+    try:
+        document = (
+            Document.objects
+            .select_related(
+                "organization",
+            )
+            .get(
+                id=document_id,
+            )
+        )
+
+    except Document.DoesNotExist:
+
+        logger.warning(
+            "ingest_and_index_document: "
+            "document %s not found",
+            document_id,
+        )
+
+        return {
+            "status": "skipped",
+            "reason": "document_not_found",
+            "document_id": document_id,
+        }
+
+    try:
+        chunk_count = (
+            KnowledgeIngestionService().ingest_document(
+                document
+            )
+        )
+
+    except KnowledgeExtractionError as exc:
+
+        logger.error(
+            "ingest_and_index_document: "
+            "extraction failed for document %s: %s",
+            document_id,
+            exc,
+        )
+
+        return {
+            "status": "failed",
+            "reason": "extraction_failed",
+            "document_id": document_id,
+            "error": str(exc),
+        }
+
+    except Exception as exc:
+
+        logger.exception(
+            "ingest_and_index_document: "
+            "unexpected extraction failure for document %s",
+            document_id,
+        )
+
+        raise self.retry(
+            exc=exc,
+        )
+
+    try:
+        indexed_count = (
+            EmbeddingIndexService().index_document(
+                document
+            )
+        )
+
+    except EmbeddingIndexError as exc:
+
+        logger.error(
+            "ingest_and_index_document: "
+            "embedding failed for document %s: %s",
+            document_id,
+            exc,
+        )
+
+        return {
+            "status": "partial",
+            "reason": "embedding_failed",
+            "document_id": document_id,
+            "chunk_count": chunk_count,
+            "error": str(exc),
+        }
+
+    except Exception as exc:
+
+        logger.exception(
+            "ingest_and_index_document: "
+            "unexpected embedding failure for document %s",
+            document_id,
+        )
+
+        raise self.retry(
+            exc=exc,
+        )
+
+    logger.info(
+        "ingest_and_index_document: "
+        "indexed %s/%s chunks for document %s",
+        indexed_count,
+        chunk_count,
+        document_id,
+    )
+
+    return {
+        "status": "completed",
+        "document_id": document_id,
+        "chunk_count": chunk_count,
+        "indexed_count": indexed_count,
+    }
+
+
+# ============================================================
+# KNOWLEDGE INGESTION — URL SOURCE
+# ============================================================
+
+
+@shared_task(
+    bind=True,
+    max_retries=3,
+    default_retry_delay=30,
+    name="ai.ingest_and_index_url_source",
+)
+def ingest_and_index_url_source(
+    self,
+    source_id: int,
+):
+    """
+    Fetch, chunk, and embed one URL KnowledgeSource.
+
+    ingest_url() publishes the new Document version internally but
+    only returns the created chunk count, so the Document is
+    resolved afterwards via the same normalized source_key it was
+    just published under.
+    """
+
+    from apps.ai_engagement.models import (
+        Document,
+        KnowledgeSource,
+    )
+    from apps.ai_engagement.services.embedding_index import (
+        EmbeddingIndexError,
+        EmbeddingIndexService,
+    )
+    from apps.ai_engagement.services.knowledge import (
+        KnowledgeExtractionError,
+        KnowledgeIngestionService,
+    )
+
+    try:
+        source = (
+            KnowledgeSource.objects
+            .select_related(
+                "organization",
+            )
+            .get(
+                id=source_id,
+            )
+        )
+
+    except KnowledgeSource.DoesNotExist:
+
+        logger.warning(
+            "ingest_and_index_url_source: "
+            "source %s not found",
+            source_id,
+        )
+
+        return {
+            "status": "skipped",
+            "reason": "source_not_found",
+            "source_id": source_id,
+        }
+
+    ingestion_service = KnowledgeIngestionService()
+
+    try:
+        chunk_count = (
+            ingestion_service.ingest_url(
+                source
+            )
+        )
+
+    except KnowledgeExtractionError as exc:
+
+        logger.error(
+            "ingest_and_index_url_source: "
+            "extraction failed for source %s: %s",
+            source_id,
+            exc,
+        )
+
+        return {
+            "status": "failed",
+            "reason": "extraction_failed",
+            "source_id": source_id,
+            "error": str(exc),
+        }
+
+    except Exception as exc:
+
+        logger.exception(
+            "ingest_and_index_url_source: "
+            "unexpected extraction failure for source %s",
+            source_id,
+        )
+
+        raise self.retry(
+            exc=exc,
+        )
+
+    source_key = (
+        ingestion_service.normalize_url(
+            source.url
+        )
+    )
+
+    document = (
+        Document.objects
+        .filter(
+            organization=source.organization,
+            source_key=source_key,
+            is_active=True,
+        )
+        .order_by(
+            "-version",
+        )
+        .first()
+    )
+
+    if document is None:
+
+        logger.error(
+            "ingest_and_index_url_source: "
+            "no active document found after ingest "
+            "for source %s",
+            source_id,
+        )
+
+        return {
+            "status": "failed",
+            "reason": "document_not_found_after_ingest",
+            "source_id": source_id,
+        }
+
+    try:
+        indexed_count = (
+            EmbeddingIndexService().index_document(
+                document
+            )
+        )
+
+    except EmbeddingIndexError as exc:
+
+        logger.error(
+            "ingest_and_index_url_source: "
+            "embedding failed for source %s: %s",
+            source_id,
+            exc,
+        )
+
+        return {
+            "status": "partial",
+            "reason": "embedding_failed",
+            "source_id": source_id,
+            "document_id": document.id,
+            "chunk_count": chunk_count,
+            "error": str(exc),
+        }
+
+    except Exception as exc:
+
+        logger.exception(
+            "ingest_and_index_url_source: "
+            "unexpected embedding failure for source %s",
+            source_id,
+        )
+
+        raise self.retry(
+            exc=exc,
+        )
+
+    logger.info(
+        "ingest_and_index_url_source: "
+        "indexed %s/%s chunks for source %s (document %s)",
+        indexed_count,
+        chunk_count,
+        source_id,
+        document.id,
+    )
+
+    return {
+        "status": "completed",
+        "source_id": source_id,
+        "document_id": document.id,
+        "chunk_count": chunk_count,
+        "indexed_count": indexed_count,
+    }
+
+
+# ============================================================
+# KNOWLEDGE REINDEX — EMBEDDINGS ONLY
+# ============================================================
+
+
+@shared_task(
+    bind=True,
+    max_retries=3,
+    default_retry_delay=30,
+    name="ai.reindex_document_embeddings",
+)
+def reindex_document_embeddings(
+    self,
+    document_id: int,
+):
+    """
+    Re-generate embeddings for an already-extracted Document
+    without re-parsing the source file/URL.
+
+    Used after an embedding failure, or after switching
+    OPENAI_EMBEDDING_MODEL.
+    """
+
+    from apps.ai_engagement.models import Document
+    from apps.ai_engagement.services.embedding_index import (
+        EmbeddingIndexError,
+        EmbeddingIndexService,
+    )
+
+    try:
+        document = Document.objects.get(
+            id=document_id,
+        )
+
+    except Document.DoesNotExist:
+
+        logger.warning(
+            "reindex_document_embeddings: "
+            "document %s not found",
+            document_id,
+        )
+
+        return {
+            "status": "skipped",
+            "reason": "document_not_found",
+            "document_id": document_id,
+        }
+
+    try:
+        indexed_count = (
+            EmbeddingIndexService().index_document(
+                document,
+                only_missing=False,
+            )
+        )
+
+    except EmbeddingIndexError as exc:
+
+        logger.error(
+            "reindex_document_embeddings: "
+            "embedding failed for document %s: %s",
+            document_id,
+            exc,
+        )
+
+        return {
+            "status": "failed",
+            "reason": "embedding_failed",
+            "document_id": document_id,
+            "error": str(exc),
+        }
+
+    except Exception as exc:
+
+        logger.exception(
+            "reindex_document_embeddings: "
+            "unexpected embedding failure for document %s",
+            document_id,
+        )
+
+        raise self.retry(
+            exc=exc,
+        )
+
+    return {
+        "status": "completed",
+        "document_id": document_id,
+        "indexed_count": indexed_count,
     }
