@@ -95,7 +95,7 @@ NAV_ITEMS = [
                 # Accounts (templates/channels/whatsapp_connect_hosted.html
                 # already exists, so this view likely already exists too —
                 # run: grep -n "hosted" apps/channels/urls.py
-                "label": "Hosted Accounts",
+                "label": "coexisted Accounts",
                 "icon": "ti-server",
                 "url_name": "whatsapp-connect-hosted",
                 "path_prefix": "/dashboard/whatsapp/hosted/",

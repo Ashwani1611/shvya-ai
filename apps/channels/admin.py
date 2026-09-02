@@ -59,7 +59,7 @@ class WhatsAppAccountAdmin(admin.ModelAdmin):
         # Accounts are created through the org's connect flow
         # (apps.channels.views_flat), not directly in admin --
         # the flow enforces which fields get set for API vs
-        # Hosted connections.
+        # coexisted connections.
         return False
 
 

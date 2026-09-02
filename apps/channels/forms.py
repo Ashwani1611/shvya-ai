@@ -82,7 +82,7 @@ class WhatsAppConnectAPIForm(forms.ModelForm):
 
 class WhatsAppHostedRequestForm(forms.Form):
     """
-    "Hosted Account" path -- the organization asks SHVYA to
+    "coexisted Account" path -- the organization asks SHVYA to
     provision and manage a WhatsApp number on their behalf.
 
     No Meta credentials are collected here. This just records

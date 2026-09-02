@@ -4152,7 +4152,7 @@ def lead_conversation_summary_modal(
         "crm/partials/lead_conversation_summary_modal.html",
         {
             "lead": lead,
-            "conversation_summary": summary,
+            "conversation_summary": conversation_summary,
         },
     )
 

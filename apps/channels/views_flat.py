@@ -35,7 +35,7 @@ def _admin_required(user):
 
 
 # ============================================================
-# CHOICE SCREEN -- Connect API vs Hosted Account
+# CHOICE SCREEN -- Connect API vs coexisted Account
 # ============================================================
 
 
@@ -223,7 +223,7 @@ def whatsapp_embedded_signup_callback_view(request):
 
 
 # ============================================================
-# HOSTED ACCOUNT -- SHVYA provisions the number
+# coexisted ACCOUNT -- SHVYA provisions the number
 # ============================================================
 
 
@@ -249,7 +249,7 @@ def whatsapp_connect_hosted_view(request):
 
             messages.success(
                 request,
-                "Hosted WhatsApp number requested. "
+                "coexisted WhatsApp number requested. "
                 "SHVYA will provision it and notify you when it's ready.",
             )
 

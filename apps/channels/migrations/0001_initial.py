@@ -24,7 +24,7 @@ class Migration(migrations.Migration):
             name='WhatsAppAccount',
             fields=[
                 ('id', models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
-                ('connection_type', models.CharField(choices=[('api', 'Connect API'), ('hosted', 'Hosted Account')], default='api', max_length=10)),
+                ('connection_type', models.CharField(choices=[('api', 'Connect API'), ('coexisted', 'coexisted Account')], default='api', max_length=10)),
                 ('business_name', models.CharField(blank=True, max_length=150)),
                 ('phone_number_id', models.CharField(blank=True, help_text='Meta WhatsApp phone_number_id used as the sender.', max_length=64)),
                 ('waba_id', models.CharField(blank=True, help_text='Meta WhatsApp Business Account ID (for reference/lookup).', max_length=64)),
