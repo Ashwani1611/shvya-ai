@@ -183,6 +183,30 @@ urlpatterns = [
         name="pricing",
     ),
 
+    path(
+        "privacy-policy/",
+        TemplateView.as_view(template_name="legal/privacy_policy.html"),
+        name="privacy_policy",
+    ),
+
+    path(
+        "terms-conditions/",
+        TemplateView.as_view(template_name="legal/terms_conditions.html"),
+        name="terms_conditions",
+    ),
+
+    path(
+        "cookie-policy/",
+        TemplateView.as_view(template_name="legal/cookie_policy.html"),
+        name="cookie_policy",
+    ),
+
+    path(
+        "refund-policy/",
+        TemplateView.as_view(template_name="legal/refund_policy.html"),
+        name="refund_policy",
+    ),
+
     # =========================================================
     # AI ENGAGEMENT API
     # =========================================================

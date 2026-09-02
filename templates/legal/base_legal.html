@@ -1,0 +1,233 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{% block title %}Legal — Shvya{% endblock %}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --blue-900:#0B1E4D;
+    --blue-700:#1E3FA8;
+    --blue-600:#2C55D6;
+    --blue-500:#3D6BF0;
+    --blue-100:#E8EEFF;
+    --ink:#0F1830;
+    --ink-soft:#5A6483;
+    --paper:#FFFFFF;
+    --paper-soft:#F6F8FE;
+    --line:#E2E8F8;
+    --radius:16px;
+    --shadow:0 20px 40px -18px rgba(20,42,110,0.25);
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  html{scroll-behavior:smooth;}
+  body{
+    font-family:'Inter',sans-serif;
+    color:var(--ink);
+    background:var(--paper);
+    -webkit-font-smoothing:antialiased;
+  }
+  h1,h2,h3,.brand{font-family:'Sora',sans-serif;}
+  a{text-decoration:none;color:inherit;}
+  .wrap{max-width:1180px;margin:0 auto;padding:0 32px;}
+
+  /* NAV (same as home.html) */
+  nav{
+    position:sticky;top:0;z-index:50;
+    background:rgba(255,255,255,0.85);
+    backdrop-filter:blur(10px);
+    border-bottom:1px solid var(--line);
+  }
+  .nav-inner{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:18px 32px;max-width:1180px;margin:0 auto;
+  }
+  .brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:1.15rem;letter-spacing:-0.01em;}
+  .brand-mark{
+    width:34px;height:34px;border-radius:9px;
+    background:linear-gradient(135deg,var(--blue-500),var(--blue-700));
+    color:#fff;display:flex;align-items:center;justify-content:center;
+    font-weight:800;font-size:0.95rem;
+  }
+  .nav-links{display:flex;gap:34px;font-size:0.94rem;font-weight:500;color:var(--ink-soft);}
+  .nav-links a:hover{color:var(--blue-700);}
+  .nav-cta{display:flex;gap:12px;align-items:center;}
+  .btn{
+    display:inline-flex;align-items:center;justify-content:center;
+    padding:11px 22px;border-radius:10px;font-weight:600;font-size:0.92rem;
+    transition:transform .15s ease, box-shadow .15s ease, background .15s ease;
+    border:1px solid transparent;cursor:pointer;
+  }
+  .btn-primary{background:var(--blue-600);color:#fff;box-shadow:0 10px 24px -10px rgba(44,85,214,0.55);}
+  .btn-primary:hover{background:var(--blue-700);transform:translateY(-1px);}
+  .btn-ghost{color:var(--blue-700);border-color:var(--line);background:#fff;}
+  .btn-ghost:hover{border-color:var(--blue-500);}
+
+  /* LEGAL PAGE HEADER */
+  .legal-hero{
+    padding:64px 0 40px;
+    background:
+      radial-gradient(900px 400px at 85% -20%, var(--blue-100), transparent);
+    border-bottom:1px solid var(--line);
+  }
+  .legal-kicker{
+    display:inline-flex;align-items:center;gap:8px;
+    padding:6px 14px;border-radius:999px;background:var(--blue-100);
+    color:var(--blue-700);font-size:0.8rem;font-weight:600;letter-spacing:0.02em;
+    margin-bottom:16px;
+  }
+  .legal-hero h1{
+    font-size:2.4rem;letter-spacing:-0.02em;font-weight:800;color:var(--blue-900);
+    line-height:1.15;
+  }
+  .legal-updated{margin-top:12px;font-size:0.88rem;color:var(--ink-soft);}
+  .legal-updated strong{color:var(--ink);font-weight:600;}
+
+  /* LEGAL NAV TABS (links between the 4 legal docs) */
+  .legal-tabs{
+    display:flex;gap:10px;flex-wrap:wrap;margin-top:26px;
+  }
+  .legal-tab{
+    padding:8px 16px;border-radius:999px;font-size:0.85rem;font-weight:600;
+    border:1px solid var(--line);color:var(--ink-soft);background:#fff;
+    transition:border-color .15s ease, color .15s ease, background .15s ease;
+  }
+  .legal-tab:hover{border-color:var(--blue-500);color:var(--blue-700);}
+  .legal-tab.active{background:var(--blue-600);border-color:var(--blue-600);color:#fff;}
+
+  /* LEGAL BODY */
+  .legal-body{padding:56px 0 100px;}
+  .legal-content{
+    max-width:760px;margin:0 auto;
+    font-size:1rem;line-height:1.75;color:var(--ink);
+  }
+  .legal-content h2{
+    font-size:1.4rem;font-weight:700;color:var(--blue-900);
+    margin-top:44px;margin-bottom:14px;letter-spacing:-0.01em;
+    padding-bottom:10px;border-bottom:2px solid var(--blue-100);
+  }
+  .legal-content h2:first-child{margin-top:0;}
+  .legal-content h3{
+    font-size:1.08rem;font-weight:700;color:var(--blue-700);
+    margin-top:26px;margin-bottom:10px;
+  }
+  .legal-content p{margin-bottom:14px;color:var(--ink);}
+  .legal-content ul{margin:0 0 16px 22px;}
+  .legal-content li{margin-bottom:8px;line-height:1.6;}
+  .legal-content strong{color:var(--blue-900);font-weight:700;}
+  .legal-content em{color:var(--ink-soft);}
+
+  .inline-link{
+    color:var(--blue-600);font-weight:600;border-bottom:1px solid var(--blue-100);
+    transition:color .15s ease, border-color .15s ease;
+  }
+  .inline-link:hover{color:var(--blue-700);border-color:var(--blue-500);}
+
+  .legal-card{
+    background:var(--paper-soft);border:1px solid var(--line);border-radius:var(--radius);
+    padding:20px 24px;margin:20px 0;
+  }
+
+  .contact-box{
+    background:var(--blue-100);border:1px solid var(--line);border-radius:var(--radius);
+    padding:24px 26px;margin-top:40px;
+  }
+  .contact-box h3{color:var(--blue-900);margin-top:0;}
+  .contact-box p{color:var(--ink);margin-bottom:4px;}
+
+  /* FOOTER (same as home.html) */
+  footer{border-top:1px solid var(--line);padding:44px 0 32px;}
+  .footer-top{
+    display:flex;justify-content:space-between;align-items:center;
+    flex-wrap:wrap;gap:16px;padding-bottom:24px;margin-bottom:20px;
+    border-bottom:1px solid var(--line);
+  }
+  .footer-links{display:flex;gap:26px;font-size:0.85rem;color:var(--ink-soft);}
+  .footer-legal{
+    display:flex;justify-content:space-between;align-items:center;
+    flex-wrap:wrap;gap:14px;
+  }
+  .footer-legal-links{display:flex;gap:22px;flex-wrap:wrap;font-size:0.82rem;color:var(--ink-soft);}
+  .footer-legal-links a:hover{color:var(--blue-700);}
+  .copyright{font-size:0.82rem;color:var(--ink-soft);}
+
+  @media (max-width:600px){
+    .nav-links{display:none;}
+    .legal-hero h1{font-size:1.8rem;}
+    .footer-top,.footer-legal{flex-direction:column;align-items:flex-start;}
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-inner">
+    <a href="{% url 'home' %}" class="brand">
+      <span class="brand-mark">S</span> SHVYA <span style="color:var(--blue-600)">AI</span>
+    </a>
+    <div class="nav-links">
+      <a href="{% url 'home' %}#features">Features</a>
+      <a href="{% url 'home' %}#how-it-works">How it works</a>
+      <a href="{% url 'pricing' %}">Pricing</a>
+    </div>
+    <div class="nav-cta">
+      <a href="/dashboard/login/" class="btn btn-ghost">Login</a>
+      <a href="{% url 'crm-signup' %}" class="btn btn-primary">Get started</a>
+    </div>
+  </div>
+</nav>
+
+<header class="legal-hero">
+  <div class="wrap">
+    <span class="legal-kicker">Legal</span>
+    <h1>{% block page_title %}Legal{% endblock %}</h1>
+    <div class="legal-updated">Last updated: <strong>{% block updated_date %}—{% endblock %}</strong></div>
+
+    <div class="legal-tabs">
+      <a class="legal-tab{% if request.resolver_match.url_name == 'privacy_policy' %} active{% endif %}" href="{% url 'privacy_policy' %}">Privacy Policy</a>
+      <a class="legal-tab{% if request.resolver_match.url_name == 'terms_conditions' %} active{% endif %}" href="{% url 'terms_conditions' %}">Terms &amp; Conditions</a>
+      <a class="legal-tab{% if request.resolver_match.url_name == 'cookie_policy' %} active{% endif %}" href="{% url 'cookie_policy' %}">Cookie Policy</a>
+      <a class="legal-tab{% if request.resolver_match.url_name == 'refund_policy' %} active{% endif %}" href="{% url 'refund_policy' %}">Refund Policy</a>
+    </div>
+  </div>
+</header>
+
+<main class="legal-body">
+  <div class="wrap">
+    <div class="legal-content">
+      {% block content %}{% endblock %}
+    </div>
+  </div>
+</main>
+
+<footer>
+  <div class="wrap">
+    <div class="footer-top">
+      <a href="{% url 'home' %}" class="brand" style="font-size:1rem;">
+        <span class="brand-mark" style="width:26px;height:26px;font-size:0.8rem;">S</span> SHVYA AI
+      </a>
+      <div class="footer-links">
+        <a href="{% url 'home' %}#features">Features</a>
+        <a href="{% url 'home' %}#how-it-works">How it works</a>
+        <a href="{% url 'pricing' %}">Pricing</a>
+        <a href="/dashboard/login/">Login</a>
+      </div>
+    </div>
+
+    <div class="footer-legal">
+      <div class="copyright">© 2026 SHVYA AI. All rights reserved.</div>
+      <div class="footer-legal-links">
+        <a href="{% url 'privacy_policy' %}">Privacy Policy</a>
+        <a href="{% url 'terms_conditions' %}">Terms &amp; Conditions</a>
+        <a href="{% url 'cookie_policy' %}">Cookie Policy</a>
+        <a href="{% url 'refund_policy' %}">Refund Policy</a>
+      </div>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>
