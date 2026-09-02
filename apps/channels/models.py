@@ -76,7 +76,7 @@ class WhatsAppAccount(models.Model):
                   User token + phone_number_id (self-managed
                   WhatsApp Business Platform app).
 
-        HOSTED -- SHVYA provisions and manages the number on the
+        coexisted -- SHVYA provisions and manages the number on the
                   organization's behalf (embedded signup or a
                   SHVYA-owned tech-provider WABA). Same fields are
                   populated, just sourced/rotated by SHVYA instead
@@ -89,7 +89,7 @@ class WhatsAppAccount(models.Model):
 
     class ConnectionType(models.TextChoices):
         API = "api", "Connect API"
-        HOSTED = "hosted", "Hosted Account"
+        coexisted = "hosted", "coexisted Account"
 
     id = models.UUIDField(
         primary_key=True,
@@ -157,7 +157,7 @@ class WhatsAppAccount(models.Model):
     # Connection lifecycle
     # ---------------------------------------------------------
     #
-    # HOSTED accounts go through a provisioning step before
+    # coexisted accounts go through a provisioning step before
     # credentials exist; API accounts are considered connected
     # as soon as valid credentials are saved.
 
