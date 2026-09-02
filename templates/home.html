@@ -166,8 +166,18 @@
 
   /* FOOTER */
   footer{border-top:1px solid var(--line);padding:44px 0 32px;}
-  .footer-inner{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:16px;}
+  .footer-top{
+    display:flex;justify-content:space-between;align-items:center;
+    flex-wrap:wrap;gap:16px;padding-bottom:24px;margin-bottom:20px;
+    border-bottom:1px solid var(--line);
+  }
   .footer-links{display:flex;gap:26px;font-size:0.85rem;color:var(--ink-soft);}
+  .footer-legal{
+    display:flex;justify-content:space-between;align-items:center;
+    flex-wrap:wrap;gap:14px;
+  }
+  .footer-legal-links{display:flex;gap:22px;flex-wrap:wrap;font-size:0.82rem;color:var(--ink-soft);}
+  .footer-legal-links a:hover{color:var(--blue-700);}
   .copyright{font-size:0.82rem;color:var(--ink-soft);}
 
   @media (max-width:920px){
@@ -181,6 +191,7 @@
     .feature-grid,.steps-list{grid-template-columns:1fr;}
     .nav-links{display:none;}
     .trust-inner{flex-direction:column;align-items:flex-start;}
+    .footer-top,.footer-legal{flex-direction:column;align-items:flex-start;}
   }
 </style>
 </head>
@@ -345,17 +356,28 @@
 </section>
 
 <footer>
-  <div class="wrap footer-inner">
-    <a href="{% url 'home' %}" class="brand" style="font-size:1rem;">
-      <span class="brand-mark" style="width:26px;height:26px;font-size:0.8rem;">S</span> SHVYA AI
-    </a>
-    <div class="footer-links">
-      <a href="#features">Features</a>
-      <a href="#how-it-works">How it works</a>
-      <a href="{% url 'pricing' %}">Pricing</a>
-      <a href="/dashboard/login/">Login</a>
+  <div class="wrap">
+    <div class="footer-top">
+      <a href="{% url 'home' %}" class="brand" style="font-size:1rem;">
+        <span class="brand-mark" style="width:26px;height:26px;font-size:0.8rem;">S</span> SHVYA AI
+      </a>
+      <div class="footer-links">
+        <a href="#features">Features</a>
+        <a href="#how-it-works">How it works</a>
+        <a href="{% url 'pricing' %}">Pricing</a>
+        <a href="/dashboard/login/">Login</a>
+      </div>
     </div>
-    <div class="copyright">© 2026 SHVYA AI. All rights reserved.</div>
+
+    <div class="footer-legal">
+      <div class="copyright">© 2026 SHVYA AI. All rights reserved.</div>
+      <div class="footer-legal-links">
+        <a href="{% url 'privacy-policy' %}">Privacy Policy</a>
+        <a href="{% url 'terms-conditions' %}">Terms &amp; Conditions</a>
+        <a href="{% url 'cookie-policy' %}">Cookie Policy</a>
+        <a href="{% url 'refund-policy' %}">Refund Policy</a>
+      </div>
+    </div>
   </div>
 </footer>
 
