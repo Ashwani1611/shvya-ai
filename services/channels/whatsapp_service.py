@@ -330,6 +330,24 @@ def handle_inbound_message(
         return existing
 
     # --------------------------------------------------------
+    # NORMALIZE PHONE FOR LEAD LOOKUP
+    #
+    # Meta sends `from` without a leading "+" (e.g. "918360156287"),
+    # but Lead.phone is always stored normalized with "+" (see
+    # normalize_phone() in apps.crm.models.lead). Without this, the
+    # upsert below silently fails to match the existing lead, the
+    # DjangoValidationError fallback lookup fails too (same
+    # mismatch), and the message is saved with lead=None forever --
+    # invisible in every chat thread.
+    # --------------------------------------------------------
+
+    normalized_lead_phone = (
+        from_number
+        if from_number.startswith("+")
+        else f"+{from_number}"
+    )
+
+    # --------------------------------------------------------
     # RESOLVE / CREATE LEAD
     # --------------------------------------------------------
 
@@ -355,7 +373,7 @@ def handle_inbound_message(
                     pipeline=pipeline,
                     stage=stage,
                     name=from_number,
-                    phone=from_number,
+                    phone=normalized_lead_phone,
                     lead_source="whatsapp_api",
                 )
 
@@ -369,7 +387,7 @@ def handle_inbound_message(
                     Lead.objects
                     .filter(
                         organization=organization,
-                        phone=from_number,
+                        phone=normalized_lead_phone,
                     )
                     .first()
                 )
