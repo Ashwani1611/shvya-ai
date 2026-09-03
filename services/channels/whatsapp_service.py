@@ -611,15 +611,16 @@ def send_outbound_message(
             to=message.to_number,
             body=message.body,
         )
-
     except WhatsAppAPIError as exc:
 
         message.status = (
             WhatsAppMessage.Status.FAILED
         )
 
-        message.error = str(
-            exc
+        message.error = (
+            f"{exc} -- {exc.response_body}"
+            if getattr(exc, "response_body", None)
+            else str(exc)
         )
 
         message.save(
@@ -633,6 +634,8 @@ def send_outbound_message(
         raise WhatsAppSendError(
             str(exc)
         ) from exc
+
+    
 
     external_id = None
 
