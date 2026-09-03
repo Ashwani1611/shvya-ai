@@ -151,5 +151,17 @@ services:
 
 volumes:
   postgres_data:
+
   static_volume:
+    driver: local
+    driver_opts:
+      type: none
+      device: /opt/shvya-ai/staticfiles
+      o: bind
+
   media_volume:
+    driver: local
+    driver_opts:
+      type: none
+      device: /opt/shvya-ai/media
+      o: bind
