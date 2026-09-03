@@ -550,6 +550,7 @@ def _handle_webhook_delivery(request):
 def whatsapp_send_message_view(request, lead_id):
 
     from apps.channels.tasks import send_whatsapp_message_task
+    from services.channels.bulk_service import is_within_24h_window
     from services.channels.whatsapp_service import (
         queue_outbound_message,
         resolve_account_for_lead,
@@ -588,6 +589,22 @@ def whatsapp_send_message_view(request, lead_id):
     if not body:
         return JsonResponse({"error": "Message body is required."}, status=400)
 
+    # Meta rejects free-form text outside the 24h window (or if this
+    # lead has never messaged in at all) -- catch that here, before
+    # queuing, so the agent sees it immediately instead of the send
+    # silently failing later once the Celery task actually runs.
+    if not is_within_24h_window(lead=lead):
+        return JsonResponse(
+            {
+                "error": (
+                    "This lead hasn't messaged in the last 24 hours "
+                    "(or has never messaged in) -- send a template "
+                    "message instead of free text."
+                )
+            },
+            status=400,
+        )
+
     message = queue_outbound_message(
         organization=user.organization,
         account=account,
@@ -596,10 +613,6 @@ def whatsapp_send_message_view(request, lead_id):
         lead=lead,
     )
 
-    # NOTE: Celery is not wired into INSTALLED_APPS yet (see
-    # apps/channels/tasks.py). Until that's done, this .delay()
-    # call will raise, not silently no-op -- don't rely on this
-    # endpoint working end-to-end before that wiring lands.
     send_whatsapp_message_task.delay(str(message.id))
 
     return JsonResponse(

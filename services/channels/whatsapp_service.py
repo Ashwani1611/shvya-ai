@@ -18,6 +18,7 @@ from apps.channels.models import WhatsAppAccount, WhatsAppMessage
 from apps.channels.providers import whatsapp as whatsapp_provider
 from apps.channels.providers.whatsapp import WhatsAppAPIError, WhatsAppClient
 from apps.crm.models import Lead, Pipeline, Stage
+from services.channels.bulk_service import is_within_24h_window
 from services.channels.reply_intent_service import Intent, classify_reply
 from services.crm.lead_service import upsert_lead
 from services.crm.stage_service import move_to_next_stage
@@ -561,8 +562,43 @@ def send_outbound_message(
     """
     Actually call Meta's API for an already-queued WhatsAppMessage.
     Called from inside the Celery task, not directly from a view.
+
+    Meta only accepts free-form text within 24 hours of the lead's
+    last inbound message (bulk campaigns already enforce this via
+    is_within_24h_window -- this was previously missing here for
+    single-lead sends, so a brand-new lead or anyone who'd gone
+    quiet for >24h would fail against Meta with no clear reason
+    surfaced anywhere). Failing fast here, before ever calling Meta,
+    means the error message on the WhatsAppMessage row actually
+    explains what happened instead of just echoing Meta's generic
+    "re-engagement message" rejection.
     """
     account = message.account
+
+    if message.lead and not is_within_24h_window(lead=message.lead):
+
+        error_text = (
+            "This lead hasn't messaged in the last 24 hours (or has "
+            "never messaged in) -- Meta requires a pre-approved "
+            "template message to reach them, not free text. Send a "
+            "template instead."
+        )
+
+        message.status = (
+            WhatsAppMessage.Status.FAILED
+        )
+
+        message.error = error_text
+
+        message.save(
+            update_fields=[
+                "status",
+                "error",
+                "updated_at",
+            ]
+        )
+
+        raise WhatsAppSendError(error_text)
 
     client = WhatsAppClient(
         phone_number_id=account.phone_number_id,
