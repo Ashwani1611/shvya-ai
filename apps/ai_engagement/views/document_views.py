@@ -89,7 +89,10 @@ class DocumentListAPIView(APIView):
             is_active=False,
         )
 
-        ingest_and_index_document.delay(document_id=document.id)
+        ingest_and_index_document.delay(
+            document_id=document.id,
+            organization_id=request.user.organization.id,
+        )
 
         return Response(
             DocumentSerializer(document).data,
@@ -156,7 +159,10 @@ class DocumentReindexAPIView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        reindex_document_embeddings.delay(document_id=document.id)
+        reindex_document_embeddings.delay(
+            document_id=document.id,
+            organization_id=request.user.organization.id,
+        )
 
         return Response(status=status.HTTP_202_ACCEPTED)
 
@@ -205,7 +211,10 @@ class KnowledgeSourceListAPIView(APIView):
             url=data["url"],
         )
 
-        ingest_and_index_url_source.delay(source_id=source.id)
+        ingest_and_index_url_source.delay(
+            source_id=source.id,
+            organization_id=request.user.organization.id,
+        )
 
         return Response(
             KnowledgeSourceSerializer(source).data,

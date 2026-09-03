@@ -570,6 +570,7 @@ def generate_lead_qualification(
 def ingest_and_index_document(
     self,
     document_id: int,
+    organization_id: int,
 ):
     """
     Extract, chunk, and embed one uploaded knowledge Document.
@@ -582,10 +583,10 @@ def ingest_and_index_document(
     content) and are NOT retried — KnowledgeIngestionService has
     already persisted FAILED + processing_error on the Document.
 
-    Embedding failures are reported as a partial success: the
-    Document and its chunks are safely persisted, and embeddings
-    can be retried later via reindex_document_embeddings without
-    re-parsing the source file.
+    Embedding failures mark the new Document version as FAILED and
+    INACTIVE. The previously published version remains active and
+    can continue serving retrieval while embeddings can be retried
+    later via reindex_document_embeddings.
     """
 
     from apps.ai_engagement.models import Document
@@ -606,6 +607,7 @@ def ingest_and_index_document(
             )
             .get(
                 id=document_id,
+                organization_id=organization_id,
             )
         )
 
@@ -665,6 +667,12 @@ def ingest_and_index_document(
             )
         )
 
+        document = (
+            KnowledgeIngestionService().publish_document_version(
+                document,
+            )
+        )
+
     except EmbeddingIndexError as exc:
 
         logger.error(
@@ -674,8 +682,22 @@ def ingest_and_index_document(
             exc,
         )
 
+        document.processing_status = (
+            Document.ProcessingStatus.FAILED
+        )
+        document.processing_error = str(exc)
+        document.is_active = False
+        document.save(
+            update_fields=[
+                "processing_status",
+                "processing_error",
+                "is_active",
+                "updated_at",
+            ]
+        )
+
         return {
-            "status": "partial",
+            "status": "failed",
             "reason": "embedding_failed",
             "document_id": document_id,
             "chunk_count": chunk_count,
@@ -724,14 +746,14 @@ def ingest_and_index_document(
 def ingest_and_index_url_source(
     self,
     source_id: int,
+    organization_id: int,
 ):
     """
     Fetch, chunk, and embed one URL KnowledgeSource.
 
-    ingest_url() publishes the new Document version internally but
-    only returns the created chunk count, so the Document is
-    resolved afterwards via the same normalized source_key it was
-    just published under.
+    ingest_url() creates the new Document version as COMPLETED but
+    INACTIVE. The worker resolves that newest completed version,
+    indexes its embeddings, and only then publishes it.
     """
 
     from apps.ai_engagement.models import (
@@ -755,6 +777,7 @@ def ingest_and_index_url_source(
             )
             .get(
                 id=source_id,
+                organization_id=organization_id,
             )
         )
 
@@ -820,10 +843,13 @@ def ingest_and_index_url_source(
         .filter(
             organization=source.organization,
             source_key=source_key,
-            is_active=True,
+            processing_status=(
+                Document.ProcessingStatus.COMPLETED
+            ),
         )
         .order_by(
             "-version",
+            "-id",
         )
         .first()
     )
@@ -832,7 +858,7 @@ def ingest_and_index_url_source(
 
         logger.error(
             "ingest_and_index_url_source: "
-            "no active document found after ingest "
+            "no completed document found after ingest "
             "for source %s",
             source_id,
         )
@@ -850,6 +876,12 @@ def ingest_and_index_url_source(
             )
         )
 
+        document = (
+            ingestion_service.publish_document_version(
+                document,
+            )
+        )
+
     except EmbeddingIndexError as exc:
 
         logger.error(
@@ -859,8 +891,22 @@ def ingest_and_index_url_source(
             exc,
         )
 
+        document.processing_status = (
+            Document.ProcessingStatus.FAILED
+        )
+        document.processing_error = str(exc)
+        document.is_active = False
+        document.save(
+            update_fields=[
+                "processing_status",
+                "processing_error",
+                "is_active",
+                "updated_at",
+            ]
+        )
+
         return {
-            "status": "partial",
+            "status": "failed",
             "reason": "embedding_failed",
             "source_id": source_id,
             "document_id": document.id,
@@ -912,6 +958,7 @@ def ingest_and_index_url_source(
 def reindex_document_embeddings(
     self,
     document_id: int,
+    organization_id: int,
 ):
     """
     Re-generate embeddings for an already-extracted Document
@@ -930,6 +977,7 @@ def reindex_document_embeddings(
     try:
         document = Document.objects.get(
             id=document_id,
+            organization_id=organization_id,
         )
 
     except Document.DoesNotExist:

@@ -33,6 +33,9 @@ class KnowledgePipelineService:
         EmbeddingIndexService
             → embedding generation / persistence
 
+        KnowledgeIngestionService
+            → publication of the successfully indexed version
+
     Retrieval remains the responsibility of
     KnowledgeRetrievalService.
 
@@ -80,9 +83,11 @@ class KnowledgePipelineService:
             embedding generation
                 ↓
             persisted vectors
+                ↓
+            publish successfully indexed version
 
         Returns:
-            The refreshed processed Document.
+            The refreshed processed and published Document.
         """
 
         if document is None:
@@ -105,8 +110,16 @@ class KnowledgePipelineService:
                 )
             )
 
+            # The document must be fully indexed before it is
+            # allowed to become the active published version.
             self.embedding_index_service.index_document(
                 processed_document,
+            )
+
+            processed_document = (
+                self.ingestion_service.publish_document_version(
+                    processed_document,
+                )
             )
 
         except KnowledgeExtractionError as exc:
@@ -141,21 +154,20 @@ class KnowledgePipelineService:
         """
         Process a URL KnowledgeSource completely.
 
-        The existing ingestion service:
+        Flow:
 
-            - fetches the URL
-            - extracts content
-            - cleans it
-            - creates chunks
-            - creates/publishes the new Document version
+            KnowledgeSource
+                ↓
+            fetch / extract / clean / chunk
+                ↓
+            completed unpublished Document version
+                ↓
+            embedding generation
+                ↓
+            publish successfully indexed version
 
-        This pipeline then:
-
-            - finds that published Document
-            - indexes its active chunks
-
-        Returns:
-            The processed and indexed Document.
+        The new URL version remains inactive until indexing
+        succeeds.
         """
 
         if source is None:
@@ -187,12 +199,14 @@ class KnowledgePipelineService:
                 )
             )
 
+            # ingest_url() now leaves the new version COMPLETED
+            # but unpublished. Find the newest completed version
+            # rather than requiring is_active=True.
             document = (
                 Document.objects
                 .filter(
                     organization=source.organization,
                     source_key=normalized_url,
-                    is_active=True,
                     processing_status=(
                         Document.ProcessingStatus.COMPLETED
                     ),
@@ -206,12 +220,21 @@ class KnowledgePipelineService:
 
             if document is None:
                 raise KnowledgePipelineError(
-                    "URL ingestion completed but no active "
-                    "completed Document version was found."
+                    "URL ingestion completed but no completed "
+                    "Document version was found."
                 )
 
+            # Do not publish before embeddings exist.
             self.embedding_index_service.index_document(
                 document,
+            )
+
+            # Publication is the final step. Only a successfully
+            # indexed version becomes active.
+            document = (
+                self.ingestion_service.publish_document_version(
+                    document,
+                )
             )
 
             return document
@@ -242,6 +265,9 @@ class KnowledgePipelineService:
 
         Existing embeddings are skipped by the underlying
         EmbeddingIndexService when only_missing=True.
+
+        Reindexing does not create or publish a new document
+        version.
         """
 
         if document is None:

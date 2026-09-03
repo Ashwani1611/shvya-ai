@@ -109,6 +109,7 @@ class KnowledgePipelineServiceTests(TestCase):
 
         ingestion_service = Mock()
         embedding_index_service = Mock()
+        ingestion_service.publish_document_version.return_value = document
 
         refreshed_document = (
             Document.objects.get(
@@ -136,6 +137,10 @@ class KnowledgePipelineServiceTests(TestCase):
         self.assertEqual(
             result.pk,
             document.pk,
+        )
+
+        ingestion_service.publish_document_version.assert_called_once_with(
+            refreshed_document,
         )
 
     def test_process_document_requires_document(
@@ -245,6 +250,7 @@ class KnowledgePipelineServiceTests(TestCase):
         ingestion_service._normalize_url.return_value = (
             "https://example.com"
         )
+        ingestion_service.publish_document_version.return_value = document
 
         embedding_index_service = Mock()
 
@@ -268,6 +274,10 @@ class KnowledgePipelineServiceTests(TestCase):
         self.assertEqual(
             result.pk,
             document.pk,
+        )
+
+        ingestion_service.publish_document_version.assert_called_once_with(
+            document,
         )
 
     def test_process_url_uses_latest_version(
@@ -304,6 +314,9 @@ class KnowledgePipelineServiceTests(TestCase):
         ingestion_service._normalize_url.return_value = (
             "https://example.com"
         )
+        ingestion_service.publish_document_version.return_value = (
+            latest_document
+        )
 
         embedding_index_service = Mock()
 
@@ -327,6 +340,10 @@ class KnowledgePipelineServiceTests(TestCase):
         )
 
         embedding_index_service.index_document.assert_called_once_with(
+            latest_document,
+        )
+
+        ingestion_service.publish_document_version.assert_called_once_with(
             latest_document,
         )
 
@@ -396,7 +413,7 @@ class KnowledgePipelineServiceTests(TestCase):
             )
 
         self.assertIn(
-            "no active completed Document",
+            "no completed Document version was found",
             str(
                 context.exception,
             ),
