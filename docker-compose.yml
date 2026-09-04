@@ -81,6 +81,48 @@ services:
     expose:
       - "8000"
 
+
+  ws:
+    build: .
+    restart: unless-stopped
+
+    # Separate from `web` on purpose: gunicorn (WSGI) cannot serve
+    # WebSocket connections, so live chat updates need their own
+    # ASGI process. Kept as its own container rather than
+    # replacing `web`'s entrypoint so a problem here can never
+    # take down normal page loads -- worst case, the frontend
+    # falls back to its periodic-reload safety net.
+    #
+    # Not exposed to the host directly -- nginx proxies /ws/ to
+    # it over the internal compose network only (see
+    # nginx/conf.d/dashboard.conf).
+
+    env_file:
+      - .env
+
+    environment:
+      DB_HOST: db
+      REDIS_URL: redis://redis:6379/0
+
+    depends_on:
+      db:
+        condition: service_healthy
+
+      redis:
+        condition: service_healthy
+
+    command:
+      - daphne
+      - -b
+      - "0.0.0.0"
+      - -p
+      - "8001"
+      - config.asgi:application
+
+    expose:
+      - "8001"
+
+
   worker:
     build: .
     restart: unless-stopped
@@ -130,6 +172,7 @@ services:
 
     depends_on:
       - web
+      - ws
 
 
   certbot:

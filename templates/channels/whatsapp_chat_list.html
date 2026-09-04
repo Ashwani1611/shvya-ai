@@ -73,8 +73,9 @@
 
                         <a
                             href="{% url 'whatsapp-chat-detail' lead_id=lead.id %}{% if selected_account %}?account={{ selected_account.id }}{% endif %}"
-                            class="flex items-center gap-3 border-b border-gray-100 px-4 py-3 transition hover:bg-gray-50
+                            class="conversation-row flex items-center gap-3 border-b border-gray-100 px-4 py-3 transition hover:bg-gray-50
                             {% if active_lead.id == lead.id %} bg-blue-50 {% else %} bg-white {% endif %}"
+                            data-lead-id="{{ lead.id }}"
                         >
 
                             <div class="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full bg-blue-100 text-sm font-semibold text-blue-700">
@@ -89,7 +90,7 @@
                                         {{ lead.name|default:lead.phone }}
                                     </p>
 
-                                    <span class="flex-shrink-0 text-[11px] text-gray-400">
+                                    <span class="last-message-at flex-shrink-0 text-[11px] text-gray-400" data-raw="{{ lead.last_message_at|date:'c' }}">
                                         {{ lead.last_message_at|date:"d M, h:i A" }}
                                     </span>
 
@@ -101,13 +102,11 @@
                                         {{ lead.phone }}
                                     </p>
 
-                                    {% if lead.unread_count > 0 %}
-
-                                        <span class="inline-flex h-5 min-w-5 flex-shrink-0 items-center justify-center rounded-full bg-green-500 px-1.5 text-[11px] font-semibold text-white">
-                                            {{ lead.unread_count }}
-                                        </span>
-
-                                    {% endif %}
+                                    <span
+                                        class="unread-badge inline-flex h-5 min-w-5 flex-shrink-0 items-center justify-center rounded-full bg-green-500 px-1.5 text-[11px] font-semibold text-white {% if not lead.unread_count %}hidden{% endif %}"
+                                    >
+                                        {{ lead.unread_count|default:0 }}
+                                    </span>
 
                                 </div>
 
@@ -216,7 +215,10 @@
 
                     {% for message in chat_messages %}
 
-                        <div class="flex {% if message.direction == 'outbound' %}justify-end{% else %}justify-start{% endif %}">
+                        <div
+                            class="chat-bubble-row flex {% if message.direction == 'outbound' %}justify-end{% else %}justify-start{% endif %}"
+                            data-message-id="{{ message.id }}"
+                        >
 
                             <div
                                 class="max-w-[70%] rounded-lg px-4 py-2.5 text-sm shadow
@@ -229,21 +231,25 @@
 
                                 <p class="whitespace-pre-wrap">{{ message.body }}</p>
 
-                                <p class="mt-1 text-right text-[10px] text-gray-400">
+                                <p class="mt-1 flex items-center justify-end gap-1 text-[10px] text-gray-400">
 
-                                    {{ message.created_at|date:"h:i A" }}
+                                    <span class="msg-time">{{ message.created_at|date:"h:i A" }}</span>
 
                                     {% if message.direction == 'outbound' %}
 
-                                        {% if message.status == 'read' %}
-                                            <i class="ti ti-checks text-blue-500"></i>
-                                        {% elif message.status == 'delivered' %}
-                                            <i class="ti ti-checks"></i>
-                                        {% elif message.status == 'sent' %}
-                                            <i class="ti ti-check"></i>
-                                        {% elif message.status == 'failed' %}
-                                            <i class="ti ti-alert-circle text-red-500"></i>
-                                        {% endif %}
+                                        <span class="msg-ticks">
+                                            {% if message.status == 'read' %}
+                                                <i class="ti ti-checks text-blue-500"></i>
+                                            {% elif message.status == 'delivered' %}
+                                                <i class="ti ti-checks"></i>
+                                            {% elif message.status == 'sent' %}
+                                                <i class="ti ti-check"></i>
+                                            {% elif message.status == 'failed' %}
+                                                <i class="ti ti-alert-circle text-red-500"></i>
+                                            {% else %}
+                                                <i class="ti ti-clock text-gray-300"></i>
+                                            {% endif %}
+                                        </span>
 
                                     {% endif %}
 
@@ -255,7 +261,7 @@
 
                     {% empty %}
 
-                        <div class="flex h-full items-center justify-center text-sm text-gray-500">
+                        <div id="thread-empty-state" class="flex h-full items-center justify-center text-sm text-gray-500">
                             No messages yet.
                         </div>
 
@@ -491,79 +497,348 @@
     </div>
 
 
-    {% if active_lead %}
+    <script>
+    (function () {
+        'use strict';
 
-        <script>
+        // ====================================================
+        // CONFIG -- injected from Django context
+        // ====================================================
+
+        var ACTIVE_LEAD_ID = {% if active_lead %}"{{ active_lead.id }}"{% else %}null{% endif %};
+        var SEND_URL = {% if active_lead %}"{% url 'whatsapp-send-message' lead_id=active_lead.id %}"{% else %}null{% endif %};
+
+        var WS_PATH = ACTIVE_LEAD_ID
+            ? '/ws/whatsapp/' + ACTIVE_LEAD_ID + '/'
+            : '/ws/whatsapp/inbox/';
+
+        var WS_SCHEME = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        var WS_URL = WS_SCHEME + '//' + window.location.host + WS_PATH;
+
+        // ====================================================
+        // HELPERS
+        // ====================================================
+
         function getCookie(name) {
             var match = document.cookie.match('(^|;)\\s*' + name + '\\s*=\\s*([^;]+)');
             return match ? match.pop() : '';
         }
 
-        document.getElementById('composer-form').addEventListener('submit', function (e) {
-            e.preventDefault();
+        function escapeHtml(text) {
+            var div = document.createElement('div');
+            div.textContent = text == null ? '' : text;
+            return div.innerHTML;
+        }
 
-            var input = document.getElementById('message-body');
-            var errorBox = document.getElementById('send-error');
-            var body = input.value.trim();
+        function formatTime(isoString) {
+            try {
+                var d = new Date(isoString);
+                var hours = d.getHours();
+                var minutes = d.getMinutes();
+                var ampm = hours >= 12 ? 'PM' : 'AM';
+                hours = hours % 12 || 12;
+                minutes = minutes < 10 ? '0' + minutes : minutes;
+                return hours + ':' + minutes + ' ' + ampm;
+            } catch (e) {
+                return '';
+            }
+        }
 
-            if (!body) {
+        function ticksHtml(status) {
+            if (status === 'read') {
+                return '<i class="ti ti-checks text-blue-500"></i>';
+            }
+            if (status === 'delivered') {
+                return '<i class="ti ti-checks"></i>';
+            }
+            if (status === 'sent') {
+                return '<i class="ti ti-check"></i>';
+            }
+            if (status === 'failed') {
+                return '<i class="ti ti-alert-circle text-red-500"></i>';
+            }
+            return '<i class="ti ti-clock text-gray-300"></i>';
+        }
+
+        // ====================================================
+        // THREAD -- append / update bubbles (only relevant when
+        // a specific lead's thread is open)
+        // ====================================================
+
+        var thread = document.getElementById('thread');
+
+        function scrollThreadToBottom() {
+            if (thread) {
+                thread.scrollTop = thread.scrollHeight;
+            }
+        }
+
+        function removeEmptyState() {
+            var empty = document.getElementById('thread-empty-state');
+            if (empty) {
+                empty.remove();
+            }
+        }
+
+        function appendOutboundBubble(tempId, body) {
+            if (!thread) {
                 return;
             }
 
-            errorBox.classList.add('hidden');
+            removeEmptyState();
 
-            var formData = new FormData();
-            formData.append('body', body);
+            var row = document.createElement('div');
+            row.className = 'chat-bubble-row flex justify-end';
+            row.setAttribute('data-message-id', tempId);
 
-            fetch('{% url "whatsapp-send-message" lead_id=active_lead.id %}', {
-                method: 'POST',
-                headers: {
-                    'X-CSRFToken': getCookie('csrftoken'),
-                },
-                body: formData,
-            })
-                .then(function (response) {
-                    return response.json().then(function (data) {
-                        if (!response.ok) {
-                            throw new Error(data.error || 'Failed to send message.');
+            row.innerHTML =
+                '<div class="max-w-[70%] rounded-lg px-4 py-2.5 text-sm shadow bg-[#dcf8c6] text-gray-900">' +
+                    '<p class="whitespace-pre-wrap">' + escapeHtml(body) + '</p>' +
+                    '<p class="mt-1 flex items-center justify-end gap-1 text-[10px] text-gray-400">' +
+                        '<span class="msg-time">' + formatTime(new Date().toISOString()) + '</span>' +
+                        '<span class="msg-ticks">' + ticksHtml('queued') + '</span>' +
+                    '</p>' +
+                '</div>';
+
+            thread.appendChild(row);
+            scrollThreadToBottom();
+
+            return row;
+        }
+
+        function appendInboundBubble(message) {
+            if (!thread) {
+                return;
+            }
+
+            // Already rendered (e.g. this tab's own websocket fired
+            // twice, or the message was already in the initial page
+            // render) -- don't duplicate it.
+            if (thread.querySelector('[data-message-id="' + message.id + '"]')) {
+                return;
+            }
+
+            removeEmptyState();
+
+            var row = document.createElement('div');
+            row.className = 'chat-bubble-row flex justify-start';
+            row.setAttribute('data-message-id', message.id);
+
+            row.innerHTML =
+                '<div class="max-w-[70%] rounded-lg px-4 py-2.5 text-sm shadow bg-white text-gray-900">' +
+                    '<p class="whitespace-pre-wrap">' + escapeHtml(message.body) + '</p>' +
+                    '<p class="mt-1 flex items-center justify-end gap-1 text-[10px] text-gray-400">' +
+                        '<span class="msg-time">' + formatTime(message.created_at) + '</span>' +
+                    '</p>' +
+                '</div>';
+
+            thread.appendChild(row);
+            scrollThreadToBottom();
+        }
+
+        function updateBubbleStatus(messageId, status) {
+            var row = thread && thread.querySelector('[data-message-id="' + messageId + '"]');
+            if (!row) {
+                return;
+            }
+            var ticks = row.querySelector('.msg-ticks');
+            if (ticks) {
+                ticks.innerHTML = ticksHtml(status);
+            }
+        }
+
+        // ====================================================
+        // SIDEBAR -- live unread badge / last-message updates
+        // ====================================================
+
+        function updateSidebarRow(payload) {
+            var row = document.querySelector('.conversation-row[data-lead-id="' + payload.lead_id + '"]');
+            if (!row) {
+                // Lead isn't in the currently rendered list (e.g. a
+                // brand new conversation, or filtered out by search) --
+                // nothing to update in place. It'll appear on next
+                // full navigation.
+                return;
+            }
+
+            var badge = row.querySelector('.unread-badge');
+            if (badge) {
+                if (payload.unread_count > 0) {
+                    badge.textContent = payload.unread_count;
+                    badge.classList.remove('hidden');
+                } else {
+                    badge.classList.add('hidden');
+                }
+            }
+
+            var timeEl = row.querySelector('.last-message-at');
+            if (timeEl && payload.last_message_at) {
+                var d = new Date(payload.last_message_at);
+                timeEl.textContent = d.toLocaleDateString(undefined, {day: '2-digit', month: 'short'}) + ', ' + formatTime(payload.last_message_at);
+            }
+        }
+
+        // ====================================================
+        // COMPOSER -- optimistic send (appears instantly, before
+        // any server round trip)
+        // ====================================================
+
+        var composerForm = document.getElementById('composer-form');
+
+        if (composerForm) {
+
+            composerForm.addEventListener('submit', function (e) {
+                e.preventDefault();
+
+                var input = document.getElementById('message-body');
+                var errorBox = document.getElementById('send-error');
+                var body = input.value.trim();
+
+                if (!body) {
+                    return;
+                }
+
+                errorBox.classList.add('hidden');
+                input.value = '';
+
+                var tempId = 'temp-' + Date.now();
+                appendOutboundBubble(tempId, body);
+
+                var formData = new FormData();
+                formData.append('body', body);
+
+                fetch(SEND_URL, {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRFToken': getCookie('csrftoken'),
+                    },
+                    body: formData,
+                })
+                    .then(function (response) {
+                        return response.json().then(function (data) {
+                            if (!response.ok) {
+                                throw new Error(data.error || 'Failed to send message.');
+                            }
+                            return data;
+                        });
+                    })
+                    .then(function (data) {
+                        // Swap the temp id for the real message id so
+                        // future 'status' events (sent/delivered/read)
+                        // from the websocket can find this bubble.
+                        var row = thread && thread.querySelector('[data-message-id="' + tempId + '"]');
+                        if (row && data.id) {
+                            row.setAttribute('data-message-id', data.id);
                         }
-                        return data;
+                        updateBubbleStatus(data.id, data.status);
+                    })
+                    .catch(function (err) {
+                        updateBubbleStatus(tempId, 'failed');
+                        errorBox.textContent = err.message;
+                        errorBox.classList.remove('hidden');
                     });
-                })
-                .then(function () {
-                    input.value = '';
-                    // Reload the thread to show the new outbound message.
-                    // NOTE: this is a simple reload, not real-time push --
-                    // a websocket/polling upgrade can replace this later
-                    // without changing the send endpoint itself.
+            });
+        }
+
+        scrollThreadToBottom();
+
+        // ====================================================
+        // WEBSOCKET -- live push, with reconnect backoff and a
+        // slow-polling fallback if the socket can't stay up.
+        // ====================================================
+
+        var socket = null;
+        var reconnectAttempts = 0;
+        var maxReconnectDelay = 15000;
+        var fallbackPollTimer = null;
+
+        function startFallbackPolling() {
+            // Only kicks in if the websocket genuinely can't connect
+            // (e.g. nginx/ws service down) -- degrades to "a bit
+            // slow" instead of "silently broken".
+            if (fallbackPollTimer) {
+                return;
+            }
+            fallbackPollTimer = setInterval(function () {
+                if (!document.hidden) {
                     window.location.reload();
-                })
-                .catch(function (err) {
-                    errorBox.textContent = err.message;
-                    errorBox.classList.remove('hidden');
-                });
+                }
+            }, 30000);
+        }
+
+        function stopFallbackPolling() {
+            if (fallbackPollTimer) {
+                clearInterval(fallbackPollTimer);
+                fallbackPollTimer = null;
+            }
+        }
+
+        function connectSocket() {
+
+            socket = new WebSocket(WS_URL);
+
+            socket.onopen = function () {
+                reconnectAttempts = 0;
+                stopFallbackPolling();
+            };
+
+            socket.onmessage = function (event) {
+                var data;
+                try {
+                    data = JSON.parse(event.data);
+                } catch (e) {
+                    return;
+                }
+
+                if (data.kind === 'message') {
+                    if (ACTIVE_LEAD_ID && data.message.lead_id === ACTIVE_LEAD_ID) {
+                        appendInboundBubble(data.message);
+                    }
+                } else if (data.kind === 'status') {
+                    updateBubbleStatus(data.message_id, data.status);
+                } else if (data.kind === 'inbox_update') {
+                    updateSidebarRow(data);
+                }
+            };
+
+            socket.onclose = function () {
+                reconnectAttempts += 1;
+
+                // After a handful of failed attempts, stop hammering
+                // and fall back to slow polling instead -- still
+                // keeps trying to reconnect in the background so it
+                // recovers on its own once the socket's available
+                // again.
+                if (reconnectAttempts >= 4) {
+                    startFallbackPolling();
+                }
+
+                var delay = Math.min(1000 * Math.pow(2, reconnectAttempts), maxReconnectDelay);
+
+                setTimeout(function () {
+                    if (!document.hidden) {
+                        connectSocket();
+                    }
+                }, delay);
+            };
+
+            socket.onerror = function () {
+                // onclose fires right after -- reconnect logic lives
+                // there, nothing additional needed here.
+            };
+        }
+
+        connectSocket();
+
+        // Reconnect promptly when the tab becomes visible again,
+        // rather than waiting for the next backoff interval.
+        document.addEventListener('visibilitychange', function () {
+            if (!document.hidden && (!socket || socket.readyState === WebSocket.CLOSED)) {
+                connectSocket();
+            }
         });
 
-        // Auto-scroll to the latest message on load.
-        var thread = document.getElementById('thread');
-        thread.scrollTop = thread.scrollHeight;
-
-        // Poll for new inbound messages so agents don't have to
-        // manually reload to see incoming WhatsApp messages.
-        // Skips the reload while the user is actively typing a reply,
-        // and pauses while the tab is in the background.
-        setInterval(function () {
-            if (document.hidden) {
-                return;
-            }
-            var input = document.getElementById('message-body');
-            if (input && document.activeElement === input && input.value.trim()) {
-                return;
-            }
-            window.location.reload();
-        }, 8000);
-        </script>
-
-    {% endif %}
+    })();
+    </script>
 
 {% endblock %}

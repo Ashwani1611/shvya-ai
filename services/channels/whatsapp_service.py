@@ -33,6 +33,99 @@ class WhatsAppEmbeddedSignupError(Exception):
 
 
 # ============================================================
+# LIVE UPDATES (WebSocket broadcast)
+#
+# Best-effort: if the channel layer isn't configured or Redis is
+# unreachable, these silently no-op rather than failing the
+# message send/receive itself. Losing a live-update push just
+# means a client falls back to its next reload -- losing the
+# actual send/receive would be much worse.
+# ============================================================
+
+
+def _broadcast(group, payload):
+
+    from asgiref.sync import async_to_sync
+    from channels.layers import get_channel_layer
+
+    channel_layer = get_channel_layer()
+
+    if channel_layer is None:
+        return
+
+    try:
+        async_to_sync(channel_layer.group_send)(group, payload)
+
+    except Exception:
+        # Broadcasting is a nice-to-have on top of a successful
+        # send/receive -- never let a Redis hiccup here surface
+        # as a failure on the underlying WhatsApp operation.
+        pass
+
+
+def _serialize_message(message):
+
+    return {
+        "id": str(message.id),
+        "lead_id": str(message.lead_id) if message.lead_id else None,
+        "direction": message.direction,
+        "body": message.body,
+        "status": message.status,
+        "created_at": message.created_at.isoformat(),
+    }
+
+
+def _broadcast_new_message(message):
+
+    if not message.lead_id:
+        return
+
+    _broadcast(
+        f"whatsapp_thread_{message.lead_id}",
+        {
+            "type": "whatsapp.message",
+            "message": _serialize_message(message),
+        },
+    )
+
+    unread_count = (
+        WhatsAppMessage.objects.filter(
+            organization=message.organization,
+            lead_id=message.lead_id,
+            direction=WhatsAppMessage.Direction.INBOUND,
+            is_read=False,
+        ).count()
+    )
+
+    _broadcast(
+        f"whatsapp_inbox_{message.organization_id}",
+        {
+            "type": "whatsapp.inbox_update",
+            "lead_id": str(message.lead_id),
+            "unread_count": unread_count,
+            "last_message_at": message.created_at.isoformat(),
+            "last_message_preview": (message.body or "")[:120],
+        },
+    )
+
+
+def _broadcast_status(message):
+
+    if not message.lead_id:
+        return
+
+    _broadcast(
+        f"whatsapp_thread_{message.lead_id}",
+        {
+            "type": "whatsapp.status",
+            "message_id": str(message.id),
+            "lead_id": str(message.lead_id),
+            "status": message.status,
+        },
+    )
+
+
+# ============================================================
 # ACCOUNT RESOLUTION
 # ============================================================
 #
@@ -417,6 +510,18 @@ def handle_inbound_message(
     )
 
     # --------------------------------------------------------
+    # LIVE UPDATE -- push the new message to any open browser
+    # tabs immediately, instead of waiting for the next poll.
+    # Runs regardless of whether a lead was resolved above (an
+    # unattached message still can't be pushed anywhere useful,
+    # so _broadcast_new_message no-ops on lead_id=None).
+    # --------------------------------------------------------
+
+    transaction.on_commit(
+        lambda message=message: _broadcast_new_message(message)
+    )
+
+    # --------------------------------------------------------
     # EXISTING REPLY-INTENT LOGIC
     # --------------------------------------------------------
 
@@ -528,18 +633,31 @@ def handle_status_update(
     if not mapped_status:
         return None
 
-    updated = (
+    message = (
         WhatsAppMessage.objects
         .filter(
             external_id=external_id,
         )
-        .update(
-            status=mapped_status,
-            raw_payload=raw_payload,
-        )
+        .first()
     )
 
-    return updated
+    if not message:
+        return None
+
+    message.status = mapped_status
+    message.raw_payload = raw_payload
+
+    message.save(
+        update_fields=[
+            "status",
+            "raw_payload",
+            "updated_at",
+        ]
+    )
+
+    _broadcast_status(message)
+
+    return 1
 
 
 # ============================================================
@@ -616,6 +734,8 @@ def send_outbound_message(
             ]
         )
 
+        _broadcast_status(message)
+
         raise WhatsAppSendError(error_text)
 
     client = WhatsAppClient(
@@ -648,6 +768,8 @@ def send_outbound_message(
                 "updated_at",
             ]
         )
+
+        _broadcast_status(message)
 
         raise WhatsAppSendError(
             str(exc)
@@ -684,6 +806,8 @@ def send_outbound_message(
             "updated_at",
         ]
     )
+
+    _broadcast_status(message)
 
     return message
 

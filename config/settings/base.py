@@ -144,6 +144,31 @@ CELERY_TIMEZONE = "Asia/Kolkata"
 
 
 # ---------------------------------------------------------------------------
+# Channels -- WebSocket support (live WhatsApp chat updates).
+#
+# Uses the same Redis instance as Celery/cache, but a separate DB
+# index (1, vs 0 for cache/Celery above) so pub/sub traffic for the
+# channel layer doesn't share keyspace with cache keys or the
+# Celery broker. Override CHANNEL_LAYER_REDIS_URL directly in .env
+# if a fully separate Redis instance is ever needed.
+# ---------------------------------------------------------------------------
+
+CHANNEL_LAYER_REDIS_URL = config(
+    "CHANNEL_LAYER_REDIS_URL",
+    default=REDIS_URL.rsplit("/", 1)[0] + "/1",
+)
+
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels_redis.core.RedisChannelLayer",
+        "CONFIG": {
+            "hosts": [CHANNEL_LAYER_REDIS_URL],
+        },
+    },
+}
+
+
+# ---------------------------------------------------------------------------
 # Applications
 #
 # Grouped by domain to stay readable as the app count grows. Every new
@@ -161,6 +186,7 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
 
     # Third-party
+    "channels",
     "rest_framework",
     "rest_framework_simplejwt",
     "rest_framework_simplejwt.token_blacklist",
