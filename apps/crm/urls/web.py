@@ -6,6 +6,9 @@ from apps.crm.authentication import (
     crm_login_view,
     crm_profile_view,
 )
+
+from apps.crm.views.faq import faq_view
+
 from apps.crm.views.dashboard import (
     dashboard_view,
     lead_create_modal,
@@ -54,6 +57,10 @@ from apps.crm.views.dashboard import (
     global_reminder_delete,
     global_reminder_edit_save,
     global_reminder_snooze,
+)
+
+from apps.crm.views.ai_setup import (
+    ai_setup_view,
 )
 
 
@@ -447,6 +454,18 @@ path(
     "leads/<uuid:lead_id>/conversation-summary/",
     lead_conversation_summary_modal,
     name="crm-lead-conversation-summary-modal",
+),
+
+path(
+    "knowledge-base/ai-setup/",
+    ai_setup_view,
+    name="crm-knowledge-base-ai-setup",
+),
+
+path(
+    "knowledge-base/faq/",
+    faq_view,
+    name="crm-knowledge-base-faq",
 ),
 ]
 
