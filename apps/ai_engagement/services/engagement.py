@@ -97,6 +97,8 @@ INFORMATION PRIORITY
 4. CRM information is supporting context.
 5. Knowledge Base information may be used only when relevant and
    explicitly supplied.
+6. When Knowledge Base content is supplied, treat it as source material
+   for supported facts, not as a reason to invent missing information.
 
 CUSTOMER-FACING RESPONSE
 
@@ -245,6 +247,33 @@ Rules:
                 knowledge_query=knowledge_query,
             )
 
+            # ----------------------------------------------------
+            # PHASE 12 — KNOWLEDGE-AWARE ENGAGEMENT
+            #
+            # When the caller did not provide an explicit knowledge
+            # query, derive one from the most recent conversation.
+            #
+            # The query generation is deterministic so we do not
+            # introduce a second LLM call before the engagement
+            # decision.
+            # ----------------------------------------------------
+
+            if knowledge_query is None:
+                derived_knowledge_query = (
+                    self._build_knowledge_query(
+                        context=context,
+                    )
+                )
+
+                if derived_knowledge_query:
+                    context = self.context_builder.build(
+                        organization=organization,
+                        lead=lead,
+                        knowledge_query=(
+                            derived_knowledge_query
+                        ),
+                    )
+
         self._validate_context_scope(
             organization=organization,
             lead=lead,
@@ -288,6 +317,85 @@ Rules:
         )
 
     # ============================================================
+    # PHASE 12 — KNOWLEDGE RETRIEVAL QUERY
+    # ============================================================
+
+    def _build_knowledge_query(
+        self,
+        *,
+        context: AIContext,
+    ) -> str:
+        """
+        Build a retrieval query from the most recent conversation.
+
+        The retrieval query is intentionally deterministic.
+
+        The latest lead message is the strongest signal, with a small
+        amount of nearby conversation included for continuity.
+
+        This keeps knowledge retrieval to the existing:
+            AIContextBuilder
+                -> EmbeddingService
+                -> KnowledgeRetrievalService
+
+        pipeline without adding a second generative AI call.
+        """
+
+        conversation = (
+            context.conversation
+            or {}
+        )
+
+        messages = conversation.get(
+            "messages",
+            [],
+        )
+
+        if not isinstance(
+            messages,
+            list,
+        ):
+            return ""
+
+        recent_messages: list[str] = []
+
+        for message in messages[-4:]:
+            if not isinstance(
+                message,
+                dict,
+            ):
+                continue
+
+            body = (
+                message.get("body")
+                or ""
+            ).strip()
+
+            if not body:
+                continue
+
+            speaker = (
+                "Lead"
+                if message.get(
+                    "direction"
+                ) == "inbound"
+                else "SHVYA"
+            )
+
+            recent_messages.append(
+                f"{speaker}: {body}"
+            )
+
+        if not recent_messages:
+            return ""
+
+        query = "\n".join(
+            recent_messages
+        ).strip()
+
+        return query[:4000]
+
+    # ============================================================
     # INSTRUCTIONS
     # ============================================================
 
@@ -310,8 +418,10 @@ Rules:
         )
 
         organization_context = (
-            context.organization or {}
+            context.organization
+            or {}
         )
+
         organization_instructions = (
             organization_context.get(
                 "engagement_instructions",
@@ -323,7 +433,10 @@ Rules:
         organization_section = (
             organization_instructions
             if organization_instructions
-            else "No additional organization-specific engagement instructions were supplied."
+            else (
+                "No additional organization-specific "
+                "engagement instructions were supplied."
+            )
         )
 
         return (
@@ -349,9 +462,14 @@ Rules:
     ) -> str:
         """
         Convert the centralized AI context into the provider input.
+
+        Knowledge returned by the existing context builder is passed
+        directly into the engagement model.
         """
 
-        context_data = context.as_dict()
+        context_data = (
+            context.as_dict()
+        )
 
         return json.dumps(
             {

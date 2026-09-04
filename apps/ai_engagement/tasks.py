@@ -5,6 +5,10 @@ import logging
 from celery import shared_task
 from django.db import transaction
 
+from datetime import timedelta
+
+from django.utils import timezone
+
 from apps.ai_engagement.services.ai_provider import (
     AIProviderTransientError,
 )
@@ -561,30 +565,196 @@ def generate_lead_qualification(
 # ============================================================
 
 
-@shared_task(
-    bind=True,
-    max_retries=3,
-    default_retry_delay=30,
-    name="ai.process_whatsapp_engagement",
-)
-def process_whatsapp_engagement(
-    self,
-    lead_id: str,
-    account_id: str,
+def _latest_whatsapp_message(*, lead):
+    """Return the latest WhatsApp message for this Lead."""
+    return (
+        lead.whatsapp_messages
+        .filter(
+            organization=lead.organization,
+        )
+        .order_by(
+            "-created_at",
+            "-id",
+        )
+        .first()
+    )
+
+
+def _has_existing_ai_response(
+    *,
+    lead,
+    inbound_message,
+    body,
 ):
     """
-    Process one inbound WhatsApp Lead through AI Engagement.
+    Detect an already-created AI response for the source inbound
+    message.
 
-    Responsibilities:
-        - resolve Lead and WhatsAppAccount
-        - enforce organization / AI gates
-        - ask EngagementService for a decision
-        - execute validated CRM action requests
-        - queue a customer-facing WhatsApp response
+    Primary protection:
+        raw_payload["shvya_ai"]["source_inbound_message_id"]
 
-    This task does not call Meta directly.
+    Fallback protection:
+        same outbound body created after the inbound message.
+    """
+    from apps.channels.models import WhatsAppMessage
+
+    source_id = str(
+        inbound_message.id
+    )
+
+    if (
+        WhatsAppMessage.objects
+        .filter(
+            organization=lead.organization,
+            lead=lead,
+            direction=(
+                WhatsAppMessage.Direction.OUTBOUND
+            ),
+            raw_payload__shvya_ai__source_inbound_message_id=(
+                source_id
+            ),
+        )
+        .exists()
+    ):
+        return True
+
+    return (
+        WhatsAppMessage.objects
+        .filter(
+            organization=lead.organization,
+            lead=lead,
+            direction=(
+                WhatsAppMessage.Direction.OUTBOUND
+            ),
+            body=body,
+            created_at__gte=inbound_message.created_at,
+        )
+        .exists()
+    )
+
+def _whatsapp_send_eligible(
+    *,
+    lead,
+    inbound_message,
+    account,
+):
+    """
+    Deterministic eligibility check for an AI-generated free-form
+    WhatsApp response.
+
+    AI does not decide whether the transport is technically allowed.
+
+    Requirements:
+        - Lead must have a phone number.
+        - WhatsApp account must exist.
+        - Account must belong to the Lead's organization.
+        - Account must be active.
+        - Account must be connected.
+        - Latest source message must be inbound.
+        - Source inbound message must still be inside the 24-hour
+          customer-service window.
+
+    This function does not send anything.
     """
 
+    from apps.channels.models import WhatsAppAccount
+
+    if not (
+        lead.phone
+        or ""
+    ).strip():
+        return (
+            False,
+            "lead_has_no_phone_number",
+        )
+
+    if account is None:
+        return (
+            False,
+            "no_whatsapp_account",
+        )
+
+    if (
+        account.organization_id
+        != lead.organization_id
+    ):
+        return (
+            False,
+            "organization_mismatch",
+        )
+
+    if not account.is_active:
+        return (
+            False,
+            "whatsapp_account_inactive",
+        )
+
+    if (
+        account.status
+        != WhatsAppAccount.Status.CONNECTED
+    ):
+        return (
+            False,
+            "whatsapp_account_not_connected",
+        )
+
+    if (
+        inbound_message is None
+        or inbound_message.direction
+        != inbound_message.Direction.INBOUND
+    ):
+        return (
+            False,
+            "source_message_not_inbound",
+        )
+
+    if (
+        inbound_message.created_at
+        is None
+    ):
+        return (
+            False,
+            "source_message_missing_timestamp",
+        )
+
+    expires_at = (
+        inbound_message.created_at
+        + timedelta(
+            hours=24,
+        )
+    )
+
+    if timezone.now() >= expires_at:
+        return (
+            False,
+            "whatsapp_24h_window_expired",
+        )
+
+    return (
+        True,
+        "eligible",
+    )
+
+def _execute_ai_engagement_response(
+    *,
+    task,
+    lead_id: str,
+    account_id: str | None = None,
+):
+    """
+    Shared Phase-13 execution path.
+
+    The canonical task receives only Lead ID.
+
+    The optional account_id exists only for compatibility with the
+    existing process_whatsapp_engagement caller so we do not break
+    the current inbound WhatsApp trigger during this phase.
+    """
+
+    from apps.ai_engagement.services.ai_permissions import (
+        AIPermissionError,
+        AIPermissionService,
+    )
     from apps.ai_engagement.services.crm_executor import (
         CRMActionExecutionError,
         CRMActionExecutor,
@@ -593,14 +763,17 @@ def process_whatsapp_engagement(
         EngagementError,
         EngagementService,
     )
-    from apps.channels.models import WhatsAppAccount
-    from apps.channels.tasks import send_whatsapp_message_task
-    from apps.crm.models import Lead
-    from apps.ai_engagement.services.org_info import (
-        OrgInfoService,
+    from apps.channels.models import (
+        WhatsAppAccount,
+        WhatsAppMessage,
     )
+    from apps.channels.tasks import (
+        send_whatsapp_message_task,
+    )
+    from apps.crm.models import Lead
     from services.channels.whatsapp_service import (
         queue_outbound_message,
+        resolve_account_for_lead,
     )
 
     # --------------------------------------------------------
@@ -615,172 +788,717 @@ def process_whatsapp_engagement(
                 "pipeline",
                 "stage",
             )
-            .get(id=lead_id)
+            .get(
+                id=lead_id,
+            )
         )
+
     except Lead.DoesNotExist:
         logger.warning(
-            "process_whatsapp_engagement: "
+            "generate_ai_engagement_response: "
             "lead %s not found",
             lead_id,
         )
+
         return {
             "status": "skipped",
             "reason": "lead_not_found",
-            "lead_id": str(lead_id),
-        }
-
-    # --------------------------------------------------------
-    # RESOLVE ACCOUNT
-    # --------------------------------------------------------
-
-    try:
-        account = (
-            WhatsAppAccount.objects
-            .select_related("organization")
-            .get(id=account_id)
-        )
-    except WhatsAppAccount.DoesNotExist:
-        logger.warning(
-            "process_whatsapp_engagement: "
-            "account %s not found",
-            account_id,
-        )
-        return {
-            "status": "skipped",
-            "reason": "account_not_found",
-            "account_id": str(account_id),
-        }
-
-    # --------------------------------------------------------
-    # ORGANIZATION ISOLATION
-    # --------------------------------------------------------
-
-    if account.organization_id != lead.organization_id:
-        logger.error(
-            "process_whatsapp_engagement: "
-            "organization mismatch for lead %s and account %s",
-            lead_id,
-            account_id,
-        )
-        return {
-            "status": "skipped",
-            "reason": "organization_mismatch",
-            "lead_id": str(lead_id),
-            "account_id": str(account_id),
+            "lead_id": str(
+                lead_id
+            ),
         }
 
     organization = lead.organization
 
     # --------------------------------------------------------
-    # AI GATES
-    # --------------------------------------------------------
-
-    org_info = OrgInfoService().get_or_create(
-        organization=organization,
-    )
-
-    if not org_info.ai_enabled:
-        return {
-            "status": "skipped",
-            "reason": "organization_ai_disabled",
-            "lead_id": str(lead_id),
-        }
-
-    if not lead.ai_enabled:
-        return {
-            "status": "skipped",
-            "reason": "lead_ai_disabled",
-            "lead_id": str(lead_id),
-        }
-
-    if lead.stage_id and not lead.stage.ai_on:
-        return {
-            "status": "skipped",
-            "reason": "stage_ai_disabled",
-            "lead_id": str(lead_id),
-            "stage_id": str(lead.stage_id),
-        }
-
-    # --------------------------------------------------------
-    # AI ENGAGEMENT DECISION
+    # INITIAL AI PERMISSION CHECK
     # --------------------------------------------------------
 
     try:
-        decision = EngagementService().engage(
-            organization=organization,
-            lead=lead,
+        permission = (
+            AIPermissionService().evaluate(
+                organization=organization,
+                lead=lead,
+            )
         )
-    except EngagementError as exc:
+
+    except AIPermissionError as exc:
         logger.error(
-            "process_whatsapp_engagement: "
-            "engagement failed for lead %s: %s",
+            "generate_ai_engagement_response: "
+            "permission evaluation failed for lead %s: %s",
             lead_id,
             exc,
         )
+
         return {
             "status": "failed",
-            "reason": "engagement_failed",
-            "lead_id": str(lead_id),
-            "error": str(exc),
+            "reason": (
+                "ai_permission_evaluation_failed"
+            ),
+            "lead_id": str(
+                lead_id
+            ),
+            "error": str(
+                exc
+            ),
+        }
+
+    if not permission.allowed:
+        return {
+            "status": "skipped",
+            "reason": permission.reason,
+            "lead_id": str(
+                lead_id
+            ),
         }
 
     # --------------------------------------------------------
-    # EXECUTE CRM REQUESTS
+    # RESOLVE WHATSAPP ACCOUNT
+    # --------------------------------------------------------
+
+    if account_id is not None:
+
+        try:
+            account = (
+                WhatsAppAccount.objects
+                .select_related(
+                    "organization",
+                )
+                .get(
+                    id=account_id,
+                )
+            )
+
+        except WhatsAppAccount.DoesNotExist:
+
+            return {
+                "status": "skipped",
+                "reason": "account_not_found",
+                "account_id": str(
+                    account_id
+                ),
+                "lead_id": str(
+                    lead_id
+                ),
+            }
+
+        if (
+            account.organization_id
+            != lead.organization_id
+        ):
+            return {
+                "status": "skipped",
+                "reason": "organization_mismatch",
+                "lead_id": str(
+                    lead_id
+                ),
+                "account_id": str(
+                    account_id
+                ),
+            }
+
+        if (
+            not account.is_active
+            or account.status
+            != WhatsAppAccount.Status.CONNECTED
+        ):
+            return {
+                "status": "skipped",
+                "reason": "account_not_connected",
+                "lead_id": str(
+                    lead_id
+                ),
+                "account_id": str(
+                    account_id
+                ),
+            }
+
+    else:
+
+        account = resolve_account_for_lead(
+            organization=organization,
+            lead=lead,
+        )
+
+        if account is None:
+            return {
+                "status": "skipped",
+                "reason": (
+                    "no_connected_whatsapp_account"
+                ),
+                "lead_id": str(
+                    lead_id
+                ),
+            }
+
+    # --------------------------------------------------------
+    # RESOLVE SOURCE INBOUND MESSAGE
+    # --------------------------------------------------------
+
+    latest_message = _latest_whatsapp_message(
+        lead=lead,
+    )
+
+    if latest_message is None:
+        return {
+            "status": "skipped",
+            "reason": "no_whatsapp_messages",
+            "lead_id": str(
+                lead_id
+            ),
+        }
+
+    if (
+        latest_message.direction
+        != WhatsAppMessage.Direction.INBOUND
+    ):
+        return {
+            "status": "skipped",
+            "reason": (
+                "latest_message_not_inbound"
+            ),
+            "lead_id": str(
+                lead_id
+            ),
+            "latest_message_id": str(
+                latest_message.id
+            ),
+        }
+
+    source_inbound_message_id = (
+        latest_message.id
+    )
+
+    # --------------------------------------------------------
+    # AI ENGAGEMENT GENERATION
     # --------------------------------------------------------
 
     try:
-        with transaction.atomic():
-            crm_result = CRMActionExecutor().execute(
+
+        decision = (
+            EngagementService().engage(
                 organization=organization,
                 lead=lead,
-                actions=decision.crm_actions,
+            )
+        )
+
+    except EngagementError as exc:
+
+        provider_error = exc.__cause__
+
+        if isinstance(
+            provider_error,
+            AIProviderTransientError,
+        ):
+            logger.warning(
+                "generate_ai_engagement_response: "
+                "transient provider failure for lead %s: %s",
+                lead_id,
+                exc,
             )
 
-            if not decision.should_engage:
+            raise task.retry(
+                exc=provider_error,
+                countdown=60,
+            )
+
+        logger.error(
+            "generate_ai_engagement_response: "
+            "permanent engagement failure for lead %s: %s",
+            lead_id,
+            exc,
+        )
+
+        return {
+            "status": "failed",
+            "reason": (
+                "engagement_generation_failed"
+            ),
+            "lead_id": str(
+                lead_id
+            ),
+            "error": str(
+                exc
+            ),
+        }
+
+    except AIProviderTransientError as exc:
+
+        raise task.retry(
+            exc=exc,
+            countdown=60,
+        )
+
+    except Exception as exc:
+
+        logger.exception(
+            "generate_ai_engagement_response: "
+            "unexpected generation failure for lead %s",
+            lead_id,
+        )
+
+        raise task.retry(
+            exc=exc,
+        )
+
+    # --------------------------------------------------------
+    # RE-CHECK LEAD STATE AFTER AI GENERATION
+    # --------------------------------------------------------
+
+    lead.refresh_from_db(
+        fields=[
+            "organization",
+            "pipeline",
+            "stage",
+            "ai_enabled",
+        ],
+    )
+
+    try:
+
+        permission = (
+            AIPermissionService().evaluate(
+                organization=organization,
+                lead=lead,
+            )
+        )
+
+    except AIPermissionError as exc:
+
+        logger.error(
+            "generate_ai_engagement_response: "
+            "permission re-check failed for lead %s: %s",
+            lead_id,
+            exc,
+        )
+
+        return {
+            "status": "failed",
+            "reason": (
+                "ai_permission_recheck_failed"
+            ),
+            "lead_id": str(
+                lead_id
+            ),
+            "error": str(
+                exc
+            ),
+        }
+
+    if not permission.allowed:
+        return {
+            "status": "skipped",
+            "reason": permission.reason,
+            "lead_id": str(
+                lead_id
+            ),
+        }
+
+    # --------------------------------------------------------
+    # RE-CHECK CONVERSATION FRESHNESS
+    # --------------------------------------------------------
+
+    latest_after_generation = (
+        _latest_whatsapp_message(
+            lead=lead,
+        )
+    )
+
+    if (
+        latest_after_generation is None
+        or latest_after_generation.id
+        != source_inbound_message_id
+        or latest_after_generation.direction
+        != WhatsAppMessage.Direction.INBOUND
+    ):
+        return {
+            "status": "skipped",
+            "reason": (
+                "conversation_changed_during_generation"
+            ),
+            "lead_id": str(
+                lead_id
+            ),
+            "source_message_id": str(
+                source_inbound_message_id
+            ),
+        }
+
+    # --------------------------------------------------------
+    # NO CUSTOMER-FACING ENGAGEMENT
+    # --------------------------------------------------------
+
+    if not decision.should_engage:
+
+        try:
+
+            with transaction.atomic():
+
+                lead = (
+                    Lead.objects
+                    .select_for_update()
+                    .get(
+                        id=lead_id,
+                    )
+                )
+
+                permission = (
+                    AIPermissionService().evaluate(
+                        organization=organization,
+                        lead=lead,
+                    )
+                )
+
+                if not permission.allowed:
+                    return {
+                        "status": "skipped",
+                        "reason": (
+                            permission.reason
+                        ),
+                        "lead_id": str(
+                            lead_id
+                        ),
+                    }
+
+                latest_final = (
+                    _latest_whatsapp_message(
+                        lead=lead,
+                    )
+                )
+
+                if (
+                    latest_final is None
+                    or latest_final.id
+                    != source_inbound_message_id
+                    or latest_final.direction
+                    != WhatsAppMessage.Direction.INBOUND
+                ):
+                    return {
+                        "status": "skipped",
+                        "reason": (
+                            "conversation_changed_before_finalize"
+                        ),
+                        "lead_id": str(
+                            lead_id
+                        ),
+                    }
+
+                crm_result = (
+                    CRMActionExecutor().execute(
+                        organization=organization,
+                        lead=lead,
+                        actions=decision.crm_actions,
+                    )
+                )
+
+        except CRMActionExecutionError as exc:
+
+            logger.error(
+                "generate_ai_engagement_response: "
+                "CRM action failed for lead %s: %s",
+                lead_id,
+                exc,
+            )
+
+            return {
+                "status": "failed",
+                "reason": "crm_action_failed",
+                "lead_id": str(
+                    lead_id
+                ),
+                "error": str(
+                    exc
+                ),
+            }
+
+        return {
+            "status": "completed",
+            "reason": "no_engagement",
+            "lead_id": str(
+                lead_id
+            ),
+            "crm": crm_result,
+        }
+
+    # --------------------------------------------------------
+    # CUSTOMER-FACING MESSAGE VALIDATION
+    # --------------------------------------------------------
+
+    body = (
+        decision.message.strip()
+    )
+
+    if not body:
+        return {
+            "status": "failed",
+            "reason": (
+                "empty_engagement_message"
+            ),
+            "lead_id": str(
+                lead_id
+            ),
+        }
+
+    # --------------------------------------------------------
+    # FINAL ATOMIC CHECK + CRM + QUEUE
+    # --------------------------------------------------------
+
+    try:
+
+        with transaction.atomic():
+
+            lead = (
+                Lead.objects
+                .select_for_update()
+                .select_related(
+                    "organization",
+                    "pipeline",
+                    "stage",
+                )
+                .get(
+                    id=lead_id,
+                )
+            )
+
+            latest_final = (
+                _latest_whatsapp_message(
+                    lead=lead,
+                )
+            )
+
+            if (
+                latest_final is None
+                or latest_final.id
+                != source_inbound_message_id
+                or latest_final.direction
+                != WhatsAppMessage.Direction.INBOUND
+            ):
                 return {
-                    "status": "completed",
-                    "reason": "no_engagement",
-                    "lead_id": str(lead_id),
-                    "crm": crm_result,
+                    "status": "skipped",
+                    "reason": (
+                        "conversation_changed_before_send"
+                    ),
+                    "lead_id": str(
+                        lead_id
+                    ),
                 }
 
-            outbound_message = queue_outbound_message(
-                organization=organization,
-                account=account,
-                to_number=lead.phone,
-                body=decision.message,
+            permission = (
+                AIPermissionService().evaluate(
+                    organization=organization,
+                    lead=lead,
+                )
+            )
+
+            if not permission.allowed:
+                return {
+                    "status": "skipped",
+                    "reason": permission.reason,
+                    "lead_id": str(
+                        lead_id
+                    ),
+                }
+
+            if _has_existing_ai_response(
                 lead=lead,
+                inbound_message=latest_final,
+                body=body,
+            ):
+                return {
+                    "status": "skipped",
+                    "reason": (
+                        "duplicate_ai_response"
+                    ),
+                    "lead_id": str(
+                        lead_id
+                    ),
+                    "source_message_id": str(
+                        source_inbound_message_id
+                    ),
+                }
+            send_eligible, eligibility_reason = (
+                _whatsapp_send_eligible(
+                    lead=lead,
+                    inbound_message=latest_final,
+                    account=account,
+                )
+            )
+
+            if not send_eligible:
+                logger.info(
+                    "generate_ai_engagement_response: "
+                    "WhatsApp send skipped for lead %s: %s",
+                    lead_id,
+                    eligibility_reason,
+                )
+
+                return {
+                    "status": "skipped",
+                    "reason": eligibility_reason,
+                    "lead_id": str(
+                        lead_id
+                    ),
+                    "source_message_id": str(
+                        source_inbound_message_id
+                    ),
+                }
+
+            crm_result = (
+                CRMActionExecutor().execute(
+                    organization=organization,
+                    lead=lead,
+                    actions=decision.crm_actions,
+                )
+            )
+
+            outbound_message = (
+                queue_outbound_message(
+                    organization=organization,
+                    account=account,
+                    to_number=lead.phone,
+                    body=body,
+                    lead=lead,
+                )
+            )
+
+            outbound_message.raw_payload = {
+                "shvya_ai": {
+                    "source_inbound_message_id": (
+                        str(
+                            source_inbound_message_id
+                        )
+                    ),
+                    "model": decision.model,
+                    "reason": decision.reason,
+                }
+            }
+
+            outbound_message.save(
+                update_fields=[
+                    "raw_payload",
+                    "updated_at",
+                ],
             )
 
             transaction.on_commit(
                 lambda message_id=outbound_message.id: (
                     send_whatsapp_message_task.delay(
-                        str(message_id)
+                        str(
+                            message_id
+                        )
                     )
                 )
             )
 
-    except CRMActionExecutionError as exc:
+    except (
+        CRMActionExecutionError,
+        AIPermissionError,
+    ) as exc:
+
         logger.error(
-            "process_whatsapp_engagement: "
-            "CRM execution failed for lead %s: %s",
+            "generate_ai_engagement_response: "
+            "finalization failed for lead %s: %s",
             lead_id,
             exc,
         )
+
         return {
             "status": "failed",
-            "reason": "crm_action_failed",
-            "lead_id": str(lead_id),
-            "error": str(exc),
+            "reason": "finalization_failed",
+            "lead_id": str(
+                lead_id
+            ),
+            "error": str(
+                exc
+            ),
         }
+
+    except Exception as exc:
+
+        logger.exception(
+            "generate_ai_engagement_response: "
+            "unexpected finalization failure for lead %s",
+            lead_id,
+        )
+
+        raise task.retry(
+            exc=exc,
+        )
 
     return {
         "status": "completed",
-        "lead_id": str(lead_id),
+        "lead_id": str(
+            lead_id
+        ),
         "engaged": True,
         "crm": crm_result,
-        "message_id": str(outbound_message.id),
+        "message_id": str(
+            outbound_message.id
+        ),
+        "source_message_id": str(
+            source_inbound_message_id
+        ),
+        "model": decision.model,
     }
+
+
+# ============================================================
+# CANONICAL AI ENGAGEMENT TASK
+# ============================================================
+
+
+@shared_task(
+    bind=True,
+    max_retries=3,
+    default_retry_delay=30,
+    name="ai.generate_ai_engagement_response",
+)
+def generate_ai_engagement_response(
+    self,
+    lead_id: str,
+):
+    """
+    Canonical production AI Engagement worker.
+
+    Celery payload contains Lead ID only.
+    """
+    return _execute_ai_engagement_response(
+        task=self,
+        lead_id=lead_id,
+    )
+
+
+# ============================================================
+# LEGACY COMPATIBILITY ENTRY POINT
+# ============================================================
+
+
+@shared_task(
+    bind=True,
+    max_retries=3,
+    default_retry_delay=30,
+    name="ai.process_whatsapp_engagement",
+)
+def process_whatsapp_engagement(
+    self,
+    lead_id: str,
+    account_id: str,
+):
+    """
+    Compatibility entry point for the existing WhatsApp trigger.
+
+    New AI Engagement callers should use:
+        generate_ai_engagement_response(lead_id)
+
+    This wrapper intentionally shares the same execution path so
+    AI permission, freshness, CRM execution, duplicate protection,
+    and WhatsApp queueing do not exist in two different places.
+    """
+    return _execute_ai_engagement_response(
+        task=self,
+        lead_id=lead_id,
+        account_id=account_id,
+    )
 
 # ============================================================
 # KNOWLEDGE INGESTION — UPLOADED DOCUMENT

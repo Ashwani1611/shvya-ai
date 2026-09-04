@@ -13,6 +13,10 @@ from apps.ai_engagement.views.faq import (
 )
 from apps.ai_engagement.views.org_info import OrgInfoView
 
+from apps.ai_engagement.views.playground import (
+    PlaygroundAPIView,
+)
+
 urlpatterns = [
     path(
         "org-info/",
@@ -53,5 +57,10 @@ urlpatterns = [
         "sources/<int:source_id>/",
         KnowledgeSourceDetailAPIView.as_view(),
         name="ai-knowledge-source-detail",
+    ),
+    path(
+        "playground/",
+        PlaygroundAPIView.as_view(),
+        name="ai-playground",
     ),
 ]

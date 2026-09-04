@@ -285,22 +285,25 @@ def _queue_internal_conversation_summary(
 def _queue_whatsapp_engagement(
     *,
     lead_id,
-    account_id,
 ):
     """
-    Queue AI engagement for the Lead after the inbound-message
-    transaction commits.
+    Queue canonical AI Engagement execution for the Lead after the
+    inbound WhatsApp transaction commits.
 
-    The AI task is imported locally so the WhatsApp service does
-    not create a module-level dependency on the AI task module.
+    The AI task receives only the Lead ID and resolves the current
+    organization, stage, lead state, WhatsApp account, and latest
+    conversation inside the worker.
+
+    This keeps the queue payload minimal and prevents stale account
+    state from being captured in the webhook transaction.
     """
+
     from apps.ai_engagement.tasks import (
-        process_whatsapp_engagement,
+        generate_ai_engagement_response,
     )
 
-    process_whatsapp_engagement.delay(
+    generate_ai_engagement_response.delay(
         str(lead_id),
-        str(account_id),
     )
 
 # ============================================================
@@ -328,9 +331,13 @@ def handle_inbound_message(
     so a repeat call with the same wamid must be a no-op, not a
     duplicate row.
 
-    After the inbound-message transaction commits successfully,
-    an asynchronous Celery task is queued to refresh the Lead's
-    internal conversation summary.
+    After the inbound-message transaction commits successfully:
+
+        1. Refresh the internal conversation summary.
+        2. Queue the canonical AI Engagement task using Lead ID only.
+
+    The AI worker resolves the current WhatsApp account and all
+    other required state itself.
     """
 
     # --------------------------------------------------------
@@ -428,22 +435,16 @@ def handle_inbound_message(
             body=body,
         )
 
-        # ----------------------------------------------------
-        # INTERNAL CONVERSATION SUMMARY
-        #
-        # Queue the AI task only after the database transaction
-        # successfully commits.
-        #
-        # This guarantees the worker can see the newly-created
-        # WhatsAppMessage in PostgreSQL.
-        # ----------------------------------------------------
-
         lead_id = str(
             lead.id
         )
-        account_id = str(
-            account.id
-        )
+
+        # ----------------------------------------------------
+        # INTERNAL CONVERSATION SUMMARY
+        #
+        # Queue only after the inbound transaction commits so
+        # the worker can see the newly-created WhatsAppMessage.
+        # ----------------------------------------------------
 
         transaction.on_commit(
             lambda lead_id=lead_id: (
@@ -452,15 +453,26 @@ def handle_inbound_message(
                 )
             )
         )
+
+        # ----------------------------------------------------
+        # AI ENGAGEMENT
+        #
+        # Phase 15:
+        # Canonical task receives Lead ID only.
+        #
+        # Do NOT pass account_id here.
+        #
+        # The AI worker resolves the current WhatsApp account
+        # itself using the existing account-resolution logic.
+        # ----------------------------------------------------
+
         transaction.on_commit(
-            lambda lead_id=lead_id, account_id=account_id: (
+            lambda lead_id=lead_id: (
                 _queue_whatsapp_engagement(
                     lead_id=lead_id,
-                    account_id=account_id,
                 )
             )
         )
-    
 
     return message
 
@@ -523,9 +535,10 @@ def handle_status_update(
     Update an outbound message's delivery status from a Meta
     status-callback webhook event (sent/delivered/read/failed).
 
-    Silently no-ops if we don't have a matching message -- Meta
-    may report statuses for messages sent before this system
-    existed, or for read receipts on messages we didn't log.
+    Existing SHVYA metadata in raw_payload is preserved so AI
+    provenance remains available after delivery/read/failed events.
+
+    Silently no-ops if we don't have a matching message.
     """
     status_map = {
         "sent": WhatsAppMessage.Status.SENT,
@@ -541,18 +554,63 @@ def handle_status_update(
     if not mapped_status:
         return None
 
-    updated = (
-        WhatsAppMessage.objects
-        .filter(
+    message = (
+        WhatsAppMessage.objects.filter(
             external_id=external_id,
         )
-        .update(
-            status=mapped_status,
-            raw_payload=raw_payload,
+        .first()
+    )
+
+    if not message:
+        return 0
+
+    existing_payload = (
+        message.raw_payload
+        if isinstance(
+            message.raw_payload,
+            dict,
+        )
+        else {}
+    )
+
+    status_payload = (
+        raw_payload
+        if isinstance(
+            raw_payload,
+            dict,
+        )
+        else {}
+    )
+
+    final_payload = dict(
+        status_payload
+    )
+
+    ai_metadata = (
+        existing_payload.get(
+            "shvya_ai"
         )
     )
 
-    return updated
+    if ai_metadata is not None:
+
+        final_payload["shvya_ai"] = (
+            ai_metadata
+        )
+
+    message.status = mapped_status
+
+    message.raw_payload = final_payload
+
+    message.save(
+        update_fields=[
+            "status",
+            "raw_payload",
+            "updated_at",
+        ]
+    )
+
+    return 1
 
 
 # ============================================================
@@ -592,7 +650,11 @@ def send_outbound_message(
 ):
     """
     Actually call Meta's API for an already-queued WhatsAppMessage.
+
     Called from inside the Celery task, not directly from a view.
+
+    Existing SHVYA metadata stored in raw_payload is preserved when
+    Meta's response is recorded.
     """
     account = message.account
 
@@ -643,13 +705,38 @@ def send_outbound_message(
             "id"
         )
 
+    existing_payload = (
+        message.raw_payload
+        if isinstance(
+            message.raw_payload,
+            dict,
+        )
+        else {}
+    )
+
+    ai_metadata = (
+        existing_payload.get(
+            "shvya_ai"
+        )
+    )
+
+    final_payload = dict(
+        response
+    )
+
+    if ai_metadata is not None:
+
+        final_payload["shvya_ai"] = (
+            ai_metadata
+        )
+
     message.status = (
         WhatsAppMessage.Status.SENT
     )
 
     message.external_id = external_id
 
-    message.raw_payload = response
+    message.raw_payload = final_payload
 
     message.save(
         update_fields=[
@@ -661,7 +748,6 @@ def send_outbound_message(
     )
 
     return message
-
 
 # ============================================================
 # CONVERSATIONS (Chats inbox)
