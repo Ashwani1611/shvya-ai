@@ -186,7 +186,20 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
 
     # Third-party
-    "channels",
+    #
+    # NOTE: deliberately NOT listing "channels" (the django-channels
+    # package) here, even though it's installed and used throughout
+    # this project (config/asgi.py, apps/channels/consumers.py,
+    # services/channels/whatsapp_service.py). This project's own
+    # app at apps/channels/ already registers under the Django app
+    # label "channels" (auto-derived from its path) -- adding the
+    # third-party package here too collides on that exact label and
+    # Django refuses to start ("Application labels aren't unique").
+    # The channels package's own INSTALLED_APPS entry is only
+    # needed for things this project doesn't use (e.g. the
+    # `runworker` management command) -- ASGI routing, consumers,
+    # the channel layer, and database_sync_to_async all work fine
+    # as plain imports without it.
     "rest_framework",
     "rest_framework_simplejwt",
     "rest_framework_simplejwt.token_blacklist",
