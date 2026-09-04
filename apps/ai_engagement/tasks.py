@@ -735,6 +735,32 @@ def _whatsapp_send_eligible(
         "eligible",
     )
 
+def _has_existing_ai_response(
+    *,
+    organization,
+    lead,
+    source_inbound_message_id,
+):
+    """
+    Return True when an AI-generated outbound WhatsApp message
+    already exists for the given inbound WhatsApp message.
+    """
+    if not source_inbound_message_id:
+        return False
+
+    return (
+        WhatsAppMessage.objects
+        .filter(
+            organization=organization,
+            lead=lead,
+            direction=WhatsAppMessage.Direction.OUTBOUND,
+            raw_payload__shvya_ai__source_inbound_message_id=(
+                str(source_inbound_message_id)
+            ),
+        )
+        .exists()
+    )
+
 def _execute_ai_engagement_response(
     *,
     task,
@@ -1299,6 +1325,10 @@ def _execute_ai_engagement_response(
                     ),
                 }
 
+            # ------------------------------------------------
+            # 3B — DUPLICATE AI RESPONSE PROTECTION
+            # ------------------------------------------------
+
             if _has_existing_ai_response(
                 lead=lead,
                 inbound_message=latest_final,
@@ -1316,6 +1346,11 @@ def _execute_ai_engagement_response(
                         source_inbound_message_id
                     ),
                 }
+
+            # ------------------------------------------------
+            # WHATSAPP SEND ELIGIBILITY
+            # ------------------------------------------------
+
             send_eligible, eligibility_reason = (
                 _whatsapp_send_eligible(
                     lead=lead,
@@ -1440,8 +1475,7 @@ def _execute_ai_engagement_response(
         ),
         "model": decision.model,
     }
-
-
+    
 # ============================================================
 # CANONICAL AI ENGAGEMENT TASK
 # ============================================================

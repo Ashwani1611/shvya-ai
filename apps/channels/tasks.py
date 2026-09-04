@@ -13,6 +13,7 @@ moment that wiring lands.
 import logging
 
 from celery import chord, group, shared_task
+from django.db import transaction
 
 logger = logging.getLogger(__name__)
 
@@ -31,10 +32,15 @@ def send_whatsapp_message_task(self, message_id):
     """
     Send an already-queued WhatsAppMessage via Meta's API.
 
-    Retries on transient failures (network errors, Meta 5xx).
-    Does NOT retry on WhatsAppSendError from a 4xx (bad token,
-    invalid number, etc.) -- that's a permanent failure, already
-    recorded on the message by the service layer.
+    Idempotency:
+        - SENT, DELIVERED, and READ messages are never sent again.
+        - Only QUEUED messages are eligible to enter the send path.
+        - select_for_update() prevents concurrent workers from
+          processing the same WhatsAppMessage row at the same time.
+
+    Retries:
+        - Network failures and Meta 5xx responses are retried.
+        - Meta 4xx responses are treated as permanent failures.
     """
     from apps.channels.models import WhatsAppMessage
     from apps.channels.providers.whatsapp import WhatsAppAPIError
@@ -43,37 +49,150 @@ def send_whatsapp_message_task(self, message_id):
         send_outbound_message,
     )
 
+    # --------------------------------------------------------
+    # RESOLVE + LOCK MESSAGE
+    # --------------------------------------------------------
+
     try:
-        message = WhatsAppMessage.objects.select_related("account").get(
-            id=message_id,
-        )
+        with transaction.atomic():
+
+            message = (
+                WhatsAppMessage.objects
+                .select_for_update()
+                .select_related("account")
+                .get(
+                    id=message_id,
+                )
+            )
+
+            # ------------------------------------------------
+            # IDEMPOTENCY GUARD
+            # ------------------------------------------------
+            #
+            # A previously successful Meta send must never be
+            # submitted to Meta again.
+            #
+
+            if message.status in (
+                WhatsAppMessage.Status.SENT,
+                WhatsAppMessage.Status.DELIVERED,
+                WhatsAppMessage.Status.READ,
+            ):
+                logger.info(
+                    "send_whatsapp_message_task: "
+                    "message %s already sent; skipping duplicate send",
+                    message_id,
+                )
+
+                return {
+                    "status": "skipped",
+                    "reason": "already_sent",
+                    "message_id": str(
+                        message_id
+                    ),
+                }
+
+            # ------------------------------------------------
+            # ONLY QUEUED MESSAGES MAY BE SENT
+            # ------------------------------------------------
+
+            if (
+                message.status
+                != WhatsAppMessage.Status.QUEUED
+            ):
+                logger.info(
+                    "send_whatsapp_message_task: "
+                    "message %s has status %s; skipping send",
+                    message_id,
+                    message.status,
+                )
+
+                return {
+                    "status": "skipped",
+                    "reason": "message_not_queued",
+                    "message_id": str(
+                        message_id
+                    ),
+                }
+
+            # ------------------------------------------------
+            # SEND TO META
+            # ------------------------------------------------
+
+            send_outbound_message(
+                message=message,
+            )
+
+            return {
+                "status": "sent",
+                "message_id": str(
+                    message_id
+                ),
+            }
 
     except WhatsAppMessage.DoesNotExist:
         logger.warning(
-            "send_whatsapp_message_task: message %s not found", message_id
+            "send_whatsapp_message_task: message %s not found",
+            message_id,
         )
         return
-
-    try:
-        send_outbound_message(message=message)
 
     except WhatsAppSendError as exc:
         original = exc.__cause__
 
-        # Retry only on network-level failures. A 4xx from Meta
-        # (invalid token, bad number, etc.) will fail the same way
-        # every time -- don't burn retries on it.
-        if isinstance(original, WhatsAppAPIError) and (
-            original.status_code is None or original.status_code >= 500
+        # ----------------------------------------------------
+        # TRANSIENT FAILURE
+        # ----------------------------------------------------
+        #
+        # Network failure or Meta 5xx can succeed on retry.
+        #
+
+        if isinstance(
+            original,
+            WhatsAppAPIError,
+        ) and (
+            original.status_code is None
+            or original.status_code >= 500
         ):
-            raise self.retry(exc=exc)
+            logger.warning(
+                "send_whatsapp_message_task: "
+                "transient failure for message %s; retrying: %s",
+                message_id,
+                exc,
+            )
+
+            raise self.retry(
+                exc=exc,
+                countdown=30,
+            )
+
+        # ----------------------------------------------------
+        # PERMANENT FAILURE
+        # ----------------------------------------------------
 
         logger.error(
-            "send_whatsapp_message_task: permanent failure for message %s: %s (meta response: %s)",
+            "send_whatsapp_message_task: "
+            "permanent failure for message %s: %s "
+            "(meta response: %s)",
             message_id,
             exc,
-            getattr(original, "response_body", None),
+            getattr(
+                original,
+                "response_body",
+                None,
+            ),
         )
+
+        return {
+            "status": "failed",
+            "reason": "permanent_send_failure",
+            "message_id": str(
+                message_id
+            ),
+            "error": str(
+                exc
+            ),
+        }
 
 
 # ============================================================
@@ -109,25 +228,41 @@ def send_bulk_recipient_task(self, recipient_id):
     try:
         recipient = (
             BulkMessageRecipient.objects.select_related(
-                "campaign", "campaign__account", "lead"
-            ).get(id=recipient_id)
+                "campaign",
+                "campaign__account",
+                "lead",
+            ).get(
+                id=recipient_id,
+            )
         )
 
     except BulkMessageRecipient.DoesNotExist:
         logger.warning(
-            "send_bulk_recipient_task: recipient %s not found", recipient_id
+            "send_bulk_recipient_task: recipient %s not found",
+            recipient_id,
         )
         return
 
     campaign = recipient.campaign
     lead = recipient.lead
 
-    if not is_within_24h_window(lead=lead) and not campaign.template_name:
-        recipient.status = BulkMessageRecipient.Status.SKIPPED
+    if (
+        not is_within_24h_window(lead=lead)
+        and not campaign.template_name
+    ):
+        recipient.status = (
+            BulkMessageRecipient.Status.SKIPPED
+        )
         recipient.skip_reason = (
             "Outside 24h messaging window and no template configured."
         )
-        recipient.save(update_fields=["status", "skip_reason", "updated_at"])
+        recipient.save(
+            update_fields=[
+                "status",
+                "skip_reason",
+                "updated_at",
+            ]
+        )
         return
 
     message = queue_outbound_message(
@@ -139,30 +274,65 @@ def send_bulk_recipient_task(self, recipient_id):
     )
 
     recipient.message = message
-    recipient.save(update_fields=["message", "updated_at"])
+    recipient.save(
+        update_fields=[
+            "message",
+            "updated_at",
+        ]
+    )
 
     try:
-        send_outbound_message(message=message)
+
+        send_outbound_message(
+            message=message,
+        )
 
     except WhatsAppSendError as exc:
+
         original = exc.__cause__
 
-        if isinstance(original, WhatsAppAPIError) and (
-            original.status_code is None or original.status_code >= 500
+        if isinstance(
+            original,
+            WhatsAppAPIError,
+        ) and (
+            original.status_code is None
+            or original.status_code >= 500
         ):
-            raise self.retry(exc=exc)
+            raise self.retry(
+                exc=exc
+            )
 
-        recipient.status = BulkMessageRecipient.Status.FAILED
-        recipient.skip_reason = str(exc)
-        recipient.save(update_fields=["status", "skip_reason", "updated_at"])
+        recipient.status = (
+            BulkMessageRecipient.Status.FAILED
+        )
+        recipient.skip_reason = str(
+            exc
+        )
+        recipient.save(
+            update_fields=[
+                "status",
+                "skip_reason",
+                "updated_at",
+            ]
+        )
         return
 
-    recipient.status = BulkMessageRecipient.Status.SENT
-    recipient.save(update_fields=["status", "updated_at"])
+    recipient.status = (
+        BulkMessageRecipient.Status.SENT
+    )
+    recipient.save(
+        update_fields=[
+            "status",
+            "updated_at",
+        ]
+    )
 
 
 @shared_task
-def finalize_bulk_campaign_task(_results, campaign_id):
+def finalize_bulk_campaign_task(
+    _results,
+    campaign_id,
+):
     """
     Runs once every send_bulk_recipient_task in the campaign's
     chord has finished (success or failure). Marks the campaign
@@ -172,53 +342,88 @@ def finalize_bulk_campaign_task(_results, campaign_id):
     from services.channels.bulk_service import mark_campaign_completed
 
     try:
-        campaign = BulkMessageCampaign.objects.get(id=campaign_id)
+        campaign = (
+            BulkMessageCampaign.objects.get(
+                id=campaign_id,
+            )
+        )
 
     except BulkMessageCampaign.DoesNotExist:
         logger.warning(
-            "finalize_bulk_campaign_task: campaign %s not found", campaign_id
+            "finalize_bulk_campaign_task: "
+            "campaign %s not found",
+            campaign_id,
         )
         return
 
-    mark_campaign_completed(campaign=campaign)
+    mark_campaign_completed(
+        campaign=campaign
+    )
 
 
 @shared_task
-def send_bulk_campaign_task(campaign_id):
+def send_bulk_campaign_task(
+    campaign_id,
+):
     """
     Dispatcher: marks the campaign as sending, then fans out one
     send_bulk_recipient_task per pending recipient via a Celery
     chord, so finalize_bulk_campaign_task runs automatically once
     every recipient has been processed.
     """
-    from apps.channels.models import BulkMessageCampaign, BulkMessageRecipient
+    from apps.channels.models import (
+        BulkMessageCampaign,
+        BulkMessageRecipient,
+    )
     from services.channels.bulk_service import mark_campaign_started
 
     try:
-        campaign = BulkMessageCampaign.objects.get(id=campaign_id)
+        campaign = (
+            BulkMessageCampaign.objects.get(
+                id=campaign_id,
+            )
+        )
 
     except BulkMessageCampaign.DoesNotExist:
         logger.warning(
-            "send_bulk_campaign_task: campaign %s not found", campaign_id
+            "send_bulk_campaign_task: "
+            "campaign %s not found",
+            campaign_id,
         )
         return
 
-    mark_campaign_started(campaign=campaign)
+    mark_campaign_started(
+        campaign=campaign
+    )
 
     recipient_ids = list(
         BulkMessageRecipient.objects.filter(
             campaign=campaign,
             status=BulkMessageRecipient.Status.PENDING,
-        ).values_list("id", flat=True)
+        ).values_list(
+            "id",
+            flat=True,
+        )
     )
 
     if not recipient_ids:
-        finalize_bulk_campaign_task.delay(None, str(campaign.id))
+        finalize_bulk_campaign_task.delay(
+            None,
+            str(
+                campaign.id
+            ),
+        )
         return
 
     chord(
         group(
-            send_bulk_recipient_task.s(str(recipient_id))
+            send_bulk_recipient_task.s(
+                str(recipient_id)
+            )
             for recipient_id in recipient_ids
         )
-    )(finalize_bulk_campaign_task.s(str(campaign.id)))
+    )(
+        finalize_bulk_campaign_task.s(
+            str(campaign.id)
+        )
+    )

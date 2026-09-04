@@ -287,23 +287,19 @@ def _queue_whatsapp_engagement(
     lead_id,
 ):
     """
-    Queue canonical AI Engagement execution for the Lead after the
-    inbound WhatsApp transaction commits.
+    Queue canonical AI Engagement processing for the Lead.
 
-    The AI task receives only the Lead ID and resolves the current
-    organization, stage, lead state, WhatsApp account, and latest
-    conversation inside the worker.
-
-    This keeps the queue payload minimal and prevents stale account
-    state from being captured in the webhook transaction.
+    The task receives only the Lead ID. It resolves the current
+    WhatsApp account and re-validates all permissions and send
+    eligibility inside the worker so stale webhook state cannot
+    bypass the AI control hierarchy.
     """
-
     from apps.ai_engagement.tasks import (
         generate_ai_engagement_response,
     )
 
     generate_ai_engagement_response.delay(
-        str(lead_id),
+        str(lead_id)
     )
 
 # ============================================================
@@ -535,11 +531,13 @@ def handle_status_update(
     Update an outbound message's delivery status from a Meta
     status-callback webhook event (sent/delivered/read/failed).
 
-    Existing SHVYA metadata in raw_payload is preserved so AI
-    provenance remains available after delivery/read/failed events.
+    Silently no-ops if we don't have a matching message -- Meta
+    may report statuses for messages sent before this system
+    existed, or for read receipts on messages we didn't log.
 
-    Silently no-ops if we don't have a matching message.
+    Preserve any SHVYA AI metadata already stored on the message.
     """
+
     status_map = {
         "sent": WhatsAppMessage.Status.SENT,
         "delivered": WhatsAppMessage.Status.DELIVERED,
@@ -555,7 +553,8 @@ def handle_status_update(
         return None
 
     message = (
-        WhatsAppMessage.objects.filter(
+        WhatsAppMessage.objects
+        .filter(
             external_id=external_id,
         )
         .first()
@@ -566,40 +565,29 @@ def handle_status_update(
 
     existing_payload = (
         message.raw_payload
-        if isinstance(
-            message.raw_payload,
-            dict,
-        )
+        if isinstance(message.raw_payload, dict)
         else {}
     )
 
-    status_payload = (
+    ai_metadata = existing_payload.get(
+        "shvya_ai"
+    )
+
+    final_payload = (
         raw_payload
-        if isinstance(
-            raw_payload,
-            dict,
-        )
+        if isinstance(raw_payload, dict)
         else {}
-    )
-
-    final_payload = dict(
-        status_payload
-    )
-
-    ai_metadata = (
-        existing_payload.get(
-            "shvya_ai"
-        )
     )
 
     if ai_metadata is not None:
-
+        final_payload = dict(
+            final_payload
+        )
         final_payload["shvya_ai"] = (
             ai_metadata
         )
 
     message.status = mapped_status
-
     message.raw_payload = final_payload
 
     message.save(
@@ -611,7 +599,6 @@ def handle_status_update(
     )
 
     return 1
-
 
 # ============================================================
 # OUTBOUND
@@ -650,12 +637,12 @@ def send_outbound_message(
 ):
     """
     Actually call Meta's API for an already-queued WhatsAppMessage.
-
     Called from inside the Celery task, not directly from a view.
 
-    Existing SHVYA metadata stored in raw_payload is preserved when
-    Meta's response is recorded.
+    Preserve any SHVYA AI metadata stored on the queued message
+    while recording Meta's outbound API response.
     """
+
     account = message.account
 
     client = WhatsAppClient(
@@ -700,32 +687,30 @@ def send_outbound_message(
     )
 
     if messages:
-
         external_id = messages[0].get(
             "id"
         )
 
     existing_payload = (
         message.raw_payload
-        if isinstance(
-            message.raw_payload,
-            dict,
-        )
+        if isinstance(message.raw_payload, dict)
         else {}
     )
 
-    ai_metadata = (
-        existing_payload.get(
-            "shvya_ai"
-        )
+    ai_metadata = existing_payload.get(
+        "shvya_ai"
     )
 
-    final_payload = dict(
+    final_payload = (
         response
+        if isinstance(response, dict)
+        else {}
     )
 
     if ai_metadata is not None:
-
+        final_payload = dict(
+            final_payload
+        )
         final_payload["shvya_ai"] = (
             ai_metadata
         )
