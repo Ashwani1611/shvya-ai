@@ -97,6 +97,12 @@ class Lead(models.Model):
         default=dict,
         blank=True,
     )
+    ai_enabled = models.BooleanField(
+        default=True,
+        help_text=(
+            "Allow SHVYA AI to engage this lead."
+        ),
+    )
 
     lead_source = models.CharField(
     max_length=30,

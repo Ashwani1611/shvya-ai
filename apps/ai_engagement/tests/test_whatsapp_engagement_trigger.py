@@ -135,10 +135,12 @@ class WhatsAppEngagementTriggerTests(TestCase):
             organization
             or self.organization
         )
+
         pipeline = (
             pipeline
             or self.pipeline
         )
+
         stage = (
             stage
             or self.stage
@@ -200,7 +202,11 @@ class WhatsAppEngagementTriggerTests(TestCase):
     ):
         return EngagementDecision(
             should_engage=should_engage,
-            message=message if should_engage else "",
+            message=(
+                message
+                if should_engage
+                else ""
+            ),
             file_document_id=None,
             crm_actions=crm_actions or [],
             reason=reason,
@@ -236,17 +242,20 @@ class WhatsAppEngagementTriggerTests(TestCase):
             handle_inbound_message,
         )
 
-        handle_inbound_message(
-            organization=self.organization,
-            account=self.account,
-            external_id="wamid-trigger-001",
-            from_number=lead.phone,
-            to_number="919999999999",
-            body="Yes, I am interested.",
-            raw_payload={
-                "test": True,
-            },
-        )
+        with self.captureOnCommitCallbacks(
+            execute=True,
+        ):
+            handle_inbound_message(
+                organization=self.organization,
+                account=self.account,
+                external_id="wamid-trigger-001",
+                from_number=lead.phone,
+                to_number="919999999999",
+                body="Yes, I am interested.",
+                raw_payload={
+                    "test": True,
+                },
+            )
 
         summary_delay.assert_called_once_with(
             str(lead.id),
@@ -285,17 +294,20 @@ class WhatsAppEngagementTriggerTests(TestCase):
             handle_inbound_message,
         )
 
-        handle_inbound_message(
-            organization=self.organization,
-            account=self.account,
-            external_id="wamid-trigger-002",
-            from_number=lead.phone,
-            to_number="919999999999",
-            body="Tell me more.",
-            raw_payload={
-                "test": True,
-            },
-        )
+        with self.captureOnCommitCallbacks(
+            execute=True,
+        ):
+            handle_inbound_message(
+                organization=self.organization,
+                account=self.account,
+                external_id="wamid-trigger-002",
+                from_number=lead.phone,
+                to_number="919999999999",
+                body="Tell me more.",
+                raw_payload={
+                    "test": True,
+                },
+            )
 
         engagement_delay.assert_called_once_with(
             str(lead.id),
@@ -342,13 +354,19 @@ class WhatsAppEngagementTriggerTests(TestCase):
             },
         }
 
-        handle_inbound_message(
-            **kwargs,
-        )
+        with self.captureOnCommitCallbacks(
+            execute=True,
+        ):
+            handle_inbound_message(
+                **kwargs,
+            )
 
-        handle_inbound_message(
-            **kwargs,
-        )
+        with self.captureOnCommitCallbacks(
+            execute=True,
+        ):
+            handle_inbound_message(
+                **kwargs,
+            )
 
         self.assertEqual(
             WhatsAppMessage.objects.filter(
@@ -372,7 +390,7 @@ class WhatsAppEngagementTriggerTests(TestCase):
     # ========================================================
 
     @patch(
-        "apps.ai_engagement.tasks.EngagementService"
+        "apps.ai_engagement.services.engagement.EngagementService"
     )
     def test_task_skips_when_lead_does_not_exist(
         self,
@@ -404,7 +422,7 @@ class WhatsAppEngagementTriggerTests(TestCase):
     # ========================================================
 
     @patch(
-        "apps.ai_engagement.tasks.EngagementService"
+        "apps.ai_engagement.services.engagement.EngagementService"
     )
     def test_task_skips_when_account_does_not_exist(
         self,
@@ -440,7 +458,7 @@ class WhatsAppEngagementTriggerTests(TestCase):
     # ========================================================
 
     @patch(
-        "apps.ai_engagement.tasks.EngagementService"
+        "apps.ai_engagement.services.engagement.EngagementService"
     )
     def test_task_rejects_cross_organization_account(
         self,
@@ -476,7 +494,7 @@ class WhatsAppEngagementTriggerTests(TestCase):
     # ========================================================
 
     @patch(
-        "apps.ai_engagement.tasks.EngagementService"
+        "apps.ai_engagement.services.engagement.EngagementService"
     )
     def test_task_skips_when_organization_ai_disabled(
         self,
@@ -487,6 +505,7 @@ class WhatsAppEngagementTriggerTests(TestCase):
         )
 
         self.org_info.ai_enabled = False
+
         self.org_info.save(
             update_fields=[
                 "ai_enabled",
@@ -516,6 +535,7 @@ class WhatsAppEngagementTriggerTests(TestCase):
         engagement_service.assert_not_called()
 
         self.org_info.ai_enabled = True
+
         self.org_info.save(
             update_fields=[
                 "ai_enabled",
@@ -528,7 +548,7 @@ class WhatsAppEngagementTriggerTests(TestCase):
     # ========================================================
 
     @patch(
-        "apps.ai_engagement.tasks.EngagementService"
+        "apps.ai_engagement.services.engagement.EngagementService"
     )
     def test_task_skips_when_lead_ai_disabled(
         self,
@@ -565,13 +585,14 @@ class WhatsAppEngagementTriggerTests(TestCase):
     # ========================================================
 
     @patch(
-        "apps.ai_engagement.tasks.EngagementService"
+        "apps.ai_engagement.services.engagement.EngagementService"
     )
     def test_task_skips_when_stage_ai_disabled(
         self,
         engagement_service,
     ):
         self.stage.ai_on = False
+
         self.stage.save(
             update_fields=[
                 "ai_on",
@@ -605,6 +626,7 @@ class WhatsAppEngagementTriggerTests(TestCase):
         engagement_service.assert_not_called()
 
         self.stage.ai_on = True
+
         self.stage.save(
             update_fields=[
                 "ai_on",
@@ -617,10 +639,10 @@ class WhatsAppEngagementTriggerTests(TestCase):
     # ========================================================
 
     @patch(
-        "apps.ai_engagement.tasks.CRMActionExecutor"
+        "apps.ai_engagement.services.crm_executor.CRMActionExecutor"
     )
     @patch(
-        "apps.ai_engagement.tasks.EngagementService"
+        "apps.ai_engagement.services.engagement.EngagementService"
     )
     def test_task_calls_engagement_service(
         self,
@@ -636,13 +658,18 @@ class WhatsAppEngagementTriggerTests(TestCase):
         )
 
         engagement_service = Mock()
-        engagement_service.engage.return_value = decision
+
+        engagement_service.engage.return_value = (
+            decision
+        )
+
         engagement_service_class.return_value = (
             engagement_service
         )
 
         executor = Mock()
         executor.execute.return_value = []
+
         executor_class.return_value = executor
 
         from apps.ai_engagement.tasks import (
@@ -650,8 +677,10 @@ class WhatsAppEngagementTriggerTests(TestCase):
         )
 
         with patch(
-            "apps.ai_engagement.tasks.queue_outbound_message",
+            "services.channels.whatsapp_service."
+            "queue_outbound_message",
         ) as queue_outbound:
+
             outbound = WhatsAppMessage(
                 organization=self.organization,
                 account=self.account,
@@ -669,7 +698,7 @@ class WhatsAppEngagementTriggerTests(TestCase):
             queue_outbound.return_value = outbound
 
             with patch(
-                "apps.ai_engagement.tasks."
+                "apps.channels.tasks."
                 "send_whatsapp_message_task.delay"
             ):
                 result = process_whatsapp_engagement.run(
@@ -692,10 +721,10 @@ class WhatsAppEngagementTriggerTests(TestCase):
     # ========================================================
 
     @patch(
-        "apps.ai_engagement.tasks.CRMActionExecutor"
+        "apps.ai_engagement.services.crm_executor.CRMActionExecutor"
     )
     @patch(
-        "apps.ai_engagement.tasks.EngagementService"
+        "apps.ai_engagement.services.engagement.EngagementService"
     )
     def test_task_does_not_queue_outbound_when_no_engagement(
         self,
@@ -713,13 +742,18 @@ class WhatsAppEngagementTriggerTests(TestCase):
         )
 
         engagement_service = Mock()
-        engagement_service.engage.return_value = decision
+
+        engagement_service.engage.return_value = (
+            decision
+        )
+
         engagement_service_class.return_value = (
             engagement_service
         )
 
         executor = Mock()
         executor.execute.return_value = []
+
         executor_class.return_value = executor
 
         from apps.ai_engagement.tasks import (
@@ -727,11 +761,13 @@ class WhatsAppEngagementTriggerTests(TestCase):
         )
 
         with patch(
-            "apps.ai_engagement.tasks.queue_outbound_message"
+            "services.channels.whatsapp_service."
+            "queue_outbound_message"
         ) as queue_outbound, patch(
-            "apps.ai_engagement.tasks."
+            "apps.channels.tasks."
             "send_whatsapp_message_task.delay"
         ) as send_delay:
+
             result = process_whatsapp_engagement.run(
                 str(lead.id),
                 str(self.account.id),
@@ -761,10 +797,10 @@ class WhatsAppEngagementTriggerTests(TestCase):
     # ========================================================
 
     @patch(
-        "apps.ai_engagement.tasks.CRMActionExecutor"
+        "apps.ai_engagement.services.crm_executor.CRMActionExecutor"
     )
     @patch(
-        "apps.ai_engagement.tasks.EngagementService"
+        "apps.ai_engagement.services.engagement.EngagementService"
     )
     def test_task_executes_crm_actions(
         self,
@@ -788,18 +824,24 @@ class WhatsAppEngagementTriggerTests(TestCase):
         )
 
         engagement_service = Mock()
-        engagement_service.engage.return_value = decision
+
+        engagement_service.engage.return_value = (
+            decision
+        )
+
         engagement_service_class.return_value = (
             engagement_service
         )
 
         executor = Mock()
+
         executor.execute.return_value = [
             {
                 "type": "add_note",
                 "status": "executed",
             },
         ]
+
         executor_class.return_value = executor
 
         from apps.ai_engagement.tasks import (
@@ -807,8 +849,10 @@ class WhatsAppEngagementTriggerTests(TestCase):
         )
 
         with patch(
-            "apps.ai_engagement.tasks.queue_outbound_message"
+            "services.channels.whatsapp_service."
+            "queue_outbound_message"
         ) as queue_outbound:
+
             outbound = WhatsAppMessage(
                 organization=self.organization,
                 account=self.account,
@@ -826,7 +870,7 @@ class WhatsAppEngagementTriggerTests(TestCase):
             queue_outbound.return_value = outbound
 
             with patch(
-                "apps.ai_engagement.tasks."
+                "apps.channels.tasks."
                 "send_whatsapp_message_task.delay"
             ):
                 result = process_whatsapp_engagement.run(
@@ -855,10 +899,10 @@ class WhatsAppEngagementTriggerTests(TestCase):
     # ========================================================
 
     @patch(
-        "apps.ai_engagement.tasks.CRMActionExecutor"
+        "apps.ai_engagement.services.crm_executor.CRMActionExecutor"
     )
     @patch(
-        "apps.ai_engagement.tasks.EngagementService"
+        "apps.ai_engagement.services.engagement.EngagementService"
     )
     def test_task_queues_customer_response(
         self,
@@ -874,13 +918,18 @@ class WhatsAppEngagementTriggerTests(TestCase):
         )
 
         engagement_service = Mock()
-        engagement_service.engage.return_value = decision
+
+        engagement_service.engage.return_value = (
+            decision
+        )
+
         engagement_service_class.return_value = (
             engagement_service
         )
 
         executor = Mock()
         executor.execute.return_value = []
+
         executor_class.return_value = executor
 
         from apps.ai_engagement.tasks import (
@@ -888,8 +937,10 @@ class WhatsAppEngagementTriggerTests(TestCase):
         )
 
         with patch(
-            "apps.ai_engagement.tasks.queue_outbound_message"
+            "services.channels.whatsapp_service."
+            "queue_outbound_message"
         ) as queue_outbound:
+
             outbound = WhatsAppMessage(
                 organization=self.organization,
                 account=self.account,
@@ -897,7 +948,9 @@ class WhatsAppEngagementTriggerTests(TestCase):
                 direction=(
                     WhatsAppMessage.Direction.OUTBOUND
                 ),
-                from_number=self.account.phone_number_id,
+                from_number=(
+                    self.account.phone_number_id
+                ),
                 to_number=lead.phone,
                 body=decision.message,
                 status=(
@@ -912,9 +965,10 @@ class WhatsAppEngagementTriggerTests(TestCase):
             queue_outbound.return_value = outbound
 
             with patch(
-                "apps.ai_engagement.tasks."
+                "apps.channels.tasks."
                 "send_whatsapp_message_task.delay"
             ) as send_delay:
+
                 result = process_whatsapp_engagement.run(
                     str(lead.id),
                     str(self.account.id),
@@ -946,10 +1000,10 @@ class WhatsAppEngagementTriggerTests(TestCase):
     # ========================================================
 
     @patch(
-        "apps.ai_engagement.tasks.CRMActionExecutor"
+        "apps.ai_engagement.services.crm_executor.CRMActionExecutor"
     )
     @patch(
-        "apps.ai_engagement.tasks.EngagementService"
+        "apps.ai_engagement.services.engagement.EngagementService"
     )
     def test_task_uses_existing_whatsapp_queue_and_sender(
         self,
@@ -971,13 +1025,18 @@ class WhatsAppEngagementTriggerTests(TestCase):
         )
 
         engagement_service = Mock()
-        engagement_service.engage.return_value = decision
+
+        engagement_service.engage.return_value = (
+            decision
+        )
+
         engagement_service_class.return_value = (
             engagement_service
         )
 
         executor = Mock()
         executor.execute.return_value = []
+
         executor_class.return_value = executor
 
         from apps.ai_engagement.tasks import (
@@ -985,8 +1044,10 @@ class WhatsAppEngagementTriggerTests(TestCase):
         )
 
         with patch(
-            "apps.ai_engagement.tasks.queue_outbound_message"
+            "services.channels.whatsapp_service."
+            "queue_outbound_message"
         ) as queue_outbound:
+
             outbound = WhatsAppMessage(
                 organization=self.organization,
                 account=self.account,
@@ -994,7 +1055,9 @@ class WhatsAppEngagementTriggerTests(TestCase):
                 direction=(
                     WhatsAppMessage.Direction.OUTBOUND
                 ),
-                from_number=self.account.phone_number_id,
+                from_number=(
+                    self.account.phone_number_id
+                ),
                 to_number=lead.phone,
                 body=decision.message,
                 status=(
@@ -1009,9 +1072,10 @@ class WhatsAppEngagementTriggerTests(TestCase):
             queue_outbound.return_value = outbound
 
             with patch(
-                "apps.ai_engagement.tasks."
+                "apps.channels.tasks."
                 "send_whatsapp_message_task.delay"
             ) as send_delay:
+
                 process_whatsapp_engagement.run(
                     str(lead.id),
                     str(self.account.id),

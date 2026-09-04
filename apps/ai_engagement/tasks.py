@@ -596,7 +596,9 @@ def process_whatsapp_engagement(
     from apps.channels.models import WhatsAppAccount
     from apps.channels.tasks import send_whatsapp_message_task
     from apps.crm.models import Lead
-    from apps.crm.models import OrgInfo
+    from apps.ai_engagement.services.org_info import (
+        OrgInfoService,
+    )
     from services.channels.whatsapp_service import (
         queue_outbound_message,
     )
@@ -673,7 +675,7 @@ def process_whatsapp_engagement(
     # AI GATES
     # --------------------------------------------------------
 
-    org_info, _created = OrgInfo.objects.get_or_create(
+    org_info = OrgInfoService().get_or_create(
         organization=organization,
     )
 
