@@ -894,13 +894,14 @@ def whatsapp_template_create_view(request):
 # ============================================================
 
 
-@crm_login_required
-@require_GET
-def whatsapp_chat_list_view(request):
+def _chat_sidebar_context(request, user):
+    """
+    Shared left-rail context (conversation list, connected
+    numbers, search) used by both the inbox and an open thread,
+    since both are rendered by the same three-pane template.
+    """
 
     from services.channels.whatsapp_service import list_conversations
-
-    user = request.crm_user
 
     account_id = request.GET.get("account")
     account = None
@@ -916,19 +917,56 @@ def whatsapp_chat_list_view(request):
         account=account,
     )
 
+    query = (request.GET.get("q") or "").strip()
+
+    if query:
+        conversations = [
+            lead
+            for lead in conversations
+            if query.lower() in (lead.name or "").lower()
+            or query in (lead.phone or "")
+        ]
+
     accounts = WhatsAppAccount.objects.filter(
         organization=user.organization,
         status=WhatsAppAccount.Status.CONNECTED,
     )
 
+    for lead in conversations:
+        lead.initials = _lead_initials(lead)
+
+    return {
+        "conversations": conversations,
+        "accounts": accounts,
+        "selected_account": account,
+        "search_query": query,
+    }
+
+
+def _lead_initials(lead):
+    return "".join(
+        [p[0] for p in (lead.name or "").split()[:2]]
+    ).upper() or "?"
+
+
+@crm_login_required
+@require_GET
+def whatsapp_chat_list_view(request):
+
+    user = request.crm_user
+
+    context = _chat_sidebar_context(request, user)
+    context.update(
+        {
+            "active_lead": None,
+            "chat_messages": [],
+        }
+    )
+
     return render(
         request,
         "channels/whatsapp_chat_list.html",
-        {
-            "conversations": conversations,
-            "accounts": accounts,
-            "selected_account": account,
-        },
+        context,
     )
 
 
@@ -959,11 +997,19 @@ def whatsapp_chat_detail_view(request, lead_id):
 
     mark_conversation_read(organization=user.organization, lead=lead)
 
+    lead.initials = _lead_initials(lead)
+    lead.stage_color = (lead.stage.color if lead.stage_id else "") or "#9ca3af"
+
+    context = _chat_sidebar_context(request, user)
+    context.update(
+        {
+            "active_lead": lead,
+            "chat_messages": chat_messages,
+        }
+    )
+
     return render(
         request,
-        "channels/whatsapp_chat_detail.html",
-        {
-            "lead": lead,
-            "chat_messages": chat_messages,
-        },
+        "channels/whatsapp_chat_list.html",
+        context,
     )

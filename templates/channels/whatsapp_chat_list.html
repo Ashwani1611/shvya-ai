@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% load static %}
 
-{% block title %}SHVYA AI — Chats{% endblock %}
+{% block title %}SHVYA AI — {% if active_lead %}{{ active_lead.name|default:active_lead.phone }}{% else %}Chats{% endif %}{% endblock %}
 
 {% block header %}
     Chats
@@ -9,21 +9,40 @@
 
 {% block content %}
 
-    <div class="flex h-[calc(100vh-8.5rem)] flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+    <div class="flex h-[calc(100vh-8.5rem)] overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
 
 
         <!-- =====================================================
-             ACCOUNT FILTER
+             LEFT — CONTACT / CONVERSATION LIST
              ===================================================== -->
 
-        <div class="border-b border-gray-200 bg-white px-6 py-3">
+        <div class="flex w-[320px] flex-shrink-0 flex-col border-r border-gray-200 bg-white">
 
-            <form method="get">
+            <div class="space-y-3 border-b border-gray-200 px-4 py-3">
+
+                <form method="get" class="relative">
+
+                    {% if selected_account %}
+                        <input type="hidden" name="account" value="{{ selected_account.id }}">
+                    {% endif %}
+
+                    <i class="ti ti-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"></i>
+
+                    <input
+                        type="text"
+                        name="q"
+                        value="{{ search_query }}"
+                        placeholder="Search or start a new chat"
+                        class="w-full rounded-full border border-gray-200 bg-gray-50 py-2 pl-9 pr-3 text-sm focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    >
+
+                </form>
 
                 <select
                     name="account"
+                    form="account-filter-form"
                     onchange="this.form.submit()"
-                    class="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                    class="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs text-gray-600"
                 >
 
                     <option value="">All connected numbers</option>
@@ -38,126 +57,259 @@
 
                 </select>
 
-            </form>
+                <form id="account-filter-form" method="get">
+                    {% if search_query %}
+                        <input type="hidden" name="q" value="{{ search_query }}">
+                    {% endif %}
+                </form>
+
+            </div>
+
+            <div class="flex-1 overflow-y-auto">
+
+                {% if conversations %}
+
+                    {% for lead in conversations %}
+
+                        <a
+                            href="{% url 'whatsapp-chat-detail' lead_id=lead.id %}{% if selected_account %}?account={{ selected_account.id }}{% endif %}"
+                            class="flex items-center gap-3 border-b border-gray-100 px-4 py-3 transition hover:bg-gray-50
+                            {% if active_lead.id == lead.id %} bg-blue-50 {% else %} bg-white {% endif %}"
+                        >
+
+                            <div class="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full bg-blue-100 text-sm font-semibold text-blue-700">
+                                {{ lead.initials }}
+                            </div>
+
+                            <div class="min-w-0 flex-1">
+
+                                <div class="flex items-center justify-between gap-2">
+
+                                    <p class="truncate font-medium text-gray-900">
+                                        {{ lead.name|default:lead.phone }}
+                                    </p>
+
+                                    <span class="flex-shrink-0 text-[11px] text-gray-400">
+                                        {{ lead.last_message_at|date:"d M, h:i A" }}
+                                    </span>
+
+                                </div>
+
+                                <div class="mt-0.5 flex items-center justify-between gap-2">
+
+                                    <p class="truncate text-xs text-gray-500">
+                                        {{ lead.phone }}
+                                    </p>
+
+                                    {% if lead.unread_count > 0 %}
+
+                                        <span class="inline-flex h-5 min-w-5 flex-shrink-0 items-center justify-center rounded-full bg-green-500 px-1.5 text-[11px] font-semibold text-white">
+                                            {{ lead.unread_count }}
+                                        </span>
+
+                                    {% endif %}
+
+                                </div>
+
+                            </div>
+
+                        </a>
+
+                    {% endfor %}
+
+                {% else %}
+
+                    <div class="flex h-full flex-col items-center justify-center px-6 text-center">
+
+                        <i class="ti ti-message-circle text-4xl text-gray-300"></i>
+
+                        {% if not accounts %}
+
+                            <p class="mt-3 text-sm text-gray-500">
+                                No WhatsApp number connected yet.
+                            </p>
+
+                            <a
+                                href="{% url 'whatsapp-connect-choice' %}"
+                                class="mt-4 inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700"
+                            >
+                                Connect WhatsApp
+                            </a>
+
+                        {% elif search_query %}
+
+                            <p class="mt-3 text-sm text-gray-500">
+                                No contacts match "{{ search_query }}".
+                            </p>
+
+                        {% else %}
+
+                            <p class="mt-3 text-sm font-medium text-gray-700">
+                                No conversations yet.
+                            </p>
+
+                            <p class="mt-1 text-xs text-gray-500">
+                                Messages from leads will show up here once
+                                they arrive.
+                            </p>
+
+                        {% endif %}
+
+                    </div>
+
+                {% endif %}
+
+            </div>
 
         </div>
 
 
 
         <!-- =====================================================
-             CONVERSATION LIST
+             CENTER — MESSAGE THREAD
              ===================================================== -->
 
-        <div class="flex-1 overflow-y-auto">
+        <div class="flex min-w-0 flex-1 flex-col">
 
-            {% if conversations %}
+            {% if active_lead %}
 
-                {% for lead in conversations %}
+                <!-- THREAD HEADER -->
 
-                    <a
-                        href="{% url 'whatsapp-chat-detail' lead_id=lead.id %}"
-                        class="flex items-center justify-between border-b border-gray-100 bg-white px-6 py-4 transition hover:bg-gray-50"
-                    >
+                <div class="flex items-center justify-between border-b border-gray-200 bg-white px-6 py-3.5">
+
+                    <div class="flex min-w-0 items-center gap-3">
+
+                        <a
+                            href="{% url 'whatsapp-chats' %}"
+                            class="text-gray-400 transition hover:text-gray-700 lg:hidden"
+                        >
+                            <i class="ti ti-arrow-left text-lg"></i>
+                        </a>
+
+                        <div class="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-blue-100 text-xs font-semibold text-blue-700">
+                            {{ active_lead.initials }}
+                        </div>
 
                         <div class="min-w-0">
 
-                            <p class="font-medium text-gray-900">
-                                {{ lead.name|default:lead.phone }}
+                            <p class="truncate font-semibold text-gray-900">
+                                {{ active_lead.name|default:active_lead.phone }}
                             </p>
 
-                            <p class="mt-0.5 truncate text-sm text-gray-500">
-                                {{ lead.phone }}
+                            <p class="truncate text-xs text-gray-500">
+                                {{ active_lead.phone }} · {{ active_lead.stage.name|default:"No stage" }}
                             </p>
 
                         </div>
 
+                    </div>
 
-                        <div class="ml-4 flex flex-shrink-0 items-center gap-3">
+                </div>
 
-                            <span class="text-xs text-gray-400">
-                                {{ lead.last_message_at|date:"d M, h:i A" }}
-                            </span>
 
-                            {% if lead.unread_count > 0 %}
+                <!-- MESSAGE THREAD -->
 
-                                <span class="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-green-500 px-1.5 text-xs font-semibold text-white">
-                                    {{ lead.unread_count }}
-                                </span>
+                <div
+                    id="thread"
+                    class="flex-1 space-y-3 overflow-y-auto bg-[#e5ddd5] px-6 py-6"
+                >
 
-                            {% endif %}
+                    {% for message in chat_messages %}
+
+                        <div class="flex {% if message.direction == 'outbound' %}justify-end{% else %}justify-start{% endif %}">
+
+                            <div
+                                class="max-w-[70%] rounded-lg px-4 py-2.5 text-sm shadow
+                                {% if message.direction == 'outbound' %}
+                                    bg-[#dcf8c6] text-gray-900
+                                {% else %}
+                                    bg-white text-gray-900
+                                {% endif %}"
+                            >
+
+                                <p class="whitespace-pre-wrap">{{ message.body }}</p>
+
+                                <p class="mt-1 text-right text-[10px] text-gray-400">
+
+                                    {{ message.created_at|date:"h:i A" }}
+
+                                    {% if message.direction == 'outbound' %}
+
+                                        {% if message.status == 'read' %}
+                                            <i class="ti ti-checks text-blue-500"></i>
+                                        {% elif message.status == 'delivered' %}
+                                            <i class="ti ti-checks"></i>
+                                        {% elif message.status == 'sent' %}
+                                            <i class="ti ti-check"></i>
+                                        {% elif message.status == 'failed' %}
+                                            <i class="ti ti-alert-circle text-red-500"></i>
+                                        {% endif %}
+
+                                    {% endif %}
+
+                                </p>
+
+                            </div>
 
                         </div>
 
-                    </a>
+                    {% empty %}
 
-                {% endfor %}
+                        <div class="flex h-full items-center justify-center text-sm text-gray-500">
+                            No messages yet.
+                        </div>
+
+                    {% endfor %}
+
+                </div>
+
+
+                <!-- COMPOSER -->
+
+                <div class="border-t border-gray-200 bg-white px-6 py-4">
+
+                    <div id="send-error" class="mb-2 hidden text-sm text-red-600"></div>
+
+                    <form id="composer-form" class="flex items-center gap-3">
+
+                        {% csrf_token %}
+
+                        <input
+                            type="text"
+                            id="message-body"
+                            placeholder="Type a message"
+                            class="flex-1 rounded-full border border-gray-300 px-5 py-2.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        >
+
+                        <button
+                            type="submit"
+                            class="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full bg-blue-600 text-white transition hover:bg-blue-700"
+                        >
+                            <i class="ti ti-send text-lg"></i>
+                        </button>
+
+                    </form>
+
+                </div>
 
             {% else %}
 
-                <div class="flex h-full flex-col items-center justify-center px-8 text-center">
+                <!-- EMPTY STATE -->
 
-                    <i class="ti ti-message-circle text-4xl text-gray-300"></i>
+                <div class="flex h-full flex-col items-center justify-center bg-[#f7f8fa] px-8 text-center">
 
-                    {% if not accounts %}
+                    <div class="flex h-20 w-20 items-center justify-center rounded-full bg-white shadow-sm">
+                        <i class="ti ti-brand-whatsapp text-4xl text-gray-300"></i>
+                    </div>
 
-                        <p class="mt-3 text-sm text-gray-500">
-                            No WhatsApp number connected yet.
-                        </p>
+                    <p class="mt-4 text-base font-medium text-gray-700">
+                        Select a conversation
+                    </p>
 
-                        <a
-                            href="{% url 'whatsapp-connect-choice' %}"
-                            class="mt-4 inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700"
-                        >
-                            Connect WhatsApp
-                        </a>
-
-                    {% else %}
-
-                        <p class="mt-3 text-sm font-medium text-gray-700">
-                            No conversations yet.
-                        </p>
-
-                        <p class="mt-1 max-w-sm text-sm text-gray-500">
-                            A number being connected doesn't mean messages are
-                            arriving yet. If leads have already messaged this
-                            number and nothing shows up here, check:
-                        </p>
-
-                        <ul class="mt-3 max-w-sm space-y-1.5 text-left text-xs text-gray-500">
-
-                            <li class="flex gap-2">
-                                <i class="ti ti-circle-check mt-0.5 text-gray-300"></i>
-                                <span>
-                                    On <strong>Connect API</strong>, the
-                                    <i class="ti ti-refresh"></i> refresh icon
-                                    next to this number has been clicked at
-                                    least once since it was connected.
-                                </span>
-                            </li>
-
-                            <li class="flex gap-2">
-                                <i class="ti ti-circle-check mt-0.5 text-gray-300"></i>
-                                <span>
-                                    In Meta App Dashboard → WhatsApp →
-                                    Configuration, the Callback URL points to
-                                    this server's <code>/webhooks/whatsapp/</code>
-                                    and the Verify Token matches
-                                    <code>META_VERIFY_TOKEN</code>.
-                                </span>
-                            </li>
-
-                            <li class="flex gap-2">
-                                <i class="ti ti-circle-check mt-0.5 text-gray-300"></i>
-                                <span>
-                                    A pipeline exists to route new leads
-                                    into (Chats only shows messages that got
-                                    attached to a lead).
-                                </span>
-                            </li>
-
-                        </ul>
-
-                    {% endif %}
+                    <p class="mt-1 max-w-xs text-sm text-gray-500">
+                        Choose a contact from the left to view the message
+                        thread and lead details.
+                    </p>
 
                 </div>
 
@@ -165,6 +317,253 @@
 
         </div>
 
+
+
+        <!-- =====================================================
+             RIGHT — LEAD DETAILS
+             ===================================================== -->
+
+        {% if active_lead %}
+
+            <div class="hidden w-[300px] flex-shrink-0 flex-col overflow-y-auto border-l border-gray-200 bg-white xl:flex">
+
+                <div class="flex flex-col items-center border-b border-gray-100 px-5 py-6 text-center">
+
+                    <div class="flex h-16 w-16 items-center justify-center rounded-full bg-blue-100 text-lg font-semibold text-blue-700">
+                        {{ active_lead.initials }}
+                    </div>
+
+                    <p class="mt-3 font-semibold text-gray-900">
+                        {{ active_lead.name|default:"Unnamed lead" }}
+                    </p>
+
+                    <p class="text-xs text-gray-500">
+                        {{ active_lead.phone }}
+                    </p>
+
+                    <a
+                        href="{% url 'crm-lead-detail' active_lead.id %}"
+                        class="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-600 transition hover:bg-gray-50"
+                    >
+                        <i class="ti ti-user-circle text-sm"></i>
+                        View full profile
+                    </a>
+
+                </div>
+
+
+                <div class="space-y-4 px-5 py-5">
+
+                    <div>
+
+                        <p class="text-[11px] font-semibold uppercase tracking-wide text-gray-400">
+                            Stage
+                        </p>
+
+                        <p class="mt-1 flex items-center gap-2 text-sm text-gray-800">
+
+                            <span
+                                class="h-2.5 w-2.5 rounded-full"
+                                style="background-color: {{ active_lead.stage_color }};"
+                            ></span>
+
+                            {{ active_lead.stage.name|default:"No stage" }}
+
+                        </p>
+
+                    </div>
+
+                    <div>
+
+                        <p class="text-[11px] font-semibold uppercase tracking-wide text-gray-400">
+                            Pipeline
+                        </p>
+
+                        <p class="mt-1 text-sm text-gray-800">
+                            {{ active_lead.pipeline.name|default:"—" }}
+                        </p>
+
+                    </div>
+
+                    <div>
+
+                        <p class="text-[11px] font-semibold uppercase tracking-wide text-gray-400">
+                            Email
+                        </p>
+
+                        <p class="mt-1 truncate text-sm text-gray-800">
+                            {{ active_lead.email|default:"—" }}
+                        </p>
+
+                    </div>
+
+                    <div>
+
+                        <p class="text-[11px] font-semibold uppercase tracking-wide text-gray-400">
+                            Source
+                        </p>
+
+                        <p class="mt-1 text-sm capitalize text-gray-800">
+                            {{ active_lead.get_lead_source_display }}
+                        </p>
+
+                    </div>
+
+                    <div>
+
+                        <p class="text-[11px] font-semibold uppercase tracking-wide text-gray-400">
+                            Added
+                        </p>
+
+                        <p class="mt-1 text-sm text-gray-800">
+                            {{ active_lead.created_at|date:"d M Y" }}
+                        </p>
+
+                    </div>
+
+                    <div>
+
+                        <p class="text-[11px] font-semibold uppercase tracking-wide text-gray-400">
+                            Notes
+                        </p>
+
+                        <p class="mt-1 whitespace-pre-wrap text-sm text-gray-700">
+                            {{ active_lead.notes|default:"No notes yet." }}
+                        </p>
+
+                    </div>
+
+                </div>
+
+
+                <div class="mt-auto grid grid-cols-2 gap-2 border-t border-gray-100 px-5 py-4">
+
+                    <button
+                        type="button"
+                        hx-get="{% url 'crm-lead-note-modal' active_lead.id %}"
+                        hx-target="#modal-root"
+                        hx-swap="innerHTML"
+                        class="flex items-center justify-center gap-1.5 rounded-lg border border-gray-200 px-2 py-2 text-xs font-medium text-gray-600 transition hover:bg-gray-50"
+                    >
+                        <i class="ti ti-note text-sm"></i>
+                        Note
+                    </button>
+
+                    <button
+                        type="button"
+                        hx-get="{% url 'crm-lead-call-modal' active_lead.id %}"
+                        hx-target="#modal-root"
+                        hx-swap="innerHTML"
+                        class="flex items-center justify-center gap-1.5 rounded-lg border border-gray-200 px-2 py-2 text-xs font-medium text-gray-600 transition hover:bg-gray-50"
+                    >
+                        <i class="ti ti-phone text-sm"></i>
+                        Log call
+                    </button>
+
+                    <button
+                        type="button"
+                        hx-get="{% url 'crm-lead-reminder-modal' active_lead.id %}"
+                        hx-target="#modal-root"
+                        hx-swap="innerHTML"
+                        class="flex items-center justify-center gap-1.5 rounded-lg border border-gray-200 px-2 py-2 text-xs font-medium text-gray-600 transition hover:bg-gray-50"
+                    >
+                        <i class="ti ti-clock text-sm"></i>
+                        Reminder
+                    </button>
+
+                    <button
+                        type="button"
+                        hx-get="{% url 'crm-lead-edit-modal' active_lead.id %}"
+                        hx-target="#modal-root"
+                        hx-swap="innerHTML"
+                        class="flex items-center justify-center gap-1.5 rounded-lg border border-gray-200 px-2 py-2 text-xs font-medium text-gray-600 transition hover:bg-gray-50"
+                    >
+                        <i class="ti ti-edit text-sm"></i>
+                        Edit
+                    </button>
+
+                </div>
+
+            </div>
+
+        {% endif %}
+
     </div>
+
+
+    {% if active_lead %}
+
+        <script>
+        function getCookie(name) {
+            var match = document.cookie.match('(^|;)\\s*' + name + '\\s*=\\s*([^;]+)');
+            return match ? match.pop() : '';
+        }
+
+        document.getElementById('composer-form').addEventListener('submit', function (e) {
+            e.preventDefault();
+
+            var input = document.getElementById('message-body');
+            var errorBox = document.getElementById('send-error');
+            var body = input.value.trim();
+
+            if (!body) {
+                return;
+            }
+
+            errorBox.classList.add('hidden');
+
+            var formData = new FormData();
+            formData.append('body', body);
+
+            fetch('{% url "whatsapp-send-message" lead_id=active_lead.id %}', {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': getCookie('csrftoken'),
+                },
+                body: formData,
+            })
+                .then(function (response) {
+                    return response.json().then(function (data) {
+                        if (!response.ok) {
+                            throw new Error(data.error || 'Failed to send message.');
+                        }
+                        return data;
+                    });
+                })
+                .then(function () {
+                    input.value = '';
+                    // Reload the thread to show the new outbound message.
+                    // NOTE: this is a simple reload, not real-time push --
+                    // a websocket/polling upgrade can replace this later
+                    // without changing the send endpoint itself.
+                    window.location.reload();
+                })
+                .catch(function (err) {
+                    errorBox.textContent = err.message;
+                    errorBox.classList.remove('hidden');
+                });
+        });
+
+        // Auto-scroll to the latest message on load.
+        var thread = document.getElementById('thread');
+        thread.scrollTop = thread.scrollHeight;
+
+        // Poll for new inbound messages so agents don't have to
+        // manually reload to see incoming WhatsApp messages.
+        // Skips the reload while the user is actively typing a reply,
+        // and pauses while the tab is in the background.
+        setInterval(function () {
+            if (document.hidden) {
+                return;
+            }
+            var input = document.getElementById('message-body');
+            if (input && document.activeElement === input && input.value.trim()) {
+                return;
+            }
+            window.location.reload();
+        }, 8000);
+        </script>
+
+    {% endif %}
 
 {% endblock %}
