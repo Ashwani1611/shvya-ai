@@ -273,7 +273,6 @@ def _queue_internal_conversation_summary(
     The AI task is imported locally so the WhatsApp service does
     not create a module-level dependency on the AI task module.
     """
-
     from apps.ai_engagement.tasks import (
         generate_internal_conversation_summary,
     )
@@ -281,6 +280,7 @@ def _queue_internal_conversation_summary(
     generate_internal_conversation_summary.delay(
         str(lead_id)
     )
+
 
 def _queue_whatsapp_engagement(
     *,
@@ -301,6 +301,7 @@ def _queue_whatsapp_engagement(
     generate_ai_engagement_response.delay(
         str(lead_id)
     )
+
 
 # ============================================================
 # INBOUND
@@ -412,6 +413,10 @@ def handle_inbound_message(
             from_number=from_number,
             to_number=to_number,
             body=body,
+            message_type=(
+                WhatsAppMessage.MessageType.TEXT
+            ),
+            media_payload={},
             status=(
                 WhatsAppMessage.Status.RECEIVED
             ),
@@ -583,6 +588,7 @@ def handle_status_update(
         final_payload = dict(
             final_payload
         )
+
         final_payload["shvya_ai"] = (
             ai_metadata
         )
@@ -600,9 +606,162 @@ def handle_status_update(
 
     return 1
 
+
 # ============================================================
 # OUTBOUND
 # ============================================================
+
+
+def _normalize_media_payload(
+    media_payload,
+):
+    """
+    Return a safe dictionary for queued outbound media metadata.
+    """
+    if media_payload is None:
+        return {}
+
+    if not isinstance(
+        media_payload,
+        dict,
+    ):
+        raise ValueError(
+            "media_payload must be a dictionary."
+        )
+
+    return dict(
+        media_payload
+    )
+
+
+def _validate_outbound_message_content(
+    *,
+    message_type,
+    body,
+    media_payload,
+):
+    """
+    Deterministically validate the outbound WhatsApp content shape.
+
+    This function does not call Meta and does not perform any
+    database writes. It only validates the queued message contract.
+    """
+    allowed_types = {
+        WhatsAppMessage.MessageType.TEXT,
+        WhatsAppMessage.MessageType.IMAGE,
+        WhatsAppMessage.MessageType.AUDIO,
+        WhatsAppMessage.MessageType.VIDEO,
+        WhatsAppMessage.MessageType.DOCUMENT,
+    }
+
+    if message_type not in allowed_types:
+        raise ValueError(
+            f"Unsupported WhatsApp message type: {message_type}"
+        )
+
+    media_payload = _normalize_media_payload(
+        media_payload
+    )
+
+    # --------------------------------------------------------
+    # TEXT
+    # --------------------------------------------------------
+
+    if message_type == WhatsAppMessage.MessageType.TEXT:
+
+        if not (
+            body
+            or ""
+        ).strip():
+            raise ValueError(
+                "Text WhatsApp messages require a non-empty body."
+            )
+
+        preview_url = media_payload.get(
+            "preview_url",
+            False,
+        )
+
+        if not isinstance(
+            preview_url,
+            bool,
+        ):
+            raise ValueError(
+                "media_payload.preview_url must be a boolean."
+            )
+
+        return media_payload
+
+    # --------------------------------------------------------
+    # MEDIA
+    # --------------------------------------------------------
+
+    source = media_payload.get(
+        "source"
+    )
+
+    if source not in {
+        "document",
+        "url",
+        "media_id",
+    }:
+        raise ValueError(
+            (
+                "Media messages require source to be one of "
+                "document, url, or media_id."
+            )
+        )
+
+    if source == "document":
+
+        document_id = media_payload.get(
+            "document_id"
+        )
+
+        if (
+            isinstance(
+                document_id,
+                bool,
+            )
+            or not isinstance(
+                document_id,
+                int,
+            )
+            or document_id <= 0
+        ):
+            raise ValueError(
+                "document_id must be a positive integer."
+            )
+
+    elif source == "url":
+
+        media_url = (
+            media_payload.get(
+                "url"
+            )
+            or ""
+        ).strip()
+
+        if not media_url:
+            raise ValueError(
+                "Media source=url requires a non-empty URL."
+            )
+
+    elif source == "media_id":
+
+        media_id = (
+            media_payload.get(
+                "media_id"
+            )
+            or ""
+        ).strip()
+
+        if not media_id:
+            raise ValueError(
+                "Media source=media_id requires a non-empty media ID."
+            )
+
+    return media_payload
 
 
 def queue_outbound_message(
@@ -612,13 +771,57 @@ def queue_outbound_message(
     to_number,
     body,
     lead=None,
+    message_type=WhatsAppMessage.MessageType.TEXT,
+    media_payload=None,
 ):
     """
-    Create the WhatsAppMessage row in `queued` status. The actual
-    Meta API call happens later, in a Celery task
-    (apps.channels.tasks.send_whatsapp_message_task) -- never
-    synchronously in a view, per CLAUDE.md rule 3.
+    Create the WhatsAppMessage row in `queued` status.
+
+    The actual Meta API call happens later in a Celery task.
+
+    Existing callers that provide only `body` continue to create a
+    normal text message.
+
+    AI Engagement can additionally provide a message type and
+    controlled media payload for documents, images, audio, or video.
+
+    URL previews remain text messages and use:
+
+        message_type=WhatsAppMessage.MessageType.TEXT
+        media_payload={"preview_url": True}
+
+    Organization-owned documents use:
+
+        message_type=WhatsAppMessage.MessageType.DOCUMENT
+        media_payload={
+            "source": "document",
+            "document_id": 123,
+        }
+
+    URL-backed media uses:
+
+        message_type=WhatsAppMessage.MessageType.IMAGE
+        media_payload={
+            "source": "url",
+            "url": "https://example.com/image.jpg",
+        }
+
+    Meta-uploaded media IDs use:
+
+        message_type=WhatsAppMessage.MessageType.DOCUMENT
+        media_payload={
+            "source": "media_id",
+            "media_id": "META_MEDIA_ID",
+        }
     """
+    normalized_media_payload = (
+        _validate_outbound_message_content(
+            message_type=message_type,
+            body=body,
+            media_payload=media_payload,
+        )
+    )
+
     return WhatsAppMessage.objects.create(
         organization=organization,
         account=account,
@@ -626,8 +829,225 @@ def queue_outbound_message(
         direction=WhatsAppMessage.Direction.OUTBOUND,
         from_number=account.phone_number_id,
         to_number=to_number,
-        body=body,
+        body=body or "",
+        message_type=message_type,
+        media_payload=normalized_media_payload,
         status=WhatsAppMessage.Status.QUEUED,
+    )
+
+
+def _send_outbound_media_message(
+    *,
+    client,
+    message,
+):
+    """
+    Resolve and send one queued non-text WhatsApp media message.
+
+    Organization-owned SHVYA Documents are validated again at send
+    time so a stale AI decision cannot send an inactive, incomplete,
+    or cross-organization file.
+    """
+    media_type = message.message_type
+
+    payload = _normalize_media_payload(
+        message.media_payload
+    )
+
+    source = payload.get(
+        "source"
+    )
+
+    if media_type == WhatsAppMessage.MessageType.TEXT:
+        raise ValueError(
+            "_send_outbound_media_message cannot send text content."
+        )
+
+    # ========================================================
+    # ORGANIZATION-OWNED SHVYA DOCUMENT
+    # ========================================================
+
+    if source == "document":
+
+        from apps.ai_engagement.models import Document
+
+        document_id = payload.get(
+            "document_id"
+        )
+
+        document = (
+            Document.objects
+            .filter(
+                id=document_id,
+                organization=message.organization,
+                is_active=True,
+                processing_status=(
+                    Document.ProcessingStatus.COMPLETED
+                ),
+            )
+            .exclude(
+                file="",
+            )
+            .first()
+        )
+
+        if not document:
+            raise ValueError(
+                (
+                    "The requested WhatsApp document is not an "
+                    "eligible organization-owned file."
+                )
+            )
+
+        if not document.file:
+            raise ValueError(
+                "The requested WhatsApp document has no file."
+            )
+
+        filename = (
+            payload.get(
+                "filename"
+            )
+            or document.file.name.rsplit(
+                "/",
+                1,
+            )[-1]
+        )
+
+        caption = (
+            payload.get(
+                "caption"
+            )
+            if "caption" in payload
+            else message.body
+        )
+
+        import mimetypes
+
+        mime_type = (
+            payload.get(
+                "mime_type"
+            )
+            or mimetypes.guess_type(
+                filename
+            )[0]
+            or "application/octet-stream"
+        )
+
+        document.file.open(
+            "rb"
+        )
+
+        try:
+            upload_response = client.upload_media(
+                file_obj=document.file.file,
+                filename=filename,
+                mime_type=mime_type,
+            )
+
+        finally:
+            document.file.close()
+
+        media_id = upload_response.get(
+            "id"
+        )
+
+        if not media_id:
+            raise ValueError(
+                "Meta media upload returned no media ID."
+            )
+
+        return client.send_media_message(
+            to=message.to_number,
+            media_type=media_type,
+            media_id=media_id,
+            caption=caption,
+            filename=(
+                filename
+                if media_type
+                == WhatsAppMessage.MessageType.DOCUMENT
+                else None
+            ),
+        )
+
+    # ========================================================
+    # URL-BACKED MEDIA
+    # ========================================================
+
+    if source == "url":
+
+        media_url = (
+            payload.get(
+                "url"
+            )
+            or ""
+        ).strip()
+
+        from urllib.parse import urlparse
+
+        parsed = urlparse(
+            media_url
+        )
+
+        if (
+            parsed.scheme
+            not in {
+                "http",
+                "https",
+            }
+            or not parsed.netloc
+        ):
+            raise ValueError(
+                "WhatsApp media URLs must be absolute HTTP(S) URLs."
+            )
+
+        return client.send_media_message(
+            to=message.to_number,
+            media_type=media_type,
+            media_url=media_url,
+            caption=(
+                payload.get(
+                    "caption",
+                )
+                if "caption" in payload
+                else message.body
+            ),
+            filename=payload.get(
+                "filename",
+            ),
+        )
+
+    # ========================================================
+    # META MEDIA ID
+    # ========================================================
+
+    if source == "media_id":
+
+        media_id = (
+            payload.get(
+                "media_id"
+            )
+            or ""
+        ).strip()
+
+        return client.send_media_message(
+            to=message.to_number,
+            media_type=media_type,
+            media_id=media_id,
+            caption=(
+                payload.get(
+                    "caption",
+                )
+                if "caption" in payload
+                else message.body
+            ),
+            filename=payload.get(
+                "filename",
+            ),
+        )
+
+    raise ValueError(
+        "Unsupported WhatsApp media source."
     )
 
 
@@ -637,7 +1057,24 @@ def send_outbound_message(
 ):
     """
     Actually call Meta's API for an already-queued WhatsAppMessage.
+
     Called from inside the Celery task, not directly from a view.
+
+    Transport selection is deterministic:
+
+        text      -> Meta text message
+
+        document  -> validated SHVYA Document
+                     -> Meta media upload
+                     -> Meta document message
+
+        image     -> Meta image message
+
+        audio     -> Meta audio message
+
+        video     -> Meta video message
+
+    URL previews remain text messages with preview_url enabled.
 
     Preserve any SHVYA AI metadata stored on the queued message
     while recording Meta's outbound API response.
@@ -645,17 +1082,86 @@ def send_outbound_message(
 
     account = message.account
 
+    # --------------------------------------------------------
+    # ACCOUNT SAFETY
+    # --------------------------------------------------------
+
+    if (
+        account.organization_id
+        != message.organization_id
+    ):
+        raise WhatsAppSendError(
+            "WhatsApp account does not belong to the message organization."
+        )
+
+    if not account.is_active:
+        raise WhatsAppSendError(
+            "WhatsApp account is inactive."
+        )
+
+    if (
+        account.status
+        != WhatsAppAccount.Status.CONNECTED
+    ):
+        raise WhatsAppSendError(
+            "WhatsApp account is not connected."
+        )
+
     client = WhatsAppClient(
         phone_number_id=account.phone_number_id,
         access_token=account.access_token,
     )
 
+    # --------------------------------------------------------
+    # TRANSPORT
+    # --------------------------------------------------------
+
     try:
 
-        response = client.send_text_message(
-            to=message.to_number,
-            body=message.body,
+        message_type = message.message_type
+
+        media_payload = (
+            _validate_outbound_message_content(
+                message_type=message_type,
+                body=message.body,
+                media_payload=message.media_payload,
+            )
         )
+
+        # ----------------------------------------------------
+        # TEXT
+        # ----------------------------------------------------
+
+        if (
+            message_type
+            == WhatsAppMessage.MessageType.TEXT
+        ):
+
+            response = (
+                client.send_text_message(
+                    to=message.to_number,
+                    body=message.body,
+                    preview_url=(
+                        media_payload.get(
+                            "preview_url",
+                            False,
+                        )
+                    ),
+                )
+            )
+
+        # ----------------------------------------------------
+        # MEDIA
+        # ----------------------------------------------------
+
+        else:
+
+            response = (
+                _send_outbound_media_message(
+                    client=client,
+                    message=message,
+                )
+            )
 
     except WhatsAppAPIError as exc:
 
@@ -679,49 +1185,105 @@ def send_outbound_message(
             str(exc)
         ) from exc
 
+    except (
+        ValueError,
+        OSError,
+    ) as exc:
+
+        message.status = (
+            WhatsAppMessage.Status.FAILED
+        )
+
+        message.error = str(
+            exc
+        )
+
+        message.save(
+            update_fields=[
+                "status",
+                "error",
+                "updated_at",
+            ]
+        )
+
+        raise WhatsAppSendError(
+            str(exc)
+        ) from exc
+
+    # --------------------------------------------------------
+    # META RESPONSE
+    # --------------------------------------------------------
+
     external_id = None
 
     messages = (
-        response.get("messages")
+        response.get(
+            "messages"
+        )
         or []
     )
 
     if messages:
-        external_id = messages[0].get(
-            "id"
+
+        external_id = (
+            messages[0].get(
+                "id"
+            )
         )
+
+    # --------------------------------------------------------
+    # PRESERVE SHVYA AI METADATA
+    # --------------------------------------------------------
 
     existing_payload = (
         message.raw_payload
-        if isinstance(message.raw_payload, dict)
+        if isinstance(
+            message.raw_payload,
+            dict,
+        )
         else {}
     )
 
-    ai_metadata = existing_payload.get(
-        "shvya_ai"
+    ai_metadata = (
+        existing_payload.get(
+            "shvya_ai"
+        )
     )
 
     final_payload = (
         response
-        if isinstance(response, dict)
+        if isinstance(
+            response,
+            dict,
+        )
         else {}
     )
 
     if ai_metadata is not None:
+
         final_payload = dict(
             final_payload
         )
+
         final_payload["shvya_ai"] = (
             ai_metadata
         )
+
+    # --------------------------------------------------------
+    # MARK SENT
+    # --------------------------------------------------------
 
     message.status = (
         WhatsAppMessage.Status.SENT
     )
 
-    message.external_id = external_id
+    message.external_id = (
+        external_id
+    )
 
-    message.raw_payload = final_payload
+    message.raw_payload = (
+        final_payload
+    )
 
     message.save(
         update_fields=[
@@ -733,6 +1295,7 @@ def send_outbound_message(
     )
 
     return message
+
 
 # ============================================================
 # CONVERSATIONS (Chats inbox)

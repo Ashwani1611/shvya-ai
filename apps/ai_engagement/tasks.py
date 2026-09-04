@@ -587,21 +587,28 @@ def _has_existing_ai_response(
     body,
 ):
     """
-    Detect an already-created AI response for the source inbound
-    message.
+    Detect whether an AI-generated outbound WhatsApp response
+    already exists for the given inbound message.
 
     Primary protection:
         raw_payload["shvya_ai"]["source_inbound_message_id"]
 
     Fallback protection:
-        same outbound body created after the inbound message.
+        same outbound body created at or after the source
+        inbound message timestamp.
     """
     from apps.channels.models import WhatsAppMessage
+
+    if inbound_message is None:
+        return False
 
     source_id = str(
         inbound_message.id
     )
 
+    # Primary idempotency check:
+    # the outbound message explicitly records which inbound
+    # message caused the AI response.
     if (
         WhatsAppMessage.objects
         .filter(
@@ -617,6 +624,11 @@ def _has_existing_ai_response(
         .exists()
     ):
         return True
+
+    # Defensive fallback for outbound messages created before
+    # the SHVYA AI metadata was attached.
+    if not body:
+        return False
 
     return (
         WhatsAppMessage.objects
@@ -735,46 +747,35 @@ def _whatsapp_send_eligible(
         "eligible",
     )
 
-def _has_existing_ai_response(
-    *,
-    organization,
-    lead,
-    source_inbound_message_id,
-):
-    """
-    Return True when an AI-generated outbound WhatsApp message
-    already exists for the given inbound WhatsApp message.
-    """
-    if not source_inbound_message_id:
-        return False
-
-    return (
-        WhatsAppMessage.objects
-        .filter(
-            organization=organization,
-            lead=lead,
-            direction=WhatsAppMessage.Direction.OUTBOUND,
-            raw_payload__shvya_ai__source_inbound_message_id=(
-                str(source_inbound_message_id)
-            ),
-        )
-        .exists()
-    )
-
 def _execute_ai_engagement_response(
     *,
     task,
     lead_id: str,
-    account_id: str | None = None,
 ):
     """
-    Shared Phase-13 execution path.
+    Shared AI Engagement execution path.
 
-    The canonical task receives only Lead ID.
+    The canonical production task receives only the Lead ID and
+    resolves the current Lead, organization, pipeline, stage, and
+    connected WhatsApp account inside the worker.
 
-    The optional account_id exists only for compatibility with the
-    existing process_whatsapp_engagement caller so we do not break
-    the current inbound WhatsApp trigger during this phase.
+    The execution order is:
+
+        Lead
+        -> AI permission
+        -> WhatsApp account
+        -> latest inbound message
+        -> AI Engagement decision
+        -> permission re-check
+        -> conversation freshness re-check
+        -> final transactional lock
+        -> duplicate protection
+        -> WhatsApp send eligibility
+        -> CRM actions
+        -> queue outbound WhatsApp message
+        -> dispatch existing WhatsApp sender after commit
+
+    This function does not call Meta directly.
     """
 
     from apps.ai_engagement.services.ai_permissions import (
@@ -790,7 +791,6 @@ def _execute_ai_engagement_response(
         EngagementService,
     )
     from apps.channels.models import (
-        WhatsAppAccount,
         WhatsAppMessage,
     )
     from apps.channels.tasks import (
@@ -882,80 +882,19 @@ def _execute_ai_engagement_response(
     # RESOLVE WHATSAPP ACCOUNT
     # --------------------------------------------------------
 
-    if account_id is not None:
+    account = resolve_account_for_lead(
+        organization=organization,
+        lead=lead,
+    )
 
-        try:
-            account = (
-                WhatsAppAccount.objects
-                .select_related(
-                    "organization",
-                )
-                .get(
-                    id=account_id,
-                )
-            )
-
-        except WhatsAppAccount.DoesNotExist:
-
-            return {
-                "status": "skipped",
-                "reason": "account_not_found",
-                "account_id": str(
-                    account_id
-                ),
-                "lead_id": str(
-                    lead_id
-                ),
-            }
-
-        if (
-            account.organization_id
-            != lead.organization_id
-        ):
-            return {
-                "status": "skipped",
-                "reason": "organization_mismatch",
-                "lead_id": str(
-                    lead_id
-                ),
-                "account_id": str(
-                    account_id
-                ),
-            }
-
-        if (
-            not account.is_active
-            or account.status
-            != WhatsAppAccount.Status.CONNECTED
-        ):
-            return {
-                "status": "skipped",
-                "reason": "account_not_connected",
-                "lead_id": str(
-                    lead_id
-                ),
-                "account_id": str(
-                    account_id
-                ),
-            }
-
-    else:
-
-        account = resolve_account_for_lead(
-            organization=organization,
-            lead=lead,
-        )
-
-        if account is None:
-            return {
-                "status": "skipped",
-                "reason": (
-                    "no_connected_whatsapp_account"
-                ),
-                "lead_id": str(
-                    lead_id
-                ),
-            }
+    if account is None:
+        return {
+            "status": "skipped",
+            "reason": "no_connected_whatsapp_account",
+            "lead_id": str(
+                lead_id
+            ),
+        }
 
     # --------------------------------------------------------
     # RESOLVE SOURCE INBOUND MESSAGE
@@ -1121,6 +1060,30 @@ def _execute_ai_engagement_response(
         }
 
     # --------------------------------------------------------
+    # RE-CHECK WHATSAPP ACCOUNT AFTER AI GENERATION
+    # --------------------------------------------------------
+    #
+    # The account could have been disconnected while the AI
+    # provider was generating the response.
+    #
+
+    account = resolve_account_for_lead(
+        organization=organization,
+        lead=lead,
+    )
+
+    if account is None:
+        return {
+            "status": "skipped",
+            "reason": (
+                "no_connected_whatsapp_account"
+            ),
+            "lead_id": str(
+                lead_id
+            ),
+        }
+
+    # --------------------------------------------------------
     # RE-CHECK CONVERSATION FRESHNESS
     # --------------------------------------------------------
 
@@ -1163,6 +1126,11 @@ def _execute_ai_engagement_response(
                 lead = (
                     Lead.objects
                     .select_for_update()
+                    .select_related(
+                        "organization",
+                        "pipeline",
+                        "stage",
+                    )
                     .get(
                         id=lead_id,
                     )
@@ -1326,7 +1294,31 @@ def _execute_ai_engagement_response(
                 }
 
             # ------------------------------------------------
-            # 3B — DUPLICATE AI RESPONSE PROTECTION
+            # REFRESH WHATSAPP ACCOUNT INSIDE FINAL TRANSACTION
+            # ------------------------------------------------
+            #
+            # The connection may have changed while AI was
+            # generating the response.
+            #
+
+            account = resolve_account_for_lead(
+                organization=organization,
+                lead=lead,
+            )
+
+            if account is None:
+                return {
+                    "status": "skipped",
+                    "reason": (
+                        "no_connected_whatsapp_account"
+                    ),
+                    "lead_id": str(
+                        lead_id
+                    ),
+                }
+
+            # ------------------------------------------------
+            # DUPLICATE AI RESPONSE PROTECTION
             # ------------------------------------------------
 
             if _has_existing_ai_response(
@@ -1378,6 +1370,10 @@ def _execute_ai_engagement_response(
                     ),
                 }
 
+            # ------------------------------------------------
+            # CRM ACTIONS
+            # ------------------------------------------------
+
             crm_result = (
                 CRMActionExecutor().execute(
                     organization=organization,
@@ -1386,15 +1382,64 @@ def _execute_ai_engagement_response(
                 )
             )
 
+            # ------------------------------------------------
+            # QUEUE OUTBOUND WHATSAPP MESSAGE
+            # ------------------------------------------------
+            #
+            # The EngagementDecision currently supports one explicit
+            # media selection: file_document_id. When present, queue
+            # the existing organization-owned Document as a WhatsApp
+            # document. Otherwise preserve the existing text path.
+            #
+            # The actual document ownership/activity/file validation
+            # is performed again by the WhatsApp send service at send
+            # time, so a stale AI decision cannot send an invalid file.
+            # --------------------------------------------------------
+
+            outbound_message_kwargs = {
+                "organization": organization,
+                "account": account,
+                "to_number": lead.phone,
+                "body": body,
+                "lead": lead,
+            }
+
+            if decision.file_document_id is not None:
+                try:
+                    document_id = int(
+                        decision.file_document_id
+                    )
+                except (TypeError, ValueError) as exc:
+                    raise ValueError(
+                        "Engagement decision contains an invalid "
+                        "file_document_id."
+                    ) from exc
+
+                if document_id <= 0:
+                    raise ValueError(
+                        "Engagement decision contains an invalid "
+                        "file_document_id."
+                    )
+
+                outbound_message_kwargs.update({
+                    "message_type": (
+                        WhatsAppMessage.MessageType.DOCUMENT
+                    ),
+                    "media_payload": {
+                        "source": "document",
+                        "document_id": document_id,
+                    },
+                })
+
             outbound_message = (
                 queue_outbound_message(
-                    organization=organization,
-                    account=account,
-                    to_number=lead.phone,
-                    body=body,
-                    lead=lead,
+                    **outbound_message_kwargs
                 )
             )
+
+            # ------------------------------------------------
+            # STORE AI METADATA FOR IDEMPOTENCY / AUDIT
+            # ------------------------------------------------
 
             outbound_message.raw_payload = {
                 "shvya_ai": {
@@ -1414,6 +1459,10 @@ def _execute_ai_engagement_response(
                     "updated_at",
                 ],
             )
+
+            # ------------------------------------------------
+            # DISPATCH EXISTING WHATSAPP SENDER AFTER COMMIT
+            # ------------------------------------------------
 
             transaction.on_commit(
                 lambda message_id=outbound_message.id: (
@@ -1475,7 +1524,7 @@ def _execute_ai_engagement_response(
         ),
         "model": decision.model,
     }
-    
+
 # ============================================================
 # CANONICAL AI ENGAGEMENT TASK
 # ============================================================
@@ -1501,38 +1550,6 @@ def generate_ai_engagement_response(
         lead_id=lead_id,
     )
 
-
-# ============================================================
-# LEGACY COMPATIBILITY ENTRY POINT
-# ============================================================
-
-
-@shared_task(
-    bind=True,
-    max_retries=3,
-    default_retry_delay=30,
-    name="ai.process_whatsapp_engagement",
-)
-def process_whatsapp_engagement(
-    self,
-    lead_id: str,
-    account_id: str,
-):
-    """
-    Compatibility entry point for the existing WhatsApp trigger.
-
-    New AI Engagement callers should use:
-        generate_ai_engagement_response(lead_id)
-
-    This wrapper intentionally shares the same execution path so
-    AI permission, freshness, CRM execution, duplicate protection,
-    and WhatsApp queueing do not exist in two different places.
-    """
-    return _execute_ai_engagement_response(
-        task=self,
-        lead_id=lead_id,
-        account_id=account_id,
-    )
 
 # ============================================================
 # KNOWLEDGE INGESTION — UPLOADED DOCUMENT
