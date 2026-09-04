@@ -4,7 +4,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("channels", "0003_add_missing_is_read_column"),
+        ("channels", "0001_initial"),
     ]
 
     operations = [

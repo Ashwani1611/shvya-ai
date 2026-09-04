@@ -1,8 +1,7 @@
-from .playground import (
-    PlaygroundRequestSerializer,
-    PlaygroundResponseSerializer,
-)
+"""
+AI Engagement URL package.
 
-from .playground import (
-    PlaygroundAPIView,
-)
+Versioned URL modules live here, for example:
+- api_v1.py
+- playground.py
+"""
