@@ -48,9 +48,9 @@ class AIContext:
     #
     # UI:
     # Lead Card
-    #     ↓
+    #     â†“
     # Conversation Summary icon
-    #     ↓
+    #     â†“
     # Read-only summary
     # ------------------------------------------------------------
 
@@ -65,7 +65,7 @@ class AIContext:
     #
     # UI:
     # Lead Card
-    #     ↓
+    #     â†“
     # Notes section
     # ------------------------------------------------------------
 
@@ -614,9 +614,9 @@ class AIContextBuilder:
         UI:
 
             Lead Card
-                ↓
+                â†“
             Conversation Summary icon
-                ↓
+                â†“
             Read-only summary
         """
 

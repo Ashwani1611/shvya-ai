@@ -16,10 +16,6 @@ from apps.ai_engagement.services.context import (
     AIContext,
     AIContextBuilder,
 )
-from apps.ai_engagement.services.crm_actions import (
-    CRMActionSchemaError,
-    validate_crm_actions,
-)
 
 
 class EngagementError(Exception):
@@ -192,6 +188,18 @@ Rules:
 - Never include extra top-level keys.
 """
 
+    ALLOWED_ACTION_TYPES = {
+        "attribute_updates",
+        "pipeline_transition",
+        "add_note",
+        "create_reminder",
+        "contact_updates",
+    }
+
+    ALLOWED_PIPELINE_TRANSITION_TYPES = {
+        "stage_shift",
+    }
+
     def __init__(
         self,
         *,
@@ -243,7 +251,9 @@ Rules:
             context=context,
         )
 
-        instructions = self._build_instructions()
+        instructions = self._build_instructions(
+            context=context,
+        )
 
         input_text = self._build_input(
             context=context,
@@ -281,17 +291,47 @@ Rules:
     # INSTRUCTIONS
     # ============================================================
 
-    def _build_instructions(self) -> str:
+    def _build_instructions(
+        self,
+        *,
+        context: AIContext,
+    ) -> str:
         """
-        Compose the fixed SHVYA system layer with the engagement task.
+        Compose the SHVYA instruction hierarchy for engagement.
+
+        Order:
+            1. SHVYA Base System Instructions
+            2. Organization Engagement Instructions
+            3. Engagement Task Instructions
         """
 
         base_instructions = (
             SHVYABaseInstructions.get()
         )
 
+        organization_context = (
+            context.organization or {}
+        )
+        organization_instructions = (
+            organization_context.get(
+                "engagement_instructions",
+                "",
+            )
+            or ""
+        ).strip()
+
+        organization_section = (
+            organization_instructions
+            if organization_instructions
+            else "No additional organization-specific engagement instructions were supplied."
+        )
+
         return (
             f"{base_instructions}\n\n"
+            "============================================================\n"
+            "ORGANIZATION ENGAGEMENT INSTRUCTIONS\n"
+            "============================================================\n"
+            f"{organization_section}\n\n"
             "============================================================\n"
             "SHVYA AI ENGAGEMENT TASK\n"
             "============================================================\n"
@@ -461,14 +501,9 @@ Rules:
 
         reason = reason.strip()
 
-        try:
-            crm_actions = validate_crm_actions(
-                crm_actions
-            )
-        except CRMActionSchemaError as exc:
-            raise EngagementError(
-                f"Invalid CRM actions: {exc}"
-            ) from exc
+        self._validate_crm_actions(
+            crm_actions
+        )
 
         return EngagementDecision(
             should_engage=should_engage,
@@ -535,6 +570,323 @@ Rules:
             raise EngagementError(
                 "AI response contains an invalid schema."
             )
+
+    # ============================================================
+    # CRM ACTION VALIDATION
+    # ============================================================
+
+    def _validate_crm_actions(
+        self,
+        actions: list[Any],
+    ) -> None:
+        for action in actions:
+            if not isinstance(
+                action,
+                dict,
+            ):
+                raise EngagementError(
+                    "Each CRM action must be an object."
+                )
+
+            action_type = action.get(
+                "type"
+            )
+
+            if action_type not in (
+                self.ALLOWED_ACTION_TYPES
+            ):
+                raise EngagementError(
+                    f"Unsupported CRM action type: "
+                    f"{action_type!r}"
+                )
+
+            if action_type == "attribute_updates":
+                self._validate_attribute_updates(
+                    action
+                )
+
+            elif action_type == "pipeline_transition":
+                self._validate_pipeline_transition(
+                    action
+                )
+
+            elif action_type == "add_note":
+                self._validate_add_note(
+                    action
+                )
+
+            elif action_type == "create_reminder":
+                self._validate_create_reminder(
+                    action
+                )
+
+            elif action_type == "contact_updates":
+                self._validate_contact_updates(
+                    action
+                )
+
+    def _validate_attribute_updates(
+        self,
+        action: dict[str, Any],
+    ) -> None:
+        expected = {
+            "type",
+            "updates",
+        }
+
+        if set(
+            action.keys()
+        ) != expected:
+            raise EngagementError(
+                "Invalid attribute_updates schema."
+            )
+
+        updates = action[
+            "updates"
+        ]
+
+        if not isinstance(
+            updates,
+            list,
+        ):
+            raise EngagementError(
+                "attribute_updates.updates must be an array."
+            )
+
+        for update in updates:
+            if not isinstance(
+                update,
+                dict,
+            ):
+                raise EngagementError(
+                    "Each attribute update must be an object."
+                )
+
+            if set(
+                update.keys()
+            ) != {
+                "key",
+                "value",
+            }:
+                raise EngagementError(
+                    "Invalid attribute update schema."
+                )
+
+            if not isinstance(
+                update["key"],
+                str,
+            ):
+                raise EngagementError(
+                    "Attribute update key must be a string."
+                )
+
+    def _validate_pipeline_transition(
+        self,
+        action: dict[str, Any],
+    ) -> None:
+        expected = {
+            "type",
+            "stage_shift",
+        }
+
+        if set(
+            action.keys()
+        ) != expected:
+            raise EngagementError(
+                "Invalid pipeline_transition schema."
+            )
+
+        stage_shift = action[
+            "stage_shift"
+        ]
+
+        if not isinstance(
+            stage_shift,
+            dict,
+        ):
+            raise EngagementError(
+                "stage_shift must be an object."
+            )
+
+        if set(
+            stage_shift.keys()
+        ) != {
+            "stage_id",
+        }:
+            raise EngagementError(
+                "Invalid stage_shift schema."
+            )
+
+        stage_id = stage_shift[
+            "stage_id"
+        ]
+
+        if not isinstance(
+            stage_id,
+            str,
+        ):
+            raise EngagementError(
+                "stage_shift.stage_id must be a string."
+            )
+
+    def _validate_add_note(
+        self,
+        action: dict[str, Any],
+    ) -> None:
+        expected = {
+            "type",
+            "note",
+        }
+
+        if set(
+            action.keys()
+        ) != expected:
+            raise EngagementError(
+                "Invalid add_note schema."
+            )
+
+        if not isinstance(
+            action["note"],
+            str,
+        ):
+            raise EngagementError(
+                "add_note.note must be a string."
+            )
+
+        if not action[
+            "note"
+        ].strip():
+            raise EngagementError(
+                "add_note.note cannot be empty."
+            )
+
+    def _validate_create_reminder(
+        self,
+        action: dict[str, Any],
+    ) -> None:
+        expected = {
+            "type",
+            "title",
+            "description",
+            "due_at",
+        }
+
+        if set(
+            action.keys()
+        ) != expected:
+            raise EngagementError(
+                "Invalid create_reminder schema."
+            )
+
+        if not isinstance(
+            action["title"],
+            str,
+        ):
+            raise EngagementError(
+                "create_reminder.title must be a string."
+            )
+
+        if not action[
+            "title"
+        ].strip():
+            raise EngagementError(
+                "create_reminder.title cannot be empty."
+            )
+
+        if not isinstance(
+            action["description"],
+            str,
+        ):
+            raise EngagementError(
+                "create_reminder.description must be a string."
+            )
+
+        if not isinstance(
+            action["due_at"],
+            str,
+        ):
+            raise EngagementError(
+                "create_reminder.due_at must be a string."
+            )
+
+        if not action[
+            "due_at"
+        ].strip():
+            raise EngagementError(
+                "create_reminder.due_at cannot be empty."
+            )
+
+    def _validate_contact_updates(
+        self,
+        action: dict[str, Any],
+    ) -> None:
+        expected = {
+            "type",
+            "updates",
+        }
+
+        if set(
+            action.keys()
+        ) != expected:
+            raise EngagementError(
+                "Invalid contact_updates schema."
+            )
+
+        updates = action[
+            "updates"
+        ]
+
+        if not isinstance(
+            updates,
+            list,
+        ):
+            raise EngagementError(
+                "contact_updates.updates must be an array."
+            )
+
+        for update in updates:
+            if not isinstance(
+                update,
+                dict,
+            ):
+                raise EngagementError(
+                    "Each contact update must be an object."
+                )
+
+            if set(
+                update.keys()
+            ) != {
+                "contact_id",
+                "channel",
+                "handle",
+            }:
+                raise EngagementError(
+                    "Invalid contact update schema."
+                )
+
+            if not isinstance(
+                update["contact_id"],
+                str,
+            ):
+                raise EngagementError(
+                    "contact_id must be a string."
+                )
+
+            if not isinstance(
+                update["channel"],
+                str,
+            ):
+                raise EngagementError(
+                    "channel must be a string."
+                )
+
+            if not isinstance(
+                update["handle"],
+                str,
+            ):
+                raise EngagementError(
+                    "handle must be a string."
+                )
 
     # ============================================================
     # CONTEXT VALIDATION

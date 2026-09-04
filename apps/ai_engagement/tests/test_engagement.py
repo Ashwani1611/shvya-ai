@@ -237,6 +237,20 @@ class EngagementServiceTests(TestCase):
         )
 
         self.assertIn(
+            self.org_info.engagement_instructions,
+            instructions,
+        )
+
+        self.assertLess(
+            instructions.index(
+                self.org_info.engagement_instructions
+            ),
+            instructions.index(
+                "SHVYA AI ENGAGEMENT TASK"
+            ),
+        )
+
+        self.assertIn(
             self.organization.name,
             input_text,
         )
@@ -248,7 +262,7 @@ class EngagementServiceTests(TestCase):
 
         self.assertIn(
             self.org_info.engagement_instructions,
-            input_text,
+            instructions,
         )
 
         self.assertIn(
@@ -302,9 +316,11 @@ class EngagementServiceTests(TestCase):
     # ========================================================
 
     def test_accepts_stage_shift_request(self):
-        target_stage = Stage.objects.get(
+        target_stage = Stage.objects.create(
             pipeline=self.pipeline,
             name="Qualified",
+            description="Qualified lead.",
+            display_order=1,
             is_active=True,
         )
 
@@ -342,7 +358,9 @@ class EngagementServiceTests(TestCase):
         )
 
         self.assertEqual(
-            decision.crm_actions[0]["stage_shift"]["stage_id"],
+            decision.crm_actions[0][
+                "stage_shift"
+            ]["stage_id"],
             str(target_stage.id),
         )
 
