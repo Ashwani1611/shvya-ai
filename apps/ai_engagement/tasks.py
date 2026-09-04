@@ -1555,7 +1555,6 @@ def generate_ai_engagement_response(
 # KNOWLEDGE INGESTION — UPLOADED DOCUMENT
 # ============================================================
 
-
 @shared_task(
     bind=True,
     max_retries=3,
@@ -1565,36 +1564,36 @@ def generate_ai_engagement_response(
 def ingest_and_index_document(
     self,
     document_id: int,
-    organization_id: int,
+    organization_id=None,
 ):
     """
     Extract, chunk, and embed one uploaded knowledge Document.
 
-    Runs off the request thread: file parsing (PDF/DOCX/XLSX) and
-    OpenAI embedding calls are both too slow for a request/response
-    cycle.
+    organization_id is optional for backward compatibility with
+    older upload callers that queued only document_id.
 
-    Extraction failures are permanent (bad file, unsupported
-    content) and are NOT retried — KnowledgeIngestionService has
-    already persisted FAILED + processing_error on the Document.
-
-    Embedding failures mark the new Document version as FAILED and
-    INACTIVE. The previously published version remains active and
-    can continue serving retrieval while embeddings can be retried
-    later via reindex_document_embeddings.
+    When provided, organization_id is still used as an
+    organization-scope guard.
     """
 
     from apps.ai_engagement.models import Document
+
     from apps.ai_engagement.services.embedding_index import (
         EmbeddingIndexError,
         EmbeddingIndexService,
     )
+
     from apps.ai_engagement.services.knowledge import (
         KnowledgeExtractionError,
         KnowledgeIngestionService,
     )
 
+    # ========================================================
+    # RESOLVE DOCUMENT
+    # ========================================================
+
     try:
+
         document = (
             Document.objects
             .select_related(
@@ -1602,15 +1601,40 @@ def ingest_and_index_document(
             )
             .get(
                 id=document_id,
-                organization_id=organization_id,
+                **(
+                    {
+                        "organization_id": organization_id
+                    }
+                    if organization_id is not None
+                    else {}
+                ),
             )
         )
 
     except Document.DoesNotExist:
 
+        # A task can theoretically run before the surrounding
+        # transaction is visible if an old caller queues the task
+        # directly instead of using transaction.on_commit().
+        #
+        # Retry briefly so that case does not leave the Document
+        # permanently stuck in PENDING.
+
+        if self.request.retries < self.max_retries:
+
+            logger.warning(
+                "ingest_and_index_document: "
+                "document %s not found yet; retrying",
+                document_id,
+            )
+
+            raise self.retry(
+                countdown=5,
+            )
+
         logger.warning(
             "ingest_and_index_document: "
-            "document %s not found",
+            "document %s not found after retries",
             document_id,
         )
 
@@ -1620,7 +1644,12 @@ def ingest_and_index_document(
             "document_id": document_id,
         }
 
+    # ========================================================
+    # EXTRACTION / CHUNKING
+    # ========================================================
+
     try:
+
         chunk_count = (
             KnowledgeIngestionService().ingest_document(
                 document
@@ -1647,7 +1676,8 @@ def ingest_and_index_document(
 
         logger.exception(
             "ingest_and_index_document: "
-            "unexpected extraction failure for document %s",
+            "unexpected extraction failure for "
+            "document %s",
             document_id,
         )
 
@@ -1655,7 +1685,12 @@ def ingest_and_index_document(
             exc=exc,
         )
 
+    # ========================================================
+    # EMBEDDING / INDEXING
+    # ========================================================
+
     try:
+
         indexed_count = (
             EmbeddingIndexService().index_document(
                 document
@@ -1663,8 +1698,9 @@ def ingest_and_index_document(
         )
 
         document = (
-            KnowledgeIngestionService().publish_document_version(
-                document,
+            KnowledgeIngestionService()
+            .publish_document_version(
+                document
             )
         )
 
@@ -1680,8 +1716,11 @@ def ingest_and_index_document(
         document.processing_status = (
             Document.ProcessingStatus.FAILED
         )
+
         document.processing_error = str(exc)
+
         document.is_active = False
+
         document.save(
             update_fields=[
                 "processing_status",
@@ -1703,13 +1742,18 @@ def ingest_and_index_document(
 
         logger.exception(
             "ingest_and_index_document: "
-            "unexpected embedding failure for document %s",
+            "unexpected embedding failure for "
+            "document %s",
             document_id,
         )
 
         raise self.retry(
             exc=exc,
         )
+
+    # ========================================================
+    # SUCCESS
+    # ========================================================
 
     logger.info(
         "ingest_and_index_document: "
@@ -1725,7 +1769,6 @@ def ingest_and_index_document(
         "chunk_count": chunk_count,
         "indexed_count": indexed_count,
     }
-
 
 # ============================================================
 # KNOWLEDGE INGESTION — URL SOURCE
