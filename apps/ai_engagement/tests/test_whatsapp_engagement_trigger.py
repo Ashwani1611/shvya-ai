@@ -969,10 +969,13 @@ class WhatsAppEngagementTriggerTests(TestCase):
                 "send_whatsapp_message_task.delay"
             ) as send_delay:
 
-                result = process_whatsapp_engagement.run(
-                    str(lead.id),
-                    str(self.account.id),
-                )
+                with self.captureOnCommitCallbacks(
+                    execute=True,
+                ):
+                    result = process_whatsapp_engagement.run(
+                        str(lead.id),
+                        str(self.account.id),
+                    )
 
         queue_outbound.assert_called_once_with(
             organization=self.organization,
@@ -1076,10 +1079,13 @@ class WhatsAppEngagementTriggerTests(TestCase):
                 "send_whatsapp_message_task.delay"
             ) as send_delay:
 
-                process_whatsapp_engagement.run(
-                    str(lead.id),
-                    str(self.account.id),
-                )
+                with self.captureOnCommitCallbacks(
+                    execute=True,
+                ):
+                    process_whatsapp_engagement.run(
+                        str(lead.id),
+                        str(self.account.id),
+                    )
 
         queue_outbound.assert_called_once()
 
