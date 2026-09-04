@@ -308,6 +308,7 @@ class AIContextBuilder:
                 "about": "",
                 "bot_languages": "",
                 "qualification_requirements": "",
+                "engagement_instructions": "",
                 "bump_up_enabled": False,
                 "bump_up_count": 0,
             }
@@ -322,6 +323,9 @@ class AIContextBuilder:
             "bot_languages": org_info.bot_languages,
             "qualification_requirements": (
                 org_info.qualification_requirements
+            ),
+            "engagement_instructions": (
+                org_info.engagement_instructions
             ),
             "bump_up_enabled": (
                 org_info.bump_up_enabled

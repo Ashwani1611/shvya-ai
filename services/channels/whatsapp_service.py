@@ -282,6 +282,26 @@ def _queue_internal_conversation_summary(
         str(lead_id)
     )
 
+def _queue_whatsapp_engagement(
+    *,
+    lead_id,
+    account_id,
+):
+    """
+    Queue AI engagement for the Lead after the inbound-message
+    transaction commits.
+
+    The AI task is imported locally so the WhatsApp service does
+    not create a module-level dependency on the AI task module.
+    """
+    from apps.ai_engagement.tasks import (
+        process_whatsapp_engagement,
+    )
+
+    process_whatsapp_engagement.delay(
+        str(lead_id),
+        str(account_id),
+    )
 
 # ============================================================
 # INBOUND
@@ -421,6 +441,9 @@ def handle_inbound_message(
         lead_id = str(
             lead.id
         )
+        account_id = str(
+            account.id
+        )
 
         transaction.on_commit(
             lambda lead_id=lead_id: (
@@ -429,6 +452,15 @@ def handle_inbound_message(
                 )
             )
         )
+        transaction.on_commit(
+            lambda lead_id=lead_id, account_id=account_id: (
+                _queue_whatsapp_engagement(
+                    lead_id=lead_id,
+                    account_id=account_id,
+                )
+            )
+        )
+    
 
     return message
 
