@@ -1378,6 +1378,10 @@
                                 justify-between
                                 gap-4
                             "
+                            data-knowledge-row
+                            data-knowledge-kind="source"
+                            data-knowledge-source-type="{{ source.source_type }}"
+                            data-knowledge-name="{{ source.name|default:'Untitled source'|escape }}"
                         >
 
                             <div class="min-w-0">
@@ -1438,62 +1442,36 @@
                                 {% endif %}
 
                             </div>
-
-
-                            {% if source.is_active %}
-
-                                <form
-                                    method="post"
-                                    class="shrink-0"
-                                >
-
-                                    {% csrf_token %}
-
-                                    <input
-                                        type="hidden"
-                                        name="action"
-                                        value="deactivate_source"
-                                    >
-
-                                    <input
-                                        type="hidden"
-                                        name="source_id"
-                                        value="{{ source.id }}"
-                                    >
-
-                                    <button
-                                        type="submit"
-                                        class="
-                                            text-xs
-                                            font-medium
-                                            text-gray-500
-                                            hover:text-red-600
-                                        "
-                                    >
-                                        Deactivate
-                                    </button>
-
-                                </form>
-
-                            {% else %}
-
-                                <span
-                                    class="
-                                        inline-flex
-                                        items-center
-                                        rounded-full
-                                        bg-gray-100
-                                        px-2.5
-                                        py-1
-                                        text-xs
-                                        font-medium
-                                        text-gray-500
-                                    "
-                                >
-                                    Inactive
-                                </span>
-
-                            {% endif %}
+                            <button
+                                type="button"
+                                class="
+                                    inline-flex
+                                    items-center
+                                    gap-1.5
+                                    rounded-lg
+                                    border
+                                    border-gray-200
+                                    bg-white
+                                    px-2.5
+                                    py-1.5
+                                    text-xs
+                                    font-medium
+                                    text-gray-600
+                                    hover:border-red-200
+                                    hover:bg-red-50
+                                    hover:text-red-600
+                                    transition
+                                    shrink-0
+                                "
+                                data-knowledge-delete
+                                data-delete-kind="source"
+                                data-delete-id="{{ source.id }}"
+                                data-delete-name="{{ source.name|default:'Untitled source' }}"
+                                title="Delete this knowledge source"
+                            >
+                                <i class="ti ti-trash text-[15px]"></i>
+                                Delete
+                            </button>
 
                         </div>
 
@@ -1552,6 +1530,9 @@
                                 justify-between
                                 gap-4
                             "
+                            data-knowledge-row
+                            data-knowledge-kind="document"
+                            data-knowledge-name="{{ document.name|default:'Untitled document'|escape }}"
                         >
 
                             <div class="min-w-0">
@@ -1628,38 +1609,6 @@
                                         Ready
                                     </span>
 
-
-                                    <form method="post">
-
-                                        {% csrf_token %}
-
-                                        <input
-                                            type="hidden"
-                                            name="action"
-                                            value="reindex_document"
-                                        >
-
-                                        <input
-                                            type="hidden"
-                                            name="document_id"
-                                            value="{{ document.id }}"
-                                        >
-
-                                        <button
-                                            type="submit"
-                                            class="
-                                                text-xs
-                                                font-medium
-                                                text-gray-500
-                                                hover:text-gray-900
-                                            "
-                                        >
-                                            Re-index
-                                        </button>
-
-                                    </form>
-
-
                                 {% elif document.processing_status == "processing" %}
 
                                     <span
@@ -1678,7 +1627,6 @@
                                         Processing
                                     </span>
 
-
                                 {% elif document.processing_status == "failed" %}
 
                                     <span
@@ -1696,7 +1644,6 @@
                                     >
                                         Failed
                                     </span>
-
 
                                 {% else %}
 
@@ -1717,6 +1664,36 @@
                                     </span>
 
                                 {% endif %}
+
+                                <button
+                                    type="button"
+                                    class="
+                                        inline-flex
+                                        items-center
+                                        gap-1.5
+                                        rounded-lg
+                                        border
+                                        border-gray-200
+                                        bg-white
+                                        px-2.5
+                                        py-1.5
+                                        text-xs
+                                        font-medium
+                                        text-gray-600
+                                        hover:border-red-200
+                                        hover:bg-red-50
+                                        hover:text-red-600
+                                        transition
+                                    "
+                                    data-knowledge-delete
+                                    data-delete-kind="document"
+                                    data-delete-id="{{ document.id }}"
+                                    data-delete-name="{{ document.name|default:'Untitled document' }}"
+                                    title="Delete this document"
+                                >
+                                    <i class="ti ti-trash text-[15px]"></i>
+                                    Delete
+                                </button>
 
                             </div>
 
@@ -1809,7 +1786,7 @@
 
                     <button
                         type="button"
-                        disabled
+                        id="ai-file-sharing-configure"
                         class="
                             inline-flex
                             items-center
@@ -1818,15 +1795,17 @@
                             py-2
                             rounded-lg
                             border
-                            border-gray-200
-                            bg-gray-50
+                            border-gray-300
+                            bg-white
                             text-xs
                             font-medium
-                            text-gray-400
-                            cursor-not-allowed
+                            text-gray-700
+                            hover:bg-gray-50
+                            hover:border-gray-400
+                            transition
                             shrink-0
                         "
-                        title="File sharing controls will use the existing AI Engagement backend"
+                        title="File sharing controls will use the existing AI Engagement backend" aria-haspopup="dialog" aria-controls="ai-file-sharing-modal"
                     >
                         Configure
                     </button>
@@ -1834,6 +1813,180 @@
                 </div>
 
             </section>
+
+
+            <div
+                id="ai-file-sharing-modal"
+                class="hidden fixed inset-0 z-50"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="ai-file-sharing-modal-title"
+            >
+
+                <div
+                    class="absolute inset-0 bg-gray-900/40"
+                    data-ai-file-sharing-close
+                ></div>
+
+                <div class="relative flex min-h-full items-center justify-center p-4">
+
+                    <div
+                        class="
+                            w-full
+                            max-w-lg
+                            rounded-xl
+                            bg-white
+                            border
+                            border-gray-200
+                            shadow-xl
+                            overflow-hidden
+                        "
+                    >
+
+                        <div
+                            class="
+                                flex
+                                items-center
+                                justify-between
+                                gap-4
+                                px-5
+                                py-4
+                                border-b
+                                border-gray-100
+                            "
+                        >
+
+                            <div>
+                                <h3
+                                    id="ai-file-sharing-modal-title"
+                                    class="text-sm font-semibold text-gray-900"
+                                >
+                                    AI-Guided File Sharing
+                                </h3>
+
+                                <p class="mt-1 text-xs text-gray-500">
+                                    Uses your existing knowledge files for AI-guided sharing.
+                                </p>
+                            </div>
+
+                            <button
+                                type="button"
+                                class="
+                                    inline-flex
+                                    items-center
+                                    justify-center
+                                    w-8
+                                    h-8
+                                    rounded-lg
+                                    text-gray-500
+                                    hover:bg-gray-100
+                                    hover:text-gray-700
+                                    transition
+                                "
+                                data-ai-file-sharing-close
+                                aria-label="Close"
+                            >
+                                <i class="ti ti-x text-[18px]"></i>
+                            </button>
+
+                        </div>
+
+                        <div class="max-h-[60vh] overflow-y-auto">
+
+                            {% if knowledge_documents %}
+
+                                <div class="divide-y divide-gray-100">
+
+                                    {% for document in knowledge_documents %}
+
+                                        <div class="px-5 py-4 flex items-center justify-between gap-4">
+
+                                            <div class="min-w-0">
+                                                <p class="text-sm font-medium text-gray-800 truncate">
+                                                    {{ document.name|default:"Untitled document" }}
+                                                </p>
+                                                <p class="mt-1 text-xs text-gray-400">
+                                                    Version {{ document.version }}
+                                                </p>
+                                            </div>
+
+                                            {% if document.processing_status == "completed" %}
+                                                <span class="inline-flex items-center rounded-full bg-green-50 px-2.5 py-1 text-xs font-medium text-green-700 shrink-0">
+                                                    Ready
+                                                </span>
+                                            {% elif document.processing_status == "processing" %}
+                                                <span class="inline-flex items-center rounded-full bg-yellow-50 px-2.5 py-1 text-xs font-medium text-yellow-700 shrink-0">
+                                                    Processing
+                                                </span>
+                                            {% elif document.processing_status == "failed" %}
+                                                <span class="inline-flex items-center rounded-full bg-red-50 px-2.5 py-1 text-xs font-medium text-red-700 shrink-0">
+                                                    Failed
+                                                </span>
+                                            {% else %}
+                                                <span class="inline-flex items-center rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-600 shrink-0">
+                                                    Pending
+                                                </span>
+                                            {% endif %}
+
+                                        </div>
+
+                                    {% endfor %}
+
+                                </div>
+
+                            {% else %}
+
+                                <div class="px-5 py-10 text-center">
+                                    <p class="text-sm font-medium text-gray-800">
+                                        No knowledge files available
+                                    </p>
+                                    <p class="mt-1 text-xs text-gray-500">
+                                        Upload a knowledge file first.
+                                    </p>
+                                </div>
+
+                            {% endif %}
+
+                        </div>
+
+                        <div
+                            class="
+                                flex
+                                justify-end
+                                px-5
+                                py-3
+                                border-t
+                                border-gray-100
+                                bg-gray-50
+                            "
+                        >
+                            <button
+                                type="button"
+                                class="
+                                    inline-flex
+                                    items-center
+                                    justify-center
+                                    px-3
+                                    py-2
+                                    rounded-lg
+                                    bg-gray-900
+                                    text-white
+                                    text-xs
+                                    font-medium
+                                    hover:bg-gray-800
+                                    transition
+                                "
+                                data-ai-file-sharing-close
+                            >
+                                Done
+                            </button>
+                        </div>
+
+                    </div>
+
+                </div>
+
+            </div>
 
         </div>
 
@@ -1850,19 +2003,29 @@
                 overflow-hidden
                 xl:sticky
                 xl:top-6
+                xl:self-start
+                xl:h-[calc(100vh-3rem)]
+                xl:min-h-[620px]
+                flex
+                flex-col
             "
         >
 
             <div
                 class="
+                    flex
+                    items-center
+                    justify-between
+                    gap-4
                     px-6
                     py-5
                     border-b
                     border-gray-100
+                    shrink-0
                 "
             >
 
-                <div class="flex items-start gap-3">
+                <div class="min-w-0 flex items-start gap-3">
 
                     <div
                         class="
@@ -1881,7 +2044,7 @@
                     </div>
 
 
-                    <div>
+                    <div class="min-w-0">
 
                         <h3
                             class="
@@ -1906,16 +2069,47 @@
 
                     </div>
 
+                    <button
+                        id="playground-restart-chat"
+
+                        type="button"
+                        class="
+                            inline-flex
+                            items-center
+                            gap-1.5
+                            rounded-lg
+                            border
+                            border-gray-200
+                            bg-white
+                            px-2.5
+                            py-1.5
+                            text-xs
+                            font-medium
+                            text-gray-600
+                            hover:bg-gray-50
+                            hover:border-gray-300
+                            hover:text-gray-800
+                            transition
+                            shrink-0
+                        "
+                        title="Start a new playground chat"
+                    >
+                        <i class="ti ti-refresh text-[15px]"></i>
+                        Restart chat
+                    </button>
+
                 </div>
+
 
             </div>
 
 
-            <div class="p-4">
+            <div class="p-4 flex-1 min-h-0">
 
                 <div
                     class="
-                        min-h-[520px]
+                        h-full
+                        min-h-0
                         rounded-lg
                         border
                         border-gray-200
@@ -1926,11 +2120,14 @@
                 >
 
                     <div
+                        id="playground-messages"
                         class="
                             flex-1
+                            min-h-0
                             overflow-y-auto
                             p-4
                             space-y-3
+                            overscroll-contain
                         "
                     >
 
@@ -2013,8 +2210,9 @@
                         <div class="flex items-center gap-2">
 
                             <input
+                                id="playground-message-input"
                                 type="text"
-                                disabled
+                                autocomplete="off"
                                 placeholder="Type a message..."
                                 class="
                                     min-w-0
@@ -2022,19 +2220,22 @@
                                     rounded-lg
                                     border
                                     border-gray-300
-                                    bg-gray-50
+                                    bg-white
                                     px-3
                                     py-2.5
                                     text-sm
                                     text-gray-700
                                     placeholder-gray-400
-                                    cursor-not-allowed
+                                    focus:outline-none
+                                    focus:ring-2
+                                    focus:ring-blue-100
+                                    focus:border-blue-500
                                 "
                             >
 
                             <button
+                                id="playground-send-message"
                                 type="button"
-                                disabled
                                 class="
                                     inline-flex
                                     items-center
@@ -2044,11 +2245,14 @@
                                     rounded-lg
                                     bg-gray-900
                                     text-white
-                                    opacity-40
-                                    cursor-not-allowed
+                                    hover:bg-gray-800
+                                    focus:outline-none
+                                    focus:ring-2
+                                    focus:ring-blue-100
+                                    transition
                                     shrink-0
                                 "
-                                title="Playground UI will be wired to the existing Playground API next"
+                                title="Send message"
                             >
                                 <i class="ti ti-send text-[18px]"></i>
                             </button>
@@ -2056,8 +2260,7 @@
                         </div>
 
                         <p class="mt-2 text-[11px] text-gray-400">
-                            Playground messaging will use the existing AI
-                            Engagement backend.
+                            Playground chat is separate from production customer conversations.
                         </p>
 
                     </div>
@@ -2073,5 +2276,226 @@
     <div class="pb-8"></div>
 
 </div>
+
+
+<script>
+    (function () {
+        "use strict";
+
+        function initAISetup() {
+            const page = document.getElementById("ai-setup-page");
+
+            if (!page) {
+                return;
+            }
+
+            /* ------------------------------------------------------
+             * AI-GUIDED FILE SHARING
+             * ------------------------------------------------------ */
+            const configureButton = document.getElementById(
+                "ai-file-sharing-configure"
+            );
+            const fileSharingModal = document.getElementById(
+                "ai-file-sharing-modal"
+            );
+
+            function closeFileSharingModal() {
+                if (!fileSharingModal) {
+                    return;
+                }
+
+                fileSharingModal.classList.add("hidden");
+                document.body.classList.remove("overflow-hidden");
+
+                if (configureButton) {
+                    configureButton.focus();
+                }
+            }
+
+            if (configureButton && fileSharingModal) {
+                configureButton.addEventListener("click", function () {
+                    fileSharingModal.classList.remove("hidden");
+                    document.body.classList.add("overflow-hidden");
+                });
+
+                fileSharingModal
+                    .querySelectorAll("[data-ai-file-sharing-close]")
+                    .forEach(function (button) {
+                        button.addEventListener(
+                            "click",
+                            closeFileSharingModal
+                        );
+                    });
+            }
+
+            /* ------------------------------------------------------
+             * CONNECTED KNOWLEDGE DELETE UI
+             * ------------------------------------------------------ */
+            document
+                .querySelectorAll("[data-knowledge-delete]")
+                .forEach(function (button) {
+                    button.addEventListener("click", function () {
+                        const row = button.closest("[data-knowledge-row]");
+
+                        if (!row) {
+                            return;
+                        }
+
+                        const name = button.dataset.deleteName || "this item";
+                        const confirmed = window.confirm(
+                            "Delete " + name + " from this page?"
+                        );
+
+                        if (!confirmed) {
+                            return;
+                        }
+
+                        const kind = button.dataset.deleteKind || "";
+                        const sourceType = row.dataset.knowledgeSourceType || "";
+                        const sourceName = row.dataset.knowledgeName || "";
+
+                        row.remove();
+
+                        /*
+                         * A file KnowledgeSource and its first Document use the
+                         * same logical name in the existing backend. For this
+                         * UI-only pass, remove both rows together when the
+                         * source itself is deleted. Backend hard-delete will
+                         * make the database/storage deletion authoritative.
+                         */
+                        if (kind === "source" && sourceType === "file" && sourceName) {
+                            document
+                                .querySelectorAll(
+                                    '[data-knowledge-row][data-knowledge-kind="document"]'
+                                )
+                                .forEach(function (documentRow) {
+                                    if (
+                                        (documentRow.dataset.knowledgeName || "") ===
+                                        sourceName
+                                    ) {
+                                        documentRow.remove();
+                                    }
+                                });
+                        }
+                    });
+                });
+
+            /* ------------------------------------------------------
+             * PLAYGROUND
+             * ------------------------------------------------------ */
+            const messages = document.getElementById(
+                "playground-messages"
+            );
+            const input = document.getElementById(
+                "playground-message-input"
+            );
+            const sendButton = document.getElementById(
+                "playground-send-message"
+            );
+            const restartButton = document.getElementById(
+                "playground-restart-chat"
+            );
+
+            if (!messages || !input || !sendButton || !restartButton) {
+                return;
+            }
+
+            function createSessionId() {
+                if (
+                    window.crypto &&
+                    typeof window.crypto.randomUUID === "function"
+                ) {
+                    return window.crypto.randomUUID();
+                }
+
+                return (
+                    "playground-" +
+                    Date.now().toString(36) +
+                    "-" +
+                    Math.random().toString(36).slice(2)
+                );
+            }
+
+            function setNewSession() {
+                page.dataset.playgroundSessionId = createSessionId();
+            }
+
+            function scrollMessagesToBottom() {
+                messages.scrollTop = messages.scrollHeight;
+            }
+
+            function appendUserMessage(messageText) {
+                const wrapper = document.createElement("div");
+                wrapper.className = "flex justify-end";
+
+                const bubble = document.createElement("div");
+                bubble.className = [
+                    "max-w-[85%]",
+                    "rounded-2xl",
+                    "rounded-tr-md",
+                    "bg-blue-600",
+                    "px-3",
+                    "py-2.5",
+                    "text-sm",
+                    "text-white",
+                    "break-words",
+                ].join(" ");
+                bubble.textContent = messageText;
+
+                wrapper.appendChild(bubble);
+                messages.appendChild(wrapper);
+                scrollMessagesToBottom();
+            }
+
+            function restartChat() {
+                setNewSession();
+                messages.innerHTML = "";
+                input.value = "";
+                messages.scrollTop = 0;
+                input.focus();
+            }
+
+            setNewSession();
+
+            sendButton.addEventListener("click", function () {
+                const messageText = input.value.trim();
+
+                if (!messageText) {
+                    input.focus();
+                    return;
+                }
+
+                appendUserMessage(messageText);
+                input.value = "";
+                input.focus();
+            });
+
+            input.addEventListener("keydown", function (event) {
+                if (event.key === "Enter" && !event.shiftKey) {
+                    event.preventDefault();
+                    sendButton.click();
+                }
+            });
+
+            restartButton.addEventListener("click", restartChat);
+
+            document.addEventListener("keydown", function (event) {
+                if (
+                    event.key === "Escape" &&
+                    fileSharingModal &&
+                    !fileSharingModal.classList.contains("hidden")
+                ) {
+                    closeFileSharingModal();
+                }
+            });
+        }
+
+        if (document.readyState === "loading") {
+            document.addEventListener("DOMContentLoaded", initAISetup);
+        } else {
+            initAISetup();
+        }
+    })();
+</script>
 
 {% endblock %}
