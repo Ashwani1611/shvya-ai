@@ -628,6 +628,72 @@ def whatsapp_send_message_view(request, lead_id):
 # BULK CAMPAIGNS
 # ============================================================
 
+@crm_login_required
+@require_POST
+def whatsapp_send_template_view(request, lead_id):
+    from apps.channels.tasks import send_whatsapp_message_task
+    from services.channels.template_service import render_template_body
+    from services.channels.whatsapp_service import (
+        queue_outbound_message,
+        resolve_account_for_lead,
+    )
+
+    user = request.crm_user
+    lead = Lead.objects.filter(
+        id=lead_id, organization=user.organization,
+    ).select_related("pipeline", "stage", "organization").first()
+
+    if not lead:
+        return JsonResponse({"error": "Lead not found."}, status=404)
+
+    template_id = (request.POST.get("template_id") or "").strip()
+    if not template_id:
+        return JsonResponse({"error": "template_id is required."}, status=400)
+
+    template = WhatsAppTemplate.objects.filter(
+        id=template_id, organization=user.organization,
+    ).first()
+    if not template:
+        return JsonResponse({"error": "Template not found."}, status=404)
+
+    account = resolve_account_for_lead(organization=user.organization, lead=lead)
+    if not account:
+        return JsonResponse({"error": "No connected WhatsApp account."}, status=400)
+
+    body = render_template_body(template=template, lead=lead)
+    message = queue_outbound_message(
+        organization=user.organization,
+        account=account,
+        to_number=lead.phone,
+        body=body,
+        lead=lead,
+    )
+    send_whatsapp_message_task.delay(str(message.id))
+    return JsonResponse({"id": str(message.id), "status": message.status}, status=202)
+
+@crm_login_required
+@require_GET
+def whatsapp_lead_calls_json(request, lead_id):
+    from apps.crm.models.call import LeadCall
+
+    user = request.crm_user
+    lead = Lead.objects.filter(id=lead_id, organization=user.organization).first()
+    if not lead:
+        return JsonResponse({"error": "Lead not found."}, status=404)
+
+    calls = LeadCall.objects.filter(lead=lead).order_by("-called_at")[:10]
+    data = [
+        {
+            "id": str(c.id),
+            "call_name": c.call_name,
+            "status": c.status,
+            "duration_seconds": c.duration_seconds,
+            "notes": c.notes,
+            "called_at": c.called_at.isoformat(),
+        }
+        for c in calls
+    ]
+    return JsonResponse({"calls": data})
 
 @crm_login_required
 @require_GET
@@ -1000,11 +1066,30 @@ def whatsapp_chat_detail_view(request, lead_id):
     lead.initials = _lead_initials(lead)
     lead.stage_color = (lead.stage.color if lead.stage_id else "") or "#9ca3af"
 
+    lead_templates = WhatsAppTemplate.objects.filter(
+        organization=user.organization,
+        status=WhatsAppTemplate.Status.APPROVED,
+    ).order_by("name")
+
+    from apps.crm.models.call import LeadCall
+    from apps.crm.models.note import LeadNote
+    from apps.crm.models.stage import Stage
+
+    lead_calls  = LeadCall.objects.filter(lead=lead).order_by("-called_at")[:10]
+    lead_notes  = LeadNote.objects.filter(lead=lead).order_by("-created_at")[:5]
+    lead_stages = Stage.objects.filter(
+        pipeline=lead.pipeline, is_active=True
+    ).order_by("display_order")
+
     context = _chat_sidebar_context(request, user)
     context.update(
         {
-            "active_lead": lead,
-            "chat_messages": chat_messages,
+            "active_lead":    lead,
+            "chat_messages":  chat_messages,
+            "lead_templates": lead_templates,
+            "lead_calls":     lead_calls,
+            "lead_notes":     lead_notes,
+            "lead_stages":    lead_stages,
         }
     )
 
