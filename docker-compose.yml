@@ -125,6 +125,8 @@ services:
       - ./nginx/certbot/www:/var/www/certbot
       - static_volume:/app/staticfiles
       - media_volume:/app/media
+      - ${STATIC_SITE_PATH:-./frontend}:/usr/share/nginx/shvya-ai:ro
+
 
     depends_on:
       - web
