@@ -4,510 +4,196 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="Simple fixed pricing for SHVYA AI. Choose DIY, Done for You, or Enterprise based on how much setup and automation support your team needs.">
 <title>Pricing — SHVYA AI</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-<style>
-  :root{
-    --blue-900:#0B1E4D;
-    --blue-700:#1E3FA8;
-    --blue-600:#2C55D6;
-    --blue-500:#3D6BF0;
-    --blue-100:#E8EEFF;
-    --ink:#0F1830;
-    --ink-soft:#5A6483;
-    --paper:#FFFFFF;
-    --paper-soft:#F6F8FE;
-    --line:#E2E8F8;
-    --green:#16A34A;
-    --red:#E64545;
-    --radius:16px;
-    --shadow:0 20px 40px -18px rgba(20,42,110,0.25);
-  }
-  *{box-sizing:border-box;margin:0;padding:0;}
-  html{scroll-behavior:smooth;}
-  body{font-family:'Inter',sans-serif;color:var(--ink);background:var(--paper);-webkit-font-smoothing:antialiased;}
-  h1,h2,h3,.brand{font-family:'Sora',sans-serif;}
-  a{text-decoration:none;color:inherit;}
-  .wrap{max-width:1180px;margin:0 auto;padding:0 32px;}
-
-  /* NAV (same as home.html) */
-  nav{position:sticky;top:0;z-index:50;background:rgba(255,255,255,0.85);backdrop-filter:blur(10px);border-bottom:1px solid var(--line);}
-  .nav-inner{display:flex;align-items:center;justify-content:space-between;padding:18px 32px;max-width:1180px;margin:0 auto;}
-  .brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:1.15rem;letter-spacing:-0.01em;}
-  .brand-mark{width:34px;height:34px;border-radius:9px;background:linear-gradient(135deg,var(--blue-500),var(--blue-700));color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:0.95rem;}
-  .nav-links{display:flex;gap:34px;font-size:0.94rem;font-weight:500;color:var(--ink-soft);}
-  .nav-links a:hover, .nav-links a.active{color:var(--blue-700);}
-  .nav-cta{display:flex;gap:12px;align-items:center;}
-  .btn{display:inline-flex;align-items:center;justify-content:center;padding:11px 22px;border-radius:10px;font-weight:600;font-size:0.92rem;transition:.15s;border:1px solid transparent;cursor:pointer;}
-  .btn-primary{background:var(--blue-600);color:#fff;box-shadow:0 10px 24px -10px rgba(44,85,214,0.55);}
-  .btn-primary:hover{background:var(--blue-700);transform:translateY(-1px);}
-  .btn-ghost{color:var(--blue-700);border-color:var(--line);background:#fff;}
-  .btn-ghost:hover{border-color:var(--blue-500);}
-  @media (max-width:600px){ .nav-links{display:none;} }
-
-  /* HERO */
-  .pr-hero{text-align:center;padding:72px 24px 40px;background:radial-gradient(900px 500px at 85% -10%, var(--blue-100), transparent);}
-  .pr-pill{display:inline-flex;align-items:center;gap:6px;background:var(--blue-100);color:var(--blue-700);font-size:0.8rem;font-weight:700;padding:6px 14px;border-radius:999px;margin-bottom:18px;}
-  .pr-hero h1{font-size:2.6rem;font-weight:800;letter-spacing:-0.02em;line-height:1.15;max-width:680px;margin:0 auto 14px;color:var(--blue-900);}
-  .pr-hero h1 span{color:var(--blue-600);}
-  .pr-hero p{color:var(--ink-soft);font-size:1.05rem;max-width:540px;margin:0 auto;}
-
-  /* CONTROLS */
-  .pr-controls{max-width:900px;margin:32px auto 0;padding:0 20px;display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:14px 24px;}
-  .pr-toggle{display:inline-flex;background:var(--paper-soft);border:1px solid var(--line);border-radius:10px;padding:4px;gap:2px;}
-  .pr-toggle button{border:none;background:transparent;padding:8px 14px;border-radius:7px;font-size:0.82rem;font-weight:600;color:var(--ink-soft);cursor:pointer;position:relative;}
-  .pr-toggle button.active{background:var(--blue-600);color:#fff;}
-  .pr-toggle button .save{position:absolute;top:-9px;right:-6px;background:var(--green);color:#fff;font-size:0.6rem;font-weight:800;padding:1px 5px;border-radius:999px;}
-  .pr-seats{display:inline-flex;align-items:center;gap:10px;background:var(--paper-soft);border:1px solid var(--line);border-radius:10px;padding:6px 10px;}
-  .pr-seats span.lbl{font-size:0.82rem;color:var(--ink-soft);font-weight:600;}
-  .pr-seats button{width:26px;height:26px;border-radius:6px;border:1px solid var(--line);background:#fff;font-size:1rem;font-weight:700;color:var(--ink);cursor:pointer;}
-  .pr-seats button:hover{border-color:var(--blue-500);color:var(--blue-600);}
-  .pr-seats .count{font-size:0.9rem;font-weight:700;min-width:18px;text-align:center;}
-
-  /* CARDS */
-  .pr-cards{max-width:1120px;margin:44px auto 0;padding:0 20px;display:grid;grid-template-columns:repeat(3,1fr);gap:22px;align-items:start;}
-  @media(max-width:920px){ .pr-cards{grid-template-columns:1fr;max-width:480px;} }
-  .pr-card{border:1.5px solid var(--line);border-radius:20px;padding:30px 26px;background:#fff;display:flex;flex-direction:column;position:relative;}
-  .pr-card.feat{border-color:var(--blue-600);box-shadow:var(--shadow);}
-  .pr-badge{position:absolute;top:-14px;left:50%;transform:translateX(-50%);background:#DC2626;color:#fff;font-size:0.65rem;font-weight:800;letter-spacing:0.06em;text-transform:uppercase;padding:6px 16px;border-radius:999px;white-space:nowrap;}
-  .pr-card .icon{width:44px;height:44px;border-radius:12px;background:var(--blue-100);display:flex;align-items:center;justify-content:center;font-size:1.3rem;margin-bottom:14px;}
-  .pr-card h3{font-size:1.25rem;font-weight:800;color:var(--blue-900);}
-  .pr-fits{display:inline-block;font-size:0.72rem;font-weight:700;color:var(--blue-700);background:var(--blue-100);padding:4px 10px;border-radius:999px;margin:10px 0 12px;}
-  .pr-card .tag{font-size:0.86rem;color:var(--ink-soft);line-height:1.5;margin-bottom:20px;min-height:42px;}
-  .pr-price-row{display:flex;align-items:baseline;gap:6px;}
-  .pr-price{font-size:2.1rem;font-weight:800;color:var(--ink);}
-  .pr-price-unit{font-size:0.78rem;color:var(--ink-soft);font-weight:600;}
-  .pr-setup-note{font-size:0.78rem;color:var(--ink-soft);margin-top:2px;}
-  .pr-run-note{display:flex;align-items:center;justify-content:space-between;background:var(--paper-soft);border:1px solid var(--line);border-radius:9px;padding:9px 12px;font-size:0.82rem;font-weight:600;margin:16px 0 20px;}
-  .pr-run-note .approx{color:var(--ink-soft);font-weight:600;font-size:0.78rem;}
-  .pr-cta{display:block;text-align:center;padding:12px;border-radius:10px;font-weight:700;font-size:0.9rem;border:1.5px solid var(--blue-600);color:var(--blue-600);margin-bottom:22px;cursor:pointer;background:#fff;transition:.15s;}
-  .pr-card.feat .pr-cta{background:var(--blue-600);color:#fff;}
-  .pr-cta:hover{opacity:.88;}
-  .pr-feats{list-style:none;padding:0;margin:0;flex:1;}
-  .pr-feats li{display:flex;gap:10px;padding:10px 0;border-top:1px solid var(--line);align-items:flex-start;}
-  .pr-feats li:first-child{border-top:none;}
-  .pr-feats li .ico{flex-shrink:0;width:18px;height:18px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:0.7rem;font-weight:800;margin-top:1px;}
-  .pr-feats li .ico.yes{background:#DCFCE7;color:var(--green);}
-  .pr-feats li .ico.no{background:#FEE2E2;color:var(--red);}
-  .pr-feats li .txt b{font-size:0.86rem;color:var(--ink);}
-  .pr-feats li .txt span{display:block;font-size:0.78rem;color:var(--ink-soft);margin-top:2px;line-height:1.4;}
-  .pr-feats li.dim .txt b, .pr-feats li.dim .txt span{color:var(--ink-soft);}
-
-  /* GUARANTEE */
-  .pr-guarantee{max-width:760px;margin:52px auto 0;padding:0 20px;}
-  .pr-guarantee-inner{border:1.5px solid var(--blue-100);background:var(--blue-100);border-radius:16px;padding:28px 32px;text-align:center;}
-  .pr-guarantee-inner h2{font-size:1.2rem;font-weight:800;margin-bottom:8px;color:var(--blue-900);}
-  .pr-guarantee-inner h2 span{color:var(--blue-600);}
-  .pr-guarantee-inner p{font-size:0.86rem;color:var(--ink-soft);line-height:1.6;}
-  .pr-guarantee-inner .fine{font-size:0.74rem;color:var(--ink-soft);margin-top:8px;opacity:.8;}
-
-  /* COMPARE TABLE */
-  .pr-compare{max-width:1100px;margin:60px auto 0;padding:0 20px;}
-  .pr-compare > h2{text-align:center;font-size:1.6rem;font-weight:800;color:var(--blue-900);margin-bottom:8px;}
-  .pr-compare > p{text-align:center;color:var(--ink-soft);font-size:0.92rem;margin-bottom:28px;}
-  .pr-compare-body{overflow-x:auto;border:1.5px solid var(--line);border-radius:16px;}
-  table.pr-table{width:100%;border-collapse:collapse;min-width:760px;font-size:0.84rem;}
-  table.pr-table th, table.pr-table td{padding:14px 18px;text-align:left;border-top:1px solid var(--line);vertical-align:top;}
-  table.pr-table thead th{background:var(--paper-soft);font-weight:700;text-align:center;}
-  table.pr-table thead th:first-child{text-align:left;}
-  table.pr-table td:not(:first-child), table.pr-table th:not(:first-child){text-align:center;}
-  table.pr-table tbody tr td:first-child{font-weight:600;color:var(--ink);}
-  table.pr-table .section-hd td{background:var(--paper-soft);font-weight:800;font-size:0.72rem;text-transform:uppercase;letter-spacing:0.06em;color:var(--ink-soft);}
-  table.pr-table .y{color:var(--green);font-weight:800;}
-  table.pr-table .n{color:var(--ink-soft);font-weight:800;}
-  table.pr-table td small{display:block;color:var(--ink-soft);font-size:0.74rem;margin-top:2px;font-weight:400;}
-  .pr-table .feat-col{background:var(--blue-100);}
-
-  /* FAQ */
-  .pr-faq{max-width:760px;margin:60px auto 0;padding:0 20px;}
-  .pr-faq h2{font-size:1.3rem;font-weight:800;text-align:center;margin-bottom:6px;color:var(--blue-900);}
-  .pr-faq > p{text-align:center;font-size:0.85rem;color:var(--ink-soft);margin-bottom:22px;}
-  .pr-faq-item{border-top:1px solid var(--line);}
-  .pr-faq-item:first-of-type{border-top:none;}
-  .pr-faq-list{border:1.5px solid var(--line);border-radius:12px;overflow:hidden;}
-  .pr-faq-q{display:flex;align-items:center;gap:12px;padding:16px 20px;cursor:pointer;}
-  .pr-faq-q span.txt{font-size:0.88rem;font-weight:600;flex:1;}
-  .pr-faq-q span.arrow{color:var(--ink-soft);transition:.2s;}
-  .pr-faq-q span.arrow.open{transform:rotate(180deg);}
-  .pr-faq-a{display:none;padding:0 20px 16px;font-size:0.83rem;color:var(--ink-soft);line-height:1.65;}
-  .pr-faq-a.open{display:block;}
-  .pr-faq-a ul{padding-left:18px;margin-top:6px;}
-  .pr-faq-a ul li{margin-bottom:5px;}
-  .pr-faq-a b{color:var(--ink);}
-
-  /* CTA FOOTER BAND */
-  .cta-band-wrap{padding:64px 24px 0;}
-  .cta-band{max-width:1100px;margin:0 auto;background:linear-gradient(120deg,var(--blue-700),var(--blue-900));border-radius:24px;padding:56px 48px;color:#fff;text-align:center;}
-  .cta-band h2{font-size:1.8rem;letter-spacing:-0.01em;margin-bottom:10px;}
-  .cta-band p{color:#C9D6FF;font-size:0.98rem;margin-bottom:26px;}
-  .btn-white{background:#fff;color:var(--blue-700);}
-  .btn-white:hover{background:var(--blue-100);}
-
-  /* FOOTER */
-  footer{border-top:1px solid var(--line);padding:44px 0 32px;margin-top:60px;}
-  .footer-inner{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:16px;max-width:1180px;margin:0 auto;padding:0 32px;}
-  .footer-links{display:flex;gap:26px;font-size:0.85rem;color:var(--ink-soft);}
-  .copyright{font-size:0.82rem;color:var(--ink-soft);}
-</style>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{% static 'marketing/home-core.css' %}">
+<link rel="stylesheet" href="{% static 'marketing/home-responsive.css' %}">
+<link rel="stylesheet" href="{% static 'marketing/pricing.css' %}">
 </head>
-<body>
+<body class="pricing-page">
+{% include "marketing/home_header.html" %}
 
-<nav>
-  <div class="nav-inner">
-    <a href="{% url 'home' %}" class="brand">
-      <span class="brand-mark">S</span> SHVYA <span style="color:var(--blue-600)">AI</span>
-    </a>
-    <div class="nav-links">
-      <a href="{% url 'home' %}#features">Features</a>
-      <a href="{% url 'home' %}#how-it-works">How it works</a>
-      <a href="{% url 'pricing' %}" class="active">Pricing</a>
-      <a href="{% url 'home' %}#trust">Why SHVYA</a>
+<main>
+  <section class="pricing-hero">
+    <div class="wrap reveal">
+      <div class="eyebrow violet centered">Simple fixed pricing</div>
+      <h1 class="pricing-title">Choose the setup that fits <span class="soft-highlight">your team</span></h1>
+      <p class="pricing-lede">Three clear plans, three fixed prices. No seat counter and no billing calculator. Pick how much of the sales system you want SHVYA to configure for you.</p>
+      <div class="pricing-note"><i aria-hidden="true"></i> One clear plan price. Upgrade when your operation needs more.</div>
     </div>
-    <div class="nav-cta">
-      <a href="/dashboard/login/" class="btn btn-ghost">Login</a>
-      <a href="{% url 'crm-signup' %}" class="btn btn-primary">Get started</a>
-    </div>
-  </div>
-</nav>
+  </section>
 
-<!-- HERO -->
-<section class="pr-hero">
-  <span class="pr-pill">Pricing</span>
-  <h1>Simple pricing for <span>every stage of growth</span></h1>
-  <p>Pick a plan based on how many products you sell and how much of the setup you want done for you. Switch or upgrade anytime.</p>
-</section>
+  <section class="plans-section" id="plans">
+    <div class="wrap">
+      <div class="plan-grid">
 
-<!-- CONTROLS -->
-<div class="pr-controls">
-  <div class="pr-toggle" id="pr-billing-toggle">
-    <button data-cycle="monthly" onclick="prSetBilling('monthly', this)">Monthly</button>
-    <button data-cycle="quarterly" class="active" onclick="prSetBilling('quarterly', this)">Quarterly<span class="save">-5%</span></button>
-    <button data-cycle="halfyearly" onclick="prSetBilling('halfyearly', this)">Half-yearly<span class="save">-10%</span></button>
-    <button data-cycle="annually" onclick="prSetBilling('annually', this)">Annual<span class="save">-15%</span></button>
-  </div>
-  <div class="pr-seats">
-    <span class="lbl">Seats</span>
-    <button onclick="prChangeSeats(-1)">−</button>
-    <span class="count" id="pr-seat-count">1</span>
-    <button onclick="prChangeSeats(1)">+</button>
-  </div>
-</div>
+        <article class="plan-card reveal">
+          <span class="plan-badge">Self-serve</span>
+          <div class="plan-icon" aria-hidden="true">
+            <svg class="icon" viewBox="0 0 24 24"><path d="M4 7h16M7 4v6M17 4v6M5 12h14v8H5z"/></svg>
+          </div>
+          <h2 class="plan-name">DIY</h2>
+          <p class="plan-fit">For teams that want the SHVYA platform and prefer to configure their own workflow, prompts, and automation.</p>
+          <div class="plan-price-wrap">
+            <div class="plan-price"><span class="currency">₹</span>3,000</div>
+            <div class="plan-price-caption">Fixed plan price</div>
+          </div>
+          <div class="plan-value">A clean starting point if your team is comfortable setting up the sales process itself.</div>
+          <a href="{% url 'crm-signup' %}" class="btn plan-cta">Start with DIY</a>
+          <ul class="plan-features">
+            <li><span class="plan-check">✓</span><span>Full lead management dashboard and pipeline</span></li>
+            <li><span class="plan-check">✓</span><span>Lead stages, notes, reminders, and activity tracking</span></li>
+            <li><span class="plan-check">✓</span><span>WhatsApp CRM workspace</span></li>
+            <li class="plan-muted"><span class="plan-check">•</span><span>AI prompts and qualification logic configured by your team</span></li>
+            <li class="plan-muted"><span class="plan-check">•</span><span>Follow-up sequences configured by your team</span></li>
+            <li class="plan-muted"><span class="plan-check">•</span><span>Email-based support</span></li>
+          </ul>
+          <div class="plan-foot">Best when you already have the time and technical comfort to build the workflow yourself.</div>
+        </article>
 
-<!-- CARDS -->
-<div class="pr-cards">
+        <article class="plan-card recommended reveal">
+          <span class="plan-badge">SHVYA recommended</span>
+          <div class="plan-icon" aria-hidden="true">
+            <svg class="icon" viewBox="0 0 24 24"><path d="m12 3 2.2 4.6L19 9.8l-3.5 3.4.8 4.8-4.3-2.3L7.7 18l.8-4.8L5 9.8l4.8-.7z"/></svg>
+          </div>
+          <h2 class="plan-name">Done for You</h2>
+          <p class="plan-fit">For teams that want SHVYA configured around their sales process without spending weeks building the system themselves.</p>
+          <div class="plan-price-wrap">
+            <div class="plan-price"><span class="currency">₹</span>14,999</div>
+            <div class="plan-price-caption">Fixed plan price</div>
+          </div>
+          <div class="plan-value">The balanced option: your team gets the CRM, AI qualification, follow-up flow, and onboarding configured as one working system.</div>
+          <a href="{% url 'crm-signup' %}" class="btn btn-primary plan-cta">Choose Done for You</a>
+          <ul class="plan-features">
+            <li><span class="plan-check">✓</span><span>Everything in DIY</span></li>
+            <li><span class="plan-check">✓</span><span>AI qualification agent configured for your business</span></li>
+            <li><span class="plan-check">✓</span><span>Business knowledge base and structured qualification logic</span></li>
+            <li><span class="plan-check">✓</span><span>Core follow-up and lead recovery sequences configured for you</span></li>
+            <li><span class="plan-check">✓</span><span>Lead capture setup and structured sales pipeline</span></li>
+            <li><span class="plan-check">✓</span><span>Guided onboarding and go-live setup</span></li>
+            <li><span class="plan-check">✓</span><span>WhatsApp support during business hours</span></li>
+          </ul>
+          <div class="plan-foot">Best when you want the system ready for your team to use instead of becoming another setup project.</div>
+        </article>
 
-  <!-- DIY -->
-  <div class="pr-card">
-    <div class="icon">💼</div>
-    <h3>DIY</h3>
-    <span class="pr-fits">Fixes problem 1</span>
-    <div class="tag">You want the core CRM and lead tracking — you configure and manage the rest yourself.</div>
-    <div class="pr-price-row"><span class="pr-price" data-base="0">₹0</span></div>
-    <div class="pr-setup-note">No setup fee</div>
-    <div class="pr-run-note">
-      <span class="pr-price" data-base="2999">then ₹2,999</span>/seat/mo to run it
-      <span class="approx">≈ ₹100/day</span>
-    </div>
-    <a href="{% url 'crm-signup' %}" class="pr-cta">Get started</a>
-    <ul class="pr-feats">
-      <li><span class="ico yes">✓</span><div class="txt"><b>Lead management</b><span>Full lead tracking dashboard, stages and pipeline.</span></div></li>
-      <li><span class="ico no">✕</span><div class="txt"><b>AI qualification agent</b><span>Bring your own prompts — you write and manage the bot.</span></div></li>
-      <li class="dim"><span class="ico no">✕</span><div class="txt"><b>Follow-up sequences</b><span>Not included — automation rules are configured manually.</span></div></li>
-      <li class="dim"><span class="ico no">✕</span><div class="txt"><b>Lead capture widgets</b><span>No pre-built widget, banner, or knowledge base.</span></div></li>
-      <li><span class="ico yes">✓</span><div class="txt"><b>Support</b><span>Email support, 2–3 business day response.</span></div></li>
-    </ul>
-  </div>
-
-  <!-- ESSENTIALS -->
-  <div class="pr-card feat">
-    <span class="pr-badge">Most popular</span>
-    <div class="icon">🚀</div>
-    <h3>Industry Essentials</h3>
-    <span class="pr-fits">Fixes all 3</span>
-    <div class="tag">A ready-built sales system for one product or service — fully set up for you.</div>
-    <div class="pr-price-row"><span class="pr-price" data-base="14999">₹14,999</span></div>
-    <div class="pr-setup-note">one-time build</div>
-    <div class="pr-run-note">
-      <span class="pr-price" data-base="2999">then ₹2,999</span>/seat/mo to run it
-      <span class="approx">≈ ₹100/day</span>
-    </div>
-    <a href="{% url 'crm-signup' %}" class="pr-cta">Start with Essentials</a>
-    <ul class="pr-feats">
-      <li><span class="ico yes">✓</span><div class="txt"><b>AI qualification agent</b><span>One bot trained for your business, qualifies every lead automatically.</span></div></li>
-      <li><span class="ico yes">✓</span><div class="txt"><b>Bot knowledge base</b><span>Up to 20 Q&amp;A pairs, answers instantly.</span></div></li>
-      <li><span class="ico yes">✓</span><div class="txt"><b>Follow-up sequences</b><span>5 ready-to-use sequences: welcome, DNP, re-engage &amp; more.</span></div></li>
-      <li><span class="ico yes">✓</span><div class="txt"><b>Lead capture</b><span>Widget + banners, ready to embed.</span></div></li>
-      <li><span class="ico yes">✓</span><div class="txt"><b>Onboarding</b><span>Full setup, go-live review, live in 7–10 working days.</span></div></li>
-      <li><span class="ico yes">✓</span><div class="txt"><b>Support</b><span>WhatsApp support during business hours.</span></div></li>
-    </ul>
-  </div>
-
-  <!-- GROWTH -->
-  <div class="pr-card">
-    <div class="icon">🛰️</div>
-    <h3>Growth Lab</h3>
-    <span class="pr-fits">All 3, per product</span>
-    <div class="tag">You sell several products — advanced automation and AI calling on top.</div>
-    <div class="pr-price-row"><span class="pr-price" data-base="39999">₹39,999</span></div>
-    <div class="pr-setup-note">one-time build</div>
-    <div class="pr-run-note">
-      <span class="pr-price" data-base="2999">then ₹2,999</span>/seat/mo to run it
-      <span class="approx">≈ ₹100/day</span>
-    </div>
-    <a href="{% url 'crm-signup' %}" class="pr-cta">Talk to us</a>
-    <ul class="pr-feats">
-      <li><span class="ico yes">✓</span><div class="txt"><b>Per-product AI agent</b><span>A dedicated, trained bot per product line — up to 10.</span></div></li>
-      <li><span class="ico yes">✓</span><div class="txt"><b>Bot knowledge base</b><span>Up to 100 Q&amp;A pairs across all products.</span></div></li>
-      <li><span class="ico yes">✓</span><div class="txt"><b>Advanced sequences</b><span>10 behaviour-based sequences, built to your process.</span></div></li>
-      <li><span class="ico yes">✓</span><div class="txt"><b>Custom CRM integration</b><span>Integrated with your existing tools and workflows.</span></div></li>
-      <li><span class="ico yes">✓</span><div class="txt"><b>Founder access</b><span>Direct founder support &amp; strategy sessions.</span></div></li>
-      <li><span class="ico yes">✓</span><div class="txt"><b>Support</b><span>Priority support with scheduled calls.</span></div></li>
-    </ul>
-  </div>
-
-</div>
-<p style="text-align:center;font-size:0.78rem;color:var(--ink-soft);margin:18px auto 0;max-width:640px;padding:0 20px;">
-  ₹2,999/seat/month includes 5,000 AI credits on the main seat, plus 1,000 credits and ₹1,299/month per additional seat. Prices exclude GST.
-</p>
-
-<!-- GUARANTEE
-<div class="pr-guarantee">
-  <div class="pr-guarantee-inner">
-    <h2>🏆 <span>90-day</span> money-back guarantee</h2>
-    <p>Use the system as intended for 90 days on Industry Essentials or Growth Lab. If your lead conversion doesn't improve, we'll refund you in full.</p>
-    <p class="fine">Applies to 3-month-or-longer commitments.</p>
-  </div>
-</div> -->
-
-<!-- COMPARE TABLE -->
-<div class="pr-compare">
-  <h2>Compare all features in detail</h2>
-  <p>Everything included in each plan, side by side.</p>
-  <div class="pr-compare-body">
-    <table class="pr-table">
-      <thead>
-        <tr>
-          <th>Feature</th>
-          <th>DIY</th>
-          <th class="feat-col">Industry Essentials</th>
-          <th>Growth Lab</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr class="section-hd"><td colspan="4">AI Agent</td></tr>
-        <tr>
-          <td>AI qualification agent</td>
-          <td>DIY setup<br><small>You write and manage bot prompts</small></td>
-          <td class="feat-col">Qualification agent<br><small>One bot trained for your business</small></td>
-          <td>Advanced sales agent<br><small>Separate bot per product</small></td>
-        </tr>
-        <tr>
-          <td>Qualification logic</td>
-          <td>DIY prompts</td>
-          <td class="feat-col">Structured prompts + FAQs</td>
-          <td>Deep custom logic</td>
-        </tr>
-        <tr>
-          <td>Bot knowledge base</td>
-          <td class="n">✕</td>
-          <td class="feat-col y">Up to 20 Q&amp;A pairs</td>
-          <td class="y">Up to 100 Q&amp;A pairs</td>
-        </tr>
-        <tr>
-          <td>Team quick replies</td>
-          <td class="n">✕</td>
-          <td class="feat-col y">Up to 15 replies</td>
-          <td class="y">70 replies</td>
-        </tr>
-
-        <tr class="section-hd"><td colspan="4">Follow-up &amp; Recovery</td></tr>
-        <tr>
-          <td>Product customisation</td>
-          <td class="n">✕</td>
-          <td class="feat-col">Single product line</td>
-          <td>Up to 10 product lines</td>
-        </tr>
-        <tr>
-          <td>Smart triggers &amp; automation</td>
-          <td>DIY rules</td>
-          <td class="feat-col">Essential triggers</td>
-          <td>Advanced automations</td>
-        </tr>
-        <tr>
-          <td>Follow-up sequences</td>
-          <td>DIY</td>
-          <td class="feat-col">5 core sequences</td>
-          <td>10 advanced sequences</td>
-        </tr>
-        <tr>
-          <td>Lead recovery</td>
-          <td class="n">✕</td>
-          <td class="feat-col">1 broadcast sequence</td>
-          <td>5 broadcast sequences</td>
-        </tr>
-
-        <tr class="section-hd"><td colspan="4">Lead Management</td></tr>
-        <tr>
-          <td>Lead management &amp; tracking</td>
-          <td class="y">Full access</td>
-          <td class="feat-col y">Structured pipeline</td>
-          <td class="y">Optimized tracking</td>
-        </tr>
-        <tr>
-          <td>Lead capture</td>
-          <td>DIY</td>
-          <td class="feat-col">Widget + banners</td>
-          <td>Widget + banners + popup</td>
-        </tr>
-        <tr>
-          <td>Integrations &amp; custom setup</td>
-          <td class="n">✕</td>
-          <td class="feat-col">DIY</td>
-          <td>Custom CRM integration</td>
-        </tr>
-
-        <tr class="section-hd"><td colspan="4">Support</td></tr>
-        <tr>
-          <td>Guided onboarding &amp; setup</td>
-          <td>DIY setup</td>
-          <td class="feat-col">Full setup + onboarding</td>
-          <td>Full setup + review calls</td>
-        </tr>
-        <tr>
-          <td>Founder support</td>
-          <td class="n">✕</td>
-          <td class="feat-col n">✕</td>
-          <td class="y">✓</td>
-        </tr>
-        <tr>
-          <td>Support access</td>
-          <td>Email, 2–3 days</td>
-          <td class="feat-col">WhatsApp support</td>
-          <td>Priority + calls</td>
-        </tr>
-      </tbody>
-    </table>
-  </div>
-</div>
-
-<!-- FAQ -->
-<div class="pr-faq">
-  <h2>Which plan is right for you?</h2>
-  <p>A few quick answers before you pick.</p>
-  <div class="pr-faq-list">
-
-    <div class="pr-faq-item">
-      <div class="pr-faq-q" onclick="prToggleFaq(this)">
-        <span class="txt">Essentials or Growth Lab — how do I decide?</span>
-        <span class="arrow">▾</span>
+        <article class="plan-card reveal">
+          <span class="plan-badge">Advanced</span>
+          <div class="plan-icon" aria-hidden="true">
+            <svg class="icon" viewBox="0 0 24 24"><path d="M4 19V9l8-5 8 5v10M8 19v-5h8v5M8 10h.01M12 10h.01M16 10h.01"/></svg>
+          </div>
+          <h2 class="plan-name">Enterprise</h2>
+          <p class="plan-fit">For larger or multi-product sales operations that need deeper automation, integrations, and rollout support.</p>
+          <div class="plan-price-wrap">
+            <div class="plan-price"><span class="currency">₹</span>39,999</div>
+            <div class="plan-price-caption">Fixed plan price</div>
+          </div>
+          <div class="plan-value">Built for more complex sales operations where multiple product lines, custom workflows, and integrations need to work together.</div>
+          <a href="{% url 'crm-signup' %}" class="btn plan-cta">Choose Enterprise</a>
+          <ul class="plan-features">
+            <li><span class="plan-check">✓</span><span>Everything in Done for You</span></li>
+            <li><span class="plan-check">✓</span><span>Advanced AI logic across multiple product or service lines</span></li>
+            <li><span class="plan-check">✓</span><span>Expanded knowledge base and team quick replies</span></li>
+            <li><span class="plan-check">✓</span><span>Advanced behaviour-based follow-up sequences</span></li>
+            <li><span class="plan-check">✓</span><span>Custom CRM and workflow integrations</span></li>
+            <li><span class="plan-check">✓</span><span>Priority implementation support and scheduled review calls</span></li>
+          </ul>
+          <div class="plan-foot">Best when your sales process is already complex enough to require deeper customization.</div>
+        </article>
       </div>
-      <div class="pr-faq-a">
-        It comes down to how many products or services you sell.
-        <ul>
-          <li>One product, and you want a ready-to-run system without overthinking it — <b>Industry Essentials</b>.</li>
-          <li>Multiple products, each needing its own bot and sequences — <b>Growth Lab</b>.</li>
-        </ul>
+
+      <div class="recommended-reason reveal">
+        <div class="recommended-reason-head">
+          <div class="eyebrow centered">Why we highlight Done for You</div>
+          <h2>Less setup work. More time actually using the system.</h2>
+          <p>DIY costs less, and Enterprise goes deeper. Done for You sits in the middle because it removes the biggest implementation burden without pushing a normal sales team into enterprise complexity.</p>
+        </div>
+        <div class="reason-grid">
+          <div class="reason-card"><div class="reason-number">01</div><h3>Configuration is handled</h3><p>Your qualification logic, follow-up structure, and core CRM workflow are set up around the way your business sells.</p></div>
+          <div class="reason-card"><div class="reason-number">02</div><h3>Your team gets a usable system</h3><p>Instead of starting with an empty workspace, your reps begin with a structured process and onboarding around it.</p></div>
+          <div class="reason-card"><div class="reason-number">03</div><h3>Room to grow later</h3><p>Start with the practical setup most teams need, then move to Enterprise if multi-product complexity or custom integrations become necessary.</p></div>
+        </div>
       </div>
     </div>
+  </section>
 
-    <div class="pr-faq-item">
-      <div class="pr-faq-q" onclick="prToggleFaq(this)">
-        <span class="txt">Is DIY actually enough to get results?</span>
-        <span class="arrow">▾</span>
+  <section class="compare-section" id="compare">
+    <div class="wrap reveal">
+      <div class="compare-head">
+        <div class="eyebrow violet centered">Side-by-side</div>
+        <h2>Compare the three plans</h2>
+        <p>The Done for You column is highlighted so you can see exactly what the extra setup work covers.</p>
       </div>
-      <div class="pr-faq-a">
-        DIY gives you the full CRM and lead tracking, but you're building and maintaining the AI agent, sequences, and integrations yourself. It works if you have the time and technical comfort for that. Most teams that want a faster, done-for-you result start with Essentials instead.
+      <div class="compare-shell">
+        <table class="pricing-table">
+          <thead>
+            <tr>
+              <th>Capability</th>
+              <th>DIY<br><small>₹3,000</small></th>
+              <th><span class="table-highlight">Done for You</span><br><small>₹14,999</small></th>
+              <th>Enterprise<br><small>₹39,999</small></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr class="group-row"><td colspan="4">Core CRM</td></tr>
+            <tr><td>Lead management and pipeline</td><td class="table-yes">Included</td><td class="table-yes">Included</td><td class="table-yes">Included</td></tr>
+            <tr><td>WhatsApp CRM workspace</td><td class="table-yes">Included</td><td class="table-yes">Included</td><td class="table-yes">Included</td></tr>
+            <tr><td>Lead stages, notes and reminders</td><td class="table-yes">Included</td><td class="table-yes">Included</td><td class="table-yes">Included</td></tr>
+
+            <tr class="group-row"><td colspan="4">AI and follow-up</td></tr>
+            <tr><td>AI qualification setup</td><td class="table-soft">Self-configured</td><td class="table-yes">Configured for you</td><td class="table-yes">Advanced configuration</td></tr>
+            <tr><td>Business knowledge base</td><td class="table-soft">Self-configured</td><td>Structured business knowledge</td><td>Expanded multi-product knowledge</td></tr>
+            <tr><td>Follow-up sequences</td><td class="table-soft">Self-configured</td><td class="table-yes">Core sequences configured</td><td class="table-yes">Advanced behaviour-based sequences</td></tr>
+            <tr><td>Lead recovery workflow</td><td class="table-soft">Self-configured</td><td class="table-yes">Configured</td><td class="table-yes">Advanced</td></tr>
+
+            <tr class="group-row"><td colspan="4">Implementation and scale</td></tr>
+            <tr><td>Setup and onboarding</td><td class="table-soft">DIY</td><td class="table-yes">Guided setup + go-live</td><td class="table-yes">Priority implementation</td></tr>
+            <tr><td>Product / service complexity</td><td>Simple workflow</td><td>Focused sales workflow</td><td>Multiple product lines</td></tr>
+            <tr><td>Custom integrations</td><td class="table-soft">Not included</td><td>Standard setup</td><td class="table-yes">Custom integrations</td></tr>
+            <tr><td>Support</td><td>Email</td><td class="table-yes">WhatsApp support</td><td class="table-yes">Priority + scheduled calls</td></tr>
+          </tbody>
+        </table>
       </div>
     </div>
+  </section>
 
-    <div class="pr-faq-item">
-      <div class="pr-faq-q" onclick="prToggleFaq(this)">
-        <span class="txt">How long does setup take?</span>
-        <span class="arrow">▾</span>
+  <section class="pricing-faq-section" id="pricing-faq">
+    <div class="wrap reveal">
+      <div class="pricing-faq-head">
+        <div class="eyebrow centered">Pricing FAQ</div>
+        <h2>Pick the plan by how much setup you want to own</h2>
+        <p>The software is only part of the decision. The bigger difference is who configures the sales workflow.</p>
       </div>
-      <div class="pr-faq-a">
-        Industry Essentials is typically built and live in 7–10 working days, including your AI agent, sequences, pipeline, and onboarding calls. Growth Lab takes a bit longer since it covers multiple product lines — we'll give you a timeline before you commit.
+
+      <div class="faq">
+        <div class="faq-item open">
+          <button class="faq-btn" type="button"><span>Which plan should most teams start with?</span><span class="faq-plus">+</span></button>
+          <div class="faq-answer"><p><strong>Done for You</strong> is the practical middle option when you want the CRM, AI qualification, follow-up structure, and onboarding configured without paying for deeper Enterprise customization. DIY is better if you genuinely want to build the setup yourself.</p></div>
+        </div>
+        <div class="faq-item">
+          <button class="faq-btn" type="button"><span>What exactly does “Done for You” mean?</span><span class="faq-plus">+</span></button>
+          <div class="faq-answer"><p>SHVYA helps configure the core qualification logic, business knowledge, follow-up sequences, lead structure, and onboarding around your sales process. Your team still runs the conversations and closes the deals, but it does not start from an empty workspace.</p></div>
+        </div>
+        <div class="faq-item">
+          <button class="faq-btn" type="button"><span>When does Enterprise make more sense?</span><span class="faq-plus">+</span></button>
+          <div class="faq-answer"><p>Choose Enterprise when you have multiple product lines, more complex qualification logic, advanced behaviour-based automation, or custom integrations that need a deeper implementation than the standard Done for You setup.</p></div>
+        </div>
+        <div class="faq-item">
+          <button class="faq-btn" type="button"><span>Can I start with DIY and move up later?</span><span class="faq-plus">+</span></button>
+          <div class="faq-answer"><p>Yes. The three plans are designed around different levels of setup and complexity, so you can begin with a simpler plan and move to a more involved implementation as your sales operation grows.</p></div>
+        </div>
+        <div class="faq-item">
+          <button class="faq-btn" type="button"><span>Are the prices calculated by seats or billing cycle?</span><span class="faq-plus">+</span></button>
+          <div class="faq-answer"><p>No calculator is used on this page. The displayed plan prices are fixed at <strong>₹3,000</strong> for DIY, <strong>₹14,999</strong> for Done for You, and <strong>₹39,999</strong> for Enterprise.</p></div>
+        </div>
       </div>
     </div>
+  </section>
+</main>
 
-    <div class="pr-faq-item">
-      <div class="pr-faq-q" onclick="prToggleFaq(this)">
-        <span class="txt">Will my team need training?</span>
-        <span class="arrow">▾</span>
-      </div>
-      <div class="pr-faq-a">
-        Not much, on Essentials or Growth Lab — the system is built and handed to your team, who mostly work from the pipeline and tap to send replies. Onboarding calls cover the rest. DIY needs more upfront time since your team configures the flows themselves.
-      </div>
-    </div>
-
-  </div>
-</div>
-
-<!-- CTA BAND -->
-<div class="cta-band-wrap">
-  <div class="cta-band">
-    <h2>Ready to get started?</h2>
-    <p>Book a free demo and we'll help you pick the right plan.</p>
-    <a href="{% url 'crm-signup' %}" class="btn btn-white btn-lg" style="padding:14px 28px;">Book a free demo</a>
-  </div>
-</div>
-
-<footer>
-  <div class="footer-inner">
-    <a href="{% url 'home' %}" class="brand" style="font-size:1rem;">
-      <span class="brand-mark" style="width:26px;height:26px;font-size:0.8rem;">S</span> SHVYA AI
-    </a>
-    <div class="footer-links">
-      <a href="{% url 'home' %}#features">Features</a>
-      <a href="{% url 'home' %}#how-it-works">How it works</a>
-      <a href="/dashboard/login/">Login</a>
-    </div>
-    <div class="copyright">© 2026 SHVYA AI. All rights reserved.</div>
-  </div>
-</footer>
-
-<script>
-(function(){
-  const monthly = 2999, extraPerSeat = 1299;
-  const discountMap = { monthly:0, quarterly:5, halfyearly:10, annually:15 };
-  let billing = 'quarterly', seats = 1;
-
-  window.prSetBilling = function(cycle, btn){
-    billing = cycle;
-    document.querySelectorAll('#pr-billing-toggle button').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    render();
-  };
-
-  window.prChangeSeats = function(delta){
-    seats = Math.max(1, seats + delta);
-    document.getElementById('pr-seat-count').textContent = seats;
-    render();
-  };
-
-  function render(){
-    const disc = discountMap[billing];
-    const extraSeats = Math.max(0, seats - 1);
-    const perSeatEffective = Math.round(monthly * (1 - disc/100));
-    const totalMonthly = perSeatEffective + Math.round(extraPerSeat * (1 - disc/100)) * extraSeats;
-    document.querySelectorAll('[data-base="2999"]').forEach(el => {
-      el.textContent = 'then ₹' + totalMonthly.toLocaleString('en-IN');
-    });
-  }
-
-  render();
-})();
-
-window.prToggleFaq = function(qEl){
-  const answer = qEl.nextElementSibling;
-  const arrow = qEl.querySelector('.arrow');
-  const isOpen = answer.classList.contains('open');
-  document.querySelectorAll('.pr-faq-a').forEach(a => a.classList.remove('open'));
-  document.querySelectorAll('.pr-faq-q .arrow').forEach(a => a.classList.remove('open'));
-  if(!isOpen){ answer.classList.add('open'); arrow.classList.add('open'); }
-};
-</script>
-
+{% include "marketing/home_footer.html" %}
+<script src="{% static 'marketing/home.js' %}" defer></script>
 </body>
 </html>
