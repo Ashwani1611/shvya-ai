@@ -5,6 +5,7 @@ import logging
 import re
 from urllib.parse import urlparse
 
+from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.utils import timezone
@@ -19,6 +20,34 @@ logger = logging.getLogger(__name__)
 NAME_RE = re.compile(r"^[a-z0-9_]{1,512}$")
 VAR_RE = re.compile(r"\{\{\s*([A-Za-z0-9_]+)\s*\}\}")
 META_VAR_RE = re.compile(r"\{\{\s*(\d+)\s*\}\}")
+PHONE_RE = re.compile(r"^\+?[0-9][0-9\-\s()]{5,19}$")
+
+MEDIA_RULES = {
+    WhatsAppTemplate.AttachmentType.IMAGE: {
+        "mime_types": {"image/jpeg", "image/png"},
+        "max_bytes": 5 * 1024 * 1024,
+        "label": "Image",
+    },
+    WhatsAppTemplate.AttachmentType.VIDEO: {
+        "mime_types": {"video/mp4", "video/3gpp"},
+        "max_bytes": 16 * 1024 * 1024,
+        "label": "Video",
+    },
+    WhatsAppTemplate.AttachmentType.DOCUMENT: {
+        "mime_types": {
+            "application/pdf",
+            "application/msword",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "application/vnd.ms-excel",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "application/vnd.ms-powerpoint",
+            "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            "text/plain",
+        },
+        "max_bytes": 100 * 1024 * 1024,
+        "label": "Document",
+    },
+}
 
 
 class TemplateError(Exception):
@@ -110,6 +139,38 @@ def _audit(template, operation, success, *, error=None, payload=None):
     )
 
 
+def _validate_button_set(buttons):
+    buttons = buttons or []
+    if len(buttons) > 10:
+        raise TemplateError("WhatsApp templates support a maximum of 10 buttons in total.")
+
+    counts = {
+        "visit_website": 0,
+        "call_phone": 0,
+        "copy_offer": 0,
+        "text_back": 0,
+        "request_contact_info": 0,
+    }
+    for item in buttons:
+        kind = item.get("type")
+        if kind not in counts:
+            raise TemplateError("Unsupported template button.")
+        counts[kind] += 1
+
+    # Keep the common Meta CTA layout deterministic and review-friendly.
+    if counts["visit_website"] > 1:
+        raise TemplateError("A standard template can contain only one Visit Website button.")
+    if counts["call_phone"] > 1:
+        raise TemplateError("A standard template can contain only one Call Phone button.")
+    if counts["visit_website"] + counts["call_phone"] > 2:
+        raise TemplateError("A standard template supports at most two call-to-action buttons.")
+    if counts["copy_offer"] > 1:
+        raise TemplateError("A standard template can contain only one Copy Code button.")
+    if counts["request_contact_info"]:
+        raise TemplateError("Request Contact Info is a chat action, not a Meta message-template button.")
+    return counts
+
+
 def validate_template(*, template, for_submit=False):
     template.name = (template.name or "").strip().lower().replace(" ", "_")
     if not NAME_RE.fullmatch(template.name):
@@ -123,6 +184,7 @@ def validate_template(*, template, for_submit=False):
     if template.account.organization_id != template.organization_id:
         raise TemplateError("Selected business does not belong to this organization.")
     build_meta_body(organization=template.organization, body=template.body)
+    _validate_button_set(template.buttons)
     if for_submit:
         account = template.account
         if account.status != WhatsAppAccount.Status.CONNECTED or not account.is_active:
@@ -131,8 +193,6 @@ def validate_template(*, template, for_submit=False):
             raise TemplateError("Selected business is missing WABA credentials.")
         if template.template_format == WhatsAppTemplate.Format.CAROUSEL:
             raise TemplateError("Carousel needs real card media/components before Meta submission; SHVYA will not return a fake success.")
-        if template.attachment_type != WhatsAppTemplate.AttachmentType.NONE:
-            raise TemplateError("Media-header submission needs a Meta header sample handle; save the media template as draft until a valid sample is configured.")
     try:
         template.full_clean(exclude=["status"])
     except ValidationError as exc:
@@ -149,33 +209,125 @@ def _button(item):
         return {"type": "URL", "text": text[:25], "url": url}
     if kind == "call_phone":
         phone = (item.get("phone_number") or "").strip()
-        if not text or not phone:
-            raise TemplateError("Call Phone requires button text and phone number.")
+        if not text or not PHONE_RE.fullmatch(phone):
+            raise TemplateError("Call Phone requires button text and a valid international phone number.")
         return {"type": "PHONE_NUMBER", "text": text[:25], "phone_number": phone}
     if kind == "copy_offer":
         code = (item.get("coupon_code") or "").strip()
         if not code:
-            raise TemplateError("Copy Offer requires a coupon code.")
+            raise TemplateError("Copy Code requires a code value.")
         return {"type": "COPY_CODE", "example": code[:15]}
     if kind == "text_back":
         if not text:
-            raise TemplateError("Text Back requires button text.")
+            raise TemplateError("Quick Reply requires button text.")
         return {"type": "QUICK_REPLY", "text": text[:25]}
     if kind == "request_contact_info":
         raise TemplateError("Request Contact Info is a chat action, not a standard Meta template button.")
     raise TemplateError("Unsupported template button.")
 
 
-def build_meta_payload(*, template):
+def _ordered_buttons(buttons):
+    """Keep Meta button groups contiguous: CTAs/copy first, quick replies last."""
+    cta = [x for x in buttons if x.get("type") in {"visit_website", "call_phone", "copy_offer"}]
+    quick = [x for x in buttons if x.get("type") == "text_back"]
+    return cta + quick
+
+
+def _validate_media_file(attachment_type, uploaded_file):
+    rule = MEDIA_RULES.get(attachment_type)
+    if not rule:
+        raise TemplateError("Unsupported media attachment type.")
+    if uploaded_file is None:
+        raise TemplateError(f"Choose a {rule['label'].lower()} sample file before submitting this template.")
+    mime = (getattr(uploaded_file, "content_type", "") or "").lower()
+    size = int(getattr(uploaded_file, "size", 0) or 0)
+    if mime not in rule["mime_types"]:
+        allowed = ", ".join(sorted(rule["mime_types"]))
+        raise TemplateError(f"Unsupported {rule['label'].lower()} type. Allowed: {allowed}.")
+    if size <= 0:
+        raise TemplateError("The selected media file is empty.")
+    if size > rule["max_bytes"]:
+        max_mb = rule["max_bytes"] // (1024 * 1024)
+        raise TemplateError(f"{rule['label']} is too large. Maximum size is {max_mb} MB.")
+    return mime, size
+
+
+def _upload_header_sample(*, account, attachment_type, uploaded_file):
+    """Upload a media-header sample to Meta and return its reusable handle."""
+    mime, size = _validate_media_file(attachment_type, uploaded_file)
+    app_id = str(getattr(settings, "META_APP_ID", "") or "").strip()
+    if not app_id:
+        raise TemplateError("META_APP_ID is not configured; media template samples cannot be uploaded.")
+
+    headers = {"Authorization": f"Bearer {account.access_token}"}
+    session_url = f"{meta.GRAPH_API_BASE}/{app_id}/uploads"
+    try:
+        response = meta.requests.post(
+            session_url,
+            headers=headers,
+            params={
+                "file_length": size,
+                "file_type": mime,
+                "file_name": getattr(uploaded_file, "name", "template-media"),
+            },
+            timeout=meta.REQUEST_TIMEOUT_SECONDS,
+        )
+    except meta.requests.RequestException as exc:
+        raise TemplateError(f"Network error creating Meta media upload session: {exc}") from exc
+    if not response.ok:
+        err = _error(WhatsAppAPIError("Meta media upload session failed.", response.status_code, response.text))
+        raise TemplateError(err["message"], status_code=err["http_status"], meta_error_code=err["code"])
+    try:
+        upload_id = str(response.json().get("id") or "")
+    except ValueError as exc:
+        raise TemplateError("Meta media upload session returned invalid JSON.") from exc
+    if not upload_id:
+        raise TemplateError("Meta media upload session did not return an upload ID.")
+
+    try:
+        uploaded_file.seek(0)
+        upload_response = meta.requests.post(
+            f"{meta.GRAPH_API_BASE}/{upload_id}",
+            headers={
+                **headers,
+                "Content-Type": mime,
+                "file_offset": "0",
+            },
+            data=uploaded_file.read(),
+            timeout=meta.REQUEST_TIMEOUT_SECONDS,
+        )
+    except meta.requests.RequestException as exc:
+        raise TemplateError(f"Network error uploading template media to Meta: {exc}") from exc
+    if not upload_response.ok:
+        err = _error(WhatsAppAPIError("Meta media upload failed.", upload_response.status_code, upload_response.text))
+        raise TemplateError(err["message"], status_code=err["http_status"], meta_error_code=err["code"])
+    try:
+        handle = str(upload_response.json().get("h") or "")
+    except ValueError as exc:
+        raise TemplateError("Meta media upload returned invalid JSON.") from exc
+    if not handle:
+        raise TemplateError("Meta media upload did not return a header sample handle.")
+    return handle, mime, size
+
+
+def build_meta_payload(*, template, header_handle=""):
     st = state_for(template)
     body, mapping = build_meta_body(organization=template.organization, body=template.body)
-    components = [{"type": "BODY", "text": body}]
+    components = []
+    if template.attachment_type != WhatsAppTemplate.AttachmentType.NONE:
+        if not header_handle:
+            raise TemplateError("A Meta header sample handle is required for media templates.")
+        components.append({
+            "type": "HEADER",
+            "format": template.attachment_type.upper(),
+            "example": {"header_handle": [header_handle]},
+        })
+    components.append({"type": "BODY", "text": body})
     if template.footer:
         components.append({"type": "FOOTER", "text": template.footer})
     if template.buttons:
-        buttons = [_button(x) for x in template.buttons]
-        if len(buttons) > 10:
-            raise TemplateError("Too many template buttons.")
+        _validate_button_set(template.buttons)
+        buttons = [_button(x) for x in _ordered_buttons(template.buttons)]
         components.append({"type": "BUTTONS", "buttons": buttons})
     st.placeholder_mapping, st.components = mapping, components
     st.save(update_fields=["placeholder_mapping", "components", "updated_at"])
@@ -195,6 +347,7 @@ def create_template(*, organization, account, created_by, name, body, category=W
 def update_draft(*, template, account, name, body, category, template_format, footer="", attachment_type="none", buttons=None, language="en_US"):
     if template.status != WhatsAppTemplate.Status.DRAFT or template.meta_template_id:
         raise TemplateError("Submitted templates cannot be edited in place. Copy to a draft instead.")
+    old_attachment_type = template.attachment_type
     template.account, template.name, template.body = account, name, body
     template.category, template.template_format = category, template_format
     template.footer, template.attachment_type, template.buttons = footer, attachment_type, buttons or []
@@ -204,15 +357,45 @@ def update_draft(*, template, account, name, body, category, template_format, fo
         template.save()
         st = state_for(template)
         st.language, st.placeholder_mapping, st.local_status = language or "en_US", mapping, WhatsAppTemplateMetadata.LocalStatus.DRAFT
+        if old_attachment_type != attachment_type or attachment_type == WhatsAppTemplate.AttachmentType.NONE:
+            st.header_sample_handle = ""
+            st.header_file_name = ""
+            st.header_mime_type = ""
+            st.header_file_size = None
         st.save()
     return template
 
 
-def submit_template(*, template):
+def submit_template(*, template, attachment_file=None):
     if template.status != WhatsAppTemplate.Status.DRAFT:
         raise TemplateError(f"Template is already {template.get_status_display()}.")
     validate_template(template=template, for_submit=True)
-    payload, st = build_meta_payload(template=template), state_for(template)
+    st = state_for(template)
+    header_handle = ""
+    if template.attachment_type != WhatsAppTemplate.AttachmentType.NONE:
+        if attachment_file is not None:
+            handle, mime, size = _upload_header_sample(
+                account=template.account,
+                attachment_type=template.attachment_type,
+                uploaded_file=attachment_file,
+            )
+            st.header_sample_handle = handle
+            st.header_file_name = getattr(attachment_file, "name", "")[:255]
+            st.header_mime_type = mime
+            st.header_file_size = size
+            st.save(update_fields=[
+                "header_sample_handle",
+                "header_file_name",
+                "header_mime_type",
+                "header_file_size",
+                "updated_at",
+            ])
+        header_handle = st.header_sample_handle
+        if not header_handle:
+            rule = MEDIA_RULES[template.attachment_type]
+            raise TemplateError(f"Choose a {rule['label'].lower()} sample file before submitting this template.")
+
+    payload = build_meta_payload(template=template, header_handle=header_handle)
     st.local_status = WhatsAppTemplateMetadata.LocalStatus.SUBMITTING
     st.save(update_fields=["local_status", "updated_at"])
     try:
