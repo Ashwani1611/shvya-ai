@@ -816,6 +816,42 @@ def send_outbound_message(
 # CONVERSATIONS (Chats inbox)
 # ============================================================
 
+def get_conversation_messages(
+    *,
+    organization,
+    lead,
+):
+    """
+    Returns every WhatsApp message exchanged with this lead,
+    oldest first, for rendering the chat thread.
+    """
+    return (
+        WhatsAppMessage.objects.filter(
+            organization=organization,
+            lead=lead,
+        )
+        .order_by("created_at")
+    )
+
+
+def mark_conversation_read(
+    *,
+    organization,
+    lead,
+):
+    """
+    Marks every unread inbound WhatsApp message from this lead as
+    read, e.g. when an agent opens the chat thread.
+    """
+    return (
+        WhatsAppMessage.objects.filter(
+            organization=organization,
+            lead=lead,
+            direction=WhatsAppMessage.Direction.INBOUND,
+            is_read=False,
+        )
+        .update(is_read=True)
+    )
 
 def list_conversations(
     *,
