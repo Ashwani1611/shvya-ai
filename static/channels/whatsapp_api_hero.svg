@@ -1,0 +1,98 @@
+<svg width="920" height="560" viewBox="0 0 920 560" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="60" y1="40" x2="860" y2="520" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#ECFDF5"/>
+      <stop offset="0.48" stop-color="#F0FDFA"/>
+      <stop offset="1" stop-color="#EFF6FF"/>
+    </linearGradient>
+    <linearGradient id="phone" x1="200" y1="240" x2="430" y2="430" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#25D366"/>
+      <stop offset="1" stop-color="#16A34A"/>
+    </linearGradient>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="14" stdDeviation="18" flood-color="#0F172A" flood-opacity="0.12"/>
+    </filter>
+  </defs>
+
+  <rect x="12" y="12" width="896" height="536" rx="36" fill="url(#bg)"/>
+  <circle cx="126" cy="105" r="5" fill="#38BDF8" opacity="0.45"/>
+  <circle cx="790" cy="86" r="6" fill="#60A5FA" opacity="0.45"/>
+  <circle cx="838" cy="164" r="4" fill="#34D399" opacity="0.55"/>
+
+  <g filter="url(#shadow)">
+    <rect x="570" y="205" width="250" height="176" rx="18" fill="#0F2747"/>
+    <rect x="584" y="219" width="222" height="146" rx="10" fill="#F8FAFC"/>
+    <rect x="600" y="236" width="74" height="46" rx="8" fill="#EEF2FF"/>
+    <rect x="688" y="236" width="101" height="46" rx="8" fill="#ECFDF5"/>
+    <rect x="600" y="295" width="189" height="11" rx="5.5" fill="#CBD5E1"/>
+    <rect x="600" y="316" width="148" height="9" rx="4.5" fill="#E2E8F0"/>
+    <rect x="600" y="338" width="84" height="12" rx="6" fill="#93C5FD"/>
+    <path d="M541 392H849L884 425H507L541 392Z" fill="#D7E6F7"/>
+    <path d="M507 425H884C880 438 869 446 855 446H536C522 446 511 438 507 425Z" fill="#B9D1EC"/>
+  </g>
+
+  <g filter="url(#shadow)">
+    <circle cx="325" cy="319" r="111" fill="#D1FAE5"/>
+    <circle cx="325" cy="319" r="82" fill="url(#phone)"/>
+    <path d="M285 362L296 330C289 319 286 307 286 295C286 263 312 237 344 237C376 237 402 263 402 295C402 327 376 353 344 353C333 353 322 350 313 344L285 362Z" fill="white"/>
+    <path d="M326 272C323 268 317 267 313 269L306 273C302 275 300 281 302 285C310 307 327 325 349 333C353 335 358 333 360 329L365 321C367 317 366 312 362 309L350 301C347 299 343 299 340 302L334 308C324 303 315 294 310 284L316 278C319 276 319 275 326 272Z" fill="#22C55E"/>
+  </g>
+
+  <g filter="url(#shadow)">
+    <rect x="421" y="256" width="112" height="112" rx="26" fill="white"/>
+    <path d="M448 302C457 284 475 280 489 290C500 298 506 310 506 326" stroke="#2563EB" stroke-width="10" stroke-linecap="round"/>
+    <path d="M506 302C497 284 479 280 465 290C454 298 448 310 448 326" stroke="#2563EB" stroke-width="10" stroke-linecap="round"/>
+    <text x="477" y="349" text-anchor="middle" font-family="Arial, sans-serif" font-size="23" font-weight="700" fill="#0F172A">API</text>
+  </g>
+
+  <path d="M409 319H421" stroke="#22C55E" stroke-width="4" stroke-linecap="round" stroke-dasharray="8 8"/>
+  <path d="M533 319H571" stroke="#3B82F6" stroke-width="4" stroke-linecap="round" stroke-dasharray="8 8"/>
+
+  <g filter="url(#shadow)">
+    <rect x="166" y="117" width="174" height="66" rx="18" fill="white"/>
+    <circle cx="195" cy="150" r="14" fill="#DCFCE7"/>
+    <path d="M189 150L194 155L202 145" stroke="#16A34A" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="219" y="145" font-family="Arial, sans-serif" font-size="14" font-weight="700" fill="#0F172A">Official WhatsApp</text>
+    <text x="219" y="164" font-family="Arial, sans-serif" font-size="12" fill="#64748B">Business API</text>
+  </g>
+
+  <g filter="url(#shadow)">
+    <rect x="412" y="88" width="164" height="70" rx="18" fill="white"/>
+    <circle cx="442" cy="123" r="14" fill="#DBEAFE"/>
+    <path d="M436 123L441 128L449 118" stroke="#2563EB" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="466" y="118" font-family="Arial, sans-serif" font-size="14" font-weight="700" fill="#0F172A">Secure setup</text>
+    <text x="466" y="138" font-family="Arial, sans-serif" font-size="12" fill="#64748B">Meta embedded signup</text>
+  </g>
+
+  <g filter="url(#shadow)">
+    <rect x="643" y="105" width="154" height="70" rx="18" fill="white"/>
+    <circle cx="674" cy="140" r="14" fill="#EDE9FE"/>
+    <path d="M668 140L673 145L681 135" stroke="#7C3AED" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="698" y="135" font-family="Arial, sans-serif" font-size="14" font-weight="700" fill="#0F172A">Connected</text>
+    <text x="698" y="155" font-family="Arial, sans-serif" font-size="12" fill="#64748B">Ready to message</text>
+  </g>
+
+  <g>
+    <rect x="176" y="462" width="160" height="54" rx="16" fill="white" opacity="0.95"/>
+    <circle cx="202" cy="489" r="12" fill="#DCFCE7"/>
+    <path d="M198 489L202 493L208 485" stroke="#16A34A" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="222" y="485" font-family="Arial, sans-serif" font-size="12" font-weight="700" fill="#0F172A">Instant replies</text>
+    <text x="222" y="501" font-family="Arial, sans-serif" font-size="10" fill="#64748B">Reply from one inbox</text>
+  </g>
+
+  <g>
+    <rect x="380" y="462" width="160" height="54" rx="16" fill="white" opacity="0.95"/>
+    <circle cx="406" cy="489" r="12" fill="#DBEAFE"/>
+    <path d="M401 494V487M406 494V482M411 494V478" stroke="#2563EB" stroke-width="2.5" stroke-linecap="round"/>
+    <text x="426" y="485" font-family="Arial, sans-serif" font-size="12" font-weight="700" fill="#0F172A">Track &amp; analyze</text>
+    <text x="426" y="501" font-family="Arial, sans-serif" font-size="10" fill="#64748B">Delivery and insights</text>
+  </g>
+
+  <g>
+    <rect x="584" y="462" width="160" height="54" rx="16" fill="white" opacity="0.95"/>
+    <circle cx="610" cy="489" r="12" fill="#EDE9FE"/>
+    <path d="M604 491H616M610 483V497" stroke="#7C3AED" stroke-width="2.5" stroke-linecap="round"/>
+    <text x="630" y="485" font-family="Arial, sans-serif" font-size="12" font-weight="700" fill="#0F172A">Scale safely</text>
+    <text x="630" y="501" font-family="Arial, sans-serif" font-size="10" fill="#64748B">Official Meta connection</text>
+  </g>
+</svg>

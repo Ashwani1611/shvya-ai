@@ -69,8 +69,8 @@ NAV_ITEMS = [
             {
                 "label": "Connect API",
                 "icon": "ti-plug-connected",
-                "url_name": "whatsapp-accounts",
-                "path_prefix": "/dashboard/whatsapp/accounts/",
+                "url_name": "whatsapp-connect-api",
+                "path_prefix": "/dashboard/whatsapp/connect/api/",
             },
             {
                 "label": "Coexisted Accounts",
