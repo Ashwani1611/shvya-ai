@@ -5,22 +5,35 @@
 {% block header %}WhatsApp Chats{% endblock %}
 
 {% block content %}
-<div class="flex h-[calc(100vh-8.5rem)] min-h-[620px] overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+<style>
+    .wa-chat-surface {
+        background-color: #efeae2;
+        background-image:
+            radial-gradient(circle at 12px 12px, rgba(80, 92, 86, .055) 1.2px, transparent 1.3px),
+            radial-gradient(circle at 30px 32px, rgba(80, 92, 86, .035) 1px, transparent 1.1px);
+        background-size: 42px 42px;
+    }
+    .wa-scrollbar { scrollbar-width: thin; scrollbar-color: #b6b9b7 transparent; }
+    .wa-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
+    .wa-scrollbar::-webkit-scrollbar-thumb { background: #b6b9b7; border-radius: 999px; }
+    .wa-bubble { box-shadow: 0 1px 1px rgba(0,0,0,.08); }
+</style>
 
-    <!-- LEFT: connected number + filters + conversations -->
+<div class="flex h-[calc(100vh-8.5rem)] min-h-[620px] overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
+    <!-- Conversations -->
     <aside class="flex w-[320px] flex-shrink-0 flex-col border-r border-gray-200 bg-white">
-        <div class="border-b border-gray-200 bg-white px-3 py-3">
+        <div class="border-b border-gray-100 bg-[#fbfdfc] px-3 py-3">
             <div class="mb-2 flex items-center gap-2">
-                <span class="whitespace-nowrap text-xs font-semibold text-gray-700">Connected to</span>
+                <span class="whitespace-nowrap text-xs font-semibold text-gray-600">Connected to</span>
                 <form id="account-filter-form" method="get" class="min-w-0 flex-1">
                     {% if search_query %}<input type="hidden" name="q" value="{{ search_query }}">{% endif %}
                     {% if active_tab != 'all' %}<input type="hidden" name="tab" value="{{ active_tab }}">{% endif %}
                     <select id="connected-account-select" name="account" onchange="this.form.submit()"
-                        class="w-full truncate rounded-lg border border-gray-300 bg-white px-2.5 py-2 text-xs font-medium text-gray-800 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100">
+                            class="w-full truncate rounded-xl border border-gray-200 bg-white px-2.5 py-2 text-xs font-medium text-gray-800 outline-none transition focus:border-green-500 focus:ring-2 focus:ring-green-100">
                         <option value="">All connected numbers</option>
                         {% for account in accounts %}
                         <option value="{{ account.id }}" {% if selected_account and selected_account.id == account.id %}selected{% endif %}>
-                            {{ account.business_name|default:"WhatsApp" }}{% if account.display_phone_number %} - {{ account.display_phone_number }}{% endif %}
+                            {{ account.business_name|default:"WhatsApp" }}{% if account.display_phone_number %} · {{ account.display_phone_number }}{% endif %}
                         </option>
                         {% endfor %}
                     </select>
@@ -31,33 +44,25 @@
                 {% if selected_account %}<input type="hidden" name="account" value="{{ selected_account.id }}">{% endif %}
                 {% if active_tab != 'all' %}<input type="hidden" name="tab" value="{{ active_tab }}">{% endif %}
                 <i class="ti ti-search absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400"></i>
-                <input type="text" name="q" value="{{ search_query }}" placeholder="Search for leads"
-                    class="w-full rounded-full border border-gray-200 bg-gray-50 py-2.5 pl-9 pr-3 text-sm outline-none transition focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-100">
+                <input type="text" name="q" value="{{ search_query }}" placeholder="Search chats"
+                       class="w-full rounded-full border border-gray-200 bg-gray-50 py-2.5 pl-9 pr-3 text-sm outline-none transition focus:border-green-500 focus:bg-white focus:ring-2 focus:ring-green-100">
             </form>
         </div>
 
-        <div class="flex flex-wrap gap-2 border-b border-gray-200 px-3 py-3 text-xs font-medium">
-            <a href="?{% if selected_account %}account={{ selected_account.id }}&{% endif %}{% if search_query %}q={{ search_query|urlencode }}&{% endif %}tab=all"
-               class="rounded-full border px-3 py-1.5 transition {% if active_tab == 'all' %}border-blue-500 bg-blue-50 text-blue-600{% else %}border-gray-200 bg-gray-100 text-gray-500 hover:bg-gray-200{% endif %}">All Chats</a>
-            <a href="?{% if selected_account %}account={{ selected_account.id }}&{% endif %}{% if search_query %}q={{ search_query|urlencode }}&{% endif %}tab=unread"
-               class="rounded-full border px-3 py-1.5 transition {% if active_tab == 'unread' %}border-blue-500 bg-blue-50 text-blue-600{% else %}border-gray-200 bg-gray-100 text-gray-500 hover:bg-gray-200{% endif %}">Unread{% if tab_counts.unread %} · {{ tab_counts.unread }}{% endif %}</a>
-            <a href="?{% if selected_account %}account={{ selected_account.id }}&{% endif %}{% if search_query %}q={{ search_query|urlencode }}&{% endif %}tab=needs_reply"
-               class="rounded-full border px-3 py-1.5 transition {% if active_tab == 'needs_reply' %}border-blue-500 bg-blue-50 text-blue-600{% else %}border-gray-200 bg-gray-100 text-gray-500 hover:bg-gray-200{% endif %}">Needs Reply</a>
-            <a href="?{% if selected_account %}account={{ selected_account.id }}&{% endif %}{% if search_query %}q={{ search_query|urlencode }}&{% endif %}tab=failed"
-               class="rounded-full border px-3 py-1.5 transition {% if active_tab == 'failed' %}border-blue-500 bg-blue-50 text-blue-600{% else %}border-gray-200 bg-gray-100 text-gray-500 hover:bg-gray-200{% endif %}">Failed{% if tab_counts.failed %} · {{ tab_counts.failed }}{% endif %}</a>
-            <a href="?{% if selected_account %}account={{ selected_account.id }}&{% endif %}{% if search_query %}q={{ search_query|urlencode }}&{% endif %}tab=broadcasts"
-               class="rounded-full border px-3 py-1.5 transition {% if active_tab == 'broadcasts' %}border-blue-500 bg-blue-50 text-blue-600{% else %}border-gray-200 bg-gray-100 text-gray-500 hover:bg-gray-200{% endif %}">Successful Broadcasts</a>
+        <div class="flex flex-wrap gap-1.5 border-b border-gray-100 bg-white px-3 py-2.5 text-[11px] font-medium">
+            <a href="?{% if selected_account %}account={{ selected_account.id }}&{% endif %}{% if search_query %}q={{ search_query|urlencode }}&{% endif %}tab=all" class="rounded-full px-3 py-1.5 transition {% if active_tab == 'all' %}bg-[#e7f7ef] text-[#128c7e]{% else %}bg-gray-100 text-gray-500 hover:bg-gray-200{% endif %}">All</a>
+            <a href="?{% if selected_account %}account={{ selected_account.id }}&{% endif %}{% if search_query %}q={{ search_query|urlencode }}&{% endif %}tab=unread" class="rounded-full px-3 py-1.5 transition {% if active_tab == 'unread' %}bg-[#e7f7ef] text-[#128c7e]{% else %}bg-gray-100 text-gray-500 hover:bg-gray-200{% endif %}">Unread{% if tab_counts.unread %} · {{ tab_counts.unread }}{% endif %}</a>
+            <a href="?{% if selected_account %}account={{ selected_account.id }}&{% endif %}{% if search_query %}q={{ search_query|urlencode }}&{% endif %}tab=needs_reply" class="rounded-full px-3 py-1.5 transition {% if active_tab == 'needs_reply' %}bg-[#e7f7ef] text-[#128c7e]{% else %}bg-gray-100 text-gray-500 hover:bg-gray-200{% endif %}">Needs reply</a>
+            <a href="?{% if selected_account %}account={{ selected_account.id }}&{% endif %}{% if search_query %}q={{ search_query|urlencode }}&{% endif %}tab=failed" class="rounded-full px-3 py-1.5 transition {% if active_tab == 'failed' %}bg-red-50 text-red-600{% else %}bg-gray-100 text-gray-500 hover:bg-gray-200{% endif %}">Failed{% if tab_counts.failed %} · {{ tab_counts.failed }}{% endif %}</a>
         </div>
 
-        <div class="flex-1 overflow-y-auto">
+        <div class="wa-scrollbar flex-1 overflow-y-auto">
             {% for lead in conversations %}
             <a href="{% url 'whatsapp-chat-detail' lead.id %}?{% if selected_account %}account={{ selected_account.id }}&{% endif %}tab={{ active_tab }}{% if search_query %}&q={{ search_query|urlencode }}{% endif %}"
-               class="conversation-row flex gap-3 border-b border-gray-100 px-3 py-3 transition hover:bg-gray-50 {% if active_lead and active_lead.id == lead.id %}bg-blue-50/60{% endif %}">
-                <div class="relative mt-0.5 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-gray-200 text-xs font-bold text-gray-600">
+               class="conversation-row flex gap-3 border-b border-gray-100 px-3 py-3 transition hover:bg-[#f5faf7] {% if active_lead and active_lead.id == lead.id %}bg-[#eaf7f0]{% endif %}">
+                <div class="relative mt-0.5 flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full bg-[#e6ebe8] text-xs font-bold text-gray-600">
                     {{ lead.initials }}
-                    {% if lead.last_msg_status == 'failed' %}
-                    <span class="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-white bg-red-500" title="Last message failed"></span>
-                    {% endif %}
+                    {% if lead.last_msg_status == 'failed' %}<span class="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2 border-white bg-red-500" title="Last message failed"></span>{% endif %}
                 </div>
                 <div class="min-w-0 flex-1">
                     <div class="flex items-center justify-between gap-2">
@@ -65,44 +70,49 @@
                         <span class="whitespace-nowrap text-[10px] text-gray-400">{{ lead.last_message_at|date:"h:i A" }}</span>
                     </div>
                     <div class="mt-1 flex items-center justify-between gap-2">
-                        <p class="truncate text-xs text-gray-500">
-                            {% if lead.last_msg_direction == 'outbound' %}<span class="font-medium">You:</span> {% endif %}{{ lead.last_msg_body|default:"No messages"|truncatechars:34 }}
-                        </p>
-                        {% if lead.unread_count %}<span class="flex h-5 min-w-5 items-center justify-center rounded-full bg-green-500 px-1 text-[10px] font-bold text-white">{{ lead.unread_count }}</span>{% endif %}
+                        <p class="truncate text-xs text-gray-500">{% if lead.last_msg_direction == 'outbound' %}<span class="font-medium">You:</span> {% endif %}{{ lead.last_msg_body|default:"No messages"|truncatechars:34 }}</p>
+                        {% if lead.unread_count %}<span class="flex h-5 min-w-5 items-center justify-center rounded-full bg-[#25d366] px-1 text-[10px] font-bold text-white">{{ lead.unread_count }}</span>{% endif %}
                     </div>
                 </div>
             </a>
             {% empty %}
-            <div class="px-5 py-12 text-center text-sm text-gray-400">
-                {% if active_tab == 'failed' %}No failed conversations.{% else %}No conversations found.{% endif %}
+            <div class="px-5 py-12 text-center">
+                <div class="mx-auto flex h-11 w-11 items-center justify-center rounded-full bg-gray-100 text-gray-400"><i class="ti ti-message-circle"></i></div>
+                <p class="mt-3 text-sm font-medium text-gray-600">No conversations found</p>
+                <p class="mt-1 text-xs text-gray-400">New WhatsApp chats will appear here.</p>
             </div>
             {% endfor %}
         </div>
     </aside>
 
-    <!-- CENTER: message thread -->
+    <!-- WhatsApp-style conversation -->
     <main class="flex min-w-0 flex-1 flex-col bg-[#efeae2]">
         {% if active_lead %}
-        <div class="flex h-[58px] flex-shrink-0 items-center gap-3 border-b border-gray-200 bg-white/90 px-4 backdrop-blur">
-            <div class="flex h-9 w-9 items-center justify-center rounded-full bg-gray-300 text-xs font-bold text-gray-600">{{ active_lead.initials }}</div>
-            <div class="min-w-0">
-                <p class="truncate text-sm font-semibold text-gray-900">{{ active_lead.name|default:active_lead.phone }}</p>
-                <p class="truncate text-[11px] text-gray-500">{{ active_lead.phone }}</p>
+        <div class="flex h-[64px] flex-shrink-0 items-center justify-between border-b border-[#dfe8e3] bg-[#f3faf6] px-4 shadow-sm">
+            <div class="flex min-w-0 items-center gap-3">
+                <div class="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-[#dcebe3] text-xs font-bold text-[#426457]">{{ active_lead.initials }}</div>
+                <div class="min-w-0">
+                    <p class="truncate text-sm font-semibold text-gray-900">{{ active_lead.name|default:active_lead.phone }}</p>
+                    <p class="mt-0.5 flex items-center gap-1.5 truncate text-[11px] text-gray-500"><span class="h-1.5 w-1.5 rounded-full bg-green-500"></span>{{ active_lead.phone }}</p>
+                </div>
+            </div>
+            <div class="hidden items-center gap-1 text-gray-400 sm:flex">
+                <span class="rounded-full bg-white/80 px-2.5 py-1 text-[10px] font-medium text-gray-500">WhatsApp</span>
             </div>
         </div>
 
-        <div id="thread" class="flex-1 overflow-y-auto px-4 py-3">
+        <div id="thread" class="wa-chat-surface wa-scrollbar flex-1 overflow-y-auto px-4 py-4 sm:px-6">
             {% regroup chat_messages by created_at|date:"Y-m-d" as messages_by_day %}
             {% for day_group in messages_by_day %}
-            <div class="my-3 flex justify-center"><span class="rounded-md bg-white/90 px-3 py-1 text-[10px] text-gray-500 shadow-sm">{{ day_group.grouper }}</span></div>
+            <div class="my-4 flex justify-center"><span class="rounded-lg bg-white/90 px-3 py-1 text-[10px] font-medium text-gray-500 shadow-sm">{{ day_group.grouper }}</span></div>
             {% for message in day_group.list %}
             <div class="mb-2 flex min-w-0 {% if message.direction == 'outbound' %}justify-end{% else %}justify-start{% endif %}" data-message-id="{{ message.id }}">
-                <div class="min-w-0 max-w-[72%] overflow-hidden rounded-lg px-3 py-2 text-sm shadow-sm {% if message.direction == 'outbound' %}{% if message.status == 'failed' %}bg-[#fff0f0]{% else %}bg-[#d9fdd3]{% endif %}{% else %}bg-white{% endif %}">
+                <div class="wa-bubble min-w-0 max-w-[78%] rounded-xl px-3 py-2 text-sm sm:max-w-[70%] {% if message.direction == 'outbound' %}{% if message.status == 'failed' %}bg-[#fff1f0]{% else %}bg-[#d9fdd3]{% endif %}{% else %}bg-white{% endif %}">
                     {% if message.body %}<p class="whitespace-pre-wrap break-words leading-relaxed text-gray-900 [overflow-wrap:anywhere]">{{ message.body }}</p>{% else %}<p class="italic text-gray-400">Unsupported message type</p>{% endif %}
                     <div class="mt-1 flex items-center justify-end gap-1 text-[10px] text-gray-500">
                         {{ message.created_at|date:"h:i A" }}
                         {% if message.direction == 'outbound' %}
-                            {% if message.status == 'read' %}<i class="ti ti-checks text-blue-500"></i>
+                            {% if message.status == 'read' %}<i class="ti ti-checks text-[#53bdeb]"></i>
                             {% elif message.status == 'delivered' %}<i class="ti ti-checks"></i>
                             {% elif message.status == 'sent' %}<i class="ti ti-check"></i>
                             {% elif message.status == 'failed' %}<i class="ti ti-alert-circle text-red-500"></i>
@@ -110,191 +120,94 @@
                         {% endif %}
                     </div>
                     {% if message.status == 'failed' %}
-                    <div class="mt-2 min-w-0 max-w-full overflow-hidden rounded-md border border-red-200 bg-red-50 px-2.5 py-2 text-[11px] leading-relaxed text-red-600">
-                        <div class="flex min-w-0 gap-1.5">
-                            <i class="ti ti-alert-circle mt-0.5 flex-shrink-0"></i>
-                            <span class="min-w-0 break-words [overflow-wrap:anywhere]"><strong>Message failed{% if message.error_code %} ({{ message.error_code }}){% endif %}:</strong> {{ message.error|default:"WhatsApp could not deliver this message." }}</span>
+                    <details class="mt-1.5 min-w-0 max-w-full text-[11px] text-red-600">
+                        <summary class="cursor-pointer select-none font-medium">Not sent · View details</summary>
+                        <div class="mt-1.5 max-w-full break-words rounded-lg bg-red-50 px-2.5 py-2 leading-relaxed [overflow-wrap:anywhere]">
+                            {{ message.error|default:"WhatsApp could not deliver this message." }}
                         </div>
-                    </div>
+                    </details>
                     {% endif %}
                 </div>
             </div>
             {% endfor %}
             {% empty %}
-            <div class="flex h-full items-center justify-center text-sm text-gray-500">No messages yet.</div>
+            <div class="flex h-full flex-col items-center justify-center text-center text-gray-500">
+                <div class="flex h-14 w-14 items-center justify-center rounded-full bg-white/80 text-2xl text-[#128c7e] shadow-sm"><i class="ti ti-brand-whatsapp"></i></div>
+                <p class="mt-3 text-sm font-medium">Start the conversation</p>
+                <p class="mt-1 max-w-xs text-xs text-gray-400">Messages with this lead will appear here.</p>
+            </div>
             {% endfor %}
         </div>
 
-        <div class="relative flex-shrink-0 border-t border-gray-200 bg-white/90 px-3 py-2.5 backdrop-blur">
-            <div id="send-error" class="mb-2 hidden max-w-full break-words rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-600 [overflow-wrap:anywhere]"></div>
+        <div class="relative flex-shrink-0 border-t border-gray-200 bg-[#f0f2f5] px-3 py-2.5">
+            <div id="send-error" class="mb-2 hidden max-w-full break-words rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-600 [overflow-wrap:anywhere]"></div>
             <form id="composer-form" class="flex items-center gap-2">
                 {% csrf_token %}
                 <input id="message-body" type="text" autocomplete="off" placeholder="Type a message"
-                       class="min-w-0 flex-1 rounded-full border border-gray-200 bg-white px-4 py-2.5 text-sm outline-none transition focus:border-green-500 focus:ring-2 focus:ring-green-100">
-                <button class="flex h-10 w-10 items-center justify-center rounded-full bg-[#25d366] text-white transition hover:bg-[#20bd5a]" type="submit" title="Send">
-                    <i class="ti ti-send"></i>
-                </button>
+                       class="min-w-0 flex-1 rounded-full border border-transparent bg-white px-4 py-3 text-sm shadow-sm outline-none transition focus:border-green-300 focus:ring-2 focus:ring-green-100">
+                <button class="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full bg-[#25d366] text-white shadow-sm transition hover:bg-[#20bd5a] focus:outline-none focus:ring-2 focus:ring-green-200" type="submit" title="Send message"><i class="ti ti-send"></i></button>
             </form>
         </div>
         {% else %}
-        <div class="flex h-full flex-col items-center justify-center text-center text-gray-500">
-            <i class="ti ti-brand-whatsapp text-6xl text-gray-300"></i>
-            <p class="mt-4 text-lg font-medium text-gray-600">Select a conversation</p>
-            <p class="mt-1 text-sm">Choose a lead from the left to view messages and details.</p>
+        <div class="wa-chat-surface flex h-full flex-col items-center justify-center px-6 text-center text-gray-500">
+            <div class="flex h-20 w-20 items-center justify-center rounded-full bg-white/80 text-4xl text-[#25d366] shadow-sm"><i class="ti ti-brand-whatsapp"></i></div>
+            <p class="mt-5 text-lg font-semibold text-gray-700">Your conversations</p>
+            <p class="mt-1 max-w-sm text-sm text-gray-500">Select a chat from the left to read messages and manage the lead without leaving the inbox.</p>
         </div>
         {% endif %}
     </main>
 
-    <!-- RIGHT: CRM details -->
+    <!-- CRM context -->
     {% if active_lead %}
     {% lead_attribute_rows active_lead as attribute_rows %}
     <aside class="hidden w-[340px] flex-shrink-0 flex-col border-l border-gray-200 bg-white xl:flex">
-        <div class="flex flex-shrink-0 border-b border-gray-200 bg-white text-[10px] font-semibold">
-            <button type="button" data-panel="personal" class="side-tab flex flex-1 flex-col items-center gap-1 border-b-2 border-blue-500 px-2 py-2.5 text-blue-600"><i class="ti ti-user text-base"></i>Personal Details</button>
-            <button type="button" data-panel="calls" class="side-tab flex flex-1 flex-col items-center gap-1 border-b-2 border-transparent px-2 py-2.5 text-gray-500"><i class="ti ti-phone text-base"></i>Call Tracker</button>
-            <button type="button" data-panel="followups" class="side-tab flex flex-1 flex-col items-center gap-1 border-b-2 border-transparent px-2 py-2.5 text-gray-500"><i class="ti ti-arrows-right-left text-base"></i>Auto Followups</button>
-            <button type="button" data-panel="templates" class="side-tab flex flex-1 flex-col items-center gap-1 border-b-2 border-transparent px-2 py-2.5 text-gray-500"><i class="ti ti-template text-base"></i>Tem. Message</button>
+        <div class="flex flex-shrink-0 border-b border-gray-100 bg-[#fbfdfc] text-[10px] font-semibold">
+            <button type="button" data-panel="personal" class="side-tab flex flex-1 flex-col items-center gap-1 border-b-2 border-[#128c7e] px-2 py-2.5 text-[#128c7e]"><i class="ti ti-user text-base"></i>Personal</button>
+            <button type="button" data-panel="calls" class="side-tab flex flex-1 flex-col items-center gap-1 border-b-2 border-transparent px-2 py-2.5 text-gray-500"><i class="ti ti-phone text-base"></i>Calls</button>
+            <button type="button" data-panel="followups" class="side-tab flex flex-1 flex-col items-center gap-1 border-b-2 border-transparent px-2 py-2.5 text-gray-500"><i class="ti ti-arrows-right-left text-base"></i>Followups</button>
+            <button type="button" data-panel="templates" class="side-tab flex flex-1 flex-col items-center gap-1 border-b-2 border-transparent px-2 py-2.5 text-gray-500"><i class="ti ti-template text-base"></i>Templates</button>
         </div>
 
-        <div class="side-panel flex-1 overflow-y-auto" id="panel-personal">
-            <section class="border-b border-gray-200 px-4 py-3">
-                <h3 class="mb-3 text-xs font-bold text-gray-800">Personal Info</h3>
+        <div class="side-panel wa-scrollbar flex-1 overflow-y-auto" id="panel-personal">
+            <section class="border-b border-gray-100 px-4 py-4">
+                <div class="mb-3 flex items-center justify-between"><h3 class="text-xs font-bold text-gray-800">Personal info</h3><span id="quick-save-state" class="hidden text-[10px]"></span></div>
                 <form id="lead-quick-form" action="{% url 'whatsapp-lead-quick-update' active_lead.id %}" class="space-y-3">
                     {% csrf_token %}
-                    <div class="grid grid-cols-[74px_1fr] items-center gap-2">
-                        <label class="text-xs font-semibold text-gray-700">Name:</label>
-                        <input id="lead-name" name="name" value="{{ active_lead.name }}" class="rounded-lg border border-gray-300 px-2.5 py-2 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100">
-                    </div>
-                    <div class="grid grid-cols-[74px_1fr] items-center gap-2">
-                        <label class="text-xs font-semibold text-gray-700">Phone:</label>
-                        <div class="flex items-center rounded-lg border border-gray-200 bg-gray-50 px-2.5 py-2">
-                            <span class="min-w-0 flex-1 truncate text-sm text-gray-500">{{ active_lead.phone }}</span>
-                            <button type="button" class="ml-2 text-gray-400 transition hover:text-gray-700" onclick="copyLeadPhone()" title="Copy phone"><i class="ti ti-copy"></i></button>
-                        </div>
-                    </div>
-                    <p class="-mt-1 pl-[82px] text-[10px] text-gray-400">Phone is locked in WhatsApp chats.</p>
-                    <div class="grid grid-cols-[74px_1fr] items-center gap-2">
-                        <label class="text-xs font-semibold text-gray-700">Email:</label>
-                        <input id="lead-email" type="email" name="email" value="{{ active_lead.email }}" placeholder="Add email" class="rounded-lg border border-gray-300 px-2.5 py-2 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100">
-                    </div>
-
-                    <div class="grid grid-cols-[1fr_auto] items-center gap-3 pt-1">
-                        <div>
-                            <p class="text-xs font-semibold text-gray-800">AI Auto-Reply Status</p>
-                            <p class="text-[10px] text-gray-400">Lead-level switch</p>
-                        </div>
-                        <button id="ai-toggle" type="button" role="switch" aria-checked="{% if active_lead.ai_enabled %}true{% else %}false{% endif %}"
-                                data-enabled="{% if active_lead.ai_enabled %}1{% else %}0{% endif %}"
-                                class="relative h-5 w-9 rounded-full transition {% if active_lead.ai_enabled %}bg-green-500{% else %}bg-gray-300{% endif %}">
-                            <span class="absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all {% if active_lead.ai_enabled %}left-[18px]{% else %}left-0.5{% endif %}"></span>
-                        </button>
-                    </div>
-
-                    <div class="grid grid-cols-[74px_1fr] items-center gap-2 pt-1">
-                        <label class="text-xs font-semibold text-gray-700">Pipeline:</label>
-                        <div class="flex items-center justify-between gap-2 text-sm text-gray-800">
-                            <span>{{ active_lead.pipeline.name|default:"—" }}</span>
-                            <a href="{% url 'crm-lead-detail' active_lead.id %}" class="text-xs text-blue-600 hover:underline">Change</a>
-                        </div>
-                    </div>
-                    <div class="grid grid-cols-[74px_1fr] items-center gap-2">
-                        <label class="text-xs font-semibold text-gray-700">Stage:</label>
-                        <select id="lead-stage" name="stage" class="rounded-lg border border-gray-300 bg-white px-2.5 py-2 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100">
-                            {% for stage in lead_stages %}<option value="{{ stage.id }}" {% if stage.id == active_lead.stage_id %}selected{% endif %}>{{ stage.name }}</option>{% endfor %}
-                        </select>
-                    </div>
-                    <div class="grid grid-cols-[74px_1fr] items-start gap-2">
-                        <label class="pt-0.5 text-xs font-semibold text-gray-700">Sequence:</label>
-                        <p class="text-xs leading-relaxed text-gray-800">{{ active_lead.attributes.sequence|default:"—" }}</p>
-                    </div>
-                    <div class="grid grid-cols-[74px_1fr] items-center gap-2">
-                        <label class="text-xs font-semibold text-gray-700">Source:</label>
-                        <p class="text-xs text-gray-800">{{ active_lead.get_lead_source_display }}</p>
-                    </div>
-                    <div id="quick-save-state" class="hidden text-[10px]"></div>
+                    <div><label class="mb-1 block text-[11px] font-semibold text-gray-600">Name</label><input id="lead-name" name="name" value="{{ active_lead.name }}" class="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm outline-none transition focus:border-green-500 focus:ring-2 focus:ring-green-100"></div>
+                    <div><label class="mb-1 block text-[11px] font-semibold text-gray-600">Phone</label><div class="flex items-center rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5"><span class="min-w-0 flex-1 truncate text-sm text-gray-500">{{ active_lead.phone }}</span><button type="button" class="ml-2 text-gray-400 hover:text-gray-700" onclick="copyLeadPhone()" title="Copy phone"><i class="ti ti-copy"></i></button></div><p class="mt-1 text-[10px] text-gray-400">Phone stays locked so the WhatsApp conversation remains linked correctly.</p></div>
+                    <div><label class="mb-1 block text-[11px] font-semibold text-gray-600">Email</label><input id="lead-email" type="email" name="email" value="{{ active_lead.email }}" placeholder="Add email" class="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm outline-none transition focus:border-green-500 focus:ring-2 focus:ring-green-100"></div>
+                    <div class="flex items-center justify-between rounded-xl bg-gray-50 px-3 py-2.5"><div><p class="text-xs font-semibold text-gray-800">AI auto-reply</p><p class="text-[10px] text-gray-400">For this lead</p></div><button id="ai-toggle" type="button" role="switch" aria-checked="{% if active_lead.ai_enabled %}true{% else %}false{% endif %}" data-enabled="{% if active_lead.ai_enabled %}1{% else %}0{% endif %}" class="relative h-5 w-9 rounded-full transition {% if active_lead.ai_enabled %}bg-green-500{% else %}bg-gray-300{% endif %}"><span class="absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all {% if active_lead.ai_enabled %}left-[18px]{% else %}left-0.5{% endif %}"></span></button></div>
+                    <div class="grid grid-cols-2 gap-2"><div class="rounded-xl bg-gray-50 p-2.5"><p class="text-[10px] font-semibold uppercase text-gray-400">Pipeline</p><div class="mt-1 flex items-center justify-between gap-1"><span class="truncate text-xs text-gray-700">{{ active_lead.pipeline.name|default:"—" }}</span><a href="{% url 'crm-lead-detail' active_lead.id %}" class="text-[10px] font-medium text-blue-600">Change</a></div></div><div class="rounded-xl bg-gray-50 p-2.5"><label class="text-[10px] font-semibold uppercase text-gray-400">Stage</label><select id="lead-stage" name="stage" class="mt-1 w-full bg-transparent text-xs text-gray-700 outline-none">{% for stage in lead_stages %}<option value="{{ stage.id }}" {% if stage.id == active_lead.stage_id %}selected{% endif %}>{{ stage.name }}</option>{% endfor %}</select></div></div>
+                    <div class="grid grid-cols-2 gap-2 text-xs"><div><span class="text-gray-400">Sequence</span><p class="mt-0.5 truncate text-gray-700">{{ active_lead.attributes.sequence|default:"—" }}</p></div><div><span class="text-gray-400">Source</span><p class="mt-0.5 text-gray-700">{{ active_lead.get_lead_source_display }}</p></div></div>
                 </form>
             </section>
 
-            <section class="border-b border-gray-200">
-                <button type="button" class="section-toggle flex w-full items-center justify-between px-4 py-3 text-left transition hover:bg-gray-50" data-target="additional-body">
-                    <span class="text-xs font-bold text-gray-800">Additional Info</span><i class="ti ti-chevron-down text-gray-500"></i>
-                </button>
+            <section class="border-b border-gray-100">
+                <button type="button" class="section-toggle flex w-full items-center justify-between px-4 py-3.5 text-left transition hover:bg-gray-50" data-target="additional-body"><span class="text-xs font-bold text-gray-800">Additional info</span><i class="ti ti-chevron-down text-gray-400"></i></button>
                 <div id="additional-body" class="px-4 pb-4">
-                    <form id="attribute-form" action="{% url 'whatsapp-lead-attributes-save' active_lead.id %}" class="space-y-2.5">
-                        {% csrf_token %}
-                        <div class="grid grid-cols-[126px_1fr] items-center gap-2">
-                            <label class="truncate text-xs font-semibold text-gray-700">Created:</label>
-                            <input value="{{ active_lead.created_at|date:'d-m-Y' }}" readonly class="rounded-lg border border-gray-200 bg-gray-50 px-2.5 py-2 text-xs text-gray-500">
-                        </div>
+                    <form id="attribute-form" action="{% url 'whatsapp-lead-attributes-save' active_lead.id %}" class="space-y-2.5">{% csrf_token %}
+                        <div><label class="mb-1 block text-[10px] font-semibold uppercase text-gray-400">Created</label><input value="{{ active_lead.created_at|date:'d-m-Y' }}" readonly class="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-500"></div>
                         {% for attr in attribute_rows %}
-                        <div class="grid grid-cols-[126px_1fr] items-center gap-2">
-                            <label class="truncate text-xs font-semibold text-gray-700" title="{{ attr.name }}">{{ attr.name }}:</label>
-                            {% if attr.field_type == 'option' %}
-                            <select name="attr_{{ attr.key }}" class="attribute-input rounded-lg border border-gray-300 bg-white px-2.5 py-2 text-xs outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100">
-                                <option value="">Select...</option>
-                                {% for option in attr.options %}<option value="{{ option }}" {% if option == attr.value %}selected{% endif %}>{{ option }}</option>{% endfor %}
-                            </select>
-                            {% elif attr.field_type == 'date' %}
-                            <input type="date" name="attr_{{ attr.key }}" value="{{ attr.value }}" class="attribute-input rounded-lg border border-gray-300 px-2.5 py-2 text-xs outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100">
-                            {% elif attr.field_type == 'datetime' %}
-                            <input type="datetime-local" name="attr_{{ attr.key }}" value="{{ attr.value }}" class="attribute-input rounded-lg border border-gray-300 px-2.5 py-2 text-xs outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100">
-                            {% elif attr.field_type == 'numeric' %}
-                            <input type="number" name="attr_{{ attr.key }}" value="{{ attr.value }}" class="attribute-input rounded-lg border border-gray-300 px-2.5 py-2 text-xs outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100">
-                            {% else %}
-                            <input type="text" name="attr_{{ attr.key }}" value="{{ attr.value }}" placeholder="Enter value" class="attribute-input rounded-lg border border-gray-300 px-2.5 py-2 text-xs outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100">
-                            {% endif %}
+                        <div><label class="mb-1 block truncate text-[10px] font-semibold uppercase text-gray-400" title="{{ attr.name }}">{{ attr.name }}</label>
+                            {% if attr.field_type == 'option' %}<select name="attr_{{ attr.key }}" class="attribute-input w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs outline-none focus:border-green-500">{% for option in attr.options %}<option value="{{ option }}" {% if option == attr.value %}selected{% endif %}>{{ option }}</option>{% endfor %}</select>
+                            {% elif attr.field_type == 'date' %}<input type="date" name="attr_{{ attr.key }}" value="{{ attr.value }}" class="attribute-input w-full rounded-xl border border-gray-200 px-3 py-2 text-xs outline-none focus:border-green-500">
+                            {% elif attr.field_type == 'datetime' %}<input type="datetime-local" name="attr_{{ attr.key }}" value="{{ attr.value }}" class="attribute-input w-full rounded-xl border border-gray-200 px-3 py-2 text-xs outline-none focus:border-green-500">
+                            {% elif attr.field_type == 'numeric' %}<input type="number" name="attr_{{ attr.key }}" value="{{ attr.value }}" class="attribute-input w-full rounded-xl border border-gray-200 px-3 py-2 text-xs outline-none focus:border-green-500">
+                            {% else %}<input type="text" name="attr_{{ attr.key }}" value="{{ attr.value }}" placeholder="Enter value" class="attribute-input w-full rounded-xl border border-gray-200 px-3 py-2 text-xs outline-none focus:border-green-500">{% endif %}
                         </div>
-                        {% empty %}
-                        <p class="py-2 text-xs text-gray-400">No custom attributes configured yet.</p>
-                        {% endfor %}
+                        {% empty %}<p class="py-2 text-xs text-gray-400">No custom attributes configured yet.</p>{% endfor %}
                         <div id="attribute-save-state" class="hidden text-[10px]"></div>
                     </form>
-                    <button type="button" hx-get="{% url 'crm-attribute-manage-modal' %}" hx-target="#modal-root" hx-swap="innerHTML"
-                            class="mt-3 flex w-full items-center justify-center gap-1 rounded-lg border border-blue-300 py-2 text-xs font-semibold text-blue-600 transition hover:bg-blue-50">
-                        <i class="ti ti-plus"></i> Manage Attributes
-                    </button>
+                    <button type="button" hx-get="{% url 'crm-attribute-manage-modal' %}" hx-target="#modal-root" hx-swap="innerHTML" class="mt-3 flex w-full items-center justify-center gap-1 rounded-xl border border-green-200 py-2 text-xs font-semibold text-[#128c7e] transition hover:bg-green-50"><i class="ti ti-plus"></i> Manage attributes</button>
                 </div>
             </section>
 
-            <section class="border-b border-gray-200">
-                <button type="button" class="section-toggle flex w-full items-center justify-between px-4 py-3 text-left transition hover:bg-gray-50" data-target="activity-body">
-                    <span class="text-xs font-bold text-gray-800">Activity History</span><i class="ti ti-chevron-down text-gray-500"></i>
-                </button>
-                <div id="activity-body" class="hidden px-4 pb-4">
-                    {% for call in lead_calls %}
-                    <div class="border-l-2 border-blue-200 py-1.5 pl-3">
-                        <p class="text-xs font-medium text-gray-700">{{ call.call_name|default:"Call" }} · {{ call.get_status_display }}</p>
-                        <p class="text-[10px] text-gray-400">{{ call.called_at|date:"d M Y, h:i A" }}</p>
-                    </div>
-                    {% empty %}<p class="text-xs text-gray-400">No recent activity.</p>{% endfor %}
-                </div>
-            </section>
-
-            <section class="px-4 py-3">
-                <div class="mb-2 flex items-center justify-between">
-                    <h3 class="text-xs font-bold text-gray-800">Notes</h3>
-                    <button type="button" hx-get="{% url 'crm-lead-note-modal' active_lead.id %}" hx-target="#modal-root" hx-swap="innerHTML" class="text-xs font-medium text-blue-600 hover:underline">+ Add note</button>
-                </div>
-                <div class="max-h-40 space-y-2 overflow-y-auto rounded-lg border border-gray-200 bg-gray-50 p-3">
-                    {% for note in lead_notes %}<div class="text-xs leading-relaxed text-gray-700">{{ note.note }}<div class="mt-1 text-[10px] text-gray-400">{{ note.created_at|date:"d M Y, h:i A" }}</div></div>{% empty %}<p class="text-xs text-gray-400">Take a note for this chat.</p>{% endfor %}
-                </div>
-            </section>
+            <section class="px-4 py-4"><div class="mb-2 flex items-center justify-between"><h3 class="text-xs font-bold text-gray-800">Notes</h3><button type="button" hx-get="{% url 'crm-lead-note-modal' active_lead.id %}" hx-target="#modal-root" hx-swap="innerHTML" class="text-xs font-medium text-blue-600 hover:underline">+ Add note</button></div><div class="max-h-40 space-y-2 overflow-y-auto rounded-xl bg-gray-50 p-3">{% for note in lead_notes %}<div class="text-xs leading-relaxed text-gray-700">{{ note.note }}<div class="mt-1 text-[10px] text-gray-400">{{ note.created_at|date:"d M Y, h:i A" }}</div></div>{% empty %}<p class="text-xs text-gray-400">Add useful context for your team.</p>{% endfor %}</div></section>
         </div>
 
-        <div class="side-panel hidden flex-1 overflow-y-auto" id="panel-calls">
-            <div class="flex items-center justify-between border-b border-gray-100 px-4 py-3"><span class="text-xs font-bold text-gray-800">Call Tracker</span><button hx-get="{% url 'crm-lead-call-modal' active_lead.id %}" hx-target="#modal-root" hx-swap="innerHTML" class="rounded-lg bg-blue-600 px-2.5 py-1.5 text-[11px] font-semibold text-white transition hover:bg-blue-700">Log Call</button></div>
-            {% for call in lead_calls %}<div class="border-b border-gray-100 px-4 py-3"><p class="text-xs font-semibold text-gray-800">{{ call.call_name|default:"Call" }}</p><p class="mt-1 text-[11px] text-gray-500">{{ call.get_status_display }} · {{ call.called_at|date:"d M, h:i A" }}</p>{% if call.notes %}<p class="mt-1 text-[11px] text-gray-500">{{ call.notes }}</p>{% endif %}</div>{% empty %}<p class="px-4 py-8 text-center text-xs text-gray-400">No calls logged.</p>{% endfor %}
-        </div>
-
-        <div class="side-panel hidden flex-1 overflow-y-auto p-4" id="panel-followups">
-            <div class="rounded-lg border border-gray-200 bg-gray-50 p-4"><p class="text-xs font-bold text-gray-800">Auto Followups</p><p class="mt-1 text-xs text-gray-500">Sequence: {{ active_lead.attributes.sequence|default:"No active sequence" }}</p></div>
-        </div>
-
-        <div class="side-panel hidden flex-1 overflow-y-auto" id="panel-templates">
-            <div class="border-b border-gray-100 px-4 py-3"><input id="template-search" placeholder="Search for Template" class="w-full rounded-full border border-gray-200 px-3 py-2 text-xs outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"></div>
-            <div id="template-send-state" class="mx-4 mt-3 hidden rounded-md px-3 py-2 text-xs"></div>
-            {% for tmpl in lead_templates %}<div class="template-row flex items-center justify-between border-b border-gray-100 px-4 py-3" data-name="{{ tmpl.name|lower }}"><span class="truncate pr-2 text-xs text-gray-800">{{ tmpl.name }}</span><button type="button" onclick="sendTemplate('{{ tmpl.id }}')" class="flex h-7 w-7 items-center justify-center rounded-full bg-green-500 text-white transition hover:bg-green-600"><i class="ti ti-send text-xs"></i></button></div>{% empty %}<p class="px-4 py-8 text-center text-xs text-gray-400">No approved templates.</p>{% endfor %}
-        </div>
+        <div class="side-panel hidden flex-1 overflow-y-auto" id="panel-calls"><div class="flex items-center justify-between border-b border-gray-100 px-4 py-3"><span class="text-xs font-bold text-gray-800">Call tracker</span><button hx-get="{% url 'crm-lead-call-modal' active_lead.id %}" hx-target="#modal-root" hx-swap="innerHTML" class="rounded-lg bg-[#128c7e] px-2.5 py-1.5 text-[11px] font-semibold text-white">Log call</button></div>{% for call in lead_calls %}<div class="border-b border-gray-100 px-4 py-3"><p class="text-xs font-semibold text-gray-800">{{ call.call_name|default:"Call" }}</p><p class="mt-1 text-[11px] text-gray-500">{{ call.get_status_display }} · {{ call.called_at|date:"d M, h:i A" }}</p>{% if call.notes %}<p class="mt-1 text-[11px] text-gray-500">{{ call.notes }}</p>{% endif %}</div>{% empty %}<p class="px-4 py-8 text-center text-xs text-gray-400">No calls logged.</p>{% endfor %}</div>
+        <div class="side-panel hidden flex-1 overflow-y-auto p-4" id="panel-followups"><div class="rounded-xl border border-gray-100 bg-gray-50 p-4"><p class="text-xs font-bold text-gray-800">Auto followups</p><p class="mt-1 text-xs text-gray-500">Sequence: {{ active_lead.attributes.sequence|default:"No active sequence" }}</p></div></div>
+        <div class="side-panel hidden flex-1 overflow-y-auto" id="panel-templates"><div class="border-b border-gray-100 px-4 py-3"><input id="template-search" placeholder="Search templates" class="w-full rounded-full border border-gray-200 px-3 py-2 text-xs outline-none focus:border-green-500"></div><div id="template-send-state" class="mx-4 mt-3 hidden rounded-md px-3 py-2 text-xs"></div>{% for tmpl in lead_templates %}<div class="template-row flex items-center justify-between border-b border-gray-100 px-4 py-3" data-name="{{ tmpl.name|lower }}"><span class="truncate pr-2 text-xs text-gray-800">{{ tmpl.name }}</span><button type="button" onclick="sendTemplate('{{ tmpl.id }}')" class="flex h-8 w-8 items-center justify-center rounded-full bg-[#25d366] text-white"><i class="ti ti-send text-xs"></i></button></div>{% empty %}<p class="px-4 py-8 text-center text-xs text-gray-400">No approved templates.</p>{% endfor %}</div>
     </aside>
     {% endif %}
 </div>
@@ -310,13 +223,8 @@
     const attrUrl = "{% url 'whatsapp-lead-attributes-save' active_lead.id %}";
     const templateUrl = "{% url 'whatsapp-send-template' active_lead.id %}";
 
-    function postForm(url, data) {
-        return fetch(url, {method: 'POST', headers: {'X-CSRFToken': csrf, 'X-Requested-With': 'XMLHttpRequest'}, body: data});
-    }
-
-    window.copyLeadPhone = function () {
-        navigator.clipboard.writeText('{{ active_lead.phone|escapejs }}');
-    };
+    function postForm(url, data) { return fetch(url, {method: 'POST', headers: {'X-CSRFToken': csrf, 'X-Requested-With': 'XMLHttpRequest'}, body: data}); }
+    window.copyLeadPhone = function () { navigator.clipboard.writeText('{{ active_lead.phone|escapejs }}'); };
 
     const quickForm = document.getElementById('lead-quick-form');
     const quickState = document.getElementById('quick-save-state');
@@ -325,132 +233,37 @@
         data.append('name', document.getElementById('lead-name').value);
         data.append('email', document.getElementById('lead-email').value);
         data.append('stage', document.getElementById('lead-stage').value);
-        quickState.textContent = 'Saving...';
-        quickState.className = 'text-[10px] text-gray-400';
-        postForm(quickUrl, data).then(async r => {
-            if (!r.ok) throw new Error((await r.json()).error || 'Save failed');
-            quickState.textContent = 'Saved';
-            quickState.className = 'text-[10px] text-green-600';
-            setTimeout(() => quickState.className = 'hidden', 1500);
-        }).catch(err => {
-            quickState.textContent = err.message;
-            quickState.className = 'text-[10px] text-red-600';
-        });
+        quickState.textContent = 'Saving...'; quickState.className = 'text-[10px] text-gray-400';
+        postForm(quickUrl, data).then(async r => { if (!r.ok) throw new Error((await r.json()).error || 'Save failed'); quickState.textContent = 'Saved'; quickState.className = 'text-[10px] text-green-600'; setTimeout(() => quickState.className = 'hidden', 1500); }).catch(err => { quickState.textContent = err.message; quickState.className = 'text-[10px] text-red-600'; });
     }
-    quickForm?.addEventListener('submit', function (event) {
-        event.preventDefault();
-        saveQuick();
-    });
+    quickForm?.addEventListener('submit', e => { e.preventDefault(); saveQuick(); });
     document.getElementById('lead-name')?.addEventListener('change', saveQuick);
     document.getElementById('lead-email')?.addEventListener('change', saveQuick);
     document.getElementById('lead-stage')?.addEventListener('change', saveQuick);
 
     const aiToggle = document.getElementById('ai-toggle');
     aiToggle?.addEventListener('click', function () {
-        const next = this.dataset.enabled === '1' ? '0' : '1';
-        const data = new FormData(); data.append('enabled', next);
-        postForm(aiUrl, data).then(async r => {
-            if (!r.ok) throw new Error((await r.json()).error || 'Unable to update AI status');
-            this.dataset.enabled = next;
-            this.setAttribute('aria-checked', next === '1' ? 'true' : 'false');
-            this.classList.toggle('bg-green-500', next === '1');
-            this.classList.toggle('bg-gray-300', next !== '1');
-            const knob = this.querySelector('span');
-            knob.classList.toggle('left-[18px]', next === '1');
-            knob.classList.toggle('left-0.5', next !== '1');
-        }).catch(err => alert(err.message));
+        const next = this.dataset.enabled === '1' ? '0' : '1'; const data = new FormData(); data.append('enabled', next);
+        postForm(aiUrl, data).then(async r => { if (!r.ok) throw new Error((await r.json()).error || 'Unable to update AI status'); this.dataset.enabled = next; this.setAttribute('aria-checked', next === '1' ? 'true' : 'false'); this.classList.toggle('bg-green-500', next === '1'); this.classList.toggle('bg-gray-300', next !== '1'); const knob = this.querySelector('span'); knob.classList.toggle('left-[18px]', next === '1'); knob.classList.toggle('left-0.5', next !== '1'); }).catch(err => alert(err.message));
     });
 
-    const attrForm = document.getElementById('attribute-form');
-    const attrState = document.getElementById('attribute-save-state');
-    let attrTimer = null;
-    document.querySelectorAll('.attribute-input').forEach(el => el.addEventListener('change', function () {
-        clearTimeout(attrTimer);
-        attrTimer = setTimeout(function () {
-            postForm(attrUrl, new FormData(attrForm)).then(async r => {
-                if (!r.ok) throw new Error((await r.json()).error || 'Save failed');
-                attrState.textContent = 'Additional info saved';
-                attrState.className = 'text-[10px] text-green-600';
-                setTimeout(() => attrState.className = 'hidden', 1500);
-            }).catch(err => {
-                attrState.textContent = err.message;
-                attrState.className = 'text-[10px] text-red-600';
-            });
-        }, 250);
-    }));
+    const attrForm = document.getElementById('attribute-form'); const attrState = document.getElementById('attribute-save-state'); let attrTimer = null;
+    document.querySelectorAll('.attribute-input').forEach(el => el.addEventListener('change', function () { clearTimeout(attrTimer); attrTimer = setTimeout(function () { postForm(attrUrl, new FormData(attrForm)).then(async r => { if (!r.ok) throw new Error((await r.json()).error || 'Save failed'); attrState.textContent = 'Additional info saved'; attrState.className = 'text-[10px] text-green-600'; setTimeout(() => attrState.className = 'hidden', 1500); }).catch(err => { attrState.textContent = err.message; attrState.className = 'text-[10px] text-red-600'; }); }, 250); }));
 
-    document.querySelectorAll('.section-toggle').forEach(button => button.addEventListener('click', function () {
-        const body = document.getElementById(this.dataset.target);
-        body.classList.toggle('hidden');
-        const icon = this.querySelector('i');
-        icon.classList.toggle('ti-chevron-down'); icon.classList.toggle('ti-chevron-up');
-    }));
-
-    document.querySelectorAll('.side-tab').forEach(tab => tab.addEventListener('click', function () {
-        document.querySelectorAll('.side-panel').forEach(panel => panel.classList.add('hidden'));
-        document.querySelectorAll('.side-tab').forEach(t => {
-            t.classList.remove('border-blue-500', 'text-blue-600');
-            t.classList.add('border-transparent', 'text-gray-500');
-        });
-        document.getElementById('panel-' + this.dataset.panel).classList.remove('hidden');
-        this.classList.remove('border-transparent', 'text-gray-500');
-        this.classList.add('border-blue-500', 'text-blue-600');
-    }));
+    document.querySelectorAll('.section-toggle').forEach(button => button.addEventListener('click', function () { const body = document.getElementById(this.dataset.target); body.classList.toggle('hidden'); const icon = this.querySelector('i'); icon.classList.toggle('ti-chevron-down'); icon.classList.toggle('ti-chevron-up'); }));
+    document.querySelectorAll('.side-tab').forEach(tab => tab.addEventListener('click', function () { document.querySelectorAll('.side-panel').forEach(panel => panel.classList.add('hidden')); document.querySelectorAll('.side-tab').forEach(t => { t.classList.remove('border-[#128c7e]', 'text-[#128c7e]'); t.classList.add('border-transparent', 'text-gray-500'); }); document.getElementById('panel-' + this.dataset.panel).classList.remove('hidden'); this.classList.remove('border-transparent', 'text-gray-500'); this.classList.add('border-[#128c7e]', 'text-[#128c7e]'); }));
 
     const composer = document.getElementById('composer-form');
-    composer?.addEventListener('submit', function (event) {
-        event.preventDefault();
-        const input = document.getElementById('message-body');
-        const error = document.getElementById('send-error');
-        const body = input.value.trim();
-        if (!body) return;
-        error.classList.add('hidden');
-        const data = new FormData(); data.append('body', body);
-        postForm(sendUrl, data).then(async r => {
-            if (!r.ok) {
-                let payload = {}; try { payload = await r.json(); } catch (e) {}
-                throw new Error(payload.error || 'Message could not be sent.');
-            }
-            input.value = '';
-            window.location.reload();
-        }).catch(err => {
-            error.textContent = err.message;
-            error.classList.remove('hidden');
-        });
-    });
+    composer?.addEventListener('submit', function (event) { event.preventDefault(); const input = document.getElementById('message-body'); const error = document.getElementById('send-error'); const body = input.value.trim(); if (!body) return; error.classList.add('hidden'); const data = new FormData(); data.append('body', body); postForm(sendUrl, data).then(async r => { if (!r.ok) { let payload = {}; try { payload = await r.json(); } catch (e) {} throw new Error(payload.error || 'Message could not be sent.'); } input.value = ''; window.location.reload(); }).catch(err => { error.textContent = err.message; error.classList.remove('hidden'); }); });
 
-    window.sendTemplate = function (templateId) {
-        const state = document.getElementById('template-send-state');
-        const data = new FormData(); data.append('template_id', templateId);
-        postForm(templateUrl, data).then(async r => {
-            if (!r.ok) { let p = {}; try { p = await r.json(); } catch (e) {} throw new Error(p.error || 'Template send failed'); }
-            state.textContent = 'Template queued successfully.';
-            state.className = 'mx-4 mt-3 rounded-md border border-green-200 bg-green-50 px-3 py-2 text-xs text-green-700';
-        }).catch(err => {
-            state.textContent = err.message;
-            state.className = 'mx-4 mt-3 break-words rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-600 [overflow-wrap:anywhere]';
-        });
-    };
-
-    const templateSearch = document.getElementById('template-search');
-    templateSearch?.addEventListener('input', function () {
-        const q = this.value.toLowerCase().trim();
-        document.querySelectorAll('.template-row').forEach(row => row.classList.toggle('hidden', !row.dataset.name.includes(q)));
-    });
-
-    const thread = document.getElementById('thread');
-    if (thread) thread.scrollTop = thread.scrollHeight;
+    window.sendTemplate = function (templateId) { const state = document.getElementById('template-send-state'); const data = new FormData(); data.append('template_id', templateId); postForm(templateUrl, data).then(async r => { if (!r.ok) { let p = {}; try { p = await r.json(); } catch (e) {} throw new Error(p.error || 'Template send failed'); } state.textContent = 'Template queued successfully.'; state.className = 'mx-4 mt-3 rounded-md border border-green-200 bg-green-50 px-3 py-2 text-xs text-green-700'; }).catch(err => { state.textContent = err.message; state.className = 'mx-4 mt-3 break-words rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-600 [overflow-wrap:anywhere]'; }); };
+    document.getElementById('template-search')?.addEventListener('input', function () { const q = this.value.toLowerCase().trim(); document.querySelectorAll('.template-row').forEach(row => row.classList.toggle('hidden', !row.dataset.name.includes(q))); });
+    const thread = document.getElementById('thread'); if (thread) thread.scrollTop = thread.scrollHeight;
 })();
 </script>
 {% else %}
 <script>
-(function () {
-    const selector = document.getElementById('connected-account-select');
-    if (selector && !selector.value && selector.options.length === 2) {
-        selector.selectedIndex = 1;
-        selector.form.submit();
-    }
-})();
+(function () { const selector = document.getElementById('connected-account-select'); if (selector && !selector.value && selector.options.length === 2) { selector.selectedIndex = 1; selector.form.submit(); } })();
 </script>
 {% endif %}
 {% endblock %}
