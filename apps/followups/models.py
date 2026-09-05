@@ -153,6 +153,7 @@ class FollowupStep(models.Model):
         choices=DelayUnit.choices,
         blank=True,
     )
+    recurring_weekdays = models.JSONField(default=list, blank=True)
 
     retry_count = models.PositiveSmallIntegerField(default=0)
     retry_delay_hours = models.PositiveSmallIntegerField(default=24)
