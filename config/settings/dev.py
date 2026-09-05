@@ -28,4 +28,5 @@ SECURE_HSTS_PRELOAD = False
 MIDDLEWARE = [
     *MIDDLEWARE,
     "apps.core.middleware.GlobalToastMiddleware",
+    "apps.core.whatsapp_theme.WhatsAppThemeMiddleware",
 ]
