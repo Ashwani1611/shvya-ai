@@ -199,13 +199,34 @@ class EngagementServiceTests(TestCase):
         self.assertEqual(decision.crm_actions[0]["type"], "attribute_updates")
 
     def test_accepts_stage_shift_request(self):
-        target_stage = Stage.objects.create(
-            pipeline=self.pipeline,
-            name="Qualified",
-            description="Qualified lead.",
-            display_order=100,
-            is_active=True,
+        target_stage = (
+            Stage.objects.filter(
+                pipeline=self.pipeline,
+                is_active=True,
+            )
+            .exclude(pk=self.stage.pk)
+            .order_by("display_order", "name")
+            .first()
         )
+
+        if target_stage is None:
+            used_orders = set(
+                Stage.objects.filter(
+                    pipeline=self.pipeline,
+                ).values_list("display_order", flat=True)
+            )
+            display_order = 1
+            while display_order in used_orders:
+                display_order += 1
+
+            target_stage = Stage.objects.create(
+                pipeline=self.pipeline,
+                name="Qualified for Engagement Test",
+                description="Qualified lead.",
+                display_order=display_order,
+                is_active=True,
+            )
+
         provider = self.mock_provider(
             f"""
             {{
