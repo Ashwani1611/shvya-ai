@@ -1,5 +1,6 @@
 from django.urls import path
 
+from . import connection_ui
 from . import views_flat
 from . import whatsapp_ui
 
@@ -16,12 +17,12 @@ urlpatterns = [
     ),
     path(
         "connect/api/",
-        views_flat.whatsapp_connect_api_view,
+        connection_ui.whatsapp_connect_api_view,
         name="whatsapp-connect-api",
     ),
     path(
         "connect/api/embedded-signup/",
-        views_flat.whatsapp_embedded_signup_callback_view,
+        connection_ui.whatsapp_embedded_signup_callback_view,
         name="whatsapp-embedded-signup-callback",
     ),
     path(
