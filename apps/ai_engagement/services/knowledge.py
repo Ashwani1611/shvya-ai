@@ -231,20 +231,6 @@ class KnowledgeIngestionService:
                 )
 
                 # ------------------------------------------------
-                # Deactivate previous active version.
-                # ------------------------------------------------
-
-                Document.objects.filter(
-                    organization=document.organization,
-                    source_key=source_key,
-                    is_active=True,
-                ).exclude(
-                    pk=document.pk,
-                ).update(
-                    is_active=False,
-                )
-
-                # ------------------------------------------------
                 # Make the supplied document the new version.
                 # ------------------------------------------------
 
@@ -252,7 +238,7 @@ class KnowledgeIngestionService:
 
                 document.version = next_version
 
-                document.is_active = True
+                document.is_active = False
 
                 document.processing_status = (
                     Document.ProcessingStatus.COMPLETED
@@ -314,10 +300,13 @@ class KnowledgeIngestionService:
                 exc
             )
 
+            document.is_active = False
+
             document.save(
                 update_fields=[
                     "processing_status",
                     "processing_error",
+                    "is_active",
                     "updated_at",
                 ]
             )
@@ -333,7 +322,83 @@ class KnowledgeIngestionService:
                 f"{document.name}: {exc}"
             ) from exc
 
-        # ============================================================
+
+
+    # ============================================================
+    # DOCUMENT VERSION PUBLICATION
+    # ============================================================
+
+    def publish_document_version(
+        self,
+        document: Document,
+    ) -> Document:
+        """
+        Publish a successfully processed knowledge document version.
+
+        A document must already be COMPLETED before publication.
+        Publication atomically retires the previously active version
+        for the same organization/source and activates this version.
+        """
+
+        if document is None:
+            raise KnowledgeExtractionError(
+                "Document is required."
+            )
+
+        if document.organization_id is None:
+            raise KnowledgeExtractionError(
+                "Document must belong to an organization."
+            )
+
+        if not document.source_key:
+            raise KnowledgeExtractionError(
+                "Document source_key cannot be empty."
+            )
+
+        if (
+            document.processing_status
+            != Document.ProcessingStatus.COMPLETED
+        ):
+            raise KnowledgeExtractionError(
+                "Only completed documents can be published."
+            )
+
+        with transaction.atomic():
+            locked_document = (
+                Document.objects
+                .select_for_update()
+                .get(pk=document.pk)
+            )
+
+            if (
+                locked_document.processing_status
+                != Document.ProcessingStatus.COMPLETED
+            ):
+                raise KnowledgeExtractionError(
+                    "Only completed documents can be published."
+                )
+
+            Document.objects.filter(
+                organization=locked_document.organization,
+                source_key=locked_document.source_key,
+                is_active=True,
+            ).exclude(
+                pk=locked_document.pk,
+            ).update(
+                is_active=False,
+            )
+
+            locked_document.is_active = True
+            locked_document.save(
+                update_fields=[
+                    "is_active",
+                    "updated_at",
+                ]
+            )
+
+        return locked_document
+
+    # ============================================================
     # VERSIONED URL INGESTION
     # ============================================================
 
@@ -354,11 +419,10 @@ class KnowledgeIngestionService:
 
             3. Chunks are created.
 
-            4. New version is marked COMPLETED.
+            4. New version is marked COMPLETED and remains inactive.
 
-            5. Previous active versions are deactivated.
-
-            6. New version becomes ACTIVE.
+            5. The caller publishes the new version only after
+               successful embedding/indexing.
 
         If anything fails before publication, the previous active
         version remains available.
@@ -505,39 +569,25 @@ class KnowledgeIngestionService:
 
                 document.processing_error = ""
 
+                document.is_active = False
+
                 document.save(
                     update_fields=[
                         "processing_status",
                         "processing_error",
-                        "updated_at",
-                    ]
-                )
-
-                # ------------------------------------------------
-                # Only after successful processing do we publish
-                # the new version.
-                # ------------------------------------------------
-
-                Document.objects.filter(
-                    organization=source.organization,
-                    source_key=source_key,
-                    is_active=True,
-                ).exclude(
-                    pk=document.pk,
-                ).update(
-                    is_active=False,
-                )
-
-                document.is_active = True
-
-                document.save(
-                    update_fields=[
                         "is_active",
                         "updated_at",
                     ]
                 )
 
-            return len(chunks)
+                return len(chunks)
+
+        # ----------------------------------------------------
+        # If the database transaction rolled back, the newly
+        # created Document may no longer exist.
+        #
+        # Therefore only update it when the row still exists.
+        # ----------------------------------------------------
 
         except Exception as exc:
 
@@ -1009,7 +1059,7 @@ class KnowledgeIngestionService:
         """
         Public wrapper around URL normalization.
 
-        ingest_url() publishes the new Document under
+        ingest_url() creates the new Document under
         source_key == this normalized URL but does not return the
         Document itself. Callers (e.g. the ingestion Celery task)
         use this method to resolve that same source_key afterwards

@@ -3,7 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 
 from django.core.exceptions import ValidationError
-from django.db import transaction
+from django.core.files.storage import default_storage
+from django.db import models, transaction
 
 from apps.ai_engagement.models import (
     Document,
@@ -32,7 +33,8 @@ class KnowledgeSourceService:
         - create file sources
         - process URL sources
         - process file Documents
-        - activate/deactivate sources
+        - permanently delete sources/documents
+        - legacy activate/deactivate compatibility
 
     This service does NOT implement:
 
@@ -126,10 +128,11 @@ class KnowledgeSourceService:
     ) -> tuple[KnowledgeSource, Document]:
         """
         Create an organization-owned FILE KnowledgeSource and
-        its initial Document.
+        its next Document version.
 
-        File processing itself is deliberately separate and is
-        performed through process_file_source().
+        The Document starts as PENDING and inactive. Celery
+        ingestion is responsible for processing and publishing
+        the completed version.
         """
 
         if organization is None:
@@ -175,6 +178,25 @@ class KnowledgeSourceService:
 
         with transaction.atomic():
 
+            latest_document = (
+                Document.objects
+                .select_for_update()
+                .filter(
+                    organization=organization,
+                    source_key=filename,
+                )
+                .order_by(
+                    "-version",
+                )
+                .first()
+            )
+
+            next_version = (
+                latest_document.version + 1
+                if latest_document is not None
+                else 1
+            )
+
             source = KnowledgeSource.objects.create(
                 organization=organization,
                 source_type=KnowledgeSource.SourceType.FILE,
@@ -187,14 +209,14 @@ class KnowledgeSourceService:
                 organization=organization,
                 name=source_name,
                 source_key=filename,
-                version=1,
+                version=next_version,
                 file=uploaded_file,
                 source_url="",
                 processing_status=(
                     Document.ProcessingStatus.PENDING
                 ),
                 processing_error="",
-                is_active=True,
+                is_active=False,
             )
 
         return source, document
@@ -316,6 +338,123 @@ class KnowledgeSourceService:
             ) from exc
 
     # ========================================================
+    # DELETE DOCUMENT
+    # ========================================================
+
+    def delete_document(
+        self,
+        *,
+        document: Document,
+    ) -> None:
+        """
+        Permanently delete an organization-owned Document.
+
+        The Document -> Chunk relationship already uses CASCADE,
+        so deleting the Document removes its Chunk rows and
+        therefore their stored embeddings.
+
+        The physical uploaded file is deleted from storage too.
+        """
+
+        if document is None:
+            raise KnowledgeSourceServiceError(
+                "Document is required."
+            )
+
+        if document.organization_id is None:
+            raise KnowledgeSourceServiceError(
+                "Document must belong to an organization."
+            )
+
+        stored_file_name = (
+            document.file.name
+            if document.file
+            else ""
+        )
+
+        with transaction.atomic():
+            document.delete()
+
+        if stored_file_name:
+            default_storage.delete(
+                stored_file_name
+            )
+
+    # ========================================================
+    # DELETE SOURCE
+    # ========================================================
+
+    def delete_source(
+        self,
+        *,
+        source: KnowledgeSource,
+    ) -> None:
+        """
+        Permanently delete a KnowledgeSource and every Document
+        version belonging to that logical source.
+
+        Uploaded files are deleted from storage.
+        Document deletion cascades to Chunk/embedding rows.
+        """
+
+        self._validate_source(
+            source=source,
+        )
+
+        documents = (
+            Document.objects
+            .filter(
+                organization_id=source.organization_id,
+            )
+        )
+
+        if source.source_type == (
+            KnowledgeSource.SourceType.URL
+        ):
+            try:
+                normalized_url = (
+                    self.ingestion_service._normalize_url(
+                        source.url,
+                    )
+                )
+            except KnowledgeExtractionError as exc:
+                raise KnowledgeSourceServiceError(
+                    str(exc)
+                ) from exc
+
+            documents = documents.filter(
+                source_key=normalized_url,
+            )
+
+        else:
+            documents = documents.filter(
+                models.Q(source_key=source.name)
+                | models.Q(name=source.name),
+            )
+
+        documents = list(
+            documents.order_by("id")
+        )
+
+        stored_file_names = [
+            document.file.name
+            for document in documents
+            if document.file
+        ]
+
+        with transaction.atomic():
+
+            for document in documents:
+                document.delete()
+
+            source.delete()
+
+        for stored_file_name in stored_file_names:
+            default_storage.delete(
+                stored_file_name
+            )
+
+    # ========================================================
     # DEACTIVATE SOURCE
     # ========================================================
 
@@ -325,11 +464,9 @@ class KnowledgeSourceService:
         source: KnowledgeSource,
     ) -> KnowledgeSource:
         """
-        Deactivate a KnowledgeSource.
+        Legacy compatibility method.
 
-        Existing Documents are retained. The source itself will
-        no longer be considered active by source-management
-        operations.
+        The current UI should not expose source deactivation.
         """
 
         self._validate_source(
@@ -360,7 +497,9 @@ class KnowledgeSourceService:
         source: KnowledgeSource,
     ) -> KnowledgeSource:
         """
-        Reactivate a KnowledgeSource.
+        Legacy compatibility method.
+
+        New sources are already created active.
         """
 
         self._validate_source(

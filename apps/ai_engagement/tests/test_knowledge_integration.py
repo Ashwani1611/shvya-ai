@@ -190,7 +190,7 @@ class TestKnowledgeDocumentIntegration:
         )
         assert document.processing_error == ""
         assert document.version == 1
-        assert document.is_active is True
+        assert document.is_active is False
 
         chunks = list(
             document.chunks.order_by("chunk_index")
@@ -437,6 +437,10 @@ class TestKnowledgeRetrievalIntegration:
 
         assert indexed_count == len(chunks)
 
+        ingestion_service.publish_document_version(document)
+        document.refresh_from_db()
+        assert document.is_active is True
+
         results = retrieval_service.retrieve_by_vector(
             organization=organization,
             query_vector=make_vector(),
@@ -512,6 +516,9 @@ class TestKnowledgeRetrievalIntegration:
                 only_missing=True,
             )
 
+        ingestion_service.publish_document_version(document_a)
+        ingestion_service.publish_document_version(document_b)
+
         results_a = retrieval_service.retrieve_by_vector(
             organization=organization,
             query_vector=vector_a,
@@ -584,6 +591,9 @@ class TestKnowledgeRetrievalIntegration:
 
         old_document.refresh_from_db()
 
+        ingestion_service.publish_document_version(old_document)
+        old_document.refresh_from_db()
+
         assert old_document.is_active is True
 
         new_document = make_document(
@@ -606,8 +616,8 @@ class TestKnowledgeRetrievalIntegration:
         new_document.refresh_from_db()
         old_document.refresh_from_db()
 
-        assert old_document.is_active is False
-        assert new_document.is_active is True
+        assert old_document.is_active is True
+        assert new_document.is_active is False
         assert new_document.version == 2
 
         new_chunk = new_document.chunks.first()
@@ -628,6 +638,13 @@ class TestKnowledgeRetrievalIntegration:
                 new_document,
                 only_missing=True,
             )
+
+        ingestion_service.publish_document_version(new_document)
+        new_document.refresh_from_db()
+        old_document.refresh_from_db()
+
+        assert old_document.is_active is False
+        assert new_document.is_active is True
 
         results = retrieval_service.retrieve_by_vector(
             organization=organization,
@@ -712,6 +729,10 @@ class TestKnowledgeRetrievalIntegration:
                 only_missing=True,
             )
 
+        ingestion_service.publish_document_version(document)
+        document.refresh_from_db()
+        assert document.is_active is True
+
         results = retrieval_service.retrieve_by_vector(
             organization=organization,
             query_vector=vector,
@@ -751,7 +772,7 @@ class TestKnowledgeUrlVersionIntegration:
         )
 
         assert document.version == 1
-        assert document.is_active is True
+        assert document.is_active is False
         assert (
             document.processing_status
             == Document.ProcessingStatus.COMPLETED
@@ -781,6 +802,9 @@ class TestKnowledgeUrlVersionIntegration:
             version=1,
         )
 
+        ingestion_service.publish_document_version(first_document)
+        first_document.refresh_from_db()
+
         with patch.object(
             ingestion_service,
             "extract_url_text",
@@ -795,6 +819,13 @@ class TestKnowledgeUrlVersionIntegration:
             source_key="https://example.com/docs",
             version=2,
         )
+
+        assert first_document.is_active is True
+        assert second_document.is_active is False
+
+        ingestion_service.publish_document_version(second_document)
+        second_document.refresh_from_db()
+        first_document.refresh_from_db()
 
         assert first_document.is_active is False
         assert second_document.is_active is True
@@ -832,6 +863,9 @@ class TestKnowledgeUrlVersionIntegration:
             source_key="https://example.com/docs",
             version=1,
         )
+
+        ingestion_service.publish_document_version(first_document)
+        first_document.refresh_from_db()
 
         with patch.object(
             ingestion_service,
@@ -941,7 +975,7 @@ class TestKnowledgePipelineIntegration:
             document.processing_status
             == Document.ProcessingStatus.COMPLETED
         )
-        assert document.is_active is True
+        assert document.is_active is False
 
 
 class TestKnowledgeDataIntegrity:

@@ -6,15 +6,17 @@ from django.db import models
 
 from apps.organizations.models import Organization
 
+
 # ============================================================
 # TOKEN ENCRYPTION
 # ============================================================
-#
+
+
 # Meta access tokens must be stored reversibly (we need the raw
 # value to call the Graph API), so they can't be hashed like
 # APIKey.key_hash. They're encrypted at rest with Fernet, keyed
 # off settings.SECRET_KEY.
-#
+
 # NOTE: rotating SECRET_KEY invalidates every stored token. If
 # that becomes a problem, move this to its own dedicated
 # encryption key read from .env instead of reusing SECRET_KEY.
@@ -22,12 +24,16 @@ from apps.organizations.models import Organization
 
 def _fernet():
     key = settings.SECRET_KEY.encode("utf-8")
+
     # Fernet requires a 32-byte url-safe base64 key.
     import base64
     import hashlib
 
     digest = hashlib.sha256(key).digest()
-    return Fernet(base64.urlsafe_b64encode(digest))
+
+    return Fernet(
+        base64.urlsafe_b64encode(digest)
+    )
 
 
 class EncryptedTextField(models.TextField):
@@ -42,14 +48,31 @@ class EncryptedTextField(models.TextField):
         if value is None or value == "":
             return value
 
-        return _fernet().encrypt(value.encode("utf-8")).decode("utf-8")
+        return (
+            _fernet()
+            .encrypt(
+                value.encode("utf-8")
+            )
+            .decode("utf-8")
+        )
 
-    def from_db_value(self, value, expression, connection):
+    def from_db_value(
+        self,
+        value,
+        expression,
+        connection,
+    ):
         if not value:
             return value
 
         try:
-            return _fernet().decrypt(value.encode("utf-8")).decode("utf-8")
+            return (
+                _fernet()
+                .decrypt(
+                    value.encode("utf-8")
+                )
+                .decode("utf-8")
+            )
 
         except InvalidToken:
             # Value was stored before encryption was added, or the
@@ -130,7 +153,10 @@ class WhatsAppAccount(models.Model):
     waba_id = models.CharField(
         max_length=64,
         blank=True,
-        help_text="Meta WhatsApp Business Account ID (for reference/lookup).",
+        help_text=(
+            "Meta WhatsApp Business Account ID "
+            "(for reference/lookup)."
+        ),
     )
 
     display_phone_number = models.CharField(
@@ -145,18 +171,22 @@ class WhatsAppAccount(models.Model):
 
     welcome_message = models.TextField(
         blank=True,
-        help_text="Auto-sent to a lead's first message on this number.",
+        help_text=(
+            "Auto-sent to a lead's first message on this number."
+        ),
     )
 
     request_contact_info = models.BooleanField(
         default=False,
-        help_text="Ask the lead to share contact details before continuing.",
+        help_text=(
+            "Ask the lead to share contact details before continuing."
+        ),
     )
 
     # ---------------------------------------------------------
     # Connection lifecycle
     # ---------------------------------------------------------
-    #
+
     # coexisted accounts go through a provisioning step before
     # credentials exist; API accounts are considered connected
     # as soon as valid credentials are saved.
@@ -173,16 +203,28 @@ class WhatsAppAccount(models.Model):
         default=Status.PENDING,
     )
 
-    is_active = models.BooleanField(default=True)
+    is_active = models.BooleanField(
+        default=True,
+    )
 
-    connected_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    connected_at = models.DateTimeField(
+        auto_now_add=True,
+    )
+
+    updated_at = models.DateTimeField(
+        auto_now=True,
+    )
 
     class Meta:
-        ordering = ["-connected_at"]
+        ordering = [
+            "-connected_at",
+        ]
 
     def __str__(self):
-        return f"{self.organization.name} — {self.display_phone_number or self.phone_number_id or self.get_connection_type_display()}"
+        return (
+            f"{self.organization.name} — "
+            f"{self.display_phone_number or self.phone_number_id or self.get_connection_type_display()}"
+        )
 
 
 # ============================================================
@@ -198,6 +240,12 @@ class WhatsAppMessage(models.Model):
     idempotency key per CLAUDE.md rule 5 -- inbound webhook
     retries and outbound send retries must never create
     duplicate rows.
+
+    message_type describes the WhatsApp content type.
+
+    media_payload contains controlled transport information for
+    outbound media messages. The actual meaning and validation
+    are handled by the service layer, not by this model.
     """
 
     class Direction(models.TextChoices):
@@ -211,6 +259,13 @@ class WhatsAppMessage(models.Model):
         READ = "read", "Read"
         FAILED = "failed", "Failed"
         RECEIVED = "received", "Received"
+
+    class MessageType(models.TextChoices):
+        TEXT = "text", "Text"
+        IMAGE = "image", "Image"
+        AUDIO = "audio", "Audio"
+        VIDEO = "video", "Video"
+        DOCUMENT = "document", "Document"
 
     id = models.UUIDField(
         primary_key=True,
@@ -254,10 +309,41 @@ class WhatsAppMessage(models.Model):
         blank=True,
     )
 
-    from_number = models.CharField(max_length=32)
-    to_number = models.CharField(max_length=32)
+    from_number = models.CharField(
+        max_length=32,
+    )
 
-    body = models.TextField(blank=True)
+    to_number = models.CharField(
+        max_length=32,
+    )
+
+    body = models.TextField(
+        blank=True,
+    )
+
+    # ---------------------------------------------------------
+    # MESSAGE CONTENT
+    # ---------------------------------------------------------
+
+    message_type = models.CharField(
+        max_length=15,
+        choices=MessageType.choices,
+        default=MessageType.TEXT,
+        help_text=(
+            "WhatsApp content type for this message. "
+            "URL messages remain type='text' and may use "
+            "preview_url transport metadata."
+        ),
+    )
+
+    media_payload = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text=(
+            "Controlled outbound media transport data. "
+            "Used for image, audio, video, and document messages."
+        ),
+    )
 
     status = models.CharField(
         max_length=15,
@@ -271,25 +357,59 @@ class WhatsAppMessage(models.Model):
         help_text="Full Meta payload for this message/status event.",
     )
 
-    error = models.TextField(blank=True)
+    error = models.TextField(
+        blank=True,
+    )
 
     # Only meaningful for inbound messages -- outbound messages are
     # created as "already read" (the agent just sent it). Powers
     # the unread badge in the Chats inbox.
-    is_read = models.BooleanField(default=True)
+    is_read = models.BooleanField(
+        default=True,
+    )
 
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+    )
+
+    updated_at = models.DateTimeField(
+        auto_now=True,
+    )
 
     class Meta:
-        ordering = ["-created_at"]
+        ordering = [
+            "-created_at",
+        ]
+
         indexes = [
-            models.Index(fields=["organization", "created_at"]),
-            models.Index(fields=["lead", "created_at"]),
+            models.Index(
+                fields=[
+                    "organization",
+                    "created_at",
+                ],
+            ),
+            models.Index(
+                fields=[
+                    "lead",
+                    "created_at",
+                ],
+            ),
+            models.Index(
+                fields=[
+                    "lead",
+                    "message_type",
+                    "created_at",
+                ],
+                name="wa_msg_lead_type_created_idx",
+            ),
         ]
 
     def __str__(self):
-        return f"{self.direction}: {self.from_number} -> {self.to_number}"
+        return (
+            f"{self.direction}: "
+            f"{self.from_number} -> "
+            f"{self.to_number}"
+        )
 
 
 # ============================================================
@@ -331,7 +451,9 @@ class BulkMessageCampaign(models.Model):
         related_name="campaigns",
     )
 
-    name = models.CharField(max_length=150)
+    name = models.CharField(
+        max_length=150,
+    )
 
     # Targeting: all leads in this pipeline, optionally narrowed
     # to one stage. Both are snapshotted at creation time via
@@ -349,7 +471,9 @@ class BulkMessageCampaign(models.Model):
         null=True,
         blank=True,
         related_name="whatsapp_campaigns",
-        help_text="Leave blank to target every stage in the pipeline.",
+        help_text=(
+            "Leave blank to target every stage in the pipeline."
+        ),
     )
 
     body = models.TextField(
@@ -363,7 +487,9 @@ class BulkMessageCampaign(models.Model):
     template_name = models.CharField(
         max_length=100,
         blank=True,
-        help_text="Meta-approved template name, for leads outside the 24h window.",
+        help_text=(
+            "Meta-approved template name, for leads outside the 24h window."
+        ),
     )
 
     status = models.CharField(
@@ -379,15 +505,29 @@ class BulkMessageCampaign(models.Model):
         related_name="whatsapp_campaigns",
     )
 
-    created_at = models.DateTimeField(auto_now_add=True)
-    started_at = models.DateTimeField(null=True, blank=True)
-    completed_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+    )
+
+    started_at = models.DateTimeField(
+        null=True,
+        blank=True,
+    )
+
+    completed_at = models.DateTimeField(
+        null=True,
+        blank=True,
+    )
 
     class Meta:
-        ordering = ["-created_at"]
+        ordering = [
+            "-created_at",
+        ]
 
     def __str__(self):
-        return f"{self.name} ({self.organization.name})"
+        return (
+            f"{self.name} ({self.organization.name})"
+        )
 
 
 class BulkMessageRecipient(models.Model):
@@ -442,26 +582,40 @@ class BulkMessageRecipient(models.Model):
         blank=True,
     )
 
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+    )
+
+    updated_at = models.DateTimeField(
+        auto_now=True,
+    )
 
     class Meta:
-        ordering = ["created_at"]
+        ordering = [
+            "created_at",
+        ]
+
         constraints = [
             models.UniqueConstraint(
-                fields=["campaign", "lead"],
+                fields=[
+                    "campaign",
+                    "lead",
+                ],
                 name="uniq_campaign_lead",
-            )
+            ),
         ]
 
     def __str__(self):
-        return f"{self.campaign.name} -> {self.lead.name}"
+        return (
+            f"{self.campaign.name} -> "
+            f"{self.lead.name}"
+        )
 
 
 # ============================================================
 # MESSAGE TEMPLATES
 # ============================================================
-#
+
 # Mirrors Meta's WhatsApp Business template system: a template
 # must be submitted to Meta and approved before it can be used
 # for template-based sends (outside the 24h free-form window, or
@@ -489,7 +643,10 @@ class WhatsAppTemplate(models.Model):
         REJECTED = "rejected", "Rejected"
         PAUSED = "paused", "Paused"
         ARCHIVED = "archived", "Archived"
-        PENDING_DELETION = "pending_deletion", "Pending Deletion"
+        PENDING_DELETION = (
+            "pending_deletion",
+            "Pending Deletion",
+        )
 
     class AttachmentType(models.TextChoices):
         NONE = "none", "None"
@@ -518,7 +675,9 @@ class WhatsAppTemplate(models.Model):
         related_name="templates",
     )
 
-    name = models.CharField(max_length=150)
+    name = models.CharField(
+        max_length=150,
+    )
 
     category = models.CharField(
         max_length=20,
@@ -539,7 +698,10 @@ class WhatsAppTemplate(models.Model):
     )
 
     body = models.TextField(
-        help_text="Use {{variable_name}} placeholders, e.g. {{lead_name}}.",
+        help_text=(
+            "Use {{variable_name}} placeholders, "
+            "e.g. {{lead_name}}."
+        ),
     )
 
     footer = models.CharField(
@@ -566,7 +728,9 @@ class WhatsAppTemplate(models.Model):
         blank=True,
     )
 
-    rejection_reason = models.TextField(blank=True)
+    rejection_reason = models.TextField(
+        blank=True,
+    )
 
     created_by = models.ForeignKey(
         "accounts.User",
@@ -575,17 +739,30 @@ class WhatsAppTemplate(models.Model):
         related_name="whatsapp_templates",
     )
 
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+    )
+
+    updated_at = models.DateTimeField(
+        auto_now=True,
+    )
 
     class Meta:
-        ordering = ["-updated_at"]
+        ordering = [
+            "-updated_at",
+        ]
+
         constraints = [
             models.UniqueConstraint(
-                fields=["account", "name"],
+                fields=[
+                    "account",
+                    "name",
+                ],
                 name="uniq_account_template_name",
-            )
+            ),
         ]
 
     def __str__(self):
-        return f"{self.name} ({self.account})"
+        return (
+            f"{self.name} ({self.account})"
+        )

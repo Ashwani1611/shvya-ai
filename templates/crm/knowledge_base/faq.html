@@ -1,0 +1,1241 @@
+{% extends "base.html" %}
+
+{% block title %}
+    SHVYA AI - FAQ
+{% endblock %}
+
+{% block header %}
+    FAQ
+{% endblock %}
+
+{% block content %}
+
+<div
+    id="faq-page"
+    class="max-w-7xl mx-auto"
+>
+
+    <!-- ==========================================================
+         PAGE HEADER
+         ========================================================== -->
+
+    <div class="mb-6">
+
+        <div class="flex items-center justify-between gap-4">
+
+            <div>
+
+                <div class="flex items-center gap-2 mb-1">
+
+                    <span
+                        class="
+                            inline-flex
+                            items-center
+                            justify-center
+                            w-8
+                            h-8
+                            rounded-lg
+                            bg-blue-50
+                            text-blue-600
+                        "
+                    >
+                        <i class="ti ti-help-circle text-[18px]"></i>
+                    </span>
+
+                    <h2
+                        class="
+                            text-xl
+                            font-semibold
+                            text-gray-900
+                        "
+                    >
+                        FAQ
+                    </h2>
+
+                </div>
+
+                <p
+                    class="
+                        text-sm
+                        text-gray-500
+                    "
+                >
+                    Create and manage frequently asked questions
+                    that SHVYA AI can use when engaging customers.
+                </p>
+
+            </div>
+
+
+            <a
+                href="{% url 'crm-knowledge-base-ai-setup' %}"
+                class="
+                    inline-flex
+                    items-center
+                    gap-2
+                    rounded-lg
+                    border
+                    border-gray-300
+                    bg-white
+                    px-3
+                    py-2
+                    text-sm
+                    font-medium
+                    text-gray-700
+                    hover:bg-gray-50
+                "
+            >
+                <i class="ti ti-settings"></i>
+                AI Setup
+            </a>
+
+        </div>
+
+    </div>
+
+
+    <!-- ==========================================================
+         ADD FAQ
+         ========================================================== -->
+
+    <section
+        class="
+            bg-white
+            border
+            border-gray-200
+            rounded-xl
+            overflow-hidden
+            mb-6
+        "
+    >
+
+        <div
+            class="
+                px-6
+                py-5
+                border-b
+                border-gray-100
+            "
+        >
+
+            <div class="flex items-start gap-3">
+
+                <div
+                    class="
+                        flex
+                        items-center
+                        justify-center
+                        w-9
+                        h-9
+                        rounded-lg
+                        bg-blue-50
+                        text-blue-600
+                        shrink-0
+                    "
+                >
+                    <i class="ti ti-plus text-[18px]"></i>
+                </div>
+
+                <div>
+
+                    <h3
+                        class="
+                            text-sm
+                            font-semibold
+                            text-gray-900
+                        "
+                    >
+                        Add FAQ
+                    </h3>
+
+                    <p
+                        class="
+                            mt-1
+                            text-xs
+                            text-gray-500
+                        "
+                    >
+                        Add a question and answer that AI can use
+                        as organization knowledge.
+                    </p>
+
+                </div>
+
+            </div>
+
+        </div>
+
+
+        <div class="p-6">
+
+            <form
+                method="post"
+                class="space-y-5"
+            >
+
+                {% csrf_token %}
+
+                <input
+                    type="hidden"
+                    name="action"
+                    value="create"
+                >
+
+
+                <!-- QUESTION -->
+
+                <div>
+
+                    <label
+                        for="faq-question"
+                        class="
+                            block
+                            text-sm
+                            font-medium
+                            text-gray-800
+                            mb-2
+                        "
+                    >
+                        Question
+                    </label>
+
+                    <input
+                        id="faq-question"
+                        name="question"
+                        type="text"
+                        required
+                        maxlength="500"
+                        placeholder="Example: What are your business hours?"
+                        class="
+                            w-full
+                            rounded-lg
+                            border
+                            border-gray-300
+                            bg-white
+                            px-3
+                            py-2.5
+                            text-sm
+                            text-gray-700
+                            placeholder-gray-400
+                            focus:outline-none
+                            focus:ring-2
+                            focus:ring-blue-100
+                            focus:border-blue-500
+                        "
+                    >
+
+                </div>
+
+
+                <!-- ANSWER -->
+
+                <div>
+
+                    <label
+                        for="faq-answer"
+                        class="
+                            block
+                            text-sm
+                            font-medium
+                            text-gray-800
+                            mb-2
+                        "
+                    >
+                        Answer
+                    </label>
+
+                    <textarea
+                        id="faq-answer"
+                        name="answer"
+                        rows="5"
+                        required
+                        placeholder="Provide the accurate answer AI should use."
+                        class="
+                            w-full
+                            rounded-lg
+                            border
+                            border-gray-300
+                            bg-white
+                            px-3
+                            py-2.5
+                            text-sm
+                            text-gray-700
+                            placeholder-gray-400
+                            resize-y
+                            focus:outline-none
+                            focus:ring-2
+                            focus:ring-blue-100
+                            focus:border-blue-500
+                        "
+                    ></textarea>
+
+                </div>
+
+
+                <div class="flex justify-end">
+
+                    <button
+                        type="submit"
+                        class="
+                            inline-flex
+                            items-center
+                            justify-center
+                            gap-2
+                            rounded-lg
+                            bg-gray-900
+                            px-5
+                            py-2.5
+                            text-sm
+                            font-medium
+                            text-white
+                            hover:bg-gray-800
+                        "
+                    >
+                        <i class="ti ti-plus"></i>
+                        Add FAQ
+                    </button>
+
+                </div>
+
+            </form>
+
+        </div>
+
+    </section>
+
+
+    <!-- ==========================================================
+         FAQ LIST HEADER
+         ========================================================== -->
+
+    <section
+        class="
+            bg-white
+            border
+            border-gray-200
+            rounded-xl
+            overflow-hidden
+        "
+    >
+
+        <div
+            class="
+                px-6
+                py-5
+                border-b
+                border-gray-100
+            "
+        >
+
+            <div
+                class="
+                    flex
+                    flex-col
+                    lg:flex-row
+                    lg:items-center
+                    lg:justify-between
+                    gap-4
+                "
+            >
+
+                <div>
+
+                    <h3
+                        class="
+                            text-sm
+                            font-semibold
+                            text-gray-900
+                        "
+                    >
+                        Your FAQs
+                    </h3>
+
+                    <p
+                        class="
+                            mt-1
+                            text-xs
+                            text-gray-500
+                        "
+                    >
+                        Manage the questions and answers available
+                        to your organization's AI.
+                    </p>
+
+                </div>
+
+
+                <div
+                    class="
+                        flex
+                        items-center
+                        gap-2
+                    "
+                >
+
+                    <div class="relative">
+
+                        <i
+                            class="
+                                ti
+                                ti-search
+                                absolute
+                                left-3
+                                top-1/2
+                                -translate-y-1/2
+                                text-gray-400
+                            "
+                        ></i>
+
+                        <input
+                            id="faq-search"
+                            type="search"
+                            placeholder="Search FAQs..."
+                            class="
+                                w-full
+                                sm:w-64
+                                rounded-lg
+                                border
+                                border-gray-300
+                                bg-white
+                                pl-9
+                                pr-3
+                                py-2
+                                text-sm
+                                text-gray-700
+                                placeholder-gray-400
+                                focus:outline-none
+                                focus:ring-2
+                                focus:ring-blue-100
+                                focus:border-blue-500
+                            "
+                        >
+
+                    </div>
+
+
+                    {% if show_archived %}
+
+                        <a
+                            href="{% url 'crm-knowledge-base-faq' %}?show_archived=false"
+                            class="
+                                inline-flex
+                                items-center
+                                gap-2
+                                rounded-lg
+                                border
+                                border-gray-300
+                                bg-white
+                                px-3
+                                py-2
+                                text-xs
+                                font-medium
+                                text-gray-700
+                                hover:bg-gray-50
+                                whitespace-nowrap
+                            "
+                        >
+                            <i class="ti ti-eye-off"></i>
+                            Active only
+                        </a>
+
+                    {% else %}
+
+                        <a
+                            href="{% url 'crm-knowledge-base-faq' %}?show_archived=true"
+                            class="
+                                inline-flex
+                                items-center
+                                gap-2
+                                rounded-lg
+                                border
+                                border-gray-300
+                                bg-white
+                                px-3
+                                py-2
+                                text-xs
+                                font-medium
+                                text-gray-700
+                                hover:bg-gray-50
+                                whitespace-nowrap
+                            "
+                        >
+                            <i class="ti ti-archive"></i>
+                            Show archived
+                        </a>
+
+                    {% endif %}
+
+                </div>
+
+            </div>
+
+        </div>
+
+
+        <!-- ======================================================
+             FAQ EMPTY STATE
+             ====================================================== -->
+
+        {% if not faqs %}
+
+            <div class="px-6 py-16 text-center">
+
+                <div
+                    class="
+                        mx-auto
+                        flex
+                        items-center
+                        justify-center
+                        w-12
+                        h-12
+                        rounded-full
+                        bg-gray-50
+                        text-gray-400
+                        mb-4
+                    "
+                >
+                    <i class="ti ti-help-circle text-xl"></i>
+                </div>
+
+                <h4
+                    class="
+                        text-sm
+                        font-semibold
+                        text-gray-900
+                    "
+                >
+                    No FAQs yet
+                </h4>
+
+                <p
+                    class="
+                        mt-1
+                        text-xs
+                        text-gray-500
+                    "
+                >
+                    Add your first FAQ above to give AI more
+                    organization-specific knowledge.
+                </p>
+
+            </div>
+
+        {% else %}
+
+
+            <!-- ==================================================
+                 FAQ ITEMS
+                 ================================================== -->
+
+            <div
+                id="faq-list"
+                class="divide-y divide-gray-100"
+            >
+
+                {% for faq in faqs %}
+
+                <article
+                    class="
+                        faq-item
+                        px-6
+                        py-5
+                    "
+                    data-search="
+                        {{ faq.question|lower }}
+                        {{ faq.answer|lower }}
+                    "
+                >
+
+                    <!-- ------------------------------------------
+                         DISPLAY
+                         ------------------------------------------ -->
+
+                    <div
+                        class="
+                            flex
+                            flex-col
+                            xl:flex-row
+                            xl:items-start
+                            xl:justify-between
+                            gap-5
+                        "
+                    >
+
+                        <div class="min-w-0 flex-1">
+
+                            <div
+                                class="
+                                    flex
+                                    items-start
+                                    gap-3
+                                "
+                            >
+
+                                <span
+                                    class="
+                                        flex
+                                        items-center
+                                        justify-center
+                                        w-8
+                                        h-8
+                                        rounded-lg
+                                        bg-gray-50
+                                        text-gray-500
+                                        shrink-0
+                                    "
+                                >
+                                    <i class="ti ti-help"></i>
+                                </span>
+
+
+                                <div class="min-w-0">
+
+                                    <div
+                                        class="
+                                            flex
+                                            flex-wrap
+                                            items-center
+                                            gap-2
+                                        "
+                                    >
+
+                                        <h4
+                                            class="
+                                                text-sm
+                                                font-semibold
+                                                text-gray-900
+                                            "
+                                        >
+                                            {{ faq.question }}
+                                        </h4>
+
+
+                                        {% if faq.is_active %}
+
+                                            <span
+                                                class="
+                                                    inline-flex
+                                                    items-center
+                                                    rounded-full
+                                                    bg-green-50
+                                                    px-2
+                                                    py-0.5
+                                                    text-[11px]
+                                                    font-medium
+                                                    text-green-700
+                                                "
+                                            >
+                                                Active
+                                            </span>
+
+                                        {% else %}
+
+                                            <span
+                                                class="
+                                                    inline-flex
+                                                    items-center
+                                                    rounded-full
+                                                    bg-gray-100
+                                                    px-2
+                                                    py-0.5
+                                                    text-[11px]
+                                                    font-medium
+                                                    text-gray-500
+                                                "
+                                            >
+                                                Archived
+                                            </span>
+
+                                        {% endif %}
+
+                                    </div>
+
+
+                                    <p
+                                        class="
+                                            mt-3
+                                            text-sm
+                                            leading-6
+                                            text-gray-600
+                                            whitespace-pre-line
+                                        "
+                                    >
+                                        {{ faq.answer }}
+                                    </p>
+
+
+                                    <p
+                                        class="
+                                            mt-3
+                                            text-[11px]
+                                            text-gray-400
+                                        "
+                                    >
+                                        Updated
+                                        {{ faq.updated_at|date:"M d, Y H:i" }}
+                                    </p>
+
+                                </div>
+
+                            </div>
+
+                        </div>
+
+
+                        <!-- --------------------------------------
+                             ACTIONS
+                             -------------------------------------- -->
+
+                        <div
+                            class="
+                                flex
+                                items-center
+                                gap-2
+                                shrink-0
+                            "
+                        >
+
+                            <button
+                                type="button"
+                                class="
+                                    js-faq-edit
+                                    inline-flex
+                                    items-center
+                                    gap-1.5
+                                    rounded-lg
+                                    border
+                                    border-gray-300
+                                    bg-white
+                                    px-3
+                                    py-2
+                                    text-xs
+                                    font-medium
+                                    text-gray-700
+                                    hover:bg-gray-50
+                                "
+                                data-target="faq-edit-{{ faq.id }}"
+                            >
+                                <i class="ti ti-edit"></i>
+                                Edit
+                            </button>
+
+
+                            <form
+                                method="post"
+                                class="inline"
+                            >
+
+                                {% csrf_token %}
+
+                                <input
+                                    type="hidden"
+                                    name="action"
+                                    value="toggle_status"
+                                >
+
+                                <input
+                                    type="hidden"
+                                    name="faq_id"
+                                    value="{{ faq.id }}"
+                                >
+
+                                {% if faq.is_active %}
+
+                                    <input
+                                        type="hidden"
+                                        name="is_active"
+                                        value="false"
+                                    >
+
+                                    <button
+                                        type="submit"
+                                        class="
+                                            inline-flex
+                                            items-center
+                                            gap-1.5
+                                            rounded-lg
+                                            border
+                                            border-gray-300
+                                            bg-white
+                                            px-3
+                                            py-2
+                                            text-xs
+                                            font-medium
+                                            text-gray-700
+                                            hover:bg-gray-50
+                                        "
+                                    >
+                                        <i class="ti ti-archive"></i>
+                                        Archive
+                                    </button>
+
+                                {% else %}
+
+                                    <input
+                                        type="hidden"
+                                        name="is_active"
+                                        value="true"
+                                    >
+
+                                    <button
+                                        type="submit"
+                                        class="
+                                            inline-flex
+                                            items-center
+                                            gap-1.5
+                                            rounded-lg
+                                            border
+                                            border-gray-300
+                                            bg-white
+                                            px-3
+                                            py-2
+                                            text-xs
+                                            font-medium
+                                            text-gray-700
+                                            hover:bg-gray-50
+                                        "
+                                    >
+                                        <i class="ti ti-rotate"></i>
+                                        Restore
+                                    </button>
+
+                                {% endif %}
+
+                            </form>
+
+
+                            <form
+                                method="post"
+                                class="inline"
+                                onsubmit="
+                                    return confirm(
+                                        'Delete this FAQ permanently?'
+                                    );
+                                "
+                            >
+
+                                {% csrf_token %}
+
+                                <input
+                                    type="hidden"
+                                    name="action"
+                                    value="delete"
+                                >
+
+                                <input
+                                    type="hidden"
+                                    name="faq_id"
+                                    value="{{ faq.id }}"
+                                >
+
+                                <button
+                                    type="submit"
+                                    class="
+                                        inline-flex
+                                        items-center
+                                        justify-center
+                                        w-9
+                                        h-9
+                                        rounded-lg
+                                        text-gray-400
+                                        hover:text-red-600
+                                        hover:bg-red-50
+                                    "
+                                    title="Delete permanently"
+                                    aria-label="Delete FAQ"
+                                >
+                                    <i class="ti ti-trash"></i>
+                                </button>
+
+                            </form>
+
+                        </div>
+
+                    </div>
+
+
+                    <!-- ------------------------------------------
+                         EDIT FORM
+                         ------------------------------------------ -->
+
+                    <div
+                        id="faq-edit-{{ faq.id }}"
+                        class="
+                            hidden
+                            mt-5
+                            rounded-xl
+                            border
+                            border-gray-200
+                            bg-gray-50
+                            p-5
+                        "
+                    >
+
+                        <form
+                            method="post"
+                            class="space-y-4"
+                        >
+
+                            {% csrf_token %}
+
+                            <input
+                                type="hidden"
+                                name="action"
+                                value="update"
+                            >
+
+                            <input
+                                type="hidden"
+                                name="faq_id"
+                                value="{{ faq.id }}"
+                            >
+
+
+                            <div>
+
+                                <label
+                                    for="faq-question-{{ faq.id }}"
+                                    class="
+                                        block
+                                        text-xs
+                                        font-medium
+                                        text-gray-700
+                                        mb-2
+                                    "
+                                >
+                                    Question
+                                </label>
+
+                                <input
+                                    id="faq-question-{{ faq.id }}"
+                                    name="question"
+                                    type="text"
+                                    required
+                                    maxlength="500"
+                                    value="{{ faq.question }}"
+                                    class="
+                                        w-full
+                                        rounded-lg
+                                        border
+                                        border-gray-300
+                                        bg-white
+                                        px-3
+                                        py-2.5
+                                        text-sm
+                                        text-gray-700
+                                        focus:outline-none
+                                        focus:ring-2
+                                        focus:ring-blue-100
+                                        focus:border-blue-500
+                                    "
+                                >
+
+                            </div>
+
+
+                            <div>
+
+                                <label
+                                    for="faq-answer-{{ faq.id }}"
+                                    class="
+                                        block
+                                        text-xs
+                                        font-medium
+                                        text-gray-700
+                                        mb-2
+                                    "
+                                >
+                                    Answer
+                                </label>
+
+                                <textarea
+                                    id="faq-answer-{{ faq.id }}"
+                                    name="answer"
+                                    rows="5"
+                                    required
+                                    class="
+                                        w-full
+                                        rounded-lg
+                                        border
+                                        border-gray-300
+                                        bg-white
+                                        px-3
+                                        py-2.5
+                                        text-sm
+                                        text-gray-700
+                                        resize-y
+                                        focus:outline-none
+                                        focus:ring-2
+                                        focus:ring-blue-100
+                                        focus:border-blue-500
+                                    "
+                                >{{ faq.answer }}</textarea>
+
+                            </div>
+
+
+                            <div
+                                class="
+                                    flex
+                                    items-center
+                                    justify-end
+                                    gap-2
+                                "
+                            >
+
+                                <button
+                                    type="button"
+                                    class="
+                                        js-faq-cancel
+                                        inline-flex
+                                        items-center
+                                        justify-center
+                                        rounded-lg
+                                        border
+                                        border-gray-300
+                                        bg-white
+                                        px-4
+                                        py-2
+                                        text-xs
+                                        font-medium
+                                        text-gray-700
+                                        hover:bg-gray-50
+                                    "
+                                    data-target="faq-edit-{{ faq.id }}"
+                                >
+                                    Cancel
+                                </button>
+
+
+                                <button
+                                    type="submit"
+                                    class="
+                                        inline-flex
+                                        items-center
+                                        justify-center
+                                        gap-2
+                                        rounded-lg
+                                        bg-gray-900
+                                        px-4
+                                        py-2
+                                        text-xs
+                                        font-medium
+                                        text-white
+                                        hover:bg-gray-800
+                                    "
+                                >
+                                    <i class="ti ti-device-floppy"></i>
+                                    Save changes
+                                </button>
+
+                            </div>
+
+                        </form>
+
+                    </div>
+
+                </article>
+
+                {% endfor %}
+
+            </div>
+
+
+            <!-- SEARCH EMPTY STATE -->
+
+            <div
+                id="faq-no-results"
+                class="
+                    hidden
+                    px-6
+                    py-12
+                    text-center
+                "
+            >
+
+                <div
+                    class="
+                        mx-auto
+                        flex
+                        items-center
+                        justify-center
+                        w-11
+                        h-11
+                        rounded-full
+                        bg-gray-50
+                        text-gray-400
+                        mb-3
+                    "
+                >
+                    <i class="ti ti-search text-lg"></i>
+                </div>
+
+                <h4
+                    class="
+                        text-sm
+                        font-semibold
+                        text-gray-900
+                    "
+                >
+                    No matching FAQs
+                </h4>
+
+                <p
+                    class="
+                        mt-1
+                        text-xs
+                        text-gray-500
+                    "
+                >
+                    Try a different search term.
+                </p>
+
+            </div>
+
+        {% endif %}
+
+    </section>
+
+
+    <div class="pb-8"></div>
+
+</div>
+
+
+<!-- ==============================================================
+     FAQ PAGE JS
+     ============================================================== -->
+
+<script>
+(function () {
+    "use strict";
+
+    const searchInput =
+        document.getElementById("faq-search");
+
+    const faqItems =
+        Array.from(
+            document.querySelectorAll(".faq-item")
+        );
+
+    const noResults =
+        document.getElementById("faq-no-results");
+
+
+    function updateSearch() {
+
+        if (!searchInput || !faqItems.length) {
+            return;
+        }
+
+        const query =
+            searchInput.value
+                .trim()
+                .toLowerCase();
+
+        let visibleCount = 0;
+
+        faqItems.forEach(function (item) {
+
+            const searchableText =
+                (
+                    item.dataset.search || ""
+                ).toLowerCase();
+
+            const matches =
+                !query ||
+                searchableText.includes(query);
+
+            item.classList.toggle(
+                "hidden",
+                !matches
+            );
+
+            if (matches) {
+                visibleCount += 1;
+            }
+
+        });
+
+        if (noResults) {
+            noResults.classList.toggle(
+                "hidden",
+                visibleCount !== 0
+            );
+        }
+    }
+
+
+    if (searchInput) {
+
+        searchInput.addEventListener(
+            "input",
+            updateSearch
+        );
+
+    }
+
+
+    document.querySelectorAll(
+        ".js-faq-edit"
+    ).forEach(function (button) {
+
+        button.addEventListener(
+            "click",
+            function () {
+
+                const targetId =
+                    button.dataset.target;
+
+                const target =
+                    document.getElementById(
+                        targetId
+                    );
+
+                if (!target) {
+                    return;
+                }
+
+                target.classList.toggle(
+                    "hidden"
+                );
+
+            }
+        );
+
+    });
+
+
+    document.querySelectorAll(
+        ".js-faq-cancel"
+    ).forEach(function (button) {
+
+        button.addEventListener(
+            "click",
+            function () {
+
+                const targetId =
+                    button.dataset.target;
+
+                const target =
+                    document.getElementById(
+                        targetId
+                    );
+
+                if (!target) {
+                    return;
+                }
+
+                target.classList.add(
+                    "hidden"
+                );
+
+            }
+        );
+
+    });
+
+})();
+</script>
+
+{% endblock %}
