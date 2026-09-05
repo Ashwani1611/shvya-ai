@@ -7,8 +7,8 @@ class ChannelsConfig(AppConfig):
     label = "channels"
 
     def ready(self):
-        # WhatsAppConnectionAttempt lives in a focused module so the existing
-        # large channels/models.py file does not need to carry connection-flow
-        # audit concerns. Importing it here registers the model with Django at
-        # app startup, just like importing signal modules from ready().
+        # Focused model modules are imported here so Django registers them
+        # without making the already-large channels/models.py carry unrelated
+        # connection/template operational audit concerns.
         from . import connection_attempts  # noqa: F401
+        from . import template_models  # noqa: F401
