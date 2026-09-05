@@ -85,13 +85,21 @@ urlpatterns = [
 
     # =========================================================
     # Co-Pilot Web Dashboard
-    #
-    # Keep this before the CRM dashboard include because CRM contains
-    # other /dashboard/* routes and previously owned the placeholder.
     # =========================================================
     path(
         "dashboard/copilot/",
         include("apps.copilot.urls.web"),
+    ),
+
+    # =========================================================
+    # Auto Follow-ups Web Dashboard
+    #
+    # Keep this before the broad CRM dashboard include so the real feature
+    # owns /dashboard/auto-follow-ups/* rather than a legacy placeholder.
+    # =========================================================
+    path(
+        "dashboard/auto-follow-ups/",
+        include("apps.followups.urls.web"),
     ),
 
     # =========================================================
