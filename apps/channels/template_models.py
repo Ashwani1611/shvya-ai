@@ -43,13 +43,17 @@ class WhatsAppTemplateMetadata(models.Model):
     meta_error_type = models.CharField(max_length=128, blank=True)
     meta_error_message = models.TextField(blank=True)
 
-    # Meta media-header sample data. The handle is returned by Meta's
-    # resumable-upload API and is safe to persist; raw file bytes are never
-    # stored in the database.
+    # Standard-template media-header sample data. The handle is returned by
+    # Meta's resumable-upload API. Raw file bytes are never persisted.
     header_sample_handle = models.TextField(blank=True)
     header_file_name = models.CharField(max_length=255, blank=True)
     header_mime_type = models.CharField(max_length=128, blank=True)
     header_file_size = models.PositiveBigIntegerField(null=True, blank=True)
+
+    # Carousel configuration is kept separate from the canonical template
+    # fields because standard templates do not need card data. Each card may
+    # persist Meta upload handles and safe file metadata, never raw file bytes.
+    carousel_config = models.JSONField(default=dict, blank=True)
 
     last_synced_at = models.DateTimeField(null=True, blank=True)
     submitted_at = models.DateTimeField(null=True, blank=True)
