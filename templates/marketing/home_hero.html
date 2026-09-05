@@ -1,0 +1,34 @@
+<section class="hero">
+  <div class="hero-blob one"></div><div class="hero-blob two"></div>
+  <div class="wrap hero-inner">
+    <div class="eyebrow centered reveal">AI-powered sales CRM</div>
+    <h1 class="hero-title reveal">Turn every lead into a conversation <span class="highlight">worth closing</span></h1>
+    <p class="hero-sub reveal">SHVYA AI brings lead capture, WhatsApp conversations, qualification, follow-ups, pipeline tracking and sales context into one calm workspace.</p>
+    <div class="hero-actions reveal">
+      {% if crm_user %}
+      <a href="{% url 'crm-dashboard' %}" class="btn btn-primary">Open dashboard <svg class="icon-sm" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a><a href="#features" class="btn btn-secondary">Explore features</a>
+      {% else %}
+      <a href="{% url 'crm-signup' %}" class="btn btn-primary">Start free <svg class="icon-sm" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a><a href="{% url 'crm-login' %}" class="btn btn-secondary">Already have an account?</a>
+      {% endif %}
+    </div>
+    <div class="hero-note reveal">Built for teams that want faster follow-up without adding more manual work.</div>
+  </div>
+  <div class="float-card fc1"><div class="float-inner"><svg class="icon-lg" viewBox="0 0 24 24"><path d="M4 5h16v11H8l-4 3V5Z"/><path d="M8 9h8M8 12h5"/></svg></div></div>
+  <div class="float-card fc2"><div class="float-inner"><svg class="icon-lg" viewBox="0 0 24 24"><path d="M12 3v18M3 12h18"/><circle cx="12" cy="12" r="8"/></svg></div></div>
+  <div class="float-card fc3"><div class="float-inner"><svg class="icon-lg" viewBox="0 0 24 24"><path d="M5 12 9 16 19 6"/></svg></div></div>
+  <div class="float-card fc4"><div class="float-inner"><svg class="icon-lg" viewBox="0 0 24 24"><path d="M4 18V8m5 10V4m5 14v-7m5 7V6"/></svg></div></div>
+  <div class="float-card fc5"><div class="float-inner"><svg class="icon-lg" viewBox="0 0 24 24"><path d="M8 3h8v4H8zM6 7h12v14H6z"/><path d="M9 11h6M9 15h6"/></svg></div></div>
+  <div class="float-card fc6"><div class="float-inner"><svg class="icon-lg" viewBox="0 0 24 24"><path d="M7 5h10M5 9h14M8 13h8M10 17h4"/></svg></div></div>
+</section>
+<section class="workflow" id="features">
+  <div class="wrap">
+    <div class="center reveal"><div class="eyebrow centered">One connected sales flow</div><h2 class="section-title">From first message to closed deal, without the usual gaps</h2><p class="section-copy">SHVYA keeps every step connected so your team always knows who arrived, who replied, who is ready and what should happen next.</p></div>
+    <div class="workflow-grid">
+      <article class="flow-card reveal"><div class="mini-icon"><svg class="icon" viewBox="0 0 24 24"><path d="M4 5h16v11H8l-4 3V5Z"/></svg></div><h3>Lead arrives</h3><p>Capture enquiries from WhatsApp, forms, campaigns and other connected sources.</p></article>
+      <article class="flow-card reveal"><div class="mini-icon violet"><svg class="icon" viewBox="0 0 24 24"><path d="M12 3v18M5 8h14M7 16h10"/></svg></div><h3>SHVYA qualifies</h3><p>Organize intent, context and priority so the strongest opportunities rise first.</p></article>
+      <article class="flow-card reveal"><div class="mini-icon peach"><svg class="icon" viewBox="0 0 24 24"><path d="M4 12a8 8 0 1 0 3-6.2"/><path d="M4 4v5h5"/></svg></div><h3>Follow-up runs</h3><p>Keep momentum with reminders, sequences and timely next actions.</p></article>
+      <article class="flow-card reveal"><div class="mini-icon rose"><svg class="icon" viewBox="0 0 24 24"><path d="M4 18V8m5 10V4m5 14v-7m5 7V6"/></svg></div><h3>Hot leads surface</h3><p>Give reps a cleaner view of pipeline health and the conversations that need attention.</p></article>
+      <article class="flow-card reveal"><div class="mini-icon aqua"><svg class="icon" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></svg></div><h3>Your team closes</h3><p>Notes, calls, stages and messages stay together through the final decision.</p></article>
+    </div><p class="workflow-bottom reveal">Less chasing. More useful conversations. A clearer sales rhythm.</p>
+  </div>
+</section>
