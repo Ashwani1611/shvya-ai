@@ -43,7 +43,7 @@ jobs:
             docker compose config --quiet
 
             echo "Building updated application containers..."
-            docker compose build web ws worker
+            docker compose build web ws worker beat
 
             echo "Ensuring database and Redis are healthy..."
             docker compose up -d --wait db redis
@@ -55,7 +55,7 @@ jobs:
             docker compose run --rm web python manage.py collectstatic --noinput
 
             echo "Updating application services..."
-            docker compose up -d --no-deps web ws worker
+            docker compose up -d --no-deps web ws worker beat
 
             echo "Waiting for Django/Gunicorn to become healthy..."
             if ! docker compose up -d --wait --no-deps web; then
