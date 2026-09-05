@@ -1,117 +1,18 @@
 {% extends "base.html" %}
 {% load static %}
-
-{% block title %}SHVYA AI — coexisted Account{% endblock %}
-
-{% block header %}
-    coexisted Account
-{% endblock %}
-
+{% block title %}SHVYA AI — Coexisted Account{% endblock %}
+{% block header %}Coexisted Account{% endblock %}
 {% block content %}
-
-    <div class="mx-auto max-w-2xl">
-
-        <div class="mb-6">
-
-            <h2 class="text-lg font-semibold">
-                Let SHVYA set up and manage a WhatsApp number for you
-            </h2>
-
-        </div>
-
-
-        <div class="rounded-xl border border-gray-200 bg-white p-8 shadow-sm">
-
-
-            {% if form.non_field_errors %}
-
-                <div class="mb-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-
-                    {% for error in form.non_field_errors %}
-                        {{ error }}
-                    {% endfor %}
-
-                </div>
-
-            {% endif %}
-
-
-            <div class="mb-6 rounded-lg border border-purple-200 bg-purple-50 px-4 py-3 text-sm text-purple-700">
-
-                <i class="ti ti-info-circle"></i>
-
-                No Meta setup needed on your end. Submit this request and
-                SHVYA's team will provision a WhatsApp number for your
-                organization. You'll see the connection status update on
-                your WhatsApp settings page once it's ready.
-
-            </div>
-
-
-            <form
-                method="post"
-                action="{% url 'whatsapp-connect-hosted' %}"
-            >
-
-                {% csrf_token %}
-
-
-                <!-- EXISTING NUMBER -->
-
-                <div class="mb-5">
-
-                    <label class="mb-1.5 block text-sm font-medium text-gray-700">
-                        Existing Business Number
-                        <span class="font-normal text-gray-400">(optional)</span>
-                    </label>
-
-                    <input
-                        type="text"
-                        name="display_phone_number"
-                        value="{{ form.display_phone_number.value|default:'' }}"
-                        placeholder="e.g. +91 98765 43210"
-                        class="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    >
-
-                    <p class="mt-1.5 text-xs text-gray-400">
-                        If you already use this number for WhatsApp
-                        (personal or Business App), it will need to be
-                        migrated. Leave blank to get a new number instead.
-                    </p>
-
-                </div>
-
-
-                <!-- NOTES -->
-
-                <div class="mb-8">
-
-                    <label class="mb-1.5 block text-sm font-medium text-gray-700">
-                        Notes
-                        <span class="font-normal text-gray-400">(optional)</span>
-                    </label>
-
-                    <textarea
-                        name="notes"
-                        rows="3"
-                        placeholder="Anything SHVYA's team should know before setting this up"
-                        class="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    >{{ form.notes.value|default:'' }}</textarea>
-
-                </div>
-
-
-                <button
-                    type="submit"
-                    class="w-full rounded-lg bg-purple-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-purple-700"
-                >
-                    Request coexisted Number
-                </button>
-
-            </form>
-
-        </div>
-
+<div class="mx-auto max-w-2xl">
+    <div class="mb-6 flex items-start gap-3"><span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600"><i class="ti ti-brand-whatsapp text-xl"></i></span><div><h2 class="text-lg font-semibold text-gray-900">Let SHVYA set up and manage a WhatsApp number for you</h2><p class="mt-1 text-sm text-gray-500">A managed WhatsApp connection with the same SHVYA inbox experience.</p></div></div>
+    <div class="rounded-xl border border-emerald-100 bg-white p-8 shadow-sm">
+        {% if form.non_field_errors %}<div class="mb-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{% for error in form.non_field_errors %}{{ error }}{% endfor %}</div>{% endif %}
+        <div class="mb-6 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800"><i class="ti ti-info-circle mr-1"></i>No Meta setup needed on your end. Submit this request and SHVYA's team will provision a WhatsApp number for your organization. You'll see the connection status update on your WhatsApp settings page once it's ready.</div>
+        <form method="post" action="{% url 'whatsapp-connect-hosted' %}">{% csrf_token %}
+            <div class="mb-5"><label class="mb-1.5 block text-sm font-medium text-gray-700">Existing Business Number <span class="font-normal text-gray-400">(optional)</span></label><input type="text" name="display_phone_number" value="{{ form.display_phone_number.value|default:'' }}" placeholder="e.g. +91 98765 43210" class="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"><p class="mt-1.5 text-xs text-gray-400">If you already use this number for WhatsApp (personal or Business App), it will need to be migrated. Leave blank to get a new number instead.</p></div>
+            <div class="mb-8"><label class="mb-1.5 block text-sm font-medium text-gray-700">Notes <span class="font-normal text-gray-400">(optional)</span></label><textarea name="notes" rows="3" placeholder="Anything SHVYA's team should know before setting this up" class="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500">{{ form.notes.value|default:'' }}</textarea></div>
+            <button type="submit" class="w-full rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-700"><i class="ti ti-brand-whatsapp mr-1"></i> Request Coexisted Number</button>
+        </form>
     </div>
-
+</div>
 {% endblock %}
