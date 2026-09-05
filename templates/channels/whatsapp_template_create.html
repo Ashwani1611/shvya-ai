@@ -4,97 +4,292 @@
 {% block content %}
 <form method="post" enctype="multipart/form-data" id="template-form" class="mx-auto max-w-7xl">{% csrf_token %}
 <input type="hidden" name="buttons_json" id="buttons-json" value="{{ buttons_json|escape }}">
+<input type="hidden" name="carousel_json" id="carousel-json" value="{{ carousel_json|escape }}">
+
 <div class="mb-5 flex flex-wrap items-center justify-between gap-3">
-  <div><h2 class="text-lg font-semibold text-gray-900">{% if template %}Edit Draft{% else %}New Message Template{% endif %}</h2><p class="mt-1 text-sm text-gray-500">Build a Meta-compatible WhatsApp template with live validation and a realistic preview.</p></div>
-  <div class="flex gap-2"><button name="action" value="draft" class="rounded-xl border border-gray-300 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50">SAVE AS DRAFT</button><button name="action" value="submit" id="submit-btn" class="rounded-xl bg-[#00a884] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#008f72]">SAVE &amp; SUBMIT</button></div>
+  <div>
+    <h2 class="text-lg font-semibold text-gray-900">{% if template %}Edit Draft{% else %}New Message Template{% endif %}</h2>
+    <p class="mt-1 text-sm text-gray-500">Build a Meta-compatible WhatsApp template with live validation and preview.</p>
+  </div>
+  <div class="flex gap-2">
+    <button name="action" value="draft" class="rounded-xl border border-gray-300 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50">SAVE AS DRAFT</button>
+    <button name="action" value="submit" id="submit-btn" class="rounded-xl bg-[#00a884] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#008f72]">SAVE &amp; SUBMIT</button>
+  </div>
 </div>
-<div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_380px]">
+
+<div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_390px]">
 <div class="space-y-5">
-<section class="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm"><div class="grid gap-5 md:grid-cols-3">
-<label class="text-sm font-medium text-gray-700">Template Name *<input name="name" required maxlength="150" pattern="[a-z0-9_]+" value="{{ values.name }}" placeholder="welcome_message" class="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm"><span class="mt-1 block text-xs text-gray-400">Lowercase letters, numbers and underscores only.</span></label>
-<label class="text-sm font-medium text-gray-700">Category<select name="category" class="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm">{% for v,l in categories %}<option value="{{ v }}" {% if values.category == v %}selected{% endif %}>{{ l }}</option>{% endfor %}</select></label>
-<label class="text-sm font-medium text-gray-700">Business<select name="account" id="business-select" required class="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm"><option value="">Select business</option>{% for a in accounts %}<option value="{{ a.id }}" {% if values.account == a.id|stringformat:'s' %}selected{% endif %}>{{ a.business_name|default:a.display_phone_number|default:a.waba_id }}</option>{% endfor %}</select></label>
-</div><div class="mt-4 max-w-xs"><label class="text-sm font-medium text-gray-700">Language<select name="language" class="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm"><option value="en_US" {% if values.language == 'en_US' %}selected{% endif %}>English (US) — en_US</option><option value="en" {% if values.language == 'en' %}selected{% endif %}>English — en</option><option value="hi" {% if values.language == 'hi' %}selected{% endif %}>Hindi — hi</option></select></label></div></section>
+  <section class="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+    <div class="grid gap-5 md:grid-cols-3">
+      <label class="text-sm font-medium text-gray-700">Template Name *
+        <input name="name" required maxlength="150" pattern="[a-z0-9_]+" value="{{ values.name }}" placeholder="welcome_message" class="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm">
+        <span class="mt-1 block text-xs text-gray-400">Lowercase letters, numbers and underscores only.</span>
+      </label>
+      <label class="text-sm font-medium text-gray-700">Category
+        <select name="category" id="category-select" class="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm">{% for v,l in categories %}<option value="{{ v }}" {% if values.category == v %}selected{% endif %}>{{ l }}</option>{% endfor %}</select>
+        <span id="carousel-category-note" class="mt-1 hidden text-xs text-[#008069]">Carousel templates use Marketing.</span>
+      </label>
+      <label class="text-sm font-medium text-gray-700">Business
+        <select name="account" id="business-select" required class="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm"><option value="">Select business</option>{% for a in accounts %}<option value="{{ a.id }}" {% if values.account == a.id|stringformat:'s' %}selected{% endif %}>{{ a.business_name|default:a.display_phone_number|default:a.waba_id }}</option>{% endfor %}</select>
+      </label>
+    </div>
+    <div class="mt-4 max-w-xs">
+      <label class="text-sm font-medium text-gray-700">Language
+        <select name="language" class="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm"><option value="en_US" {% if values.language == 'en_US' %}selected{% endif %}>English (US) — en_US</option><option value="en" {% if values.language == 'en' %}selected{% endif %}>English — en</option><option value="hi" {% if values.language == 'hi' %}selected{% endif %}>Hindi — hi</option></select>
+      </label>
+    </div>
+  </section>
 
-<section class="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm"><h3 class="text-sm font-semibold text-gray-900">Template Format</h3><div class="mt-3 grid gap-3 md:grid-cols-2">{% for v,l in formats %}<label class="cursor-pointer rounded-xl border border-gray-200 p-4 has-[:checked]:border-[#00a884] has-[:checked]:bg-emerald-50"><input type="radio" name="template_format" value="{{ v }}" {% if values.template_format == v %}checked{% endif %}> <span class="ml-2 text-sm font-semibold">{{ l }}</span><p class="mt-2 text-xs text-gray-500">{% if v == 'standard' %}Single WhatsApp template with optional media header, footer and buttons.{% else %}Carousel is available as a draft format; submission remains blocked until real card components are configured.{% endif %}</p></label>{% endfor %}</div></section>
+  <section class="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+    <h3 class="text-sm font-semibold text-gray-900">Template Format</h3>
+    <div class="mt-3 grid gap-3 md:grid-cols-2">
+      {% for v,l in formats %}
+      <label class="cursor-pointer rounded-xl border border-gray-200 p-4 has-[:checked]:border-[#00a884] has-[:checked]:bg-emerald-50">
+        <input type="radio" name="template_format" value="{{ v }}" {% if values.template_format == v %}checked{% endif %}>
+        <span class="ml-2 text-sm font-semibold">{{ l }}</span>
+        <p class="mt-2 text-xs text-gray-500">{% if v == 'standard' %}Single message with optional header media, footer and buttons.{% else %}Swipeable media cards with a consistent Meta-compatible card structure.{% endif %}</p>
+      </label>
+      {% endfor %}
+    </div>
+  </section>
 
-<section class="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm"><div class="flex items-center justify-between"><h3 class="text-sm font-semibold text-gray-900">Message</h3><span id="body-count" class="text-xs text-gray-400">0/1024</span></div><div class="mt-3 flex gap-1"><button type="button" data-wrap="*" class="fmt rounded border px-2 py-1 text-xs font-bold">B</button><button type="button" data-wrap="_" class="fmt rounded border px-2 py-1 text-xs italic">I</button><button type="button" data-wrap="~" class="fmt rounded border px-2 py-1 text-xs line-through">S</button></div><textarea id="body" name="body" required maxlength="1024" rows="8" class="mt-2 w-full rounded-xl border border-gray-300 px-4 py-3 text-sm" placeholder="Type your message here.">{{ values.body }}</textarea><div class="mt-4"><p class="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">Dynamic CRM placeholders</p><div class="flex max-h-36 flex-wrap gap-2 overflow-y-auto">{% for p in placeholders %}<button type="button" class="placeholder rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-xs font-medium text-emerald-700" data-key="{{ p.key }}" title="{{ p.description }}">+ {% templatetag openvariable %}{{ p.key }}{% templatetag closevariable %}</button>{% endfor %}</div></div></section>
+  <section class="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+    <div class="flex items-center justify-between"><h3 class="text-sm font-semibold text-gray-900">Main Message</h3><span id="body-count" class="text-xs text-gray-400">0/1024</span></div>
+    <div class="mt-3 flex gap-1"><button type="button" data-wrap="*" class="fmt rounded border px-2 py-1 text-xs font-bold">B</button><button type="button" data-wrap="_" class="fmt rounded border px-2 py-1 text-xs italic">I</button><button type="button" data-wrap="~" class="fmt rounded border px-2 py-1 text-xs line-through">S</button></div>
+    <textarea id="body" name="body" required maxlength="1024" rows="7" class="mt-2 w-full rounded-xl border border-gray-300 px-4 py-3 text-sm" placeholder="Type your message here.">{{ values.body }}</textarea>
+    <div class="mt-4">
+      <p class="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">Dynamic CRM placeholders</p>
+      <div class="flex max-h-36 flex-wrap gap-2 overflow-y-auto">{% for p in placeholders %}<button type="button" class="placeholder rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-xs font-medium text-emerald-700" data-key="{{ p.key }}" title="{{ p.description }}">+ {% templatetag openvariable %}{{ p.key }}{% templatetag closevariable %}</button>{% endfor %}</div>
+    </div>
+  </section>
 
-<section class="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-  <div class="flex items-center justify-between gap-3"><div><h3 class="text-sm font-semibold text-gray-900">Attachment / Media Header</h3><p class="mt-1 text-xs text-gray-500">Choose one optional media header. The file is validated before Meta submission.</p></div><span class="rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700">Meta media header</span></div>
-  <div class="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-    <label class="cursor-pointer rounded-xl border border-gray-200 p-4 has-[:checked]:border-[#00a884] has-[:checked]:bg-emerald-50"><input type="radio" name="attachment_type" value="none" {% if values.attachment_type == 'none' %}checked{% endif %}><span class="ml-2 text-sm font-semibold">None</span><p class="mt-2 text-xs text-gray-500">Text-only template</p></label>
-    <label class="cursor-pointer rounded-xl border border-gray-200 p-4 has-[:checked]:border-[#00a884] has-[:checked]:bg-emerald-50"><input type="radio" name="attachment_type" value="image" {% if values.attachment_type == 'image' %}checked{% endif %}><span class="ml-2 text-sm font-semibold">Image</span><p class="mt-2 text-xs text-gray-500">JPG / PNG · max 5 MB</p></label>
-    <label class="cursor-pointer rounded-xl border border-gray-200 p-4 has-[:checked]:border-[#00a884] has-[:checked]:bg-emerald-50"><input type="radio" name="attachment_type" value="video" {% if values.attachment_type == 'video' %}checked{% endif %}><span class="ml-2 text-sm font-semibold">Video</span><p class="mt-2 text-xs text-gray-500">MP4 / 3GP · max 16 MB</p></label>
-    <label class="cursor-pointer rounded-xl border border-gray-200 p-4 has-[:checked]:border-[#00a884] has-[:checked]:bg-emerald-50"><input type="radio" name="attachment_type" value="document" {% if values.attachment_type == 'document' %}checked{% endif %}><span class="ml-2 text-sm font-semibold">Document</span><p class="mt-2 text-xs text-gray-500">PDF / Office / TXT · max 100 MB</p></label>
-  </div>
-  <div id="media-upload-wrap" class="mt-4 hidden rounded-xl border border-dashed border-gray-300 bg-gray-50 p-4">
-    <label class="block text-sm font-semibold text-gray-700">Choose sample file<input id="attachment-file" name="attachment_file" type="file" class="mt-2 block w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"></label>
-    <div class="mt-2 flex flex-wrap items-center gap-2 text-xs"><span id="media-rules" class="text-gray-500"></span><span id="media-file-meta" class="font-medium text-emerald-700"></span></div>
-    {% if media_state and media_state.header_file_name %}<p class="mt-2 text-xs text-gray-500">Previously uploaded Meta sample: <span class="font-medium text-gray-700">{{ media_state.header_file_name }}</span></p>{% endif %}
-  </div>
-  <div id="media-error" class="mt-3 hidden rounded-lg border border-red-200 bg-red-50 p-3 text-xs font-medium text-red-700"></div>
-</section>
+  <section id="standard-media-section" data-standard-only class="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+    <div class="flex items-center justify-between gap-3"><div><h3 class="text-sm font-semibold text-gray-900">Attachment / Media Header</h3><p class="mt-1 text-xs text-gray-500">Choose one optional media header. File type and size are validated before submission.</p></div><span class="rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700">Meta media header</span></div>
+    <div class="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <label class="cursor-pointer rounded-xl border border-gray-200 p-4 has-[:checked]:border-[#00a884] has-[:checked]:bg-emerald-50"><input type="radio" name="attachment_type" value="none" {% if values.attachment_type == 'none' %}checked{% endif %}><span class="ml-2 text-sm font-semibold">None</span><p class="mt-2 text-xs text-gray-500">Text-only template</p></label>
+      <label class="cursor-pointer rounded-xl border border-gray-200 p-4 has-[:checked]:border-[#00a884] has-[:checked]:bg-emerald-50"><input type="radio" name="attachment_type" value="image" {% if values.attachment_type == 'image' %}checked{% endif %}><span class="ml-2 text-sm font-semibold">Image</span><p class="mt-2 text-xs text-gray-500">JPG / PNG · max 5 MB</p></label>
+      <label class="cursor-pointer rounded-xl border border-gray-200 p-4 has-[:checked]:border-[#00a884] has-[:checked]:bg-emerald-50"><input type="radio" name="attachment_type" value="video" {% if values.attachment_type == 'video' %}checked{% endif %}><span class="ml-2 text-sm font-semibold">Video</span><p class="mt-2 text-xs text-gray-500">MP4 / 3GP · max 16 MB</p></label>
+      <label class="cursor-pointer rounded-xl border border-gray-200 p-4 has-[:checked]:border-[#00a884] has-[:checked]:bg-emerald-50"><input type="radio" name="attachment_type" value="document" {% if values.attachment_type == 'document' %}checked{% endif %}><span class="ml-2 text-sm font-semibold">Document</span><p class="mt-2 text-xs text-gray-500">PDF / Office / TXT · max 100 MB</p></label>
+    </div>
+    <div id="media-upload-wrap" class="mt-4 hidden rounded-xl border border-dashed border-gray-300 bg-gray-50 p-4">
+      <label class="block text-sm font-semibold text-gray-700">Choose sample file<input id="attachment-file" name="attachment_file" type="file" class="mt-2 block w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"></label>
+      <div class="mt-2 flex flex-wrap items-center gap-2 text-xs"><span id="media-rules" class="text-gray-500"></span><span id="media-file-meta" class="font-medium text-emerald-700"></span></div>
+      {% if media_state and media_state.header_file_name %}<p class="mt-2 text-xs text-gray-500">Previously uploaded Meta sample: <span class="font-medium text-gray-700">{{ media_state.header_file_name }}</span></p>{% endif %}
+    </div>
+    <div id="media-error" class="mt-3 hidden rounded-lg border border-red-200 bg-red-50 p-3 text-xs font-medium text-red-700"></div>
+  </section>
 
-<section class="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm"><div class="flex items-center justify-between"><h3 class="text-sm font-semibold text-gray-900">Footer</h3><span id="footer-count" class="text-xs text-gray-400">0/60</span></div><input id="footer" name="footer" maxlength="60" value="{{ values.footer }}" class="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm" placeholder="Optional footer"></section>
+  <section data-standard-only class="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+    <div class="flex items-center justify-between"><h3 class="text-sm font-semibold text-gray-900">Footer</h3><span id="footer-count" class="text-xs text-gray-400">0/60</span></div>
+    <input id="footer" name="footer" maxlength="60" value="{{ values.footer }}" class="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm" placeholder="Optional footer">
+  </section>
 
-<section class="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-  <div class="flex flex-wrap items-center justify-between gap-3"><div><h3 class="text-sm font-semibold text-gray-900">Buttons</h3><p class="mt-1 text-xs text-gray-500">Use Meta-compatible button types and limits.</p></div><button id="add-button" type="button" class="rounded-lg border border-[#00a884] px-3 py-1.5 text-xs font-semibold text-[#008069] hover:bg-emerald-50">+ Add button</button></div>
-  <div class="mt-3 flex flex-wrap gap-2 text-[11px] font-semibold"><span id="total-count" class="rounded-full bg-gray-100 px-2.5 py-1 text-gray-600">0 / 10 total</span><span id="website-count" class="rounded-full bg-gray-100 px-2.5 py-1 text-gray-600">Website 0 / 2</span><span id="phone-count" class="rounded-full bg-gray-100 px-2.5 py-1 text-gray-600">Call 0 / 1</span><span id="quick-count" class="rounded-full bg-gray-100 px-2.5 py-1 text-gray-600">Quick reply 0 / 10</span><span id="copy-count" class="rounded-full bg-gray-100 px-2.5 py-1 text-gray-600">Copy code 0 / 1</span></div>
-  <div id="button-list" class="mt-4 space-y-3"></div>
-  <div class="mt-4 rounded-xl border border-emerald-100 bg-emerald-50 p-3 text-xs text-emerald-900"><strong>Standard layout:</strong> maximum 10 buttons total. Up to two Website buttons, one Call button, one Copy Code button and Quick Replies within the overall limit. Button types are grouped automatically before submission for Meta compatibility.</div>
-</section>
-<div class="flex justify-end"><a href="{% url 'whatsapp-template-list' %}" class="rounded-xl border border-red-300 bg-red-50 px-4 py-2.5 text-sm font-semibold text-red-700 hover:bg-red-100">Cancel</a></div>
+  <section data-standard-only class="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+    <div class="flex flex-wrap items-center justify-between gap-3"><div><h3 class="text-sm font-semibold text-gray-900">Buttons</h3><p class="mt-1 text-xs text-gray-500">Add Meta-compatible standard-template buttons.</p></div><button id="add-button" type="button" class="rounded-lg border border-[#00a884] px-3 py-1.5 text-xs font-semibold text-[#008069] hover:bg-emerald-50">+ Add button</button></div>
+    <div class="mt-3 flex flex-wrap gap-2 text-[11px] font-semibold"><span id="total-count" class="rounded-full bg-gray-100 px-2.5 py-1 text-gray-600">0 / 10 total</span><span id="website-count" class="rounded-full bg-gray-100 px-2.5 py-1 text-gray-600">Website 0 / 2</span><span id="phone-count" class="rounded-full bg-gray-100 px-2.5 py-1 text-gray-600">Call 0 / 1</span><span id="quick-count" class="rounded-full bg-gray-100 px-2.5 py-1 text-gray-600">Quick reply 0 / 10</span><span id="copy-count" class="rounded-full bg-gray-100 px-2.5 py-1 text-gray-600">Copy code 0 / 1</span></div>
+    <div id="button-list" class="mt-4 space-y-3"></div>
+  </section>
+
+  <section id="carousel-setup" class="hidden rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+    <div><h3 class="text-lg font-bold text-gray-900">Carousel Setup</h3><p class="mt-1 text-sm italic text-gray-500">Create a swipeable set of media cards, each with its own content and actions.</p></div>
+
+    <div class="mt-5 rounded-2xl border border-blue-200 bg-gradient-to-b from-blue-50/40 to-white p-5">
+      <h4 class="text-base font-bold text-gray-900">Carousel Buttons</h4>
+      <p class="mt-1 text-sm italic text-gray-500">These button types appear on every card in the same order.</p>
+      <div class="mt-4 rounded-xl border border-gray-300 bg-white p-5">
+        <div class="flex flex-wrap items-center gap-5">
+          <span class="text-sm font-medium text-gray-800">No. of buttons</span>
+          <label class="flex items-center gap-2 text-sm font-semibold"><input type="radio" name="carousel_button_count" value="1"> 1 Button</label>
+          <label class="flex items-center gap-2 text-sm font-semibold"><input type="radio" name="carousel_button_count" value="2"> 2 Buttons</label>
+        </div>
+        <div id="carousel-button-types" class="mt-5 grid gap-4 md:grid-cols-2"></div>
+      </div>
+    </div>
+
+    <div class="mt-5 rounded-2xl border border-blue-200 bg-gradient-to-b from-blue-50/40 to-white p-5">
+      <div class="flex flex-wrap items-end justify-between gap-3"><div><h4 class="text-base font-bold text-gray-900">Carousel Cards</h4><p class="mt-1 text-sm italic text-gray-500">Add 2 to 10 cards. Every card must use the same media format: all image or all video.</p></div><span id="carousel-card-count" class="rounded-full bg-white px-3 py-1 text-xs font-semibold text-gray-600 shadow-sm">2 / 10</span></div>
+      <div id="carousel-error" class="mt-3 hidden rounded-lg border border-red-200 bg-red-50 p-3 text-xs font-medium text-red-700"></div>
+      <div id="carousel-cards" class="mt-4 space-y-3"></div>
+      <div class="mt-4 flex justify-end"><button type="button" id="add-card" class="rounded-lg border border-blue-400 bg-white px-4 py-2 text-sm font-semibold text-blue-600 hover:bg-blue-50">＋ Add Card</button></div>
+    </div>
+  </section>
+
+  <div class="flex justify-end"><a href="{% url 'whatsapp-template-list' %}" class="rounded-xl border border-red-300 bg-red-50 px-4 py-2.5 text-sm font-semibold text-red-700 hover:bg-red-100">Cancel</a></div>
 </div>
 
 <aside>
-  <div class="sticky top-6 overflow-hidden rounded-[26px] border border-gray-300 bg-white shadow-xl">
-    <div class="bg-[#f0f2f5] px-4 py-2 text-center text-[11px] font-medium text-gray-500">WhatsApp Preview</div>
+  <div class="sticky top-6 overflow-hidden rounded-[30px] border-[5px] border-black bg-[#f0f2f5] shadow-xl">
     <div class="bg-[#008069] px-3 py-3 text-white shadow-sm">
       <div class="flex items-center gap-3"><div class="text-xl">‹</div><div class="flex h-9 w-9 items-center justify-center rounded-full bg-white/20 text-sm font-bold">WA</div><div class="min-w-0 flex-1"><div id="preview-business" class="truncate text-sm font-semibold">Your Business</div><div class="text-[11px] text-white/80">business account</div></div><div class="text-lg">⌕</div><div class="text-lg">⋮</div></div>
     </div>
-    <div class="relative min-h-[500px] bg-[#efeae2] px-3 py-4" style="background-image:radial-gradient(rgba(17,27,33,.06) 1px, transparent 1px);background-size:18px 18px;">
+    <div class="relative min-h-[510px] bg-[#efeae2] px-3 py-4" style="background-image:radial-gradient(rgba(17,27,33,.06) 1px, transparent 1px);background-size:18px 18px;">
       <div class="mx-auto mb-3 w-fit rounded-md bg-[#ffeecd] px-3 py-1.5 text-[10px] text-[#667781] shadow-sm">🔒 Messages are end-to-end encrypted.</div>
-      <div class="ml-auto max-w-[90%] overflow-hidden rounded-lg rounded-tr-none bg-[#d9fdd3] text-[13px] text-[#111b21] shadow-sm">
+      <div class="ml-auto max-w-[94%] overflow-hidden rounded-lg rounded-tr-none bg-[#d9fdd3] text-[13px] text-[#111b21] shadow-sm">
         <div id="preview-media" class="hidden overflow-hidden bg-[#d9fdd3]"></div>
         <div class="px-3 pt-2"><div id="preview-body" class="whitespace-pre-wrap leading-5">Type your message here.</div><div id="preview-footer" class="mt-1 text-[11px] text-[#667781]"></div><div class="mt-1 flex justify-end gap-1 pb-1 text-[10px] text-[#667781]"><span>12:30</span><span class="text-[#53bdeb]">✓✓</span></div></div>
         <div id="preview-buttons" class="divide-y divide-[#c9d8cf] border-t border-[#c9d8cf] text-center text-[13px] font-medium text-[#027eb5]"></div>
       </div>
+      <div id="preview-carousel" class="mt-2 hidden overflow-x-auto pb-2"></div>
     </div>
-    <div class="flex items-center gap-2 bg-[#f0f2f5] p-2"><button type="button" class="text-xl">😊</button><button type="button" class="text-xl">📎</button><div class="flex-1 rounded-full bg-white px-4 py-2 text-xs text-[#667781]">Type a message</div><button type="button" class="text-xl">📷</button><button type="button" class="flex h-9 w-9 items-center justify-center rounded-full bg-[#00a884] text-sm text-white">🎤</button></div>
+    <div class="flex items-center gap-2 bg-[#f0f2f5] p-3">
+      <div class="flex min-w-0 flex-1 items-center rounded-full bg-white px-3 py-2 shadow-sm"><span class="mr-2 text-xl text-gray-500">☺</span><span class="min-w-0 flex-1 truncate text-sm text-gray-300">Type a message</span><span class="ml-2 rotate-[-12deg] text-xl text-gray-500">⌕</span></div>
+      <button type="button" aria-label="Send preview message" class="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#00a884] text-xl font-bold text-white">➤</button>
+    </div>
   </div>
 </aside>
 </div>
 </form>
+
 <script>
 (function(){
- const body=document.getElementById('body'), footer=document.getElementById('footer'), buttonsInput=document.getElementById('buttons-json'), list=document.getElementById('button-list');
- const fileInput=document.getElementById('attachment-file'), uploadWrap=document.getElementById('media-upload-wrap'), mediaError=document.getElementById('media-error'), mediaRules=document.getElementById('media-rules'), mediaMeta=document.getElementById('media-file-meta');
- const placeholders={{ placeholders_json|safe }};
- const mediaCfg={image:{accept:'image/jpeg,image/png',max:5*1024*1024,label:'JPG or PNG · max 5 MB'},video:{accept:'video/mp4,video/3gpp',max:16*1024*1024,label:'MP4 or 3GP · max 16 MB'},document:{accept:'application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation,text/plain',max:100*1024*1024,label:'PDF / Office / TXT · max 100 MB'}};
- let buttons=[];try{buttons=JSON.parse(buttonsInput.value||'[]')}catch(e){buttons=[]}
- let mediaUrl='';
- const brace=n=>String.fromCharCode(n), placeholder=k=>brace(123)+brace(123)+k+brace(125)+brace(125);
- function insert(text){const s=body.selectionStart,e=body.selectionEnd;body.value=body.value.slice(0,s)+text+body.value.slice(e);body.focus();body.selectionStart=body.selectionEnd=s+text.length;update();}
- document.querySelectorAll('.placeholder').forEach(b=>b.addEventListener('click',()=>insert(placeholder(b.dataset.key))));
- document.querySelectorAll('.fmt').forEach(b=>b.addEventListener('click',()=>{const s=body.selectionStart,e=body.selectionEnd,w=b.dataset.wrap,t=body.value.slice(s,e);body.setRangeText(w+t+w,s,e,'end');update();}));
- function examples(text){placeholders.forEach(p=>{text=text.split(placeholder(p.key)).join(p.example||p.label)});return text;}
- function selectedAttachment(){return document.querySelector('input[name=attachment_type]:checked')?.value||'none'}
- function setBusinessPreview(){const s=document.getElementById('business-select'),o=s.options[s.selectedIndex];document.getElementById('preview-business').textContent=(o&&o.value?o.text:'Your Business');}
- function label(t){return {visit_website:'Visit Website',call_phone:'Call Phone',copy_offer:'Copy Code',text_back:'Quick Reply'}[t]||t}
- function escapeHtml(s){const d=document.createElement('div');d.textContent=s||'';return d.innerHTML}
- function buttonCounts(){const c={visit_website:0,call_phone:0,copy_offer:0,text_back:0};buttons.forEach(b=>{if(c[b.type]!==undefined)c[b.type]++});return c}
- function updateCounts(){const c=buttonCounts();document.getElementById('total-count').textContent=`${buttons.length} / 10 total`;document.getElementById('website-count').textContent=`Website ${c.visit_website} / 2`;document.getElementById('phone-count').textContent=`Call ${c.call_phone} / 1`;document.getElementById('quick-count').textContent=`Quick reply ${c.text_back} / 10`;document.getElementById('copy-count').textContent=`Copy code ${c.copy_offer} / 1`;document.getElementById('add-button').disabled=buttons.length>=10;document.getElementById('add-button').classList.toggle('opacity-40',buttons.length>=10)}
- function renderMediaPreview(){const at=selectedAttachment(),pm=document.getElementById('preview-media');pm.innerHTML='';pm.classList.toggle('hidden',at==='none');if(at==='none')return;const f=fileInput.files[0];if(f&&mediaUrl){if(at==='image'){pm.innerHTML=`<img src="${mediaUrl}" class="h-44 w-full object-cover" alt="Template image preview">`}else if(at==='video'){pm.innerHTML=`<video src="${mediaUrl}" class="h-44 w-full bg-black object-cover" controls muted></video>`}else{pm.innerHTML=`<div class="flex items-center gap-3 bg-white/70 p-4"><div class="text-3xl">📄</div><div class="min-w-0"><div class="truncate text-xs font-semibold text-gray-700">${escapeHtml(f.name)}</div><div class="text-[10px] text-gray-500">Document attachment</div></div></div>`}}else{const icon=at==='image'?'🖼️':at==='video'?'🎬':'📄';pm.innerHTML=`<div class="flex h-32 items-center justify-center bg-white/50 text-center"><div><div class="text-3xl">${icon}</div><div class="mt-1 text-[11px] text-gray-500">Choose a ${at} sample</div></div></div>`}}
- function validateFile(){const at=selectedAttachment(),cfg=mediaCfg[at],f=fileInput.files[0];mediaError.classList.add('hidden');mediaError.textContent='';mediaMeta.textContent='';if(!cfg||!f)return true;if(!cfg.accept.split(',').includes(f.type)){mediaError.textContent='This file type is not supported for the selected WhatsApp header.';mediaError.classList.remove('hidden');fileInput.value='';return false}if(f.size>cfg.max){mediaError.textContent=`File is too large. ${cfg.label}.`;mediaError.classList.remove('hidden');fileInput.value='';return false}mediaMeta.textContent=`${f.name} · ${(f.size/1024/1024).toFixed(2)} MB`;return true}
- function refreshAttachment(){const at=selectedAttachment(),cfg=mediaCfg[at];uploadWrap.classList.toggle('hidden',at==='none');if(cfg){fileInput.accept=cfg.accept;mediaRules.textContent=cfg.label}else{fileInput.removeAttribute('accept');mediaRules.textContent='';fileInput.value='';mediaMeta.textContent=''}if(mediaUrl){URL.revokeObjectURL(mediaUrl);mediaUrl=''}if(fileInput.files[0]&&at!=='none')mediaUrl=URL.createObjectURL(fileInput.files[0]);renderMediaPreview()}
- function update(){document.getElementById('body-count').textContent=`${body.value.length}/1024`;document.getElementById('footer-count').textContent=`${footer.value.length}/60`;document.getElementById('preview-body').textContent=examples(body.value)||'Type your message here.';document.getElementById('preview-footer').textContent=footer.value;document.getElementById('preview-buttons').innerHTML=buttons.map(x=>`<div class="py-2.5">${x.type==='visit_website'?'↗ ':x.type==='call_phone'?'☎ ':x.type==='copy_offer'?'⧉ ':'↩ '}${escapeHtml(x.text||x.coupon_code||label(x.type))}</div>`).join('');buttonsInput.value=JSON.stringify(buttons);updateCounts();setBusinessPreview();renderMediaPreview();}
- function optionDisabled(type,current){const c=buttonCounts();if(type===current)return false;if(type==='visit_website'&&c.visit_website>=2)return true;if(type==='call_phone'&&c.call_phone>=1)return true;if(type==='copy_offer'&&c.copy_offer>=1)return true;return false}
- function renderButtons(){list.innerHTML='';buttons.forEach((b,i)=>{const row=document.createElement('div');row.className='rounded-xl border border-gray-200 bg-gray-50 p-3';const opts=[['visit_website','Visit Website'],['call_phone','Call Phone'],['text_back','Quick Reply'],['copy_offer','Copy Code']].map(([v,l])=>`<option value="${v}" ${optionDisabled(v,b.type)?'disabled':''}>${l}</option>`).join('');row.innerHTML=`<div class="flex gap-2"><select data-i="${i}" data-f="type" class="btnfield rounded-lg border bg-white px-2 py-2 text-sm">${opts}</select><input data-i="${i}" data-f="text" value="${escapeHtml(b.text||'')}" placeholder="Button text" maxlength="25" class="btnfield flex-1 rounded-lg border bg-white px-3 py-2 text-sm"><button type="button" data-remove="${i}" class="rounded-lg border border-red-200 bg-red-50 px-2.5 text-red-600 hover:bg-red-100">×</button></div><div class="mt-2"><input data-i="${i}" data-f="detail" value="${escapeHtml(b.url||b.phone_number||b.coupon_code||'')}" placeholder="${b.type==='visit_website'?'https://example.com':b.type==='call_phone'?'+919876543210':b.type==='copy_offer'?'Coupon / offer code':'No extra value required'}" ${b.type==='text_back'?'disabled':''} class="btnfield w-full rounded-lg border bg-white px-3 py-2 text-sm disabled:bg-gray-100"></div>`;row.querySelector('[data-f=type]').value=b.type||'visit_website';list.appendChild(row)});list.querySelectorAll('.btnfield').forEach(el=>el.addEventListener('input',()=>{const i=+el.dataset.i,f=el.dataset.f;if(f==='type')buttons[i]={type:el.value,text:buttons[i].text||''};else if(f==='text')buttons[i].text=el.value;else{delete buttons[i].url;delete buttons[i].phone_number;delete buttons[i].coupon_code;if(buttons[i].type==='visit_website')buttons[i].url=el.value;if(buttons[i].type==='call_phone')buttons[i].phone_number=el.value;if(buttons[i].type==='copy_offer')buttons[i].coupon_code=el.value;}update();if(f==='type')renderButtons()}));list.querySelectorAll('[data-remove]').forEach(x=>x.addEventListener('click',()=>{buttons.splice(+x.dataset.remove,1);renderButtons();update()}));update();}
- document.getElementById('add-button').addEventListener('click',()=>{if(buttons.length>=10)return;const c=buttonCounts();const type=c.visit_website<2?'visit_website':c.call_phone<1?'call_phone':'text_back';buttons.push({type,text:''});renderButtons()});
- body.addEventListener('input',update);footer.addEventListener('input',update);document.getElementById('business-select').addEventListener('change',update);document.querySelectorAll('input[name=attachment_type]').forEach(x=>x.addEventListener('change',()=>{fileInput.value='';refreshAttachment();update()}));fileInput.addEventListener('change',()=>{if(mediaUrl){URL.revokeObjectURL(mediaUrl);mediaUrl=''}if(validateFile()&&fileInput.files[0])mediaUrl=URL.createObjectURL(fileInput.files[0]);update()});
- document.getElementById('template-form').addEventListener('submit',e=>{buttonsInput.value=JSON.stringify(buttons);const action=e.submitter?.value;if(action==='submit'&&selectedAttachment()!=='none'&&!fileInput.files[0]&&!{% if media_state and media_state.header_sample_handle %}true{% else %}false{% endif %}){e.preventDefault();mediaError.textContent='Choose a media sample file before submitting this template to Meta.';mediaError.classList.remove('hidden');fileInput.focus();return}if(!validateFile()){e.preventDefault();return}document.querySelectorAll('button[name=action]').forEach(b=>b.disabled=true)});
- renderButtons();refreshAttachment();update();
+  const form=document.getElementById('template-form');
+  const body=document.getElementById('body');
+  const footer=document.getElementById('footer');
+  const buttonsInput=document.getElementById('buttons-json');
+  const carouselInput=document.getElementById('carousel-json');
+  const standardList=document.getElementById('button-list');
+  const fileInput=document.getElementById('attachment-file');
+  const uploadWrap=document.getElementById('media-upload-wrap');
+  const mediaError=document.getElementById('media-error');
+  const mediaRules=document.getElementById('media-rules');
+  const mediaMeta=document.getElementById('media-file-meta');
+  const categorySelect=document.getElementById('category-select');
+  const carouselSetup=document.getElementById('carousel-setup');
+  const carouselCardsEl=document.getElementById('carousel-cards');
+  const carouselTypesEl=document.getElementById('carousel-button-types');
+  const carouselError=document.getElementById('carousel-error');
+  const placeholders={{ placeholders_json|safe }};
+  const mediaCfg={image:{accept:['image/jpeg','image/png'],max:5*1024*1024,label:'JPG / PNG · max 5 MB'},video:{accept:['video/mp4','video/3gpp'],max:16*1024*1024,label:'MP4 / 3GP · max 16 MB'},document:{accept:['application/pdf','application/msword','application/vnd.openxmlformats-officedocument.wordprocessingml.document','application/vnd.ms-excel','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','application/vnd.ms-powerpoint','application/vnd.openxmlformats-officedocument.presentationml.presentation','text/plain'],max:100*1024*1024,label:'PDF / Office / TXT · max 100 MB'}};
+  const carouselMediaCfg={image:mediaCfg.image,video:mediaCfg.video};
+  const brace=n=>String.fromCharCode(n), placeholder=k=>brace(123)+brace(123)+k+brace(125)+brace(125);
+  let standardButtons=[]; try{standardButtons=JSON.parse(buttonsInput.value||'[]')}catch(e){standardButtons=[]}
+  let carousel={}; try{carousel=JSON.parse(carouselInput.value||'{}')}catch(e){carousel={}}
+  let standardMediaUrl='';
+  const carouselFileStore={};
+  const carouselUrlStore={};
+
+  function uid(){return 'c'+Date.now().toString(36)+Math.random().toString(36).slice(2,8)}
+  function blankCarouselButton(type=''){return {type,text:'',url:'',phone_number:''}}
+  function blankCard(){return {uid:uid(),body:'',media_type:'',header_handle:'',media_name:'',mime_type:'',file_size:null,buttons:[]}}
+  function normalizeCarousel(){
+    carousel=(carousel&&typeof carousel==='object')?carousel:{};
+    carousel.button_count=[1,2].includes(Number(carousel.button_count))?Number(carousel.button_count):1;
+    carousel.button_types=Array.isArray(carousel.button_types)?carousel.button_types.slice(0,2):[];
+    carousel.cards=Array.isArray(carousel.cards)?carousel.cards.slice(0,10):[];
+    carousel.cards=carousel.cards.map((c,i)=>({uid:(c&&c.uid)||uid(),body:(c&&c.body)||'',media_type:(c&&c.media_type)||'',header_handle:(c&&c.header_handle)||'',media_name:(c&&c.media_name)||'',mime_type:(c&&c.mime_type)||'',file_size:(c&&c.file_size)||null,buttons:Array.isArray(c&&c.buttons)?c.buttons.slice(0,2):[]}));
+    while(carousel.cards.length<2)carousel.cards.push(blankCard());
+    syncCarouselButtons();
+  }
+  function syncCarouselButtons(){
+    while(carousel.button_types.length<carousel.button_count)carousel.button_types.push('');
+    carousel.button_types=carousel.button_types.slice(0,carousel.button_count);
+    carousel.cards.forEach(card=>{
+      const old=Array.isArray(card.buttons)?card.buttons:[];
+      card.buttons=carousel.button_types.map((type,i)=>{const b=old[i]||blankCarouselButton(type);return {...b,type};});
+    });
+  }
+  normalizeCarousel();
+
+  function escapeHtml(value){const d=document.createElement('div');d.textContent=value||'';return d.innerHTML}
+  function selectedFormat(){return document.querySelector('input[name=template_format]:checked')?.value||'standard'}
+  function selectedAttachment(){return document.querySelector('input[name=attachment_type]:checked')?.value||'none'}
+  function examples(text){placeholders.forEach(p=>{text=text.split(placeholder(p.key)).join(p.example||p.label)});return text}
+  function insert(text){const s=body.selectionStart,e=body.selectionEnd;body.value=body.value.slice(0,s)+text+body.value.slice(e);body.focus();body.selectionStart=body.selectionEnd=s+text.length;updatePreview()}
+  document.querySelectorAll('.placeholder').forEach(b=>b.addEventListener('click',()=>insert(placeholder(b.dataset.key))));
+  document.querySelectorAll('.fmt').forEach(b=>b.addEventListener('click',()=>{const s=body.selectionStart,e=body.selectionEnd,w=b.dataset.wrap,t=body.value.slice(s,e);body.setRangeText(w+t+w,s,e,'end');updatePreview()}));
+
+  function setBusinessPreview(){const s=document.getElementById('business-select'),o=s.options[s.selectedIndex];document.getElementById('preview-business').textContent=(o&&o.value?o.text:'Your Business')}
+
+  function standardCounts(){const c={visit_website:0,call_phone:0,copy_offer:0,text_back:0};standardButtons.forEach(b=>{if(c[b.type]!==undefined)c[b.type]++});return c}
+  function updateStandardCounts(){const c=standardCounts();document.getElementById('total-count').textContent=`${standardButtons.length} / 10 total`;document.getElementById('website-count').textContent=`Website ${c.visit_website} / 2`;document.getElementById('phone-count').textContent=`Call ${c.call_phone} / 1`;document.getElementById('quick-count').textContent=`Quick reply ${c.text_back} / 10`;document.getElementById('copy-count').textContent=`Copy code ${c.copy_offer} / 1`;document.getElementById('add-button').disabled=standardButtons.length>=10;document.getElementById('add-button').classList.toggle('opacity-40',standardButtons.length>=10)}
+  function standardOptionDisabled(type,current){const c=standardCounts();if(type===current)return false;if(type==='visit_website'&&c.visit_website>=2)return true;if(type==='call_phone'&&c.call_phone>=1)return true;if(type==='copy_offer'&&c.copy_offer>=1)return true;return false}
+  function renderStandardButtons(){
+    standardList.innerHTML='';
+    standardButtons.forEach((b,i)=>{
+      const row=document.createElement('div');row.className='rounded-xl border border-gray-200 bg-gray-50 p-3';
+      const opts=[['visit_website','Visit Website'],['call_phone','Call Phone'],['text_back','Quick Reply'],['copy_offer','Copy Code']].map(([v,l])=>`<option value="${v}" ${standardOptionDisabled(v,b.type)?'disabled':''}>${l}</option>`).join('');
+      row.innerHTML=`<div class="flex gap-2"><select data-i="${i}" data-f="type" class="btnfield rounded-lg border bg-white px-2 py-2 text-sm">${opts}</select><input data-i="${i}" data-f="text" value="${escapeHtml(b.text||'')}" placeholder="Button text" maxlength="25" class="btnfield flex-1 rounded-lg border bg-white px-3 py-2 text-sm"><button type="button" data-remove="${i}" class="rounded-lg border border-red-200 bg-red-50 px-2.5 text-red-600">×</button></div><div class="mt-2"><input data-i="${i}" data-f="detail" value="${escapeHtml(b.url||b.phone_number||b.coupon_code||'')}" placeholder="${b.type==='visit_website'?'https://example.com':b.type==='call_phone'?'+919876543210':b.type==='copy_offer'?'Coupon / offer code':'No extra value required'}" ${b.type==='text_back'?'disabled':''} class="btnfield w-full rounded-lg border bg-white px-3 py-2 text-sm disabled:bg-gray-100"></div>`;
+      row.querySelector('[data-f=type]').value=b.type||'visit_website';standardList.appendChild(row);
+    });
+    standardList.querySelectorAll('.btnfield').forEach(el=>el.addEventListener('input',()=>{const i=+el.dataset.i,f=el.dataset.f;if(f==='type')standardButtons[i]={type:el.value,text:standardButtons[i].text||''};else if(f==='text')standardButtons[i].text=el.value;else{delete standardButtons[i].url;delete standardButtons[i].phone_number;delete standardButtons[i].coupon_code;if(standardButtons[i].type==='visit_website')standardButtons[i].url=el.value;if(standardButtons[i].type==='call_phone')standardButtons[i].phone_number=el.value;if(standardButtons[i].type==='copy_offer')standardButtons[i].coupon_code=el.value}buttonsInput.value=JSON.stringify(standardButtons);updatePreview();if(f==='type')renderStandardButtons()}));
+    standardList.querySelectorAll('[data-remove]').forEach(el=>el.addEventListener('click',()=>{standardButtons.splice(+el.dataset.remove,1);renderStandardButtons();updatePreview()}));
+    buttonsInput.value=JSON.stringify(standardButtons);updateStandardCounts();
+  }
+  document.getElementById('add-button').addEventListener('click',()=>{if(standardButtons.length>=10)return;standardButtons.push({type:'text_back',text:''});renderStandardButtons();updatePreview()});
+
+  function renderStandardMedia(){
+    const at=selectedAttachment(),pm=document.getElementById('preview-media');pm.innerHTML='';pm.classList.toggle('hidden',at==='none'||selectedFormat()==='carousel');if(at==='none'||selectedFormat()==='carousel')return;
+    const f=fileInput.files[0];
+    if(f&&standardMediaUrl){if(at==='image')pm.innerHTML=`<img src="${standardMediaUrl}" class="h-44 w-full object-cover" alt="Template image preview">`;else if(at==='video')pm.innerHTML=`<video src="${standardMediaUrl}" class="h-44 w-full bg-black object-cover" controls muted></video>`;else pm.innerHTML=`<div class="flex items-center gap-3 bg-white/70 p-4"><div class="text-3xl">📄</div><div class="min-w-0"><div class="truncate text-xs font-semibold">${escapeHtml(f.name)}</div><div class="text-[10px] text-gray-500">Document attachment</div></div></div>`}
+    else{const icon=at==='image'?'🖼️':at==='video'?'🎬':'📄';pm.innerHTML=`<div class="flex h-32 items-center justify-center bg-white/50"><div class="text-center"><div class="text-3xl">${icon}</div><div class="mt-1 text-[11px] text-gray-500">Choose a ${at} sample</div></div></div>`}
+  }
+  function validateStandardFile(){const at=selectedAttachment(),cfg=mediaCfg[at],f=fileInput.files[0];mediaError.classList.add('hidden');mediaMeta.textContent='';if(!cfg||!f)return true;if(!cfg.accept.includes(f.type)){mediaError.textContent='This file type is not supported for the selected WhatsApp header.';mediaError.classList.remove('hidden');fileInput.value='';return false}if(f.size>cfg.max){mediaError.textContent=`File is too large. ${cfg.label}.`;mediaError.classList.remove('hidden');fileInput.value='';return false}mediaMeta.textContent=`${f.name} · ${(f.size/1024/1024).toFixed(2)} MB`;return true}
+  function refreshStandardAttachment(){const at=selectedAttachment(),cfg=mediaCfg[at];uploadWrap.classList.toggle('hidden',at==='none');if(cfg){fileInput.accept=cfg.accept.join(',');mediaRules.textContent=cfg.label}else{fileInput.removeAttribute('accept');mediaRules.textContent='';fileInput.value='';mediaMeta.textContent=''}if(standardMediaUrl){URL.revokeObjectURL(standardMediaUrl);standardMediaUrl=''}if(fileInput.files[0]&&at!=='none')standardMediaUrl=URL.createObjectURL(fileInput.files[0]);renderStandardMedia()}
+
+  function carouselTypeLabel(type){return {text_back:'Quick Reply',visit_website:'Visit Website',call_phone:'Call Phone'}[type]||'Select Type'}
+  function persistCarousel(){carouselInput.value=JSON.stringify(carousel);document.getElementById('carousel-card-count').textContent=`${carousel.cards.length} / 10`}
+  function showCarouselError(message){carouselError.textContent=message||'';carouselError.classList.toggle('hidden',!message)}
+  function renderCarouselTypes(){
+    document.querySelectorAll('input[name=carousel_button_count]').forEach(r=>r.checked=Number(r.value)===carousel.button_count);
+    carouselTypesEl.innerHTML='';
+    for(let i=0;i<carousel.button_count;i++){
+      const wrap=document.createElement('label');wrap.className='text-sm font-medium text-gray-800';wrap.innerHTML=`Button-${i+1} Type<select data-carousel-type="${i}" class="mt-2 w-full rounded-lg border border-gray-300 bg-white px-3 py-3 text-base"><option value="">Select Type</option><option value="text_back">Quick Reply</option><option value="visit_website">Visit Website</option><option value="call_phone">Call Phone</option></select>`;wrap.querySelector('select').value=carousel.button_types[i]||'';carouselTypesEl.appendChild(wrap);
+    }
+    carouselTypesEl.querySelectorAll('select').forEach(s=>s.addEventListener('change',()=>{carousel.button_types[+s.dataset.carouselType]=s.value;syncCarouselButtons();renderCarouselCards();persistCarousel();updatePreview()}));
+  }
+  document.querySelectorAll('input[name=carousel_button_count]').forEach(r=>r.addEventListener('change',()=>{carousel.button_count=Number(r.value);syncCarouselButtons();renderCarouselTypes();renderCarouselCards();persistCarousel();updatePreview()}));
+
+  function restoreCarouselFile(input,card){const f=carouselFileStore[card.uid];if(!f)return;try{const dt=new DataTransfer();dt.items.add(f);input.files=dt.files}catch(e){}}
+  function cardButtonFields(card,cardIndex){return card.buttons.map((b,i)=>{const type=carousel.button_types[i]||'';const detail=type==='visit_website'?`<input data-card="${cardIndex}" data-cbtn="${i}" data-cfield="url" value="${escapeHtml(b.url||'')}" placeholder="https://example.com" class="carousel-field mt-2 w-full rounded-lg border px-3 py-2 text-sm">`:type==='call_phone'?`<input data-card="${cardIndex}" data-cbtn="${i}" data-cfield="phone_number" value="${escapeHtml(b.phone_number||'')}" placeholder="+919876543210" class="carousel-field mt-2 w-full rounded-lg border px-3 py-2 text-sm">`:'';return `<div class="rounded-lg bg-gray-50 p-3"><div class="text-xs font-semibold text-gray-500">Button ${i+1} · ${carouselTypeLabel(type)}</div><input data-card="${cardIndex}" data-cbtn="${i}" data-cfield="text" value="${escapeHtml(b.text||'')}" maxlength="25" placeholder="Button text" class="carousel-field mt-2 w-full rounded-lg border px-3 py-2 text-sm">${detail}</div>`}).join('')}
+  function renderCarouselCards(){
+    carouselCardsEl.innerHTML='';
+    carousel.cards.forEach((card,index)=>{
+      const item=document.createElement('div');item.className='overflow-hidden rounded-xl border border-gray-300 bg-white';
+      item.innerHTML=`<div class="flex items-center gap-3 border-b border-gray-200 px-4 py-3"><span class="text-gray-400">⠿</span><button type="button" data-toggle-card="${index}" class="flex-1 text-left text-base font-bold">Card-${index+1}</button><button type="button" data-move-up="${index}" class="rounded px-2 text-gray-500" ${index===0?'disabled':''}>↑</button><button type="button" data-move-down="${index}" class="rounded px-2 text-gray-500" ${index===carousel.cards.length-1?'disabled':''}>↓</button><button type="button" data-remove-card="${index}" class="rounded px-2 font-bold text-red-500" ${carousel.cards.length<=2?'disabled':''}>×</button></div><div data-card-content="${index}" class="p-4 ${index===0?'':'hidden'}"><div class="grid gap-4 md:grid-cols-[145px_minmax(0,1fr)]"><div><label class="flex h-32 cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed border-gray-300 bg-gray-50 text-center"><span class="text-3xl">☁</span><span class="mt-1 text-xs font-medium text-gray-500">Add media</span><input type="file" name="carousel_media_${escapeHtml(card.uid)}" data-card-media="${index}" accept="image/jpeg,image/png,video/mp4,video/3gpp" class="hidden"></label><div data-media-label="${index}" class="mt-2 text-center text-[11px] text-gray-500">${card.media_name?escapeHtml(card.media_name):card.media_type?carouselTypeLabel(card.media_type):'Image or video'}</div></div><div><label class="text-sm font-semibold text-gray-800">Card Body Text (optional)<textarea data-card-body="${index}" maxlength="160" rows="3" placeholder="Briefly describe what this card is about" class="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">${escapeHtml(card.body||'')}</textarea></label><div class="mt-1 flex justify-between text-xs italic text-gray-500"><span>If you add body text, it must be added to all cards.</span><span data-card-count="${index}">${(card.body||'').length}/160</span></div></div></div><div class="mt-4 grid gap-3 md:grid-cols-2">${cardButtonFields(card,index)}</div></div>`;
+      carouselCardsEl.appendChild(item);
+      restoreCarouselFile(item.querySelector(`[data-card-media="${index}"]`),card);
+    });
+    carouselCardsEl.querySelectorAll('[data-toggle-card]').forEach(b=>b.addEventListener('click',()=>document.querySelector(`[data-card-content="${b.dataset.toggleCard}"]`).classList.toggle('hidden')));
+    carouselCardsEl.querySelectorAll('[data-remove-card]').forEach(b=>b.addEventListener('click',()=>{const i=+b.dataset.removeCard;if(carousel.cards.length<=2)return;const removed=carousel.cards.splice(i,1)[0];if(carouselUrlStore[removed.uid])URL.revokeObjectURL(carouselUrlStore[removed.uid]);delete carouselFileStore[removed.uid];delete carouselUrlStore[removed.uid];renderCarouselCards();persistCarousel();updatePreview()}));
+    carouselCardsEl.querySelectorAll('[data-move-up]').forEach(b=>b.addEventListener('click',()=>{const i=+b.dataset.moveUp;if(i<=0)return;[carousel.cards[i-1],carousel.cards[i]]=[carousel.cards[i],carousel.cards[i-1]];renderCarouselCards();persistCarousel();updatePreview()}));
+    carouselCardsEl.querySelectorAll('[data-move-down]').forEach(b=>b.addEventListener('click',()=>{const i=+b.dataset.moveDown;if(i>=carousel.cards.length-1)return;[carousel.cards[i+1],carousel.cards[i]]=[carousel.cards[i],carousel.cards[i+1]];renderCarouselCards();persistCarousel();updatePreview()}));
+    carouselCardsEl.querySelectorAll('[data-card-body]').forEach(el=>el.addEventListener('input',()=>{const i=+el.dataset.cardBody;carousel.cards[i].body=el.value;document.querySelector(`[data-card-count="${i}"]`).textContent=`${el.value.length}/160`;persistCarousel();updatePreview()}));
+    carouselCardsEl.querySelectorAll('.carousel-field').forEach(el=>el.addEventListener('input',()=>{const card=carousel.cards[+el.dataset.card],btn=card.buttons[+el.dataset.cbtn];btn[el.dataset.cfield]=el.value;persistCarousel();updatePreview()}));
+    carouselCardsEl.querySelectorAll('[data-card-media]').forEach(input=>input.addEventListener('change',()=>{const i=+input.dataset.cardMedia,card=carousel.cards[i],f=input.files[0];showCarouselError('');if(!f)return;const type=f.type.startsWith('image/')?'image':f.type.startsWith('video/')?'video':'';if(!type){input.value='';showCarouselError('Carousel cards support only image or video media.');return}const cfg=carouselMediaCfg[type];if(!cfg.accept.includes(f.type)||f.size>cfg.max){input.value='';showCarouselError(`Invalid ${type} file. ${cfg.label}.`);return}const otherType=carousel.cards.find((c,n)=>n!==i&&c.media_type)?.media_type;if(otherType&&otherType!==type){input.value='';showCarouselError(`All carousel cards must use the same media format. Other cards use ${otherType}.`);return}card.media_type=type;card.media_name=f.name;card.mime_type=f.type;card.file_size=f.size;card.header_handle='';carouselFileStore[card.uid]=f;if(carouselUrlStore[card.uid])URL.revokeObjectURL(carouselUrlStore[card.uid]);carouselUrlStore[card.uid]=URL.createObjectURL(f);persistCarousel();document.querySelector(`[data-media-label="${i}"]`).textContent=`${f.name} · ${(f.size/1024/1024).toFixed(2)} MB`;updatePreview()}));
+    persistCarousel();
+  }
+  document.getElementById('add-card').addEventListener('click',()=>{if(carousel.cards.length>=10)return;carousel.cards.push(blankCard());syncCarouselButtons();renderCarouselCards();persistCarousel();updatePreview()});
+
+  function validateCarouselClient(){
+    showCarouselError('');
+    if(carousel.cards.length<2||carousel.cards.length>10){showCarouselError('Carousel requires 2 to 10 cards.');return false}
+    if(carousel.button_types.length!==carousel.button_count||carousel.button_types.some(t=>!['text_back','visit_website','call_phone'].includes(t))){showCarouselError('Select a valid type for every carousel button.');return false}
+    const types=[...new Set(carousel.cards.map(c=>c.media_type).filter(Boolean))];if(types.length>1){showCarouselError('All carousel cards must use the same media format.');return false}
+    if(carousel.cards.some(c=>!c.media_type)){showCarouselError('Add image or video media to every carousel card.');return false}
+    const hasBody=carousel.cards.map(c=>Boolean((c.body||'').trim()));if(hasBody.some(Boolean)&&!hasBody.every(Boolean)){showCarouselError('If one card has body text, add body text to every card.');return false}
+    for(let i=0;i<carousel.cards.length;i++){const card=carousel.cards[i];if(card.buttons.length!==carousel.button_count){showCarouselError(`Card ${i+1} is missing button details.`);return false}for(let j=0;j<card.buttons.length;j++){const b=card.buttons[j];if(!b.text.trim()){showCarouselError(`Card ${i+1}, button ${j+1} needs button text.`);return false}if(b.type==='visit_website'&&!/^https?:\/\//i.test(b.url||'')){showCarouselError(`Card ${i+1}, button ${j+1} needs a valid website URL.`);return false}if(b.type==='call_phone'&&!/^\+?[0-9][0-9\-\s()]{5,19}$/.test(b.phone_number||'')){showCarouselError(`Card ${i+1}, button ${j+1} needs a valid phone number.`);return false}}}
+    return true;
+  }
+
+  function updatePreview(){
+    document.getElementById('body-count').textContent=`${body.value.length}/1024`;document.getElementById('footer-count').textContent=`${footer.value.length}/60`;document.getElementById('preview-body').textContent=examples(body.value)||'Type your message here.';setBusinessPreview();
+    const isCarousel=selectedFormat()==='carousel';
+    document.getElementById('preview-footer').textContent=isCarousel?'':footer.value;
+    document.getElementById('preview-buttons').innerHTML=isCarousel?'':standardButtons.map(x=>`<div class="py-2.5">${x.type==='visit_website'?'↗ ':x.type==='call_phone'?'☎ ':x.type==='copy_offer'?'⧉ ':'↩ '}${escapeHtml(x.text||x.coupon_code||x.type)}</div>`).join('');
+    renderStandardMedia();
+    const pc=document.getElementById('preview-carousel');pc.classList.toggle('hidden',!isCarousel);if(!isCarousel){pc.innerHTML='';return}
+    pc.innerHTML=`<div class="flex gap-2">${carousel.cards.map((card,i)=>{const mediaUrl=carouselUrlStore[card.uid];const media=mediaUrl?(card.media_type==='video'?`<video src="${mediaUrl}" class="h-28 w-full object-cover" muted></video>`:`<img src="${mediaUrl}" class="h-28 w-full object-cover" alt="Card ${i+1}">`):`<div class="flex h-28 items-center justify-center bg-gray-100 text-3xl">${card.media_type==='video'?'🎬':'🖼️'}</div>`;const btns=card.buttons.map(b=>`<div class="border-t border-gray-200 py-2 text-center text-[11px] font-semibold text-[#027eb5]">${b.type==='visit_website'?'↗ ':b.type==='call_phone'?'☎ ':'↩ '}${escapeHtml(b.text||carouselTypeLabel(b.type))}</div>`).join('');return `<div class="w-[210px] shrink-0 overflow-hidden rounded-lg bg-white shadow">${media}<div class="p-2 text-[11px] leading-4 text-gray-800">${escapeHtml(card.body||'')}</div>${btns}</div>`}).join('')}</div>`;
+  }
+
+  function applyFormat(){
+    const isCarousel=selectedFormat()==='carousel';document.querySelectorAll('[data-standard-only]').forEach(el=>el.classList.toggle('hidden',isCarousel));carouselSetup.classList.toggle('hidden',!isCarousel);document.getElementById('carousel-category-note').classList.toggle('hidden',!isCarousel);if(isCarousel){categorySelect.value='marketing';categorySelect.classList.add('pointer-events-none','bg-gray-100');renderCarouselTypes();renderCarouselCards()}else{categorySelect.classList.remove('pointer-events-none','bg-gray-100')}updatePreview();
+  }
+
+  body.addEventListener('input',updatePreview);footer.addEventListener('input',updatePreview);document.getElementById('business-select').addEventListener('change',updatePreview);document.querySelectorAll('input[name=template_format]').forEach(r=>r.addEventListener('change',applyFormat));document.querySelectorAll('input[name=attachment_type]').forEach(r=>r.addEventListener('change',()=>{fileInput.value='';refreshStandardAttachment();updatePreview()}));
+  fileInput.addEventListener('change',()=>{if(standardMediaUrl){URL.revokeObjectURL(standardMediaUrl);standardMediaUrl=''}if(validateStandardFile()&&fileInput.files[0])standardMediaUrl=URL.createObjectURL(fileInput.files[0]);updatePreview()});
+  form.addEventListener('submit',e=>{buttonsInput.value=JSON.stringify(standardButtons);persistCarousel();const action=e.submitter?.value;if(action==='submit'&&selectedFormat()==='carousel'&&!validateCarouselClient()){e.preventDefault();carouselSetup.scrollIntoView({behavior:'smooth',block:'start'});return}if(action==='submit'&&selectedFormat()==='standard'&&selectedAttachment()!=='none'&&!fileInput.files[0]&&!{% if media_state and media_state.header_sample_handle %}true{% else %}false{% endif %}){e.preventDefault();mediaError.textContent='Choose a media sample file before submitting this template to Meta.';mediaError.classList.remove('hidden');fileInput.focus();return}if(selectedFormat()==='standard'&&!validateStandardFile()){e.preventDefault();return}document.querySelectorAll('button[name=action]').forEach(b=>b.disabled=true)});
+
+  renderStandardButtons();refreshStandardAttachment();renderCarouselTypes();renderCarouselCards();applyFormat();updatePreview();
 })();
 </script>
 {% endblock %}
