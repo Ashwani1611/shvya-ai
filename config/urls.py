@@ -10,7 +10,7 @@ from rest_framework_simplejwt.views import (
     TokenRefreshView,
 )
 
-from apps.core.views import HomeView
+from apps.core.views import HomeView, PricingView
 
 
 urlpatterns = [
@@ -179,7 +179,7 @@ urlpatterns = [
 
     path(
         "pricing/",
-        TemplateView.as_view(template_name="pricing.html"),
+        PricingView.as_view(),
         name="pricing",
     ),
 
