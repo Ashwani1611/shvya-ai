@@ -107,7 +107,7 @@
 
                     {% for lead in conversations %}
 
-                        
+    
                             href="{% url 'whatsapp-chat-detail' lead_id=lead.id %}{% if selected_account %}?account={{ selected_account.id }}{% endif %}"
                             class="conversation-row flex items-center gap-3 border-b border-gray-100 px-3 py-3 transition hover:bg-[#f0f2f5]
                             {% if active_lead.id == lead.id %}bg-[#f0f2f5]{% else %}bg-white{% endif %}"
