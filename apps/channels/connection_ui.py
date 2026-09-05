@@ -1,17 +1,27 @@
 """Small UI wrappers for WhatsApp connection state.
 
-Keep the existing connection/service logic in views_flat.py. These wrappers only
-control which screen an already-connected organization sees and translate
-embedded-signup failures into SHVYA's global toast UI.
+Keep the normal WhatsApp views in views_flat.py. These wrappers control the
+connection-aware landing behaviour and the Meta embedded-signup callback.
 """
 
+import logging
+
 from django.contrib import messages
+from django.http import JsonResponse
 from django.shortcuts import redirect
+from django.urls import reverse
+from django.views.decorators.http import require_POST
 
 from apps.crm.decorators import crm_login_required
+from services.channels.embedded_signup_service import (
+    EmbeddedSignupError,
+    complete_embedded_signup,
+)
 
 from .models import WhatsAppAccount
 from . import views_flat
+
+logger = logging.getLogger(__name__)
 
 
 def _has_connected_api_account(user):
@@ -24,13 +34,7 @@ def _has_connected_api_account(user):
 
 
 def _inject_signup_toast(response):
-    """Make Meta embedded-signup errors use the shared SHVYA toast UI.
-
-    The existing inline error box is kept as an accessible fallback. The global
-    toast middleware defines ``window.shvyaToast`` later in the page, so this
-    wrapper only replaces ``showSignupError`` and calls the toast when an error
-    actually occurs.
-    """
+    """Make Meta embedded-signup errors use the shared SHVYA toast UI."""
     content_type = response.get("Content-Type", "")
     if "text/html" not in content_type.lower() or getattr(response, "streaming", False):
         return response
@@ -63,8 +67,7 @@ def _inject_signup_toast(response):
 </script>
 '''
 
-    lower_html = html.lower()
-    index = lower_html.rfind(marker)
+    index = html.lower().rfind(marker)
     html = html[:index] + script + html[index:]
     response.content = html.encode(response.charset or "utf-8")
     if response.has_header("Content-Length"):
@@ -74,14 +77,7 @@ def _inject_signup_toast(response):
 
 @crm_login_required
 def whatsapp_connect_api_view(request):
-    """Show onboarding only when needed.
-
-    If this organization already has an active connected API account, normal
-    navigation goes straight back to Connected Numbers. ``?add=1`` is the one
-    intentional escape hatch used by the top-right Connect API button so an
-    admin can add another number without putting the onboarding page back in
-    the sidebar.
-    """
+    """Show onboarding only when no active API account is connected."""
     if (
         request.method == "GET"
         and _has_connected_api_account(request.crm_user)
@@ -94,21 +90,73 @@ def whatsapp_connect_api_view(request):
 
 
 @crm_login_required
+@require_POST
 def whatsapp_embedded_signup_callback_view(request):
-    """Delegate the Meta callback and queue a green toast on success."""
-    response = views_flat.whatsapp_embedded_signup_callback_view(request)
+    """Finish Meta embedded signup and always persist a valid connection.
 
-    # The browser-side embedded-signup handler already shows the specific Meta
-    # error text in a red toast. On success we intentionally wait for the
-    # Connected Numbers redirect and let Django's success message become the
-    # green toast there. Suppress the generic fetch toast in both cases so the
-    # user sees one clear notification, not duplicates.
-    response["X-SHVYA-Toast"] = "off"
+    Meta authorization/phone lookup failures are fatal. WABA webhook subscription
+    failure is not: the connected number is still saved and shown in Connected
+    Numbers, with a warning telling the admin to retry subscription later.
+    """
+    user = request.crm_user
 
-    if 200 <= response.status_code < 300:
+    if not views_flat._admin_required(user):
+        response = JsonResponse(
+            {"error": "Only organization admins can connect WhatsApp."},
+            status=403,
+        )
+        response["X-SHVYA-Toast"] = "off"
+        return response
+
+    code = (request.POST.get("code") or "").strip()
+    waba_id = (request.POST.get("waba_id") or "").strip()
+    phone_number_id = (request.POST.get("phone_number_id") or "").strip()
+
+    if not code or not waba_id or not phone_number_id:
+        response = JsonResponse(
+            {
+                "error": (
+                    "Meta's popup didn't return all required WhatsApp details. "
+                    "Please try the connection again."
+                )
+            },
+            status=400,
+        )
+        response["X-SHVYA-Toast"] = "off"
+        return response
+
+    try:
+        account, warning = complete_embedded_signup(
+            organization=user.organization,
+            code=code,
+            waba_id=waba_id,
+            phone_number_id=phone_number_id,
+        )
+    except EmbeddedSignupError as exc:
+        logger.warning(
+            "Embedded signup failed for org %s: %s",
+            user.organization_id,
+            exc,
+        )
+        response = JsonResponse({"error": str(exc)}, status=502)
+        response["X-SHVYA-Toast"] = "off"
+        return response
+
+    if warning:
+        messages.warning(request, warning)
+    else:
         messages.success(
             request,
             "WhatsApp Business API connected successfully.",
         )
 
+    response = JsonResponse(
+        {
+            "redirect_url": reverse("whatsapp-accounts"),
+            "account_id": str(account.id),
+            "subscription_warning": warning,
+        }
+    )
+    # The redirected page turns the Django message above into the final toast.
+    response["X-SHVYA-Toast"] = "off"
     return response
