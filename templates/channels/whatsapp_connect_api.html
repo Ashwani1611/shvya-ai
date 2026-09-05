@@ -183,12 +183,46 @@
 
 {% if embedded_signup_available %}
 <script>
-var signupData = {code: null, waba_id: null, phone_number_id: null};
+var signupData = {
+    attempt_id: null,
+    code: null,
+    waba_id: null,
+    phone_number_id: null,
+    meta_finished: false,
+    login_callback_seen: false,
+    submitting: false
+};
 var sdkLoaded = false;
+var incompleteTimer = null;
 
 function getCookie(name) {
     var match = document.cookie.match('(^|;)\\s*' + name + '\\s*=\\s*([^;]+)');
     return match ? match.pop() : '';
+}
+
+function newAttemptId() {
+    if (window.crypto && typeof window.crypto.randomUUID === 'function') {
+        return window.crypto.randomUUID();
+    }
+    var bytes = new Uint8Array(16);
+    window.crypto.getRandomValues(bytes);
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    var hex = Array.from(bytes, function (b) { return b.toString(16).padStart(2, '0'); }).join('');
+    return hex.slice(0, 8) + '-' + hex.slice(8, 12) + '-' + hex.slice(12, 16) + '-' + hex.slice(16, 20) + '-' + hex.slice(20);
+}
+
+function resetSignupState() {
+    if (incompleteTimer) window.clearTimeout(incompleteTimer);
+    signupData = {
+        attempt_id: newAttemptId(),
+        code: null,
+        waba_id: null,
+        phone_number_id: null,
+        meta_finished: false,
+        login_callback_seen: false,
+        submitting: false
+    };
 }
 
 function showSignupError(message) {
@@ -196,6 +230,15 @@ function showSignupError(message) {
     box.textContent = message;
     box.classList.remove('hidden');
     box.scrollIntoView({behavior: 'smooth', block: 'center'});
+    if (typeof window.shvyaToast === 'function') {
+        window.shvyaToast(message, 'error', {title: 'WhatsApp connection failed', duration: 7000});
+    }
+}
+
+function clearSignupError() {
+    var box = document.getElementById('embedded-signup-error');
+    box.textContent = '';
+    box.classList.add('hidden');
 }
 
 function setSignupButton(text, disabled) {
@@ -206,11 +249,66 @@ function setSignupButton(text, disabled) {
     btn.disabled = disabled;
 }
 
+function trackAttempt(stage, extra) {
+    if (!signupData.attempt_id) return;
+    var formData = new FormData();
+    formData.append('attempt_id', signupData.attempt_id);
+    formData.append('stage', stage);
+    formData.append('waba_id', signupData.waba_id || '');
+    formData.append('phone_number_id', signupData.phone_number_id || '');
+    formData.append('code_received', signupData.code ? '1' : '0');
+
+    extra = extra || {};
+    Object.keys(extra).forEach(function (key) {
+        formData.append(key, extra[key] == null ? '' : String(extra[key]));
+    });
+
+    fetch('{% url "whatsapp-connection-attempt-event" %}', {
+        method: 'POST',
+        headers: {'X-CSRFToken': getCookie('csrftoken')},
+        credentials: 'same-origin',
+        body: formData
+    }).catch(function () {
+        // Do not interrupt Meta's popup for telemetry failure. The final
+        // callback also get-or-creates the same attempt id server-side.
+    });
+}
+
+function missingSignupParts() {
+    var missing = [];
+    if (!signupData.code) missing.push('OAuth authorization code');
+    if (!signupData.waba_id) missing.push('WABA ID');
+    if (!signupData.phone_number_id) missing.push('Phone Number ID');
+    return missing;
+}
+
+function scheduleIncompleteCheck() {
+    if (incompleteTimer) window.clearTimeout(incompleteTimer);
+    incompleteTimer = window.setTimeout(function () {
+        if (signupData.submitting) return;
+        var missing = missingSignupParts();
+        if (!missing.length) {
+            maybeFinishSignup();
+            return;
+        }
+
+        var message = 'Meta setup returned, but SHVYA did not receive: ' + missing.join(', ') + '. This is an authorization handoff issue, not necessarily a browser popup setting. Please try Connect API again.';
+        trackAttempt('incomplete', {error_message: message});
+        setSignupButton('Connect WhatsApp Business API', false);
+        showSignupError(message);
+    }, 7000);
+}
+
 function maybeFinishSignup() {
-    if (!signupData.code || !signupData.waba_id || !signupData.phone_number_id) return;
+    if (signupData.submitting) return;
+    if (missingSignupParts().length) return;
+
+    signupData.submitting = true;
+    if (incompleteTimer) window.clearTimeout(incompleteTimer);
     setSignupButton('Connecting…', true);
 
     var formData = new FormData();
+    formData.append('attempt_id', signupData.attempt_id || '');
     formData.append('code', signupData.code);
     formData.append('waba_id', signupData.waba_id);
     formData.append('phone_number_id', signupData.phone_number_id);
@@ -218,35 +316,63 @@ function maybeFinishSignup() {
     fetch('{% url "whatsapp-embedded-signup-callback" %}', {
         method: 'POST',
         headers: {'X-CSRFToken': getCookie('csrftoken')},
-        body: formData,
+        credentials: 'same-origin',
+        body: formData
     })
     .then(function (response) {
         return response.json().then(function (data) {
-            if (!response.ok) throw new Error(data.error || 'Could not finish connecting WhatsApp.');
+            if (!response.ok) {
+                var error = new Error(data.error || 'Could not finish connecting WhatsApp.');
+                error.failureStage = data.failure_stage || '';
+                throw error;
+            }
             return data;
         });
     })
-    .then(function (data) { window.location.href = data.redirect_url; })
+    .then(function (data) {
+        setSignupButton('Connected ✓', true);
+        if (typeof window.shvyaToast === 'function') {
+            window.shvyaToast('WhatsApp Business API connected successfully.', 'success');
+        }
+        window.location.replace(data.redirect_url);
+    })
     .catch(function (err) {
+        signupData.submitting = false;
         setSignupButton('Connect WhatsApp Business API', false);
-        showSignupError(err.message);
+        var suffix = err.failureStage ? ' (stage: ' + err.failureStage + ')' : '';
+        showSignupError((err.message || 'Could not finish connecting WhatsApp.') + suffix);
     });
 }
 
 window.addEventListener('message', function (event) {
-    if (!event.origin.endsWith('facebook.com')) return;
-    var data;
-    try { data = JSON.parse(event.data); } catch (e) { return; }
-    if (data.type !== 'WA_EMBEDDED_SIGNUP') return;
+    if (!event.origin || (!event.origin.endsWith('facebook.com') && !event.origin.endsWith('facebook.net'))) return;
+
+    var data = event.data;
+    if (typeof data === 'string') {
+        try { data = JSON.parse(data); } catch (e) { return; }
+    }
+    if (!data || typeof data !== 'object' || data.type !== 'WA_EMBEDDED_SIGNUP') return;
 
     if (data.event === 'FINISH' && data.data) {
-        signupData.waba_id = data.data.waba_id;
-        signupData.phone_number_id = data.data.phone_number_id;
+        signupData.meta_finished = true;
+        signupData.waba_id = data.data.waba_id || signupData.waba_id;
+        signupData.phone_number_id = data.data.phone_number_id || signupData.phone_number_id;
+        trackAttempt('meta_finish');
         maybeFinishSignup();
+        scheduleIncompleteCheck();
     } else if (data.event === 'CANCEL') {
-        showSignupError('WhatsApp connection was cancelled.');
+        if (incompleteTimer) window.clearTimeout(incompleteTimer);
+        var cancelMessage = 'WhatsApp connection was cancelled before SHVYA received all required credentials.';
+        trackAttempt('cancelled', {error_message: cancelMessage});
+        setSignupButton('Connect WhatsApp Business API', false);
+        showSignupError(cancelMessage);
     } else if (data.event === 'ERROR') {
-        showSignupError((data.data && data.data.error_message) || 'Meta reported an error during signup.');
+        if (incompleteTimer) window.clearTimeout(incompleteTimer);
+        var metaMessage = (data.data && data.data.error_message) || 'Meta reported an error during WhatsApp signup.';
+        var metaCode = (data.data && (data.data.error_id || data.data.error_code)) || '';
+        trackAttempt('meta_error', {error_message: metaMessage, meta_error_code: metaCode});
+        setSignupButton('Connect WhatsApp Business API', false);
+        showSignupError(metaMessage);
     }
 });
 
@@ -259,7 +385,7 @@ window.fbAsyncInit = function () {
 setTimeout(function () {
     if (sdkLoaded) return;
     setSignupButton('Connect WhatsApp Business API', false);
-    showSignupError("Meta's connection script did not load. Disable blockers for this site or try another browser. You can also use the manual connection option below.");
+    showSignupError("Meta's connection script did not load. Disable script/content blockers for this site or try another browser. You can also use the manual connection option below.");
 }, 8000);
 
 (function (d, s, id) {
@@ -271,23 +397,41 @@ setTimeout(function () {
 }(document, 'script', 'facebook-jssdk'));
 
 document.getElementById('embedded-signup-btn').addEventListener('click', function () {
+    clearSignupError();
+    resetSignupState();
+    trackAttempt('started');
+
     if (typeof FB === 'undefined') {
-        showSignupError("Meta's connection script is unavailable. Allow popups and cross-site scripts for this page, or use manual connection.");
+        var unavailableMessage = "Meta's connection script is unavailable. Allow Facebook/Meta scripts for this page or use manual connection.";
+        trackAttempt('incomplete', {error_message: unavailableMessage});
+        showSignupError(unavailableMessage);
         return;
     }
 
+    // Do not await the attempt-tracking request before FB.login. Calling
+    // FB.login synchronously from this click preserves the browser user gesture
+    // and avoids creating a real popup-blocker problem ourselves.
     FB.login(function (response) {
-        if (response.authResponse && response.authResponse.code) {
+        signupData.login_callback_seen = true;
+
+        if (response && response.authResponse && response.authResponse.code) {
             signupData.code = response.authResponse.code;
+            trackAttempt('oauth_code_received');
             maybeFinishSignup();
-        } else if (!signupData.waba_id) {
-            showSignupError('WhatsApp connection was not completed. Allow popups for this site and try again.');
+            scheduleIncompleteCheck();
+            return;
         }
+
+        // Meta FINISH and the FB.login callback can arrive in either order. Do
+        // not show a false "allow popups" error immediately; give the companion
+        // event a short window to arrive, then report exactly what is missing.
+        trackAttempt('oauth_code_missing');
+        scheduleIncompleteCheck();
     }, {
         config_id: '{{ meta_config_id }}',
         response_type: 'code',
         override_default_response_type: true,
-        extras: {setup: {}, featureType: '', sessionInfoVersion: '3'},
+        extras: {setup: {}, featureType: '', sessionInfoVersion: '3'}
     });
 });
 </script>
