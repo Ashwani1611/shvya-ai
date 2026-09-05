@@ -1,0 +1,101 @@
+<div class="followup-schedule" data-followup-schedule>
+    <div class="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-gray-800">
+        <span class="font-medium">Schedule<span class="text-red-500">*</span></span>
+        <label class="inline-flex cursor-pointer items-center gap-2">
+            <input type="radio" name="schedule_type" value="immediate" {% if not step or step.schedule_type == 'immediate' %}checked{% endif %}>
+            <span>Immediate</span>
+        </label>
+        <label class="inline-flex cursor-pointer items-center gap-2">
+            <input type="radio" name="schedule_type" value="specific_time" {% if step.schedule_type == 'specific_time' %}checked{% endif %}>
+            <span>Specific time</span>
+        </label>
+        <label class="inline-flex cursor-pointer items-center gap-2">
+            <input type="radio" name="schedule_type" value="delay" {% if step.schedule_type == 'delay' %}checked{% endif %}>
+            <span>After X minutes/hours/days</span>
+        </label>
+    </div>
+
+    <div data-schedule-panel="immediate" class="mt-3 {% if step and step.schedule_type != 'immediate' %}hidden{% endif %}">
+        <p class="text-xs italic text-gray-500">This action will run immediately after the sequence is activated for the lead, or immediately after the previous step completes.</p>
+    </div>
+
+    <div data-schedule-panel="specific_time" class="mt-3 {% if not step or step.schedule_type != 'specific_time' %}hidden{% endif %}">
+        <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:max-w-2xl">
+            <div>
+                <label class="mb-1 block text-xs font-medium text-gray-600">Time</label>
+                <input
+                    type="time"
+                    name="specific_time"
+                    value="{% if step.specific_time %}{{ step.specific_time|time:'H:i' }}{% endif %}"
+                    class="h-11 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                >
+            </div>
+            <div>
+                <label class="mb-1 block text-xs font-medium text-gray-600">Day</label>
+                <select name="specific_weekday" class="h-11 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100">
+                    <option value="">Next available</option>
+                    {% for value,label in weekdays.choices %}
+                    <option value="{{ value }}" {% if step.specific_weekday == value %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+        <p class="mt-2 text-xs italic text-gray-500">The action will run at the selected time on the next available day, or on the weekday you choose. Your organization timezone and business hours are respected.</p>
+    </div>
+
+    <div data-schedule-panel="delay" class="mt-3 {% if not step or step.schedule_type != 'delay' %}hidden{% endif %}">
+        <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:max-w-2xl">
+            <div>
+                <label class="mb-1 block text-xs font-medium text-gray-600">Delay</label>
+                <input
+                    type="number"
+                    min="1"
+                    name="delay_value"
+                    value="{{ step.delay_value|default:'' }}"
+                    placeholder="Enter delay"
+                    class="h-11 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                >
+            </div>
+            <div>
+                <label class="mb-1 block text-xs font-medium text-gray-600">Duration unit</label>
+                <select name="delay_unit" class="h-11 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100">
+                    <option value="">Select duration unit</option>
+                    {% for value,label in delay_units.choices %}
+                    <option value="{{ value }}" {% if step.delay_unit == value %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+        <p class="mt-2 text-xs italic text-gray-500">The delay starts after the previous step completes. For the first step, it starts when the sequence is activated for the lead.</p>
+    </div>
+</div>
+
+<script>
+(function () {
+    function syncFollowupSchedule(root) {
+        if (!root) return;
+        const checked = root.querySelector('input[name="schedule_type"]:checked');
+        const selected = checked ? checked.value : 'immediate';
+        root.querySelectorAll('[data-schedule-panel]').forEach(function (panel) {
+            const active = panel.dataset.schedulePanel === selected;
+            panel.classList.toggle('hidden', !active);
+            panel.querySelectorAll('input, select, textarea').forEach(function (field) {
+                field.disabled = !active;
+                if (active && field.name === 'specific_time') {
+                    field.required = selected === 'specific_time';
+                }
+            });
+        });
+    }
+
+    if (!window.__shvyaFollowupScheduleBound) {
+        document.addEventListener('change', function (event) {
+            if (!event.target.matches('[data-followup-schedule] input[name="schedule_type"]')) return;
+            syncFollowupSchedule(event.target.closest('[data-followup-schedule]'));
+        });
+        window.__shvyaFollowupScheduleBound = true;
+    }
+
+    document.querySelectorAll('[data-followup-schedule]').forEach(syncFollowupSchedule);
+})();
+</script>
