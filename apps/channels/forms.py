@@ -73,6 +73,9 @@ class WhatsAppConnectAPIForm(forms.ModelForm):
         account.organization = organization
         account.connection_type = WhatsAppAccount.ConnectionType.API
         account.status = WhatsAppAccount.Status.CONNECTED
+        # Reconnecting an old disconnected number must make it visible/usable
+        # again. Previously status became CONNECTED while is_active stayed False.
+        account.is_active = True
 
         if commit:
             account.save()
@@ -111,7 +114,7 @@ class WhatsAppHostedRequestForm(forms.Form):
         # unrelated existing account.
         account = WhatsAppAccount.objects.create(
             organization=organization,
-            connection_type=WhatsAppAccount.ConnectionType.HOSTED,
+            connection_type=WhatsAppAccount.ConnectionType.coexisted,
             status=WhatsAppAccount.Status.PENDING,
             display_phone_number=self.cleaned_data.get(
                 "display_phone_number", ""
