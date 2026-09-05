@@ -71,6 +71,14 @@ NAV_ITEMS = [
                 "icon": "ti-plug-connected",
                 "url_name": "whatsapp-connect-api",
                 "path_prefix": "/dashboard/whatsapp/connect/api/",
+                "hide_when_whatsapp_connected": True,
+            },
+            {
+                "label": "Connected Numbers",
+                "icon": "ti-device-mobile-check",
+                "url_name": "whatsapp-accounts",
+                "path_prefix": "/dashboard/whatsapp/accounts/",
+                "requires_whatsapp_connection": True,
             },
             {
                 "label": "Coexisted Accounts",
@@ -189,6 +197,12 @@ def sidebar_nav(request):
                 if (
                     child.get("requires_whatsapp_connection")
                     and not has_whatsapp_connection
+                ):
+                    continue
+
+                if (
+                    child.get("hide_when_whatsapp_connected")
+                    and has_whatsapp_connection
                 ):
                     continue
 
