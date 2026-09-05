@@ -73,6 +73,18 @@ class WhatsAppTemplateServiceTests(TestCase):
         self.assertEqual(body, "For {{1}} teams")
         self.assertEqual(mapping, {"1": "industry"})
 
+    def test_org_id_is_not_exposed_as_template_placeholder(self):
+        keys = {
+            item["key"]
+            for item in available_placeholders(organization=self.org)
+        }
+        self.assertNotIn("org_id", keys)
+        with self.assertRaises(TemplateError):
+            build_meta_body(
+                organization=self.org,
+                body="Internal id {{org_id}}",
+            )
+
     def test_unknown_placeholder_is_rejected(self):
         with self.assertRaises(TemplateError):
             build_meta_body(
@@ -241,3 +253,120 @@ class WhatsAppTemplateServiceTests(TestCase):
             payload["components"][0]["example"]["header_handle"],
             ["meta-header-handle"],
         )
+
+    @override_settings(META_APP_ID="app-123")
+    @patch("services.channels.template_service.WhatsAppClient._post")
+    @patch("services.channels.template_service.meta.requests.post")
+    def test_carousel_submission_builds_real_meta_carousel_component(
+        self,
+        requests_post,
+        client_post,
+    ):
+        responses = []
+        for number in (1, 2):
+            session = Mock(ok=True)
+            session.json.return_value = {"id": f"upload:{number}"}
+            upload = Mock(ok=True)
+            upload.json.return_value = {"h": f"carousel-handle-{number}"}
+            responses.extend([session, upload])
+        requests_post.side_effect = responses
+        client_post.return_value = {
+            "id": "meta-carousel-1",
+            "status": "PENDING",
+        }
+        carousel = {
+            "button_count": 1,
+            "button_types": ["visit_website"],
+            "cards": [
+                {
+                    "uid": "card1",
+                    "body": "First product",
+                    "media_type": "image",
+                    "buttons": [
+                        {
+                            "type": "visit_website",
+                            "text": "View one",
+                            "url": "https://example.com/one",
+                        }
+                    ],
+                },
+                {
+                    "uid": "card2",
+                    "body": "Second product",
+                    "media_type": "image",
+                    "buttons": [
+                        {
+                            "type": "visit_website",
+                            "text": "View two",
+                            "url": "https://example.com/two",
+                        }
+                    ],
+                },
+            ],
+        }
+        template = create_template(
+            organization=self.org,
+            account=self.account,
+            created_by=self.user,
+            name="product_carousel",
+            body="Choose an offer",
+            category=WhatsAppTemplate.Category.UTILITY,
+            template_format=WhatsAppTemplate.Format.CAROUSEL,
+            carousel_config=carousel,
+        )
+        self.assertEqual(template.category, WhatsAppTemplate.Category.MARKETING)
+        files = {
+            "carousel_media_card1": SimpleUploadedFile(
+                "one.jpg", b"one", content_type="image/jpeg"
+            ),
+            "carousel_media_card2": SimpleUploadedFile(
+                "two.jpg", b"two", content_type="image/jpeg"
+            ),
+        }
+
+        submit_template(template=template, carousel_files=files)
+
+        payload = client_post.call_args.args[1]
+        self.assertEqual(payload["category"], "MARKETING")
+        carousel_component = payload["components"][1]
+        self.assertEqual(carousel_component["type"], "CAROUSEL")
+        self.assertEqual(len(carousel_component["cards"]), 2)
+        self.assertEqual(
+            carousel_component["cards"][0]["components"][0]["example"]["header_handle"],
+            ["carousel-handle-1"],
+        )
+        self.assertEqual(
+            carousel_component["cards"][1]["components"][0]["example"]["header_handle"],
+            ["carousel-handle-2"],
+        )
+
+    def test_carousel_rejects_mixed_image_and_video_cards(self):
+        carousel = {
+            "button_count": 1,
+            "button_types": ["text_back"],
+            "cards": [
+                {
+                    "uid": "card1",
+                    "body": "One",
+                    "media_type": "image",
+                    "buttons": [{"type": "text_back", "text": "One"}],
+                },
+                {
+                    "uid": "card2",
+                    "body": "Two",
+                    "media_type": "video",
+                    "buttons": [{"type": "text_back", "text": "Two"}],
+                },
+            ],
+        }
+        template = create_template(
+            organization=self.org,
+            account=self.account,
+            created_by=self.user,
+            name="mixed_carousel",
+            body="Choose",
+            template_format=WhatsAppTemplate.Format.CAROUSEL,
+            carousel_config=carousel,
+        )
+        with self.assertRaisesRegex(TemplateError, "same media format"):
+            submit_template(template=template)
