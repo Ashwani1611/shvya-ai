@@ -15,6 +15,7 @@ import logging
 import uuid
 
 from django.contrib import messages
+from django.db import IntegrityError, transaction
 from django.http import JsonResponse
 from django.shortcuts import redirect
 from django.urls import reverse
@@ -63,6 +64,27 @@ def _attempt_id(value):
         return None
 
 
+def _create_attempt_with_id(*, parsed_id, user, method):
+    """Create a caller-supplied attempt id safely under concurrent requests."""
+    try:
+        with transaction.atomic():
+            return WhatsAppConnectionAttempt.objects.create(
+                id=parsed_id,
+                organization=user.organization,
+                created_by=user,
+                method=method,
+                status=WhatsAppConnectionAttempt.Status.STARTED,
+                stage="started",
+            )
+    except IntegrityError:
+        # The browser telemetry request and final callback can race. If both
+        # try to create the same UUID, the loser simply re-reads the winner.
+        return WhatsAppConnectionAttempt.objects.filter(
+            id=parsed_id,
+            organization=user.organization,
+        ).first()
+
+
 def _get_or_create_attempt(*, user, method, attempt_id=None):
     """Return an org-scoped attempt; never attach another tenant's UUID."""
     parsed_id = _attempt_id(attempt_id)
@@ -81,14 +103,13 @@ def _get_or_create_attempt(*, user, method, attempt_id=None):
         # A UUID from another organization must never be reused. UUID collision
         # is practically impossible, but this also protects against tampering.
         if not WhatsAppConnectionAttempt.objects.filter(id=parsed_id).exists():
-            return WhatsAppConnectionAttempt.objects.create(
-                id=parsed_id,
-                organization=user.organization,
-                created_by=user,
+            attempt = _create_attempt_with_id(
+                parsed_id=parsed_id,
+                user=user,
                 method=method,
-                status=WhatsAppConnectionAttempt.Status.STARTED,
-                stage="started",
             )
+            if attempt:
+                return attempt
 
     return WhatsAppConnectionAttempt.objects.create(
         organization=user.organization,
@@ -116,6 +137,41 @@ def _fail_attempt(attempt, *, stage, message, meta_error_code=""):
     )
 
 
+def _add_meta_resource_hints(response):
+    """Warm Meta origins before the user clicks Connect API.
+
+    The SDK itself still loads through the page's existing async loader so we
+    do not introduce an fbAsyncInit race. Preconnect removes much of the DNS/TLS
+    setup that otherwise makes the first popup noticeably slow.
+    """
+    content_type = response.get("Content-Type", "")
+    if "text/html" not in content_type.lower() or getattr(response, "streaming", False):
+        return response
+
+    try:
+        html = response.content.decode(response.charset or "utf-8")
+    except (AttributeError, UnicodeDecodeError):
+        return response
+
+    if "meta-whatsapp-resource-hints" in html or "</head>" not in html.lower():
+        return response
+
+    hints = """
+<!-- meta-whatsapp-resource-hints -->
+<link rel="dns-prefetch" href="//connect.facebook.net">
+<link rel="dns-prefetch" href="//www.facebook.com">
+<link rel="preconnect" href="https://connect.facebook.net" crossorigin>
+<link rel="preconnect" href="https://www.facebook.com" crossorigin>
+"""
+    lower = html.lower()
+    index = lower.rfind("</head>")
+    html = html[:index] + hints + html[index:]
+    response.content = html.encode(response.charset or "utf-8")
+    if response.has_header("Content-Length"):
+        response["Content-Length"] = str(len(response.content))
+    return response
+
+
 @crm_login_required
 def whatsapp_connect_api_view(request):
     """Show onboarding or process the independent manual-token path."""
@@ -139,7 +195,6 @@ def whatsapp_connect_api_view(request):
             waba_id=(request.POST.get("waba_id") or "").strip()[:64],
             phone_number_id=(request.POST.get("phone_number_id") or "").strip()[:64],
             display_phone_number=(request.POST.get("display_phone_number") or "").strip()[:32],
-            # Boolean only -- never copy the token into the attempt table/logs.
             token_received=bool((request.POST.get("access_token") or "").strip()),
         )
         logger.info(
@@ -205,19 +260,16 @@ def whatsapp_connect_api_view(request):
                 message="Manual WhatsApp credentials were not accepted by the connection form.",
             )
 
+    if request.method == "GET" and response.status_code == 200:
+        response = _add_meta_resource_hints(response)
+
     return response
 
 
 @crm_login_required
 @require_POST
 def whatsapp_connection_attempt_event_view(request):
-    """Persist safe browser-side Embedded Signup lifecycle events.
-
-    This endpoint exists specifically so failures that happen before the final
-    backend callback (for example Meta FINISH without an OAuth code) are still
-    visible in PostgreSQL. It accepts identifiers/booleans/errors only; no code
-    or token value is accepted or stored.
-    """
+    """Persist safe browser-side Embedded Signup lifecycle events."""
     user = request.crm_user
     if not views_flat._admin_required(user):
         return JsonResponse({"error": "Only organization admins can connect WhatsApp."}, status=403)
@@ -251,7 +303,6 @@ def whatsapp_connection_attempt_event_view(request):
         "meta_error": WhatsAppConnectionAttempt.Status.FAILED,
     }[stage]
 
-    # Never let a delayed browser fetch downgrade a backend-completed attempt.
     current_terminal = attempt.status in {
         WhatsAppConnectionAttempt.Status.CONNECTED,
         WhatsAppConnectionAttempt.Status.FAILED,
@@ -364,11 +415,7 @@ def whatsapp_embedded_signup_callback_view(request):
 
     if missing:
         message = "Meta's signup did not return: " + ", ".join(missing) + ". Please reconnect and try again."
-        _fail_attempt(
-            attempt,
-            stage="callback_validation",
-            message=message,
-        )
+        _fail_attempt(attempt, stage="callback_validation", message=message)
         response = JsonResponse({"error": message, "attempt_id": str(attempt.id)}, status=400)
         response["X-SHVYA-Toast"] = "off"
         return response
