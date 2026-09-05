@@ -7,14 +7,14 @@
     </a>
     <nav class="nav-links" aria-label="Primary navigation">
       <div class="nav-dropdown">
-        <a href="#features" class="nav-link">Features <svg class="icon-sm" viewBox="0 0 24 24"><path d="m7 10 5 5 5-5"/></svg></a>
-        <div class="nav-dropdown-menu"><a href="#capture">Lead capture &amp; qualification</a><a href="#followup">AI follow-up</a><a href="#integrations">Integrations</a><a href="#whatsapp">WhatsApp CRM</a></div>
+        <a href="{% url 'home' %}#features" class="nav-link">Features <svg class="icon-sm" viewBox="0 0 24 24"><path d="m7 10 5 5 5-5"/></svg></a>
+        <div class="nav-dropdown-menu"><a href="{% url 'home' %}#capture">Lead capture &amp; qualification</a><a href="{% url 'home' %}#followup">AI follow-up</a><a href="{% url 'home' %}#integrations">Integrations</a><a href="{% url 'home' %}#whatsapp">WhatsApp CRM</a></div>
       </div>
       <div class="nav-dropdown">
-        <a href="#industries" class="nav-link">Use Cases <svg class="icon-sm" viewBox="0 0 24 24"><path d="m7 10 5 5 5-5"/></svg></a>
-        <div class="nav-dropdown-menu"><a href="#industries">Real estate</a><a href="#industries">Education</a><a href="#industries">Fitness &amp; wellness</a><a href="#industries">B2B sales</a></div>
+        <a href="{% url 'home' %}#industries" class="nav-link">Use Cases <svg class="icon-sm" viewBox="0 0 24 24"><path d="m7 10 5 5 5-5"/></svg></a>
+        <div class="nav-dropdown-menu"><a href="{% url 'home' %}#industries">Real estate</a><a href="{% url 'home' %}#industries">Education</a><a href="{% url 'home' %}#industries">Fitness &amp; wellness</a><a href="{% url 'home' %}#industries">B2B sales</a></div>
       </div>
-      <a href="#proof" class="nav-link">Why SHVYA</a><a href="#faq" class="nav-link">FAQ</a><a href="{% url 'pricing' %}" class="nav-link">Pricing</a>
+      <a href="{% url 'home' %}#proof" class="nav-link">Why SHVYA</a><a href="{% url 'home' %}#faq" class="nav-link">FAQ</a><a href="{% url 'pricing' %}" class="nav-link">Pricing</a>
     </nav>
     <div class="nav-actions">
       {% if crm_user %}
@@ -36,5 +36,5 @@
       <button class="menu-btn" id="menuBtn" type="button" aria-label="Open navigation" aria-expanded="false"><svg class="icon" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
     </div>
   </div>
-  <div class="mobile-nav" id="mobileNav"><a href="#features">Features <span>→</span></a><a href="#industries">Use Cases <span>→</span></a><a href="#proof">Why SHVYA <span>→</span></a><a href="#faq">FAQ <span>→</span></a><a href="{% url 'pricing' %}">Pricing <span>→</span></a>{% if not crm_user %}<div class="mobile-actions"><a href="{% url 'crm-login' %}" class="btn btn-secondary">Login</a><a href="{% url 'crm-signup' %}" class="btn btn-primary">Start free</a></div>{% endif %}</div>
+  <div class="mobile-nav" id="mobileNav"><a href="{% url 'home' %}#features">Features <span>→</span></a><a href="{% url 'home' %}#industries">Use Cases <span>→</span></a><a href="{% url 'home' %}#proof">Why SHVYA <span>→</span></a><a href="{% url 'home' %}#faq">FAQ <span>→</span></a><a href="{% url 'pricing' %}">Pricing <span>→</span></a>{% if not crm_user %}<div class="mobile-actions"><a href="{% url 'crm-login' %}" class="btn btn-secondary">Login</a><a href="{% url 'crm-signup' %}" class="btn btn-primary">Start free</a></div>{% endif %}</div>
 </header>
