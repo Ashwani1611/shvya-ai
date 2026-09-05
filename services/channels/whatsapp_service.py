@@ -1318,6 +1318,7 @@ def list_conversations(
     *,
     organization,
     account=None,
+    tab="all",
 ):
     """
     Returns one row per lead that has at least one WhatsApp
@@ -1325,7 +1326,7 @@ def list_conversations(
     its last message and unread count. Used by the Chats inbox
     list view.
     """
-    from django.db.models import Count, Max, Q
+    from django.db.models import Count, Max, OuterRef, Q, Subquery
 
     messages = WhatsAppMessage.objects.filter(
         organization=organization,
@@ -1346,8 +1347,11 @@ def list_conversations(
         .distinct()
     )
 
+    last_message = messages.filter(lead_id=OuterRef("pk")).order_by("-created_at", "-pk")
+
     leads = (
         Lead.objects.filter(
+            organization=organization,
             id__in=lead_ids
         )
         .annotate(
@@ -1380,10 +1384,27 @@ def list_conversations(
                 ),
             ),
         )
+        .annotate(
+            last_msg_body=Subquery(last_message.values("body")[:1]),
+            last_msg_direction=Subquery(last_message.values("direction")[:1]),
+            last_msg_status=Subquery(last_message.values("status")[:1]),
+            last_msg_error=Subquery(last_message.values("error")[:1]),
+        )
         .order_by(
             "-last_message_at"
         )
     )
+
+    if tab == "unread":
+        leads = leads.filter(unread_count__gt=0)
+    elif tab == "needs_reply":
+        leads = leads.filter(last_msg_direction=WhatsAppMessage.Direction.INBOUND)
+    elif tab == "failed":
+        leads = leads.filter(last_msg_status=WhatsAppMessage.Status.FAILED)
+    elif tab == "broadcasts":
+        leads = leads.filter(
+            id__in=messages.filter(bulk_recipient__isnull=False).values("lead_id")
+        )
 
     return leads
 
