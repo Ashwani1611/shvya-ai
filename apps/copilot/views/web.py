@@ -1,4 +1,7 @@
+from urllib.parse import urlencode
+
 from django.shortcuts import render
+from django.urls import reverse
 from django.views.decorators.csrf import ensure_csrf_cookie
 from django.views.decorators.http import require_GET
 
@@ -67,6 +70,23 @@ def copilot_dashboard(request):
     if config["copilot_enabled"]:
         ensure_fresh_cache(organization)
         cards = group_flags_for_dashboard(active_flags_for_user(user))
+
+        # Quick View must return to the main CRM dashboard, select the
+        # lead's pipeline/stage, then open that lead in-place.  The old
+        # crm-lead-detail URL renders a partial and is not a standalone CRM
+        # page, so navigating to it directly loses the normal dashboard flow.
+        crm_dashboard_url = reverse("crm-dashboard")
+        for card in cards:
+            lead = card["lead"]
+            query = {
+                "pipeline": str(lead.pipeline_id),
+                "lead": str(lead.id),
+            }
+            if lead.stage_id:
+                query["stage"] = str(lead.stage_id)
+            card["quick_view_url"] = (
+                f"{crm_dashboard_url}?{urlencode(query)}"
+            )
 
     cards_by_severity = {item["severity"]: [] for item in SECTION_META}
     for card in cards:
