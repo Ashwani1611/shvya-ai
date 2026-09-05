@@ -59,6 +59,22 @@ class WhatsAppSummaryTriggerTests(TestCase):
             is_active=True,
         )
 
+    def setUp(self):
+        # The inbound-message signal queues both summary generation
+        # and customer-facing AI engagement. These tests cover only
+        # the summary trigger, so prevent eager Celery execution of
+        # the separate engagement task (and therefore OpenAI calls).
+        self.ai_engagement_patcher = patch(
+            "apps.ai_engagement.tasks."
+            "generate_ai_engagement_response.delay"
+        )
+        self.mocked_ai_engagement_delay = (
+            self.ai_engagement_patcher.start()
+        )
+        self.addCleanup(
+            self.ai_engagement_patcher.stop
+        )
+
     @patch(
         "apps.ai_engagement.tasks."
         "generate_internal_conversation_summary.delay"
@@ -104,6 +120,10 @@ class WhatsAppSummaryTriggerTests(TestCase):
         )
 
         mocked_delay.assert_called_once_with(
+            str(message.lead_id)
+        )
+
+        self.mocked_ai_engagement_delay.assert_called_once_with(
             str(message.lead_id)
         )
 
@@ -177,6 +197,10 @@ class WhatsAppSummaryTriggerTests(TestCase):
             str(first_message.lead_id)
         )
 
+        self.mocked_ai_engagement_delay.assert_called_once_with(
+            str(first_message.lead_id)
+        )
+
     @patch(
         "apps.ai_engagement.tasks."
         "generate_internal_conversation_summary.delay"
@@ -216,5 +240,9 @@ class WhatsAppSummaryTriggerTests(TestCase):
             )
 
         mocked_delay.assert_called_once_with(
+            str(message.lead_id)
+        )
+
+        self.mocked_ai_engagement_delay.assert_called_once_with(
             str(message.lead_id)
         )
