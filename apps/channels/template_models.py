@@ -42,6 +42,15 @@ class WhatsAppTemplateMetadata(models.Model):
     meta_error_subcode = models.CharField(max_length=64, blank=True)
     meta_error_type = models.CharField(max_length=128, blank=True)
     meta_error_message = models.TextField(blank=True)
+
+    # Meta media-header sample data. The handle is returned by Meta's
+    # resumable-upload API and is safe to persist; raw file bytes are never
+    # stored in the database.
+    header_sample_handle = models.TextField(blank=True)
+    header_file_name = models.CharField(max_length=255, blank=True)
+    header_mime_type = models.CharField(max_length=128, blank=True)
+    header_file_size = models.PositiveBigIntegerField(null=True, blank=True)
+
     last_synced_at = models.DateTimeField(null=True, blank=True)
     submitted_at = models.DateTimeField(null=True, blank=True)
     approved_at = models.DateTimeField(null=True, blank=True)
