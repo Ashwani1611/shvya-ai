@@ -1,20 +1,69 @@
 {% extends "base.html" %}
-{% load static %}
 {% block title %}SHVYA AI — Message Templates{% endblock %}
 {% block header %}Template Message{% endblock %}
 {% block content %}
-<div class="mb-6 flex items-center justify-end">
-{% if can_manage %}<a href="{% url 'whatsapp-template-create' %}" class="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-700"><i class="ti ti-plus"></i> Add Template Message</a>{% endif %}
+<div class="mx-auto max-w-7xl space-y-5">
+  <div class="flex flex-wrap items-center justify-between gap-3">
+    <div>
+      <h2 class="text-lg font-semibold text-gray-900">Template Message</h2>
+      <p class="mt-1 text-sm text-gray-500">Draft, submit, synchronize and manage real WhatsApp Business message templates.</p>
+    </div>
+    {% if can_manage %}
+    <div class="flex flex-wrap gap-2">
+      <button id="sync-btn" type="button" class="inline-flex items-center gap-2 rounded-xl border border-emerald-200 bg-white px-4 py-2.5 text-sm font-semibold text-emerald-700 hover:bg-emerald-50"><i class="ti ti-refresh"></i><span>Sync Templates</span></button>
+      <a href="{% url 'whatsapp-template-create' %}" class="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700"><i class="ti ti-plus"></i>Add Template Message</a>
+    </div>
+    {% endif %}
+  </div>
+
+  <form method="get" id="filter-form" class="grid gap-3 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm md:grid-cols-[2fr_1fr_1fr_1fr_auto]">
+    <div class="relative"><i class="ti ti-search absolute left-3 top-3 text-gray-400"></i><input name="q" value="{{ search_query }}" placeholder="Search for Message Template" class="w-full rounded-lg border border-gray-300 py-2.5 pl-9 pr-3 text-sm focus:border-emerald-500 focus:outline-none"></div>
+    <select name="category" class="rounded-lg border border-gray-300 px-3 py-2.5 text-sm" onchange="this.form.submit()"><option value="">Category</option>{% for value,label in categories %}<option value="{{ value }}" {% if selected_category == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>
+    <select name="status" class="rounded-lg border border-gray-300 px-3 py-2.5 text-sm" onchange="this.form.submit()"><option value="">Status</option>{% for value,label in statuses %}<option value="{{ value }}" {% if selected_status == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>
+    <select name="account" id="business-filter" class="rounded-lg border border-gray-300 px-3 py-2.5 text-sm" onchange="this.form.submit()"><option value="">Business</option>{% for account in accounts %}<option value="{{ account.id }}" {% if selected_account == account.id|stringformat:'s' %}selected{% endif %}>{{ account.business_name|default:account.display_phone_number|default:account.waba_id }}</option>{% endfor %}</select>
+    <button class="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50">Search</button>
+  </form>
+
+  <div id="sync-result" class="hidden rounded-xl border px-4 py-3 text-sm"></div>
+
+  <div class="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
+    <div class="overflow-x-auto">
+      <table class="w-full min-w-[920px] text-left text-sm">
+        <thead class="bg-gray-50 text-[11px] font-semibold uppercase tracking-wide text-gray-500"><tr><th class="px-5 py-3">Template Name</th><th class="px-5 py-3">Category</th><th class="px-5 py-3">Status</th><th class="px-5 py-3">Delivered</th><th class="px-5 py-3">Read rate</th><th class="px-5 py-3">Last Updated</th><th class="px-5 py-3 text-right">Action</th></tr></thead>
+        <tbody class="divide-y divide-gray-100">
+        {% for template in templates %}
+          <tr id="template-row-{{ template.id }}" class="hover:bg-gray-50/70">
+            <td class="px-5 py-4"><a {% if template.status == 'draft' %}href="{% url 'whatsapp-template-edit' template.id %}"{% endif %} class="font-semibold text-gray-900 {% if template.status == 'draft' %}hover:text-emerald-700{% endif %}">{{ template.name }}</a><div class="mt-1 text-[11px] text-gray-400">{{ template.account.business_name|default:template.account.display_phone_number }}{% if template.meta_template_id %} · Meta {{ template.meta_template_id }}{% endif %}</div>{% if template.rejection_reason %}<div class="mt-1 max-w-sm text-xs text-red-600">{{ template.rejection_reason|truncatechars:120 }}</div>{% endif %}</td>
+            <td class="px-5 py-4 uppercase text-gray-600">{{ template.category }}</td>
+            <td class="px-5 py-4"><span class="inline-flex rounded-full px-2.5 py-1 text-xs font-semibold {% if template.status == 'approved' %}bg-green-50 text-green-700{% elif template.status == 'pending' %}bg-amber-50 text-amber-700{% elif template.status == 'rejected' %}bg-red-50 text-red-700{% elif template.status == 'draft' %}bg-gray-100 text-gray-600{% else %}bg-blue-50 text-blue-700{% endif %}">{{ template.get_status_display }}</span></td>
+            <td class="px-5 py-4 text-gray-400">—</td><td class="px-5 py-4 text-gray-400">—</td>
+            <td class="px-5 py-4 text-gray-500">{{ template.updated_at|date:"d M Y, H:i" }}</td>
+            <td class="px-5 py-4"><div class="flex justify-end gap-1">
+              <button type="button" data-copy="{{ template.id }}" aria-label="Copy {{ template.name }}" title="Copy to draft" class="action-copy flex h-9 w-9 items-center justify-center rounded-lg text-gray-400 hover:bg-emerald-50 hover:text-emerald-600"><i class="ti ti-copy"></i></button>
+              <button type="button" data-delete="{{ template.id }}" data-name="{{ template.name|escapejs }}" aria-label="Delete {{ template.name }}" title="Delete" class="action-delete flex h-9 w-9 items-center justify-center rounded-lg text-gray-400 hover:bg-red-50 hover:text-red-600"><i class="ti ti-trash"></i></button>
+            </div></td>
+          </tr>
+        {% empty %}
+          <tr><td colspan="7" class="px-6 py-14 text-center"><div class="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-emerald-50 text-2xl text-emerald-600"><i class="ti ti-file-text"></i></div><h3 class="mt-4 font-semibold text-gray-900">No templates found</h3><p class="mt-1 text-sm text-gray-500">Create a draft or select a business and synchronize Meta templates.</p></td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
 </div>
-<form method="get" class="mb-5 flex flex-wrap items-center gap-3">
-<select name="category" onchange="this.form.submit()" class="rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"><option value="">All Categories</option>{% for value, label in categories %}<option value="{{ value }}" {% if selected_category == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>
-<select name="status" onchange="this.form.submit()" class="rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"><option value="">All Statuses</option>{% for value, label in statuses %}<option value="{{ value }}" {% if selected_status == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>
-<select name="account" onchange="this.form.submit()" class="rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"><option value="">All Businesses</option>{% for account in accounts %}<option value="{{ account.id }}" {% if selected_account == account.id|stringformat:"s" %}selected{% endif %}>{{ account.business_name|default:account.display_phone_number }}</option>{% endfor %}</select>
-{% if selected_category or selected_status or selected_account %}<a href="{% url 'whatsapp-template-list' %}" class="text-sm font-medium text-emerald-700 underline">Clear filters</a>{% endif %}
-</form>
-{% if templates %}
-<div class="overflow-hidden rounded-xl border border-emerald-100 bg-white shadow-sm"><table class="w-full text-left text-sm"><thead class="bg-emerald-50/70 text-xs font-semibold uppercase tracking-wide text-gray-500"><tr><th class="px-5 py-3">Template Name</th><th class="px-5 py-3">Category</th><th class="px-5 py-3">Status</th><th class="px-5 py-3">Last Updated</th></tr></thead><tbody class="divide-y divide-gray-100">
-{% for template in templates %}<tr class="transition hover:bg-emerald-50/30"><td class="px-5 py-4"><span class="font-medium text-emerald-700">{{ template.name }}</span></td><td class="px-5 py-4 uppercase text-gray-600">{{ template.category }}</td><td class="px-5 py-4"><span class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold {% if template.status == 'approved' %}bg-green-50 text-green-700{% elif template.status == 'pending' %}bg-amber-50 text-amber-700{% elif template.status == 'rejected' %}bg-red-50 text-red-700{% else %}bg-gray-100 text-gray-600{% endif %}">{{ template.get_status_display|upper }}</span></td><td class="px-5 py-4 text-gray-500">{{ template.updated_at|date:"d/m/y" }}</td></tr>{% endfor %}
-</tbody></table></div>
-{% else %}<div class="rounded-xl border border-dashed border-emerald-200 bg-white p-10 text-center"><div class="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-emerald-50 text-2xl text-emerald-600"><i class="ti ti-file-text"></i></div><h2 class="mt-4 text-base font-semibold text-gray-900">No templates found</h2><p class="mt-1 text-sm text-gray-500">{% if selected_category or selected_status or selected_account %}No templates match the selected filters.{% else %}Create your first message template to get started.{% endif %}</p></div>{% endif %}
+<script>
+(function(){
+ const csrf='{{ csrf_token }}';
+ const toast=(m,t)=>typeof window.shvyaToast==='function'?window.shvyaToast(m,t):alert(m);
+ const syncBtn=document.getElementById('sync-btn'), business=document.getElementById('business-filter'), result=document.getElementById('sync-result');
+ if(syncBtn) syncBtn.addEventListener('click', async()=>{
+   if(!business.value){toast('Select a Business before syncing.','warning');business.focus();return;}
+   syncBtn.disabled=true;syncBtn.querySelector('span').textContent='Syncing…';
+   const fd=new FormData();fd.append('account',business.value);
+   try{const r=await fetch('{% url "whatsapp-template-sync" %}',{method:'POST',headers:{'X-CSRFToken':csrf},body:fd});const d=await r.json();if(!r.ok)throw new Error(d.error||'Template synchronization failed.');result.className='rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800';result.textContent=`Sync completed: ${d.created} created, ${d.updated} updated, ${d.unchanged} unchanged, ${d.failed} failed.`;toast('Templates synchronized successfully.','success');setTimeout(()=>location.reload(),700);}catch(e){result.className='rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700';result.textContent=e.message;toast(e.message,'error');}finally{syncBtn.disabled=false;syncBtn.querySelector('span').textContent='Sync Templates';}
+ });
+ document.querySelectorAll('.action-copy').forEach(b=>b.addEventListener('click',async()=>{b.disabled=true;try{const r=await fetch(`/dashboard/whatsapp/templates/${b.dataset.copy}/copy/`,{method:'POST',headers:{'X-CSRFToken':csrf}});const d=await r.json();if(!r.ok)throw new Error(d.error||'Could not copy template.');location.href=d.edit_url;}catch(e){toast(e.message,'error');b.disabled=false;}}));
+ document.querySelectorAll('.action-delete').forEach(b=>b.addEventListener('click',async()=>{if(!confirm(`Delete template?\n\n${b.dataset.name}\n\nThis removes the template from the configured WhatsApp Business Account and SHVYA.`))return;b.disabled=true;try{const r=await fetch(`/dashboard/whatsapp/templates/${b.dataset.delete}/delete/`,{method:'POST',headers:{'X-CSRFToken':csrf}});const d=await r.json();if(!r.ok)throw new Error(d.error||'Could not delete template.');document.getElementById(`template-row-${b.dataset.delete}`)?.remove();toast('Template deletion requested successfully.','success');}catch(e){toast(e.message,'error');b.disabled=false;}}));
+})();
+</script>
 {% endblock %}
