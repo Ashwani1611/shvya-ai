@@ -26,23 +26,33 @@
         {% endif %}
     </div>
 
+    {% if request.GET.connected %}
+    <div class="mb-4 flex items-start gap-3 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
+        <i class="ti ti-circle-check mt-0.5 text-lg text-green-600"></i>
+        <div>
+            <p class="font-semibold">WhatsApp Business API setup completed.</p>
+            <p class="mt-0.5 text-xs text-green-700">SHVYA saved the connection. The Meta Phone Number ID, WABA ID and current status are shown below.</p>
+        </div>
+    </div>
+    {% endif %}
+
     <div id="connected-accounts-card" class="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
         <div class="border-b border-gray-100 bg-[#f7fbf9] px-5 py-4">
             <div class="flex items-center justify-between gap-3">
                 <div>
                     <p class="text-sm font-semibold text-gray-900">Your WhatsApp connections</p>
-                    <p class="mt-0.5 text-xs text-gray-500">Only active connections are shown here.</p>
+                    <p class="mt-0.5 text-xs text-gray-500">Only active connections are shown here. Access tokens remain encrypted and are never displayed.</p>
                 </div>
                 <span class="rounded-full bg-white px-3 py-1 text-xs font-medium text-gray-500 shadow-sm">WhatsApp</span>
             </div>
         </div>
 
         <div class="overflow-x-auto">
-            <table class="w-full min-w-[760px] text-left text-sm">
+            <table class="w-full min-w-[900px] text-left text-sm">
                 <thead class="bg-gray-50 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
                     <tr>
                         <th class="px-5 py-3">Number</th>
-                        <th class="px-5 py-3">Business</th>
+                        <th class="px-5 py-3">Business / WABA</th>
                         <th class="px-5 py-3">Status</th>
                         <th class="px-5 py-3">Welcome message</th>
                         <th class="px-5 py-3">Contact info</th>
@@ -52,16 +62,23 @@
                 <tbody id="connected-accounts-body" class="divide-y divide-gray-100">
                     {% for account in accounts %}
                     {% if account.is_active %}
-                    <tr id="account-row-{{ account.id }}" class="connected-account-row transition hover:bg-gray-50/80">
+                    <tr id="account-row-{{ account.id }}" class="connected-account-row transition hover:bg-gray-50/80 {% if request.GET.connected == account.id|stringformat:'s' %}bg-green-50/60{% endif %}">
                         <td class="px-5 py-4">
-                            <div class="flex items-center gap-3">
+                            <div class="flex items-start gap-3">
                                 <span class="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-green-50 text-green-600">
                                     <i class="ti ti-brand-whatsapp"></i>
                                 </span>
-                                <span class="font-semibold text-gray-900">{{ account.display_phone_number|default:"—" }}</span>
+                                <div class="min-w-0">
+                                    <div class="font-semibold text-gray-900">{{ account.display_phone_number|default:"—" }}</div>
+                                    <div class="mt-1 max-w-[240px] break-all text-[11px] text-gray-400">Phone ID: {{ account.phone_number_id|default:"—" }}</div>
+                                </div>
                             </div>
                         </td>
-                        <td class="px-5 py-4 text-gray-700">{{ account.business_name|default:account.get_connection_type_display }}</td>
+                        <td class="px-5 py-4">
+                            <div class="font-medium text-gray-700">{{ account.business_name|default:account.get_connection_type_display }}</div>
+                            <div class="mt-1 max-w-[240px] break-all text-[11px] text-gray-400">WABA: {{ account.waba_id|default:"—" }}</div>
+                            <div class="mt-1 text-[11px] text-gray-400">{{ account.get_connection_type_display }}</div>
+                        </td>
                         <td class="px-5 py-4">
                             <span class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold {% if account.status == 'connected' %}bg-green-50 text-green-700{% elif account.status == 'pending' %}bg-amber-50 text-amber-700{% elif account.status == 'failed' %}bg-red-50 text-red-700{% else %}bg-gray-100 text-gray-600{% endif %}">
                                 <span class="h-1.5 w-1.5 rounded-full {% if account.status == 'connected' %}bg-green-500{% elif account.status == 'pending' %}bg-amber-500{% elif account.status == 'failed' %}bg-red-500{% else %}bg-gray-400{% endif %}"></span>
