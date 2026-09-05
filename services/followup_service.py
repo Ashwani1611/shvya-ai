@@ -151,6 +151,7 @@ def duplicate_sequence(*, sequence, created_by):
                 specific_weekday=step.specific_weekday,
                 recurring_every=step.recurring_every,
                 recurring_unit=step.recurring_unit,
+                recurring_weekdays=list(step.recurring_weekdays or []),
                 retry_count=step.retry_count,
                 retry_delay_hours=step.retry_delay_hours,
                 is_active=step.is_active,
@@ -178,6 +179,9 @@ def _validate_schedule(
     delay_unit="",
     specific_time=None,
     specific_weekday=None,
+    recurring_every=None,
+    recurring_unit="",
+    recurring_weekdays=None,
 ):
     if schedule_type not in FollowupStep.ScheduleType.values:
         raise FollowupError("Invalid delivery schedule.")
@@ -188,12 +192,24 @@ def _validate_schedule(
             raise FollowupError("Choose minutes, hours, or days for the delay.")
     if schedule_type == FollowupStep.ScheduleType.SPECIFIC_TIME and specific_time is None:
         raise FollowupError("Choose a specific delivery time.")
-    if schedule_type == FollowupStep.ScheduleType.RECURRING:
-        raise FollowupError(
-            "Recurring steps are reserved in the data model but are not enabled until their execution rule is finalized."
-        )
     if specific_weekday is not None and specific_weekday not in FollowupStep.Weekday.values:
         raise FollowupError("Invalid weekday.")
+    if schedule_type == FollowupStep.ScheduleType.RECURRING:
+        weekdays = list(recurring_weekdays or [])
+        if weekdays:
+            invalid = [day for day in weekdays if day not in FollowupStep.Weekday.values]
+            if invalid:
+                raise FollowupError("Choose valid recurring weekdays.")
+            if specific_time is None:
+                raise FollowupError("Choose a time for recurring specific days.")
+        else:
+            if not recurring_every or recurring_every < 1:
+                raise FollowupError("Enter how often the recurring step should repeat.")
+            if recurring_unit not in {
+                FollowupStep.DelayUnit.HOURS,
+                FollowupStep.DelayUnit.DAYS,
+            }:
+                raise FollowupError("Recurring intervals can use hours or days.")
 
 
 def add_whatsapp_step(
@@ -205,6 +221,9 @@ def add_whatsapp_step(
     delay_unit="",
     specific_time=None,
     specific_weekday=None,
+    recurring_every=None,
+    recurring_unit="",
+    recurring_weekdays=None,
     retry_count=0,
 ):
     if template.organization_id != sequence.organization_id:
@@ -225,6 +244,9 @@ def add_whatsapp_step(
         delay_unit=delay_unit,
         specific_time=specific_time,
         specific_weekday=specific_weekday,
+        recurring_every=recurring_every,
+        recurring_unit=recurring_unit,
+        recurring_weekdays=recurring_weekdays,
     )
     return FollowupStep.objects.create(
         sequence=sequence,
@@ -237,6 +259,9 @@ def add_whatsapp_step(
         delay_unit=delay_unit,
         specific_time=specific_time,
         specific_weekday=specific_weekday,
+        recurring_every=recurring_every,
+        recurring_unit=recurring_unit,
+        recurring_weekdays=list(recurring_weekdays or []),
         retry_count=retry_count,
         retry_delay_hours=24,
     )
@@ -253,6 +278,9 @@ def add_email_step(
     delay_unit="",
     specific_time=None,
     specific_weekday=None,
+    recurring_every=None,
+    recurring_unit="",
+    recurring_weekdays=None,
 ):
     title = (title or "").strip() or f"Email {sequence.steps.count() + 1}"
     subject = (subject or "").strip()
@@ -265,6 +293,9 @@ def add_email_step(
         delay_unit=delay_unit,
         specific_time=specific_time,
         specific_weekday=specific_weekday,
+        recurring_every=recurring_every,
+        recurring_unit=recurring_unit,
+        recurring_weekdays=recurring_weekdays,
     )
     return FollowupStep.objects.create(
         sequence=sequence,
@@ -278,6 +309,9 @@ def add_email_step(
         delay_unit=delay_unit,
         specific_time=specific_time,
         specific_weekday=specific_weekday,
+        recurring_every=recurring_every,
+        recurring_unit=recurring_unit,
+        recurring_weekdays=list(recurring_weekdays or []),
     )
 
 
@@ -290,6 +324,9 @@ def add_reminder_step(
     delay_unit="",
     specific_time=None,
     specific_weekday=None,
+    recurring_every=None,
+    recurring_unit="",
+    recurring_weekdays=None,
 ):
     text = (text or "").strip()
     if not text:
@@ -300,6 +337,9 @@ def add_reminder_step(
         delay_unit=delay_unit,
         specific_time=specific_time,
         specific_weekday=specific_weekday,
+        recurring_every=recurring_every,
+        recurring_unit=recurring_unit,
+        recurring_weekdays=recurring_weekdays,
     )
     return FollowupStep.objects.create(
         sequence=sequence,
@@ -315,6 +355,9 @@ def add_reminder_step(
         delay_unit=delay_unit,
         specific_time=specific_time,
         specific_weekday=specific_weekday,
+        recurring_every=recurring_every,
+        recurring_unit=recurring_unit,
+        recurring_weekdays=list(recurring_weekdays or []),
     )
 
 
@@ -373,6 +416,24 @@ def _specific_due(*, organization, reference, clock_time, weekday=None):
     return candidate.astimezone(datetime_timezone.utc)
 
 
+def _recurring_days_due(*, organization, reference, clock_time, weekdays):
+    zone = _org_zone(organization)
+    local_ref = reference.astimezone(zone)
+    allowed = {int(day) for day in weekdays}
+    for days_ahead in range(8):
+        candidate = datetime.combine(
+            local_ref.date() + timedelta(days=days_ahead),
+            clock_time,
+            tzinfo=zone,
+        )
+        if (
+            _weekday_python_to_model(candidate.weekday()) in allowed
+            and candidate > local_ref
+        ):
+            return candidate.astimezone(datetime_timezone.utc)
+    raise FollowupError("Unable to calculate the next recurring weekday.")
+
+
 def calculate_step_due(*, step, reference, organization):
     if step.schedule_type == FollowupStep.ScheduleType.IMMEDIATE:
         return reference
@@ -385,7 +446,16 @@ def calculate_step_due(*, step, reference, organization):
             clock_time=step.specific_time,
             weekday=step.specific_weekday,
         )
-    raise FollowupError("Recurring follow-up execution is not enabled yet.")
+    if step.schedule_type == FollowupStep.ScheduleType.RECURRING:
+        if step.recurring_weekdays:
+            return _recurring_days_due(
+                organization=organization,
+                reference=reference,
+                clock_time=step.specific_time,
+                weekdays=step.recurring_weekdays,
+            )
+        return reference + _delay_delta(step.recurring_every, step.recurring_unit)
+    raise FollowupError("Unsupported follow-up schedule.")
 
 
 def _move_into_business_hours(*, organization, due):
@@ -457,6 +527,44 @@ def _set_next_step(state, *, reference=None):
         ]
     )
     return state
+
+
+def _repeat_or_advance(state, step, *, completed_at):
+    state.last_step_completed_at = completed_at
+    if step.schedule_type == FollowupStep.ScheduleType.RECURRING:
+        due = calculate_step_due(
+            step=step,
+            reference=completed_at,
+            organization=state.organization,
+        )
+        due = _move_into_business_hours(organization=state.organization, due=due)
+        if state.paused_until and due < state.paused_until:
+            due = state.paused_until
+        state.next_step = step
+        state.upcoming_send_at = due
+        state.status = LeadSequenceState.Status.ACTIVE
+        state.completed_at = None
+        state.save(
+            update_fields=[
+                "last_step_completed_at",
+                "next_step",
+                "upcoming_send_at",
+                "status",
+                "completed_at",
+                "updated_at",
+            ]
+        )
+        return state
+
+    state.last_completed_position = step.position
+    state.save(
+        update_fields=[
+            "last_completed_position",
+            "last_step_completed_at",
+            "updated_at",
+        ]
+    )
+    return _set_next_step(state, reference=completed_at)
 
 
 def _recalculate_active_states(sequence):
@@ -622,7 +730,8 @@ def _lead_template_values(lead, user=None):
         "pipeline_name": lead.pipeline.name if lead.pipeline_id else "",
         "stage_name": lead.stage.name if lead.stage_id else "",
     }
-    values.update(getattr(lead, "attributes", None) or {})
+    for key, value in (getattr(lead, "attributes", None) or {}).items():
+        values.setdefault(str(key), value)
     return values
 
 
@@ -651,9 +760,11 @@ def _create_execution(state, step):
         pending.save(update_fields=["status", "started_at", "updated_at"])
         return pending
 
-    previous = (
-        state.executions.filter(step=step).aggregate(max_attempt=Max("attempt_no"))["max_attempt"]
-        or 0
+    latest = state.executions.filter(step=step).order_by("-created_at").first()
+    attempt_no = (
+        latest.attempt_no + 1
+        if latest and latest.status == FollowupExecution.Status.RETRY_WAIT
+        else 1
     )
     return FollowupExecution.objects.create(
         organization=state.organization,
@@ -663,7 +774,7 @@ def _create_execution(state, step):
         step=step,
         scheduled_for=state.upcoming_send_at or timezone.now(),
         status=FollowupExecution.Status.PROCESSING,
-        attempt_no=previous + 1,
+        attempt_no=attempt_no,
         max_attempts=1 + step.retry_count,
         started_at=timezone.now(),
     )
@@ -831,19 +942,9 @@ def _send_whatsapp_step(state, step, execution):
     )
 
     state.last_sent_at = finished
-    state.last_completed_position = step.position
-    state.last_step_completed_at = finished
     state.paused_until = None
-    state.save(
-        update_fields=[
-            "last_sent_at",
-            "last_completed_position",
-            "last_step_completed_at",
-            "paused_until",
-            "updated_at",
-        ]
-    )
-    _set_next_step(state, reference=finished)
+    state.save(update_fields=["last_sent_at", "paused_until", "updated_at"])
+    _repeat_or_advance(state, step, completed_at=finished)
 
 
 def _render_text(text, lead, user=None):
@@ -895,17 +996,8 @@ def _send_email_step(state, step, execution):
     execution.payload = {"recipient": lead.email, "subject": subject}
     execution.save(update_fields=["status", "finished_at", "payload", "updated_at"])
     state.last_sent_at = now
-    state.last_completed_position = step.position
-    state.last_step_completed_at = now
-    state.save(
-        update_fields=[
-            "last_sent_at",
-            "last_completed_position",
-            "last_step_completed_at",
-            "updated_at",
-        ]
-    )
-    _set_next_step(state, reference=now)
+    state.save(update_fields=["last_sent_at", "updated_at"])
+    _repeat_or_advance(state, step, completed_at=now)
 
 
 def _create_reminder_step(state, step, execution):
@@ -933,10 +1025,7 @@ def _create_reminder_step(state, step, execution):
     execution.save(
         update_fields=["reminder", "status", "finished_at", "payload", "updated_at"]
     )
-    state.last_completed_position = step.position
-    state.last_step_completed_at = now
-    state.save(update_fields=["last_completed_position", "last_step_completed_at", "updated_at"])
-    _set_next_step(state, reference=now)
+    _repeat_or_advance(state, step, completed_at=now)
 
 
 @transaction.atomic
