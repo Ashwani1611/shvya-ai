@@ -1,5 +1,6 @@
 from django.contrib import admin
 
+from .connection_attempts import WhatsAppConnectionAttempt
 from .models import (
     BulkMessageCampaign,
     BulkMessageRecipient,
@@ -60,6 +61,50 @@ class WhatsAppAccountAdmin(admin.ModelAdmin):
         # (apps.channels.views_flat), not directly in admin --
         # the flow enforces which fields get set for API vs
         # coexisted connections.
+        return False
+
+
+@admin.register(WhatsAppConnectionAttempt)
+class WhatsAppConnectionAttemptAdmin(admin.ModelAdmin):
+    """Read-only audit trail for manual and Embedded Signup attempts."""
+
+    list_display = [
+        "created_at",
+        "organization",
+        "method",
+        "status",
+        "stage",
+        "display_phone_number",
+        "waba_id",
+        "phone_number_id",
+        "webhook_subscribed",
+    ]
+
+    list_filter = [
+        "method",
+        "status",
+        "webhook_subscribed",
+        "organization",
+    ]
+
+    search_fields = [
+        "organization__name",
+        "waba_id",
+        "phone_number_id",
+        "display_phone_number",
+        "business_name",
+        "error_message",
+    ]
+
+    readonly_fields = [field.name for field in WhatsAppConnectionAttempt._meta.fields]
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
         return False
 
 
