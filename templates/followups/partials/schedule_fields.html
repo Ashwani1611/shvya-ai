@@ -13,6 +13,10 @@
             <input type="radio" name="schedule_type" value="delay" {% if step.schedule_type == 'delay' %}checked{% endif %}>
             <span>After X minutes/hours/days</span>
         </label>
+        <label class="inline-flex cursor-pointer items-center gap-2">
+            <input type="radio" name="schedule_type" value="recurring" {% if step.schedule_type == 'recurring' %}checked{% endif %}>
+            <span>Recurring</span>
+        </label>
     </div>
 
     <div data-schedule-panel="immediate" class="mt-3 {% if step and step.schedule_type != 'immediate' %}hidden{% endif %}">
@@ -26,7 +30,7 @@
                 <input
                     type="time"
                     name="specific_time"
-                    value="{% if step.specific_time %}{{ step.specific_time|time:'H:i' }}{% endif %}"
+                    value="{% if step.schedule_type == 'specific_time' and step.specific_time %}{{ step.specific_time|time:'H:i' }}{% endif %}"
                     class="h-11 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
                 >
             </div>
@@ -35,7 +39,7 @@
                 <select name="specific_weekday" class="h-11 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100">
                     <option value="">Next available</option>
                     {% for value,label in weekdays.choices %}
-                    <option value="{{ value }}" {% if step.specific_weekday == value %}selected{% endif %}>{{ label }}</option>
+                    <option value="{{ value }}" {% if step.schedule_type == 'specific_time' and step.specific_weekday == value %}selected{% endif %}>{{ label }}</option>
                     {% endfor %}
                 </select>
             </div>
@@ -51,7 +55,7 @@
                     type="number"
                     min="1"
                     name="delay_value"
-                    value="{{ step.delay_value|default:'' }}"
+                    value="{% if step.schedule_type == 'delay' %}{{ step.delay_value|default:'' }}{% endif %}"
                     placeholder="Enter delay"
                     class="h-11 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
                 >
@@ -61,37 +65,163 @@
                 <select name="delay_unit" class="h-11 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100">
                     <option value="">Select duration unit</option>
                     {% for value,label in delay_units.choices %}
-                    <option value="{{ value }}" {% if step.delay_unit == value %}selected{% endif %}>{{ label }}</option>
+                    <option value="{{ value }}" {% if step.schedule_type == 'delay' and step.delay_unit == value %}selected{% endif %}>{{ label }}</option>
                     {% endfor %}
                 </select>
             </div>
         </div>
         <p class="mt-2 text-xs italic text-gray-500">The delay starts after the previous step completes. For the first step, it starts when the sequence is activated for the lead.</p>
     </div>
+
+    <div data-schedule-panel="recurring" class="mt-4 {% if not step or step.schedule_type != 'recurring' %}hidden{% endif %}">
+        <div class="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-gray-800">
+            <span class="font-semibold">Repeat:</span>
+            <label class="inline-flex cursor-pointer items-center gap-2">
+                <input
+                    type="radio"
+                    name="recurring_mode"
+                    value="specific_days"
+                    {% if not step or step.schedule_type != 'recurring' or step.recurring_weekdays %}checked{% endif %}
+                >
+                <span>Specific Days</span>
+            </label>
+            <label class="inline-flex cursor-pointer items-center gap-2">
+                <input
+                    type="radio"
+                    name="recurring_mode"
+                    value="interval"
+                    {% if step.schedule_type == 'recurring' and not step.recurring_weekdays %}checked{% endif %}
+                >
+                <span>Every X Hours/Days</span>
+            </label>
+        </div>
+
+        <div data-recurring-panel="specific_days" class="mt-4 {% if step.schedule_type == 'recurring' and not step.recurring_weekdays %}hidden{% endif %}">
+            <div class="rounded-lg border border-gray-200 bg-white p-3">
+                <p class="mb-2 text-xs font-medium text-gray-600">Select day(s)</p>
+                <div class="flex flex-wrap gap-2">
+                    {% for value,label in weekdays.choices %}
+                    <label class="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm hover:border-blue-300 hover:bg-blue-50">
+                        <input
+                            type="checkbox"
+                            name="recurring_weekdays"
+                            value="{{ value }}"
+                            {% if value in step.recurring_weekdays %}checked{% endif %}
+                        >
+                        <span>{{ label }}</span>
+                    </label>
+                    {% endfor %}
+                </div>
+                <div class="mt-3 max-w-xs">
+                    <label class="mb-1 block text-xs font-medium text-gray-600">Time</label>
+                    <input
+                        type="time"
+                        name="recurring_time"
+                        value="{% if step.schedule_type == 'recurring' and step.recurring_weekdays and step.specific_time %}{{ step.specific_time|time:'H:i' }}{% endif %}"
+                        class="h-11 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                    >
+                </div>
+            </div>
+            <p class="mt-2 text-xs italic text-gray-500">This action repeats on every selected weekday at the chosen time until the lead leaves, pauses, completes, or switches this sequence.</p>
+        </div>
+
+        <div data-recurring-panel="interval" class="mt-4 {% if not step or step.schedule_type != 'recurring' or step.recurring_weekdays %}hidden{% endif %}">
+            <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:max-w-2xl">
+                <div>
+                    <label class="mb-1 block text-xs font-medium text-gray-600">Repeat every</label>
+                    <input
+                        type="number"
+                        min="1"
+                        name="recurring_every"
+                        value="{% if step.schedule_type == 'recurring' and not step.recurring_weekdays %}{{ step.recurring_every|default:'' }}{% endif %}"
+                        placeholder="Enter interval"
+                        class="h-11 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                    >
+                </div>
+                <div>
+                    <label class="mb-1 block text-xs font-medium text-gray-600">Duration</label>
+                    <select name="recurring_unit" class="h-11 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100">
+                        <option value="">Select duration</option>
+                        <option value="hours" {% if step.recurring_unit == 'hours' %}selected{% endif %}>Hours</option>
+                        <option value="days" {% if step.recurring_unit == 'days' %}selected{% endif %}>Days</option>
+                    </select>
+                </div>
+            </div>
+            <p class="mt-2 text-xs italic text-gray-500">This action repeats after the selected interval, measured from its previous successful run.</p>
+        </div>
+    </div>
 </div>
 
 <script>
 (function () {
+    function setPanelEnabled(panel, active) {
+        panel.classList.toggle('hidden', !active);
+        panel.querySelectorAll('input, select, textarea').forEach(function (field) {
+            field.disabled = !active;
+            field.required = false;
+        });
+    }
+
+    function syncRecurring(root) {
+        const recurringPanel = root.querySelector('[data-schedule-panel="recurring"]');
+        if (!recurringPanel || recurringPanel.classList.contains('hidden')) return;
+
+        const checked = recurringPanel.querySelector('input[name="recurring_mode"]:checked');
+        const selected = checked ? checked.value : 'specific_days';
+        recurringPanel.querySelectorAll('[data-recurring-panel]').forEach(function (panel) {
+            const active = panel.dataset.recurringPanel === selected;
+            setPanelEnabled(panel, active);
+            if (!active) return;
+
+            if (selected === 'specific_days') {
+                const time = panel.querySelector('input[name="recurring_time"]');
+                if (time) time.required = true;
+            } else {
+                const every = panel.querySelector('input[name="recurring_every"]');
+                const unit = panel.querySelector('select[name="recurring_unit"]');
+                if (every) every.required = true;
+                if (unit) unit.required = true;
+            }
+        });
+    }
+
     function syncFollowupSchedule(root) {
         if (!root) return;
         const checked = root.querySelector('input[name="schedule_type"]:checked');
         const selected = checked ? checked.value : 'immediate';
+
         root.querySelectorAll('[data-schedule-panel]').forEach(function (panel) {
             const active = panel.dataset.schedulePanel === selected;
-            panel.classList.toggle('hidden', !active);
-            panel.querySelectorAll('input, select, textarea').forEach(function (field) {
-                field.disabled = !active;
-                if (active && field.name === 'specific_time') {
-                    field.required = selected === 'specific_time';
-                }
-            });
+            setPanelEnabled(panel, active);
+            if (!active) return;
+
+            if (selected === 'specific_time') {
+                const time = panel.querySelector('input[name="specific_time"]');
+                if (time) time.required = true;
+            } else if (selected === 'delay') {
+                const value = panel.querySelector('input[name="delay_value"]');
+                const unit = panel.querySelector('select[name="delay_unit"]');
+                if (value) value.required = true;
+                if (unit) unit.required = true;
+            }
         });
+
+        syncRecurring(root);
     }
 
     if (!window.__shvyaFollowupScheduleBound) {
         document.addEventListener('change', function (event) {
-            if (!event.target.matches('[data-followup-schedule] input[name="schedule_type"]')) return;
-            syncFollowupSchedule(event.target.closest('[data-followup-schedule]'));
+            const root = event.target.closest('[data-followup-schedule]');
+            if (!root) return;
+
+            if (event.target.matches('input[name="schedule_type"]')) {
+                syncFollowupSchedule(root);
+                return;
+            }
+
+            if (event.target.matches('input[name="recurring_mode"]')) {
+                syncRecurring(root);
+            }
         });
         window.__shvyaFollowupScheduleBound = true;
     }
