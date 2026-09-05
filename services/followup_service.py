@@ -7,14 +7,15 @@ CRM reminder creation. Views only validate request shape and call this layer.
 
 from __future__ import annotations
 
-from datetime import datetime, time, timedelta
+import re
+from datetime import datetime, timedelta, timezone as datetime_timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from django.conf import settings
 from django.core.cache import cache
 from django.core.mail import EmailMultiAlternatives
 from django.db import transaction
-from django.db.models import Max, Q
+from django.db.models import Max
 from django.utils import timezone
 
 from apps.channels.models import WhatsAppAccount, WhatsAppMessage, WhatsAppTemplate
@@ -55,6 +56,8 @@ def update_auto_followup_settings(
     conversation_delay_value,
     conversation_delay_unit,
 ):
+    if business_hours_start is None or business_hours_end is None:
+        raise FollowupError("Business Hours start and end are required.")
     if business_hours_end <= business_hours_start:
         raise FollowupError("Business Hours end time must be later than the start time.")
     if conversation_delay_value < 0 or conversation_delay_value > 30:
@@ -156,7 +159,9 @@ def duplicate_sequence(*, sequence, created_by):
 
 
 def delete_sequence(*, sequence):
-    if sequence.lead_states.filter(status__in=[LeadSequenceState.Status.ACTIVE, LeadSequenceState.Status.PAUSED]).exists():
+    if sequence.lead_states.filter(
+        status__in=[LeadSequenceState.Status.ACTIVE, LeadSequenceState.Status.PAUSED]
+    ).exists():
         raise FollowupError("This sequence is assigned to active leads. Clear or change those assignments first.")
     sequence.delete()
 
@@ -166,7 +171,14 @@ def _next_position(sequence):
     return value + 1
 
 
-def _validate_schedule(*, schedule_type, delay_value=None, delay_unit="", specific_time=None, specific_weekday=None):
+def _validate_schedule(
+    *,
+    schedule_type,
+    delay_value=None,
+    delay_unit="",
+    specific_time=None,
+    specific_weekday=None,
+):
     if schedule_type not in FollowupStep.ScheduleType.values:
         raise FollowupError("Invalid delivery schedule.")
     if schedule_type == FollowupStep.ScheduleType.DELAY:
@@ -177,14 +189,23 @@ def _validate_schedule(*, schedule_type, delay_value=None, delay_unit="", specif
     if schedule_type == FollowupStep.ScheduleType.SPECIFIC_TIME and specific_time is None:
         raise FollowupError("Choose a specific delivery time.")
     if schedule_type == FollowupStep.ScheduleType.RECURRING:
-        raise FollowupError("Recurring steps are reserved in the data model but are not enabled until their execution rule is finalized.")
+        raise FollowupError(
+            "Recurring steps are reserved in the data model but are not enabled until their execution rule is finalized."
+        )
     if specific_weekday is not None and specific_weekday not in FollowupStep.Weekday.values:
         raise FollowupError("Invalid weekday.")
 
 
 def add_whatsapp_step(
-    *, sequence, template, schedule_type, delay_value=None, delay_unit="",
-    specific_time=None, specific_weekday=None, retry_count=0,
+    *,
+    sequence,
+    template,
+    schedule_type,
+    delay_value=None,
+    delay_unit="",
+    specific_time=None,
+    specific_weekday=None,
+    retry_count=0,
 ):
     if template.organization_id != sequence.organization_id:
         raise FollowupError("Template belongs to another organization.")
@@ -222,8 +243,16 @@ def add_whatsapp_step(
 
 
 def add_email_step(
-    *, sequence, title, subject, body, schedule_type, delay_value=None,
-    delay_unit="", specific_time=None, specific_weekday=None,
+    *,
+    sequence,
+    title,
+    subject,
+    body,
+    schedule_type,
+    delay_value=None,
+    delay_unit="",
+    specific_time=None,
+    specific_weekday=None,
 ):
     title = (title or "").strip() or f"Email {sequence.steps.count() + 1}"
     subject = (subject or "").strip()
@@ -253,8 +282,14 @@ def add_email_step(
 
 
 def add_reminder_step(
-    *, sequence, text, schedule_type, delay_value=None, delay_unit="",
-    specific_time=None, specific_weekday=None,
+    *,
+    sequence,
+    text,
+    schedule_type,
+    delay_value=None,
+    delay_unit="",
+    specific_time=None,
+    specific_weekday=None,
 ):
     text = (text or "").strip()
     if not text:
@@ -270,7 +305,10 @@ def add_reminder_step(
         sequence=sequence,
         position=_next_position(sequence),
         step_type=FollowupStep.StepType.REMINDER,
-        title=f"Follow-Up Reminder {sequence.steps.filter(step_type=FollowupStep.StepType.REMINDER).count() + 1}",
+        title=(
+            "Follow-Up Reminder "
+            f"{sequence.steps.filter(step_type=FollowupStep.StepType.REMINDER).count() + 1}"
+        ),
         reminder_text=text,
         schedule_type=schedule_type,
         delay_value=delay_value,
@@ -284,7 +322,10 @@ def delete_step(*, step):
     sequence = step.sequence
     with transaction.atomic():
         step.delete()
-        for position, item in enumerate(sequence.steps.order_by("position", "created_at"), start=1):
+        for position, item in enumerate(
+            sequence.steps.order_by("position", "created_at"),
+            start=1,
+        ):
             if item.position != position:
                 FollowupStep.objects.filter(id=item.id).update(position=position)
         _recalculate_active_states(sequence)
@@ -299,9 +340,15 @@ def _org_zone(organization):
 
 def _delay_delta(value, unit):
     value = int(value or 0)
-    if unit == FollowupStep.DelayUnit.MINUTES or unit == AutoFollowupSettings.DelayUnit.MINUTES:
+    if unit in {
+        FollowupStep.DelayUnit.MINUTES,
+        AutoFollowupSettings.DelayUnit.MINUTES,
+    }:
         return timedelta(minutes=value)
-    if unit == FollowupStep.DelayUnit.DAYS or unit == AutoFollowupSettings.DelayUnit.DAYS:
+    if unit in {
+        FollowupStep.DelayUnit.DAYS,
+        AutoFollowupSettings.DelayUnit.DAYS,
+    }:
         return timedelta(days=value)
     return timedelta(hours=value)
 
@@ -323,7 +370,7 @@ def _specific_due(*, organization, reference, clock_time, weekday=None):
             if _weekday_python_to_model(candidate.weekday()) == weekday and candidate > local_ref:
                 break
             candidate += timedelta(days=1)
-    return candidate.astimezone(timezone.utc)
+    return candidate.astimezone(datetime_timezone.utc)
 
 
 def calculate_step_due(*, step, reference, organization):
@@ -348,18 +395,26 @@ def _move_into_business_hours(*, organization, due):
     start = datetime.combine(local_due.date(), config.business_hours_start, tzinfo=zone)
     end = datetime.combine(local_due.date(), config.business_hours_end, tzinfo=zone)
     if local_due < start:
-        return start.astimezone(timezone.utc)
+        return start.astimezone(datetime_timezone.utc)
     if local_due >= end:
-        next_start = datetime.combine(local_due.date() + timedelta(days=1), config.business_hours_start, tzinfo=zone)
-        return next_start.astimezone(timezone.utc)
+        next_start = datetime.combine(
+            local_due.date() + timedelta(days=1),
+            config.business_hours_start,
+            tzinfo=zone,
+        )
+        return next_start.astimezone(datetime_timezone.utc)
     return due
 
 
 def _next_step_for_state(state):
-    return state.sequence.steps.filter(
-        is_active=True,
-        position__gt=state.last_completed_position,
-    ).order_by("position", "created_at").first()
+    return (
+        state.sequence.steps.filter(
+            is_active=True,
+            position__gt=state.last_completed_position,
+        )
+        .order_by("position", "created_at")
+        .first()
+    )
 
 
 def _set_next_step(state, *, reference=None):
@@ -369,10 +424,22 @@ def _set_next_step(state, *, reference=None):
         state.upcoming_send_at = None
         state.status = LeadSequenceState.Status.COMPLETED
         state.completed_at = timezone.now()
-        state.save(update_fields=["next_step", "upcoming_send_at", "status", "completed_at", "updated_at"])
+        state.save(
+            update_fields=[
+                "next_step",
+                "upcoming_send_at",
+                "status",
+                "completed_at",
+                "updated_at",
+            ]
+        )
         return state
     reference = reference or timezone.now()
-    due = calculate_step_due(step=next_step, reference=reference, organization=state.organization)
+    due = calculate_step_due(
+        step=next_step,
+        reference=reference,
+        organization=state.organization,
+    )
     due = _move_into_business_hours(organization=state.organization, due=due)
     if state.paused_until and due < state.paused_until:
         due = state.paused_until
@@ -380,13 +447,48 @@ def _set_next_step(state, *, reference=None):
     state.upcoming_send_at = due
     state.status = LeadSequenceState.Status.ACTIVE
     state.completed_at = None
-    state.save(update_fields=["next_step", "upcoming_send_at", "status", "completed_at", "updated_at"])
+    state.save(
+        update_fields=[
+            "next_step",
+            "upcoming_send_at",
+            "status",
+            "completed_at",
+            "updated_at",
+        ]
+    )
     return state
 
 
 def _recalculate_active_states(sequence):
-    for state in sequence.lead_states.filter(status__in=[LeadSequenceState.Status.ACTIVE, LeadSequenceState.Status.PAUSED]):
+    for state in sequence.lead_states.filter(
+        status__in=[LeadSequenceState.Status.ACTIVE, LeadSequenceState.Status.PAUSED]
+    ):
         _set_next_step(state, reference=timezone.now())
+
+
+def _digits(value):
+    return re.sub(r"\D", "", value or "")
+
+
+def _validate_lead_sender(lead, sequence):
+    account = sequence.whatsapp_account
+    if account.organization_id != lead.organization_id:
+        raise FollowupError("The sequence WhatsApp sender belongs to another organization.")
+    if account.status != WhatsAppAccount.Status.CONNECTED or not account.is_active:
+        raise FollowupError("The sequence WhatsApp API number is not currently connected.")
+
+    pipeline_number = getattr(lead.pipeline, "phone_number", "") if lead.pipeline_id else ""
+    if pipeline_number:
+        pipeline_digits = _digits(pipeline_number)
+        account_digits = _digits(account.display_phone_number)
+        # phone_number_id is a Meta object ID, not a phone number, so compare
+        # against it only when the pipeline value exactly matches that ID.
+        id_match = pipeline_number == account.phone_number_id
+        phone_match = bool(pipeline_digits and account_digits and pipeline_digits == account_digits)
+        if not phone_match and not id_match:
+            raise FollowupError(
+                "This lead's pipeline is mapped to a different WhatsApp API number."
+            )
 
 
 @transaction.atomic
@@ -395,6 +497,7 @@ def assign_sequence(*, lead, sequence, actor=None):
         raise FollowupError("Lead and sequence must belong to the same organization.")
     if not sequence.is_active:
         raise FollowupError("This sequence is inactive.")
+    _validate_lead_sender(lead, sequence)
 
     LeadSequenceState.objects.select_for_update().filter(
         lead=lead,
@@ -471,12 +574,19 @@ def register_lead_reply(*, lead, at=None):
     state.paused_until = at + _conversation_delay(config)
     if state.upcoming_send_at is None or state.upcoming_send_at < state.paused_until:
         state.upcoming_send_at = state.paused_until
-    state.save(update_fields=["last_inbound_at", "paused_until", "upcoming_send_at", "updated_at"])
+    state.save(
+        update_fields=[
+            "last_inbound_at",
+            "paused_until",
+            "upcoming_send_at",
+            "updated_at",
+        ]
+    )
     return state
 
 
 def register_manual_outbound(*, lead, at=None):
-    """Manual organization replies keep the sequence but protect conversation space."""
+    """Organization replies keep the sequence but protect conversation space."""
     at = at or timezone.now()
     state = LeadSequenceState.objects.filter(
         lead=lead,
@@ -489,7 +599,14 @@ def register_manual_outbound(*, lead, at=None):
     state.paused_until = at + _conversation_delay(config)
     if state.upcoming_send_at is None or state.upcoming_send_at < state.paused_until:
         state.upcoming_send_at = state.paused_until
-    state.save(update_fields=["last_manual_outbound_at", "paused_until", "upcoming_send_at", "updated_at"])
+    state.save(
+        update_fields=[
+            "last_manual_outbound_at",
+            "paused_until",
+            "upcoming_send_at",
+            "updated_at",
+        ]
+    )
     return state
 
 
@@ -516,14 +633,28 @@ def _template_components(template, lead, user=None):
         return []
     values = _lead_template_values(lead, user=user)
     parameters = []
-    for number, key in sorted(mapping.items(), key=lambda item: int(item[0])):
+    for _, key in sorted(mapping.items(), key=lambda item: int(item[0])):
         value = values.get(key, "")
         parameters.append({"type": "text", "text": str(value or "")})
     return [{"type": "body", "parameters": parameters}] if parameters else []
 
 
 def _create_execution(state, step):
-    previous = state.executions.filter(step=step).aggregate(max_attempt=Max("attempt_no"))["max_attempt"] or 0
+    pending = (
+        state.executions.filter(step=step, status=FollowupExecution.Status.PENDING)
+        .order_by("-created_at")
+        .first()
+    )
+    if pending:
+        pending.status = FollowupExecution.Status.PROCESSING
+        pending.started_at = timezone.now()
+        pending.save(update_fields=["status", "started_at", "updated_at"])
+        return pending
+
+    previous = (
+        state.executions.filter(step=step).aggregate(max_attempt=Max("attempt_no"))["max_attempt"]
+        or 0
+    )
     return FollowupExecution.objects.create(
         organization=state.organization,
         state=state,
@@ -558,8 +689,19 @@ def _handle_failure(state, execution, exc):
         execution.error = str(exc)
         execution.next_retry_at = retry_at
         execution.finished_at = now
-        execution.save(update_fields=["status", "error", "next_retry_at", "finished_at", "updated_at"])
-        state.upcoming_send_at = _move_into_business_hours(organization=state.organization, due=retry_at)
+        execution.save(
+            update_fields=[
+                "status",
+                "error",
+                "next_retry_at",
+                "finished_at",
+                "updated_at",
+            ]
+        )
+        state.upcoming_send_at = _move_into_business_hours(
+            organization=state.organization,
+            due=retry_at,
+        )
         state.save(update_fields=["upcoming_send_at", "updated_at"])
         return
     execution.status = FollowupExecution.Status.FAILED
@@ -578,6 +720,8 @@ def _send_whatsapp_step(state, step, execution):
     if not lead.phone:
         _mark_skipped_and_advance(state, execution, "Lead has no phone number.")
         return
+    if account.status != WhatsAppAccount.Status.CONNECTED or not account.is_active:
+        raise FollowupError("The sequence WhatsApp API number is not connected.")
     if not template or template.status != WhatsAppTemplate.Status.APPROVED:
         raise FollowupError("The selected WhatsApp template is no longer approved.")
     if template.account_id != account.id:
@@ -589,12 +733,18 @@ def _send_whatsapp_step(state, step, execution):
         execution.status = FollowupExecution.Status.PENDING
         execution.started_at = None
         execution.scheduled_for = sender.next_available_at
-        execution.save(update_fields=["status", "started_at", "scheduled_for", "updated_at"])
+        execution.save(
+            update_fields=["status", "started_at", "scheduled_for", "updated_at"]
+        )
         state.upcoming_send_at = sender.next_available_at
         state.save(update_fields=["upcoming_send_at", "updated_at"])
         return
 
-    body = render_template_body(template=template, lead=lead, user=state.sequence.created_by)
+    body = render_template_body(
+        template=template,
+        lead=lead,
+        user=state.sequence.created_by,
+    )
     message = WhatsAppMessage.objects.create(
         organization=state.organization,
         account=account,
@@ -619,13 +769,22 @@ def _send_whatsapp_step(state, step, execution):
     execution.whatsapp_message = message
     execution.save(update_fields=["whatsapp_message", "updated_at"])
 
-    client = WhatsAppClient(phone_number_id=account.phone_number_id, access_token=account.access_token)
+    metadata = WhatsAppTemplateMetadata.objects.filter(template=template).first()
+    language = metadata.language if metadata and metadata.language else "en_US"
+    client = WhatsAppClient(
+        phone_number_id=account.phone_number_id,
+        access_token=account.access_token,
+    )
     try:
         response = client.send_template_message(
             to=lead.phone,
             template_name=template.name,
-            language_code=(getattr(getattr(template, "meta_state", None), "language", None) or "en_US"),
-            components=_template_components(template, lead, user=state.sequence.created_by),
+            language_code=language,
+            components=_template_components(
+                template,
+                lead,
+                user=state.sequence.created_by,
+            ),
         )
     except WhatsAppAPIError as exc:
         message.status = WhatsAppMessage.Status.FAILED
@@ -646,24 +805,44 @@ def _send_whatsapp_step(state, step, execution):
             "attempt": execution.attempt_no,
         },
     }
-    message.save(update_fields=["external_id", "status", "raw_payload", "updated_at"])
+    message.save(
+        update_fields=["external_id", "status", "raw_payload", "updated_at"]
+    )
 
     finished = timezone.now()
     execution.status = FollowupExecution.Status.SENT
     execution.finished_at = finished
-    execution.payload = {"meta_message_id": message.external_id or "", "template": template.name}
+    execution.payload = {
+        "meta_message_id": message.external_id or "",
+        "template": template.name,
+    }
     execution.save(update_fields=["status", "finished_at", "payload", "updated_at"])
 
     sender.last_sent_at = finished
     sender.next_available_at = finished + timedelta(seconds=WHATSAPP_MIN_SEND_GAP_SECONDS)
     sender.last_lead = lead
-    sender.save(update_fields=["last_sent_at", "next_available_at", "last_lead", "updated_at"])
+    sender.save(
+        update_fields=[
+            "last_sent_at",
+            "next_available_at",
+            "last_lead",
+            "updated_at",
+        ]
+    )
 
     state.last_sent_at = finished
     state.last_completed_position = step.position
     state.last_step_completed_at = finished
     state.paused_until = None
-    state.save(update_fields=["last_sent_at", "last_completed_position", "last_step_completed_at", "paused_until", "updated_at"])
+    state.save(
+        update_fields=[
+            "last_sent_at",
+            "last_completed_position",
+            "last_step_completed_at",
+            "paused_until",
+            "updated_at",
+        ]
+    )
     _set_next_step(state, reference=finished)
 
 
@@ -682,7 +861,10 @@ def _send_email_step(state, step, execution):
         return
     if not getattr(settings, "FOLLOWUP_EMAIL_DELIVERY_ENABLED", False):
         execution.status = FollowupExecution.Status.BLOCKED
-        execution.error = "Email transport is prepared but disabled until organization DNS/sender configuration is ready."
+        execution.error = (
+            "Email transport is prepared but disabled until organization "
+            "DNS/sender configuration is ready."
+        )
         execution.finished_at = timezone.now()
         execution.save(update_fields=["status", "error", "finished_at", "updated_at"])
         state.status = LeadSequenceState.Status.PAUSED
@@ -690,9 +872,22 @@ def _send_email_step(state, step, execution):
         state.save(update_fields=["status", "upcoming_send_at", "updated_at"])
         return
 
-    subject = _render_text(step.email_subject, lead, user=state.sequence.created_by)
-    body = _render_text(step.email_body, lead, user=state.sequence.created_by)
-    email = EmailMultiAlternatives(subject=subject, body=body, from_email=settings.DEFAULT_FROM_EMAIL, to=[lead.email])
+    subject = _render_text(
+        step.email_subject,
+        lead,
+        user=state.sequence.created_by,
+    )
+    body = _render_text(
+        step.email_body,
+        lead,
+        user=state.sequence.created_by,
+    )
+    email = EmailMultiAlternatives(
+        subject=subject,
+        body=body,
+        from_email=settings.DEFAULT_FROM_EMAIL,
+        to=[lead.email],
+    )
     email.send(fail_silently=False)
     now = timezone.now()
     execution.status = FollowupExecution.Status.SENT
@@ -702,7 +897,14 @@ def _send_email_step(state, step, execution):
     state.last_sent_at = now
     state.last_completed_position = step.position
     state.last_step_completed_at = now
-    state.save(update_fields=["last_sent_at", "last_completed_position", "last_step_completed_at", "updated_at"])
+    state.save(
+        update_fields=[
+            "last_sent_at",
+            "last_completed_position",
+            "last_step_completed_at",
+            "updated_at",
+        ]
+    )
     _set_next_step(state, reference=now)
 
 
@@ -716,7 +918,11 @@ def _create_reminder_step(state, step, execution):
         lead=lead,
         assigned_to=assignee,
         title="Auto Follow-up reminder",
-        description=_render_text(step.reminder_text, lead, user=state.sequence.created_by),
+        description=_render_text(
+            step.reminder_text,
+            lead,
+            user=state.sequence.created_by,
+        ),
         due_at=now,
         status="pending",
     )
@@ -724,7 +930,9 @@ def _create_reminder_step(state, step, execution):
     execution.status = FollowupExecution.Status.CREATED
     execution.finished_at = now
     execution.payload = {"reminder_id": str(reminder.id)}
-    execution.save(update_fields=["reminder", "status", "finished_at", "payload", "updated_at"])
+    execution.save(
+        update_fields=["reminder", "status", "finished_at", "payload", "updated_at"]
+    )
     state.last_completed_position = step.position
     state.last_step_completed_at = now
     state.save(update_fields=["last_completed_position", "last_step_completed_at", "updated_at"])
@@ -733,9 +941,22 @@ def _create_reminder_step(state, step, execution):
 
 @transaction.atomic
 def process_due_state(state_id):
-    state = LeadSequenceState.objects.select_for_update().select_related(
-        "organization", "lead", "lead__pipeline", "lead__stage", "sequence", "sequence__whatsapp_account", "sequence__created_by", "next_step", "next_step__whatsapp_template"
-    ).filter(id=state_id).first()
+    state = (
+        LeadSequenceState.objects.select_for_update()
+        .select_related(
+            "organization",
+            "lead",
+            "lead__pipeline",
+            "lead__stage",
+            "sequence",
+            "sequence__whatsapp_account",
+            "sequence__created_by",
+            "next_step",
+            "next_step__whatsapp_template",
+        )
+        .filter(id=state_id)
+        .first()
+    )
     if not state or state.status != LeadSequenceState.Status.ACTIVE:
         return False
     if not state.lead_auto_followup_enabled or not state.sequence.is_active:
@@ -799,6 +1020,9 @@ def dispatch_one_due_state():
         if not state_id:
             return {"status": "idle"}
         processed = process_due_state(state_id)
-        return {"status": "processed" if processed else "deferred", "state_id": str(state_id)}
+        return {
+            "status": "processed" if processed else "deferred",
+            "state_id": str(state_id),
+        }
     finally:
         cache.delete(DISPATCH_LOCK_KEY)
