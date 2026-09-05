@@ -92,10 +92,6 @@ class EngagementServiceTests(TestCase):
 
         return provider
 
-    # ========================================================
-    # BASIC CUSTOMER-FACING RESPONSE
-    # ========================================================
-
     def test_engage_returns_normalized_decision(self):
         provider = self.mock_provider(
             """
@@ -108,54 +104,22 @@ class EngagementServiceTests(TestCase):
             }
             """
         )
-
-        service = EngagementService(
-            provider=provider,
-        )
-
+        service = EngagementService(provider=provider)
         decision = service.engage(
             organization=self.organization,
             lead=self.lead,
         )
-
-        self.assertIsInstance(
-            decision,
-            EngagementDecision,
-        )
-
-        self.assertTrue(
-            decision.should_engage,
-        )
-
-        self.assertEqual(
-            decision.message,
-            "Thanks for reaching out!",
-        )
-
-        self.assertIsNone(
-            decision.file_document_id,
-        )
-
-        self.assertEqual(
-            decision.crm_actions,
-            [],
-        )
-
+        self.assertIsInstance(decision, EngagementDecision)
+        self.assertTrue(decision.should_engage)
+        self.assertEqual(decision.message, "Thanks for reaching out!")
+        self.assertIsNone(decision.file_document_id)
+        self.assertEqual(decision.crm_actions, [])
         self.assertEqual(
             decision.reason,
             "A customer-facing response is appropriate.",
         )
-
-        self.assertEqual(
-            decision.model,
-            "gpt-4.1-nano",
-        )
-
+        self.assertEqual(decision.model, "gpt-4.1-nano")
         provider.generate_text.assert_called_once()
-
-    # ========================================================
-    # NO ENGAGEMENT
-    # ========================================================
 
     def test_no_engagement_requires_empty_message(self):
         provider = self.mock_provider(
@@ -169,28 +133,13 @@ class EngagementServiceTests(TestCase):
             }
             """
         )
-
-        service = EngagementService(
-            provider=provider,
-        )
-
+        service = EngagementService(provider=provider)
         decision = service.engage(
             organization=self.organization,
             lead=self.lead,
         )
-
-        self.assertFalse(
-            decision.should_engage,
-        )
-
-        self.assertEqual(
-            decision.message,
-            "",
-        )
-
-    # ========================================================
-    # CONTEXT IS PASSED TO PROVIDER
-    # ========================================================
+        self.assertFalse(decision.should_engage)
+        self.assertEqual(decision.message, "")
 
     def test_provider_receives_context_and_instructions(self):
         provider = self.mock_provider(
@@ -204,75 +153,25 @@ class EngagementServiceTests(TestCase):
             }
             """
         )
-
-        service = EngagementService(
-            provider=provider,
-        )
-
+        service = EngagementService(provider=provider)
         service.engage(
             organization=self.organization,
             lead=self.lead,
         )
-
-        call = (
-            provider.generate_text.call_args
-        )
-
-        instructions = call.kwargs[
-            "instructions"
-        ]
-
-        input_text = call.kwargs[
-            "input_text"
-        ]
-
-        self.assertIn(
-            "SHVYA",
-            instructions,
-        )
-
-        self.assertIn(
-            "customer-facing",
-            instructions.lower(),
-        )
-
-        self.assertIn(
-            self.org_info.engagement_instructions,
-            instructions,
-        )
-
+        call = provider.generate_text.call_args
+        instructions = call.kwargs["instructions"]
+        input_text = call.kwargs["input_text"]
+        self.assertIn("SHVYA", instructions)
+        self.assertIn("customer-facing", instructions.lower())
+        self.assertIn(self.org_info.engagement_instructions, instructions)
         self.assertLess(
-            instructions.index(
-                self.org_info.engagement_instructions
-            ),
-            instructions.index(
-                "SHVYA AI ENGAGEMENT TASK"
-            ),
+            instructions.index(self.org_info.engagement_instructions),
+            instructions.index("SHVYA AI ENGAGEMENT TASK"),
         )
-
-        self.assertIn(
-            self.organization.name,
-            input_text,
-        )
-
-        self.assertIn(
-            self.lead.name,
-            input_text,
-        )
-
-        self.assertIn(
-            self.org_info.engagement_instructions,
-            instructions,
-        )
-
-        self.assertIn(
-            self.org_info.qualification_requirements,
-            input_text,
-        )
-
-    # ========================================================
-    # CRM ACTIONS — ATTRIBUTE UPDATES
-    # ========================================================
+        self.assertIn(self.organization.name, input_text)
+        self.assertIn(self.lead.name, input_text)
+        self.assertIn(self.org_info.engagement_instructions, instructions)
+        self.assertIn(self.org_info.qualification_requirements, input_text)
 
     def test_accepts_attribute_update_request(self):
         provider = self.mock_provider(
@@ -285,10 +184,7 @@ class EngagementServiceTests(TestCase):
                     {
                         "type": "attribute_updates",
                         "updates": [
-                            {
-                                "key": "budget",
-                                "value": "50000"
-                            }
+                            {"key": "budget", "value": "50000"}
                         ]
                     }
                 ],
@@ -296,34 +192,20 @@ class EngagementServiceTests(TestCase):
             }
             """
         )
-
-        service = EngagementService(
-            provider=provider,
-        )
-
-        decision = service.engage(
+        decision = EngagementService(provider=provider).engage(
             organization=self.organization,
             lead=self.lead,
         )
-
-        self.assertEqual(
-            decision.crm_actions[0]["type"],
-            "attribute_updates",
-        )
-
-    # ========================================================
-    # CRM ACTIONS — STAGE SHIFT
-    # ========================================================
+        self.assertEqual(decision.crm_actions[0]["type"], "attribute_updates")
 
     def test_accepts_stage_shift_request(self):
         target_stage = Stage.objects.create(
             pipeline=self.pipeline,
             name="Qualified",
             description="Qualified lead.",
-            display_order=1,
+            display_order=100,
             is_active=True,
         )
-
         provider = self.mock_provider(
             f"""
             {{
@@ -333,40 +215,22 @@ class EngagementServiceTests(TestCase):
                 "crm_actions": [
                     {{
                         "type": "pipeline_transition",
-                        "stage_shift": {{
-                            "stage_id": "{target_stage.id}"
-                        }}
+                        "stage_shift": {{"stage_id": "{target_stage.id}"}}
                     }}
                 ],
                 "reason": "The conversation supports a stage transition."
             }}
             """
         )
-
-        service = EngagementService(
-            provider=provider,
-        )
-
-        decision = service.engage(
+        decision = EngagementService(provider=provider).engage(
             organization=self.organization,
             lead=self.lead,
         )
-
+        self.assertEqual(decision.crm_actions[0]["type"], "pipeline_transition")
         self.assertEqual(
-            decision.crm_actions[0]["type"],
-            "pipeline_transition",
-        )
-
-        self.assertEqual(
-            decision.crm_actions[0][
-                "stage_shift"
-            ]["stage_id"],
+            decision.crm_actions[0]["stage_shift"]["stage_id"],
             str(target_stage.id),
         )
-
-    # ========================================================
-    # CRM ACTIONS — NOTE
-    # ========================================================
 
     def test_accepts_add_note_request(self):
         provider = self.mock_provider(
@@ -375,34 +239,16 @@ class EngagementServiceTests(TestCase):
                 "should_engage": true,
                 "message": "Thank you!",
                 "file_document_id": null,
-                "crm_actions": [
-                    {
-                        "type": "add_note",
-                        "note": "Lead confirmed interest."
-                    }
-                ],
+                "crm_actions": [{"type": "add_note", "note": "Lead confirmed interest."}],
                 "reason": "Conversation contains useful CRM information."
             }
             """
         )
-
-        service = EngagementService(
-            provider=provider,
-        )
-
-        decision = service.engage(
+        decision = EngagementService(provider=provider).engage(
             organization=self.organization,
             lead=self.lead,
         )
-
-        self.assertEqual(
-            decision.crm_actions[0]["type"],
-            "add_note",
-        )
-
-    # ========================================================
-    # CRM ACTIONS — REMINDER
-    # ========================================================
+        self.assertEqual(decision.crm_actions[0]["type"], "add_note")
 
     def test_accepts_create_reminder_request(self):
         provider = self.mock_provider(
@@ -423,24 +269,11 @@ class EngagementServiceTests(TestCase):
             }
             """
         )
-
-        service = EngagementService(
-            provider=provider,
-        )
-
-        decision = service.engage(
+        decision = EngagementService(provider=provider).engage(
             organization=self.organization,
             lead=self.lead,
         )
-
-        self.assertEqual(
-            decision.crm_actions[0]["type"],
-            "create_reminder",
-        )
-
-    # ========================================================
-    # CRM ACTIONS — CONTACT UPDATE
-    # ========================================================
+        self.assertEqual(decision.crm_actions[0]["type"], "create_reminder")
 
     def test_accepts_contact_update_request(self):
         provider = self.mock_provider(
@@ -465,24 +298,11 @@ class EngagementServiceTests(TestCase):
             }
             """
         )
-
-        service = EngagementService(
-            provider=provider,
-        )
-
-        decision = service.engage(
+        decision = EngagementService(provider=provider).engage(
             organization=self.organization,
             lead=self.lead,
         )
-
-        self.assertEqual(
-            decision.crm_actions[0]["type"],
-            "contact_updates",
-        )
-
-    # ========================================================
-    # FILE DOCUMENT
-    # ========================================================
+        self.assertEqual(decision.crm_actions[0]["type"], "contact_updates")
 
     def test_accepts_file_document_id(self):
         provider = self.mock_provider(
@@ -496,24 +316,11 @@ class EngagementServiceTests(TestCase):
             }
             """
         )
-
-        service = EngagementService(
-            provider=provider,
-        )
-
-        decision = service.engage(
+        decision = EngagementService(provider=provider).engage(
             organization=self.organization,
             lead=self.lead,
         )
-
-        self.assertEqual(
-            decision.file_document_id,
-            42,
-        )
-
-    # ========================================================
-    # INVALID TOP-LEVEL SCHEMA
-    # ========================================================
+        self.assertEqual(decision.file_document_id, 42)
 
     def test_rejects_extra_top_level_field(self):
         provider = self.mock_provider(
@@ -528,43 +335,22 @@ class EngagementServiceTests(TestCase):
             }
             """
         )
-
-        service = EngagementService(
-            provider=provider,
-        )
-
-        with self.assertRaises(
-            EngagementError,
-        ):
+        service = EngagementService(provider=provider)
+        with self.assertRaises(EngagementError):
             service.engage(
                 organization=self.organization,
                 lead=self.lead,
             )
-
-    # ========================================================
-    # INVALID JSON
-    # ========================================================
 
     def test_rejects_invalid_json(self):
-        provider = self.mock_provider(
-            "not valid json"
-        )
-
         service = EngagementService(
-            provider=provider,
+            provider=self.mock_provider("not valid json")
         )
-
-        with self.assertRaises(
-            EngagementError,
-        ):
+        with self.assertRaises(EngagementError):
             service.engage(
                 organization=self.organization,
                 lead=self.lead,
             )
-
-    # ========================================================
-    # INVALID ENGAGEMENT MESSAGE
-    # ========================================================
 
     def test_rejects_empty_message_when_engaging(self):
         provider = self.mock_provider(
@@ -578,15 +364,8 @@ class EngagementServiceTests(TestCase):
             }
             """
         )
-
-        service = EngagementService(
-            provider=provider,
-        )
-
-        with self.assertRaises(
-            EngagementError,
-        ):
-            service.engage(
+        with self.assertRaises(EngagementError):
+            EngagementService(provider=provider).engage(
                 organization=self.organization,
                 lead=self.lead,
             )
@@ -603,22 +382,11 @@ class EngagementServiceTests(TestCase):
             }
             """
         )
-
-        service = EngagementService(
-            provider=provider,
-        )
-
-        with self.assertRaises(
-            EngagementError,
-        ):
-            service.engage(
+        with self.assertRaises(EngagementError):
+            EngagementService(provider=provider).engage(
                 organization=self.organization,
                 lead=self.lead,
             )
-
-    # ========================================================
-    # INVALID CRM ACTION
-    # ========================================================
 
     def test_rejects_unknown_crm_action(self):
         provider = self.mock_provider(
@@ -627,31 +395,16 @@ class EngagementServiceTests(TestCase):
                 "should_engage": true,
                 "message": "Hello!",
                 "file_document_id": null,
-                "crm_actions": [
-                    {
-                        "type": "delete_lead"
-                    }
-                ],
+                "crm_actions": [{"type": "delete_lead"}],
                 "reason": "Unsupported action."
             }
             """
         )
-
-        service = EngagementService(
-            provider=provider,
-        )
-
-        with self.assertRaises(
-            EngagementError,
-        ):
-            service.engage(
+        with self.assertRaises(EngagementError):
+            EngagementService(provider=provider).engage(
                 organization=self.organization,
                 lead=self.lead,
             )
-
-    # ========================================================
-    # CONTEXT MISMATCH
-    # ========================================================
 
     def test_rejects_context_for_different_lead(self):
         other_lead = Lead.objects.create(
@@ -662,9 +415,7 @@ class EngagementServiceTests(TestCase):
             phone="+919876543211",
             lead_source="whatsapp_api",
         )
-
         context = self.build_context()
-
         provider = self.mock_provider(
             """
             {
@@ -676,15 +427,8 @@ class EngagementServiceTests(TestCase):
             }
             """
         )
-
-        service = EngagementService(
-            provider=provider,
-        )
-
-        with self.assertRaises(
-            EngagementError,
-        ):
-            service.engage(
+        with self.assertRaises(EngagementError):
+            EngagementService(provider=provider).engage(
                 organization=self.organization,
                 lead=other_lead,
                 context=context,
