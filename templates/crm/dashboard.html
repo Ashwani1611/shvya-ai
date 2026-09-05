@@ -199,7 +199,7 @@
 
         class="flex-1 min-h-0"
 
-        hx-get="{% url 'crm-lead-table-partial' %}?pipeline={{ selected_pipeline_id }}"
+        hx-get="{% url 'crm-lead-table-partial' %}?pipeline={{ selected_pipeline_id }}{% if request.GET.stage %}&stage={{ request.GET.stage }}{% endif %}"
 
         hx-trigger="load"
 
@@ -228,6 +228,92 @@
 
 
 </div>
+
+
+{% if request.GET.lead %}
+<script>
+    (function () {
+        const requestedLeadId = "{{ request.GET.lead|escapejs }}";
+        let requestedLeadOpened = false;
+
+        function openRequestedLead() {
+            if (requestedLeadOpened || !requestedLeadId) {
+                return;
+            }
+
+            const card = document.getElementById(
+                'lead-card-' + requestedLeadId
+            );
+
+            if (!card) {
+                return;
+            }
+
+            const detailsTab = card.querySelector(
+                '.lead-detail-tab[data-tab-name="details"]'
+            );
+
+            if (detailsTab) {
+                const targetId = detailsTab.getAttribute('data-target');
+                const detailsPanel = targetId
+                    ? document.getElementById(targetId)
+                    : null;
+
+                if (
+                    detailsPanel &&
+                    detailsPanel.classList.contains('hidden')
+                ) {
+                    detailsTab.click();
+                }
+            }
+
+            card.scrollIntoView({
+                behavior: 'smooth',
+                block: 'center',
+            });
+
+            card.classList.add(
+                'ring-2',
+                'ring-blue-300',
+                'ring-offset-2'
+            );
+
+            window.setTimeout(function () {
+                card.classList.remove(
+                    'ring-2',
+                    'ring-blue-300',
+                    'ring-offset-2'
+                );
+            }, 1800);
+
+            requestedLeadOpened = true;
+        }
+
+        document.body.addEventListener(
+            'htmx:afterSwap',
+            function (event) {
+                const target =
+                    event.detail && event.detail.target;
+
+                if (
+                    target &&
+                    target.id === 'lead-table-container'
+                ) {
+                    window.setTimeout(
+                        openRequestedLead,
+                        0
+                    );
+                }
+            }
+        );
+
+        window.setTimeout(
+            openRequestedLead,
+            600
+        );
+    })();
+</script>
+{% endif %}
 
 
 {% endblock %}
