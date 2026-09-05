@@ -1,5 +1,6 @@
 from django.urls import path
 
+from apps.followups.views.lead_control import lead_followup_control
 from apps.followups.views.web import (
     email_step_add,
     email_step_modal,
@@ -46,6 +47,7 @@ urlpatterns = [
     path("sequences/<uuid:sequence_id>/steps/<uuid:step_id>/move/", step_move, name="followups-step-move"),
     path("settings/", settings_modal, name="followups-settings-modal"),
     path("settings/save/", settings_save, name="followups-settings-save"),
+    path("leads/<uuid:lead_id>/control/", lead_followup_control, name="followups-lead-control"),
     path("leads/<uuid:lead_id>/assign/", lead_assign_sequence, name="followups-lead-assign"),
     path("leads/<uuid:lead_id>/clear/", lead_clear_sequence, name="followups-lead-clear"),
     path("leads/<uuid:lead_id>/toggle/", lead_toggle_sequence, name="followups-lead-toggle"),
