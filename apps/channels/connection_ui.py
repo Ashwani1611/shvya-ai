@@ -34,7 +34,18 @@ def _has_connected_api_account(user):
 
 
 def _inject_signup_toast(response):
-    """Make Meta embedded-signup errors use the shared SHVYA toast UI."""
+    """Add robust Meta embedded-signup completion and shared toast errors.
+
+    Meta has emitted WA_EMBEDDED_SIGNUP postMessage payloads as both JSON
+    strings and already-parsed objects. The template's original listener only
+    accepts the string form. If Meta sends an object, the popup can finish
+    successfully while SHVYA never receives the WABA/phone IDs, so the backend
+    callback is never called and Connected Numbers never refreshes.
+
+    This compatibility listener accepts both payload shapes and feeds the
+    existing signupData/maybeFinishSignup flow. It is intentionally injected
+    here so older cached templates also get the fix after deployment.
+    """
     content_type = response.get("Content-Type", "")
     if "text/html" not in content_type.lower() or getattr(response, "streaming", False):
         return response
@@ -45,24 +56,50 @@ def _inject_signup_toast(response):
         return response
 
     marker = "</body>"
-    if marker not in html.lower() or "shvya-whatsapp-signup-toast" in html:
+    if marker not in html.lower() or "shvya-whatsapp-signup-bridge" in html:
         return response
 
     script = r'''
-<script id="shvya-whatsapp-signup-toast">
+<script id="shvya-whatsapp-signup-bridge">
 (function () {
-    if (typeof window.showSignupError !== 'function') return;
-    var originalShowSignupError = window.showSignupError;
-    window.showSignupError = function (message) {
-        originalShowSignupError(message);
-        if (typeof window.shvyaToast === 'function') {
-            window.shvyaToast(
-                message || 'WhatsApp connection failed. Please try again.',
-                'error',
-                {title: 'WhatsApp connection failed', duration: 6500}
-            );
+    // Keep the existing inline error box, but also surface failures as a toast.
+    if (typeof window.showSignupError === 'function') {
+        var originalShowSignupError = window.showSignupError;
+        window.showSignupError = function (message) {
+            originalShowSignupError(message);
+            if (typeof window.shvyaToast === 'function') {
+                window.shvyaToast(
+                    message || 'WhatsApp connection failed. Please try again.',
+                    'error',
+                    {title: 'WhatsApp connection failed', duration: 6500}
+                );
+            }
+        };
+    }
+
+    // Meta may post either a JSON string or an object depending on SDK/browser.
+    // The page's original handler parses strings; this bridge covers objects
+    // (and harmlessly re-applies string FINISH events) so signup always reaches
+    // SHVYA's server callback once all three values are available.
+    window.addEventListener('message', function (event) {
+        if (!event.origin || !event.origin.endsWith('facebook.com')) return;
+
+        var data = event.data;
+        if (typeof data === 'string') {
+            try { data = JSON.parse(data); } catch (e) { return; }
         }
-    };
+        if (!data || typeof data !== 'object') return;
+        if (data.type !== 'WA_EMBEDDED_SIGNUP') return;
+
+        if (data.event === 'FINISH' && data.data) {
+            if (typeof window.signupData === 'undefined') return;
+            window.signupData.waba_id = data.data.waba_id || window.signupData.waba_id;
+            window.signupData.phone_number_id = data.data.phone_number_id || window.signupData.phone_number_id;
+            if (typeof window.maybeFinishSignup === 'function') {
+                window.maybeFinishSignup();
+            }
+        }
+    });
 })();
 </script>
 '''
@@ -152,11 +189,17 @@ def whatsapp_embedded_signup_callback_view(request):
 
     response = JsonResponse(
         {
+            "ok": True,
             "redirect_url": reverse("whatsapp-accounts"),
             "account_id": str(account.id),
+            "phone_number": account.display_phone_number or "",
+            "business_name": account.business_name or "",
             "subscription_warning": warning,
         }
     )
-    # The redirected page turns the Django message above into the final toast.
+    # The browser redirects immediately to Connected Numbers. That fresh GET
+    # reads the persisted account from PostgreSQL, so no stale client-side list
+    # needs to be manually refreshed.
     response["X-SHVYA-Toast"] = "off"
+    response["Cache-Control"] = "no-store"
     return response
