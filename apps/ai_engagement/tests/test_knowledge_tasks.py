@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
+from celery.exceptions import Retry
 from django.test import TestCase
 
 from apps.ai_engagement.models import Document, KnowledgeSource
@@ -23,9 +24,7 @@ class KnowledgeTaskHardeningTests(TestCase):
     Regression coverage for RAG production hardening.
 
     These tests execute the real Celery task bodies with `.run()`.
-
-    External embedding/network work is mocked. The publication gate
-    itself is exercised through the real KnowledgeIngestionService.
+    External embedding/network work is mocked.
     """
 
     @classmethod
@@ -37,10 +36,6 @@ class KnowledgeTaskHardeningTests(TestCase):
             name="Other Knowledge Task Organization",
         )
 
-    # ========================================================
-    # HELPERS
-    # ========================================================
-
     def create_document(
         self,
         *,
@@ -51,7 +46,6 @@ class KnowledgeTaskHardeningTests(TestCase):
         status=None,
     ):
         organization = organization or self.organization
-
         return Document.objects.create(
             organization=organization,
             name=f"Guide v{version}",
@@ -72,7 +66,6 @@ class KnowledgeTaskHardeningTests(TestCase):
         url="https://example.com/knowledge",
     ):
         organization = organization or self.organization
-
         return KnowledgeSource.objects.create(
             organization=organization,
             source_type=KnowledgeSource.SourceType.URL,
@@ -82,9 +75,7 @@ class KnowledgeTaskHardeningTests(TestCase):
         )
 
     def mark_ingested_document_completed(self, document, chunk_count=1):
-        document.processing_status = (
-            Document.ProcessingStatus.COMPLETED
-        )
+        document.processing_status = Document.ProcessingStatus.COMPLETED
         document.processing_error = ""
         document.is_active = False
         document.save(
@@ -97,18 +88,8 @@ class KnowledgeTaskHardeningTests(TestCase):
         )
         return chunk_count
 
-    # ========================================================
-    # FILE INGESTION — PUBLICATION GATE
-    # ========================================================
-
-    @patch.object(
-        EmbeddingIndexService,
-        "index_document",
-    )
-    @patch.object(
-        KnowledgeIngestionService,
-        "ingest_document",
-    )
+    @patch.object(EmbeddingIndexService, "index_document")
+    @patch.object(KnowledgeIngestionService, "ingest_document")
     def test_file_version_is_published_only_after_embedding_succeeds(
         self,
         mocked_ingestion_service,
@@ -125,11 +106,7 @@ class KnowledgeTaskHardeningTests(TestCase):
             version=2,
             is_active=False,
         )
-
-        mocked_ingestion_service.side_effect = (
-            self.mark_ingested_document_completed
-        )
-
+        mocked_ingestion_service.side_effect = self.mark_ingested_document_completed
         observed_active_state = []
 
         def index_document(document):
@@ -137,18 +114,14 @@ class KnowledgeTaskHardeningTests(TestCase):
             return 1
 
         mocked_embedding_service.side_effect = index_document
-
         result = ingest_and_index_document.run(
             document_id=new_document.id,
             organization_id=self.organization.id,
         )
-
         self.assertEqual(result["status"], "completed")
         self.assertEqual(observed_active_state, [False])
-
         old_document.refresh_from_db()
         new_document.refresh_from_db()
-
         self.assertFalse(old_document.is_active)
         self.assertTrue(new_document.is_active)
         self.assertEqual(
@@ -156,14 +129,8 @@ class KnowledgeTaskHardeningTests(TestCase):
             Document.ProcessingStatus.COMPLETED,
         )
 
-    @patch.object(
-        EmbeddingIndexService,
-        "index_document",
-    )
-    @patch.object(
-        KnowledgeIngestionService,
-        "ingest_document",
-    )
+    @patch.object(EmbeddingIndexService, "index_document")
+    @patch.object(KnowledgeIngestionService, "ingest_document")
     def test_file_embedding_failure_marks_new_version_failed_and_keeps_old_active(
         self,
         mocked_ingestion_service,
@@ -180,53 +147,32 @@ class KnowledgeTaskHardeningTests(TestCase):
             version=2,
             is_active=False,
         )
-
-        mocked_ingestion_service.side_effect = (
-            self.mark_ingested_document_completed
+        mocked_ingestion_service.side_effect = self.mark_ingested_document_completed
+        mocked_embedding_service.side_effect = EmbeddingIndexError(
+            "embedding unavailable"
         )
-        mocked_embedding_service.side_effect = (
-            EmbeddingIndexError("embedding unavailable")
-        )
-
         result = ingest_and_index_document.run(
             document_id=new_document.id,
             organization_id=self.organization.id,
         )
-
         self.assertEqual(result["status"], "failed")
         self.assertEqual(result["reason"], "embedding_failed")
-
         old_document.refresh_from_db()
         new_document.refresh_from_db()
-
         self.assertTrue(old_document.is_active)
         self.assertEqual(
             old_document.processing_status,
             Document.ProcessingStatus.COMPLETED,
         )
-
         self.assertFalse(new_document.is_active)
         self.assertEqual(
             new_document.processing_status,
             Document.ProcessingStatus.FAILED,
         )
-        self.assertEqual(
-            new_document.processing_error,
-            "embedding unavailable",
-        )
+        self.assertEqual(new_document.processing_error, "embedding unavailable")
 
-    # ========================================================
-    # FILE INGESTION — ORGANIZATION BOUNDARY
-    # ========================================================
-
-    @patch.object(
-        EmbeddingIndexService,
-        "index_document",
-    )
-    @patch.object(
-        KnowledgeIngestionService,
-        "ingest_document",
-    )
+    @patch.object(EmbeddingIndexService, "index_document")
+    @patch.object(KnowledgeIngestionService, "ingest_document")
     def test_file_task_cannot_access_document_from_another_organization(
         self,
         mocked_ingestion_service,
@@ -237,43 +183,29 @@ class KnowledgeTaskHardeningTests(TestCase):
             source_key="other-org.txt",
         )
 
-        result = ingest_and_index_document.run(
-            document_id=document.id,
-            organization_id=self.organization.id,
-        )
-
-        self.assertEqual(result["status"], "skipped")
-        self.assertEqual(result["reason"], "document_not_found")
+        # The uploaded-document task intentionally retries a missing
+        # organization-scoped lookup to cover transaction visibility.
+        # A document from another organization follows that same safe
+        # path and must never reach ingestion or embedding.
+        with self.assertRaises(Retry):
+            ingest_and_index_document.run(
+                document_id=document.id,
+                organization_id=self.organization.id,
+            )
 
         mocked_ingestion_service.assert_not_called()
         mocked_embedding_service.assert_not_called()
 
-    # ========================================================
-    # URL INGESTION — PUBLICATION GATE
-    # ========================================================
-
-    @patch.object(
-        EmbeddingIndexService,
-        "index_document",
-    )
-    @patch.object(
-        KnowledgeIngestionService,
-        "ingest_url",
-    )
-    @patch.object(
-        KnowledgeIngestionService,
-        "normalize_url",
-    )
+    @patch.object(EmbeddingIndexService, "index_document")
+    @patch.object(KnowledgeIngestionService, "ingest_url")
+    @patch.object(KnowledgeIngestionService, "normalize_url")
     def test_url_version_is_published_only_after_embedding_succeeds(
         self,
         mocked_normalize_url,
         mocked_ingestion_service,
         mocked_embedding_service,
     ):
-        source = self.create_url_source(
-            url="https://example.com/versioned",
-        )
-
+        source = self.create_url_source(url="https://example.com/versioned")
         old_document = self.create_document(
             source_key=source.url,
             version=1,
@@ -292,7 +224,6 @@ class KnowledgeTaskHardeningTests(TestCase):
 
         mocked_ingestion_service.side_effect = ingest_url
         mocked_normalize_url.return_value = source.url
-
         observed_active_state = []
 
         def index_document(document):
@@ -300,22 +231,18 @@ class KnowledgeTaskHardeningTests(TestCase):
             return 1
 
         mocked_embedding_service.side_effect = index_document
-
         result = ingest_and_index_url_source.run(
             source_id=source.id,
             organization_id=self.organization.id,
         )
-
         self.assertEqual(result["status"], "completed")
         self.assertEqual(observed_active_state, [False])
-
         old_document.refresh_from_db()
         new_document = Document.objects.get(
             organization=self.organization,
             source_key=source.url,
             version=2,
         )
-
         self.assertFalse(old_document.is_active)
         self.assertTrue(new_document.is_active)
         self.assertEqual(
@@ -323,18 +250,9 @@ class KnowledgeTaskHardeningTests(TestCase):
             Document.ProcessingStatus.COMPLETED,
         )
 
-    @patch.object(
-        EmbeddingIndexService,
-        "index_document",
-    )
-    @patch.object(
-        KnowledgeIngestionService,
-        "ingest_url",
-    )
-    @patch.object(
-        KnowledgeIngestionService,
-        "normalize_url",
-    )
+    @patch.object(EmbeddingIndexService, "index_document")
+    @patch.object(KnowledgeIngestionService, "ingest_url")
+    @patch.object(KnowledgeIngestionService, "normalize_url")
     def test_url_embedding_failure_marks_new_version_failed_and_keeps_old_active(
         self,
         mocked_normalize_url,
@@ -342,9 +260,8 @@ class KnowledgeTaskHardeningTests(TestCase):
         mocked_embedding_service,
     ):
         source = self.create_url_source(
-            url="https://example.com/versioned-failure",
+            url="https://example.com/versioned-failure"
         )
-
         old_document = self.create_document(
             source_key=source.url,
             version=1,
@@ -363,25 +280,21 @@ class KnowledgeTaskHardeningTests(TestCase):
 
         mocked_ingestion_service.side_effect = ingest_url
         mocked_normalize_url.return_value = source.url
-        mocked_embedding_service.side_effect = (
-            EmbeddingIndexError("url embedding unavailable")
+        mocked_embedding_service.side_effect = EmbeddingIndexError(
+            "url embedding unavailable"
         )
-
         result = ingest_and_index_url_source.run(
             source_id=source.id,
             organization_id=self.organization.id,
         )
-
         self.assertEqual(result["status"], "failed")
         self.assertEqual(result["reason"], "embedding_failed")
-
         old_document.refresh_from_db()
         new_document = Document.objects.get(
             organization=self.organization,
             source_key=source.url,
             version=2,
         )
-
         self.assertTrue(old_document.is_active)
         self.assertFalse(new_document.is_active)
         self.assertEqual(
@@ -393,22 +306,9 @@ class KnowledgeTaskHardeningTests(TestCase):
             "url embedding unavailable",
         )
 
-    # ========================================================
-    # URL INGESTION — ORGANIZATION BOUNDARY
-    # ========================================================
-
-    @patch.object(
-        EmbeddingIndexService,
-        "index_document",
-    )
-    @patch.object(
-        KnowledgeIngestionService,
-        "ingest_url",
-    )
-    @patch.object(
-        KnowledgeIngestionService,
-        "normalize_url",
-    )
+    @patch.object(EmbeddingIndexService, "index_document")
+    @patch.object(KnowledgeIngestionService, "ingest_url")
+    @patch.object(KnowledgeIngestionService, "normalize_url")
     def test_url_task_cannot_access_source_from_another_organization(
         self,
         mocked_normalize_url,
@@ -419,27 +319,17 @@ class KnowledgeTaskHardeningTests(TestCase):
             organization=self.other_organization,
             url="https://example.com/other-org",
         )
-
         result = ingest_and_index_url_source.run(
             source_id=source.id,
             organization_id=self.organization.id,
         )
-
         self.assertEqual(result["status"], "skipped")
         self.assertEqual(result["reason"], "source_not_found")
-
         mocked_normalize_url.assert_not_called()
         mocked_ingestion_service.assert_not_called()
         mocked_embedding_service.assert_not_called()
 
-    # ========================================================
-    # REINDEX — ORGANIZATION BOUNDARY
-    # ========================================================
-
-    @patch.object(
-        EmbeddingIndexService,
-        "index_document",
-    )
+    @patch.object(EmbeddingIndexService, "index_document")
     def test_reindex_can_access_document_only_in_same_organization(
         self,
         mocked_embedding_service,
@@ -452,27 +342,20 @@ class KnowledgeTaskHardeningTests(TestCase):
             status=Document.ProcessingStatus.COMPLETED,
         )
         mocked_embedding_service.return_value = 3
-
         result = reindex_document_embeddings.run(
             document_id=document.id,
             organization_id=self.organization.id,
         )
-
         self.assertEqual(result["status"], "completed")
         self.assertEqual(result["indexed_count"], 3)
-
         mocked_embedding_service.assert_called_once_with(
             document,
             only_missing=False,
         )
-
         document.refresh_from_db()
         self.assertFalse(document.is_active)
 
-    @patch.object(
-        EmbeddingIndexService,
-        "index_document",
-    )
+    @patch.object(EmbeddingIndexService, "index_document")
     def test_reindex_cannot_access_document_from_another_organization(
         self,
         mocked_embedding_service,
@@ -484,13 +367,10 @@ class KnowledgeTaskHardeningTests(TestCase):
             is_active=False,
             status=Document.ProcessingStatus.COMPLETED,
         )
-
         result = reindex_document_embeddings.run(
             document_id=document.id,
             organization_id=self.organization.id,
         )
-
         self.assertEqual(result["status"], "skipped")
         self.assertEqual(result["reason"], "document_not_found")
-
         mocked_embedding_service.assert_not_called()
