@@ -77,11 +77,15 @@ services:
       - --workers
       - "3"
 
+    # The site root redirects unauthenticated users, so the health check must
+    # accept any valid HTTP response instead of treating redirects as failure.
+    # urllib normally follows redirects, which can loop through the public
+    # hostname/HTTPS path and incorrectly mark a healthy Gunicorn as unhealthy.
     healthcheck:
       test:
         [
           "CMD-SHELL",
-          "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/', timeout=3)\"",
+          "python -c \"import http.client; c=http.client.HTTPConnection('127.0.0.1',8000,timeout=3); c.request('GET','/'); r=c.getresponse(); raise SystemExit(0 if 100 <= r.status < 500 else 1)\"",
         ]
       interval: 5s
       timeout: 4s
