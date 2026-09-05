@@ -157,15 +157,14 @@ def _validate_button_set(buttons):
             raise TemplateError("Unsupported template button.")
         counts[kind] += 1
 
-    # Keep the common Meta CTA layout deterministic and review-friendly.
-    if counts["visit_website"] > 1:
-        raise TemplateError("A standard template can contain only one Visit Website button.")
+    if counts["visit_website"] > 2:
+        raise TemplateError("A standard template can contain at most two Visit Website buttons.")
     if counts["call_phone"] > 1:
         raise TemplateError("A standard template can contain only one Call Phone button.")
-    if counts["visit_website"] + counts["call_phone"] > 2:
-        raise TemplateError("A standard template supports at most two call-to-action buttons.")
     if counts["copy_offer"] > 1:
         raise TemplateError("A standard template can contain only one Copy Code button.")
+    if counts["text_back"] > 10:
+        raise TemplateError("A standard template can contain at most 10 Quick Reply buttons.")
     if counts["request_contact_info"]:
         raise TemplateError("Request Contact Info is a chat action, not a Meta message-template button.")
     return counts
@@ -227,10 +226,9 @@ def _button(item):
 
 
 def _ordered_buttons(buttons):
-    """Keep Meta button groups contiguous: CTAs/copy first, quick replies last."""
-    cta = [x for x in buttons if x.get("type") in {"visit_website", "call_phone", "copy_offer"}]
-    quick = [x for x in buttons if x.get("type") == "text_back"]
-    return cta + quick
+    """Keep Meta button types contiguous and deterministic."""
+    order = ("visit_website", "call_phone", "copy_offer", "text_back")
+    return [item for kind in order for item in buttons if item.get("type") == kind]
 
 
 def _validate_media_file(attachment_type, uploaded_file):
