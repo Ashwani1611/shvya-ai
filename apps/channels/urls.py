@@ -96,6 +96,11 @@ urlpatterns = [
         name="whatsapp-lead-calls-json",
     ),
     path(
+        "leads/<uuid:lead_id>/pipeline-options/",
+        whatsapp_ui.whatsapp_lead_pipeline_options_view,
+        name="whatsapp-lead-pipeline-options",
+    ),
+    path(
         "leads/<uuid:lead_id>/quick-update/",
         whatsapp_ui.whatsapp_lead_quick_update_view,
         name="whatsapp-lead-quick-update",
