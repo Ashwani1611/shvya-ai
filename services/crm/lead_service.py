@@ -2,6 +2,8 @@
 LeadService — business logic for Lead creation/mutation lives here,
 never in views or serializers.
 """
+import re
+
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import IntegrityError, transaction
 
@@ -38,6 +40,13 @@ def create_lead(*, organization, pipeline, stage, name, phone, **extra_fields):
     return lead
 
 
+def _looks_like_phone_name(name, phone):
+    """Return True when a supplied name is really just the phone number."""
+    name_digits = re.sub(r"\D", "", str(name or ""))
+    phone_digits = re.sub(r"\D", "", str(phone or ""))
+    return bool(name_digits and phone_digits and name_digits == phone_digits)
+
+
 def upsert_lead(*, organization, pipeline=None, stage=None, name, phone,
                  email="", notes="", attributes=None, lead_source="system"):
     """
@@ -49,8 +58,16 @@ def upsert_lead(*, organization, pipeline=None, stage=None, name, phone,
 
     Phone normalization and duplicate detection are handled entirely by
     Lead.clean() — this function does not duplicate that logic.
+
+    WhatsApp inbound messages are intentionally conservative: an incoming
+    message must never replace a human-managed CRM name, pipeline, or stage.
+    Meta currently gives the WhatsApp handler the sender number as its
+    fallback name, so a repeated message must not turn e.g. "Rahul Kumar"
+    into "9198...". New WhatsApp-only leads get a readable placeholder
+    instead of displaying the phone number as their name.
     """
     attributes = attributes or {}
+    is_whatsapp_inbound = lead_source == "whatsapp_api"
 
     try:
         with transaction.atomic():
@@ -59,11 +76,13 @@ def upsert_lead(*, organization, pipeline=None, stage=None, name, phone,
             ).first()
 
             if existing:
-                if pipeline:
-                    existing.pipeline = pipeline
-                if stage:
-                    existing.stage = stage
-                existing.name = name or existing.name
+                if not is_whatsapp_inbound:
+                    if pipeline:
+                        existing.pipeline = pipeline
+                    if stage:
+                        existing.stage = stage
+                    existing.name = name or existing.name
+
                 if email:
                     existing.email = email
                 if notes:
@@ -80,11 +99,18 @@ def upsert_lead(*, organization, pipeline=None, stage=None, name, phone,
                     "pipeline and stage are required when creating a new lead."
                 )
 
+            lead_name = name
+            if is_whatsapp_inbound and (
+                not str(name or "").strip()
+                or _looks_like_phone_name(name, phone)
+            ):
+                lead_name = "WhatsApp Lead"
+
             lead = Lead(
                 organization=organization,
                 pipeline=pipeline,
                 stage=stage,
-                name=name,
+                name=lead_name,
                 phone=phone,
                 email=email,
                 notes=notes,
