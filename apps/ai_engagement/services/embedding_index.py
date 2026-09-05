@@ -37,10 +37,16 @@ class EmbeddingIndexService:
         *,
         embedding_service: EmbeddingService | None = None,
     ) -> None:
-        self.embedding_service = (
-            embedding_service
-            or EmbeddingService()
-        )
+        # Keep provider creation lazy. This lets callers construct the
+        # indexing service for orchestration/tests without requiring an
+        # OpenAI key until an embedding is actually requested.
+        self._embedding_service = embedding_service
+
+    @property
+    def embedding_service(self) -> EmbeddingService:
+        if self._embedding_service is None:
+            self._embedding_service = EmbeddingService()
+        return self._embedding_service
 
     # ============================================================
     # SINGLE CHUNK
