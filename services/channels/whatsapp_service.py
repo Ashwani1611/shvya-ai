@@ -1318,14 +1318,22 @@ def list_conversations(
     *,
     organization,
     account=None,
+    tab="all",
 ):
     """
-    Returns one row per lead that has at least one WhatsApp
-    message, ordered by most recent activity, each annotated with
-    its last message and unread count. Used by the Chats inbox
-    list view.
+    Return one row per lead with WhatsApp activity, ordered by the
+    most recent message and annotated with the fields used by the
+    Chats inbox.
+
+    ``tab`` supports: all, unread, needs_reply, failed, broadcasts.
     """
-    from django.db.models import Count, Max, Q
+    from django.db.models import Count, Max, OuterRef, Q, Subquery
+
+    account_filter = (
+        Q(whatsapp_messages__account=account)
+        if account
+        else Q()
+    )
 
     messages = WhatsAppMessage.objects.filter(
         organization=organization,
@@ -1346,20 +1354,29 @@ def list_conversations(
         .distinct()
     )
 
+    last_message = WhatsAppMessage.objects.filter(
+        organization=organization,
+        lead=OuterRef("pk"),
+    )
+
+    if account:
+        last_message = last_message.filter(
+            account=account
+        )
+
+    last_message = last_message.order_by(
+        "-created_at"
+    )
+
     leads = (
         Lead.objects.filter(
-            id__in=lead_ids
+            organization=organization,
+            id__in=lead_ids,
         )
         .annotate(
             last_message_at=Max(
                 "whatsapp_messages__created_at",
-                filter=(
-                    Q(
-                        whatsapp_messages__account=account
-                    )
-                    if account
-                    else Q()
-                ),
+                filter=account_filter,
             ),
             unread_count=Count(
                 "whatsapp_messages",
@@ -1370,20 +1387,70 @@ def list_conversations(
                         ),
                         whatsapp_messages__is_read=False,
                     )
-                    & (
-                        Q(
-                            whatsapp_messages__account=account
-                        )
-                        if account
-                        else Q()
-                    )
+                    & account_filter
                 ),
+            ),
+            last_msg_body=Subquery(
+                last_message.values("body")[:1]
+            ),
+            last_msg_direction=Subquery(
+                last_message.values("direction")[:1]
+            ),
+            last_msg_status=Subquery(
+                last_message.values("status")[:1]
+            ),
+            last_msg_error=Subquery(
+                last_message.values("error")[:1]
             ),
         )
         .order_by(
             "-last_message_at"
         )
     )
+
+    if tab == "unread":
+        leads = leads.filter(
+            unread_count__gt=0
+        )
+
+    elif tab == "needs_reply":
+        leads = leads.filter(
+            last_msg_direction=(
+                WhatsAppMessage.Direction.INBOUND
+            )
+        )
+
+    elif tab == "failed":
+        leads = leads.filter(
+            last_msg_status=(
+                WhatsAppMessage.Status.FAILED
+            )
+        )
+
+    elif tab == "broadcasts":
+        broadcast_messages = WhatsAppMessage.objects.filter(
+            organization=organization,
+            bulk_recipient__isnull=False,
+            lead__isnull=False,
+        )
+
+        if account:
+            broadcast_messages = broadcast_messages.filter(
+                account=account
+            )
+
+        broadcast_lead_ids = (
+            broadcast_messages
+            .values_list(
+                "lead_id",
+                flat=True,
+            )
+            .distinct()
+        )
+
+        leads = leads.filter(
+            id__in=broadcast_lead_ids
+        )
 
     return leads
 
