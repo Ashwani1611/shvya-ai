@@ -94,12 +94,11 @@ def template_list(request):
         qs = qs.filter(account_id=account_id)
     if query:
         qs = qs.filter(Q(name__icontains=query) | Q(rejection_reason__icontains=query))
-    # Hide confirmed local deletions; preserve them in DB/audit until Meta sync confirms state.
     qs = qs.exclude(meta_state__local_status=WhatsAppTemplateMetadata.LocalStatus.DELETED)
     return render(request, "channels/whatsapp_template_list.html", {
         "templates": qs,
         "accounts": _accounts(user),
-        "categories": [(WhatsAppTemplate.Category.MARKETING, "Marketing"), (WhatsAppTemplate.Category.UTILITY, "Utility")],
+        "categories": WhatsAppTemplate.Category.choices,
         "statuses": WhatsAppTemplate.Status.choices,
         "selected_category": category,
         "selected_status": status,
@@ -136,7 +135,10 @@ def template_create(request):
                     language=values["language"],
                 )
                 if request.POST.get("action") == "submit":
-                    submit_template(template=template)
+                    submit_template(
+                        template=template,
+                        attachment_file=request.FILES.get("attachment_file"),
+                    )
                     messages.success(request, f'Template "{template.name}" submitted to Meta. Current status: {template.get_status_display()}.')
                 else:
                     messages.success(request, f'Template "{template.name}" saved as draft.')
@@ -181,7 +183,10 @@ def template_edit(request, template_id):
                     language=values["language"],
                 )
                 if request.POST.get("action") == "submit":
-                    submit_template(template=template)
+                    submit_template(
+                        template=template,
+                        attachment_file=request.FILES.get("attachment_file"),
+                    )
                     messages.success(request, f'Template "{template.name}" submitted to Meta.')
                 else:
                     messages.success(request, f'Template "{template.name}" updated as draft.')
@@ -193,16 +198,18 @@ def template_edit(request, template_id):
 
 def _render_editor(request, user, *, values, template):
     placeholders = available_placeholders(organization=user.organization)
+    media_state = state_for(template) if template else None
     return render(request, "channels/whatsapp_template_create.html", {
         "template": template,
         "values": values,
         "accounts": _accounts(user),
-        "categories": [(WhatsAppTemplate.Category.MARKETING, "Marketing"), (WhatsAppTemplate.Category.UTILITY, "Utility")],
+        "categories": WhatsAppTemplate.Category.choices,
         "formats": WhatsAppTemplate.Format.choices,
         "attachments": WhatsAppTemplate.AttachmentType.choices,
         "placeholders": placeholders,
         "placeholders_json": json.dumps(placeholders),
         "buttons_json": values.get("buttons_json") or "[]",
+        "media_state": media_state,
     })
 
 
@@ -214,7 +221,10 @@ def template_submit(request, template_id):
     if not template or not _admin(user):
         return JsonResponse({"error": "Template not found or not permitted."}, status=404)
     try:
-        submit_template(template=template)
+        submit_template(
+            template=template,
+            attachment_file=request.FILES.get("attachment_file"),
+        )
     except TemplateError as exc:
         return JsonResponse({"error": str(exc), "meta_error_code": exc.meta_error_code}, status=exc.status_code or 400)
     return JsonResponse({"ok": True, "status": template.status, "meta_template_id": template.meta_template_id})
