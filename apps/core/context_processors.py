@@ -81,12 +81,6 @@ NAV_ITEMS = [
                 "requires_whatsapp_connection": True,
             },
             {
-                "label": "Coexisted Accounts",
-                "icon": "ti-server",
-                "url_name": "whatsapp-connect-hosted",
-                "path_prefix": "/dashboard/whatsapp/connect/hosted/",
-            },
-            {
                 "label": "Chats",
                 "icon": "ti-message-circle",
                 "url_name": "whatsapp-chats",
@@ -106,6 +100,12 @@ NAV_ITEMS = [
                 "url_name": "whatsapp-campaign-list",
                 "path_prefix": "/dashboard/whatsapp/campaigns/",
                 "requires_whatsapp_connection": True,
+            },
+            {
+                "label": "Coexisted Accounts",
+                "icon": "ti-server",
+                "url_name": "whatsapp-connect-hosted",
+                "path_prefix": "/dashboard/whatsapp/connect/hosted/",
             },
         ],
     },
