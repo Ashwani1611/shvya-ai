@@ -1,0 +1,40 @@
+{% load static %}
+<header class="site-header">
+  <div class="wrap nav">
+    <a href="{% url 'home' %}" class="brand" aria-label="SHVYA AI home">
+      <img class="brand-logo" src="{% static 'images/shvya-logo.svg' %}" alt="SHVYA AI logo">
+      <span class="brand-name"><span>SHVYA</span><span>AI</span></span>
+    </a>
+    <nav class="nav-links" aria-label="Primary navigation">
+      <div class="nav-dropdown">
+        <a href="#features" class="nav-link">Features <svg class="icon-sm" viewBox="0 0 24 24"><path d="m7 10 5 5 5-5"/></svg></a>
+        <div class="nav-dropdown-menu"><a href="#capture">Lead capture &amp; qualification</a><a href="#followup">AI follow-up</a><a href="#integrations">Integrations</a><a href="#whatsapp">WhatsApp CRM</a></div>
+      </div>
+      <div class="nav-dropdown">
+        <a href="#industries" class="nav-link">Use Cases <svg class="icon-sm" viewBox="0 0 24 24"><path d="m7 10 5 5 5-5"/></svg></a>
+        <div class="nav-dropdown-menu"><a href="#industries">Real estate</a><a href="#industries">Education</a><a href="#industries">Fitness &amp; wellness</a><a href="#industries">B2B sales</a></div>
+      </div>
+      <a href="#proof" class="nav-link">Why SHVYA</a><a href="#faq" class="nav-link">FAQ</a><a href="{% url 'pricing' %}" class="nav-link">Pricing</a>
+    </nav>
+    <div class="nav-actions">
+      {% if crm_user %}
+      <div class="user-menu" id="userMenu">
+        <button class="user-trigger" id="userTrigger" type="button" aria-expanded="false" aria-haspopup="true">
+          <span class="user-label">{% if crm_user.name %}{{ crm_user.name|truncatechars:16 }}{% else %}User{% endif %}</span>
+          <span class="user-avatar" aria-hidden="true"><svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4.8 20c.8-4.1 3.2-6 7.2-6s6.4 1.9 7.2 6"/></svg></span>
+          <svg class="user-chevron" viewBox="0 0 24 24"><path d="m7 10 5 5 5-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <div class="user-dropdown" id="userDropdown">
+          <a href="{% url 'crm-dashboard' %}"><svg class="icon-sm" viewBox="0 0 24 24"><rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><rect x="14" y="14" width="6" height="6" rx="1"/></svg>Dashboard</a>
+          <a href="{% url 'crm-profile' %}"><svg class="icon-sm" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3"/><path d="M6 20c.8-3.6 2.8-5 6-5s5.2 1.4 6 5"/></svg>Profile</a>
+          <a href="{% url 'crm-logout' %}" class="logout-link"><svg class="icon-sm" viewBox="0 0 24 24"><path d="M10 5H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h4"/><path d="m14 8 4 4-4 4M18 12H9"/></svg>Logout</a>
+        </div>
+      </div>
+      {% else %}
+      <a href="{% url 'crm-login' %}" class="nav-login">Login</a><a href="{% url 'crm-signup' %}" class="btn btn-primary">Start free</a>
+      {% endif %}
+      <button class="menu-btn" id="menuBtn" type="button" aria-label="Open navigation" aria-expanded="false"><svg class="icon" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+    </div>
+  </div>
+  <div class="mobile-nav" id="mobileNav"><a href="#features">Features <span>→</span></a><a href="#industries">Use Cases <span>→</span></a><a href="#proof">Why SHVYA <span>→</span></a><a href="#faq">FAQ <span>→</span></a><a href="{% url 'pricing' %}">Pricing <span>→</span></a>{% if not crm_user %}<div class="mobile-actions"><a href="{% url 'crm-login' %}" class="btn btn-secondary">Login</a><a href="{% url 'crm-signup' %}" class="btn btn-primary">Start free</a></div>{% endif %}</div>
+</header>
