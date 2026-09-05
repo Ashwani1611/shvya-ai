@@ -1,0 +1,64 @@
+name: Deploy
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to production VPS
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1.2.2
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          password: ${{ secrets.VPS_PASSWORD }}
+          port: ${{ secrets.VPS_PORT || 22 }}
+          script: |
+            set -e
+            cd /opt/shvya-ai
+
+            echo "Updating source code..."
+            git fetch origin main
+            git checkout main
+            git reset --hard origin/main
+
+            echo "Validating Docker Compose configuration..."
+            docker compose config --quiet
+
+            echo "Building updated application containers..."
+            docker compose build web ws worker
+
+            echo "Starting database and Redis..."
+            docker compose up -d db redis
+
+            echo "Applying database migrations..."
+            docker compose run --rm web python manage.py migrate --noinput
+
+            echo "Collecting static files..."
+            docker compose run --rm web python manage.py collectstatic --noinput
+
+            echo "Starting application services..."
+            docker compose up -d --remove-orphans web ws worker nginx certbot
+
+            echo "Current service status:"
+            docker compose ps
+
+            echo "Removing unused Docker images..."
+            docker image prune -f
