@@ -9,8 +9,8 @@ coming_soon_urlpatterns = [
     path("call-scheduler/", coming_soon, {"feature": "call-scheduler"}, name="crm-call-scheduler"),
     path("call-tracker/", coming_soon, {"feature": "call-tracker"}, name="crm-call-tracker"),
 
-    # Auto Follow-ups
-    path("auto-follow-ups/sequences/", coming_soon, {"feature": "auto-follow-ups-sequences"}, name="crm-auto-follow-ups-sequences"),
+    # Auto Follow-ups Workflows remains a future phase. Sequences is now
+    # implemented by apps.followups and owns /dashboard/auto-follow-ups/sequences/.
     path("auto-follow-ups/workflows/", coming_soon, {"feature": "auto-follow-ups-workflows"}, name="crm-auto-follow-ups-workflows"),
 
     # Instagram
