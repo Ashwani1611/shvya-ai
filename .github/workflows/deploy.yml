@@ -45,17 +45,51 @@ jobs:
             echo "Building updated application containers..."
             docker compose build web ws worker
 
-            echo "Starting database and Redis..."
-            docker compose up -d db redis
+            echo "Ensuring database and Redis are healthy..."
+            docker compose up -d --wait db redis
 
-            echo "Applying database migrations..."
+            echo "Applying database migrations before replacing the live web container..."
             docker compose run --rm web python manage.py migrate --noinput
 
-            echo "Collecting static files..."
+            echo "Collecting static files before replacing the live web container..."
             docker compose run --rm web python manage.py collectstatic --noinput
 
-            echo "Starting application services..."
-            docker compose up -d --remove-orphans web ws worker nginx certbot
+            echo "Updating application services..."
+            docker compose up -d --no-deps web ws worker
+
+            echo "Waiting for Django/Gunicorn to become healthy..."
+            if ! docker compose up -d --wait --no-deps web; then
+              echo "Web service did not become healthy."
+              docker compose ps
+              docker compose logs --tail=150 web
+              exit 1
+            fi
+
+            echo "Verifying the host-facing application endpoint..."
+            ready=0
+            for attempt in $(seq 1 30); do
+              if curl --fail --silent --show-error --max-time 3 http://127.0.0.1:8000/ >/dev/null; then
+                ready=1
+                echo "Web endpoint is ready."
+                break
+              fi
+              echo "Waiting for web endpoint... attempt ${attempt}/30"
+              sleep 2
+            done
+
+            if [ "$ready" -ne 1 ]; then
+              echo "Web endpoint failed readiness verification."
+              docker compose ps
+              docker compose logs --tail=150 web
+              exit 1
+            fi
+
+            echo "Keeping Nginx running and ensuring edge services exist..."
+            docker compose up -d --no-deps nginx certbot
+
+            echo "Testing and gracefully reloading Nginx..."
+            docker compose exec -T nginx nginx -t
+            docker compose exec -T nginx nginx -s reload
 
             echo "Current service status:"
             docker compose ps
