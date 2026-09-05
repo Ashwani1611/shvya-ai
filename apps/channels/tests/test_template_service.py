@@ -2,6 +2,7 @@ from unittest.mock import patch
 
 from django.test import TestCase
 
+from apps.accounts.models import User
 from apps.channels.models import WhatsAppAccount, WhatsAppTemplate
 from apps.channels.template_models import WhatsAppTemplateMetadata
 from apps.crm.models.attribute import AttributeDefinition
@@ -20,6 +21,13 @@ class WhatsAppTemplateServiceTests(TestCase):
     def setUp(self):
         self.org = Organization.objects.create(name="Template Test Org")
         self.other_org = Organization.objects.create(name="Other Org")
+        self.user = User.objects.create_user(
+            email="template-admin@example.com",
+            organization=self.org,
+            password="test-password",
+            name="Template Admin",
+            role=User.Role.ADMIN,
+        )
         self.account = WhatsAppAccount.objects.create(
             organization=self.org,
             business_name="Main Business",
@@ -34,7 +42,7 @@ class WhatsAppTemplateServiceTests(TestCase):
         template = create_template(
             organization=self.org,
             account=self.account,
-            created_by=None,
+            created_by=self.user,
             name="welcome_message",
             body="Hi {{lead_first_name}} from {{org_name}}",
         )
@@ -62,14 +70,14 @@ class WhatsAppTemplateServiceTests(TestCase):
         original = create_template(
             organization=self.org,
             account=self.account,
-            created_by=None,
+            created_by=self.user,
             name="offer",
             body="Hi {{lead_name}}",
         )
         original.meta_template_id = "meta-1"
         original.status = WhatsAppTemplate.Status.APPROVED
         original.save()
-        copied = copy_template(template=original, created_by=None)
+        copied = copy_template(template=original, created_by=self.user)
         self.assertNotEqual(copied.id, original.id)
         self.assertEqual(copied.status, WhatsAppTemplate.Status.DRAFT)
         self.assertEqual(copied.meta_template_id, "")
@@ -104,7 +112,7 @@ class WhatsAppTemplateServiceTests(TestCase):
             create_template(
                 organization=self.org,
                 account=other,
-                created_by=None,
+                created_by=self.user,
                 name="wrong_tenant",
                 body="Hello",
             )
