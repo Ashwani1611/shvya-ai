@@ -57,6 +57,18 @@ class EmbeddingService:
             or self.DEFAULT_MODEL
         ).strip()
 
+        self._client: OpenAI | None = None
+
+    def _get_client(self) -> OpenAI:
+        """
+        Resolve the provider client only when a real embedding call
+        is made.
+
+        This keeps service construction side-effect free and allows
+        tests to mock the embedding boundary without requiring live
+        provider credentials.
+        """
+
         if not self.api_key:
             raise EmbeddingError(
                 "OPENAI_API_KEY is not configured."
@@ -67,9 +79,12 @@ class EmbeddingService:
                 "OPENAI_EMBEDDING_MODEL is not configured."
             )
 
-        self.client = OpenAI(
-            api_key=self.api_key,
-        )
+        if self._client is None:
+            self._client = OpenAI(
+                api_key=self.api_key,
+            )
+
+        return self._client
 
     def embed_text(
         self,
@@ -91,11 +106,14 @@ class EmbeddingService:
         try:
 
             response = (
-                self.client.embeddings.create(
+                self._get_client().embeddings.create(
                     model=self.model,
                     input=normalized,
                 )
             )
+
+        except EmbeddingError:
+            raise
 
         except Exception as exc:
 
@@ -160,11 +178,14 @@ class EmbeddingService:
         try:
 
             response = (
-                self.client.embeddings.create(
+                self._get_client().embeddings.create(
                     model=self.model,
                     input=normalized_texts,
                 )
             )
+
+        except EmbeddingError:
+            raise
 
         except Exception as exc:
 
