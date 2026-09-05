@@ -1,4 +1,7 @@
+from django.core.exceptions import ValidationError
+from django.core.validators import validate_email
 from django.http import JsonResponse
+from django.utils import timezone
 from django.views.decorators.http import require_POST
 
 from apps.crm.decorators import crm_login_required
@@ -32,6 +35,19 @@ def whatsapp_lead_quick_update_view(request, lead_id):
         lead.name = name
         update_fields.append("name")
 
+    if "email" in request.POST:
+        email = (request.POST.get("email") or "").strip()
+        if email:
+            try:
+                validate_email(email)
+            except ValidationError:
+                return JsonResponse(
+                    {"error": "Enter a valid email address."},
+                    status=400,
+                )
+        lead.email = email
+        update_fields.append("email")
+
     if "stage" in request.POST:
         stage_id = (request.POST.get("stage") or "").strip()
         stage = Stage.objects.filter(
@@ -42,9 +58,8 @@ def whatsapp_lead_quick_update_view(request, lead_id):
         if not stage:
             return JsonResponse({"error": "Invalid stage."}, status=400)
         lead.stage = stage
-        update_fields.extend(["stage", "stage_entered_at"])
-        from django.utils import timezone
         lead.stage_entered_at = timezone.now()
+        update_fields.extend(["stage", "stage_entered_at"])
 
     if update_fields:
         lead.save(update_fields=[*dict.fromkeys(update_fields), "updated_at"])
@@ -52,6 +67,7 @@ def whatsapp_lead_quick_update_view(request, lead_id):
     return JsonResponse({
         "ok": True,
         "name": lead.name,
+        "email": lead.email,
         "stage_id": str(lead.stage_id),
     })
 

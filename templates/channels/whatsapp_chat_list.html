@@ -16,7 +16,7 @@
                     {% if search_query %}<input type="hidden" name="q" value="{{ search_query }}">{% endif %}
                     {% if active_tab != 'all' %}<input type="hidden" name="tab" value="{{ active_tab }}">{% endif %}
                     <select id="connected-account-select" name="account" onchange="this.form.submit()"
-                        class="w-full truncate rounded-md border border-gray-300 bg-white px-2.5 py-2 text-xs font-medium text-gray-800 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500">
+                        class="w-full truncate rounded-lg border border-gray-300 bg-white px-2.5 py-2 text-xs font-medium text-gray-800 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100">
                         <option value="">All connected numbers</option>
                         {% for account in accounts %}
                         <option value="{{ account.id }}" {% if selected_account and selected_account.id == account.id %}selected{% endif %}>
@@ -32,42 +32,40 @@
                 {% if active_tab != 'all' %}<input type="hidden" name="tab" value="{{ active_tab }}">{% endif %}
                 <i class="ti ti-search absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400"></i>
                 <input type="text" name="q" value="{{ search_query }}" placeholder="Search for leads"
-                    class="w-full rounded-full border border-gray-200 bg-white py-2.5 pl-9 pr-3 text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500">
+                    class="w-full rounded-full border border-gray-200 bg-gray-50 py-2.5 pl-9 pr-3 text-sm outline-none transition focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-100">
             </form>
         </div>
 
         <div class="flex flex-wrap gap-2 border-b border-gray-200 px-3 py-3 text-xs font-medium">
             <a href="?{% if selected_account %}account={{ selected_account.id }}&{% endif %}{% if search_query %}q={{ search_query|urlencode }}&{% endif %}tab=all"
-               class="rounded-full border px-3 py-1.5 {% if active_tab == 'all' %}border-blue-500 bg-blue-50 text-blue-600{% else %}border-gray-200 bg-gray-100 text-gray-500{% endif %}">All Chats</a>
+               class="rounded-full border px-3 py-1.5 transition {% if active_tab == 'all' %}border-blue-500 bg-blue-50 text-blue-600{% else %}border-gray-200 bg-gray-100 text-gray-500 hover:bg-gray-200{% endif %}">All Chats</a>
             <a href="?{% if selected_account %}account={{ selected_account.id }}&{% endif %}{% if search_query %}q={{ search_query|urlencode }}&{% endif %}tab=unread"
-               class="rounded-full border px-3 py-1.5 {% if active_tab == 'unread' %}border-blue-500 bg-blue-50 text-blue-600{% else %}border-gray-200 bg-gray-100 text-gray-500{% endif %}">Unread{% if tab_counts.unread %} · {{ tab_counts.unread }}{% endif %}</a>
+               class="rounded-full border px-3 py-1.5 transition {% if active_tab == 'unread' %}border-blue-500 bg-blue-50 text-blue-600{% else %}border-gray-200 bg-gray-100 text-gray-500 hover:bg-gray-200{% endif %}">Unread{% if tab_counts.unread %} · {{ tab_counts.unread }}{% endif %}</a>
             <a href="?{% if selected_account %}account={{ selected_account.id }}&{% endif %}{% if search_query %}q={{ search_query|urlencode }}&{% endif %}tab=needs_reply"
-               class="rounded-full border px-3 py-1.5 {% if active_tab == 'needs_reply' %}border-blue-500 bg-blue-50 text-blue-600{% else %}border-gray-200 bg-gray-100 text-gray-500{% endif %}">Needs Reply</a>
+               class="rounded-full border px-3 py-1.5 transition {% if active_tab == 'needs_reply' %}border-blue-500 bg-blue-50 text-blue-600{% else %}border-gray-200 bg-gray-100 text-gray-500 hover:bg-gray-200{% endif %}">Needs Reply</a>
             <a href="?{% if selected_account %}account={{ selected_account.id }}&{% endif %}{% if search_query %}q={{ search_query|urlencode }}&{% endif %}tab=failed"
-               class="rounded-full border px-3 py-1.5 {% if active_tab == 'failed' %}border-blue-500 bg-blue-50 text-blue-600{% else %}border-gray-200 bg-gray-100 text-gray-500{% endif %}">Failed{% if tab_counts.failed %} · {{ tab_counts.failed }}{% endif %}</a>
+               class="rounded-full border px-3 py-1.5 transition {% if active_tab == 'failed' %}border-blue-500 bg-blue-50 text-blue-600{% else %}border-gray-200 bg-gray-100 text-gray-500 hover:bg-gray-200{% endif %}">Failed{% if tab_counts.failed %} · {{ tab_counts.failed }}{% endif %}</a>
             <a href="?{% if selected_account %}account={{ selected_account.id }}&{% endif %}{% if search_query %}q={{ search_query|urlencode }}&{% endif %}tab=broadcasts"
-               class="rounded-full border px-3 py-1.5 {% if active_tab == 'broadcasts' %}border-blue-500 bg-blue-50 text-blue-600{% else %}border-gray-200 bg-gray-100 text-gray-500{% endif %}">Successful Broadcasts</a>
+               class="rounded-full border px-3 py-1.5 transition {% if active_tab == 'broadcasts' %}border-blue-500 bg-blue-50 text-blue-600{% else %}border-gray-200 bg-gray-100 text-gray-500 hover:bg-gray-200{% endif %}">Successful Broadcasts</a>
         </div>
 
         <div class="flex-1 overflow-y-auto">
             {% for lead in conversations %}
             <a href="{% url 'whatsapp-chat-detail' lead.id %}?{% if selected_account %}account={{ selected_account.id }}&{% endif %}tab={{ active_tab }}{% if search_query %}&q={{ search_query|urlencode }}{% endif %}"
-               class="conversation-row flex gap-3 border-b border-gray-100 px-3 py-3 hover:bg-gray-50 {% if active_lead and active_lead.id == lead.id %}bg-[#f0f2f5]{% endif %}">
+               class="conversation-row flex gap-3 border-b border-gray-100 px-3 py-3 transition hover:bg-gray-50 {% if active_lead and active_lead.id == lead.id %}bg-blue-50/60{% endif %}">
                 <div class="relative mt-0.5 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-gray-200 text-xs font-bold text-gray-600">
                     {{ lead.initials }}
                     {% if lead.last_msg_status == 'failed' %}
-                    <span class="absolute -bottom-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full border-2 border-white bg-red-500">
-                        <i class="ti ti-x text-[8px] text-white"></i>
-                    </span>
+                    <span class="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-white bg-red-500" title="Last message failed"></span>
                     {% endif %}
                 </div>
                 <div class="min-w-0 flex-1">
                     <div class="flex items-center justify-between gap-2">
                         <p class="truncate text-sm font-semibold text-gray-900">{{ lead.name|default:lead.phone }}</p>
-                        <span class="whitespace-nowrap text-[10px] {% if lead.last_msg_status == 'failed' %}text-red-500{% else %}text-gray-400{% endif %}">{{ lead.last_message_at|date:"h:i A" }}</span>
+                        <span class="whitespace-nowrap text-[10px] text-gray-400">{{ lead.last_message_at|date:"h:i A" }}</span>
                     </div>
                     <div class="mt-1 flex items-center justify-between gap-2">
-                        <p class="truncate text-xs {% if lead.last_msg_status == 'failed' %}text-red-500{% else %}text-gray-500{% endif %}">
+                        <p class="truncate text-xs text-gray-500">
                             {% if lead.last_msg_direction == 'outbound' %}<span class="font-medium">You:</span> {% endif %}{{ lead.last_msg_body|default:"No messages"|truncatechars:34 }}
                         </p>
                         {% if lead.unread_count %}<span class="flex h-5 min-w-5 items-center justify-center rounded-full bg-green-500 px-1 text-[10px] font-bold text-white">{{ lead.unread_count }}</span>{% endif %}
@@ -85,7 +83,7 @@
     <!-- CENTER: message thread -->
     <main class="flex min-w-0 flex-1 flex-col bg-[#efeae2]">
         {% if active_lead %}
-        <div class="flex h-[58px] flex-shrink-0 items-center gap-3 border-b border-gray-200 bg-[#f0f2f5] px-4">
+        <div class="flex h-[58px] flex-shrink-0 items-center gap-3 border-b border-gray-200 bg-white/90 px-4 backdrop-blur">
             <div class="flex h-9 w-9 items-center justify-center rounded-full bg-gray-300 text-xs font-bold text-gray-600">{{ active_lead.initials }}</div>
             <div class="min-w-0">
                 <p class="truncate text-sm font-semibold text-gray-900">{{ active_lead.name|default:active_lead.phone }}</p>
@@ -98,9 +96,9 @@
             {% for day_group in messages_by_day %}
             <div class="my-3 flex justify-center"><span class="rounded-md bg-white/90 px-3 py-1 text-[10px] text-gray-500 shadow-sm">{{ day_group.grouper }}</span></div>
             {% for message in day_group.list %}
-            <div class="mb-2 flex {% if message.direction == 'outbound' %}justify-end{% else %}justify-start{% endif %}" data-message-id="{{ message.id }}">
-                <div class="max-w-[72%] rounded-lg px-3 py-2 text-sm shadow-sm {% if message.direction == 'outbound' %}{% if message.status == 'failed' %}bg-[#fff0f0]{% else %}bg-[#d9fdd3]{% endif %}{% else %}bg-white{% endif %}">
-                    {% if message.body %}<p class="whitespace-pre-wrap leading-relaxed text-gray-900">{{ message.body }}</p>{% else %}<p class="italic text-gray-400">Unsupported message type</p>{% endif %}
+            <div class="mb-2 flex min-w-0 {% if message.direction == 'outbound' %}justify-end{% else %}justify-start{% endif %}" data-message-id="{{ message.id }}">
+                <div class="min-w-0 max-w-[72%] overflow-hidden rounded-lg px-3 py-2 text-sm shadow-sm {% if message.direction == 'outbound' %}{% if message.status == 'failed' %}bg-[#fff0f0]{% else %}bg-[#d9fdd3]{% endif %}{% else %}bg-white{% endif %}">
+                    {% if message.body %}<p class="whitespace-pre-wrap break-words leading-relaxed text-gray-900 [overflow-wrap:anywhere]">{{ message.body }}</p>{% else %}<p class="italic text-gray-400">Unsupported message type</p>{% endif %}
                     <div class="mt-1 flex items-center justify-end gap-1 text-[10px] text-gray-500">
                         {{ message.created_at|date:"h:i A" }}
                         {% if message.direction == 'outbound' %}
@@ -112,10 +110,10 @@
                         {% endif %}
                     </div>
                     {% if message.status == 'failed' %}
-                    <div class="mt-2 rounded-md border border-red-200 bg-red-50 px-2.5 py-2 text-[11px] leading-relaxed text-red-600">
-                        <div class="flex gap-1.5">
+                    <div class="mt-2 min-w-0 max-w-full overflow-hidden rounded-md border border-red-200 bg-red-50 px-2.5 py-2 text-[11px] leading-relaxed text-red-600">
+                        <div class="flex min-w-0 gap-1.5">
                             <i class="ti ti-alert-circle mt-0.5 flex-shrink-0"></i>
-                            <span><strong>Message failed{% if message.error_code %} ({{ message.error_code }}){% endif %}:</strong> {{ message.error|default:"WhatsApp could not deliver this message." }}</span>
+                            <span class="min-w-0 break-words [overflow-wrap:anywhere]"><strong>Message failed{% if message.error_code %} ({{ message.error_code }}){% endif %}:</strong> {{ message.error|default:"WhatsApp could not deliver this message." }}</span>
                         </div>
                     </div>
                     {% endif %}
@@ -127,13 +125,13 @@
             {% endfor %}
         </div>
 
-        <div class="relative flex-shrink-0 border-t border-gray-200 bg-[#f0f2f5] px-3 py-2.5">
-            <div id="send-error" class="mb-2 hidden rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-600"></div>
+        <div class="relative flex-shrink-0 border-t border-gray-200 bg-white/90 px-3 py-2.5 backdrop-blur">
+            <div id="send-error" class="mb-2 hidden max-w-full break-words rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-600 [overflow-wrap:anywhere]"></div>
             <form id="composer-form" class="flex items-center gap-2">
                 {% csrf_token %}
                 <input id="message-body" type="text" autocomplete="off" placeholder="Type a message"
-                       class="min-w-0 flex-1 rounded-full border border-gray-200 bg-white px-4 py-2.5 text-sm outline-none focus:border-green-500">
-                <button class="flex h-10 w-10 items-center justify-center rounded-full bg-[#25d366] text-white hover:bg-[#20bd5a]" type="submit" title="Send">
+                       class="min-w-0 flex-1 rounded-full border border-gray-200 bg-white px-4 py-2.5 text-sm outline-none transition focus:border-green-500 focus:ring-2 focus:ring-green-100">
+                <button class="flex h-10 w-10 items-center justify-center rounded-full bg-[#25d366] text-white transition hover:bg-[#20bd5a]" type="submit" title="Send">
                     <i class="ti ti-send"></i>
                 </button>
             </form>
@@ -147,7 +145,7 @@
         {% endif %}
     </main>
 
-    <!-- RIGHT: Kraya-style CRM details -->
+    <!-- RIGHT: CRM details -->
     {% if active_lead %}
     {% lead_attribute_rows active_lead as attribute_rows %}
     <aside class="hidden w-[340px] flex-shrink-0 flex-col border-l border-gray-200 bg-white xl:flex">
@@ -165,16 +163,20 @@
                     {% csrf_token %}
                     <div class="grid grid-cols-[74px_1fr] items-center gap-2">
                         <label class="text-xs font-semibold text-gray-700">Name:</label>
-                        <input id="lead-name" name="name" value="{{ active_lead.name }}" class="rounded-md border border-gray-300 px-2.5 py-2 text-sm outline-none focus:border-blue-500">
+                        <input id="lead-name" name="name" value="{{ active_lead.name }}" class="rounded-lg border border-gray-300 px-2.5 py-2 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100">
                     </div>
                     <div class="grid grid-cols-[74px_1fr] items-center gap-2">
                         <label class="text-xs font-semibold text-gray-700">Phone:</label>
-                        <div class="flex items-center rounded-md border border-gray-200 bg-gray-50 px-2.5 py-2">
+                        <div class="flex items-center rounded-lg border border-gray-200 bg-gray-50 px-2.5 py-2">
                             <span class="min-w-0 flex-1 truncate text-sm text-gray-500">{{ active_lead.phone }}</span>
-                            <button type="button" class="ml-2 text-gray-400 hover:text-gray-700" onclick="copyLeadPhone()" title="Copy phone"><i class="ti ti-copy"></i></button>
+                            <button type="button" class="ml-2 text-gray-400 transition hover:text-gray-700" onclick="copyLeadPhone()" title="Copy phone"><i class="ti ti-copy"></i></button>
                         </div>
                     </div>
                     <p class="-mt-1 pl-[82px] text-[10px] text-gray-400">Phone is locked in WhatsApp chats.</p>
+                    <div class="grid grid-cols-[74px_1fr] items-center gap-2">
+                        <label class="text-xs font-semibold text-gray-700">Email:</label>
+                        <input id="lead-email" type="email" name="email" value="{{ active_lead.email }}" placeholder="Add email" class="rounded-lg border border-gray-300 px-2.5 py-2 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100">
+                    </div>
 
                     <div class="grid grid-cols-[1fr_auto] items-center gap-3 pt-1">
                         <div>
@@ -197,7 +199,7 @@
                     </div>
                     <div class="grid grid-cols-[74px_1fr] items-center gap-2">
                         <label class="text-xs font-semibold text-gray-700">Stage:</label>
-                        <select id="lead-stage" name="stage" class="rounded-md border border-gray-300 bg-white px-2.5 py-2 text-sm outline-none focus:border-blue-500">
+                        <select id="lead-stage" name="stage" class="rounded-lg border border-gray-300 bg-white px-2.5 py-2 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100">
                             {% for stage in lead_stages %}<option value="{{ stage.id }}" {% if stage.id == active_lead.stage_id %}selected{% endif %}>{{ stage.name }}</option>{% endfor %}
                         </select>
                     </div>
@@ -214,36 +216,32 @@
             </section>
 
             <section class="border-b border-gray-200">
-                <button type="button" class="section-toggle flex w-full items-center justify-between px-4 py-3 text-left" data-target="additional-body">
+                <button type="button" class="section-toggle flex w-full items-center justify-between px-4 py-3 text-left transition hover:bg-gray-50" data-target="additional-body">
                     <span class="text-xs font-bold text-gray-800">Additional Info</span><i class="ti ti-chevron-down text-gray-500"></i>
                 </button>
                 <div id="additional-body" class="px-4 pb-4">
                     <form id="attribute-form" action="{% url 'whatsapp-lead-attributes-save' active_lead.id %}" class="space-y-2.5">
                         {% csrf_token %}
                         <div class="grid grid-cols-[126px_1fr] items-center gap-2">
-                            <label class="truncate text-xs font-semibold text-gray-700">Email:</label>
-                            <input value="{{ active_lead.email }}" readonly class="rounded-md border border-gray-200 bg-gray-50 px-2.5 py-2 text-xs text-gray-500">
-                        </div>
-                        <div class="grid grid-cols-[126px_1fr] items-center gap-2">
                             <label class="truncate text-xs font-semibold text-gray-700">Created:</label>
-                            <input value="{{ active_lead.created_at|date:'d-m-Y' }}" readonly class="rounded-md border border-gray-200 bg-gray-50 px-2.5 py-2 text-xs text-gray-500">
+                            <input value="{{ active_lead.created_at|date:'d-m-Y' }}" readonly class="rounded-lg border border-gray-200 bg-gray-50 px-2.5 py-2 text-xs text-gray-500">
                         </div>
                         {% for attr in attribute_rows %}
                         <div class="grid grid-cols-[126px_1fr] items-center gap-2">
                             <label class="truncate text-xs font-semibold text-gray-700" title="{{ attr.name }}">{{ attr.name }}:</label>
                             {% if attr.field_type == 'option' %}
-                            <select name="attr_{{ attr.key }}" class="attribute-input rounded-md border border-gray-300 bg-white px-2.5 py-2 text-xs outline-none focus:border-blue-500">
+                            <select name="attr_{{ attr.key }}" class="attribute-input rounded-lg border border-gray-300 bg-white px-2.5 py-2 text-xs outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100">
                                 <option value="">Select...</option>
                                 {% for option in attr.options %}<option value="{{ option }}" {% if option == attr.value %}selected{% endif %}>{{ option }}</option>{% endfor %}
                             </select>
                             {% elif attr.field_type == 'date' %}
-                            <input type="date" name="attr_{{ attr.key }}" value="{{ attr.value }}" class="attribute-input rounded-md border border-gray-300 px-2.5 py-2 text-xs outline-none focus:border-blue-500">
+                            <input type="date" name="attr_{{ attr.key }}" value="{{ attr.value }}" class="attribute-input rounded-lg border border-gray-300 px-2.5 py-2 text-xs outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100">
                             {% elif attr.field_type == 'datetime' %}
-                            <input type="datetime-local" name="attr_{{ attr.key }}" value="{{ attr.value }}" class="attribute-input rounded-md border border-gray-300 px-2.5 py-2 text-xs outline-none focus:border-blue-500">
+                            <input type="datetime-local" name="attr_{{ attr.key }}" value="{{ attr.value }}" class="attribute-input rounded-lg border border-gray-300 px-2.5 py-2 text-xs outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100">
                             {% elif attr.field_type == 'numeric' %}
-                            <input type="number" name="attr_{{ attr.key }}" value="{{ attr.value }}" class="attribute-input rounded-md border border-gray-300 px-2.5 py-2 text-xs outline-none focus:border-blue-500">
+                            <input type="number" name="attr_{{ attr.key }}" value="{{ attr.value }}" class="attribute-input rounded-lg border border-gray-300 px-2.5 py-2 text-xs outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100">
                             {% else %}
-                            <input type="text" name="attr_{{ attr.key }}" value="{{ attr.value }}" placeholder="Enter value" class="attribute-input rounded-md border border-gray-300 px-2.5 py-2 text-xs outline-none focus:border-blue-500">
+                            <input type="text" name="attr_{{ attr.key }}" value="{{ attr.value }}" placeholder="Enter value" class="attribute-input rounded-lg border border-gray-300 px-2.5 py-2 text-xs outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100">
                             {% endif %}
                         </div>
                         {% empty %}
@@ -252,14 +250,14 @@
                         <div id="attribute-save-state" class="hidden text-[10px]"></div>
                     </form>
                     <button type="button" hx-get="{% url 'crm-attribute-manage-modal' %}" hx-target="#modal-root" hx-swap="innerHTML"
-                            class="mt-3 flex w-full items-center justify-center gap-1 rounded-md border border-blue-400 py-2 text-xs font-semibold text-blue-600 hover:bg-blue-50">
+                            class="mt-3 flex w-full items-center justify-center gap-1 rounded-lg border border-blue-300 py-2 text-xs font-semibold text-blue-600 transition hover:bg-blue-50">
                         <i class="ti ti-plus"></i> Manage Attributes
                     </button>
                 </div>
             </section>
 
             <section class="border-b border-gray-200">
-                <button type="button" class="section-toggle flex w-full items-center justify-between px-4 py-3 text-left" data-target="activity-body">
+                <button type="button" class="section-toggle flex w-full items-center justify-between px-4 py-3 text-left transition hover:bg-gray-50" data-target="activity-body">
                     <span class="text-xs font-bold text-gray-800">Activity History</span><i class="ti ti-chevron-down text-gray-500"></i>
                 </button>
                 <div id="activity-body" class="hidden px-4 pb-4">
@@ -277,14 +275,14 @@
                     <h3 class="text-xs font-bold text-gray-800">Notes</h3>
                     <button type="button" hx-get="{% url 'crm-lead-note-modal' active_lead.id %}" hx-target="#modal-root" hx-swap="innerHTML" class="text-xs font-medium text-blue-600 hover:underline">+ Add note</button>
                 </div>
-                <div class="max-h-40 space-y-2 overflow-y-auto rounded-md border border-gray-200 bg-gray-50 p-3">
+                <div class="max-h-40 space-y-2 overflow-y-auto rounded-lg border border-gray-200 bg-gray-50 p-3">
                     {% for note in lead_notes %}<div class="text-xs leading-relaxed text-gray-700">{{ note.note }}<div class="mt-1 text-[10px] text-gray-400">{{ note.created_at|date:"d M Y, h:i A" }}</div></div>{% empty %}<p class="text-xs text-gray-400">Take a note for this chat.</p>{% endfor %}
                 </div>
             </section>
         </div>
 
         <div class="side-panel hidden flex-1 overflow-y-auto" id="panel-calls">
-            <div class="flex items-center justify-between border-b border-gray-100 px-4 py-3"><span class="text-xs font-bold text-gray-800">Call Tracker</span><button hx-get="{% url 'crm-lead-call-modal' active_lead.id %}" hx-target="#modal-root" hx-swap="innerHTML" class="rounded-md bg-blue-600 px-2.5 py-1.5 text-[11px] font-semibold text-white">Log Call</button></div>
+            <div class="flex items-center justify-between border-b border-gray-100 px-4 py-3"><span class="text-xs font-bold text-gray-800">Call Tracker</span><button hx-get="{% url 'crm-lead-call-modal' active_lead.id %}" hx-target="#modal-root" hx-swap="innerHTML" class="rounded-lg bg-blue-600 px-2.5 py-1.5 text-[11px] font-semibold text-white transition hover:bg-blue-700">Log Call</button></div>
             {% for call in lead_calls %}<div class="border-b border-gray-100 px-4 py-3"><p class="text-xs font-semibold text-gray-800">{{ call.call_name|default:"Call" }}</p><p class="mt-1 text-[11px] text-gray-500">{{ call.get_status_display }} · {{ call.called_at|date:"d M, h:i A" }}</p>{% if call.notes %}<p class="mt-1 text-[11px] text-gray-500">{{ call.notes }}</p>{% endif %}</div>{% empty %}<p class="px-4 py-8 text-center text-xs text-gray-400">No calls logged.</p>{% endfor %}
         </div>
 
@@ -293,9 +291,9 @@
         </div>
 
         <div class="side-panel hidden flex-1 overflow-y-auto" id="panel-templates">
-            <div class="border-b border-gray-100 px-4 py-3"><input id="template-search" placeholder="Search for Template" class="w-full rounded-full border border-gray-200 px-3 py-2 text-xs outline-none focus:border-blue-500"></div>
+            <div class="border-b border-gray-100 px-4 py-3"><input id="template-search" placeholder="Search for Template" class="w-full rounded-full border border-gray-200 px-3 py-2 text-xs outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"></div>
             <div id="template-send-state" class="mx-4 mt-3 hidden rounded-md px-3 py-2 text-xs"></div>
-            {% for tmpl in lead_templates %}<div class="template-row flex items-center justify-between border-b border-gray-100 px-4 py-3" data-name="{{ tmpl.name|lower }}"><span class="truncate pr-2 text-xs text-gray-800">{{ tmpl.name }}</span><button type="button" onclick="sendTemplate('{{ tmpl.id }}')" class="flex h-7 w-7 items-center justify-center rounded-full bg-green-500 text-white"><i class="ti ti-send text-xs"></i></button></div>{% empty %}<p class="px-4 py-8 text-center text-xs text-gray-400">No approved templates.</p>{% endfor %}
+            {% for tmpl in lead_templates %}<div class="template-row flex items-center justify-between border-b border-gray-100 px-4 py-3" data-name="{{ tmpl.name|lower }}"><span class="truncate pr-2 text-xs text-gray-800">{{ tmpl.name }}</span><button type="button" onclick="sendTemplate('{{ tmpl.id }}')" class="flex h-7 w-7 items-center justify-center rounded-full bg-green-500 text-white transition hover:bg-green-600"><i class="ti ti-send text-xs"></i></button></div>{% empty %}<p class="px-4 py-8 text-center text-xs text-gray-400">No approved templates.</p>{% endfor %}
         </div>
     </aside>
     {% endif %}
@@ -325,7 +323,10 @@
     function saveQuick() {
         const data = new FormData();
         data.append('name', document.getElementById('lead-name').value);
+        data.append('email', document.getElementById('lead-email').value);
         data.append('stage', document.getElementById('lead-stage').value);
+        quickState.textContent = 'Saving...';
+        quickState.className = 'text-[10px] text-gray-400';
         postForm(quickUrl, data).then(async r => {
             if (!r.ok) throw new Error((await r.json()).error || 'Save failed');
             quickState.textContent = 'Saved';
@@ -341,6 +342,7 @@
         saveQuick();
     });
     document.getElementById('lead-name')?.addEventListener('change', saveQuick);
+    document.getElementById('lead-email')?.addEventListener('change', saveQuick);
     document.getElementById('lead-stage')?.addEventListener('change', saveQuick);
 
     const aiToggle = document.getElementById('ai-toggle');
@@ -402,6 +404,7 @@
         const error = document.getElementById('send-error');
         const body = input.value.trim();
         if (!body) return;
+        error.classList.add('hidden');
         const data = new FormData(); data.append('body', body);
         postForm(sendUrl, data).then(async r => {
             if (!r.ok) {
@@ -425,7 +428,7 @@
             state.className = 'mx-4 mt-3 rounded-md border border-green-200 bg-green-50 px-3 py-2 text-xs text-green-700';
         }).catch(err => {
             state.textContent = err.message;
-            state.className = 'mx-4 mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-600';
+            state.className = 'mx-4 mt-3 break-words rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-600 [overflow-wrap:anywhere]';
         });
     };
 
