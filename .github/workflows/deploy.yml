@@ -68,6 +68,8 @@ jobs:
             echo "Verifying the host-facing application endpoint..."
             ready=0
             for attempt in $(seq 1 30); do
+              # The root page may redirect unauthenticated users. curl -f treats
+              # any 2xx/3xx response as success as long as we do not follow it.
               if curl --fail --silent --show-error --max-time 3 http://127.0.0.1:8000/ >/dev/null; then
                 ready=1
                 echo "Web endpoint is ready."
