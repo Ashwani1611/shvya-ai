@@ -336,6 +336,10 @@
             quickState.className = 'text-[10px] text-red-600';
         });
     }
+    quickForm?.addEventListener('submit', function (event) {
+        event.preventDefault();
+        saveQuick();
+    });
     document.getElementById('lead-name')?.addEventListener('change', saveQuick);
     document.getElementById('lead-stage')?.addEventListener('change', saveQuick);
 
