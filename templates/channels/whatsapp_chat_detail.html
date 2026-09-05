@@ -11,12 +11,11 @@
 
     <div class="flex h-[calc(100vh-8.5rem)] flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
 
-
         <!-- =====================================================
              THREAD HEADER
              ===================================================== -->
 
-        <div class="flex items-center justify-between border-b border-gray-200 bg-white px-6 py-4">
+        <div class="flex flex-wrap items-center justify-between gap-3 border-b border-gray-200 bg-white px-6 py-4">
 
             <div class="flex items-center gap-3">
 
@@ -41,9 +40,20 @@
 
             </div>
 
+            <!-- Auto Follow-up control is loaded independently so the WhatsApp
+                 view remains decoupled from the followups domain. -->
+            <div
+                class="min-w-[320px] max-w-2xl flex-1 lg:flex-none lg:w-[560px]"
+                hx-get="{% url 'followups-lead-control' lead.id %}"
+                hx-trigger="load"
+                hx-swap="innerHTML"
+            >
+                <div class="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-400">
+                    Loading Auto Follow-up…
+                </div>
+            </div>
+
         </div>
-
-
 
         <!-- =====================================================
              MESSAGE THREAD
@@ -103,8 +113,6 @@
 
         </div>
 
-
-
         <!-- =====================================================
              COMPOSER
              ===================================================== -->
@@ -135,9 +143,7 @@
 
         </div>
 
-
     </div>
-
 
     <script>
     function getCookie(name) {
@@ -178,10 +184,6 @@
             })
             .then(function () {
                 input.value = '';
-                // Reload the thread to show the new outbound message.
-                // NOTE: this is a simple reload, not real-time push --
-                // a websocket/polling upgrade can replace this later
-                // without changing the send endpoint itself.
                 window.location.reload();
             })
             .catch(function (err) {
@@ -190,14 +192,9 @@
             });
     });
 
-    // Auto-scroll to the latest message on load.
     var thread = document.getElementById('thread');
     thread.scrollTop = thread.scrollHeight;
 
-    // Poll for new inbound messages so agents don't have to
-    // manually reload to see incoming WhatsApp messages.
-    // Skips the reload while the user is actively typing a reply,
-    // and pauses while the tab is in the background.
     setInterval(function () {
         if (document.hidden) {
             return;
