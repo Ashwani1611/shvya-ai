@@ -41,6 +41,115 @@ main select:focus-visible, main textarea:focus-visible { outline-color: #10b981;
 </style>
 '''
 
+WHATSAPP_CHAT_PIPELINE_UI = r'''
+<script id="shvya-whatsapp-pipeline-ui">
+(function () {
+    if (!window.location.pathname.startsWith('/dashboard/whatsapp/chats/')) return;
+
+    var form = document.getElementById('lead-quick-form');
+    if (!form) return;
+
+    var quickUrl = form.getAttribute('action') || '';
+    var match = quickUrl.match(/\/dashboard\/whatsapp\/leads\/([^/]+)\/quick-update\//);
+    if (!match) return;
+
+    var leadId = match[1];
+    var optionsUrl = '/dashboard/whatsapp/leads/' + leadId + '/pipeline-options/';
+
+    var pipelineLabel = Array.from(form.querySelectorAll('p')).find(function (node) {
+        return node.textContent.trim().toLowerCase() === 'pipeline';
+    });
+    if (!pipelineLabel) return;
+
+    var pipelineCard = pipelineLabel.closest('.rounded-xl');
+    if (!pipelineCard) return;
+
+    var currentRow = pipelineCard.querySelector('.mt-1.flex');
+    if (!currentRow) return;
+
+    var changeLink = Array.from(currentRow.querySelectorAll('a')).find(function (node) {
+        return node.textContent.trim().toLowerCase() === 'change';
+    });
+    if (!changeLink) return;
+
+    changeLink.addEventListener('click', function (event) {
+        event.preventDefault();
+        event.stopPropagation();
+
+        if (pipelineCard.querySelector('#lead-pipeline-inline')) return;
+
+        changeLink.textContent = 'Loading...';
+
+        fetch(optionsUrl, {headers: {'X-Requested-With': 'XMLHttpRequest'}})
+            .then(function (response) {
+                if (!response.ok) throw new Error('Could not load pipelines.');
+                return response.json();
+            })
+            .then(function (data) {
+                var select = document.createElement('select');
+                select.id = 'lead-pipeline-inline';
+                select.className = 'mt-1 w-full rounded-lg border border-green-200 bg-white px-2 py-1.5 text-xs text-gray-700 outline-none focus:border-green-500 focus:ring-2 focus:ring-green-100';
+
+                (data.pipelines || []).forEach(function (pipeline) {
+                    var option = document.createElement('option');
+                    option.value = pipeline.id;
+                    option.textContent = pipeline.name;
+                    option.selected = pipeline.id === data.pipeline_id;
+                    select.appendChild(option);
+                });
+
+                currentRow.replaceWith(select);
+
+                select.addEventListener('change', function () {
+                    var body = new FormData();
+                    body.append('pipeline', select.value);
+
+                    var csrfInput = form.querySelector('input[name="csrfmiddlewaretoken"]');
+                    var headers = {'X-Requested-With': 'XMLHttpRequest'};
+                    if (csrfInput) headers['X-CSRFToken'] = csrfInput.value;
+
+                    select.disabled = true;
+
+                    fetch(quickUrl, {
+                        method: 'POST',
+                        headers: headers,
+                        body: body
+                    })
+                    .then(function (response) {
+                        return response.json().then(function (data) {
+                            if (!response.ok) throw new Error(data.error || 'Could not change pipeline.');
+                            return data;
+                        });
+                    })
+                    .then(function (data) {
+                        if (typeof window.shvyaToast === 'function') {
+                            window.shvyaToast(
+                                'Pipeline changed to ' + (data.pipeline_name || 'the selected pipeline') + '.',
+                                'success',
+                                {title: 'Pipeline updated'}
+                            );
+                        }
+                        window.setTimeout(function () { window.location.reload(); }, 350);
+                    })
+                    .catch(function (error) {
+                        select.disabled = false;
+                        if (typeof window.shvyaToast === 'function') {
+                            window.shvyaToast(error.message, 'error', {title: 'Pipeline update failed'});
+                        }
+                    });
+                });
+            })
+            .catch(function (error) {
+                changeLink.textContent = 'Change';
+                if (typeof window.shvyaToast === 'function') {
+                    window.shvyaToast(error.message, 'error', {title: 'Pipeline update failed'});
+                }
+            });
+    });
+})();
+</script>
+'''
+
 
 class WhatsAppThemeMiddleware:
     """Inject the green channel theme only into server-rendered WhatsApp pages."""
@@ -68,11 +177,20 @@ class WhatsAppThemeMiddleware:
         except (AttributeError, UnicodeDecodeError):
             return response
 
-        if "</head>" not in html.lower() or "id=\"shvya-whatsapp-theme\"" in html:
-            return response
+        lower_html = html.lower()
 
-        index = html.lower().rfind("</head>")
-        html = html[:index] + WHATSAPP_THEME + html[index:]
+        if "</head>" in lower_html and "id=\"shvya-whatsapp-theme\"" not in html:
+            index = lower_html.rfind("</head>")
+            html = html[:index] + WHATSAPP_THEME + html[index:]
+
+        if (
+            request.path.startswith("/dashboard/whatsapp/chats/")
+            and "</body>" in html.lower()
+            and "id=\"shvya-whatsapp-pipeline-ui\"" not in html
+        ):
+            index = html.lower().rfind("</body>")
+            html = html[:index] + WHATSAPP_CHAT_PIPELINE_UI + html[index:]
+
         response.content = html.encode(response.charset or "utf-8")
         if response.has_header("Content-Length"):
             response["Content-Length"] = str(len(response.content))
