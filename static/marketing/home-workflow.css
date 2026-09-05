@@ -1,0 +1,10 @@
+/* Workflow */
+.workflow{padding:84px 0 88px;background:#fff}
+.workflow-grid{margin-top:46px;display:grid;grid-template-columns:repeat(5,1fr);gap:28px;align-items:stretch}
+.flow-card{position:relative;min-height:190px;border:1px solid var(--line);border-radius:17px;background:#fff;padding:24px 19px;text-align:center;box-shadow:0 8px 20px rgba(45,63,61,.035);transition:.24s ease}
+.flow-card:hover{transform:translateY(-5px);box-shadow:var(--shadow-soft);border-color:#cfe0dc}
+.flow-card:not(:last-child):after{content:'→';position:absolute;right:-22px;top:50%;transform:translateY(-50%);color:#8a78bd;font-weight:800;font-size:23px}
+.mini-icon{width:46px;height:46px;border-radius:13px;background:var(--teal-soft);color:var(--teal-dark);display:grid;place-items:center;margin:0 auto 14px;border:1px solid #dcefeb}
+.mini-icon.peach{background:var(--peach);color:#9a6348;border-color:#f6dfd0}.mini-icon.violet{background:var(--violet-soft);color:#7356b8;border-color:#e7def8}.mini-icon.rose{background:var(--rose);color:#b86583;border-color:#f6dfe8}.mini-icon.aqua{background:var(--aqua);color:#4d8387;border-color:#dceff0}
+.flow-card h3{font-size:14px;font-weight:800;margin-bottom:8px;color:#24302e}.flow-card p{font-size:12px;line-height:1.58;color:#64716e}
+.workflow-bottom{font-size:15px;font-weight:800;text-align:center;margin-top:25px;color:#374543}
