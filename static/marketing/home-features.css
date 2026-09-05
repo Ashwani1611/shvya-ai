@@ -1,0 +1,21 @@
+/* Shared feature layouts */
+.feature-section{padding:92px 0}
+.feature-head{max-width:750px;margin-bottom:44px}
+.feature-head .section-title{font-size:clamp(32px,3.2vw,45px)}
+.feature-layout{display:grid;grid-template-columns:1fr 1.08fr;gap:60px;align-items:center}
+.feature-layout.reverse{grid-template-columns:1.08fr 1fr}
+.feature-layout.reverse .feature-visual{order:2}.feature-layout.reverse .feature-cards{order:1}
+.feature-visual{position:relative;min-height:390px;display:flex;align-items:center;justify-content:center}
+.visual-wash{position:absolute;width:88%;height:86%;border-radius:24px;background:linear-gradient(145deg,#e8f8f3,#f3faf7)}
+.visual-wash.violet{background:linear-gradient(145deg,#f2ecff,#faf8ff)}
+.visual-wash.peach{background:linear-gradient(145deg,#fff0e5,#fff9f4)}
+.visual-wash.rose{background:linear-gradient(145deg,#fff0f5,#fff8fb)}
+.dashboard-mock{position:relative;width:87%;background:#fff;border:1px solid #dde4e1;border-radius:17px;box-shadow:0 22px 44px rgba(43,61,59,.15);overflow:hidden;z-index:2}
+.mock-bar{height:31px;background:#3f7772;display:flex;align-items:center;padding:0 12px;gap:5px}.mock-bar span{width:7px;height:7px;border-radius:50%;background:rgba(255,255,255,.7)}
+.mock-body{display:grid;grid-template-columns:40px 1.35fr .92fr;min-height:236px}.mock-sidebar{background:#315f5c}.mock-chat{padding:17px;background:#fbfdfc}.mock-sidepanel{padding:14px;background:#fff;border-left:1px solid #edf0ef}
+.bubble{height:31px;width:80%;border-radius:9px;margin:12px 0;background:#eff2f1}.bubble.me{margin-left:auto;background:#e4f6ee;width:72%}.bubble.short{width:54%}.bubble.tall{height:50px}
+.side-line{height:8px;border-radius:6px;background:#edf0ef;margin:9px 0}.side-line.accent{background:#d8eee8;width:75%}
+.metric-badge{position:absolute;right:2%;top:8%;z-index:5;background:#fff;border:1px solid #d9e6e2;border-radius:14px;padding:13px 18px;box-shadow:var(--shadow-soft);animation:badgeBounce 6.3s ease-in-out infinite}.metric-badge strong{display:block;font-size:27px;line-height:1;color:var(--teal-dark)}.metric-badge span{font-size:10px;color:#61706d}
+@keyframes badgeBounce{0%,100%{transform:translateY(0)}50%{transform:translateY(-7px)}}
+.feature-cards{display:grid;grid-template-columns:repeat(2,1fr);gap:17px}
+.info-card{min-height:198px;padding:23px 21px;background:rgba(255,255,255,.88);border:1px solid var(--line);border-radius:16px;transition:.23s ease}.info-card:hover{transform:translateY(-4px);box-shadow:var(--shadow-soft);border-color:#d1dfdc;background:#fff}.info-card .mini-icon{margin:0 0 15px}.info-card h3{font-size:15px;line-height:1.4;font-weight:800;margin-bottom:8px;color:#26312f}.info-card p{font-size:12.8px;line-height:1.65;color:#697572}
