@@ -66,15 +66,27 @@ services:
       redis:
         condition: service_healthy
 
+    # Migrations and collectstatic are performed by the deploy workflow before
+    # this container is replaced. Keeping startup limited to Gunicorn reduces
+    # the window where Nginx has no ready upstream during production deploys.
     command:
-      - sh
-      - -c
-      - >
-        python manage.py migrate &&
-        python manage.py collectstatic --noinput &&
-        gunicorn config.wsgi:application
-        --bind 0.0.0.0:8000
-        --workers 3
+      - gunicorn
+      - config.wsgi:application
+      - --bind
+      - 0.0.0.0:8000
+      - --workers
+      - "3"
+
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/', timeout=3)\"",
+        ]
+      interval: 5s
+      timeout: 4s
+      retries: 12
+      start_period: 10s
 
     ports:
       - "127.0.0.1:8000:8000"
