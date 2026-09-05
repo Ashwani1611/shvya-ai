@@ -1,4 +1,5 @@
 from django.shortcuts import render
+from django.views.decorators.csrf import ensure_csrf_cookie
 from django.views.decorators.http import require_GET
 
 from apps.accounts.models import User
@@ -56,6 +57,7 @@ SECTION_META = [
 
 @crm_login_required
 @require_GET
+@ensure_csrf_cookie
 def copilot_dashboard(request):
     user = request.crm_user
     organization = user.organization
