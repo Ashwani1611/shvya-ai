@@ -52,28 +52,66 @@ def _template(user, template_id):
     )
 
 
-def _buttons(request):
-    raw = request.POST.get("buttons_json", "[]")
+def _json_list(request, field_name, label):
+    raw = request.POST.get(field_name, "[]")
     try:
         data = json.loads(raw)
-    except (TypeError, ValueError):
-        raise TemplateError("Button configuration is invalid JSON.")
+    except (TypeError, ValueError) as exc:
+        raise TemplateError(f"{label} configuration is invalid JSON.") from exc
     if not isinstance(data, list):
-        raise TemplateError("Button configuration must be a list.")
+        raise TemplateError(f"{label} configuration must be a list.")
     return data
 
 
+def _buttons(request):
+    return _json_list(request, "buttons_json", "Button")
+
+
+def _carousel(request):
+    raw = request.POST.get("carousel_json", "{}")
+    try:
+        data = json.loads(raw)
+    except (TypeError, ValueError) as exc:
+        raise TemplateError("Carousel configuration is invalid JSON.") from exc
+    if not isinstance(data, dict):
+        raise TemplateError("Carousel configuration must be an object.")
+    return data
+
+
+def _carousel_files(request):
+    return {
+        key: uploaded_file
+        for key, uploaded_file in request.FILES.items()
+        if key.startswith("carousel_media_")
+    }
+
+
 def _form_values(request, template=None):
+    state = state_for(template) if template else None
+    default_carousel = state.carousel_config if state else {}
     return {
         "name": request.POST.get("name", template.name if template else ""),
-        "category": request.POST.get("category", template.category if template else WhatsAppTemplate.Category.MARKETING),
+        "category": request.POST.get(
+            "category",
+            template.category if template else WhatsAppTemplate.Category.MARKETING,
+        ),
         "account": request.POST.get("account", str(template.account_id) if template else ""),
-        "template_format": request.POST.get("template_format", template.template_format if template else WhatsAppTemplate.Format.STANDARD),
+        "template_format": request.POST.get(
+            "template_format",
+            template.template_format if template else WhatsAppTemplate.Format.STANDARD,
+        ),
         "body": request.POST.get("body", template.body if template else ""),
         "footer": request.POST.get("footer", template.footer if template else ""),
-        "attachment_type": request.POST.get("attachment_type", template.attachment_type if template else WhatsAppTemplate.AttachmentType.NONE),
-        "language": request.POST.get("language", state_for(template).language if template else "en_US"),
-        "buttons_json": request.POST.get("buttons_json", json.dumps(template.buttons if template else [])),
+        "attachment_type": request.POST.get(
+            "attachment_type",
+            template.attachment_type if template else WhatsAppTemplate.AttachmentType.NONE,
+        ),
+        "language": request.POST.get("language", state.language if state else "en_US"),
+        "buttons_json": request.POST.get(
+            "buttons_json",
+            json.dumps(template.buttons if template else []),
+        ),
+        "carousel_json": request.POST.get("carousel_json", json.dumps(default_carousel)),
     }
 
 
@@ -95,17 +133,21 @@ def template_list(request):
     if query:
         qs = qs.filter(Q(name__icontains=query) | Q(rejection_reason__icontains=query))
     qs = qs.exclude(meta_state__local_status=WhatsAppTemplateMetadata.LocalStatus.DELETED)
-    return render(request, "channels/whatsapp_template_list.html", {
-        "templates": qs,
-        "accounts": _accounts(user),
-        "categories": WhatsAppTemplate.Category.choices,
-        "statuses": WhatsAppTemplate.Status.choices,
-        "selected_category": category,
-        "selected_status": status,
-        "selected_account": account_id,
-        "search_query": query,
-        "can_manage": _admin(user),
-    })
+    return render(
+        request,
+        "channels/whatsapp_template_list.html",
+        {
+            "templates": qs,
+            "accounts": _accounts(user),
+            "categories": WhatsAppTemplate.Category.choices,
+            "statuses": WhatsAppTemplate.Status.choices,
+            "selected_category": category,
+            "selected_status": status,
+            "selected_account": account_id,
+            "search_query": query,
+            "can_manage": _admin(user),
+        },
+    )
 
 
 @crm_login_required
@@ -121,6 +163,7 @@ def template_create(request):
             messages.error(request, "Select a connected WhatsApp business.")
         else:
             try:
+                carousel_config = _carousel(request)
                 template = create_template(
                     organization=user.organization,
                     account=account,
@@ -133,13 +176,18 @@ def template_create(request):
                     attachment_type=values["attachment_type"],
                     buttons=_buttons(request),
                     language=values["language"],
+                    carousel_config=carousel_config,
                 )
                 if request.POST.get("action") == "submit":
                     submit_template(
                         template=template,
                         attachment_file=request.FILES.get("attachment_file"),
+                        carousel_files=_carousel_files(request),
                     )
-                    messages.success(request, f'Template "{template.name}" submitted to Meta. Current status: {template.get_status_display()}.')
+                    messages.success(
+                        request,
+                        f'Template "{template.name}" submitted to Meta. Current status: {template.get_status_display()}.',
+                    )
                 else:
                     messages.success(request, f'Template "{template.name}" saved as draft.')
                 return redirect("whatsapp-template-list")
@@ -161,7 +209,10 @@ def template_edit(request, template_id):
         messages.error(request, "Only organization admins can edit message templates.")
         return redirect("whatsapp-template-list")
     if template.status != WhatsAppTemplate.Status.DRAFT or template.meta_template_id:
-        messages.warning(request, "Submitted Meta templates are immutable. Copy this template to create an editable draft.")
+        messages.warning(
+            request,
+            "Submitted Meta templates are immutable. Copy this template to create an editable draft.",
+        )
         return redirect("whatsapp-template-list")
     values = _form_values(request, template)
     if request.method == "POST":
@@ -170,6 +221,7 @@ def template_edit(request, template_id):
             messages.error(request, "Select a connected WhatsApp business.")
         else:
             try:
+                carousel_config = _carousel(request)
                 update_draft(
                     template=template,
                     account=account,
@@ -181,11 +233,13 @@ def template_edit(request, template_id):
                     attachment_type=values["attachment_type"],
                     buttons=_buttons(request),
                     language=values["language"],
+                    carousel_config=carousel_config,
                 )
                 if request.POST.get("action") == "submit":
                     submit_template(
                         template=template,
                         attachment_file=request.FILES.get("attachment_file"),
+                        carousel_files=_carousel_files(request),
                     )
                     messages.success(request, f'Template "{template.name}" submitted to Meta.')
                 else:
@@ -199,18 +253,23 @@ def template_edit(request, template_id):
 def _render_editor(request, user, *, values, template):
     placeholders = available_placeholders(organization=user.organization)
     media_state = state_for(template) if template else None
-    return render(request, "channels/whatsapp_template_create.html", {
-        "template": template,
-        "values": values,
-        "accounts": _accounts(user),
-        "categories": WhatsAppTemplate.Category.choices,
-        "formats": WhatsAppTemplate.Format.choices,
-        "attachments": WhatsAppTemplate.AttachmentType.choices,
-        "placeholders": placeholders,
-        "placeholders_json": json.dumps(placeholders),
-        "buttons_json": values.get("buttons_json") or "[]",
-        "media_state": media_state,
-    })
+    return render(
+        request,
+        "channels/whatsapp_template_create.html",
+        {
+            "template": template,
+            "values": values,
+            "accounts": _accounts(user),
+            "categories": WhatsAppTemplate.Category.choices,
+            "formats": WhatsAppTemplate.Format.choices,
+            "attachments": WhatsAppTemplate.AttachmentType.choices,
+            "placeholders": placeholders,
+            "placeholders_json": json.dumps(placeholders),
+            "buttons_json": values.get("buttons_json") or "[]",
+            "carousel_json": values.get("carousel_json") or "{}",
+            "media_state": media_state,
+        },
+    )
 
 
 @crm_login_required
@@ -224,10 +283,16 @@ def template_submit(request, template_id):
         submit_template(
             template=template,
             attachment_file=request.FILES.get("attachment_file"),
+            carousel_files=_carousel_files(request),
         )
     except TemplateError as exc:
-        return JsonResponse({"error": str(exc), "meta_error_code": exc.meta_error_code}, status=exc.status_code or 400)
-    return JsonResponse({"ok": True, "status": template.status, "meta_template_id": template.meta_template_id})
+        return JsonResponse(
+            {"error": str(exc), "meta_error_code": exc.meta_error_code},
+            status=exc.status_code or 400,
+        )
+    return JsonResponse(
+        {"ok": True, "status": template.status, "meta_template_id": template.meta_template_id}
+    )
 
 
 @crm_login_required
@@ -242,7 +307,10 @@ def template_sync(request):
     try:
         summary = sync_templates(organization=user.organization, account=account)
     except TemplateError as exc:
-        return JsonResponse({"error": str(exc), "meta_error_code": exc.meta_error_code}, status=exc.status_code or 502)
+        return JsonResponse(
+            {"error": str(exc), "meta_error_code": exc.meta_error_code},
+            status=exc.status_code or 502,
+        )
     return JsonResponse({"ok": True, **summary})
 
 
@@ -254,7 +322,13 @@ def template_copy(request, template_id):
     if not source or not _admin(user):
         return JsonResponse({"error": "Template not found or not permitted."}, status=404)
     copied = copy_template(template=source, created_by=user)
-    return JsonResponse({"ok": True, "id": str(copied.id), "edit_url": f"/dashboard/whatsapp/templates/{copied.id}/edit/"})
+    return JsonResponse(
+        {
+            "ok": True,
+            "id": str(copied.id),
+            "edit_url": f"/dashboard/whatsapp/templates/{copied.id}/edit/",
+        }
+    )
 
 
 @crm_login_required
@@ -267,11 +341,16 @@ def template_delete(request, template_id):
     try:
         delete_template(template=template)
     except TemplateError as exc:
-        return JsonResponse({"error": str(exc), "meta_error_code": exc.meta_error_code}, status=exc.status_code or 502)
+        return JsonResponse(
+            {"error": str(exc), "meta_error_code": exc.meta_error_code},
+            status=exc.status_code or 502,
+        )
     return JsonResponse({"ok": True})
 
 
 @crm_login_required
 @require_GET
 def template_placeholders(request):
-    return JsonResponse({"placeholders": available_placeholders(organization=request.crm_user.organization)})
+    return JsonResponse(
+        {"placeholders": available_placeholders(organization=request.crm_user.organization)}
+    )
