@@ -73,32 +73,31 @@ NAV_ITEMS = [
                 "path_prefix": "/dashboard/whatsapp/accounts/",
             },
             {
+                "label": "Coexisted Accounts",
+                "icon": "ti-server",
+                "url_name": "whatsapp-connect-hosted",
+                "path_prefix": "/dashboard/whatsapp/connect/hosted/",
+            },
+            {
                 "label": "Chats",
                 "icon": "ti-message-circle",
                 "url_name": "whatsapp-chats",
                 "path_prefix": "/dashboard/whatsapp/chats/",
+                "requires_whatsapp_connection": True,
             },
             {
                 "label": "Templates",
                 "icon": "ti-file-text",
                 "url_name": "whatsapp-template-list",
                 "path_prefix": "/dashboard/whatsapp/templates/",
+                "requires_whatsapp_connection": True,
             },
             {
                 "label": "Broadcasts",
                 "icon": "ti-speakerphone",
                 "url_name": "whatsapp-campaign-list",
                 "path_prefix": "/dashboard/whatsapp/campaigns/",
-            },
-            {
-                # TODO: confirm the real url_name + path for Hosted
-                # Accounts (templates/channels/whatsapp_connect_hosted.html
-                # already exists, so this view likely already exists too —
-                # run: grep -n "hosted" apps/channels/urls.py
-                "label": "coexisted Accounts",
-                "icon": "ti-server",
-                "url_name": "whatsapp-connect-hosted",
-                "path_prefix": "/dashboard/whatsapp/hosted/",
+                "requires_whatsapp_connection": True,
             },
         ],
     },
@@ -149,14 +148,7 @@ NAV_ITEMS = [
 
 
 def _resolve_active(entry, request_path):
-    """
-    True when this entry's own configured path matches the current
-    request -- "path_exact" for a single exact URL (CRM's dashboard
-    root, which would otherwise also match every other module since
-    everything lives under /dashboard/), "path_prefix" for anything
-    that owns a whole sub-tree of pages (e.g. WhatsApp's chats/
-    templates/campaigns all under /dashboard/whatsapp/...).
-    """
+    """Return whether a navigation entry owns the current request path."""
     path_exact = entry.get("path_exact")
     path_prefix = entry.get("path_prefix")
 
@@ -166,32 +158,44 @@ def _resolve_active(entry, request_path):
     return bool(path_prefix and request_path.startswith(path_prefix))
 
 
-def sidebar_nav(request):
-    """
-    Shared sidebar nav items. Items with a "url_name" render as a
-    real clickable link (base.html); items without one, and without
-    "children" either, stay disabled "Coming soon" placeholders.
+def _has_connected_whatsapp_account(request):
+    """Keep post-connection WhatsApp tools out of the sidebar until usable."""
+    user = getattr(request, "crm_user", None)
+    if not user or not getattr(user, "organization_id", None):
+        return False
 
-    Items with "children" render as an expandable/collapsible group
-    (e.g. WhatsApp) instead of a direct link -- "is_active" on the
-    group itself means "a child route is currently open", which
-    base.html uses to auto-expand the group on load so the active
-    page's parent section isn't shown collapsed.
-    """
+    from apps.channels.models import WhatsAppAccount
+
+    return WhatsAppAccount.objects.filter(
+        organization_id=user.organization_id,
+        status=WhatsAppAccount.Status.CONNECTED,
+        is_active=True,
+    ).exists()
+
+
+def sidebar_nav(request):
+    """Build shared sidebar navigation with connection-aware WhatsApp items."""
     nav_items = []
+    has_whatsapp_connection = _has_connected_whatsapp_account(request)
 
     for item in NAV_ITEMS:
         entry = dict(item)
-
         children = entry.get("children")
 
         if children:
             resolved_children = []
 
             for child in children:
+                if (
+                    child.get("requires_whatsapp_connection")
+                    and not has_whatsapp_connection
+                ):
+                    continue
+
                 child_entry = dict(child)
                 child_entry["is_active"] = _resolve_active(
-                    child_entry, request.path
+                    child_entry,
+                    request.path,
                 )
                 resolved_children.append(child_entry)
 
@@ -207,4 +211,5 @@ def sidebar_nav(request):
 
     return {
         "nav_items": nav_items,
+        "has_whatsapp_connection": has_whatsapp_connection,
     }
