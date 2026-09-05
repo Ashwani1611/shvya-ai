@@ -1,0 +1,28 @@
+<div class="fixed inset-0 z-[210] flex items-center justify-center bg-black/45 p-4" role="dialog" aria-modal="true">
+    <div class="w-full max-w-2xl overflow-hidden rounded-xl bg-white shadow-2xl">
+        <div class="flex items-center justify-between border-b border-gray-200 px-5 py-4">
+            <div><h3 class="text-lg font-semibold text-[#0067b9]">Auto Follow-up Settings</h3><p class="mt-1 text-xs text-gray-500">Organization-wide controls for every assigned lead sequence.</p></div>
+            <button type="button" onclick="document.getElementById('modal-root').innerHTML=''" class="inline-flex h-8 w-8 items-center justify-center rounded-md text-gray-400 hover:bg-gray-100"><i class="ti ti-x"></i></button>
+        </div>
+        {% if is_followup_admin %}
+        <form method="post" action="{% url 'followups-settings-save' %}" class="space-y-4 p-5">
+            {% csrf_token %}
+            <div class="flex items-center justify-between rounded-xl border border-gray-300 p-4">
+                <div><p class="font-medium text-gray-900">Auto Follow-up</p><p class="mt-1 text-sm text-gray-500">Allow scheduled sequence actions to execute for leads with their lead-level switch enabled.</p></div>
+                <label class="relative inline-flex cursor-pointer items-center"><input type="checkbox" name="enabled" class="peer sr-only" {% if followup_settings.enabled %}checked{% endif %}><span class="h-7 w-12 rounded-full bg-gray-200 after:absolute after:left-1 after:top-1 after:h-5 after:w-5 after:rounded-full after:bg-white after:shadow after:transition-all peer-checked:bg-blue-600 peer-checked:after:translate-x-5"></span></label>
+            </div>
+            <div class="flex flex-col gap-4 rounded-xl border border-gray-300 p-4 sm:flex-row sm:items-center sm:justify-between">
+                <div><p class="font-medium text-gray-900">Business Hours</p><p class="mt-1 text-sm text-gray-500">Automated messages are moved into this sending window using the organization timezone.</p></div>
+                <div class="flex items-center gap-2"><input type="time" name="business_hours_start" required value="{{ followup_settings.business_hours_start|time:'H:i' }}" class="h-10 rounded-lg border border-gray-300 px-3 text-sm"><span class="text-gray-400">-</span><input type="time" name="business_hours_end" required value="{{ followup_settings.business_hours_end|time:'H:i' }}" class="h-10 rounded-lg border border-gray-300 px-3 text-sm"></div>
+            </div>
+            <div class="flex flex-col gap-4 rounded-xl border border-gray-300 p-4 sm:flex-row sm:items-center sm:justify-between">
+                <div class="max-w-md"><p class="font-medium text-gray-900">Delay sequences for active conversations</p><p class="mt-1 text-sm text-gray-500">When the lead or your organization sends a conversation message, keep at least this much space before the next Auto Follow-up.</p></div>
+                <div class="flex items-center gap-2"><input type="number" min="0" max="30" name="conversation_delay_value" required value="{{ followup_settings.conversation_delay_value }}" class="h-10 w-24 rounded-lg border border-gray-300 px-3 text-sm"><select name="conversation_delay_unit" class="h-10 rounded-lg border border-gray-300 bg-white px-3 text-sm">{% for value,label in delay_units.choices %}<option value="{{ value }}" {% if followup_settings.conversation_delay_unit == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
+            </div>
+            <div class="flex justify-end gap-2 border-t border-gray-100 pt-4"><button type="button" onclick="document.getElementById('modal-root').innerHTML=''" class="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-600">Cancel</button><button class="rounded-lg bg-[#0067b9] px-5 py-2 text-sm font-semibold text-white hover:bg-[#005a9f]">Save Settings</button></div>
+        </form>
+        {% else %}
+        <div class="p-5 text-sm text-gray-600">Only an organization admin can change Auto Follow-up global settings.</div>
+        {% endif %}
+    </div>
+</div>

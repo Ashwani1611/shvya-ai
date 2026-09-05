@@ -1,0 +1,24 @@
+<div class="fixed inset-0 z-[220] flex items-center justify-center bg-black/50 p-4" role="dialog" aria-modal="true">
+    <div class="w-full max-w-md overflow-hidden rounded-xl bg-white shadow-2xl">
+        <div class="flex items-center justify-between border-b border-gray-200 px-5 py-4">
+            <div><h3 class="font-semibold text-gray-900">Template Preview</h3><p class="mt-1 text-xs text-gray-500">{{ template.name }} · {{ template.category|title }}</p></div>
+            <button type="button" hx-get="{% url 'followups-template-picker' sequence.id %}" hx-target="#modal-root" hx-swap="innerHTML" class="inline-flex h-8 w-8 items-center justify-center rounded-md text-gray-400 hover:bg-gray-100"><i class="ti ti-x"></i></button>
+        </div>
+        <div class="bg-gray-50 p-6">
+            <div class="mx-auto overflow-hidden rounded-[18px] border-[3px] border-gray-900 bg-[#efe7de] shadow-lg" style="max-width:300px; min-height:430px;">
+                <div class="flex items-center gap-2 bg-[#087569] px-4 py-3 text-sm font-semibold text-white"><i class="ti ti-arrow-left"></i><span class="inline-flex h-7 w-7 items-center justify-center rounded-full bg-white/20"><i class="ti ti-sparkles"></i></span>SHVYA AI</div>
+                <div class="p-4">
+                    <div class="rounded-lg bg-white px-3 py-3 shadow-sm">
+                        <p class="whitespace-pre-line text-sm leading-6 text-gray-800">{{ template.body }}</p>
+                        {% if template.footer %}<p class="mt-2 border-t border-gray-100 pt-2 text-xs text-gray-400">{{ template.footer }}</p>{% endif %}
+                        <p class="mt-2 text-right text-[10px] text-gray-400">Preview</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="flex justify-between border-t border-gray-200 px-5 py-4">
+            <button type="button" hx-get="{% url 'followups-template-picker' sequence.id %}" hx-target="#modal-root" hx-swap="innerHTML" class="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-600">Back to templates</button>
+            <form method="post" action="{% url 'followups-template-add' sequence.id %}">{% csrf_token %}<input type="hidden" name="template_id" value="{{ template.id }}"><button class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">Add Template</button></form>
+        </div>
+    </div>
+</div>

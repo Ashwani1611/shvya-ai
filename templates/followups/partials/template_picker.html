@@ -1,0 +1,60 @@
+<div class="fixed inset-0 z-[200] flex items-center justify-center bg-black/45 p-4" role="dialog" aria-modal="true">
+    <div class="flex max-h-[82vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl bg-white shadow-2xl">
+        <div class="flex items-center justify-between border-b border-gray-200 px-5 py-4">
+            <div>
+                <h3 class="text-base font-semibold text-gray-900">Choose a Template Message</h3>
+                <p class="mt-1 text-xs text-gray-500">Only Meta-approved templates for {{ sequence.whatsapp_account.display_phone_number|default:sequence.whatsapp_account.phone_number_id }} are available.</p>
+            </div>
+            <button type="button" onclick="document.getElementById('modal-root').innerHTML=''" class="inline-flex h-8 w-8 items-center justify-center rounded-md text-gray-400 hover:bg-gray-100 hover:text-gray-700"><i class="ti ti-x"></i></button>
+        </div>
+
+        <div class="border-b border-gray-100 px-5 py-4">
+            <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div class="rounded-lg border border-pink-200 bg-pink-50/50 px-4 py-3"><div class="flex items-center justify-between"><span class="inline-flex items-center gap-2 text-sm font-medium text-gray-800"><span class="inline-flex h-8 w-8 items-center justify-center rounded-full bg-pink-500 text-white"><i class="ti ti-speakerphone"></i></span>Marketing</span><span class="text-xs text-gray-500">Approved only</span></div></div>
+                <div class="rounded-lg border border-violet-200 bg-violet-50/50 px-4 py-3"><div class="flex items-center justify-between"><span class="inline-flex items-center gap-2 text-sm font-medium text-gray-800"><span class="inline-flex h-8 w-8 items-center justify-center rounded-full bg-violet-500 text-white"><i class="ti ti-tool"></i></span>Utility / Authentication</span><span class="text-xs text-gray-500">Approved only</span></div></div>
+            </div>
+            <div class="relative mt-3"><i class="ti ti-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"></i><input id="followup-template-search" type="search" placeholder="Search templates" class="h-10 w-full rounded-full border border-gray-300 pl-10 pr-4 text-sm focus:border-blue-500 focus:outline-none"></div>
+        </div>
+
+        <form method="post" action="{% url 'followups-template-add' sequence.id %}" class="flex min-h-0 flex-1 flex-col">
+            {% csrf_token %}
+            <div class="min-h-0 flex-1 overflow-y-auto px-5 py-3">
+                {% if templates %}
+                <div class="overflow-hidden rounded-lg border border-gray-200">
+                    <table class="w-full text-left text-sm">
+                        <thead class="bg-gray-50 text-xs uppercase tracking-wide text-gray-500"><tr><th class="w-12 px-4 py-3"></th><th class="px-4 py-3">Template Name</th><th class="px-4 py-3">Category</th><th class="px-4 py-3">Last Updated</th></tr></thead>
+                        <tbody class="divide-y divide-gray-100">
+                            {% for template in templates %}
+                            <tr data-template-row data-template-name="{{ template.name|lower }}" class="hover:bg-blue-50/40">
+                                <td class="px-4 py-3"><input type="radio" name="template_id" value="{{ template.id }}" required class="h-4 w-4"></td>
+                                <td class="px-4 py-3"><button type="button" hx-get="{% url 'followups-template-preview' sequence.id template.id %}" hx-target="#modal-root" hx-swap="innerHTML" class="font-medium text-blue-600 hover:underline">{{ template.name }}</button></td>
+                                <td class="px-4 py-3"><span class="rounded-full bg-gray-100 px-2 py-1 text-[11px] font-semibold uppercase text-gray-600">{{ template.category }}</span></td>
+                                <td class="px-4 py-3 text-gray-500">{{ template.updated_at|date:"d/m/Y" }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="rounded-xl border border-dashed border-gray-300 py-12 text-center"><i class="ti ti-file-off text-3xl text-gray-300"></i><p class="mt-2 font-medium text-gray-700">No approved templates found</p><p class="mt-1 text-sm text-gray-500">Create or sync a WhatsApp template and wait for Meta approval before using it in Auto Follow-ups.</p></div>
+                {% endif %}
+            </div>
+            <div class="flex items-center justify-between border-t border-gray-200 px-5 py-4">
+                <button type="button" onclick="document.getElementById('modal-root').innerHTML=''" class="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50">Cancel</button>
+                <button {% if not templates %}disabled{% endif %} class="rounded-lg bg-blue-600 px-5 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:bg-gray-300">Add Template</button>
+            </div>
+        </form>
+    </div>
+</div>
+<script>
+(function(){
+  var input=document.getElementById('followup-template-search');
+  if(!input){return;}
+  input.addEventListener('input',function(){
+    var q=input.value.trim().toLowerCase();
+    document.querySelectorAll('[data-template-row]').forEach(function(row){
+      row.classList.toggle('hidden', q && !row.dataset.templateName.includes(q));
+    });
+  });
+})();
+</script>

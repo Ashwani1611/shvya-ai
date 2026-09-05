@@ -1,0 +1,27 @@
+<div id="lead-followup-control" hx-get="{% url 'followups-lead-control' lead.id %}" hx-trigger="refresh" hx-swap="outerHTML" class="rounded-lg border border-blue-100 bg-blue-50/60 px-3 py-2">
+    <div class="flex flex-wrap items-center gap-2">
+        <span class="inline-flex items-center gap-1.5 text-xs font-semibold text-blue-800"><i class="ti ti-repeat"></i>Auto Follow-up</span>
+        {% if current_state %}
+            <span class="max-w-[190px] truncate text-xs text-gray-700" title="{{ current_state.sequence.name }}">{{ current_state.sequence.name }}</span>
+            {% if current_state.next_step %}<span class="text-[11px] text-gray-500">Next: step {{ current_state.next_step.position }}{% if current_state.upcoming_send_at %} · {{ current_state.upcoming_send_at|date:"d M, h:i A" }}{% endif %}</span>{% endif %}
+            <form hx-post="{% url 'followups-lead-toggle' lead.id %}" hx-swap="none" hx-on::after-request="if(event.detail.successful) htmx.trigger('#lead-followup-control','refresh')" class="ml-auto">
+                {% csrf_token %}
+                <input type="hidden" name="enabled" value="{% if current_state.lead_auto_followup_enabled %}false{% else %}true{% endif %}">
+                <button type="submit" class="rounded-full px-2.5 py-1 text-[11px] font-semibold {% if current_state.lead_auto_followup_enabled %}bg-emerald-100 text-emerald-700{% else %}bg-gray-200 text-gray-600{% endif %}">{% if current_state.lead_auto_followup_enabled %}On{% else %}Paused{% endif %}</button>
+            </form>
+            <form hx-post="{% url 'followups-lead-clear' lead.id %}" hx-swap="none" hx-on::after-request="if(event.detail.successful) htmx.trigger('#lead-followup-control','refresh')">
+                {% csrf_token %}<button class="text-[11px] font-medium text-red-600 hover:underline">Clear</button>
+            </form>
+        {% else %}
+            {% if sequences %}
+            <form hx-post="{% url 'followups-lead-assign' lead.id %}" hx-swap="none" hx-on::after-request="if(event.detail.successful) htmx.trigger('#lead-followup-control','refresh')" class="ml-auto flex items-center gap-2">
+                {% csrf_token %}
+                <select name="sequence_id" required class="h-8 max-w-[220px] rounded-md border border-blue-200 bg-white px-2 text-xs text-gray-700"><option value="">Select sequence</option>{% for sequence in sequences %}<option value="{{ sequence.id }}">{{ sequence.name }}</option>{% endfor %}</select>
+                <button class="h-8 rounded-md bg-blue-600 px-3 text-xs font-semibold text-white hover:bg-blue-700">Assign</button>
+            </form>
+            {% else %}
+            <span class="ml-auto text-[11px] text-gray-500">No matching active sequence</span>
+            {% endif %}
+        {% endif %}
+    </div>
+</div>
