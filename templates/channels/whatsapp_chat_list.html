@@ -1,1106 +1,449 @@
 {% extends "base.html" %}
-{% load static %}
+{% load static channels_extras %}
 
-{% block title %}SHVYA AI — {% if active_lead %}{{ active_lead.name|default:active_lead.phone }}{% else %}Chats{% endif %}{% endblock %}
-
-{% block header %}
-    Chats
-{% endblock %}
+{% block title %}SHVYA AI — {% if active_lead %}{{ active_lead.name|default:active_lead.phone }}{% else %}WhatsApp Chats{% endif %}{% endblock %}
+{% block header %}WhatsApp Chats{% endblock %}
 
 {% block content %}
+<div class="flex h-[calc(100vh-8.5rem)] min-h-[620px] overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
 
-    <div class="flex h-[calc(100vh-8.5rem)] overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
-
-
-        <!-- =====================================================
-             LEFT — WHATSAPP-STYLE CONVERSATION LIST
-             ===================================================== -->
-
-        <div class="flex w-[320px] flex-shrink-0 flex-col border-r border-gray-200 bg-white">
-
-            <!-- Search + Account selector -->
-            <div class="border-b border-gray-100 px-3 py-2.5 space-y-2">
-
-                <form method="get" class="relative" id="search-form">
-                    {% if selected_account %}
-                        <input type="hidden" name="account" value="{{ selected_account.id }}">
-                    {% endif %}
-                    {% if active_tab != 'all' %}
-                        <input type="hidden" name="tab" value="{{ active_tab }}">
-                    {% endif %}
-                    <i class="ti ti-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
-                    <input
-                        type="text"
-                        name="q"
-                        value="{{ search_query }}"
-                        placeholder="Search leads..."
-                        class="w-full rounded-full border border-gray-200 bg-[#f0f2f5] py-2 pl-9 pr-3 text-sm focus:border-green-500 focus:outline-none"
-                    >
-                </form>
-
-                {% if accounts|length > 1 %}
-                <select name="account" form="account-filter-form" onchange="this.form.submit()"
-                    class="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs text-gray-600">
-                    <option value="">All connected numbers</option>
-                    {% for account in accounts %}
-                        <option value="{{ account.id }}" {% if selected_account.id == account.id %}selected{% endif %}>
-                            {{ account.business_name|default:account.display_phone_number }}
-                        </option>
-                    {% endfor %}
-                </select>
-                <form id="account-filter-form" method="get">
+    <!-- LEFT: connected number + filters + conversations -->
+    <aside class="flex w-[320px] flex-shrink-0 flex-col border-r border-gray-200 bg-white">
+        <div class="border-b border-gray-200 bg-white px-3 py-3">
+            <div class="mb-2 flex items-center gap-2">
+                <span class="whitespace-nowrap text-xs font-semibold text-gray-700">Connected to</span>
+                <form id="account-filter-form" method="get" class="min-w-0 flex-1">
                     {% if search_query %}<input type="hidden" name="q" value="{{ search_query }}">{% endif %}
                     {% if active_tab != 'all' %}<input type="hidden" name="tab" value="{{ active_tab }}">{% endif %}
+                    <select id="connected-account-select" name="account" onchange="this.form.submit()"
+                        class="w-full truncate rounded-md border border-gray-300 bg-white px-2.5 py-2 text-xs font-medium text-gray-800 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500">
+                        <option value="">All connected numbers</option>
+                        {% for account in accounts %}
+                        <option value="{{ account.id }}" {% if selected_account and selected_account.id == account.id %}selected{% endif %}>
+                            {{ account.business_name|default:"WhatsApp" }}{% if account.display_phone_number %} - {{ account.display_phone_number }}{% endif %}
+                        </option>
+                        {% endfor %}
+                    </select>
                 </form>
-                {% endif %}
-
             </div>
 
-            <!-- Tab bar -->
-            <div class="flex border-b border-gray-200 bg-white overflow-x-auto flex-shrink-0 text-[11px] font-semibold">
+            <form method="get" class="relative">
+                {% if selected_account %}<input type="hidden" name="account" value="{{ selected_account.id }}">{% endif %}
+                {% if active_tab != 'all' %}<input type="hidden" name="tab" value="{{ active_tab }}">{% endif %}
+                <i class="ti ti-search absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400"></i>
+                <input type="text" name="q" value="{{ search_query }}" placeholder="Search for leads"
+                    class="w-full rounded-full border border-gray-200 bg-white py-2.5 pl-9 pr-3 text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500">
+            </form>
+        </div>
 
-                <a href="?{% if selected_account %}account={{ selected_account.id }}&{% endif %}{% if search_query %}q={{ search_query }}&{% endif %}tab=all"
-                    class="flex-shrink-0 px-3 py-2.5 border-b-2 whitespace-nowrap transition-colors
-                    {% if active_tab == 'all' %}border-green-500 text-green-600{% else %}border-transparent text-gray-500 hover:text-gray-700{% endif %}">
-                    All Chats
-                </a>
+        <div class="flex flex-wrap gap-2 border-b border-gray-200 px-3 py-3 text-xs font-medium">
+            <a href="?{% if selected_account %}account={{ selected_account.id }}&{% endif %}{% if search_query %}q={{ search_query|urlencode }}&{% endif %}tab=all"
+               class="rounded-full border px-3 py-1.5 {% if active_tab == 'all' %}border-blue-500 bg-blue-50 text-blue-600{% else %}border-gray-200 bg-gray-100 text-gray-500{% endif %}">All Chats</a>
+            <a href="?{% if selected_account %}account={{ selected_account.id }}&{% endif %}{% if search_query %}q={{ search_query|urlencode }}&{% endif %}tab=unread"
+               class="rounded-full border px-3 py-1.5 {% if active_tab == 'unread' %}border-blue-500 bg-blue-50 text-blue-600{% else %}border-gray-200 bg-gray-100 text-gray-500{% endif %}">Unread{% if tab_counts.unread %} · {{ tab_counts.unread }}{% endif %}</a>
+            <a href="?{% if selected_account %}account={{ selected_account.id }}&{% endif %}{% if search_query %}q={{ search_query|urlencode }}&{% endif %}tab=needs_reply"
+               class="rounded-full border px-3 py-1.5 {% if active_tab == 'needs_reply' %}border-blue-500 bg-blue-50 text-blue-600{% else %}border-gray-200 bg-gray-100 text-gray-500{% endif %}">Needs Reply</a>
+            <a href="?{% if selected_account %}account={{ selected_account.id }}&{% endif %}{% if search_query %}q={{ search_query|urlencode }}&{% endif %}tab=failed"
+               class="rounded-full border px-3 py-1.5 {% if active_tab == 'failed' %}border-blue-500 bg-blue-50 text-blue-600{% else %}border-gray-200 bg-gray-100 text-gray-500{% endif %}">Failed{% if tab_counts.failed %} · {{ tab_counts.failed }}{% endif %}</a>
+            <a href="?{% if selected_account %}account={{ selected_account.id }}&{% endif %}{% if search_query %}q={{ search_query|urlencode }}&{% endif %}tab=broadcasts"
+               class="rounded-full border px-3 py-1.5 {% if active_tab == 'broadcasts' %}border-blue-500 bg-blue-50 text-blue-600{% else %}border-gray-200 bg-gray-100 text-gray-500{% endif %}">Successful Broadcasts</a>
+        </div>
 
-                <a href="?{% if selected_account %}account={{ selected_account.id }}&{% endif %}{% if search_query %}q={{ search_query }}&{% endif %}tab=unread"
-                    class="flex-shrink-0 px-3 py-2.5 border-b-2 whitespace-nowrap transition-colors flex items-center gap-1
-                    {% if active_tab == 'unread' %}border-green-500 text-green-600{% else %}border-transparent text-gray-500 hover:text-gray-700{% endif %}">
-                    Unread
-                    {% if tab_counts.unread %}
-                        <span class="rounded-full bg-green-500 px-1.5 py-0.5 text-[10px] text-white font-bold">{{ tab_counts.unread }}</span>
+        <div class="flex-1 overflow-y-auto">
+            {% for lead in conversations %}
+            <a href="{% url 'whatsapp-chat-detail' lead.id %}?{% if selected_account %}account={{ selected_account.id }}&{% endif %}tab={{ active_tab }}{% if search_query %}&q={{ search_query|urlencode }}{% endif %}"
+               class="conversation-row flex gap-3 border-b border-gray-100 px-3 py-3 hover:bg-gray-50 {% if active_lead and active_lead.id == lead.id %}bg-[#f0f2f5]{% endif %}">
+                <div class="relative mt-0.5 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-gray-200 text-xs font-bold text-gray-600">
+                    {{ lead.initials }}
+                    {% if lead.last_msg_status == 'failed' %}
+                    <span class="absolute -bottom-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full border-2 border-white bg-red-500">
+                        <i class="ti ti-x text-[8px] text-white"></i>
+                    </span>
                     {% endif %}
-                </a>
-
-                <a href="?{% if selected_account %}account={{ selected_account.id }}&{% endif %}{% if search_query %}q={{ search_query }}&{% endif %}tab=needs_reply"
-                    class="flex-shrink-0 px-3 py-2.5 border-b-2 whitespace-nowrap transition-colors flex items-center gap-1
-                    {% if active_tab == 'needs_reply' %}border-green-500 text-green-600{% else %}border-transparent text-gray-500 hover:text-gray-700{% endif %}">
-                    Needs Reply
-                    {% if tab_counts.needs_reply %}
-                        <span class="rounded-full bg-orange-400 px-1.5 py-0.5 text-[10px] text-white font-bold">{{ tab_counts.needs_reply }}</span>
-                    {% endif %}
-                </a>
-
-                <a href="?{% if selected_account %}account={{ selected_account.id }}&{% endif %}{% if search_query %}q={{ search_query }}&{% endif %}tab=failed"
-                    class="flex-shrink-0 px-3 py-2.5 border-b-2 whitespace-nowrap transition-colors flex items-center gap-1
-                    {% if active_tab == 'failed' %}border-green-500 text-green-600{% else %}border-transparent text-gray-500 hover:text-gray-700{% endif %}">
-                    Failed
-                    {% if tab_counts.failed %}
-                        <span class="rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] text-white font-bold">{{ tab_counts.failed }}</span>
-                    {% endif %}
-                </a>
-
-                <a href="?{% if selected_account %}account={{ selected_account.id }}&{% endif %}{% if search_query %}q={{ search_query }}&{% endif %}tab=broadcasts"
-                    class="flex-shrink-0 px-3 py-2.5 border-b-2 whitespace-nowrap transition-colors
-                    {% if active_tab == 'broadcasts' %}border-green-500 text-green-600{% else %}border-transparent text-gray-500 hover:text-gray-700{% endif %}">
-                    Broadcasts
-                </a>
-
+                </div>
+                <div class="min-w-0 flex-1">
+                    <div class="flex items-center justify-between gap-2">
+                        <p class="truncate text-sm font-semibold text-gray-900">{{ lead.name|default:lead.phone }}</p>
+                        <span class="whitespace-nowrap text-[10px] {% if lead.last_msg_status == 'failed' %}text-red-500{% else %}text-gray-400{% endif %}">{{ lead.last_message_at|date:"h:i A" }}</span>
+                    </div>
+                    <div class="mt-1 flex items-center justify-between gap-2">
+                        <p class="truncate text-xs {% if lead.last_msg_status == 'failed' %}text-red-500{% else %}text-gray-500{% endif %}">
+                            {% if lead.last_msg_direction == 'outbound' %}<span class="font-medium">You:</span> {% endif %}{{ lead.last_msg_body|default:"No messages"|truncatechars:34 }}
+                        </p>
+                        {% if lead.unread_count %}<span class="flex h-5 min-w-5 items-center justify-center rounded-full bg-green-500 px-1 text-[10px] font-bold text-white">{{ lead.unread_count }}</span>{% endif %}
+                    </div>
+                </div>
+            </a>
+            {% empty %}
+            <div class="px-5 py-12 text-center text-sm text-gray-400">
+                {% if active_tab == 'failed' %}No failed conversations.{% else %}No conversations found.{% endif %}
             </div>
+            {% endfor %}
+        </div>
+    </aside>
 
-            <!-- Conversation rows -->
-            <div class="flex-1 overflow-y-auto">
+    <!-- CENTER: message thread -->
+    <main class="flex min-w-0 flex-1 flex-col bg-[#efeae2]">
+        {% if active_lead %}
+        <div class="flex h-[58px] flex-shrink-0 items-center gap-3 border-b border-gray-200 bg-[#f0f2f5] px-4">
+            <div class="flex h-9 w-9 items-center justify-center rounded-full bg-gray-300 text-xs font-bold text-gray-600">{{ active_lead.initials }}</div>
+            <div class="min-w-0">
+                <p class="truncate text-sm font-semibold text-gray-900">{{ active_lead.name|default:active_lead.phone }}</p>
+                <p class="truncate text-[11px] text-gray-500">{{ active_lead.phone }}</p>
+            </div>
+        </div>
 
-                {% if conversations %}
-
-                    {% for lead in conversations %}
-
-                        <a
-                            href="{% url 'whatsapp-chat-detail' lead_id=lead.id %}{% if selected_account %}?account={{ selected_account.id }}{% endif %}"
-                            class="conversation-row flex items-center gap-3 border-b border-gray-100 px-3 py-3 transition hover:bg-[#f0f2f5]
-                            {% if active_lead.id == lead.id %}bg-[#f0f2f5]{% else %}bg-white{% endif %}"
-                            data-lead-id="{{ lead.id }}"
-                        >
-
-                            <!-- Avatar -->
-                            <div class="relative flex-shrink-0">
-                                <div class="flex h-12 w-12 items-center justify-center rounded-full bg-[#dfe5e7] text-sm font-semibold text-[#54656f]">
-                                    {{ lead.initials }}
-                                </div>
-                                {% if lead.last_msg_status == 'failed' %}
-                                <span class="absolute -bottom-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 border-2 border-white">
-                                    <i class="ti ti-x text-white" style="font-size:8px"></i>
-                                </span>
-                                {% endif %}
-                            </div>
-
-                            <!-- Text -->
-                            <div class="min-w-0 flex-1">
-
-                                <div class="flex items-center justify-between gap-1">
-                                    <p class="truncate text-sm font-semibold text-[#111b21]">
-                                        {{ lead.name|default:lead.phone }}
-                                    </p>
-                                    <span class="last-message-at flex-shrink-0 text-[11px]
-                                        {% if lead.last_msg_status == 'failed' %}text-red-500 font-medium
-                                        {% elif lead.unread_count %}text-green-600 font-medium
-                                        {% else %}text-[#667781]{% endif %}"
-                                        data-raw="{{ lead.last_message_at|date:'c' }}">
-                                        {{ lead.last_message_at|date:"h:i A" }}
-                                    </span>
-                                </div>
-
-                                <div class="mt-0.5 flex items-center justify-between gap-1">
-                                    <div class="flex min-w-0 items-center gap-1">
-                                        <!-- Tick icons for outbound -->
-                                        {% if lead.last_msg_direction == 'outbound' %}
-                                            {% if lead.last_msg_status == 'read' %}
-                                                <i class="ti ti-checks flex-shrink-0 text-[13px] text-blue-500"></i>
-                                            {% elif lead.last_msg_status == 'delivered' %}
-                                                <i class="ti ti-checks flex-shrink-0 text-[13px] text-[#8696a0]"></i>
-                                            {% elif lead.last_msg_status == 'sent' %}
-                                                <i class="ti ti-check flex-shrink-0 text-[13px] text-[#8696a0]"></i>
-                                            {% elif lead.last_msg_status == 'failed' %}
-                                                <i class="ti ti-alert-circle flex-shrink-0 text-[13px] text-red-500"></i>
-                                            {% else %}
-                                                <i class="ti ti-clock flex-shrink-0 text-[13px] text-[#8696a0]"></i>
-                                            {% endif %}
-                                        {% endif %}
-                                        <p class="truncate text-[13px]
-                                            {% if lead.last_msg_status == 'failed' %}text-red-500
-                                            {% else %}text-[#667781]{% endif %}">
-                                            {% if lead.last_msg_body %}
-                                                {{ lead.last_msg_body|truncatechars:40 }}
-                                            {% else %}
-                                                <span class="italic">No messages</span>
-                                            {% endif %}
-                                        </p>
-                                    </div>
-                                    <!-- Unread badge -->
-                                    {% if lead.unread_count %}
-                                    <span class="unread-badge flex-shrink-0 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-[#25d366] px-1.5 text-[11px] font-bold text-white">
-                                        {{ lead.unread_count }}
-                                    </span>
-                                    {% endif %}
-                                </div>
-
-                            </div>
-
-                        </a>
-
-                    {% endfor %}
-
-                {% else %}
-
-                    <div class="flex h-full flex-col items-center justify-center px-6 text-center">
-                        <i class="ti ti-message-circle text-4xl text-gray-300"></i>
-                        {% if not accounts %}
-                            <p class="mt-3 text-sm text-gray-500">No WhatsApp number connected yet.</p>
-                            <a href="{% url 'whatsapp-connect-choice' %}"
-                                class="mt-4 inline-flex items-center gap-2 rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-green-700">
-                                Connect WhatsApp
-                            </a>
-                        {% elif search_query %}
-                            <p class="mt-3 text-sm text-gray-500">No contacts match "{{ search_query }}".</p>
-                        {% else %}
-                            <p class="mt-3 text-sm font-medium text-gray-700">
-                                No conversations{% if active_tab != 'all' %} in this filter{% endif %}.
-                            </p>
+        <div id="thread" class="flex-1 overflow-y-auto px-4 py-3">
+            {% regroup chat_messages by created_at|date:"Y-m-d" as messages_by_day %}
+            {% for day_group in messages_by_day %}
+            <div class="my-3 flex justify-center"><span class="rounded-md bg-white/90 px-3 py-1 text-[10px] text-gray-500 shadow-sm">{{ day_group.grouper }}</span></div>
+            {% for message in day_group.list %}
+            <div class="mb-2 flex {% if message.direction == 'outbound' %}justify-end{% else %}justify-start{% endif %}" data-message-id="{{ message.id }}">
+                <div class="max-w-[72%] rounded-lg px-3 py-2 text-sm shadow-sm {% if message.direction == 'outbound' %}{% if message.status == 'failed' %}bg-[#fff0f0]{% else %}bg-[#d9fdd3]{% endif %}{% else %}bg-white{% endif %}">
+                    {% if message.body %}<p class="whitespace-pre-wrap leading-relaxed text-gray-900">{{ message.body }}</p>{% else %}<p class="italic text-gray-400">Unsupported message type</p>{% endif %}
+                    <div class="mt-1 flex items-center justify-end gap-1 text-[10px] text-gray-500">
+                        {{ message.created_at|date:"h:i A" }}
+                        {% if message.direction == 'outbound' %}
+                            {% if message.status == 'read' %}<i class="ti ti-checks text-blue-500"></i>
+                            {% elif message.status == 'delivered' %}<i class="ti ti-checks"></i>
+                            {% elif message.status == 'sent' %}<i class="ti ti-check"></i>
+                            {% elif message.status == 'failed' %}<i class="ti ti-alert-circle text-red-500"></i>
+                            {% else %}<i class="ti ti-clock"></i>{% endif %}
                         {% endif %}
                     </div>
-
-                {% endif %}
-
-            </div>
-
-        </div>
-
-
-        <!-- =====================================================
-             CENTER — MESSAGE THREAD
-             ===================================================== -->
-
-        <div class="flex min-w-0 flex-1 flex-col">
-
-            {% if active_lead %}
-
-                <!-- THREAD HEADER -->
-
-                <div class="flex items-center gap-3 border-b border-gray-200 bg-[#f0f2f5] px-4 py-2.5">
-
-                    <a href="{% url 'whatsapp-chats' %}"
-                        class="text-[#54656f] transition hover:text-gray-700 lg:hidden">
-                        <i class="ti ti-arrow-left text-lg"></i>
-                    </a>
-
-                    <div class="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-[#dfe5e7] text-sm font-semibold text-[#54656f]">
-                        {{ active_lead.initials }}
-                    </div>
-
-                    <div class="min-w-0 flex-1">
-                        <p class="truncate text-sm font-semibold text-[#111b21]">
-                            {{ active_lead.name|default:active_lead.phone }}
-                        </p>
-                        <p class="truncate text-[11px] text-[#667781]">
-                            {{ active_lead.phone }}{% if active_lead.stage %} · {{ active_lead.stage.name }}{% endif %}
-                        </p>
-                    </div>
-
-                    <div class="flex items-center gap-2 flex-shrink-0">
-                        <button
-                            hx-get="{% url 'crm-lead-call-modal' active_lead.id %}"
-                            hx-target="#modal-root"
-                            hx-swap="innerHTML"
-                            class="flex h-8 w-8 items-center justify-center rounded-full text-[#54656f] hover:bg-white/70 transition"
-                            title="Log call">
-                            <i class="ti ti-phone text-base"></i>
-                        </button>
-                        <a href="{% url 'crm-lead-detail' active_lead.id %}"
-                            class="flex h-8 w-8 items-center justify-center rounded-full text-[#54656f] hover:bg-white/70 transition"
-                            title="View full profile">
-                            <i class="ti ti-user-circle text-base"></i>
-                        </a>
-                    </div>
-
-                </div>
-
-
-                <!-- MESSAGE THREAD -->
-
-                <div
-                    id="thread"
-                    class="flex-1 space-y-1 overflow-y-auto px-4 py-3"
-                    style="background-color:#e5ddd5;"
-                >
-
-                    {% regroup chat_messages by created_at|date:"Y-m-d" as messages_by_day %}
-
-                    {% for day_group in messages_by_day %}
-
-                        <!-- Day separator -->
-                        <div class="flex justify-center my-3">
-                            <span class="rounded-full bg-[#ffffffcc] px-3 py-1 text-[11px] font-medium text-[#667781] shadow-sm">
-                                {% now "Y-m-d" as today %}
-                                {% if day_group.grouper == today %}Today{% else %}{{ day_group.grouper }}{% endif %}
-                            </span>
+                    {% if message.status == 'failed' %}
+                    <div class="mt-2 rounded-md border border-red-200 bg-red-50 px-2.5 py-2 text-[11px] leading-relaxed text-red-600">
+                        <div class="flex gap-1.5">
+                            <i class="ti ti-alert-circle mt-0.5 flex-shrink-0"></i>
+                            <span><strong>Message failed{% if message.error_code %} ({{ message.error_code }}){% endif %}:</strong> {{ message.error|default:"WhatsApp could not deliver this message." }}</span>
                         </div>
-
-                        {% for message in day_group.list %}
-
-                        <div
-                            class="chat-bubble-row flex {% if message.direction == 'outbound' %}justify-end{% else %}justify-start{% endif %} mb-0.5"
-                            data-message-id="{{ message.id }}"
-                        >
-
-                            <div class="max-w-[72%] {% if message.direction == 'outbound' %}rounded-tl-xl rounded-tr-sm rounded-b-xl{% else %}rounded-tr-xl rounded-tl-sm rounded-b-xl{% endif %} px-3 py-2 text-sm shadow-sm
-                                {% if message.direction == 'outbound' %}
-                                    {% if message.status == 'failed' %}bg-[#ffe4e4]{% else %}bg-[#d9fdd3]{% endif %}
-                                {% else %}
-                                    bg-white
-                                {% endif %}">
-
-                                {% if message.body %}
-                                <p class="whitespace-pre-wrap leading-relaxed text-[#111b21]">{{ message.body }}</p>
-                                {% else %}
-                                <p class="italic text-[#8696a0] text-xs">Unsupported message type</p>
-                                {% endif %}
-
-                                {% if message.status == 'failed' and message.error %}
-                                <p class="mt-1 text-[11px] text-red-600 leading-tight">
-                                    <i class="ti ti-alert-triangle text-[11px]"></i>
-                                    {{ message.error|truncatechars:120 }}
-                                </p>
-                                {% endif %}
-
-                                <p class="mt-0.5 flex items-center justify-end gap-0.5 text-[10px] text-[#667781]">
-                                    <span class="msg-time">{{ message.created_at|date:"h:i A" }}</span>
-                                    {% if message.direction == 'outbound' %}
-                                    <span class="msg-ticks ml-0.5">
-                                        {% if message.status == 'read' %}
-                                            <i class="ti ti-checks text-blue-500 text-[12px]"></i>
-                                        {% elif message.status == 'delivered' %}
-                                            <i class="ti ti-checks text-[#8696a0] text-[12px]"></i>
-                                        {% elif message.status == 'sent' %}
-                                            <i class="ti ti-check text-[#8696a0] text-[12px]"></i>
-                                        {% elif message.status == 'failed' %}
-                                            <i class="ti ti-alert-circle text-red-500 text-[12px]"></i>
-                                        {% else %}
-                                            <i class="ti ti-clock text-[#8696a0] text-[12px]"></i>
-                                        {% endif %}
-                                    </span>
-                                    {% endif %}
-                                </p>
-
-                            </div>
-
-                        </div>
-
-                        {% endfor %}
-
-                    {% empty %}
-
-                        <div id="thread-empty-state" class="flex h-full items-center justify-center text-sm text-[#667781]">
-                            No messages yet.
-                        </div>
-
-                    {% endfor %}
-
-                </div>
-
-
-                <!-- COMPOSER -->
-
-                <!-- Expired banner -->
-                <div class="border-t border-[#e9edef] bg-[#fffde7] px-4 py-2">
-                    <p class="text-[12px] text-[#667781] leading-snug">
-                        <i class="ti ti-lock text-[13px] text-yellow-600 mr-1"></i>
-                        <strong class="text-yellow-700">Chat expired.</strong>
-                        Chats expire 24 hours after the last customer message. Only template messages can be sent now.
-                    </p>
-                </div>
-
-                <!-- Composer bar -->
-                <div class="flex items-center gap-2 border-t border-[#e9edef] bg-[#f0f2f5] px-3 py-2.5">
-
-                    <div id="send-error" class="hidden absolute bottom-20 left-1/2 -translate-x-1/2 rounded-lg bg-red-600 px-4 py-2 text-xs text-white shadow"></div>
-
-                    <form id="composer-form" class="flex flex-1 items-center gap-2">
-                        {% csrf_token %}
-                        <div class="flex flex-1 items-center rounded-full bg-white px-4 py-2.5 shadow-sm">
-                            <input
-                                type="text"
-                                id="message-body"
-                                placeholder="Type a message"
-                                class="flex-1 bg-transparent text-sm text-[#111b21] outline-none placeholder-[#8696a0]"
-                            >
-                        </div>
-                        <button
-                            type="submit"
-                            class="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-[#00a884] text-white transition hover:bg-[#017561]"
-                        >
-                            <i class="ti ti-send text-base"></i>
-                        </button>
-                    </form>
-
-                </div>
-
-            {% else %}
-
-                <!-- EMPTY STATE -->
-
-                <div class="flex h-full flex-col items-center justify-center bg-[#f0f2f5] px-8 text-center">
-
-                    <div class="flex h-24 w-24 items-center justify-center rounded-full bg-[#dfe5e7]">
-                        <svg viewBox="0 0 212 212" class="h-16 w-16 opacity-40" fill="#54656f">
-                            <path d="M106.2 0C47.6 0 0 47.6 0 106.2c0 18.7 4.9 36.2 13.4 51.5L0 212l55.5-14.5c14.8 8 31.8 12.6 50 12.6 58.6 0 106.2-47.6 106.2-106.2S164.8 0 106.2 0zm0 194.3c-16.5 0-32-4.4-45.4-12.1l-31.8 8.3 8.5-31.1c-8.4-13.8-13.2-29.9-13.2-47.2 0-49.2 40-89.2 89.2-89.2 49.2 0 89.2 40 89.2 89.2-.1 49.2-40.1 89.1-89.5 89.1z"/>
-                        </svg>
                     </div>
-
-                    <p class="mt-5 text-xl font-light text-[#41525d]">
-                        Keep your phone connected
-                    </p>
-
-                    <p class="mt-2 max-w-xs text-sm text-[#667781]">
-                        Select a conversation from the left to view messages and lead details.
-                    </p>
-
-                    {% if not accounts %}
-                    <a href="{% url 'whatsapp-connect-choice' %}"
-                        class="mt-6 inline-flex items-center gap-2 rounded-full bg-[#00a884] px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-[#017561]">
-                        <i class="ti ti-brand-whatsapp text-base"></i>
-                        Connect WhatsApp
-                    </a>
                     {% endif %}
-
                 </div>
-
-            {% endif %}
-
+            </div>
+            {% endfor %}
+            {% empty %}
+            <div class="flex h-full items-center justify-center text-sm text-gray-500">No messages yet.</div>
+            {% endfor %}
         </div>
 
-
-        <!-- =====================================================
-             RIGHT — KRAYA-STYLE TABBED SIDEBAR
-             ===================================================== -->
-
-        {% if active_lead %}
-
-        <div class="hidden w-[320px] flex-shrink-0 flex-col border-l border-gray-200 bg-white xl:flex" id="crm-sidebar">
-
-            <!-- TAB BAR -->
-            <div class="flex border-b border-gray-200 bg-white overflow-x-auto flex-shrink-0" id="sidebar-tabs">
-
-                <button onclick="showTab('personal')" id="tab-personal"
-                    class="sidebar-tab active-tab flex flex-col items-center gap-0.5 px-2 py-2.5 border-b-2 border-blue-600 text-blue-600 text-[10px] font-semibold whitespace-nowrap flex-1 transition-colors">
-                    <i class="ti ti-user text-sm"></i>Personal Details
+        <div class="relative flex-shrink-0 border-t border-gray-200 bg-[#f0f2f5] px-3 py-2.5">
+            <div id="send-error" class="mb-2 hidden rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-600"></div>
+            <form id="composer-form" class="flex items-center gap-2">
+                {% csrf_token %}
+                <input id="message-body" type="text" autocomplete="off" placeholder="Type a message"
+                       class="min-w-0 flex-1 rounded-full border border-gray-200 bg-white px-4 py-2.5 text-sm outline-none focus:border-green-500">
+                <button class="flex h-10 w-10 items-center justify-center rounded-full bg-[#25d366] text-white hover:bg-[#20bd5a]" type="submit" title="Send">
+                    <i class="ti ti-send"></i>
                 </button>
+            </form>
+        </div>
+        {% else %}
+        <div class="flex h-full flex-col items-center justify-center text-center text-gray-500">
+            <i class="ti ti-brand-whatsapp text-6xl text-gray-300"></i>
+            <p class="mt-4 text-lg font-medium text-gray-600">Select a conversation</p>
+            <p class="mt-1 text-sm">Choose a lead from the left to view messages and details.</p>
+        </div>
+        {% endif %}
+    </main>
 
-                <button onclick="showTab('calls')" id="tab-calls"
-                    class="sidebar-tab flex flex-col items-center gap-0.5 px-2 py-2.5 border-b-2 border-transparent text-[10px] font-semibold text-gray-500 whitespace-nowrap flex-1 hover:text-gray-700 transition-colors">
-                    <i class="ti ti-phone text-sm"></i>Call Tracker
-                </button>
+    <!-- RIGHT: Kraya-style CRM details -->
+    {% if active_lead %}
+    {% lead_attribute_rows active_lead as attribute_rows %}
+    <aside class="hidden w-[340px] flex-shrink-0 flex-col border-l border-gray-200 bg-white xl:flex">
+        <div class="flex flex-shrink-0 border-b border-gray-200 bg-white text-[10px] font-semibold">
+            <button type="button" data-panel="personal" class="side-tab flex flex-1 flex-col items-center gap-1 border-b-2 border-blue-500 px-2 py-2.5 text-blue-600"><i class="ti ti-user text-base"></i>Personal Details</button>
+            <button type="button" data-panel="calls" class="side-tab flex flex-1 flex-col items-center gap-1 border-b-2 border-transparent px-2 py-2.5 text-gray-500"><i class="ti ti-phone text-base"></i>Call Tracker</button>
+            <button type="button" data-panel="followups" class="side-tab flex flex-1 flex-col items-center gap-1 border-b-2 border-transparent px-2 py-2.5 text-gray-500"><i class="ti ti-arrows-right-left text-base"></i>Auto Followups</button>
+            <button type="button" data-panel="templates" class="side-tab flex flex-1 flex-col items-center gap-1 border-b-2 border-transparent px-2 py-2.5 text-gray-500"><i class="ti ti-template text-base"></i>Tem. Message</button>
+        </div>
 
-                <button onclick="showTab('autofollowup')" id="tab-autofollowup"
-                    class="sidebar-tab flex flex-col items-center gap-0.5 px-2 py-2.5 border-b-2 border-transparent text-[10px] font-semibold text-gray-500 whitespace-nowrap flex-1 hover:text-gray-700 transition-colors">
-                    <i class="ti ti-arrows-right-left text-sm"></i>Auto Followups
-                </button>
-
-                <button onclick="showTab('template')" id="tab-template"
-                    class="sidebar-tab flex flex-col items-center gap-0.5 px-2 py-2.5 border-b-2 border-transparent text-[10px] font-semibold text-gray-500 whitespace-nowrap flex-1 hover:text-gray-700 transition-colors">
-                    <i class="ti ti-template text-sm"></i>Tem. Message
-                </button>
-
-                <button onclick="showTab('quickreply')" id="tab-quickreply"
-                    class="sidebar-tab flex flex-col items-center gap-0.5 px-2 py-2.5 border-b-2 border-transparent text-[10px] font-semibold text-gray-500 whitespace-nowrap flex-1 hover:text-gray-700 transition-colors">
-                    <i class="ti ti-bolt text-sm"></i>Quick Replies
-                </button>
-
-            </div>
-
-            <!-- ═══ TAB 1 — PERSONAL DETAILS ═══ -->
-            <div id="panel-personal" class="tab-panel flex-1 overflow-y-auto">
-
-                <form id="personal-form"
-                    action="{% url 'crm-lead-edit-save' active_lead.id %}"
-                    method="post"
-                    class="divide-y divide-gray-100">
-
+        <div class="side-panel flex-1 overflow-y-auto" id="panel-personal">
+            <section class="border-b border-gray-200 px-4 py-3">
+                <h3 class="mb-3 text-xs font-bold text-gray-800">Personal Info</h3>
+                <form id="lead-quick-form" action="{% url 'whatsapp-lead-quick-update' active_lead.id %}" class="space-y-3">
                     {% csrf_token %}
-                    <input type="hidden" name="pipeline" value="{{ active_lead.pipeline_id }}">
-
-                    <div class="px-4 py-2.5">
-                        <label class="block text-[10px] font-semibold uppercase tracking-wide text-gray-400 mb-1">Name</label>
-                        <input type="text" name="name" value="{{ active_lead.name }}"
-                            class="w-full rounded-md border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm text-gray-900 focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-500">
+                    <div class="grid grid-cols-[74px_1fr] items-center gap-2">
+                        <label class="text-xs font-semibold text-gray-700">Name:</label>
+                        <input id="lead-name" name="name" value="{{ active_lead.name }}" class="rounded-md border border-gray-300 px-2.5 py-2 text-sm outline-none focus:border-blue-500">
                     </div>
-
-                    <div class="px-4 py-2.5">
-                        <label class="block text-[10px] font-semibold uppercase tracking-wide text-gray-400 mb-1">Phone</label>
-                        <div class="flex items-center gap-2">
-                            <input type="text" name="phone" value="{{ active_lead.phone }}"
-                                class="flex-1 rounded-md border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm text-gray-900 focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-500">
-                            <button type="button" onclick="navigator.clipboard.writeText('{{ active_lead.phone }}')"
-                                class="flex-shrink-0 rounded p-1 text-gray-400 hover:text-gray-600 transition" title="Copy">
-                                <i class="ti ti-copy text-sm"></i>
-                            </button>
+                    <div class="grid grid-cols-[74px_1fr] items-center gap-2">
+                        <label class="text-xs font-semibold text-gray-700">Phone:</label>
+                        <div class="flex items-center rounded-md border border-gray-200 bg-gray-50 px-2.5 py-2">
+                            <span class="min-w-0 flex-1 truncate text-sm text-gray-500">{{ active_lead.phone }}</span>
+                            <button type="button" class="ml-2 text-gray-400 hover:text-gray-700" onclick="copyLeadPhone()" title="Copy phone"><i class="ti ti-copy"></i></button>
                         </div>
                     </div>
+                    <p class="-mt-1 pl-[82px] text-[10px] text-gray-400">Phone is locked in WhatsApp chats.</p>
 
-                    <div class="px-4 py-2.5">
-                        <label class="block text-[10px] font-semibold uppercase tracking-wide text-gray-400 mb-1">Email</label>
-                        <input type="email" name="email" value="{{ active_lead.email }}"
-                            class="w-full rounded-md border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm text-gray-900 focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-500">
+                    <div class="grid grid-cols-[1fr_auto] items-center gap-3 pt-1">
+                        <div>
+                            <p class="text-xs font-semibold text-gray-800">AI Auto-Reply Status</p>
+                            <p class="text-[10px] text-gray-400">Lead-level switch</p>
+                        </div>
+                        <button id="ai-toggle" type="button" role="switch" aria-checked="{% if active_lead.ai_enabled %}true{% else %}false{% endif %}"
+                                data-enabled="{% if active_lead.ai_enabled %}1{% else %}0{% endif %}"
+                                class="relative h-5 w-9 rounded-full transition {% if active_lead.ai_enabled %}bg-green-500{% else %}bg-gray-300{% endif %}">
+                            <span class="absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all {% if active_lead.ai_enabled %}left-[18px]{% else %}left-0.5{% endif %}"></span>
+                        </button>
                     </div>
 
-                    <div class="px-4 py-2.5">
-                        <label class="block text-[10px] font-semibold uppercase tracking-wide text-gray-400 mb-1">Pipeline</label>
-                        <p class="text-sm text-gray-700">{{ active_lead.pipeline.name|default:"—" }}</p>
+                    <div class="grid grid-cols-[74px_1fr] items-center gap-2 pt-1">
+                        <label class="text-xs font-semibold text-gray-700">Pipeline:</label>
+                        <div class="flex items-center justify-between gap-2 text-sm text-gray-800">
+                            <span>{{ active_lead.pipeline.name|default:"—" }}</span>
+                            <a href="{% url 'crm-lead-detail' active_lead.id %}" class="text-xs text-blue-600 hover:underline">Change</a>
+                        </div>
                     </div>
-
-                    <div class="px-4 py-2.5">
-                        <label class="block text-[10px] font-semibold uppercase tracking-wide text-gray-400 mb-1">Stage</label>
-                        <select name="stage"
-                            class="w-full rounded-md border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm text-gray-900 focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-500">
-                            {% for s in lead_stages %}
-                                <option value="{{ s.id }}" {% if s.id == active_lead.stage_id %}selected{% endif %}>{{ s.name }}</option>
-                            {% endfor %}
+                    <div class="grid grid-cols-[74px_1fr] items-center gap-2">
+                        <label class="text-xs font-semibold text-gray-700">Stage:</label>
+                        <select id="lead-stage" name="stage" class="rounded-md border border-gray-300 bg-white px-2.5 py-2 text-sm outline-none focus:border-blue-500">
+                            {% for stage in lead_stages %}<option value="{{ stage.id }}" {% if stage.id == active_lead.stage_id %}selected{% endif %}>{{ stage.name }}</option>{% endfor %}
                         </select>
                     </div>
-
-                    <div class="px-4 py-2.5">
-                        <label class="block text-[10px] font-semibold uppercase tracking-wide text-gray-400 mb-1">Source</label>
-                        <p class="text-sm capitalize text-gray-700">{{ active_lead.get_lead_source_display }}</p>
+                    <div class="grid grid-cols-[74px_1fr] items-start gap-2">
+                        <label class="pt-0.5 text-xs font-semibold text-gray-700">Sequence:</label>
+                        <p class="text-xs leading-relaxed text-gray-800">{{ active_lead.attributes.sequence|default:"—" }}</p>
                     </div>
-
-                    <div class="px-4 py-2.5">
-                        <label class="block text-[10px] font-semibold uppercase tracking-wide text-gray-400 mb-1">Created</label>
-                        <p class="text-sm text-gray-700">{{ active_lead.created_at|date:"d M Y, h:i A" }}</p>
+                    <div class="grid grid-cols-[74px_1fr] items-center gap-2">
+                        <label class="text-xs font-semibold text-gray-700">Source:</label>
+                        <p class="text-xs text-gray-800">{{ active_lead.get_lead_source_display }}</p>
                     </div>
-
-                    <div class="px-4 py-2.5">
-                        <label class="block text-[10px] font-semibold uppercase tracking-wide text-gray-400 mb-1">Notes</label>
-                        <textarea name="notes" rows="3"
-                            class="w-full rounded-md border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm text-gray-900 focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 resize-none"
-                            placeholder="Add notes…">{{ active_lead.notes }}</textarea>
-                    </div>
-
-                    <div class="px-4 py-3 flex items-center gap-2">
-                        <button type="submit"
-                            class="flex-1 rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-blue-700">
-                            Save Changes
-                        </button>
-                        <a href="{% url 'crm-lead-detail' active_lead.id %}"
-                            class="flex-shrink-0 rounded-lg border border-gray-200 px-3 py-2 text-xs font-medium text-gray-600 transition hover:bg-gray-50" title="Full profile">
-                            <i class="ti ti-external-link text-sm"></i>
-                        </a>
-                    </div>
-
+                    <div id="quick-save-state" class="hidden text-[10px]"></div>
                 </form>
+            </section>
 
-                <div id="personal-save-msg" class="hidden mx-4 mb-3 rounded-md px-3 py-2 text-xs font-medium"></div>
-
-            </div>
-
-
-            <!-- ═══ TAB 2 — CALL TRACKER ═══ -->
-            <div id="panel-calls" class="tab-panel hidden flex-1 flex-col overflow-y-auto">
-
-                <div class="flex items-center justify-between px-4 py-3 border-b border-gray-100 flex-shrink-0">
-                    <p class="text-xs font-semibold uppercase tracking-wide text-gray-400">Call History</p>
-                    <button
-                        hx-get="{% url 'crm-lead-call-modal' active_lead.id %}"
-                        hx-target="#modal-root"
-                        hx-swap="innerHTML"
-                        class="flex items-center gap-1 rounded-lg bg-blue-600 px-2.5 py-1.5 text-[11px] font-semibold text-white transition hover:bg-blue-700">
-                        <i class="ti ti-plus text-xs"></i> Log Call
-                    </button>
-                </div>
-
-                <div class="divide-y divide-gray-100 overflow-y-auto flex-1">
-                    {% for call in lead_calls %}
-                    <div class="px-4 py-3">
-                        <div class="flex items-start justify-between gap-2">
-                            <div class="flex items-center gap-2">
-                                {% if call.status == 'completed' %}
-                                    <span class="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-green-100 text-green-600">
-                                        <i class="ti ti-phone-check text-xs"></i>
-                                    </span>
-                                {% elif call.status == 'no_response' %}
-                                    <span class="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-red-100 text-red-500">
-                                        <i class="ti ti-phone-off text-xs"></i>
-                                    </span>
-                                {% else %}
-                                    <span class="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-gray-100 text-gray-500">
-                                        <i class="ti ti-phone text-xs"></i>
-                                    </span>
-                                {% endif %}
-                                <div>
-                                    <p class="text-xs font-semibold text-gray-800">{{ call.call_name|default:"Call" }}</p>
-                                    <p class="text-[10px] text-gray-400">{{ call.called_at|date:"d M, h:i A" }}</p>
-                                </div>
-                            </div>
-                            <span class="flex-shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold
-                                {% if call.status == 'completed' %}bg-green-100 text-green-700
-                                {% elif call.status == 'no_response' %}bg-red-100 text-red-600
-                                {% else %}bg-gray-100 text-gray-600{% endif %}">
-                                {{ call.get_status_display }}
-                            </span>
+            <section class="border-b border-gray-200">
+                <button type="button" class="section-toggle flex w-full items-center justify-between px-4 py-3 text-left" data-target="additional-body">
+                    <span class="text-xs font-bold text-gray-800">Additional Info</span><i class="ti ti-chevron-down text-gray-500"></i>
+                </button>
+                <div id="additional-body" class="px-4 pb-4">
+                    <form id="attribute-form" action="{% url 'whatsapp-lead-attributes-save' active_lead.id %}" class="space-y-2.5">
+                        {% csrf_token %}
+                        <div class="grid grid-cols-[126px_1fr] items-center gap-2">
+                            <label class="truncate text-xs font-semibold text-gray-700">Email:</label>
+                            <input value="{{ active_lead.email }}" readonly class="rounded-md border border-gray-200 bg-gray-50 px-2.5 py-2 text-xs text-gray-500">
                         </div>
-                        {% if call.notes %}
-                        <p class="mt-1.5 pl-8 text-[11px] text-gray-500 leading-relaxed">{{ call.notes }}</p>
-                        {% endif %}
-                        {% if call.duration_seconds and call.status == 'completed' %}
-                        <p class="mt-0.5 pl-8 text-[10px] text-gray-400">
-                            <i class="ti ti-clock"></i>
-                            {% widthratio call.duration_seconds 60 1 %} min
-                        </p>
-                        {% endif %}
-                    </div>
-                    {% empty %}
-                    <div class="py-10 text-center">
-                        <i class="ti ti-phone-off text-3xl text-gray-300"></i>
-                        <p class="mt-2 text-xs text-gray-400">No calls logged yet.</p>
-                    </div>
-                    {% endfor %}
-                </div>
-
-            </div>
-
-
-            <!-- ═══ TAB 3 — AUTO FOLLOWUPS ═══ -->
-            <div id="panel-autofollowup" class="tab-panel hidden flex-1 overflow-y-auto">
-
-                <div class="px-4 py-4 space-y-3">
-
-                    <div class="rounded-lg border border-gray-200 bg-gray-50 p-3">
-                        <div class="flex items-center justify-between">
-                            <p class="text-xs font-semibold text-gray-700">Active Sequence</p>
-                            <button id="seq-toggle" type="button"
-                                class="relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent bg-blue-500 transition-colors duration-200 ease-in-out"
-                                role="switch" aria-checked="true">
-                                <span class="translate-x-4 pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"></span>
-                            </button>
+                        <div class="grid grid-cols-[126px_1fr] items-center gap-2">
+                            <label class="truncate text-xs font-semibold text-gray-700">Created:</label>
+                            <input value="{{ active_lead.created_at|date:'d-m-Y' }}" readonly class="rounded-md border border-gray-200 bg-gray-50 px-2.5 py-2 text-xs text-gray-500">
                         </div>
-                        <p class="mt-1 text-[11px] text-gray-400">Auto follow-up sequences for this lead.</p>
-                    </div>
-
-                    <div class="rounded-lg border border-orange-100 bg-orange-50 px-4 py-3">
-                        <p class="text-[11px] font-semibold text-orange-700">Next in Sequence</p>
-                        <p class="mt-0.5 text-xs text-orange-600">No active sequence running.</p>
-                        <p class="mt-2 text-[10px] text-orange-400">Manage sequences from the CRM lead detail.</p>
-                    </div>
-
-                    <a href="{% url 'crm-lead-detail' active_lead.id %}"
-                        class="flex items-center justify-between rounded-lg border border-gray-200 bg-white px-4 py-2.5 text-xs font-medium text-gray-600 transition hover:bg-gray-50">
-                        <span>Manage sequences</span>
-                        <i class="ti ti-arrow-right text-sm text-gray-400"></i>
-                    </a>
-
-                    <div class="pt-2 border-t border-gray-100">
-                        <p class="text-[10px] font-semibold uppercase tracking-wide text-gray-400 mb-2">Recent Notes</p>
-                        {% for note in lead_notes %}
-                        <div class="mb-2 rounded-md bg-yellow-50 border border-yellow-100 px-3 py-2">
-                            <p class="text-[11px] text-gray-700 leading-relaxed">{{ note.note|truncatechars:120 }}</p>
-                            <p class="mt-1 text-[10px] text-gray-400">{{ note.created_at|date:"d M, h:i A" }}</p>
+                        {% for attr in attribute_rows %}
+                        <div class="grid grid-cols-[126px_1fr] items-center gap-2">
+                            <label class="truncate text-xs font-semibold text-gray-700" title="{{ attr.name }}">{{ attr.name }}:</label>
+                            {% if attr.field_type == 'option' %}
+                            <select name="attr_{{ attr.key }}" class="attribute-input rounded-md border border-gray-300 bg-white px-2.5 py-2 text-xs outline-none focus:border-blue-500">
+                                <option value="">Select...</option>
+                                {% for option in attr.options %}<option value="{{ option }}" {% if option == attr.value %}selected{% endif %}>{{ option }}</option>{% endfor %}
+                            </select>
+                            {% elif attr.field_type == 'date' %}
+                            <input type="date" name="attr_{{ attr.key }}" value="{{ attr.value }}" class="attribute-input rounded-md border border-gray-300 px-2.5 py-2 text-xs outline-none focus:border-blue-500">
+                            {% elif attr.field_type == 'datetime' %}
+                            <input type="datetime-local" name="attr_{{ attr.key }}" value="{{ attr.value }}" class="attribute-input rounded-md border border-gray-300 px-2.5 py-2 text-xs outline-none focus:border-blue-500">
+                            {% elif attr.field_type == 'numeric' %}
+                            <input type="number" name="attr_{{ attr.key }}" value="{{ attr.value }}" class="attribute-input rounded-md border border-gray-300 px-2.5 py-2 text-xs outline-none focus:border-blue-500">
+                            {% else %}
+                            <input type="text" name="attr_{{ attr.key }}" value="{{ attr.value }}" placeholder="Enter value" class="attribute-input rounded-md border border-gray-300 px-2.5 py-2 text-xs outline-none focus:border-blue-500">
+                            {% endif %}
                         </div>
                         {% empty %}
-                        <p class="text-[11px] text-gray-400">No notes yet.</p>
+                        <p class="py-2 text-xs text-gray-400">No custom attributes configured yet.</p>
                         {% endfor %}
-                        <button
-                            hx-get="{% url 'crm-lead-note-modal' active_lead.id %}"
-                            hx-target="#modal-root"
-                            hx-swap="innerHTML"
-                            class="mt-2 w-full rounded-lg border border-dashed border-gray-300 py-2 text-[11px] font-medium text-gray-500 transition hover:border-blue-400 hover:text-blue-500">
-                            <i class="ti ti-plus text-xs"></i> Add Note
-                        </button>
-                    </div>
-
-                </div>
-
-            </div>
-
-
-            <!-- ═══ TAB 4 — TEMPLATE MESSAGE ═══ -->
-            <div id="panel-template" class="tab-panel hidden flex-1 flex-col overflow-y-auto">
-
-                <div class="px-4 py-3 border-b border-gray-100 flex-shrink-0">
-                    <div class="relative">
-                        <i class="ti ti-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs"></i>
-                        <input type="text" id="template-search" placeholder="Search for Template"
-                            class="w-full rounded-full border border-gray-200 bg-gray-50 py-2 pl-8 pr-3 text-xs focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-500">
-                    </div>
-                </div>
-
-                <div id="template-send-msg" class="hidden mx-4 mt-3 rounded-md px-3 py-2 text-xs font-medium"></div>
-
-                <div class="divide-y divide-gray-100 overflow-y-auto flex-1" id="templates-list">
-                    {% for tmpl in lead_templates %}
-                    <div class="template-row flex items-center justify-between px-4 py-3 hover:bg-gray-50 transition"
-                         data-name="{{ tmpl.name|lower }}">
-                        <span class="text-sm text-gray-800 truncate mr-3">{{ tmpl.name }}</span>
-                        <button
-                            onclick="sendTemplate('{{ tmpl.id }}', '{{ tmpl.name|escapejs }}')"
-                            class="flex-shrink-0 flex h-7 w-7 items-center justify-center rounded-full bg-green-500 text-white transition hover:bg-green-600"
-                            title="Send {{ tmpl.name }}">
-                            <i class="ti ti-send text-xs"></i>
-                        </button>
-                    </div>
-                    {% empty %}
-                    <div class="py-10 text-center px-4">
-                        <i class="ti ti-template text-3xl text-gray-300"></i>
-                        <p class="mt-2 text-xs text-gray-400">No approved templates yet.</p>
-                        <a href="{% url 'whatsapp-template-list' %}" class="mt-2 inline-block text-xs text-blue-600 hover:underline">
-                            Manage templates →
-                        </a>
-                    </div>
-                    {% endfor %}
-                </div>
-
-            </div>
-
-
-            <!-- ═══ TAB 5 — QUICK REPLIES ═══ -->
-            <div id="panel-quickreply" class="tab-panel hidden flex-1 overflow-y-auto">
-
-                <div class="flex items-center justify-between px-4 py-3 border-b border-gray-100">
-                    <p class="text-xs font-semibold uppercase tracking-wide text-gray-400">Quick Replies</p>
-                    <button class="flex items-center gap-1 rounded-lg border border-blue-600 px-2.5 py-1.5 text-[11px] font-semibold text-blue-600 transition hover:bg-blue-50">
-                        <i class="ti ti-plus text-xs"></i> Add a Quick Reply
+                        <div id="attribute-save-state" class="hidden text-[10px]"></div>
+                    </form>
+                    <button type="button" hx-get="{% url 'crm-attribute-manage-modal' %}" hx-target="#modal-root" hx-swap="innerHTML"
+                            class="mt-3 flex w-full items-center justify-center gap-1 rounded-md border border-blue-400 py-2 text-xs font-semibold text-blue-600 hover:bg-blue-50">
+                        <i class="ti ti-plus"></i> Manage Attributes
                     </button>
                 </div>
+            </section>
 
-                <div class="divide-y divide-gray-100">
-
-                    <div class="px-4 py-3">
-                        <div class="flex items-center justify-between cursor-pointer select-none" onclick="toggleQR('qr-initial')">
-                            <div class="flex items-center gap-2">
-                                <i class="ti ti-grip-vertical text-gray-300 text-sm"></i>
-                                <p class="text-xs font-semibold text-gray-700">Initial response</p>
-                            </div>
-                            <div class="flex items-center gap-2">
-                                <span class="text-[10px] text-gray-400">0 / 1</span>
-                                <i class="ti ti-chevron-down text-gray-400 text-xs" id="qr-initial-icon"></i>
-                            </div>
-                        </div>
-                        <div id="qr-initial" class="hidden mt-2 pl-5">
-                            <p class="text-[11px] text-gray-400 italic">No quick replies set.</p>
-                            <button class="mt-1 text-[11px] text-blue-600 hover:underline">+ Add quick reply</button>
-                        </div>
+            <section class="border-b border-gray-200">
+                <button type="button" class="section-toggle flex w-full items-center justify-between px-4 py-3 text-left" data-target="activity-body">
+                    <span class="text-xs font-bold text-gray-800">Activity History</span><i class="ti ti-chevron-down text-gray-500"></i>
+                </button>
+                <div id="activity-body" class="hidden px-4 pb-4">
+                    {% for call in lead_calls %}
+                    <div class="border-l-2 border-blue-200 py-1.5 pl-3">
+                        <p class="text-xs font-medium text-gray-700">{{ call.call_name|default:"Call" }} · {{ call.get_status_display }}</p>
+                        <p class="text-[10px] text-gray-400">{{ call.called_at|date:"d M Y, h:i A" }}</p>
                     </div>
-
-                    <div class="px-4 py-3">
-                        <div class="flex items-center justify-between cursor-pointer select-none" onclick="toggleQR('qr-reminder')">
-                            <div class="flex items-center gap-2">
-                                <i class="ti ti-grip-vertical text-gray-300 text-sm"></i>
-                                <p class="text-xs font-semibold text-gray-700">Reminder</p>
-                            </div>
-                            <div class="flex items-center gap-2">
-                                <span class="text-[10px] text-gray-400">0 / 2</span>
-                                <i class="ti ti-chevron-down text-gray-400 text-xs" id="qr-reminder-icon"></i>
-                            </div>
-                        </div>
-                        <div id="qr-reminder" class="hidden mt-2 pl-5">
-                            <p class="text-[11px] text-gray-400 italic">No quick replies set.</p>
-                            <button class="mt-1 text-[11px] text-blue-600 hover:underline">+ Add quick reply</button>
-                        </div>
-                    </div>
-
-                    <div class="px-4 py-3">
-                        <div class="flex items-center justify-between cursor-pointer select-none" onclick="toggleQR('qr-followup')">
-                            <div class="flex items-center gap-2">
-                                <i class="ti ti-grip-vertical text-gray-300 text-sm"></i>
-                                <p class="text-xs font-semibold text-gray-700">Follow-up</p>
-                            </div>
-                            <div class="flex items-center gap-2">
-                                <span class="text-[10px] text-gray-400">0 / 2</span>
-                                <i class="ti ti-chevron-down text-gray-400 text-xs" id="qr-followup-icon"></i>
-                            </div>
-                        </div>
-                        <div id="qr-followup" class="hidden mt-2 pl-5">
-                            <p class="text-[11px] text-gray-400 italic">No quick replies set.</p>
-                            <button class="mt-1 text-[11px] text-blue-600 hover:underline">+ Add quick reply</button>
-                        </div>
-                    </div>
-
+                    {% empty %}<p class="text-xs text-gray-400">No recent activity.</p>{% endfor %}
                 </div>
+            </section>
 
-            </div>
-
+            <section class="px-4 py-3">
+                <div class="mb-2 flex items-center justify-between">
+                    <h3 class="text-xs font-bold text-gray-800">Notes</h3>
+                    <button type="button" hx-get="{% url 'crm-lead-note-modal' active_lead.id %}" hx-target="#modal-root" hx-swap="innerHTML" class="text-xs font-medium text-blue-600 hover:underline">+ Add note</button>
+                </div>
+                <div class="max-h-40 space-y-2 overflow-y-auto rounded-md border border-gray-200 bg-gray-50 p-3">
+                    {% for note in lead_notes %}<div class="text-xs leading-relaxed text-gray-700">{{ note.note }}<div class="mt-1 text-[10px] text-gray-400">{{ note.created_at|date:"d M Y, h:i A" }}</div></div>{% empty %}<p class="text-xs text-gray-400">Take a note for this chat.</p>{% endfor %}
+                </div>
+            </section>
         </div>
 
-        <style>
-            .sidebar-tab.active-tab { color: #2563eb; border-bottom-color: #2563eb; }
-        </style>
-        <script>
-        (function() {
-            'use strict';
-            var SEND_TEMPLATE_URL = "{% url 'whatsapp-send-template' active_lead.id %}";
-            var CSRF = "{{ csrf_token }}";
+        <div class="side-panel hidden flex-1 overflow-y-auto" id="panel-calls">
+            <div class="flex items-center justify-between border-b border-gray-100 px-4 py-3"><span class="text-xs font-bold text-gray-800">Call Tracker</span><button hx-get="{% url 'crm-lead-call-modal' active_lead.id %}" hx-target="#modal-root" hx-swap="innerHTML" class="rounded-md bg-blue-600 px-2.5 py-1.5 text-[11px] font-semibold text-white">Log Call</button></div>
+            {% for call in lead_calls %}<div class="border-b border-gray-100 px-4 py-3"><p class="text-xs font-semibold text-gray-800">{{ call.call_name|default:"Call" }}</p><p class="mt-1 text-[11px] text-gray-500">{{ call.get_status_display }} · {{ call.called_at|date:"d M, h:i A" }}</p>{% if call.notes %}<p class="mt-1 text-[11px] text-gray-500">{{ call.notes }}</p>{% endif %}</div>{% empty %}<p class="px-4 py-8 text-center text-xs text-gray-400">No calls logged.</p>{% endfor %}
+        </div>
 
-            function showTab(name) {
-                document.querySelectorAll('.tab-panel').forEach(function(p) {
-                    p.classList.add('hidden');
-                    p.classList.remove('flex');
-                });
-                document.querySelectorAll('.sidebar-tab').forEach(function(t) {
-                    t.classList.remove('active-tab', 'text-blue-600', 'border-blue-600');
-                    t.classList.add('border-transparent', 'text-gray-500');
-                });
-                var panel = document.getElementById('panel-' + name);
-                var tab   = document.getElementById('tab-' + name);
-                if (panel) { panel.classList.remove('hidden'); panel.classList.add('flex'); }
-                if (tab) {
-                    tab.classList.add('active-tab', 'text-blue-600', 'border-blue-600');
-                    tab.classList.remove('border-transparent', 'text-gray-500');
-                }
-            }
-            window.showTab = showTab;
-            showTab('personal');
+        <div class="side-panel hidden flex-1 overflow-y-auto p-4" id="panel-followups">
+            <div class="rounded-lg border border-gray-200 bg-gray-50 p-4"><p class="text-xs font-bold text-gray-800">Auto Followups</p><p class="mt-1 text-xs text-gray-500">Sequence: {{ active_lead.attributes.sequence|default:"No active sequence" }}</p></div>
+        </div>
 
-            var pForm = document.getElementById('personal-form');
-            var pMsg  = document.getElementById('personal-save-msg');
-            if (pForm) {
-                pForm.addEventListener('submit', function(e) {
-                    e.preventDefault();
-                    fetch(pForm.action, {
-                        method: 'POST',
-                        headers: { 'X-CSRFToken': CSRF },
-                        body: new FormData(pForm),
-                    }).then(function(r) {
-                        pMsg.textContent = (r.ok || r.status < 400) ? 'Saved!' : 'Save failed.';
-                        pMsg.className = 'mx-4 mb-3 rounded-md px-3 py-2 text-xs font-medium ' +
-                            ((r.ok || r.status < 400)
-                                ? 'bg-green-50 text-green-700 border border-green-200'
-                                : 'bg-red-50 text-red-700 border border-red-200');
-                        setTimeout(function() { pMsg.className = 'hidden'; }, 3000);
-                    }).catch(function() {
-                        pMsg.textContent = 'Network error.';
-                        pMsg.className = 'mx-4 mb-3 rounded-md px-3 py-2 text-xs font-medium bg-red-50 text-red-700 border border-red-200';
-                    });
-                });
-            }
+        <div class="side-panel hidden flex-1 overflow-y-auto" id="panel-templates">
+            <div class="border-b border-gray-100 px-4 py-3"><input id="template-search" placeholder="Search for Template" class="w-full rounded-full border border-gray-200 px-3 py-2 text-xs outline-none focus:border-blue-500"></div>
+            <div id="template-send-state" class="mx-4 mt-3 hidden rounded-md px-3 py-2 text-xs"></div>
+            {% for tmpl in lead_templates %}<div class="template-row flex items-center justify-between border-b border-gray-100 px-4 py-3" data-name="{{ tmpl.name|lower }}"><span class="truncate pr-2 text-xs text-gray-800">{{ tmpl.name }}</span><button type="button" onclick="sendTemplate('{{ tmpl.id }}')" class="flex h-7 w-7 items-center justify-center rounded-full bg-green-500 text-white"><i class="ti ti-send text-xs"></i></button></div>{% empty %}<p class="px-4 py-8 text-center text-xs text-gray-400">No approved templates.</p>{% endfor %}
+        </div>
+    </aside>
+    {% endif %}
+</div>
 
-            var tSearch = document.getElementById('template-search');
-            if (tSearch) {
-                tSearch.addEventListener('input', function() {
-                    var q = tSearch.value.toLowerCase().trim();
-                    document.querySelectorAll('.template-row').forEach(function(row) {
-                        row.style.display = (!q || row.dataset.name.includes(q)) ? '' : 'none';
-                    });
-                });
-            }
+{% if active_lead %}
+<script>
+(function () {
+    'use strict';
+    const csrf = '{{ csrf_token }}';
+    const sendUrl = "{% url 'whatsapp-send-message' active_lead.id %}";
+    const quickUrl = "{% url 'whatsapp-lead-quick-update' active_lead.id %}";
+    const aiUrl = "{% url 'whatsapp-lead-ai-toggle' active_lead.id %}";
+    const attrUrl = "{% url 'whatsapp-lead-attributes-save' active_lead.id %}";
+    const templateUrl = "{% url 'whatsapp-send-template' active_lead.id %}";
 
-            function sendTemplate(templateId, templateName) {
-                var msg = document.getElementById('template-send-msg');
-                var fd = new FormData();
-                fd.append('template_id', templateId);
-                fetch(SEND_TEMPLATE_URL, {
-                    method: 'POST',
-                    headers: { 'X-CSRFToken': CSRF },
-                    body: fd,
-                }).then(function(r) {
-                    return r.json().then(function(d) { return { ok: r.ok, data: d }; });
-                }).then(function(res) {
-                    if (res.ok) {
-                        msg.textContent = '\u2713 "' + templateName + '" sent!';
-                        msg.className = 'mx-4 mt-3 rounded-md px-3 py-2 text-xs font-medium bg-green-50 text-green-700 border border-green-200';
-                    } else {
-                        msg.textContent = (res.data && res.data.error) ? res.data.error : 'Failed to send.';
-                        msg.className = 'mx-4 mt-3 rounded-md px-3 py-2 text-xs font-medium bg-red-50 text-red-700 border border-red-200';
-                    }
-                    setTimeout(function() { msg.className = 'hidden'; }, 4000);
-                }).catch(function() {
-                    msg.textContent = 'Network error.';
-                    msg.className = 'mx-4 mt-3 rounded-md px-3 py-2 text-xs font-medium bg-red-50 text-red-700 border border-red-200';
-                });
-            }
-            window.sendTemplate = sendTemplate;
+    function postForm(url, data) {
+        return fetch(url, {method: 'POST', headers: {'X-CSRFToken': csrf, 'X-Requested-With': 'XMLHttpRequest'}, body: data});
+    }
 
-            function toggleQR(id) {
-                var el   = document.getElementById(id);
-                var icon = document.getElementById(id + '-icon');
-                if (!el) return;
-                var hidden = el.classList.toggle('hidden');
-                if (icon) icon.style.transform = hidden ? '' : 'rotate(180deg)';
-            }
-            window.toggleQR = toggleQR;
+    window.copyLeadPhone = function () {
+        navigator.clipboard.writeText('{{ active_lead.phone|escapejs }}');
+    };
 
-        })();
-        </script>
-
-        {% endif %}
-
-    </div>
-
-
-    <script>
-    (function () {
-        'use strict';
-
-        var ACTIVE_LEAD_ID = {% if active_lead %}"{{ active_lead.id }}"{% else %}null{% endif %};
-        var SEND_URL = {% if active_lead %}"{% url 'whatsapp-send-message' lead_id=active_lead.id %}"{% else %}null{% endif %};
-
-        var WS_PATH = ACTIVE_LEAD_ID
-            ? '/ws/whatsapp/' + ACTIVE_LEAD_ID + '/'
-            : '/ws/whatsapp/inbox/';
-
-        var WS_SCHEME = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        var WS_URL = WS_SCHEME + '//' + window.location.host + WS_PATH;
-
-        function getCookie(name) {
-            var match = document.cookie.match('(^|;)\\s*' + name + '\\s*=\\s*([^;]+)');
-            return match ? match.pop() : '';
-        }
-
-        function escapeHtml(text) {
-            var div = document.createElement('div');
-            div.textContent = text == null ? '' : text;
-            return div.innerHTML;
-        }
-
-        function formatTime(isoString) {
-            try {
-                var d = new Date(isoString);
-                var hours = d.getHours();
-                var minutes = d.getMinutes();
-                var ampm = hours >= 12 ? 'PM' : 'AM';
-                hours = hours % 12 || 12;
-                minutes = minutes < 10 ? '0' + minutes : minutes;
-                return hours + ':' + minutes + ' ' + ampm;
-            } catch (e) {
-                return '';
-            }
-        }
-
-        function ticksHtml(status) {
-            if (status === 'read')      return '<i class="ti ti-checks text-blue-500 text-[12px]"></i>';
-            if (status === 'delivered') return '<i class="ti ti-checks text-[#8696a0] text-[12px]"></i>';
-            if (status === 'sent')      return '<i class="ti ti-check text-[#8696a0] text-[12px]"></i>';
-            if (status === 'failed')    return '<i class="ti ti-alert-circle text-red-500 text-[12px]"></i>';
-            return '<i class="ti ti-clock text-[#8696a0] text-[12px]"></i>';
-        }
-
-        var thread = document.getElementById('thread');
-
-        function scrollThreadToBottom() {
-            if (thread) thread.scrollTop = thread.scrollHeight;
-        }
-
-        function removeEmptyState() {
-            var empty = document.getElementById('thread-empty-state');
-            if (empty) empty.remove();
-        }
-
-        function appendOutboundBubble(tempId, body) {
-            if (!thread) return;
-            removeEmptyState();
-
-            var row = document.createElement('div');
-            row.className = 'chat-bubble-row flex justify-end mb-0.5';
-            row.setAttribute('data-message-id', tempId);
-            row.innerHTML =
-                '<div class="max-w-[72%] rounded-tl-xl rounded-tr-sm rounded-b-xl px-3 py-2 text-sm shadow-sm bg-[#d9fdd3]">' +
-                    '<p class="whitespace-pre-wrap leading-relaxed text-[#111b21]">' + escapeHtml(body) + '</p>' +
-                    '<p class="mt-0.5 flex items-center justify-end gap-0.5 text-[10px] text-[#667781]">' +
-                        '<span class="msg-time">' + formatTime(new Date().toISOString()) + '</span>' +
-                        '<span class="msg-ticks ml-0.5">' + ticksHtml('queued') + '</span>' +
-                    '</p>' +
-                '</div>';
-
-            thread.appendChild(row);
-            scrollThreadToBottom();
-            return row;
-        }
-
-        function appendInboundBubble(message) {
-            if (!thread) return;
-            if (thread.querySelector('[data-message-id="' + message.id + '"]')) return;
-            removeEmptyState();
-
-            var row = document.createElement('div');
-            row.className = 'chat-bubble-row flex justify-start mb-0.5';
-            row.setAttribute('data-message-id', message.id);
-            row.innerHTML =
-                '<div class="max-w-[72%] rounded-tr-xl rounded-tl-sm rounded-b-xl px-3 py-2 text-sm shadow-sm bg-white">' +
-                    '<p class="whitespace-pre-wrap leading-relaxed text-[#111b21]">' + escapeHtml(message.body) + '</p>' +
-                    '<p class="mt-0.5 flex items-center justify-end gap-0.5 text-[10px] text-[#667781]">' +
-                        '<span class="msg-time">' + formatTime(message.created_at) + '</span>' +
-                    '</p>' +
-                '</div>';
-
-            thread.appendChild(row);
-            scrollThreadToBottom();
-        }
-
-        function updateBubbleStatus(messageId, status) {
-            var row = thread && thread.querySelector('[data-message-id="' + messageId + '"]');
-            if (!row) return;
-            var ticks = row.querySelector('.msg-ticks');
-            if (ticks) ticks.innerHTML = ticksHtml(status);
-        }
-
-        function updateSidebarRow(payload) {
-            var row = document.querySelector('.conversation-row[data-lead-id="' + payload.lead_id + '"]');
-            if (!row) return;
-
-            var badge = row.querySelector('.unread-badge');
-            if (badge) {
-                if (payload.unread_count > 0) {
-                    badge.textContent = payload.unread_count;
-                    badge.classList.remove('hidden');
-                } else {
-                    badge.classList.add('hidden');
-                }
-            }
-
-            var timeEl = row.querySelector('.last-message-at');
-            if (timeEl && payload.last_message_at) {
-                timeEl.textContent = formatTime(payload.last_message_at);
-            }
-        }
-
-        var composerForm = document.getElementById('composer-form');
-
-        if (composerForm) {
-            composerForm.addEventListener('submit', function (e) {
-                e.preventDefault();
-
-                var input    = document.getElementById('message-body');
-                var errorBox = document.getElementById('send-error');
-                var body     = input.value.trim();
-
-                if (!body) return;
-
-                errorBox.classList.add('hidden');
-                input.value = '';
-
-                var tempId = 'temp-' + Date.now();
-                appendOutboundBubble(tempId, body);
-
-                var formData = new FormData();
-                formData.append('body', body);
-
-                fetch(SEND_URL, {
-                    method: 'POST',
-                    headers: { 'X-CSRFToken': getCookie('csrftoken') },
-                    body: formData,
-                })
-                .then(function (response) {
-                    return response.json().then(function (data) {
-                        if (!response.ok) throw new Error(data.error || 'Failed to send message.');
-                        return data;
-                    });
-                })
-                .then(function (data) {
-                    var row = thread && thread.querySelector('[data-message-id="' + tempId + '"]');
-                    if (row && data.id) row.setAttribute('data-message-id', data.id);
-                    updateBubbleStatus(data.id, data.status);
-                })
-                .catch(function (err) {
-                    updateBubbleStatus(tempId, 'failed');
-                    errorBox.textContent = err.message;
-                    errorBox.classList.remove('hidden');
-                });
-            });
-        }
-
-        scrollThreadToBottom();
-
-        var socket = null;
-        var reconnectAttempts = 0;
-        var maxReconnectDelay = 15000;
-        var fallbackPollTimer = null;
-
-        function startFallbackPolling() {
-            if (fallbackPollTimer) return;
-            fallbackPollTimer = setInterval(function () {
-                if (!document.hidden) window.location.reload();
-            }, 30000);
-        }
-
-        function stopFallbackPolling() {
-            if (fallbackPollTimer) {
-                clearInterval(fallbackPollTimer);
-                fallbackPollTimer = null;
-            }
-        }
-
-        function connectSocket() {
-            socket = new WebSocket(WS_URL);
-
-            socket.onopen = function () {
-                reconnectAttempts = 0;
-                stopFallbackPolling();
-            };
-
-            socket.onmessage = function (event) {
-                var data;
-                try { data = JSON.parse(event.data); } catch (e) { return; }
-
-                if (data.kind === 'message') {
-                    if (ACTIVE_LEAD_ID && data.message.lead_id === ACTIVE_LEAD_ID) {
-                        appendInboundBubble(data.message);
-                    }
-                } else if (data.kind === 'status') {
-                    updateBubbleStatus(data.message_id, data.status);
-                } else if (data.kind === 'inbox_update') {
-                    updateSidebarRow(data);
-                }
-            };
-
-            socket.onclose = function () {
-                reconnectAttempts += 1;
-                if (reconnectAttempts >= 4) startFallbackPolling();
-                var delay = Math.min(1000 * Math.pow(2, reconnectAttempts), maxReconnectDelay);
-                setTimeout(function () {
-                    if (!document.hidden) connectSocket();
-                }, delay);
-            };
-
-            socket.onerror = function () {};
-        }
-
-        connectSocket();
-
-        document.addEventListener('visibilitychange', function () {
-            if (!document.hidden && (!socket || socket.readyState === WebSocket.CLOSED)) {
-                connectSocket();
-            }
+    const quickForm = document.getElementById('lead-quick-form');
+    const quickState = document.getElementById('quick-save-state');
+    function saveQuick() {
+        const data = new FormData();
+        data.append('name', document.getElementById('lead-name').value);
+        data.append('stage', document.getElementById('lead-stage').value);
+        postForm(quickUrl, data).then(async r => {
+            if (!r.ok) throw new Error((await r.json()).error || 'Save failed');
+            quickState.textContent = 'Saved';
+            quickState.className = 'text-[10px] text-green-600';
+            setTimeout(() => quickState.className = 'hidden', 1500);
+        }).catch(err => {
+            quickState.textContent = err.message;
+            quickState.className = 'text-[10px] text-red-600';
         });
+    }
+    document.getElementById('lead-name')?.addEventListener('change', saveQuick);
+    document.getElementById('lead-stage')?.addEventListener('change', saveQuick);
 
-    })();
-    </script>
+    const aiToggle = document.getElementById('ai-toggle');
+    aiToggle?.addEventListener('click', function () {
+        const next = this.dataset.enabled === '1' ? '0' : '1';
+        const data = new FormData(); data.append('enabled', next);
+        postForm(aiUrl, data).then(async r => {
+            if (!r.ok) throw new Error((await r.json()).error || 'Unable to update AI status');
+            this.dataset.enabled = next;
+            this.setAttribute('aria-checked', next === '1' ? 'true' : 'false');
+            this.classList.toggle('bg-green-500', next === '1');
+            this.classList.toggle('bg-gray-300', next !== '1');
+            const knob = this.querySelector('span');
+            knob.classList.toggle('left-[18px]', next === '1');
+            knob.classList.toggle('left-0.5', next !== '1');
+        }).catch(err => alert(err.message));
+    });
 
+    const attrForm = document.getElementById('attribute-form');
+    const attrState = document.getElementById('attribute-save-state');
+    let attrTimer = null;
+    document.querySelectorAll('.attribute-input').forEach(el => el.addEventListener('change', function () {
+        clearTimeout(attrTimer);
+        attrTimer = setTimeout(function () {
+            postForm(attrUrl, new FormData(attrForm)).then(async r => {
+                if (!r.ok) throw new Error((await r.json()).error || 'Save failed');
+                attrState.textContent = 'Additional info saved';
+                attrState.className = 'text-[10px] text-green-600';
+                setTimeout(() => attrState.className = 'hidden', 1500);
+            }).catch(err => {
+                attrState.textContent = err.message;
+                attrState.className = 'text-[10px] text-red-600';
+            });
+        }, 250);
+    }));
+
+    document.querySelectorAll('.section-toggle').forEach(button => button.addEventListener('click', function () {
+        const body = document.getElementById(this.dataset.target);
+        body.classList.toggle('hidden');
+        const icon = this.querySelector('i');
+        icon.classList.toggle('ti-chevron-down'); icon.classList.toggle('ti-chevron-up');
+    }));
+
+    document.querySelectorAll('.side-tab').forEach(tab => tab.addEventListener('click', function () {
+        document.querySelectorAll('.side-panel').forEach(panel => panel.classList.add('hidden'));
+        document.querySelectorAll('.side-tab').forEach(t => {
+            t.classList.remove('border-blue-500', 'text-blue-600');
+            t.classList.add('border-transparent', 'text-gray-500');
+        });
+        document.getElementById('panel-' + this.dataset.panel).classList.remove('hidden');
+        this.classList.remove('border-transparent', 'text-gray-500');
+        this.classList.add('border-blue-500', 'text-blue-600');
+    }));
+
+    const composer = document.getElementById('composer-form');
+    composer?.addEventListener('submit', function (event) {
+        event.preventDefault();
+        const input = document.getElementById('message-body');
+        const error = document.getElementById('send-error');
+        const body = input.value.trim();
+        if (!body) return;
+        const data = new FormData(); data.append('body', body);
+        postForm(sendUrl, data).then(async r => {
+            if (!r.ok) {
+                let payload = {}; try { payload = await r.json(); } catch (e) {}
+                throw new Error(payload.error || 'Message could not be sent.');
+            }
+            input.value = '';
+            window.location.reload();
+        }).catch(err => {
+            error.textContent = err.message;
+            error.classList.remove('hidden');
+        });
+    });
+
+    window.sendTemplate = function (templateId) {
+        const state = document.getElementById('template-send-state');
+        const data = new FormData(); data.append('template_id', templateId);
+        postForm(templateUrl, data).then(async r => {
+            if (!r.ok) { let p = {}; try { p = await r.json(); } catch (e) {} throw new Error(p.error || 'Template send failed'); }
+            state.textContent = 'Template queued successfully.';
+            state.className = 'mx-4 mt-3 rounded-md border border-green-200 bg-green-50 px-3 py-2 text-xs text-green-700';
+        }).catch(err => {
+            state.textContent = err.message;
+            state.className = 'mx-4 mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-600';
+        });
+    };
+
+    const templateSearch = document.getElementById('template-search');
+    templateSearch?.addEventListener('input', function () {
+        const q = this.value.toLowerCase().trim();
+        document.querySelectorAll('.template-row').forEach(row => row.classList.toggle('hidden', !row.dataset.name.includes(q)));
+    });
+
+    const thread = document.getElementById('thread');
+    if (thread) thread.scrollTop = thread.scrollHeight;
+})();
+</script>
+{% else %}
+<script>
+(function () {
+    const selector = document.getElementById('connected-account-select');
+    if (selector && !selector.value && selector.options.length === 2) {
+        selector.selectedIndex = 1;
+        selector.form.submit();
+    }
+})();
+</script>
+{% endif %}
 {% endblock %}
