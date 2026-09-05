@@ -1,15 +1,24 @@
-"""Small UI wrappers for WhatsApp connection state.
+"""Connection-aware UI wrappers for WhatsApp API onboarding.
 
-Keep the normal WhatsApp views in views_flat.py. These wrappers control the
-connection-aware landing behaviour and the Meta embedded-signup callback.
+There are two independent ways to populate the same final WhatsAppAccount:
+
+* Meta Embedded Signup -- browser receives a code/WABA/phone id and SHVYA
+  exchanges the code server-side.
+* Manual Access Token -- an admin supplies phone id/WABA/token directly.
+
+The paths do not call each other. They intentionally converge only at the final
+WhatsAppAccount record. WhatsAppConnectionAttempt keeps a separate audit trail
+for both methods without ever storing raw OAuth codes or access-token values.
 """
 
 import logging
+import uuid
 
 from django.contrib import messages
 from django.http import JsonResponse
 from django.shortcuts import redirect
 from django.urls import reverse
+from django.utils import timezone
 from django.views.decorators.http import require_POST
 
 from apps.crm.decorators import crm_login_required
@@ -18,10 +27,22 @@ from services.channels.embedded_signup_service import (
     complete_embedded_signup,
 )
 
-from .models import WhatsAppAccount
 from . import views_flat
+from .connection_attempts import WhatsAppConnectionAttempt
+from .models import WhatsAppAccount
 
 logger = logging.getLogger(__name__)
+
+
+_STATUS_RANK = {
+    WhatsAppConnectionAttempt.Status.STARTED: 0,
+    WhatsAppConnectionAttempt.Status.META_FINISHED: 1,
+    WhatsAppConnectionAttempt.Status.CODE_RECEIVED: 2,
+    WhatsAppConnectionAttempt.Status.CALLBACK_RECEIVED: 3,
+    WhatsAppConnectionAttempt.Status.TOKEN_EXCHANGED: 4,
+    WhatsAppConnectionAttempt.Status.PHONE_VERIFIED: 5,
+    WhatsAppConnectionAttempt.Status.CONNECTED: 6,
+}
 
 
 def _has_connected_api_account(user):
@@ -33,108 +54,266 @@ def _has_connected_api_account(user):
     ).exists()
 
 
-def _inject_signup_toast(response):
-    """Add robust Meta embedded-signup completion and shared toast errors.
-
-    Meta has emitted WA_EMBEDDED_SIGNUP postMessage payloads as both JSON
-    strings and already-parsed objects. The template's original listener only
-    accepts the string form. If Meta sends an object, the popup can finish
-    successfully while SHVYA never receives the WABA/phone IDs, so the backend
-    callback is never called and Connected Numbers never refreshes.
-
-    This compatibility listener accepts both payload shapes and feeds the
-    existing signupData/maybeFinishSignup flow. It is intentionally injected
-    here so older cached templates also get the fix after deployment.
-    """
-    content_type = response.get("Content-Type", "")
-    if "text/html" not in content_type.lower() or getattr(response, "streaming", False):
-        return response
-
+def _attempt_id(value):
+    if not value:
+        return None
     try:
-        html = response.content.decode(response.charset or "utf-8")
-    except (AttributeError, UnicodeDecodeError):
-        return response
+        return uuid.UUID(str(value))
+    except (TypeError, ValueError, AttributeError):
+        return None
 
-    marker = "</body>"
-    if marker not in html.lower() or "shvya-whatsapp-signup-bridge" in html:
-        return response
 
-    script = r'''
-<script id="shvya-whatsapp-signup-bridge">
-(function () {
-    // Keep the existing inline error box, but also surface failures as a toast.
-    if (typeof window.showSignupError === 'function') {
-        var originalShowSignupError = window.showSignupError;
-        window.showSignupError = function (message) {
-            originalShowSignupError(message);
-            if (typeof window.shvyaToast === 'function') {
-                window.shvyaToast(
-                    message || 'WhatsApp connection failed. Please try again.',
-                    'error',
-                    {title: 'WhatsApp connection failed', duration: 6500}
-                );
-            }
-        };
-    }
+def _get_or_create_attempt(*, user, method, attempt_id=None):
+    """Return an org-scoped attempt; never attach another tenant's UUID."""
+    parsed_id = _attempt_id(attempt_id)
 
-    // Meta may post either a JSON string or an object depending on SDK/browser.
-    // The page's original handler parses strings; this bridge covers objects
-    // (and harmlessly re-applies string FINISH events) so signup always reaches
-    // SHVYA's server callback once all three values are available.
-    window.addEventListener('message', function (event) {
-        if (!event.origin || !event.origin.endsWith('facebook.com')) return;
+    if parsed_id:
+        attempt = WhatsAppConnectionAttempt.objects.filter(
+            id=parsed_id,
+            organization=user.organization,
+        ).first()
+        if attempt:
+            if attempt.created_by_id is None:
+                attempt.created_by = user
+                attempt.save(update_fields=["created_by", "updated_at"])
+            return attempt
 
-        var data = event.data;
-        if (typeof data === 'string') {
-            try { data = JSON.parse(data); } catch (e) { return; }
-        }
-        if (!data || typeof data !== 'object') return;
-        if (data.type !== 'WA_EMBEDDED_SIGNUP') return;
+        # A UUID from another organization must never be reused. UUID collision
+        # is practically impossible, but this also protects against tampering.
+        if not WhatsAppConnectionAttempt.objects.filter(id=parsed_id).exists():
+            return WhatsAppConnectionAttempt.objects.create(
+                id=parsed_id,
+                organization=user.organization,
+                created_by=user,
+                method=method,
+                status=WhatsAppConnectionAttempt.Status.STARTED,
+                stage="started",
+            )
 
-        if (data.event === 'FINISH' && data.data) {
-            if (typeof window.signupData === 'undefined') return;
-            window.signupData.waba_id = data.data.waba_id || window.signupData.waba_id;
-            window.signupData.phone_number_id = data.data.phone_number_id || window.signupData.phone_number_id;
-            if (typeof window.maybeFinishSignup === 'function') {
-                window.maybeFinishSignup();
-            }
-        }
-    });
-})();
-</script>
-'''
+    return WhatsAppConnectionAttempt.objects.create(
+        organization=user.organization,
+        created_by=user,
+        method=method,
+        status=WhatsAppConnectionAttempt.Status.STARTED,
+        stage="started",
+    )
 
-    index = html.lower().rfind(marker)
-    html = html[:index] + script + html[index:]
-    response.content = html.encode(response.charset or "utf-8")
-    if response.has_header("Content-Length"):
-        response["Content-Length"] = str(len(response.content))
-    return response
+
+def _set_attempt(attempt, **changes):
+    for field, value in changes.items():
+        setattr(attempt, field, value)
+    attempt.save()
+
+
+def _fail_attempt(attempt, *, stage, message, meta_error_code=""):
+    _set_attempt(
+        attempt,
+        status=WhatsAppConnectionAttempt.Status.FAILED,
+        stage=stage,
+        meta_error_code=str(meta_error_code or ""),
+        error_message=(message or "")[:4000],
+        completed_at=timezone.now(),
+    )
 
 
 @crm_login_required
 def whatsapp_connect_api_view(request):
-    """Show onboarding only when no active API account is connected."""
+    """Show onboarding or process the independent manual-token path."""
+    user = request.crm_user
+
     if (
         request.method == "GET"
-        and _has_connected_api_account(request.crm_user)
+        and _has_connected_api_account(user)
         and request.GET.get("add") != "1"
     ):
         return redirect("whatsapp-accounts")
 
-    response = views_flat.whatsapp_connect_api_view(request)
-    return _inject_signup_toast(response)
+    manual_attempt = None
+    if request.method == "POST" and views_flat._admin_required(user):
+        manual_attempt = WhatsAppConnectionAttempt.objects.create(
+            organization=user.organization,
+            created_by=user,
+            method=WhatsAppConnectionAttempt.Method.MANUAL,
+            status=WhatsAppConnectionAttempt.Status.STARTED,
+            stage="manual_submit",
+            waba_id=(request.POST.get("waba_id") or "").strip()[:64],
+            phone_number_id=(request.POST.get("phone_number_id") or "").strip()[:64],
+            display_phone_number=(request.POST.get("display_phone_number") or "").strip()[:32],
+            # Boolean only -- never copy the token into the attempt table/logs.
+            token_received=bool((request.POST.get("access_token") or "").strip()),
+        )
+        logger.info(
+            "Manual WhatsApp connection submitted: org=%s attempt=%s waba_id=%s phone_number_id=%s token_received=%s",
+            user.organization_id,
+            manual_attempt.id,
+            manual_attempt.waba_id,
+            manual_attempt.phone_number_id,
+            manual_attempt.token_received,
+        )
+
+    try:
+        response = views_flat.whatsapp_connect_api_view(request)
+    except Exception:
+        if manual_attempt:
+            _fail_attempt(
+                manual_attempt,
+                stage="manual_server_error",
+                message="Server error while processing the manual WhatsApp connection.",
+            )
+        logger.exception(
+            "Manual WhatsApp connection crashed: org=%s attempt=%s",
+            user.organization_id,
+            getattr(manual_attempt, "id", None),
+        )
+        raise
+
+    if manual_attempt:
+        account = (
+            WhatsAppAccount.objects.filter(
+                organization=user.organization,
+                phone_number_id=manual_attempt.phone_number_id,
+                status=WhatsAppAccount.Status.CONNECTED,
+                is_active=True,
+            )
+            .order_by("-updated_at")
+            .first()
+        )
+
+        if 300 <= response.status_code < 400 and account:
+            _set_attempt(
+                manual_attempt,
+                account=account,
+                status=WhatsAppConnectionAttempt.Status.CONNECTED,
+                stage="account_saved",
+                waba_id=account.waba_id,
+                phone_number_id=account.phone_number_id,
+                display_phone_number=account.display_phone_number,
+                business_name=account.business_name,
+                completed_at=timezone.now(),
+            )
+            logger.info(
+                "Manual WhatsApp connection saved: org=%s attempt=%s account_id=%s phone_number_id=%s",
+                user.organization_id,
+                manual_attempt.id,
+                account.id,
+                account.phone_number_id,
+            )
+        elif response.status_code < 500:
+            _fail_attempt(
+                manual_attempt,
+                stage="manual_validation",
+                message="Manual WhatsApp credentials were not accepted by the connection form.",
+            )
+
+    return response
+
+
+@crm_login_required
+@require_POST
+def whatsapp_connection_attempt_event_view(request):
+    """Persist safe browser-side Embedded Signup lifecycle events.
+
+    This endpoint exists specifically so failures that happen before the final
+    backend callback (for example Meta FINISH without an OAuth code) are still
+    visible in PostgreSQL. It accepts identifiers/booleans/errors only; no code
+    or token value is accepted or stored.
+    """
+    user = request.crm_user
+    if not views_flat._admin_required(user):
+        return JsonResponse({"error": "Only organization admins can connect WhatsApp."}, status=403)
+
+    attempt = _get_or_create_attempt(
+        user=user,
+        method=WhatsAppConnectionAttempt.Method.EMBEDDED,
+        attempt_id=request.POST.get("attempt_id"),
+    )
+
+    stage = (request.POST.get("stage") or "started").strip()[:64]
+    allowed_stages = {
+        "started",
+        "meta_finish",
+        "oauth_code_received",
+        "oauth_code_missing",
+        "incomplete",
+        "cancelled",
+        "meta_error",
+    }
+    if stage not in allowed_stages:
+        stage = "started"
+
+    requested_status = {
+        "started": WhatsAppConnectionAttempt.Status.STARTED,
+        "meta_finish": WhatsAppConnectionAttempt.Status.META_FINISHED,
+        "oauth_code_received": WhatsAppConnectionAttempt.Status.CODE_RECEIVED,
+        "oauth_code_missing": WhatsAppConnectionAttempt.Status.STARTED,
+        "incomplete": WhatsAppConnectionAttempt.Status.FAILED,
+        "cancelled": WhatsAppConnectionAttempt.Status.CANCELLED,
+        "meta_error": WhatsAppConnectionAttempt.Status.FAILED,
+    }[stage]
+
+    # Never let a delayed browser fetch downgrade a backend-completed attempt.
+    current_terminal = attempt.status in {
+        WhatsAppConnectionAttempt.Status.CONNECTED,
+        WhatsAppConnectionAttempt.Status.FAILED,
+        WhatsAppConnectionAttempt.Status.CANCELLED,
+    }
+
+    changes = {}
+    if not current_terminal:
+        current_rank = _STATUS_RANK.get(attempt.status, 0)
+        requested_rank = _STATUS_RANK.get(requested_status, current_rank)
+        if requested_status in {
+            WhatsAppConnectionAttempt.Status.FAILED,
+            WhatsAppConnectionAttempt.Status.CANCELLED,
+        } or requested_rank >= current_rank:
+            changes["status"] = requested_status
+            changes["stage"] = stage
+
+    waba_id = (request.POST.get("waba_id") or "").strip()[:64]
+    phone_number_id = (request.POST.get("phone_number_id") or "").strip()[:64]
+    if waba_id:
+        changes["waba_id"] = waba_id
+    if phone_number_id:
+        changes["phone_number_id"] = phone_number_id
+    if request.POST.get("code_received") in {"1", "true", "True"}:
+        changes["code_received"] = True
+
+    if stage in {"incomplete", "cancelled", "meta_error"} and not current_terminal:
+        changes["error_message"] = (request.POST.get("error_message") or "")[:4000]
+        changes["meta_error_code"] = (request.POST.get("meta_error_code") or "")[:64]
+        changes["completed_at"] = timezone.now()
+
+    if changes:
+        _set_attempt(attempt, **changes)
+
+    logger.info(
+        "Embedded signup browser stage: org=%s attempt=%s stage=%s status=%s code_received=%s waba_id=%s phone_number_id=%s",
+        user.organization_id,
+        attempt.id,
+        stage,
+        attempt.status,
+        attempt.code_received,
+        attempt.waba_id,
+        attempt.phone_number_id,
+    )
+
+    response = JsonResponse(
+        {
+            "ok": True,
+            "attempt_id": str(attempt.id),
+            "status": attempt.status,
+            "stage": attempt.stage,
+        }
+    )
+    response["X-SHVYA-Toast"] = "off"
+    response["Cache-Control"] = "no-store"
+    return response
 
 
 @crm_login_required
 @require_POST
 def whatsapp_embedded_signup_callback_view(request):
-    """Finish Meta embedded signup and always persist a valid connection.
-
-    Meta authorization/phone lookup failures are fatal. WABA webhook subscription
-    failure is not: the connected number is still saved and shown in Connected
-    Numbers, with a warning telling the admin to retry subscription later.
-    """
+    """Finish Meta Embedded Signup and persist the connected account."""
     user = request.crm_user
 
     if not views_flat._admin_required(user):
@@ -145,20 +324,52 @@ def whatsapp_embedded_signup_callback_view(request):
         response["X-SHVYA-Toast"] = "off"
         return response
 
+    attempt = _get_or_create_attempt(
+        user=user,
+        method=WhatsAppConnectionAttempt.Method.EMBEDDED,
+        attempt_id=request.POST.get("attempt_id"),
+    )
+
     code = (request.POST.get("code") or "").strip()
     waba_id = (request.POST.get("waba_id") or "").strip()
     phone_number_id = (request.POST.get("phone_number_id") or "").strip()
 
-    if not code or not waba_id or not phone_number_id:
-        response = JsonResponse(
-            {
-                "error": (
-                    "Meta's popup didn't return all required WhatsApp details. "
-                    "Please try the connection again."
-                )
-            },
-            status=400,
+    logger.info(
+        "Embedded signup callback received: org=%s attempt=%s code_received=%s waba_id=%s phone_number_id=%s",
+        user.organization_id,
+        attempt.id,
+        bool(code),
+        waba_id,
+        phone_number_id,
+    )
+
+    _set_attempt(
+        attempt,
+        status=WhatsAppConnectionAttempt.Status.CALLBACK_RECEIVED,
+        stage="callback_received",
+        code_received=bool(code) or attempt.code_received,
+        waba_id=waba_id or attempt.waba_id,
+        phone_number_id=phone_number_id or attempt.phone_number_id,
+        completed_at=None,
+        error_message="",
+    )
+
+    missing = []
+    if not code:
+        missing.append("authorization code")
+    if not waba_id:
+        missing.append("WABA ID")
+    if not phone_number_id:
+        missing.append("Phone Number ID")
+
+    if missing:
+        message = "Meta's signup did not return: " + ", ".join(missing) + ". Please reconnect and try again."
+        _fail_attempt(
+            attempt,
+            stage="callback_validation",
+            message=message,
         )
+        response = JsonResponse({"error": message, "attempt_id": str(attempt.id)}, status=400)
         response["X-SHVYA-Toast"] = "off"
         return response
 
@@ -168,38 +379,74 @@ def whatsapp_embedded_signup_callback_view(request):
             code=code,
             waba_id=waba_id,
             phone_number_id=phone_number_id,
+            attempt=attempt,
         )
     except EmbeddedSignupError as exc:
+        _fail_attempt(
+            attempt,
+            stage=exc.stage or "embedded_signup",
+            message=str(exc),
+            meta_error_code=exc.meta_error_code,
+        )
         logger.warning(
-            "Embedded signup failed for org %s: %s",
+            "Embedded signup failed: org=%s attempt=%s stage=%s meta_code=%s reason=%s",
             user.organization_id,
+            attempt.id,
+            exc.stage,
+            exc.meta_error_code,
             exc,
         )
-        response = JsonResponse({"error": str(exc)}, status=502)
+        response = JsonResponse(
+            {
+                "error": str(exc),
+                "attempt_id": str(attempt.id),
+                "failure_stage": exc.stage,
+            },
+            status=502,
+        )
+        response["X-SHVYA-Toast"] = "off"
+        return response
+    except Exception:
+        _fail_attempt(
+            attempt,
+            stage="server_error",
+            message="Unexpected server error while completing WhatsApp connection.",
+        )
+        logger.exception(
+            "Unexpected embedded signup failure: org=%s attempt=%s",
+            user.organization_id,
+            attempt.id,
+        )
+        response = JsonResponse(
+            {
+                "error": "Unexpected server error while completing WhatsApp connection.",
+                "attempt_id": str(attempt.id),
+                "failure_stage": "server_error",
+            },
+            status=502,
+        )
         response["X-SHVYA-Toast"] = "off"
         return response
 
     if warning:
         messages.warning(request, warning)
     else:
-        messages.success(
-            request,
-            "WhatsApp Business API connected successfully.",
-        )
+        messages.success(request, "WhatsApp Business API connected successfully.")
 
+    redirect_url = f"{reverse('whatsapp-accounts')}?connected={account.id}"
     response = JsonResponse(
         {
             "ok": True,
-            "redirect_url": reverse("whatsapp-accounts"),
+            "redirect_url": redirect_url,
+            "attempt_id": str(attempt.id),
             "account_id": str(account.id),
+            "waba_id": account.waba_id or "",
+            "phone_number_id": account.phone_number_id or "",
             "phone_number": account.display_phone_number or "",
             "business_name": account.business_name or "",
             "subscription_warning": warning,
         }
     )
-    # The browser redirects immediately to Connected Numbers. That fresh GET
-    # reads the persisted account from PostgreSQL, so no stale client-side list
-    # needs to be manually refreshed.
     response["X-SHVYA-Toast"] = "off"
     response["Cache-Control"] = "no-store"
     return response
