@@ -2,267 +2,169 @@
 {% load static %}
 
 {% block title %}SHVYA AI — Connect WhatsApp{% endblock %}
-
-{% block header %}
-    Connect WhatsApp
-{% endblock %}
+{% block header %}Connect WhatsApp{% endblock %}
 
 {% block content %}
-
-
-    <!-- =====================================================
-         PAGE HEADER
-         ===================================================== -->
-
-    <div class="mb-6 flex items-center justify-between">
-
-        <div class="flex items-center gap-2">
-
-            <i class="ti ti-brand-whatsapp text-2xl text-green-600"></i>
-
-            <h2 class="text-lg font-semibold">
-                Connected Numbers
-            </h2>
-
+<div class="mx-auto max-w-6xl">
+    <div class="mb-6 flex flex-wrap items-center justify-between gap-3">
+        <div>
+            <div class="flex items-center gap-2">
+                <span class="flex h-9 w-9 items-center justify-center rounded-full bg-green-50 text-green-600">
+                    <i class="ti ti-brand-whatsapp text-xl"></i>
+                </span>
+                <h2 class="text-lg font-semibold text-gray-900">Connected numbers</h2>
+            </div>
+            <p class="mt-1 pl-11 text-sm text-gray-500">Manage the WhatsApp numbers your team can use in SHVYA.</p>
         </div>
 
         {% if can_manage %}
-
-            <a
-                href="{% url 'whatsapp-connect-choice' %}"
-                class="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700"
-            >
-
-                <i class="ti ti-plus"></i>
-
-                Connect Number
-
-            </a>
-
+        <a href="{% url 'whatsapp-connect-choice' %}"
+           class="inline-flex items-center gap-2 rounded-xl bg-[#128c7e] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#0f766e] focus:outline-none focus:ring-2 focus:ring-green-200">
+            <i class="ti ti-plus"></i>
+            Connect number
+        </a>
         {% endif %}
-
     </div>
 
+    <div id="connected-accounts-card" class="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
+        <div class="border-b border-gray-100 bg-[#f7fbf9] px-5 py-4">
+            <div class="flex items-center justify-between gap-3">
+                <div>
+                    <p class="text-sm font-semibold text-gray-900">Your WhatsApp connections</p>
+                    <p class="mt-0.5 text-xs text-gray-500">Only active connections are shown here.</p>
+                </div>
+                <span class="rounded-full bg-white px-3 py-1 text-xs font-medium text-gray-500 shadow-sm">WhatsApp</span>
+            </div>
+        </div>
 
-    <!-- =====================================================
-         ACCOUNTS TABLE
-         ===================================================== -->
-
-    {% if accounts %}
-
-        <div class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
-
-            <table class="w-full text-left text-sm">
-
-                <thead class="bg-blue-50/60 text-xs font-semibold uppercase tracking-wide text-gray-500">
-
+        <div class="overflow-x-auto">
+            <table class="w-full min-w-[760px] text-left text-sm">
+                <thead class="bg-gray-50 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
                     <tr>
-                        <th class="px-5 py-3">Mobile</th>
-                        <th class="px-5 py-3">Business Name</th>
+                        <th class="px-5 py-3">Number</th>
+                        <th class="px-5 py-3">Business</th>
                         <th class="px-5 py-3">Status</th>
-                        <th class="px-5 py-3">Welcome Message</th>
-                        <th class="px-5 py-3">Request Contact Info</th>
+                        <th class="px-5 py-3">Welcome message</th>
+                        <th class="px-5 py-3">Contact info</th>
                         <th class="px-5 py-3 text-right">Action</th>
                     </tr>
-
                 </thead>
-
-
-                <tbody class="divide-y divide-gray-100">
-
+                <tbody id="connected-accounts-body" class="divide-y divide-gray-100">
                     {% for account in accounts %}
-
-                        <tr class="hover:bg-gray-50">
-
-                            <td class="px-5 py-4 font-medium text-gray-900">
-                                {{ account.display_phone_number|default:"—" }}
-                            </td>
-
-                            <td class="px-5 py-4 text-gray-700">
-                                {{ account.business_name|default:account.get_connection_type_display }}
-                            </td>
-
-                            <td class="px-5 py-4">
-
-                                <span
-                                    class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold
-                                    {% if account.status == 'connected' %}
-                                        bg-green-50 text-green-700
-                                    {% elif account.status == 'pending' %}
-                                        bg-yellow-50 text-yellow-700
-                                    {% elif account.status == 'failed' %}
-                                        bg-red-50 text-red-700
-                                    {% else %}
-                                        bg-gray-100 text-gray-600
-                                    {% endif %}"
-                                >
-
-                                    <span
-                                        class="h-1.5 w-1.5 rounded-full
-                                        {% if account.status == 'connected' %}
-                                            bg-green-500
-                                        {% elif account.status == 'pending' %}
-                                            bg-yellow-500
-                                        {% elif account.status == 'failed' %}
-                                            bg-red-500
-                                        {% else %}
-                                            bg-gray-400
-                                        {% endif %}"
-                                    ></span>
-
-                                    {{ account.get_status_display }}
-
+                    {% if account.is_active %}
+                    <tr id="account-row-{{ account.id }}" class="connected-account-row transition hover:bg-gray-50/80">
+                        <td class="px-5 py-4">
+                            <div class="flex items-center gap-3">
+                                <span class="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-green-50 text-green-600">
+                                    <i class="ti ti-brand-whatsapp"></i>
                                 </span>
-
-                            </td>
-
-                            <td class="px-5 py-4 text-gray-600">
-
-                                {% if account.welcome_message %}
-
-                                    <span class="inline-flex items-center gap-1 text-blue-600">
-                                        {{ account.welcome_message|truncatechars:30 }}
-                                        <i class="ti ti-pencil text-xs"></i>
-                                    </span>
-
-                                {% else %}
-
-                                    <span class="text-gray-400">Not set</span>
-
+                                <span class="font-semibold text-gray-900">{{ account.display_phone_number|default:"—" }}</span>
+                            </div>
+                        </td>
+                        <td class="px-5 py-4 text-gray-700">{{ account.business_name|default:account.get_connection_type_display }}</td>
+                        <td class="px-5 py-4">
+                            <span class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold {% if account.status == 'connected' %}bg-green-50 text-green-700{% elif account.status == 'pending' %}bg-amber-50 text-amber-700{% elif account.status == 'failed' %}bg-red-50 text-red-700{% else %}bg-gray-100 text-gray-600{% endif %}">
+                                <span class="h-1.5 w-1.5 rounded-full {% if account.status == 'connected' %}bg-green-500{% elif account.status == 'pending' %}bg-amber-500{% elif account.status == 'failed' %}bg-red-500{% else %}bg-gray-400{% endif %}"></span>
+                                {{ account.get_status_display }}
+                            </span>
+                        </td>
+                        <td class="max-w-[260px] px-5 py-4 text-gray-600">
+                            {% if account.welcome_message %}{{ account.welcome_message|truncatechars:44 }}{% else %}<span class="text-gray-400">Not set</span>{% endif %}
+                        </td>
+                        <td class="px-5 py-4">
+                            {% if account.request_contact_info %}
+                            <span class="inline-flex items-center gap-1 text-xs font-medium text-green-700"><i class="ti ti-check"></i> Enabled</span>
+                            {% else %}
+                            <span class="text-xs text-gray-400">Not requested</span>
+                            {% endif %}
+                        </td>
+                        <td class="px-5 py-4">
+                            <div class="flex items-center justify-end gap-2">
+                                {% if can_manage and account.connection_type == 'api' %}
+                                <form method="post" action="{% url 'whatsapp-resubscribe' account_id=account.id %}">
+                                    {% csrf_token %}
+                                    <button type="submit" class="flex h-9 w-9 items-center justify-center rounded-lg text-gray-400 transition hover:bg-blue-50 hover:text-blue-600" title="Resubscribe to notifications">
+                                        <i class="ti ti-refresh"></i>
+                                    </button>
+                                </form>
                                 {% endif %}
 
-                            </td>
-
-                            <td class="px-5 py-4">
-
-                                {% if account.request_contact_info %}
-
-                                    <i class="ti ti-check text-green-600"></i>
-
-                                {% else %}
-
-                                    <i class="ti ti-minus text-gray-400"></i>
-
+                                {% if can_manage %}
+                                <form class="disconnect-account-form" method="post" action="{% url 'whatsapp-disconnect' account_id=account.id %}" data-row-id="account-row-{{ account.id }}" data-label="{{ account.display_phone_number|default:account.business_name|escape }}">
+                                    {% csrf_token %}
+                                    <button type="submit" class="flex h-9 w-9 items-center justify-center rounded-lg text-gray-400 transition hover:bg-red-50 hover:text-red-600" title="Remove connection">
+                                        <i class="ti ti-trash"></i>
+                                    </button>
+                                </form>
                                 {% endif %}
-
-                            </td>
-
-                            <td class="px-5 py-4">
-
-                                <div class="flex items-center justify-end gap-3">
-
-                                    {% if can_manage %}
-
-                                        {% if account.connection_type == 'api' %}
-
-                                            <form
-                                                method="post"
-                                                action="{% url 'whatsapp-resubscribe' account_id=account.id %}"
-                                            >
-
-                                                {% csrf_token %}
-
-                                                <button
-                                                    type="submit"
-                                                    class="text-gray-400 transition hover:text-blue-600"
-                                                    title="Resubscribe to message notifications (fixes 'connected but no chats showing')"
-                                                >
-
-                                                    <i class="ti ti-refresh"></i>
-
-                                                </button>
-
-                                            </form>
-
-                                        {% endif %}
-
-                                        <form
-                                            method="post"
-                                            action="{% url 'whatsapp-disconnect' account_id=account.id %}"
-                                            onsubmit="return confirm('Disconnect {{ account.display_phone_number|default:account.business_name }}? Message history will be kept.');"
-                                        >
-
-                                            {% csrf_token %}
-
-                                            <button
-                                                type="submit"
-                                                class="text-gray-400 transition hover:text-red-600"
-                                                title="Disconnect"
-                                            >
-
-                                                <i class="ti ti-trash"></i>
-
-                                            </button>
-
-                                        </form>
-
-                                    {% endif %}
-
-                                </div>
-
-                            </td>
-
-                        </tr>
-
+                            </div>
+                        </td>
+                    </tr>
+                    {% endif %}
                     {% endfor %}
-
                 </tbody>
-
             </table>
-
         </div>
 
-
-    {% else %}
-
-
-        <!-- =================================================
-             NO ACCOUNTS CONNECTED
-             ================================================= -->
-
-        <div class="rounded-xl border border-dashed border-gray-300 bg-white p-10 text-center">
-
-            <div
-                class="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-gray-100 text-2xl text-gray-400"
-            >
-
+        <div id="no-connected-accounts" class="hidden px-6 py-14 text-center">
+            <div class="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-green-50 text-2xl text-green-500">
                 <i class="ti ti-brand-whatsapp"></i>
-
             </div>
-
-            <h2 class="mt-4 text-base font-semibold text-gray-900">
-                No WhatsApp numbers connected
-            </h2>
-
-            <p class="mt-1 text-sm text-gray-500">
-                Connect a number to start messaging your leads.
-            </p>
-
+            <h3 class="mt-4 text-base font-semibold text-gray-900">No WhatsApp number connected</h3>
+            <p class="mx-auto mt-1 max-w-md text-sm text-gray-500">Connect an API number or request a coexisted account to unlock Chats, Templates and Broadcasts.</p>
             {% if can_manage %}
-
-                <a
-                    href="{% url 'whatsapp-connect-choice' %}"
-                    class="mt-6 inline-flex items-center gap-2 rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700"
-                >
-
-                    <i class="ti ti-plug-connected"></i>
-
-                    Connect WhatsApp
-
-                </a>
-
-            {% else %}
-
-                <p class="mt-4 text-xs text-gray-400">
-                    Ask an organization admin to connect WhatsApp.
-                </p>
-
+            <a href="{% url 'whatsapp-connect-choice' %}" class="mt-5 inline-flex items-center gap-2 rounded-xl bg-[#128c7e] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#0f766e]">
+                <i class="ti ti-plug-connected"></i> Connect WhatsApp
+            </a>
             {% endif %}
-
         </div>
+    </div>
+</div>
 
+<script>
+(function () {
+    const table = document.querySelector('#connected-accounts-card .overflow-x-auto');
+    const emptyState = document.getElementById('no-connected-accounts');
 
-    {% endif %}
+    function syncEmptyState() {
+        const hasRows = document.querySelectorAll('.connected-account-row').length > 0;
+        table?.classList.toggle('hidden', !hasRows);
+        emptyState?.classList.toggle('hidden', hasRows);
+    }
 
+    syncEmptyState();
 
+    document.querySelectorAll('.disconnect-account-form').forEach(function (form) {
+        form.addEventListener('submit', async function (event) {
+            event.preventDefault();
+            const label = form.dataset.label || 'this WhatsApp number';
+            if (!window.confirm(`Remove ${label} from connected numbers? Message history will be kept.`)) return;
+
+            const button = form.querySelector('button[type="submit"]');
+            button.disabled = true;
+            button.classList.add('opacity-50');
+
+            try {
+                const response = await fetch(form.action, {
+                    method: 'POST',
+                    body: new FormData(form),
+                    headers: {'X-Requested-With': 'XMLHttpRequest'},
+                });
+                if (!response.ok) throw new Error('Could not remove this WhatsApp number.');
+
+                document.getElementById(form.dataset.rowId)?.remove();
+                syncEmptyState();
+
+                // Refresh once so the sidebar and every connected-number selector
+                // immediately use the new connection state too.
+                window.location.reload();
+            } catch (error) {
+                button.disabled = false;
+                button.classList.remove('opacity-50');
+                window.alert(error.message);
+            }
+        });
+    });
+})();
+</script>
 {% endblock %}
