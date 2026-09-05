@@ -193,6 +193,21 @@
     // Auto-scroll to the latest message on load.
     var thread = document.getElementById('thread');
     thread.scrollTop = thread.scrollHeight;
+
+    // Poll for new inbound messages so agents don't have to
+    // manually reload to see incoming WhatsApp messages.
+    // Skips the reload while the user is actively typing a reply,
+    // and pauses while the tab is in the background.
+    setInterval(function () {
+        if (document.hidden) {
+            return;
+        }
+        var input = document.getElementById('message-body');
+        if (input && document.activeElement === input && input.value.trim()) {
+            return;
+        }
+        window.location.reload();
+    }, 8000);
     </script>
 
 {% endblock %}

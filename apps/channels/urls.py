@@ -83,4 +83,14 @@ urlpatterns = [
         views_flat.whatsapp_chat_detail_view,
         name="whatsapp-chat-detail",
     ),
+    path(
+    "send-template/<uuid:lead_id>/",
+    views_flat.whatsapp_send_template_view,
+    name="whatsapp-send-template",
+    ),
+    path(
+        "leads/<uuid:lead_id>/calls.json",
+        views_flat.whatsapp_lead_calls_json,
+        name="whatsapp-lead-calls-json",
+    ),
 ]
