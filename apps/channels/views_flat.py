@@ -963,7 +963,7 @@ def whatsapp_template_create_view(request):
 def _chat_sidebar_context(request, user):
     """
     Shared left-rail context (conversation list, connected
-    numbers, search) used by both the inbox and an open thread,
+    numbers, search, tab) used by both the inbox and an open thread,
     since both are rendered by the same three-pane template.
     """
 
@@ -978,9 +978,20 @@ def _chat_sidebar_context(request, user):
             organization=user.organization,
         ).first()
 
+    tab = request.GET.get("tab", "all")
+    if tab not in ("all", "unread", "needs_reply", "failed", "broadcasts"):
+        tab = "all"
+
+    # Load all for counts, then filtered for display
+    all_conversations = list_conversations(
+        organization=user.organization,
+        account=account,
+    )
+
     conversations = list_conversations(
         organization=user.organization,
         account=account,
+        tab=tab,
     )
 
     query = (request.GET.get("q") or "").strip()
@@ -1001,13 +1012,23 @@ def _chat_sidebar_context(request, user):
     for lead in conversations:
         lead.initials = _lead_initials(lead)
 
+    # Tab badge counts (always from all, not filtered)
+    unread_count    = sum(1 for l in all_conversations if getattr(l, "unread_count", 0) > 0)
+    needs_reply_cnt = sum(1 for l in all_conversations if getattr(l, "last_msg_direction", "") == "inbound")
+    failed_cnt      = sum(1 for l in all_conversations if getattr(l, "last_msg_status", "") == "failed")
+
     return {
         "conversations": conversations,
         "accounts": accounts,
         "selected_account": account,
         "search_query": query,
+        "active_tab": tab,
+        "tab_counts": {
+            "unread": unread_count,
+            "needs_reply": needs_reply_cnt,
+            "failed": failed_cnt,
+        },
     }
-
 
 def _lead_initials(lead):
     return "".join(

@@ -13,101 +13,167 @@
 
 
         <!-- =====================================================
-             LEFT — CONTACT / CONVERSATION LIST
+             LEFT — WHATSAPP-STYLE CONVERSATION LIST
              ===================================================== -->
 
         <div class="flex w-[320px] flex-shrink-0 flex-col border-r border-gray-200 bg-white">
 
-            <div class="space-y-3 border-b border-gray-200 px-4 py-3">
+            <!-- Search + Account selector -->
+            <div class="border-b border-gray-100 px-3 py-2.5 space-y-2">
 
-                <form method="get" class="relative">
-
+                <form method="get" class="relative" id="search-form">
                     {% if selected_account %}
                         <input type="hidden" name="account" value="{{ selected_account.id }}">
                     {% endif %}
-
-                    <i class="ti ti-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"></i>
-
+                    {% if active_tab != 'all' %}
+                        <input type="hidden" name="tab" value="{{ active_tab }}">
+                    {% endif %}
+                    <i class="ti ti-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
                     <input
                         type="text"
                         name="q"
                         value="{{ search_query }}"
-                        placeholder="Search or start a new chat"
-                        class="w-full rounded-full border border-gray-200 bg-gray-50 py-2 pl-9 pr-3 text-sm focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        placeholder="Search leads..."
+                        class="w-full rounded-full border border-gray-200 bg-[#f0f2f5] py-2 pl-9 pr-3 text-sm focus:border-green-500 focus:outline-none"
                     >
-
                 </form>
 
-                <select
-                    name="account"
-                    form="account-filter-form"
-                    onchange="this.form.submit()"
-                    class="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs text-gray-600"
-                >
-
+                {% if accounts|length > 1 %}
+                <select name="account" form="account-filter-form" onchange="this.form.submit()"
+                    class="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs text-gray-600">
                     <option value="">All connected numbers</option>
-
                     {% for account in accounts %}
-
                         <option value="{{ account.id }}" {% if selected_account.id == account.id %}selected{% endif %}>
-                            {{ account.business_name|default:account.display_phone_number }} — {{ account.display_phone_number }}
+                            {{ account.business_name|default:account.display_phone_number }}
                         </option>
-
                     {% endfor %}
-
                 </select>
-
                 <form id="account-filter-form" method="get">
-                    {% if search_query %}
-                        <input type="hidden" name="q" value="{{ search_query }}">
-                    {% endif %}
+                    {% if search_query %}<input type="hidden" name="q" value="{{ search_query }}">{% endif %}
+                    {% if active_tab != 'all' %}<input type="hidden" name="tab" value="{{ active_tab }}">{% endif %}
                 </form>
+                {% endif %}
 
             </div>
 
+            <!-- Tab bar -->
+            <div class="flex border-b border-gray-200 bg-white overflow-x-auto flex-shrink-0 text-[11px] font-semibold">
+
+                <a href="?{% if selected_account %}account={{ selected_account.id }}&{% endif %}{% if search_query %}q={{ search_query }}&{% endif %}tab=all"
+                    class="flex-shrink-0 px-3 py-2.5 border-b-2 whitespace-nowrap transition-colors
+                    {% if active_tab == 'all' %}border-green-500 text-green-600{% else %}border-transparent text-gray-500 hover:text-gray-700{% endif %}">
+                    All Chats
+                </a>
+
+                <a href="?{% if selected_account %}account={{ selected_account.id }}&{% endif %}{% if search_query %}q={{ search_query }}&{% endif %}tab=unread"
+                    class="flex-shrink-0 px-3 py-2.5 border-b-2 whitespace-nowrap transition-colors flex items-center gap-1
+                    {% if active_tab == 'unread' %}border-green-500 text-green-600{% else %}border-transparent text-gray-500 hover:text-gray-700{% endif %}">
+                    Unread
+                    {% if tab_counts.unread %}
+                        <span class="rounded-full bg-green-500 px-1.5 py-0.5 text-[10px] text-white font-bold">{{ tab_counts.unread }}</span>
+                    {% endif %}
+                </a>
+
+                <a href="?{% if selected_account %}account={{ selected_account.id }}&{% endif %}{% if search_query %}q={{ search_query }}&{% endif %}tab=needs_reply"
+                    class="flex-shrink-0 px-3 py-2.5 border-b-2 whitespace-nowrap transition-colors flex items-center gap-1
+                    {% if active_tab == 'needs_reply' %}border-green-500 text-green-600{% else %}border-transparent text-gray-500 hover:text-gray-700{% endif %}">
+                    Needs Reply
+                    {% if tab_counts.needs_reply %}
+                        <span class="rounded-full bg-orange-400 px-1.5 py-0.5 text-[10px] text-white font-bold">{{ tab_counts.needs_reply }}</span>
+                    {% endif %}
+                </a>
+
+                <a href="?{% if selected_account %}account={{ selected_account.id }}&{% endif %}{% if search_query %}q={{ search_query }}&{% endif %}tab=failed"
+                    class="flex-shrink-0 px-3 py-2.5 border-b-2 whitespace-nowrap transition-colors flex items-center gap-1
+                    {% if active_tab == 'failed' %}border-green-500 text-green-600{% else %}border-transparent text-gray-500 hover:text-gray-700{% endif %}">
+                    Failed
+                    {% if tab_counts.failed %}
+                        <span class="rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] text-white font-bold">{{ tab_counts.failed }}</span>
+                    {% endif %}
+                </a>
+
+                <a href="?{% if selected_account %}account={{ selected_account.id }}&{% endif %}{% if search_query %}q={{ search_query }}&{% endif %}tab=broadcasts"
+                    class="flex-shrink-0 px-3 py-2.5 border-b-2 whitespace-nowrap transition-colors
+                    {% if active_tab == 'broadcasts' %}border-green-500 text-green-600{% else %}border-transparent text-gray-500 hover:text-gray-700{% endif %}">
+                    Broadcasts
+                </a>
+
+            </div>
+
+            <!-- Conversation rows -->
             <div class="flex-1 overflow-y-auto">
 
                 {% if conversations %}
 
                     {% for lead in conversations %}
 
-                        <a
+                        
                             href="{% url 'whatsapp-chat-detail' lead_id=lead.id %}{% if selected_account %}?account={{ selected_account.id }}{% endif %}"
-                            class="conversation-row flex items-center gap-3 border-b border-gray-100 px-4 py-3 transition hover:bg-gray-50
-                            {% if active_lead.id == lead.id %} bg-blue-50 {% else %} bg-white {% endif %}"
+                            class="conversation-row flex items-center gap-3 border-b border-gray-100 px-3 py-3 transition hover:bg-[#f0f2f5]
+                            {% if active_lead.id == lead.id %}bg-[#f0f2f5]{% else %}bg-white{% endif %}"
                             data-lead-id="{{ lead.id }}"
                         >
 
-                            <div class="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full bg-blue-100 text-sm font-semibold text-blue-700">
-                                {{ lead.initials }}
+                            <!-- Avatar -->
+                            <div class="relative flex-shrink-0">
+                                <div class="flex h-12 w-12 items-center justify-center rounded-full bg-[#dfe5e7] text-sm font-semibold text-[#54656f]">
+                                    {{ lead.initials }}
+                                </div>
+                                {% if lead.last_msg_status == 'failed' %}
+                                <span class="absolute -bottom-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 border-2 border-white">
+                                    <i class="ti ti-x text-white" style="font-size:8px"></i>
+                                </span>
+                                {% endif %}
                             </div>
 
+                            <!-- Text -->
                             <div class="min-w-0 flex-1">
 
-                                <div class="flex items-center justify-between gap-2">
-
-                                    <p class="truncate font-medium text-gray-900">
+                                <div class="flex items-center justify-between gap-1">
+                                    <p class="truncate text-sm font-semibold text-[#111b21]">
                                         {{ lead.name|default:lead.phone }}
                                     </p>
-
-                                    <span class="last-message-at flex-shrink-0 text-[11px] text-gray-400" data-raw="{{ lead.last_message_at|date:'c' }}">
-                                        {{ lead.last_message_at|date:"d M, h:i A" }}
+                                    <span class="last-message-at flex-shrink-0 text-[11px]
+                                        {% if lead.last_msg_status == 'failed' %}text-red-500 font-medium
+                                        {% elif lead.unread_count %}text-green-600 font-medium
+                                        {% else %}text-[#667781]{% endif %}"
+                                        data-raw="{{ lead.last_message_at|date:'c' }}">
+                                        {{ lead.last_message_at|date:"h:i A" }}
                                     </span>
-
                                 </div>
 
-                                <div class="mt-0.5 flex items-center justify-between gap-2">
-
-                                    <p class="truncate text-xs text-gray-500">
-                                        {{ lead.phone }}
-                                    </p>
-
-                                    <span
-                                        class="unread-badge inline-flex h-5 min-w-5 flex-shrink-0 items-center justify-center rounded-full bg-green-500 px-1.5 text-[11px] font-semibold text-white {% if not lead.unread_count %}hidden{% endif %}"
-                                    >
-                                        {{ lead.unread_count|default:0 }}
+                                <div class="mt-0.5 flex items-center justify-between gap-1">
+                                    <div class="flex min-w-0 items-center gap-1">
+                                        <!-- Tick icons for outbound -->
+                                        {% if lead.last_msg_direction == 'outbound' %}
+                                            {% if lead.last_msg_status == 'read' %}
+                                                <i class="ti ti-checks flex-shrink-0 text-[13px] text-blue-500"></i>
+                                            {% elif lead.last_msg_status == 'delivered' %}
+                                                <i class="ti ti-checks flex-shrink-0 text-[13px] text-[#8696a0]"></i>
+                                            {% elif lead.last_msg_status == 'sent' %}
+                                                <i class="ti ti-check flex-shrink-0 text-[13px] text-[#8696a0]"></i>
+                                            {% elif lead.last_msg_status == 'failed' %}
+                                                <i class="ti ti-alert-circle flex-shrink-0 text-[13px] text-red-500"></i>
+                                            {% else %}
+                                                <i class="ti ti-clock flex-shrink-0 text-[13px] text-[#8696a0]"></i>
+                                            {% endif %}
+                                        {% endif %}
+                                        <p class="truncate text-[13px]
+                                            {% if lead.last_msg_status == 'failed' %}text-red-500
+                                            {% else %}text-[#667781]{% endif %}">
+                                            {% if lead.last_msg_body %}
+                                                {{ lead.last_msg_body|truncatechars:40 }}
+                                            {% else %}
+                                                <span class="italic">No messages</span>
+                                            {% endif %}
+                                        </p>
+                                    </div>
+                                    <!-- Unread badge -->
+                                    {% if lead.unread_count %}
+                                    <span class="unread-badge flex-shrink-0 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-[#25d366] px-1.5 text-[11px] font-bold text-white">
+                                        {{ lead.unread_count }}
                                     </span>
-
+                                    {% endif %}
                                 </div>
 
                             </div>
@@ -119,41 +185,20 @@
                 {% else %}
 
                     <div class="flex h-full flex-col items-center justify-center px-6 text-center">
-
                         <i class="ti ti-message-circle text-4xl text-gray-300"></i>
-
                         {% if not accounts %}
-
-                            <p class="mt-3 text-sm text-gray-500">
-                                No WhatsApp number connected yet.
-                            </p>
-
-                            <a
-                                href="{% url 'whatsapp-connect-choice' %}"
-                                class="mt-4 inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700"
-                            >
+                            <p class="mt-3 text-sm text-gray-500">No WhatsApp number connected yet.</p>
+                            <a href="{% url 'whatsapp-connect-choice' %}"
+                                class="mt-4 inline-flex items-center gap-2 rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-green-700">
                                 Connect WhatsApp
                             </a>
-
                         {% elif search_query %}
-
-                            <p class="mt-3 text-sm text-gray-500">
-                                No contacts match "{{ search_query }}".
-                            </p>
-
+                            <p class="mt-3 text-sm text-gray-500">No contacts match "{{ search_query }}".</p>
                         {% else %}
-
                             <p class="mt-3 text-sm font-medium text-gray-700">
-                                No conversations yet.
+                                No conversations{% if active_tab != 'all' %} in this filter{% endif %}.
                             </p>
-
-                            <p class="mt-1 text-xs text-gray-500">
-                                Messages from leads will show up here once
-                                they arrive.
-                            </p>
-
                         {% endif %}
-
                     </div>
 
                 {% endif %}
@@ -161,7 +206,6 @@
             </div>
 
         </div>
-
 
 
         <!-- =====================================================
@@ -174,33 +218,40 @@
 
                 <!-- THREAD HEADER -->
 
-                <div class="flex items-center justify-between border-b border-gray-200 bg-white px-6 py-3.5">
+                <div class="flex items-center gap-3 border-b border-gray-200 bg-[#f0f2f5] px-4 py-2.5">
 
-                    <div class="flex min-w-0 items-center gap-3">
+                    <a href="{% url 'whatsapp-chats' %}"
+                        class="text-[#54656f] transition hover:text-gray-700 lg:hidden">
+                        <i class="ti ti-arrow-left text-lg"></i>
+                    </a>
 
-                        <a
-                            href="{% url 'whatsapp-chats' %}"
-                            class="text-gray-400 transition hover:text-gray-700 lg:hidden"
-                        >
-                            <i class="ti ti-arrow-left text-lg"></i>
+                    <div class="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-[#dfe5e7] text-sm font-semibold text-[#54656f]">
+                        {{ active_lead.initials }}
+                    </div>
+
+                    <div class="min-w-0 flex-1">
+                        <p class="truncate text-sm font-semibold text-[#111b21]">
+                            {{ active_lead.name|default:active_lead.phone }}
+                        </p>
+                        <p class="truncate text-[11px] text-[#667781]">
+                            {{ active_lead.phone }}{% if active_lead.stage %} · {{ active_lead.stage.name }}{% endif %}
+                        </p>
+                    </div>
+
+                    <div class="flex items-center gap-2 flex-shrink-0">
+                        <button
+                            hx-get="{% url 'crm-lead-call-modal' active_lead.id %}"
+                            hx-target="#modal-root"
+                            hx-swap="innerHTML"
+                            class="flex h-8 w-8 items-center justify-center rounded-full text-[#54656f] hover:bg-white/70 transition"
+                            title="Log call">
+                            <i class="ti ti-phone text-base"></i>
+                        </button>
+                        <a href="{% url 'crm-lead-detail' active_lead.id %}"
+                            class="flex h-8 w-8 items-center justify-center rounded-full text-[#54656f] hover:bg-white/70 transition"
+                            title="View full profile">
+                            <i class="ti ti-user-circle text-base"></i>
                         </a>
-
-                        <div class="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-blue-100 text-xs font-semibold text-blue-700">
-                            {{ active_lead.initials }}
-                        </div>
-
-                        <div class="min-w-0">
-
-                            <p class="truncate font-semibold text-gray-900">
-                                {{ active_lead.name|default:active_lead.phone }}
-                            </p>
-
-                            <p class="truncate text-xs text-gray-500">
-                                {{ active_lead.phone }} · {{ active_lead.stage.name|default:"No stage" }}
-                            </p>
-
-                        </div>
-
                     </div>
 
                 </div>
@@ -210,58 +261,77 @@
 
                 <div
                     id="thread"
-                    class="flex-1 space-y-3 overflow-y-auto bg-[#e5ddd5] px-6 py-6"
+                    class="flex-1 space-y-1 overflow-y-auto px-4 py-3"
+                    style="background-color:#e5ddd5;"
                 >
 
-                    {% for message in chat_messages %}
+                    {% regroup chat_messages by created_at|date:"Y-m-d" as messages_by_day %}
+
+                    {% for day_group in messages_by_day %}
+
+                        <!-- Day separator -->
+                        <div class="flex justify-center my-3">
+                            <span class="rounded-full bg-[#ffffffcc] px-3 py-1 text-[11px] font-medium text-[#667781] shadow-sm">
+                                {% now "Y-m-d" as today %}
+                                {% if day_group.grouper == today %}Today{% else %}{{ day_group.grouper }}{% endif %}
+                            </span>
+                        </div>
+
+                        {% for message in day_group.list %}
 
                         <div
-                            class="chat-bubble-row flex {% if message.direction == 'outbound' %}justify-end{% else %}justify-start{% endif %}"
+                            class="chat-bubble-row flex {% if message.direction == 'outbound' %}justify-end{% else %}justify-start{% endif %} mb-0.5"
                             data-message-id="{{ message.id }}"
                         >
 
-                            <div
-                                class="max-w-[70%] rounded-lg px-4 py-2.5 text-sm shadow
+                            <div class="max-w-[72%] {% if message.direction == 'outbound' %}rounded-tl-xl rounded-tr-sm rounded-b-xl{% else %}rounded-tr-xl rounded-tl-sm rounded-b-xl{% endif %} px-3 py-2 text-sm shadow-sm
                                 {% if message.direction == 'outbound' %}
-                                    bg-[#dcf8c6] text-gray-900
+                                    {% if message.status == 'failed' %}bg-[#ffe4e4]{% else %}bg-[#d9fdd3]{% endif %}
                                 {% else %}
-                                    bg-white text-gray-900
-                                {% endif %}"
-                            >
+                                    bg-white
+                                {% endif %}">
 
-                                <p class="whitespace-pre-wrap">{{ message.body }}</p>
+                                {% if message.body %}
+                                <p class="whitespace-pre-wrap leading-relaxed text-[#111b21]">{{ message.body }}</p>
+                                {% else %}
+                                <p class="italic text-[#8696a0] text-xs">Unsupported message type</p>
+                                {% endif %}
 
-                                <p class="mt-1 flex items-center justify-end gap-1 text-[10px] text-gray-400">
+                                {% if message.status == 'failed' and message.error %}
+                                <p class="mt-1 text-[11px] text-red-600 leading-tight">
+                                    <i class="ti ti-alert-triangle text-[11px]"></i>
+                                    {{ message.error|truncatechars:120 }}
+                                </p>
+                                {% endif %}
 
+                                <p class="mt-0.5 flex items-center justify-end gap-0.5 text-[10px] text-[#667781]">
                                     <span class="msg-time">{{ message.created_at|date:"h:i A" }}</span>
-
                                     {% if message.direction == 'outbound' %}
-
-                                        <span class="msg-ticks">
-                                            {% if message.status == 'read' %}
-                                                <i class="ti ti-checks text-blue-500"></i>
-                                            {% elif message.status == 'delivered' %}
-                                                <i class="ti ti-checks"></i>
-                                            {% elif message.status == 'sent' %}
-                                                <i class="ti ti-check"></i>
-                                            {% elif message.status == 'failed' %}
-                                                <i class="ti ti-alert-circle text-red-500"></i>
-                                            {% else %}
-                                                <i class="ti ti-clock text-gray-300"></i>
-                                            {% endif %}
-                                        </span>
-
+                                    <span class="msg-ticks ml-0.5">
+                                        {% if message.status == 'read' %}
+                                            <i class="ti ti-checks text-blue-500 text-[12px]"></i>
+                                        {% elif message.status == 'delivered' %}
+                                            <i class="ti ti-checks text-[#8696a0] text-[12px]"></i>
+                                        {% elif message.status == 'sent' %}
+                                            <i class="ti ti-check text-[#8696a0] text-[12px]"></i>
+                                        {% elif message.status == 'failed' %}
+                                            <i class="ti ti-alert-circle text-red-500 text-[12px]"></i>
+                                        {% else %}
+                                            <i class="ti ti-clock text-[#8696a0] text-[12px]"></i>
+                                        {% endif %}
+                                    </span>
                                     {% endif %}
-
                                 </p>
 
                             </div>
 
                         </div>
 
+                        {% endfor %}
+
                     {% empty %}
 
-                        <div id="thread-empty-state" class="flex h-full items-center justify-center text-sm text-gray-500">
+                        <div id="thread-empty-state" class="flex h-full items-center justify-center text-sm text-[#667781]">
                             No messages yet.
                         </div>
 
@@ -272,28 +342,36 @@
 
                 <!-- COMPOSER -->
 
-                <div class="border-t border-gray-200 bg-white px-6 py-4">
+                <!-- Expired banner -->
+                <div class="border-t border-[#e9edef] bg-[#fffde7] px-4 py-2">
+                    <p class="text-[12px] text-[#667781] leading-snug">
+                        <i class="ti ti-lock text-[13px] text-yellow-600 mr-1"></i>
+                        <strong class="text-yellow-700">Chat expired.</strong>
+                        Chats expire 24 hours after the last customer message. Only template messages can be sent now.
+                    </p>
+                </div>
 
-                    <div id="send-error" class="mb-2 hidden text-sm text-red-600"></div>
+                <!-- Composer bar -->
+                <div class="flex items-center gap-2 border-t border-[#e9edef] bg-[#f0f2f5] px-3 py-2.5">
 
-                    <form id="composer-form" class="flex items-center gap-3">
+                    <div id="send-error" class="hidden absolute bottom-20 left-1/2 -translate-x-1/2 rounded-lg bg-red-600 px-4 py-2 text-xs text-white shadow"></div>
 
+                    <form id="composer-form" class="flex flex-1 items-center gap-2">
                         {% csrf_token %}
-
-                        <input
-                            type="text"
-                            id="message-body"
-                            placeholder="Type a message"
-                            class="flex-1 rounded-full border border-gray-300 px-5 py-2.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                        >
-
+                        <div class="flex flex-1 items-center rounded-full bg-white px-4 py-2.5 shadow-sm">
+                            <input
+                                type="text"
+                                id="message-body"
+                                placeholder="Type a message"
+                                class="flex-1 bg-transparent text-sm text-[#111b21] outline-none placeholder-[#8696a0]"
+                            >
+                        </div>
                         <button
                             type="submit"
-                            class="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full bg-blue-600 text-white transition hover:bg-blue-700"
+                            class="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-[#00a884] text-white transition hover:bg-[#017561]"
                         >
-                            <i class="ti ti-send text-lg"></i>
+                            <i class="ti ti-send text-base"></i>
                         </button>
-
                     </form>
 
                 </div>
@@ -302,20 +380,29 @@
 
                 <!-- EMPTY STATE -->
 
-                <div class="flex h-full flex-col items-center justify-center bg-[#f7f8fa] px-8 text-center">
+                <div class="flex h-full flex-col items-center justify-center bg-[#f0f2f5] px-8 text-center">
 
-                    <div class="flex h-20 w-20 items-center justify-center rounded-full bg-white shadow-sm">
-                        <i class="ti ti-brand-whatsapp text-4xl text-gray-300"></i>
+                    <div class="flex h-24 w-24 items-center justify-center rounded-full bg-[#dfe5e7]">
+                        <svg viewBox="0 0 212 212" class="h-16 w-16 opacity-40" fill="#54656f">
+                            <path d="M106.2 0C47.6 0 0 47.6 0 106.2c0 18.7 4.9 36.2 13.4 51.5L0 212l55.5-14.5c14.8 8 31.8 12.6 50 12.6 58.6 0 106.2-47.6 106.2-106.2S164.8 0 106.2 0zm0 194.3c-16.5 0-32-4.4-45.4-12.1l-31.8 8.3 8.5-31.1c-8.4-13.8-13.2-29.9-13.2-47.2 0-49.2 40-89.2 89.2-89.2 49.2 0 89.2 40 89.2 89.2-.1 49.2-40.1 89.1-89.5 89.1z"/>
+                        </svg>
                     </div>
 
-                    <p class="mt-4 text-base font-medium text-gray-700">
-                        Select a conversation
+                    <p class="mt-5 text-xl font-light text-[#41525d]">
+                        Keep your phone connected
                     </p>
 
-                    <p class="mt-1 max-w-xs text-sm text-gray-500">
-                        Choose a contact from the left to view the message
-                        thread and lead details.
+                    <p class="mt-2 max-w-xs text-sm text-[#667781]">
+                        Select a conversation from the left to view messages and lead details.
                     </p>
+
+                    {% if not accounts %}
+                    <a href="{% url 'whatsapp-connect-choice' %}"
+                        class="mt-6 inline-flex items-center gap-2 rounded-full bg-[#00a884] px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-[#017561]">
+                        <i class="ti ti-brand-whatsapp text-base"></i>
+                        Connect WhatsApp
+                    </a>
+                    {% endif %}
 
                 </div>
 
@@ -324,473 +411,463 @@
         </div>
 
 
-
         <!-- =====================================================
-     RIGHT — KRAYA-STYLE TABBED SIDEBAR
-     ===================================================== -->
+             RIGHT — KRAYA-STYLE TABBED SIDEBAR
+             ===================================================== -->
 
-{% if active_lead %}
+        {% if active_lead %}
 
-<div class="hidden w-[320px] flex-shrink-0 flex-col border-l border-gray-200 bg-white xl:flex" id="crm-sidebar">
+        <div class="hidden w-[320px] flex-shrink-0 flex-col border-l border-gray-200 bg-white xl:flex" id="crm-sidebar">
 
-    <!-- TAB BAR -->
-    <div class="flex border-b border-gray-200 bg-white overflow-x-auto flex-shrink-0" id="sidebar-tabs">
+            <!-- TAB BAR -->
+            <div class="flex border-b border-gray-200 bg-white overflow-x-auto flex-shrink-0" id="sidebar-tabs">
 
-        <button onclick="showTab('personal')" id="tab-personal"
-            class="sidebar-tab active-tab flex flex-col items-center gap-0.5 px-2 py-2.5 border-b-2 border-blue-600 text-blue-600 text-[10px] font-semibold whitespace-nowrap flex-1 transition-colors">
-            <i class="ti ti-user text-sm"></i>Personal Details
-        </button>
-
-        <button onclick="showTab('calls')" id="tab-calls"
-            class="sidebar-tab flex flex-col items-center gap-0.5 px-2 py-2.5 border-b-2 border-transparent text-[10px] font-semibold text-gray-500 whitespace-nowrap flex-1 hover:text-gray-700 transition-colors">
-            <i class="ti ti-phone text-sm"></i>Call Tracker
-        </button>
-
-        <button onclick="showTab('autofollowup')" id="tab-autofollowup"
-            class="sidebar-tab flex flex-col items-center gap-0.5 px-2 py-2.5 border-b-2 border-transparent text-[10px] font-semibold text-gray-500 whitespace-nowrap flex-1 hover:text-gray-700 transition-colors">
-            <i class="ti ti-arrows-right-left text-sm"></i>Auto Followups
-        </button>
-
-        <button onclick="showTab('template')" id="tab-template"
-            class="sidebar-tab flex flex-col items-center gap-0.5 px-2 py-2.5 border-b-2 border-transparent text-[10px] font-semibold text-gray-500 whitespace-nowrap flex-1 hover:text-gray-700 transition-colors">
-            <i class="ti ti-template text-sm"></i>Tem. Message
-        </button>
-
-        <button onclick="showTab('quickreply')" id="tab-quickreply"
-            class="sidebar-tab flex flex-col items-center gap-0.5 px-2 py-2.5 border-b-2 border-transparent text-[10px] font-semibold text-gray-500 whitespace-nowrap flex-1 hover:text-gray-700 transition-colors">
-            <i class="ti ti-bolt text-sm"></i>Quick Replies
-        </button>
-
-    </div>
-
-    <!-- ═══ TAB 1 — PERSONAL DETAILS ═══ -->
-    <div id="panel-personal" class="tab-panel flex-1 overflow-y-auto">
-
-        <form id="personal-form"
-            action="{% url 'crm-lead-edit-save' active_lead.id %}"
-            method="post"
-            class="divide-y divide-gray-100">
-
-            {% csrf_token %}
-            <input type="hidden" name="pipeline" value="{{ active_lead.pipeline_id }}">
-
-            <div class="px-4 py-2.5">
-                <label class="block text-[10px] font-semibold uppercase tracking-wide text-gray-400 mb-1">Name</label>
-                <input type="text" name="name" value="{{ active_lead.name }}"
-                    class="w-full rounded-md border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm text-gray-900 focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-500">
-            </div>
-
-            <div class="px-4 py-2.5">
-                <label class="block text-[10px] font-semibold uppercase tracking-wide text-gray-400 mb-1">Phone</label>
-                <div class="flex items-center gap-2">
-                    <input type="text" name="phone" value="{{ active_lead.phone }}"
-                        class="flex-1 rounded-md border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm text-gray-900 focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-500">
-                    <button type="button" onclick="navigator.clipboard.writeText('{{ active_lead.phone }}')"
-                        class="flex-shrink-0 rounded p-1 text-gray-400 hover:text-gray-600 transition" title="Copy">
-                        <i class="ti ti-copy text-sm"></i>
-                    </button>
-                </div>
-            </div>
-
-            <div class="px-4 py-2.5">
-                <label class="block text-[10px] font-semibold uppercase tracking-wide text-gray-400 mb-1">Email</label>
-                <input type="email" name="email" value="{{ active_lead.email }}"
-                    class="w-full rounded-md border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm text-gray-900 focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-500">
-            </div>
-
-            <div class="px-4 py-2.5">
-                <label class="block text-[10px] font-semibold uppercase tracking-wide text-gray-400 mb-1">Pipeline</label>
-                <p class="text-sm text-gray-700">{{ active_lead.pipeline.name|default:"—" }}</p>
-            </div>
-
-            <div class="px-4 py-2.5">
-                <label class="block text-[10px] font-semibold uppercase tracking-wide text-gray-400 mb-1">Stage</label>
-                <select name="stage"
-                    class="w-full rounded-md border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm text-gray-900 focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-500">
-                    {% for s in lead_stages %}
-                        <option value="{{ s.id }}" {% if s.id == active_lead.stage_id %}selected{% endif %}>{{ s.name }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-
-            <div class="px-4 py-2.5">
-                <label class="block text-[10px] font-semibold uppercase tracking-wide text-gray-400 mb-1">Source</label>
-                <p class="text-sm capitalize text-gray-700">{{ active_lead.get_lead_source_display }}</p>
-            </div>
-
-            <div class="px-4 py-2.5">
-                <label class="block text-[10px] font-semibold uppercase tracking-wide text-gray-400 mb-1">Created</label>
-                <p class="text-sm text-gray-700">{{ active_lead.created_at|date:"d M Y, h:i A" }}</p>
-            </div>
-
-            <div class="px-4 py-2.5">
-                <label class="block text-[10px] font-semibold uppercase tracking-wide text-gray-400 mb-1">Notes</label>
-                <textarea name="notes" rows="3"
-                    class="w-full rounded-md border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm text-gray-900 focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 resize-none"
-                    placeholder="Add notes…">{{ active_lead.notes }}</textarea>
-            </div>
-
-            <div class="px-4 py-3 flex items-center gap-2">
-                <button type="submit"
-                    class="flex-1 rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-blue-700">
-                    Save Changes
+                <button onclick="showTab('personal')" id="tab-personal"
+                    class="sidebar-tab active-tab flex flex-col items-center gap-0.5 px-2 py-2.5 border-b-2 border-blue-600 text-blue-600 text-[10px] font-semibold whitespace-nowrap flex-1 transition-colors">
+                    <i class="ti ti-user text-sm"></i>Personal Details
                 </button>
-                <a href="{% url 'crm-lead-detail' active_lead.id %}"
-                    class="flex-shrink-0 rounded-lg border border-gray-200 px-3 py-2 text-xs font-medium text-gray-600 transition hover:bg-gray-50" title="Full profile">
-                    <i class="ti ti-external-link text-sm"></i>
-                </a>
+
+                <button onclick="showTab('calls')" id="tab-calls"
+                    class="sidebar-tab flex flex-col items-center gap-0.5 px-2 py-2.5 border-b-2 border-transparent text-[10px] font-semibold text-gray-500 whitespace-nowrap flex-1 hover:text-gray-700 transition-colors">
+                    <i class="ti ti-phone text-sm"></i>Call Tracker
+                </button>
+
+                <button onclick="showTab('autofollowup')" id="tab-autofollowup"
+                    class="sidebar-tab flex flex-col items-center gap-0.5 px-2 py-2.5 border-b-2 border-transparent text-[10px] font-semibold text-gray-500 whitespace-nowrap flex-1 hover:text-gray-700 transition-colors">
+                    <i class="ti ti-arrows-right-left text-sm"></i>Auto Followups
+                </button>
+
+                <button onclick="showTab('template')" id="tab-template"
+                    class="sidebar-tab flex flex-col items-center gap-0.5 px-2 py-2.5 border-b-2 border-transparent text-[10px] font-semibold text-gray-500 whitespace-nowrap flex-1 hover:text-gray-700 transition-colors">
+                    <i class="ti ti-template text-sm"></i>Tem. Message
+                </button>
+
+                <button onclick="showTab('quickreply')" id="tab-quickreply"
+                    class="sidebar-tab flex flex-col items-center gap-0.5 px-2 py-2.5 border-b-2 border-transparent text-[10px] font-semibold text-gray-500 whitespace-nowrap flex-1 hover:text-gray-700 transition-colors">
+                    <i class="ti ti-bolt text-sm"></i>Quick Replies
+                </button>
+
             </div>
 
-        </form>
+            <!-- ═══ TAB 1 — PERSONAL DETAILS ═══ -->
+            <div id="panel-personal" class="tab-panel flex-1 overflow-y-auto">
 
-        <div id="personal-save-msg" class="hidden mx-4 mb-3 rounded-md px-3 py-2 text-xs font-medium"></div>
+                <form id="personal-form"
+                    action="{% url 'crm-lead-edit-save' active_lead.id %}"
+                    method="post"
+                    class="divide-y divide-gray-100">
 
-    </div>
+                    {% csrf_token %}
+                    <input type="hidden" name="pipeline" value="{{ active_lead.pipeline_id }}">
 
+                    <div class="px-4 py-2.5">
+                        <label class="block text-[10px] font-semibold uppercase tracking-wide text-gray-400 mb-1">Name</label>
+                        <input type="text" name="name" value="{{ active_lead.name }}"
+                            class="w-full rounded-md border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm text-gray-900 focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-500">
+                    </div>
 
-    <!-- ═══ TAB 2 — CALL TRACKER ═══ -->
-    <div id="panel-calls" class="tab-panel hidden flex-1 flex-col overflow-y-auto">
-
-        <div class="flex items-center justify-between px-4 py-3 border-b border-gray-100 flex-shrink-0">
-            <p class="text-xs font-semibold uppercase tracking-wide text-gray-400">Call History</p>
-            <button
-                hx-get="{% url 'crm-lead-call-modal' active_lead.id %}"
-                hx-target="#modal-root"
-                hx-swap="innerHTML"
-                class="flex items-center gap-1 rounded-lg bg-blue-600 px-2.5 py-1.5 text-[11px] font-semibold text-white transition hover:bg-blue-700">
-                <i class="ti ti-plus text-xs"></i> Log Call
-            </button>
-        </div>
-
-        <div class="divide-y divide-gray-100 overflow-y-auto flex-1">
-            {% for call in lead_calls %}
-            <div class="px-4 py-3">
-                <div class="flex items-start justify-between gap-2">
-                    <div class="flex items-center gap-2">
-                        {% if call.status == 'completed' %}
-                            <span class="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-green-100 text-green-600">
-                                <i class="ti ti-phone-check text-xs"></i>
-                            </span>
-                        {% elif call.status == 'no_response' %}
-                            <span class="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-red-100 text-red-500">
-                                <i class="ti ti-phone-off text-xs"></i>
-                            </span>
-                        {% else %}
-                            <span class="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-gray-100 text-gray-500">
-                                <i class="ti ti-phone text-xs"></i>
-                            </span>
-                        {% endif %}
-                        <div>
-                            <p class="text-xs font-semibold text-gray-800">{{ call.call_name|default:"Call" }}</p>
-                            <p class="text-[10px] text-gray-400">{{ call.called_at|date:"d M, h:i A" }}</p>
+                    <div class="px-4 py-2.5">
+                        <label class="block text-[10px] font-semibold uppercase tracking-wide text-gray-400 mb-1">Phone</label>
+                        <div class="flex items-center gap-2">
+                            <input type="text" name="phone" value="{{ active_lead.phone }}"
+                                class="flex-1 rounded-md border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm text-gray-900 focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-500">
+                            <button type="button" onclick="navigator.clipboard.writeText('{{ active_lead.phone }}')"
+                                class="flex-shrink-0 rounded p-1 text-gray-400 hover:text-gray-600 transition" title="Copy">
+                                <i class="ti ti-copy text-sm"></i>
+                            </button>
                         </div>
                     </div>
-                    <span class="flex-shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold
-                        {% if call.status == 'completed' %}bg-green-100 text-green-700
-                        {% elif call.status == 'no_response' %}bg-red-100 text-red-600
-                        {% else %}bg-gray-100 text-gray-600{% endif %}">
-                        {{ call.get_status_display }}
-                    </span>
-                </div>
-                {% if call.notes %}
-                <p class="mt-1.5 pl-8 text-[11px] text-gray-500 leading-relaxed">{{ call.notes }}</p>
-                {% endif %}
-                {% if call.duration_seconds and call.status == 'completed' %}
-                <p class="mt-0.5 pl-8 text-[10px] text-gray-400">
-                    <i class="ti ti-clock"></i>
-                    {% widthratio call.duration_seconds 60 1 %} min
-                </p>
-                {% endif %}
+
+                    <div class="px-4 py-2.5">
+                        <label class="block text-[10px] font-semibold uppercase tracking-wide text-gray-400 mb-1">Email</label>
+                        <input type="email" name="email" value="{{ active_lead.email }}"
+                            class="w-full rounded-md border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm text-gray-900 focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-500">
+                    </div>
+
+                    <div class="px-4 py-2.5">
+                        <label class="block text-[10px] font-semibold uppercase tracking-wide text-gray-400 mb-1">Pipeline</label>
+                        <p class="text-sm text-gray-700">{{ active_lead.pipeline.name|default:"—" }}</p>
+                    </div>
+
+                    <div class="px-4 py-2.5">
+                        <label class="block text-[10px] font-semibold uppercase tracking-wide text-gray-400 mb-1">Stage</label>
+                        <select name="stage"
+                            class="w-full rounded-md border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm text-gray-900 focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-500">
+                            {% for s in lead_stages %}
+                                <option value="{{ s.id }}" {% if s.id == active_lead.stage_id %}selected{% endif %}>{{ s.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="px-4 py-2.5">
+                        <label class="block text-[10px] font-semibold uppercase tracking-wide text-gray-400 mb-1">Source</label>
+                        <p class="text-sm capitalize text-gray-700">{{ active_lead.get_lead_source_display }}</p>
+                    </div>
+
+                    <div class="px-4 py-2.5">
+                        <label class="block text-[10px] font-semibold uppercase tracking-wide text-gray-400 mb-1">Created</label>
+                        <p class="text-sm text-gray-700">{{ active_lead.created_at|date:"d M Y, h:i A" }}</p>
+                    </div>
+
+                    <div class="px-4 py-2.5">
+                        <label class="block text-[10px] font-semibold uppercase tracking-wide text-gray-400 mb-1">Notes</label>
+                        <textarea name="notes" rows="3"
+                            class="w-full rounded-md border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm text-gray-900 focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 resize-none"
+                            placeholder="Add notes…">{{ active_lead.notes }}</textarea>
+                    </div>
+
+                    <div class="px-4 py-3 flex items-center gap-2">
+                        <button type="submit"
+                            class="flex-1 rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-blue-700">
+                            Save Changes
+                        </button>
+                        <a href="{% url 'crm-lead-detail' active_lead.id %}"
+                            class="flex-shrink-0 rounded-lg border border-gray-200 px-3 py-2 text-xs font-medium text-gray-600 transition hover:bg-gray-50" title="Full profile">
+                            <i class="ti ti-external-link text-sm"></i>
+                        </a>
+                    </div>
+
+                </form>
+
+                <div id="personal-save-msg" class="hidden mx-4 mb-3 rounded-md px-3 py-2 text-xs font-medium"></div>
+
             </div>
-            {% empty %}
-            <div class="py-10 text-center">
-                <i class="ti ti-phone-off text-3xl text-gray-300"></i>
-                <p class="mt-2 text-xs text-gray-400">No calls logged yet.</p>
-            </div>
-            {% endfor %}
-        </div>
-
-    </div>
 
 
-    <!-- ═══ TAB 3 — AUTO FOLLOWUPS ═══ -->
-    <div id="panel-autofollowup" class="tab-panel hidden flex-1 overflow-y-auto">
+            <!-- ═══ TAB 2 — CALL TRACKER ═══ -->
+            <div id="panel-calls" class="tab-panel hidden flex-1 flex-col overflow-y-auto">
 
-        <div class="px-4 py-4 space-y-3">
-
-            <div class="rounded-lg border border-gray-200 bg-gray-50 p-3">
-                <div class="flex items-center justify-between">
-                    <p class="text-xs font-semibold text-gray-700">Active Sequence</p>
-                    <button id="seq-toggle" type="button"
-                        class="relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent bg-blue-500 transition-colors duration-200 ease-in-out"
-                        role="switch" aria-checked="true">
-                        <span class="translate-x-4 pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"></span>
+                <div class="flex items-center justify-between px-4 py-3 border-b border-gray-100 flex-shrink-0">
+                    <p class="text-xs font-semibold uppercase tracking-wide text-gray-400">Call History</p>
+                    <button
+                        hx-get="{% url 'crm-lead-call-modal' active_lead.id %}"
+                        hx-target="#modal-root"
+                        hx-swap="innerHTML"
+                        class="flex items-center gap-1 rounded-lg bg-blue-600 px-2.5 py-1.5 text-[11px] font-semibold text-white transition hover:bg-blue-700">
+                        <i class="ti ti-plus text-xs"></i> Log Call
                     </button>
                 </div>
-                <p class="mt-1 text-[11px] text-gray-400">Auto follow-up sequences for this lead.</p>
-            </div>
 
-            <div class="rounded-lg border border-orange-100 bg-orange-50 px-4 py-3">
-                <p class="text-[11px] font-semibold text-orange-700">Next in Sequence</p>
-                <p class="mt-0.5 text-xs text-orange-600">No active sequence running.</p>
-                <p class="mt-2 text-[10px] text-orange-400">Manage sequences from the CRM lead detail.</p>
-            </div>
-
-            <a href="{% url 'crm-lead-detail' active_lead.id %}"
-                class="flex items-center justify-between rounded-lg border border-gray-200 bg-white px-4 py-2.5 text-xs font-medium text-gray-600 transition hover:bg-gray-50">
-                <span>Manage sequences</span>
-                <i class="ti ti-arrow-right text-sm text-gray-400"></i>
-            </a>
-
-            <div class="pt-2 border-t border-gray-100">
-                <p class="text-[10px] font-semibold uppercase tracking-wide text-gray-400 mb-2">Recent Notes</p>
-                {% for note in lead_notes %}
-                <div class="mb-2 rounded-md bg-yellow-50 border border-yellow-100 px-3 py-2">
-                    <p class="text-[11px] text-gray-700 leading-relaxed">{{ note.note|truncatechars:120 }}</p>
-                    <p class="mt-1 text-[10px] text-gray-400">{{ note.created_at|date:"d M, h:i A" }}</p>
+                <div class="divide-y divide-gray-100 overflow-y-auto flex-1">
+                    {% for call in lead_calls %}
+                    <div class="px-4 py-3">
+                        <div class="flex items-start justify-between gap-2">
+                            <div class="flex items-center gap-2">
+                                {% if call.status == 'completed' %}
+                                    <span class="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-green-100 text-green-600">
+                                        <i class="ti ti-phone-check text-xs"></i>
+                                    </span>
+                                {% elif call.status == 'no_response' %}
+                                    <span class="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-red-100 text-red-500">
+                                        <i class="ti ti-phone-off text-xs"></i>
+                                    </span>
+                                {% else %}
+                                    <span class="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-gray-100 text-gray-500">
+                                        <i class="ti ti-phone text-xs"></i>
+                                    </span>
+                                {% endif %}
+                                <div>
+                                    <p class="text-xs font-semibold text-gray-800">{{ call.call_name|default:"Call" }}</p>
+                                    <p class="text-[10px] text-gray-400">{{ call.called_at|date:"d M, h:i A" }}</p>
+                                </div>
+                            </div>
+                            <span class="flex-shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold
+                                {% if call.status == 'completed' %}bg-green-100 text-green-700
+                                {% elif call.status == 'no_response' %}bg-red-100 text-red-600
+                                {% else %}bg-gray-100 text-gray-600{% endif %}">
+                                {{ call.get_status_display }}
+                            </span>
+                        </div>
+                        {% if call.notes %}
+                        <p class="mt-1.5 pl-8 text-[11px] text-gray-500 leading-relaxed">{{ call.notes }}</p>
+                        {% endif %}
+                        {% if call.duration_seconds and call.status == 'completed' %}
+                        <p class="mt-0.5 pl-8 text-[10px] text-gray-400">
+                            <i class="ti ti-clock"></i>
+                            {% widthratio call.duration_seconds 60 1 %} min
+                        </p>
+                        {% endif %}
+                    </div>
+                    {% empty %}
+                    <div class="py-10 text-center">
+                        <i class="ti ti-phone-off text-3xl text-gray-300"></i>
+                        <p class="mt-2 text-xs text-gray-400">No calls logged yet.</p>
+                    </div>
+                    {% endfor %}
                 </div>
-                {% empty %}
-                <p class="text-[11px] text-gray-400">No notes yet.</p>
-                {% endfor %}
-                <button
-                    hx-get="{% url 'crm-lead-note-modal' active_lead.id %}"
-                    hx-target="#modal-root"
-                    hx-swap="innerHTML"
-                    class="mt-2 w-full rounded-lg border border-dashed border-gray-300 py-2 text-[11px] font-medium text-gray-500 transition hover:border-blue-400 hover:text-blue-500">
-                    <i class="ti ti-plus text-xs"></i> Add Note
-                </button>
+
+            </div>
+
+
+            <!-- ═══ TAB 3 — AUTO FOLLOWUPS ═══ -->
+            <div id="panel-autofollowup" class="tab-panel hidden flex-1 overflow-y-auto">
+
+                <div class="px-4 py-4 space-y-3">
+
+                    <div class="rounded-lg border border-gray-200 bg-gray-50 p-3">
+                        <div class="flex items-center justify-between">
+                            <p class="text-xs font-semibold text-gray-700">Active Sequence</p>
+                            <button id="seq-toggle" type="button"
+                                class="relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent bg-blue-500 transition-colors duration-200 ease-in-out"
+                                role="switch" aria-checked="true">
+                                <span class="translate-x-4 pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"></span>
+                            </button>
+                        </div>
+                        <p class="mt-1 text-[11px] text-gray-400">Auto follow-up sequences for this lead.</p>
+                    </div>
+
+                    <div class="rounded-lg border border-orange-100 bg-orange-50 px-4 py-3">
+                        <p class="text-[11px] font-semibold text-orange-700">Next in Sequence</p>
+                        <p class="mt-0.5 text-xs text-orange-600">No active sequence running.</p>
+                        <p class="mt-2 text-[10px] text-orange-400">Manage sequences from the CRM lead detail.</p>
+                    </div>
+
+                    <a href="{% url 'crm-lead-detail' active_lead.id %}"
+                        class="flex items-center justify-between rounded-lg border border-gray-200 bg-white px-4 py-2.5 text-xs font-medium text-gray-600 transition hover:bg-gray-50">
+                        <span>Manage sequences</span>
+                        <i class="ti ti-arrow-right text-sm text-gray-400"></i>
+                    </a>
+
+                    <div class="pt-2 border-t border-gray-100">
+                        <p class="text-[10px] font-semibold uppercase tracking-wide text-gray-400 mb-2">Recent Notes</p>
+                        {% for note in lead_notes %}
+                        <div class="mb-2 rounded-md bg-yellow-50 border border-yellow-100 px-3 py-2">
+                            <p class="text-[11px] text-gray-700 leading-relaxed">{{ note.note|truncatechars:120 }}</p>
+                            <p class="mt-1 text-[10px] text-gray-400">{{ note.created_at|date:"d M, h:i A" }}</p>
+                        </div>
+                        {% empty %}
+                        <p class="text-[11px] text-gray-400">No notes yet.</p>
+                        {% endfor %}
+                        <button
+                            hx-get="{% url 'crm-lead-note-modal' active_lead.id %}"
+                            hx-target="#modal-root"
+                            hx-swap="innerHTML"
+                            class="mt-2 w-full rounded-lg border border-dashed border-gray-300 py-2 text-[11px] font-medium text-gray-500 transition hover:border-blue-400 hover:text-blue-500">
+                            <i class="ti ti-plus text-xs"></i> Add Note
+                        </button>
+                    </div>
+
+                </div>
+
+            </div>
+
+
+            <!-- ═══ TAB 4 — TEMPLATE MESSAGE ═══ -->
+            <div id="panel-template" class="tab-panel hidden flex-1 flex-col overflow-y-auto">
+
+                <div class="px-4 py-3 border-b border-gray-100 flex-shrink-0">
+                    <div class="relative">
+                        <i class="ti ti-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs"></i>
+                        <input type="text" id="template-search" placeholder="Search for Template"
+                            class="w-full rounded-full border border-gray-200 bg-gray-50 py-2 pl-8 pr-3 text-xs focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-500">
+                    </div>
+                </div>
+
+                <div id="template-send-msg" class="hidden mx-4 mt-3 rounded-md px-3 py-2 text-xs font-medium"></div>
+
+                <div class="divide-y divide-gray-100 overflow-y-auto flex-1" id="templates-list">
+                    {% for tmpl in lead_templates %}
+                    <div class="template-row flex items-center justify-between px-4 py-3 hover:bg-gray-50 transition"
+                         data-name="{{ tmpl.name|lower }}">
+                        <span class="text-sm text-gray-800 truncate mr-3">{{ tmpl.name }}</span>
+                        <button
+                            onclick="sendTemplate('{{ tmpl.id }}', '{{ tmpl.name|escapejs }}')"
+                            class="flex-shrink-0 flex h-7 w-7 items-center justify-center rounded-full bg-green-500 text-white transition hover:bg-green-600"
+                            title="Send {{ tmpl.name }}">
+                            <i class="ti ti-send text-xs"></i>
+                        </button>
+                    </div>
+                    {% empty %}
+                    <div class="py-10 text-center px-4">
+                        <i class="ti ti-template text-3xl text-gray-300"></i>
+                        <p class="mt-2 text-xs text-gray-400">No approved templates yet.</p>
+                        <a href="{% url 'whatsapp-template-list' %}" class="mt-2 inline-block text-xs text-blue-600 hover:underline">
+                            Manage templates →
+                        </a>
+                    </div>
+                    {% endfor %}
+                </div>
+
+            </div>
+
+
+            <!-- ═══ TAB 5 — QUICK REPLIES ═══ -->
+            <div id="panel-quickreply" class="tab-panel hidden flex-1 overflow-y-auto">
+
+                <div class="flex items-center justify-between px-4 py-3 border-b border-gray-100">
+                    <p class="text-xs font-semibold uppercase tracking-wide text-gray-400">Quick Replies</p>
+                    <button class="flex items-center gap-1 rounded-lg border border-blue-600 px-2.5 py-1.5 text-[11px] font-semibold text-blue-600 transition hover:bg-blue-50">
+                        <i class="ti ti-plus text-xs"></i> Add a Quick Reply
+                    </button>
+                </div>
+
+                <div class="divide-y divide-gray-100">
+
+                    <div class="px-4 py-3">
+                        <div class="flex items-center justify-between cursor-pointer select-none" onclick="toggleQR('qr-initial')">
+                            <div class="flex items-center gap-2">
+                                <i class="ti ti-grip-vertical text-gray-300 text-sm"></i>
+                                <p class="text-xs font-semibold text-gray-700">Initial response</p>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <span class="text-[10px] text-gray-400">0 / 1</span>
+                                <i class="ti ti-chevron-down text-gray-400 text-xs" id="qr-initial-icon"></i>
+                            </div>
+                        </div>
+                        <div id="qr-initial" class="hidden mt-2 pl-5">
+                            <p class="text-[11px] text-gray-400 italic">No quick replies set.</p>
+                            <button class="mt-1 text-[11px] text-blue-600 hover:underline">+ Add quick reply</button>
+                        </div>
+                    </div>
+
+                    <div class="px-4 py-3">
+                        <div class="flex items-center justify-between cursor-pointer select-none" onclick="toggleQR('qr-reminder')">
+                            <div class="flex items-center gap-2">
+                                <i class="ti ti-grip-vertical text-gray-300 text-sm"></i>
+                                <p class="text-xs font-semibold text-gray-700">Reminder</p>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <span class="text-[10px] text-gray-400">0 / 2</span>
+                                <i class="ti ti-chevron-down text-gray-400 text-xs" id="qr-reminder-icon"></i>
+                            </div>
+                        </div>
+                        <div id="qr-reminder" class="hidden mt-2 pl-5">
+                            <p class="text-[11px] text-gray-400 italic">No quick replies set.</p>
+                            <button class="mt-1 text-[11px] text-blue-600 hover:underline">+ Add quick reply</button>
+                        </div>
+                    </div>
+
+                    <div class="px-4 py-3">
+                        <div class="flex items-center justify-between cursor-pointer select-none" onclick="toggleQR('qr-followup')">
+                            <div class="flex items-center gap-2">
+                                <i class="ti ti-grip-vertical text-gray-300 text-sm"></i>
+                                <p class="text-xs font-semibold text-gray-700">Follow-up</p>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <span class="text-[10px] text-gray-400">0 / 2</span>
+                                <i class="ti ti-chevron-down text-gray-400 text-xs" id="qr-followup-icon"></i>
+                            </div>
+                        </div>
+                        <div id="qr-followup" class="hidden mt-2 pl-5">
+                            <p class="text-[11px] text-gray-400 italic">No quick replies set.</p>
+                            <button class="mt-1 text-[11px] text-blue-600 hover:underline">+ Add quick reply</button>
+                        </div>
+                    </div>
+
+                </div>
+
             </div>
 
         </div>
 
-    </div>
+        <style>
+            .sidebar-tab.active-tab { color: #2563eb; border-bottom-color: #2563eb; }
+        </style>
+        <script>
+        (function() {
+            'use strict';
+            var SEND_TEMPLATE_URL = "{% url 'whatsapp-send-template' active_lead.id %}";
+            var CSRF = "{{ csrf_token }}";
 
-
-    <!-- ═══ TAB 4 — TEMPLATE MESSAGE ═══ -->
-    <div id="panel-template" class="tab-panel hidden flex-1 flex-col overflow-y-auto">
-
-        <div class="px-4 py-3 border-b border-gray-100 flex-shrink-0">
-            <div class="relative">
-                <i class="ti ti-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs"></i>
-                <input type="text" id="template-search" placeholder="Search for Template"
-                    class="w-full rounded-full border border-gray-200 bg-gray-50 py-2 pl-8 pr-3 text-xs focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-500">
-            </div>
-        </div>
-
-        <div id="template-send-msg" class="hidden mx-4 mt-3 rounded-md px-3 py-2 text-xs font-medium"></div>
-
-        <div class="divide-y divide-gray-100 overflow-y-auto flex-1" id="templates-list">
-            {% for tmpl in lead_templates %}
-            <div class="template-row flex items-center justify-between px-4 py-3 hover:bg-gray-50 transition"
-                 data-name="{{ tmpl.name|lower }}">
-                <span class="text-sm text-gray-800 truncate mr-3">{{ tmpl.name }}</span>
-                <button
-                    onclick="sendTemplate('{{ tmpl.id }}', '{{ tmpl.name|escapejs }}')"
-                    class="flex-shrink-0 flex h-7 w-7 items-center justify-center rounded-full bg-green-500 text-white transition hover:bg-green-600"
-                    title="Send {{ tmpl.name }}">
-                    <i class="ti ti-send text-xs"></i>
-                </button>
-            </div>
-            {% empty %}
-            <div class="py-10 text-center px-4">
-                <i class="ti ti-template text-3xl text-gray-300"></i>
-                <p class="mt-2 text-xs text-gray-400">No approved templates yet.</p>
-                <a href="{% url 'whatsapp-template-list' %}" class="mt-2 inline-block text-xs text-blue-600 hover:underline">
-                    Manage templates →
-                </a>
-            </div>
-            {% endfor %}
-        </div>
-
-    </div>
-
-
-    <!-- ═══ TAB 5 — QUICK REPLIES ═══ -->
-    <div id="panel-quickreply" class="tab-panel hidden flex-1 overflow-y-auto">
-
-        <div class="flex items-center justify-between px-4 py-3 border-b border-gray-100">
-            <p class="text-xs font-semibold uppercase tracking-wide text-gray-400">Quick Replies</p>
-            <button class="flex items-center gap-1 rounded-lg border border-blue-600 px-2.5 py-1.5 text-[11px] font-semibold text-blue-600 transition hover:bg-blue-50">
-                <i class="ti ti-plus text-xs"></i> Add a Quick Reply
-            </button>
-        </div>
-
-        <div class="divide-y divide-gray-100">
-
-            <div class="px-4 py-3">
-                <div class="flex items-center justify-between cursor-pointer select-none" onclick="toggleQR('qr-initial')">
-                    <div class="flex items-center gap-2">
-                        <i class="ti ti-grip-vertical text-gray-300 text-sm"></i>
-                        <p class="text-xs font-semibold text-gray-700">Initial response</p>
-                    </div>
-                    <div class="flex items-center gap-2">
-                        <span class="text-[10px] text-gray-400">0 / 1</span>
-                        <i class="ti ti-chevron-down text-gray-400 text-xs" id="qr-initial-icon"></i>
-                    </div>
-                </div>
-                <div id="qr-initial" class="hidden mt-2 pl-5">
-                    <p class="text-[11px] text-gray-400 italic">No quick replies set.</p>
-                    <button class="mt-1 text-[11px] text-blue-600 hover:underline">+ Add quick reply</button>
-                </div>
-            </div>
-
-            <div class="px-4 py-3">
-                <div class="flex items-center justify-between cursor-pointer select-none" onclick="toggleQR('qr-reminder')">
-                    <div class="flex items-center gap-2">
-                        <i class="ti ti-grip-vertical text-gray-300 text-sm"></i>
-                        <p class="text-xs font-semibold text-gray-700">Reminder</p>
-                    </div>
-                    <div class="flex items-center gap-2">
-                        <span class="text-[10px] text-gray-400">0 / 2</span>
-                        <i class="ti ti-chevron-down text-gray-400 text-xs" id="qr-reminder-icon"></i>
-                    </div>
-                </div>
-                <div id="qr-reminder" class="hidden mt-2 pl-5">
-                    <p class="text-[11px] text-gray-400 italic">No quick replies set.</p>
-                    <button class="mt-1 text-[11px] text-blue-600 hover:underline">+ Add quick reply</button>
-                </div>
-            </div>
-
-            <div class="px-4 py-3">
-                <div class="flex items-center justify-between cursor-pointer select-none" onclick="toggleQR('qr-followup')">
-                    <div class="flex items-center gap-2">
-                        <i class="ti ti-grip-vertical text-gray-300 text-sm"></i>
-                        <p class="text-xs font-semibold text-gray-700">Follow-up</p>
-                    </div>
-                    <div class="flex items-center gap-2">
-                        <span class="text-[10px] text-gray-400">0 / 2</span>
-                        <i class="ti ti-chevron-down text-gray-400 text-xs" id="qr-followup-icon"></i>
-                    </div>
-                </div>
-                <div id="qr-followup" class="hidden mt-2 pl-5">
-                    <p class="text-[11px] text-gray-400 italic">No quick replies set.</p>
-                    <button class="mt-1 text-[11px] text-blue-600 hover:underline">+ Add quick reply</button>
-                </div>
-            </div>
-
-        </div>
-
-    </div>
-
-</div>
-
-<!-- SIDEBAR STYLES + JS -->
-<style>
-    .sidebar-tab.active-tab { color: #2563eb; border-bottom-color: #2563eb; }
-</style>
-<script>
-(function() {
-    'use strict';
-    var SEND_TEMPLATE_URL = "{% url 'whatsapp-send-template' active_lead.id %}";
-    var CSRF = "{{ csrf_token }}";
-
-    function showTab(name) {
-        document.querySelectorAll('.tab-panel').forEach(function(p) {
-            p.classList.add('hidden');
-            p.classList.remove('flex');
-        });
-        document.querySelectorAll('.sidebar-tab').forEach(function(t) {
-            t.classList.remove('active-tab', 'text-blue-600', 'border-blue-600');
-            t.classList.add('border-transparent', 'text-gray-500');
-        });
-        var panel = document.getElementById('panel-' + name);
-        var tab   = document.getElementById('tab-' + name);
-        if (panel) { panel.classList.remove('hidden'); panel.classList.add('flex'); }
-        if (tab) {
-            tab.classList.add('active-tab', 'text-blue-600', 'border-blue-600');
-            tab.classList.remove('border-transparent', 'text-gray-500');
-        }
-    }
-    window.showTab = showTab;
-    showTab('personal');
-
-    // Personal form — AJAX save, no page reload
-    var pForm = document.getElementById('personal-form');
-    var pMsg  = document.getElementById('personal-save-msg');
-    if (pForm) {
-        pForm.addEventListener('submit', function(e) {
-            e.preventDefault();
-            fetch(pForm.action, {
-                method: 'POST',
-                headers: { 'X-CSRFToken': CSRF },
-                body: new FormData(pForm),
-            }).then(function(r) {
-                pMsg.textContent = (r.ok || r.status < 400) ? 'Saved!' : 'Save failed.';
-                pMsg.className = 'mx-4 mb-3 rounded-md px-3 py-2 text-xs font-medium ' +
-                    ((r.ok || r.status < 400)
-                        ? 'bg-green-50 text-green-700 border border-green-200'
-                        : 'bg-red-50 text-red-700 border border-red-200');
-                setTimeout(function() { pMsg.className = 'hidden'; }, 3000);
-            }).catch(function() {
-                pMsg.textContent = 'Network error.';
-                pMsg.className = 'mx-4 mb-3 rounded-md px-3 py-2 text-xs font-medium bg-red-50 text-red-700 border border-red-200';
-            });
-        });
-    }
-
-    // Template search live filter
-    var tSearch = document.getElementById('template-search');
-    if (tSearch) {
-        tSearch.addEventListener('input', function() {
-            var q = tSearch.value.toLowerCase().trim();
-            document.querySelectorAll('.template-row').forEach(function(row) {
-                row.style.display = (!q || row.dataset.name.includes(q)) ? '' : 'none';
-            });
-        });
-    }
-
-    // Send template via fetch
-    function sendTemplate(templateId, templateName) {
-        var msg = document.getElementById('template-send-msg');
-        var fd = new FormData();
-        fd.append('template_id', templateId);
-        fetch(SEND_TEMPLATE_URL, {
-            method: 'POST',
-            headers: { 'X-CSRFToken': CSRF },
-            body: fd,
-        }).then(function(r) {
-            return r.json().then(function(d) { return { ok: r.ok, data: d }; });
-        }).then(function(res) {
-            if (res.ok) {
-                msg.textContent = '\u2713 "' + templateName + '" sent!';
-                msg.className = 'mx-4 mt-3 rounded-md px-3 py-2 text-xs font-medium bg-green-50 text-green-700 border border-green-200';
-            } else {
-                msg.textContent = (res.data && res.data.error) ? res.data.error : 'Failed to send.';
-                msg.className = 'mx-4 mt-3 rounded-md px-3 py-2 text-xs font-medium bg-red-50 text-red-700 border border-red-200';
+            function showTab(name) {
+                document.querySelectorAll('.tab-panel').forEach(function(p) {
+                    p.classList.add('hidden');
+                    p.classList.remove('flex');
+                });
+                document.querySelectorAll('.sidebar-tab').forEach(function(t) {
+                    t.classList.remove('active-tab', 'text-blue-600', 'border-blue-600');
+                    t.classList.add('border-transparent', 'text-gray-500');
+                });
+                var panel = document.getElementById('panel-' + name);
+                var tab   = document.getElementById('tab-' + name);
+                if (panel) { panel.classList.remove('hidden'); panel.classList.add('flex'); }
+                if (tab) {
+                    tab.classList.add('active-tab', 'text-blue-600', 'border-blue-600');
+                    tab.classList.remove('border-transparent', 'text-gray-500');
+                }
             }
-            setTimeout(function() { msg.className = 'hidden'; }, 4000);
-        }).catch(function() {
-            msg.textContent = 'Network error.';
-            msg.className = 'mx-4 mt-3 rounded-md px-3 py-2 text-xs font-medium bg-red-50 text-red-700 border border-red-200';
-        });
-    }
-    window.sendTemplate = sendTemplate;
+            window.showTab = showTab;
+            showTab('personal');
 
-    // Quick reply accordion
-    function toggleQR(id) {
-        var el   = document.getElementById(id);
-        var icon = document.getElementById(id + '-icon');
-        if (!el) return;
-        var hidden = el.classList.toggle('hidden');
-        if (icon) icon.style.transform = hidden ? '' : 'rotate(180deg)';
-    }
-    window.toggleQR = toggleQR;
+            var pForm = document.getElementById('personal-form');
+            var pMsg  = document.getElementById('personal-save-msg');
+            if (pForm) {
+                pForm.addEventListener('submit', function(e) {
+                    e.preventDefault();
+                    fetch(pForm.action, {
+                        method: 'POST',
+                        headers: { 'X-CSRFToken': CSRF },
+                        body: new FormData(pForm),
+                    }).then(function(r) {
+                        pMsg.textContent = (r.ok || r.status < 400) ? 'Saved!' : 'Save failed.';
+                        pMsg.className = 'mx-4 mb-3 rounded-md px-3 py-2 text-xs font-medium ' +
+                            ((r.ok || r.status < 400)
+                                ? 'bg-green-50 text-green-700 border border-green-200'
+                                : 'bg-red-50 text-red-700 border border-red-200');
+                        setTimeout(function() { pMsg.className = 'hidden'; }, 3000);
+                    }).catch(function() {
+                        pMsg.textContent = 'Network error.';
+                        pMsg.className = 'mx-4 mb-3 rounded-md px-3 py-2 text-xs font-medium bg-red-50 text-red-700 border border-red-200';
+                    });
+                });
+            }
 
-})();
-</script>
+            var tSearch = document.getElementById('template-search');
+            if (tSearch) {
+                tSearch.addEventListener('input', function() {
+                    var q = tSearch.value.toLowerCase().trim();
+                    document.querySelectorAll('.template-row').forEach(function(row) {
+                        row.style.display = (!q || row.dataset.name.includes(q)) ? '' : 'none';
+                    });
+                });
+            }
 
-{% endif %}
+            function sendTemplate(templateId, templateName) {
+                var msg = document.getElementById('template-send-msg');
+                var fd = new FormData();
+                fd.append('template_id', templateId);
+                fetch(SEND_TEMPLATE_URL, {
+                    method: 'POST',
+                    headers: { 'X-CSRFToken': CSRF },
+                    body: fd,
+                }).then(function(r) {
+                    return r.json().then(function(d) { return { ok: r.ok, data: d }; });
+                }).then(function(res) {
+                    if (res.ok) {
+                        msg.textContent = '\u2713 "' + templateName + '" sent!';
+                        msg.className = 'mx-4 mt-3 rounded-md px-3 py-2 text-xs font-medium bg-green-50 text-green-700 border border-green-200';
+                    } else {
+                        msg.textContent = (res.data && res.data.error) ? res.data.error : 'Failed to send.';
+                        msg.className = 'mx-4 mt-3 rounded-md px-3 py-2 text-xs font-medium bg-red-50 text-red-700 border border-red-200';
+                    }
+                    setTimeout(function() { msg.className = 'hidden'; }, 4000);
+                }).catch(function() {
+                    msg.textContent = 'Network error.';
+                    msg.className = 'mx-4 mt-3 rounded-md px-3 py-2 text-xs font-medium bg-red-50 text-red-700 border border-red-200';
+                });
+            }
+            window.sendTemplate = sendTemplate;
 
-</div>
+            function toggleQR(id) {
+                var el   = document.getElementById(id);
+                var icon = document.getElementById(id + '-icon');
+                if (!el) return;
+                var hidden = el.classList.toggle('hidden');
+                if (icon) icon.style.transform = hidden ? '' : 'rotate(180deg)';
+            }
+            window.toggleQR = toggleQR;
+
+        })();
+        </script>
+
+        {% endif %}
+
+    </div>
 
 
     <script>
     (function () {
         'use strict';
-
-        // ====================================================
-        // CONFIG -- injected from Django context
-        // ====================================================
 
         var ACTIVE_LEAD_ID = {% if active_lead %}"{{ active_lead.id }}"{% else %}null{% endif %};
         var SEND_URL = {% if active_lead %}"{% url 'whatsapp-send-message' lead_id=active_lead.id %}"{% else %}null{% endif %};
@@ -801,10 +878,6 @@
 
         var WS_SCHEME = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         var WS_URL = WS_SCHEME + '//' + window.location.host + WS_PATH;
-
-        // ====================================================
-        // HELPERS
-        // ====================================================
 
         function getCookie(name) {
             var match = document.cookie.match('(^|;)\\s*' + name + '\\s*=\\s*([^;]+)');
@@ -832,89 +905,57 @@
         }
 
         function ticksHtml(status) {
-            if (status === 'read') {
-                return '<i class="ti ti-checks text-blue-500"></i>';
-            }
-            if (status === 'delivered') {
-                return '<i class="ti ti-checks"></i>';
-            }
-            if (status === 'sent') {
-                return '<i class="ti ti-check"></i>';
-            }
-            if (status === 'failed') {
-                return '<i class="ti ti-alert-circle text-red-500"></i>';
-            }
-            return '<i class="ti ti-clock text-gray-300"></i>';
+            if (status === 'read')      return '<i class="ti ti-checks text-blue-500 text-[12px]"></i>';
+            if (status === 'delivered') return '<i class="ti ti-checks text-[#8696a0] text-[12px]"></i>';
+            if (status === 'sent')      return '<i class="ti ti-check text-[#8696a0] text-[12px]"></i>';
+            if (status === 'failed')    return '<i class="ti ti-alert-circle text-red-500 text-[12px]"></i>';
+            return '<i class="ti ti-clock text-[#8696a0] text-[12px]"></i>';
         }
-
-        // ====================================================
-        // THREAD -- append / update bubbles (only relevant when
-        // a specific lead's thread is open)
-        // ====================================================
 
         var thread = document.getElementById('thread');
 
         function scrollThreadToBottom() {
-            if (thread) {
-                thread.scrollTop = thread.scrollHeight;
-            }
+            if (thread) thread.scrollTop = thread.scrollHeight;
         }
 
         function removeEmptyState() {
             var empty = document.getElementById('thread-empty-state');
-            if (empty) {
-                empty.remove();
-            }
+            if (empty) empty.remove();
         }
 
         function appendOutboundBubble(tempId, body) {
-            if (!thread) {
-                return;
-            }
-
+            if (!thread) return;
             removeEmptyState();
 
             var row = document.createElement('div');
-            row.className = 'chat-bubble-row flex justify-end';
+            row.className = 'chat-bubble-row flex justify-end mb-0.5';
             row.setAttribute('data-message-id', tempId);
-
             row.innerHTML =
-                '<div class="max-w-[70%] rounded-lg px-4 py-2.5 text-sm shadow bg-[#dcf8c6] text-gray-900">' +
-                    '<p class="whitespace-pre-wrap">' + escapeHtml(body) + '</p>' +
-                    '<p class="mt-1 flex items-center justify-end gap-1 text-[10px] text-gray-400">' +
+                '<div class="max-w-[72%] rounded-tl-xl rounded-tr-sm rounded-b-xl px-3 py-2 text-sm shadow-sm bg-[#d9fdd3]">' +
+                    '<p class="whitespace-pre-wrap leading-relaxed text-[#111b21]">' + escapeHtml(body) + '</p>' +
+                    '<p class="mt-0.5 flex items-center justify-end gap-0.5 text-[10px] text-[#667781]">' +
                         '<span class="msg-time">' + formatTime(new Date().toISOString()) + '</span>' +
-                        '<span class="msg-ticks">' + ticksHtml('queued') + '</span>' +
+                        '<span class="msg-ticks ml-0.5">' + ticksHtml('queued') + '</span>' +
                     '</p>' +
                 '</div>';
 
             thread.appendChild(row);
             scrollThreadToBottom();
-
             return row;
         }
 
         function appendInboundBubble(message) {
-            if (!thread) {
-                return;
-            }
-
-            // Already rendered (e.g. this tab's own websocket fired
-            // twice, or the message was already in the initial page
-            // render) -- don't duplicate it.
-            if (thread.querySelector('[data-message-id="' + message.id + '"]')) {
-                return;
-            }
-
+            if (!thread) return;
+            if (thread.querySelector('[data-message-id="' + message.id + '"]')) return;
             removeEmptyState();
 
             var row = document.createElement('div');
-            row.className = 'chat-bubble-row flex justify-start';
+            row.className = 'chat-bubble-row flex justify-start mb-0.5';
             row.setAttribute('data-message-id', message.id);
-
             row.innerHTML =
-                '<div class="max-w-[70%] rounded-lg px-4 py-2.5 text-sm shadow bg-white text-gray-900">' +
-                    '<p class="whitespace-pre-wrap">' + escapeHtml(message.body) + '</p>' +
-                    '<p class="mt-1 flex items-center justify-end gap-1 text-[10px] text-gray-400">' +
+                '<div class="max-w-[72%] rounded-tr-xl rounded-tl-sm rounded-b-xl px-3 py-2 text-sm shadow-sm bg-white">' +
+                    '<p class="whitespace-pre-wrap leading-relaxed text-[#111b21]">' + escapeHtml(message.body) + '</p>' +
+                    '<p class="mt-0.5 flex items-center justify-end gap-0.5 text-[10px] text-[#667781]">' +
                         '<span class="msg-time">' + formatTime(message.created_at) + '</span>' +
                     '</p>' +
                 '</div>';
@@ -925,28 +966,14 @@
 
         function updateBubbleStatus(messageId, status) {
             var row = thread && thread.querySelector('[data-message-id="' + messageId + '"]');
-            if (!row) {
-                return;
-            }
+            if (!row) return;
             var ticks = row.querySelector('.msg-ticks');
-            if (ticks) {
-                ticks.innerHTML = ticksHtml(status);
-            }
+            if (ticks) ticks.innerHTML = ticksHtml(status);
         }
-
-        // ====================================================
-        // SIDEBAR -- live unread badge / last-message updates
-        // ====================================================
 
         function updateSidebarRow(payload) {
             var row = document.querySelector('.conversation-row[data-lead-id="' + payload.lead_id + '"]');
-            if (!row) {
-                // Lead isn't in the currently rendered list (e.g. a
-                // brand new conversation, or filtered out by search) --
-                // nothing to update in place. It'll appear on next
-                // full navigation.
-                return;
-            }
+            if (!row) return;
 
             var badge = row.querySelector('.unread-badge');
             if (badge) {
@@ -960,30 +987,21 @@
 
             var timeEl = row.querySelector('.last-message-at');
             if (timeEl && payload.last_message_at) {
-                var d = new Date(payload.last_message_at);
-                timeEl.textContent = d.toLocaleDateString(undefined, {day: '2-digit', month: 'short'}) + ', ' + formatTime(payload.last_message_at);
+                timeEl.textContent = formatTime(payload.last_message_at);
             }
         }
-
-        // ====================================================
-        // COMPOSER -- optimistic send (appears instantly, before
-        // any server round trip)
-        // ====================================================
 
         var composerForm = document.getElementById('composer-form');
 
         if (composerForm) {
-
             composerForm.addEventListener('submit', function (e) {
                 e.preventDefault();
 
-                var input = document.getElementById('message-body');
+                var input    = document.getElementById('message-body');
                 var errorBox = document.getElementById('send-error');
-                var body = input.value.trim();
+                var body     = input.value.trim();
 
-                if (!body) {
-                    return;
-                }
+                if (!body) return;
 
                 errorBox.classList.add('hidden');
                 input.value = '';
@@ -996,43 +1014,29 @@
 
                 fetch(SEND_URL, {
                     method: 'POST',
-                    headers: {
-                        'X-CSRFToken': getCookie('csrftoken'),
-                    },
+                    headers: { 'X-CSRFToken': getCookie('csrftoken') },
                     body: formData,
                 })
-                    .then(function (response) {
-                        return response.json().then(function (data) {
-                            if (!response.ok) {
-                                throw new Error(data.error || 'Failed to send message.');
-                            }
-                            return data;
-                        });
-                    })
-                    .then(function (data) {
-                        // Swap the temp id for the real message id so
-                        // future 'status' events (sent/delivered/read)
-                        // from the websocket can find this bubble.
-                        var row = thread && thread.querySelector('[data-message-id="' + tempId + '"]');
-                        if (row && data.id) {
-                            row.setAttribute('data-message-id', data.id);
-                        }
-                        updateBubbleStatus(data.id, data.status);
-                    })
-                    .catch(function (err) {
-                        updateBubbleStatus(tempId, 'failed');
-                        errorBox.textContent = err.message;
-                        errorBox.classList.remove('hidden');
+                .then(function (response) {
+                    return response.json().then(function (data) {
+                        if (!response.ok) throw new Error(data.error || 'Failed to send message.');
+                        return data;
                     });
+                })
+                .then(function (data) {
+                    var row = thread && thread.querySelector('[data-message-id="' + tempId + '"]');
+                    if (row && data.id) row.setAttribute('data-message-id', data.id);
+                    updateBubbleStatus(data.id, data.status);
+                })
+                .catch(function (err) {
+                    updateBubbleStatus(tempId, 'failed');
+                    errorBox.textContent = err.message;
+                    errorBox.classList.remove('hidden');
+                });
             });
         }
 
         scrollThreadToBottom();
-
-        // ====================================================
-        // WEBSOCKET -- live push, with reconnect backoff and a
-        // slow-polling fallback if the socket can't stay up.
-        // ====================================================
 
         var socket = null;
         var reconnectAttempts = 0;
@@ -1040,16 +1044,9 @@
         var fallbackPollTimer = null;
 
         function startFallbackPolling() {
-            // Only kicks in if the websocket genuinely can't connect
-            // (e.g. nginx/ws service down) -- degrades to "a bit
-            // slow" instead of "silently broken".
-            if (fallbackPollTimer) {
-                return;
-            }
+            if (fallbackPollTimer) return;
             fallbackPollTimer = setInterval(function () {
-                if (!document.hidden) {
-                    window.location.reload();
-                }
+                if (!document.hidden) window.location.reload();
             }, 30000);
         }
 
@@ -1061,7 +1058,6 @@
         }
 
         function connectSocket() {
-
             socket = new WebSocket(WS_URL);
 
             socket.onopen = function () {
@@ -1071,11 +1067,7 @@
 
             socket.onmessage = function (event) {
                 var data;
-                try {
-                    data = JSON.parse(event.data);
-                } catch (e) {
-                    return;
-                }
+                try { data = JSON.parse(event.data); } catch (e) { return; }
 
                 if (data.kind === 'message') {
                     if (ACTIVE_LEAD_ID && data.message.lead_id === ACTIVE_LEAD_ID) {
@@ -1090,35 +1082,18 @@
 
             socket.onclose = function () {
                 reconnectAttempts += 1;
-
-                // After a handful of failed attempts, stop hammering
-                // and fall back to slow polling instead -- still
-                // keeps trying to reconnect in the background so it
-                // recovers on its own once the socket's available
-                // again.
-                if (reconnectAttempts >= 4) {
-                    startFallbackPolling();
-                }
-
+                if (reconnectAttempts >= 4) startFallbackPolling();
                 var delay = Math.min(1000 * Math.pow(2, reconnectAttempts), maxReconnectDelay);
-
                 setTimeout(function () {
-                    if (!document.hidden) {
-                        connectSocket();
-                    }
+                    if (!document.hidden) connectSocket();
                 }, delay);
             };
 
-            socket.onerror = function () {
-                // onclose fires right after -- reconnect logic lives
-                // there, nothing additional needed here.
-            };
+            socket.onerror = function () {};
         }
 
         connectSocket();
 
-        // Reconnect promptly when the tab becomes visible again,
-        // rather than waiting for the next backoff interval.
         document.addEventListener('visibilitychange', function () {
             if (!document.hidden && (!socket || socket.readyState === WebSocket.CLOSED)) {
                 connectSocket();
