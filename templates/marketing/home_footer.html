@@ -20,12 +20,12 @@
   <div class="wrap">
     <div class="footer-grid">
       <div class="footer-brand"><a href="{% url 'home' %}" class="brand"><img class="brand-logo" src="{% static 'images/shvya-logo.svg' %}" alt="SHVYA AI logo"><span class="brand-name"><span>SHVYA</span><span>AI</span></span></a><p>AI-powered CRM and communication workflows for teams that want more consistent follow-up and clearer sales context.</p></div>
-      <div><h4>Product</h4><div class="footer-links"><a href="#features">Features</a><a href="#integrations">Integrations</a><a href="#whatsapp">WhatsApp CRM</a><a href="{% url 'pricing' %}">Pricing</a></div></div>
-      <div><h4>Explore</h4><div class="footer-links"><a href="#industries">Use Cases</a><a href="#proof">Why SHVYA</a><a href="#calculator">Calculator</a><a href="#faq">FAQ</a></div></div>
+      <div><h4>Product</h4><div class="footer-links"><a href="{% url 'home' %}#features">Features</a><a href="{% url 'home' %}#integrations">Integrations</a><a href="{% url 'home' %}#whatsapp">WhatsApp CRM</a><a href="{% url 'pricing' %}">Pricing</a></div></div>
+      <div><h4>Explore</h4><div class="footer-links"><a href="{% url 'home' %}#industries">Use Cases</a><a href="{% url 'home' %}#proof">Why SHVYA</a><a href="{% url 'home' %}#calculator">Calculator</a><a href="{% url 'home' %}#faq">FAQ</a></div></div>
       <div><h4>Account</h4><div class="footer-links">{% if crm_user %}<a href="{% url 'crm-dashboard' %}">Dashboard</a><a href="{% url 'crm-profile' %}">Profile</a><a href="{% url 'crm-logout' %}">Logout</a>{% else %}<a href="{% url 'crm-login' %}">Login</a><a href="{% url 'crm-signup' %}">Create account</a>{% endif %}</div></div>
     </div>
     <div class="footer-bottom"><span>© 2026 SHVYA AI. All rights reserved.</span><div class="footer-legal"><a href="{% url 'privacy_policy' %}">Privacy Policy</a><a href="{% url 'terms_conditions' %}">Terms &amp; Conditions</a><a href="{% url 'cookie_policy' %}">Cookie Policy</a><a href="{% url 'refund_policy' %}">Refund Policy</a></div></div>
   </div>
 </footer>
 
-<a href="#whatsapp" class="floating-wa" aria-label="Go to WhatsApp section"><svg class="icon-lg" viewBox="0 0 24 24"><path d="M20 11.5a8 8 0 0 1-11.7 7.1L4 20l1.4-4.1A8 8 0 1 1 20 11.5Z"/><path d="M9 9.5c1.2 2.4 2.4 3.6 4.8 4.8"/></svg></a>
+<a href="{% url 'home' %}#whatsapp" class="floating-wa" aria-label="Go to WhatsApp section"><svg class="icon-lg" viewBox="0 0 24 24"><path d="M20 11.5a8 8 0 0 1-11.7 7.1L4 20l1.4-4.1A8 8 0 1 1 20 11.5Z"/><path d="M9 9.5c1.2 2.4 2.4 3.6 4.8 4.8"/></svg></a>
