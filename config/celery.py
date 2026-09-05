@@ -15,13 +15,18 @@ app.config_from_object(
 
 app.autodiscover_tasks()
 
-# Co-Pilot stores a cached signal table and refreshes it every 30 minutes.
-# Keeping this schedule here avoids duplicating it across local/production
-# settings modules. A celery beat process is provided by docker-compose.
+# Central Beat schedule for recurring background work. The Auto Follow-ups
+# dispatcher intentionally runs frequently but processes at most one due lead
+# per invocation; service-layer locking and per-sender throttling prevent a
+# burst where every assigned lead is sent at once.
 app.conf.beat_schedule = {
     **(app.conf.beat_schedule or {}),
     "refresh-copilot-flags-every-30-minutes": {
         "task": "apps.copilot.tasks.refresh_copilot_flags_task",
         "schedule": 1800.0,
+    },
+    "dispatch-auto-followups-every-10-seconds": {
+        "task": "apps.followups.tasks.dispatch_auto_followups_task",
+        "schedule": 10.0,
     },
 }
