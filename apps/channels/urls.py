@@ -21,6 +21,11 @@ urlpatterns = [
         name="whatsapp-connect-api",
     ),
     path(
+        "connect/api/attempt-event/",
+        connection_ui.whatsapp_connection_attempt_event_view,
+        name="whatsapp-connection-attempt-event",
+    ),
+    path(
         "connect/api/embedded-signup/",
         connection_ui.whatsapp_embedded_signup_callback_view,
         name="whatsapp-embedded-signup-callback",
