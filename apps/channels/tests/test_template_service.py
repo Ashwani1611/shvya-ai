@@ -148,13 +148,35 @@ class WhatsAppTemplateServiceTests(TestCase):
                 body="Hello",
             )
 
-    def test_standard_button_limits_reject_duplicate_website_cta(self):
-        with self.assertRaisesRegex(TemplateError, "one Visit Website"):
+    def test_standard_button_limits_allow_two_website_ctas(self):
+        template = create_template(
+            organization=self.org,
+            account=self.account,
+            created_by=self.user,
+            name="two_websites",
+            body="Hello",
+            buttons=[
+                {
+                    "type": "visit_website",
+                    "text": "Open one",
+                    "url": "https://example.com/one",
+                },
+                {
+                    "type": "visit_website",
+                    "text": "Open two",
+                    "url": "https://example.com/two",
+                },
+            ],
+        )
+        self.assertEqual(len(template.buttons), 2)
+
+    def test_standard_button_limits_reject_third_website_cta(self):
+        with self.assertRaisesRegex(TemplateError, "at most two Visit Website"):
             create_template(
                 organization=self.org,
                 account=self.account,
                 created_by=self.user,
-                name="duplicate_websites",
+                name="three_websites",
                 body="Hello",
                 buttons=[
                     {
@@ -166,6 +188,11 @@ class WhatsAppTemplateServiceTests(TestCase):
                         "type": "visit_website",
                         "text": "Open two",
                         "url": "https://example.com/two",
+                    },
+                    {
+                        "type": "visit_website",
+                        "text": "Open three",
+                        "url": "https://example.com/three",
                     },
                 ],
             )
