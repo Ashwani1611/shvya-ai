@@ -1,8 +1,8 @@
 {% extends "base.html" %}
 {% load static %}
 
-{% block title %}SHVYA AI — Connect WhatsApp{% endblock %}
-{% block header %}Connect WhatsApp{% endblock %}
+{% block title %}SHVYA AI — WhatsApp Connected Numbers{% endblock %}
+{% block header %}WhatsApp — Connected Numbers{% endblock %}
 
 {% block content %}
 <div class="mx-auto max-w-6xl">
@@ -18,10 +18,10 @@
         </div>
 
         {% if can_manage %}
-        <a href="{% url 'whatsapp-connect-choice' %}"
+        <a href="{% url 'whatsapp-connect-api' %}?add=1"
            class="inline-flex items-center gap-2 rounded-xl bg-[#128c7e] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#0f766e] focus:outline-none focus:ring-2 focus:ring-green-200">
-            <i class="ti ti-plus"></i>
-            Connect number
+            <i class="ti ti-plug-connected"></i>
+            Connect API
         </a>
         {% endif %}
     </div>
@@ -113,7 +113,7 @@
             <h3 class="mt-4 text-base font-semibold text-gray-900">No WhatsApp number connected</h3>
             <p class="mx-auto mt-1 max-w-md text-sm text-gray-500">Connect an API number or request a coexisted account to unlock Chats, Templates and Broadcasts.</p>
             {% if can_manage %}
-            <a href="{% url 'whatsapp-connect-choice' %}" class="mt-5 inline-flex items-center gap-2 rounded-xl bg-[#128c7e] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#0f766e]">
+            <a href="{% url 'whatsapp-connect-api' %}" class="mt-5 inline-flex items-center gap-2 rounded-xl bg-[#128c7e] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#0f766e]">
                 <i class="ti ti-plug-connected"></i> Connect WhatsApp
             </a>
             {% endif %}
@@ -155,13 +155,19 @@
                 document.getElementById(form.dataset.rowId)?.remove();
                 syncEmptyState();
 
+                if (typeof window.shvyaToast === 'function') {
+                    window.shvyaToast('WhatsApp account disconnected.', 'success');
+                }
+
                 // Refresh once so the sidebar and every connected-number selector
                 // immediately use the new connection state too.
-                window.location.reload();
+                setTimeout(function () { window.location.reload(); }, 450);
             } catch (error) {
                 button.disabled = false;
                 button.classList.remove('opacity-50');
-                window.alert(error.message);
+                if (typeof window.shvyaToast === 'function') {
+                    window.shvyaToast(error.message || 'Could not remove this WhatsApp number.', 'error');
+                }
             }
         });
     });
