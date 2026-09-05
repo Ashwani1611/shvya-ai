@@ -44,6 +44,13 @@ class Stage(models.Model):
         default=True,
     )
 
+    ai_on = models.BooleanField(
+        default=True,
+        help_text=(
+            "Allow SHVYA AI to engage leads while they are in this stage."
+        ),
+    )
+
     config = models.JSONField(
         default=dict,
         blank=True,

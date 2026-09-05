@@ -3386,6 +3386,81 @@ def lead_stage_rename(
         context,
     )
 
+# ============================================================
+# TOGGLE STAGE AI
+# ============================================================
+
+
+@crm_login_required
+@require_POST
+def lead_stage_ai_toggle(
+    request,
+    stage_id,
+):
+
+    user = request.crm_user
+
+    organization = user.organization
+
+    # --------------------------------------------------------
+    # LOAD ONLY A STAGE THE USER CAN ACCESS
+    # --------------------------------------------------------
+
+    allowed_pipelines = (
+        get_user_pipelines(
+            user
+        )
+        .filter(
+            organization=organization,
+            is_active=True,
+        )
+    )
+
+    stage = (
+        Stage.objects
+        .filter(
+            id=stage_id,
+            pipeline__in=allowed_pipelines,
+            is_active=True,
+        )
+        .select_related(
+            "pipeline",
+        )
+        .first()
+    )
+
+    if not stage:
+
+        return HttpResponse(
+            "Stage not found.",
+            status=404,
+        )
+
+    # --------------------------------------------------------
+    # TOGGLE AI
+    # --------------------------------------------------------
+
+    stage.ai_on = not stage.ai_on
+
+    stage.save(
+        update_fields=[
+            "ai_on",
+        ]
+    )
+
+    # --------------------------------------------------------
+    # RETURN CURRENT STATE
+    #
+    # Backend-only endpoint for now.
+    # Frontend/HTMX wiring will be added separately.
+    # --------------------------------------------------------
+
+    return HttpResponse(
+        "Stage AI enabled."
+        if stage.ai_on
+        else "Stage AI disabled.",
+        status=200,
+    )
 
 # ============================================================
 # LEAD DETAIL

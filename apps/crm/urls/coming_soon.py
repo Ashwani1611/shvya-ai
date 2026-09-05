@@ -14,10 +14,6 @@ coming_soon_urlpatterns = [
     path("auto-follow-ups/sequences/", coming_soon, {"feature": "auto-follow-ups-sequences"}, name="crm-auto-follow-ups-sequences"),
     path("auto-follow-ups/workflows/", coming_soon, {"feature": "auto-follow-ups-workflows"}, name="crm-auto-follow-ups-workflows"),
 
-    # Knowledge Base
-    path("knowledge-base/ai-setup/", coming_soon, {"feature": "knowledge-base-ai-setup"}, name="crm-knowledge-base-ai-setup"),
-    path("knowledge-base/faq/", coming_soon, {"feature": "knowledge-base-faq"}, name="crm-knowledge-base-faq"),
-
     # Instagram
     path("instagram/connect/", coming_soon, {"feature": "instagram-connect"}, name="crm-instagram-connect"),
     path("instagram/chats/", coming_soon, {"feature": "instagram-chats"}, name="crm-instagram-chats"),

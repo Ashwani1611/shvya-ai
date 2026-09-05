@@ -1,0 +1,2501 @@
+{% extends "base.html" %}
+
+{% block title %}
+    SHVYA AI - AI Setup
+{% endblock %}
+
+{% block header %}
+    AI Setup
+{% endblock %}
+
+{% block content %}
+
+<div id="ai-setup-page" class="max-w-7xl mx-auto">
+
+    <!-- ==========================================================
+         PAGE HEADER
+         ========================================================== -->
+    <div class="mb-6">
+        <div class="flex items-center justify-between gap-4">
+            <div>
+                <div class="flex items-center gap-2 mb-1">
+                    <span
+                        class="
+                            inline-flex
+                            items-center
+                            justify-center
+                            w-8
+                            h-8
+                            rounded-lg
+                            bg-blue-50
+                            text-blue-600
+                        "
+                    >
+                        <i class="ti ti-sparkles text-[18px]"></i>
+                    </span>
+
+                    <h2 class="text-xl font-semibold text-gray-900">
+                        AI Setup
+                    </h2>
+                </div>
+
+                <p class="text-sm text-gray-500">
+                    Configure how SHVYA AI understands your business
+                    and interacts with your customers.
+                </p>
+            </div>
+
+            <div class="flex items-center gap-3 shrink-0">
+
+                <div class="text-right">
+                    <p class="text-xs font-semibold text-gray-800">
+                        Organization AI
+                    </p>
+
+                    <p class="mt-0.5 text-[11px] text-gray-500">
+                        {% if org_info.ai_enabled %}
+                            On
+                        {% else %}
+                            Off
+                        {% endif %}
+                    </p>
+                </div>
+
+                <label
+                    class="relative inline-flex cursor-pointer shrink-0"
+                    title="Turn AI on or off for this organization"
+                >
+                    <input
+                        type="checkbox"
+                        name="ai_enabled"
+                        form="org-ai-settings-form"
+                        class="peer sr-only"
+                        {% if org_info.ai_enabled %}
+                            checked
+                        {% endif %}
+                    >
+
+                    <span
+                        class="
+                            w-11
+                            h-6
+                            rounded-full
+                            bg-gray-200
+                            transition
+                            peer-checked:bg-blue-600
+                            peer-focus:ring-4
+                            peer-focus:ring-blue-100
+                            after:content-['']
+                            after:absolute
+                            after:top-[2px]
+                            after:left-[2px]
+                            after:bg-white
+                            after:rounded-full
+                            after:h-5
+                            after:w-5
+                            after:transition
+                            peer-checked:after:translate-x-5
+                        "
+                    ></span>
+                </label>
+
+            </div>
+        </div>
+    </div>
+
+
+    <div
+        class="
+            grid
+            grid-cols-1
+            xl:grid-cols-[minmax(0,1fr)_420px]
+            gap-6
+            items-start
+        "
+    >
+
+        <div class="min-w-0">
+
+            <!-- ==========================================================
+                 ORGANIZATION AI CONFIGURATION
+                 ========================================================== -->
+            <form
+                id="org-ai-settings-form"
+                method="post"
+                class="space-y-6"
+            >
+                {% csrf_token %}
+
+                <input
+                    type="hidden"
+                    name="action"
+                    value="save_settings"
+                >
+
+
+                <!-- ======================================================
+                     ORGANIZATION INFORMATION
+                     ====================================================== -->
+                <section
+                    class="
+                        bg-white
+                        border
+                        border-gray-200
+                        rounded-xl
+                        overflow-hidden
+                    "
+                >
+
+                    <div
+                        class="
+                            px-6
+                            py-5
+                            border-b
+                            border-gray-100
+                        "
+                    >
+
+                        <div class="flex items-start gap-3">
+
+                            <div
+                                class="
+                                    flex
+                                    items-center
+                                    justify-center
+                                    w-9
+                                    h-9
+                                    rounded-lg
+                                    bg-gray-50
+                                    text-gray-600
+                                    shrink-0
+                                "
+                            >
+                                <i class="ti ti-building-store text-[18px]"></i>
+                            </div>
+
+                            <div>
+
+                                <h3
+                                    class="
+                                        text-sm
+                                        font-semibold
+                                        text-gray-900
+                                    "
+                                >
+                                    Organization Information
+                                </h3>
+
+                                <p
+                                    class="
+                                        mt-1
+                                        text-xs
+                                        text-gray-500
+                                    "
+                                >
+                                    Tell AI about your organization and business.
+                                </p>
+
+                            </div>
+
+                        </div>
+
+                    </div>
+
+
+                    <div class="p-6">
+
+                        <label
+                            for="about"
+                            class="
+                                block
+                                text-sm
+                                font-medium
+                                text-gray-800
+                                mb-2
+                            "
+                        >
+                            About your organization
+                        </label>
+
+                        <textarea
+                            id="about"
+                            name="about"
+                            rows="5"
+                            placeholder="Describe your business, products, services, target customers, locations, and anything else AI should know."
+                            class="
+                                w-full
+                                rounded-lg
+                                border
+                                border-gray-300
+                                bg-white
+                                px-3
+                                py-2.5
+                                text-sm
+                                text-gray-700
+                                placeholder-gray-400
+                                resize-y
+                                focus:outline-none
+                                focus:ring-2
+                                focus:ring-blue-100
+                                focus:border-blue-500
+                            "
+                        >{{ org_info.about }}</textarea>
+
+                    </div>
+
+                </section>
+
+
+                <!-- ======================================================
+                     BOT LANGUAGES
+                     ====================================================== -->
+                <section
+                    class="
+                        bg-white
+                        border
+                        border-gray-200
+                        rounded-xl
+                        overflow-hidden
+                    "
+                >
+
+                    <div
+                        class="
+                            px-6
+                            py-5
+                            border-b
+                            border-gray-100
+                        "
+                    >
+
+                        <div class="flex items-start gap-3">
+
+                            <div
+                                class="
+                                    flex
+                                    items-center
+                                    justify-center
+                                    w-9
+                                    h-9
+                                    rounded-lg
+                                    bg-gray-50
+                                    text-gray-600
+                                    shrink-0
+                                "
+                            >
+                                <i class="ti ti-language text-[18px]"></i>
+                            </div>
+
+                            <div>
+
+                                <h3
+                                    class="
+                                        text-sm
+                                        font-semibold
+                                        text-gray-900
+                                    "
+                                >
+                                    Bot Languages
+                                </h3>
+
+                                <p
+                                    class="
+                                        mt-1
+                                        text-xs
+                                        text-gray-500
+                                    "
+                                >
+                                    Define the languages AI should use when
+                                    communicating with customers.
+                                </p>
+
+                            </div>
+
+                        </div>
+
+                    </div>
+
+
+                    <div class="p-6">
+
+                        <label
+                            for="bot_languages"
+                            class="
+                                block
+                                text-sm
+                                font-medium
+                                text-gray-800
+                                mb-2
+                            "
+                        >
+                            Languages
+                        </label>
+
+                        <input
+                            id="bot_languages"
+                            name="bot_languages"
+                            type="text"
+                            value="{{ org_info.bot_languages }}"
+                            placeholder="English, Hindi, Hinglish"
+                            class="
+                                w-full
+                                rounded-lg
+                                border
+                                border-gray-300
+                                bg-white
+                                px-3
+                                py-2.5
+                                text-sm
+                                text-gray-700
+                                placeholder-gray-400
+                                focus:outline-none
+                                focus:ring-2
+                                focus:ring-blue-100
+                                focus:border-blue-500
+                            "
+                        >
+
+                        <p
+                            class="
+                                mt-2
+                                text-xs
+                                text-gray-400
+                            "
+                        >
+                            Separate multiple languages with commas.
+                        </p>
+
+                    </div>
+
+                </section>
+
+
+                <!-- ======================================================
+                     AI CONFIGURATION
+                     ====================================================== -->
+                <section
+                    class="
+                        bg-white
+                        border
+                        border-gray-200
+                        rounded-xl
+                        overflow-hidden
+                    "
+                >
+
+                    <div
+                        class="
+                            px-6
+                            py-5
+                            border-b
+                            border-gray-100
+                        "
+                    >
+
+                        <div class="flex items-start gap-3">
+
+                            <div
+                                class="
+                                    flex
+                                    items-center
+                                    justify-center
+                                    w-9
+                                    h-9
+                                    rounded-lg
+                                    bg-blue-50
+                                    text-blue-600
+                                    shrink-0
+                                "
+                            >
+                                <i class="ti ti-brain text-[18px]"></i>
+                            </div>
+
+                            <div>
+
+                                <h3
+                                    class="
+                                        text-sm
+                                        font-semibold
+                                        text-gray-900
+                                    "
+                                >
+                                    AI Configuration
+                                </h3>
+
+                                <p
+                                    class="
+                                        mt-1
+                                        text-xs
+                                        text-gray-500
+                                    "
+                                >
+                                    Configure what AI should qualify and how it
+                                    should communicate.
+                                </p>
+
+                            </div>
+
+                        </div>
+
+                    </div>
+
+
+                    <div class="p-6 space-y-6">
+
+                        <!-- QUALIFICATION REQUIREMENTS -->
+                        <div>
+
+                            <label
+                                for="qualification_requirements"
+                                class="
+                                    block
+                                    text-sm
+                                    font-medium
+                                    text-gray-800
+                                    mb-2
+                                "
+                            >
+                                Qualification Requirements
+                            </label>
+
+                            <p
+                                class="
+                                    text-xs
+                                    text-gray-500
+                                    mb-2
+                                "
+                            >
+                                What should AI qualify?
+                            </p>
+
+                            <textarea
+                                id="qualification_requirements"
+                                name="qualification_requirements"
+                                rows="5"
+                                placeholder="Example: budget, purchase timeline, requirements, decision maker, location..."
+                                class="
+                                    w-full
+                                    rounded-lg
+                                    border
+                                    border-gray-300
+                                    bg-white
+                                    px-3
+                                    py-2.5
+                                    text-sm
+                                    text-gray-700
+                                    placeholder-gray-400
+                                    resize-y
+                                    focus:outline-none
+                                    focus:ring-2
+                                    focus:ring-blue-100
+                                    focus:border-blue-500
+                                "
+                            >{{ org_info.qualification_requirements }}</textarea>
+
+                        </div>
+
+
+                        <!-- ENGAGEMENT INSTRUCTIONS -->
+                        <div>
+
+                            <label
+                                for="engagement_instructions"
+                                class="
+                                    block
+                                    text-sm
+                                    font-medium
+                                    text-gray-800
+                                    mb-2
+                                "
+                            >
+                                Engagement Instructions
+                            </label>
+
+                            <p
+                                class="
+                                    text-xs
+                                    text-gray-500
+                                    mb-2
+                                "
+                            >
+                                How should AI conduct customer-facing
+                                conversations?
+                            </p>
+
+                            <textarea
+                                id="engagement_instructions"
+                                name="engagement_instructions"
+                                rows="6"
+                                placeholder="Describe tone, conversation style, things AI should do, things AI should avoid, and when it should hand off."
+                                class="
+                                    w-full
+                                    rounded-lg
+                                    border
+                                    border-gray-300
+                                    bg-white
+                                    px-3
+                                    py-2.5
+                                    text-sm
+                                    text-gray-700
+                                    placeholder-gray-400
+                                    resize-y
+                                    focus:outline-none
+                                    focus:ring-2
+                                    focus:ring-blue-100
+                                    focus:border-blue-500
+                                "
+                            >{{ org_info.engagement_instructions }}</textarea>
+
+                        </div>
+
+                    </div>
+
+                </section>
+
+
+                <!-- ======================================================
+                     AI ENABLE / BUMP-UP
+                     ====================================================== -->
+                <section
+                    class="
+                        bg-white
+                        border
+                        border-gray-200
+                        rounded-xl
+                        overflow-hidden
+                    "
+                >
+
+                    <div
+                        class="
+                            px-6
+                            py-5
+                            border-b
+                            border-gray-100
+                        "
+                    >
+
+                        <h3
+                            class="
+                                text-sm
+                                font-semibold
+                                text-gray-900
+                            "
+                        >
+                            AI Controls
+                        </h3>
+
+                        <p
+                            class="
+                                mt-1
+                                text-xs
+                                text-gray-500
+                            "
+                        >
+                            Enable organization-level AI engagement and
+                            configure bump-up behavior.
+                        </p>
+
+                    </div>
+
+
+                    <div>
+
+                        <div
+                            class="
+                                border-t
+                                border-gray-100
+                            "
+                        ></div>
+
+
+                        <!-- BUMP-UP -->
+                        <div class="px-6 py-5">
+
+                            <div
+                                class="
+                                    flex
+                                    items-center
+                                    justify-between
+                                    gap-6
+                                "
+                            >
+
+                                <div>
+
+                                    <p
+                                        class="
+                                            text-sm
+                                            font-medium
+                                            text-gray-800
+                                        "
+                                    >
+                                        Bump-up
+                                    </p>
+
+                                    <p
+                                        class="
+                                            mt-1
+                                            text-xs
+                                            text-gray-500
+                                        "
+                                    >
+                                        Allow AI engagement to follow up when
+                                        configured conditions permit.
+                                    </p>
+
+                                </div>
+
+
+                                <label
+                                    class="
+                                        relative
+                                        inline-flex
+                                        cursor-pointer
+                                        shrink-0
+                                    "
+                                >
+
+                                    <input
+                                        type="checkbox"
+                                        name="bump_up_enabled"
+                                        id="bump_up_enabled"
+                                        class="peer sr-only"
+                                        {% if org_info.bump_up_enabled %}
+                                            checked
+                                        {% endif %}
+                                    >
+
+                                    <span
+                                        class="
+                                            w-11
+                                            h-6
+                                            rounded-full
+                                            bg-gray-200
+                                            peer-checked:bg-blue-600
+                                            transition
+                                            after:content-['']
+                                            after:absolute
+                                            after:top-[2px]
+                                            after:left-[2px]
+                                            after:bg-white
+                                            after:rounded-full
+                                            after:h-5
+                                            after:w-5
+                                            after:transition
+                                            peer-checked:after:translate-x-5
+                                        "
+                                    ></span>
+
+                                </label>
+
+                            </div>
+
+
+                            <div class="mt-5 max-w-xs">
+
+                                <label
+                                    for="bump_up_count"
+                                    class="
+                                        block
+                                        text-xs
+                                        font-medium
+                                        text-gray-700
+                                        mb-2
+                                    "
+                                >
+                                    Bump-up Count
+                                </label>
+
+                                <input
+                                    id="bump_up_count"
+                                    name="bump_up_count"
+                                    type="number"
+                                    min="0"
+                                    step="1"
+                                    value="{{ org_info.bump_up_count }}"
+                                    class="
+                                        w-full
+                                        rounded-lg
+                                        border
+                                        border-gray-300
+                                        bg-white
+                                        px-3
+                                        py-2.5
+                                        text-sm
+                                        text-gray-700
+                                        focus:outline-none
+                                        focus:ring-2
+                                        focus:ring-blue-100
+                                        focus:border-blue-500
+                                    "
+                                >
+
+                            </div>
+
+                        </div>
+
+                    </div>
+
+                </section>
+
+
+                <!-- ======================================================
+                     SAVE SETTINGS
+                     ====================================================== -->
+                <div
+                    class="
+                        flex
+                        items-center
+                        justify-end
+                        gap-3
+                        pb-2
+                    "
+                >
+
+                    <a
+                        href="{% url 'crm-dashboard' %}"
+                        class="
+                            inline-flex
+                            items-center
+                            justify-center
+                            gap-2
+                            px-4
+                            py-2.5
+                            rounded-lg
+                            border
+                            border-gray-300
+                            bg-white
+                            text-sm
+                            font-medium
+                            text-gray-700
+                            hover:bg-gray-50
+                        "
+                    >
+                        Cancel
+                    </a>
+
+
+                    <button
+                        type="submit"
+                        class="
+                            inline-flex
+                            items-center
+                            justify-center
+                            gap-2
+                            px-5
+                            py-2.5
+                            rounded-lg
+                            bg-gray-900
+                            text-white
+                            text-sm
+                            font-medium
+                            hover:bg-gray-800
+                            transition
+                        "
+                    >
+                        <i class="ti ti-device-floppy text-[18px]"></i>
+                        Save changes
+                    </button>
+
+                </div>
+
+            </form>
+
+
+            <!-- ==========================================================
+                 KNOWLEDGE SOURCE
+                 Separate forms intentionally avoid nesting inside the
+                 organization settings form.
+                 ========================================================== -->
+            <section
+                class="
+                    bg-white
+                    border
+                    border-gray-200
+                    rounded-xl
+                    overflow-hidden
+                    mt-6
+                "
+            >
+
+                <div
+                    class="
+                        px-6
+                        py-5
+                        border-b
+                        border-gray-100
+                    "
+                >
+
+                    <div class="flex items-start gap-3">
+
+                        <div
+                            class="
+                                flex
+                                items-center
+                                justify-center
+                                w-9
+                                h-9
+                                rounded-lg
+                                bg-gray-50
+                                text-gray-600
+                                shrink-0
+                            "
+                        >
+                            <i class="ti ti-database text-[18px]"></i>
+                        </div>
+
+                        <div>
+
+                            <h3
+                                class="
+                                    text-sm
+                                    font-semibold
+                                    text-gray-900
+                                "
+                            >
+                                Knowledge Source
+                            </h3>
+
+                            <p
+                                class="
+                                    mt-1
+                                    text-xs
+                                    text-gray-500
+                                "
+                            >
+                                Connect the information AI can use when
+                                answering customers.
+                            </p>
+
+                        </div>
+
+                    </div>
+
+                </div>
+
+
+                <div
+                    class="
+                        p-6
+                        grid
+                        grid-cols-1
+                        lg:grid-cols-2
+                        gap-4
+                    "
+                >
+
+                    <!-- ==================================================
+                         WEBSITE / URL
+                         ================================================== -->
+                    <div
+                        class="
+                            rounded-xl
+                            border
+                            border-gray-200
+                            p-5
+                            bg-gray-50
+                        "
+                    >
+
+                        <div
+                            class="
+                                flex
+                                items-center
+                                gap-3
+                                mb-4
+                            "
+                        >
+
+                            <span
+                                class="
+                                    flex
+                                    items-center
+                                    justify-center
+                                    w-9
+                                    h-9
+                                    rounded-lg
+                                    bg-white
+                                    border
+                                    border-gray-200
+                                    text-gray-600
+                                "
+                            >
+                                <i class="ti ti-world-www"></i>
+                            </span>
+
+                            <div>
+
+                                <p
+                                    class="
+                                        text-sm
+                                        font-semibold
+                                        text-gray-800
+                                    "
+                                >
+                                    Website / URL
+                                </p>
+
+                                <p
+                                    class="
+                                        text-xs
+                                        text-gray-500
+                                        mt-0.5
+                                    "
+                                >
+                                    Use a website as a knowledge source.
+                                </p>
+
+                            </div>
+
+                        </div>
+
+
+                        <form method="post">
+
+                            {% csrf_token %}
+
+                            <input
+                                type="hidden"
+                                name="action"
+                                value="add_url_source"
+                            >
+
+
+                            <div class="space-y-3">
+
+                                <div>
+
+                                    <label
+                                        for="url-source-url"
+                                        class="
+                                            block
+                                            text-xs
+                                            font-medium
+                                            text-gray-700
+                                            mb-2
+                                        "
+                                    >
+                                        Website URL
+                                    </label>
+
+                                    <input
+                                        id="url-source-url"
+                                        name="url"
+                                        type="url"
+                                        required
+                                        placeholder="https://example.com"
+                                        class="
+                                            w-full
+                                            rounded-lg
+                                            border
+                                            border-gray-300
+                                            bg-white
+                                            px-3
+                                            py-2.5
+                                            text-sm
+                                            text-gray-700
+                                            placeholder-gray-400
+                                            focus:outline-none
+                                            focus:ring-2
+                                            focus:ring-blue-100
+                                            focus:border-blue-500
+                                        "
+                                    >
+
+                                </div>
+
+
+                                <div>
+
+                                    <label
+                                        for="url-source-name"
+                                        class="
+                                            block
+                                            text-xs
+                                            font-medium
+                                            text-gray-700
+                                            mb-2
+                                        "
+                                    >
+                                        Source name
+                                        <span class="font-normal text-gray-400">
+                                            (optional)
+                                        </span>
+                                    </label>
+
+                                    <input
+                                        id="url-source-name"
+                                        name="name"
+                                        type="text"
+                                        placeholder="Company website"
+                                        class="
+                                            w-full
+                                            rounded-lg
+                                            border
+                                            border-gray-300
+                                            bg-white
+                                            px-3
+                                            py-2.5
+                                            text-sm
+                                            text-gray-700
+                                            placeholder-gray-400
+                                            focus:outline-none
+                                            focus:ring-2
+                                            focus:ring-blue-100
+                                            focus:border-blue-500
+                                        "
+                                    >
+
+                                </div>
+
+
+                                <button
+                                    type="submit"
+                                    class="
+                                        inline-flex
+                                        items-center
+                                        gap-2
+                                        px-3
+                                        py-2
+                                        rounded-lg
+                                        bg-gray-900
+                                        text-white
+                                        text-sm
+                                        font-medium
+                                        hover:bg-gray-800
+                                    "
+                                >
+                                    <i class="ti ti-link"></i>
+                                    Add website
+                                </button>
+
+                            </div>
+
+                        </form>
+
+                    </div>
+
+
+                    <!-- ==================================================
+                         FILE UPLOAD
+                         ================================================== -->
+                    <div
+                        class="
+                            rounded-xl
+                            border
+                            border-gray-200
+                            p-5
+                            bg-gray-50
+                        "
+                    >
+
+                        <div
+                            class="
+                                flex
+                                items-center
+                                gap-3
+                                mb-4
+                            "
+                        >
+
+                            <span
+                                class="
+                                    flex
+                                    items-center
+                                    justify-center
+                                    w-9
+                                    h-9
+                                    rounded-lg
+                                    bg-white
+                                    border
+                                    border-gray-200
+                                    text-gray-600
+                                "
+                            >
+                                <i class="ti ti-file-upload"></i>
+                            </span>
+
+                            <div>
+
+                                <p
+                                    class="
+                                        text-sm
+                                        font-semibold
+                                        text-gray-800
+                                    "
+                                >
+                                    Upload Files
+                                </p>
+
+                                <p
+                                    class="
+                                        text-xs
+                                        text-gray-500
+                                        mt-0.5
+                                    "
+                                >
+                                    Add documents to your AI knowledge base.
+                                </p>
+
+                            </div>
+
+                        </div>
+
+
+                        <form
+                            method="post"
+                            enctype="multipart/form-data"
+                        >
+
+                            {% csrf_token %}
+
+                            <input
+                                type="hidden"
+                                name="action"
+                                value="upload_file"
+                            >
+
+
+                            <div class="space-y-3">
+
+                                <div>
+
+                                    <label
+                                        for="knowledge-file"
+                                        class="
+                                            block
+                                            text-xs
+                                            font-medium
+                                            text-gray-700
+                                            mb-2
+                                        "
+                                    >
+                                        Knowledge file
+                                    </label>
+
+                                    <input
+                                        id="knowledge-file"
+                                        name="file"
+                                        type="file"
+                                        required
+                                        accept=".txt,.csv,.xlsx,.pdf,.docx"
+                                        class="
+                                            block
+                                            w-full
+                                            text-sm
+                                            text-gray-600
+                                            file:mr-4
+                                            file:rounded-lg
+                                            file:border-0
+                                            file:bg-white
+                                            file:px-3
+                                            file:py-2
+                                            file:text-sm
+                                            file:font-medium
+                                            file:text-gray-700
+                                            hover:file:bg-gray-100
+                                        "
+                                    >
+
+                                </div>
+
+
+                                <div>
+
+                                    <label
+                                        for="knowledge-file-name"
+                                        class="
+                                            block
+                                            text-xs
+                                            font-medium
+                                            text-gray-700
+                                            mb-2
+                                        "
+                                    >
+                                        File name
+                                        <span class="font-normal text-gray-400">
+                                            (optional)
+                                        </span>
+                                    </label>
+
+                                    <input
+                                        id="knowledge-file-name"
+                                        name="name"
+                                        type="text"
+                                        placeholder="Product catalogue"
+                                        class="
+                                            w-full
+                                            rounded-lg
+                                            border
+                                            border-gray-300
+                                            bg-white
+                                            px-3
+                                            py-2.5
+                                            text-sm
+                                            text-gray-700
+                                            placeholder-gray-400
+                                            focus:outline-none
+                                            focus:ring-2
+                                            focus:ring-blue-100
+                                            focus:border-blue-500
+                                        "
+                                    >
+
+                                </div>
+
+
+                                <button
+                                    type="submit"
+                                    class="
+                                        inline-flex
+                                        items-center
+                                        gap-2
+                                        px-3
+                                        py-2
+                                        rounded-lg
+                                        bg-gray-900
+                                        text-white
+                                        text-sm
+                                        font-medium
+                                        hover:bg-gray-800
+                                    "
+                                >
+                                    <i class="ti ti-upload"></i>
+                                    Upload file
+                                </button>
+
+
+                                <p class="text-xs text-gray-400">
+
+                                    Supported:
+                                    {% for extension in supported_file_extensions %}
+                                        {{ extension }}{% if not forloop.last %}, {% endif %}
+                                    {% endfor %}
+
+                                </p>
+
+                            </div>
+
+                        </form>
+
+                    </div>
+
+                </div>
+
+            </section>
+
+
+            <!-- ==========================================================
+                 CONNECTED KNOWLEDGE
+                 ========================================================== -->
+            {% if knowledge_sources or knowledge_documents %}
+
+            <section
+                class="
+                    mt-4
+                    bg-white
+                    border
+                    border-gray-200
+                    rounded-xl
+                    overflow-hidden
+                "
+            >
+
+                <div
+                    class="
+                        px-6
+                        py-5
+                        border-b
+                        border-gray-100
+                    "
+                >
+
+                    <h3
+                        class="
+                            text-sm
+                            font-semibold
+                            text-gray-900
+                        "
+                    >
+                        Connected Knowledge
+                    </h3>
+
+                    <p
+                        class="
+                            mt-1
+                            text-xs
+                            text-gray-500
+                        "
+                    >
+                        Sources and documents available to your organization.
+                    </p>
+
+                </div>
+
+
+                <!-- ======================================================
+                     KNOWLEDGE SOURCES
+                     ====================================================== -->
+                {% if knowledge_sources %}
+
+                <div>
+
+                    <div
+                        class="
+                            px-6
+                            py-3
+                            bg-gray-50
+                            border-b
+                            border-gray-100
+                        "
+                    >
+                        <p
+                            class="
+                                text-xs
+                                font-semibold
+                                uppercase
+                                tracking-wide
+                                text-gray-500
+                            "
+                        >
+                            Sources
+                        </p>
+                    </div>
+
+
+                    <div class="divide-y divide-gray-100">
+
+                        {% for source in knowledge_sources %}
+
+                        <div
+                            class="
+                                px-6
+                                py-4
+                                flex
+                                items-center
+                                justify-between
+                                gap-4
+                            "
+                            data-knowledge-row
+                            data-knowledge-kind="source"
+                            data-knowledge-source-type="{{ source.source_type }}"
+                            data-knowledge-name="{{ source.name|default:'Untitled source'|escape }}"
+                        >
+
+                            <div class="min-w-0">
+
+                                <div class="flex items-center gap-2">
+
+                                    <i
+                                        class="
+                                            ti
+                                            {% if source.source_type == 'url' %}
+                                                ti-world-www
+                                            {% else %}
+                                                ti-file
+                                            {% endif %}
+                                            text-gray-500
+                                        "
+                                    ></i>
+
+                                    <p
+                                        class="
+                                            text-sm
+                                            font-medium
+                                            text-gray-800
+                                            truncate
+                                        "
+                                    >
+                                        {{ source.name|default:"Untitled source" }}
+                                    </p>
+
+                                </div>
+
+
+                                {% if source.url %}
+
+                                    <p
+                                        class="
+                                            mt-1
+                                            text-xs
+                                            text-gray-400
+                                            truncate
+                                        "
+                                    >
+                                        {{ source.url }}
+                                    </p>
+
+                                {% else %}
+
+                                    <p
+                                        class="
+                                            mt-1
+                                            text-xs
+                                            text-gray-400
+                                        "
+                                    >
+                                        File knowledge source
+                                    </p>
+
+                                {% endif %}
+
+                            </div>
+                            <button
+                                type="button"
+                                class="
+                                    inline-flex
+                                    items-center
+                                    gap-1.5
+                                    rounded-lg
+                                    border
+                                    border-gray-200
+                                    bg-white
+                                    px-2.5
+                                    py-1.5
+                                    text-xs
+                                    font-medium
+                                    text-gray-600
+                                    hover:border-red-200
+                                    hover:bg-red-50
+                                    hover:text-red-600
+                                    transition
+                                    shrink-0
+                                "
+                                data-knowledge-delete
+                                data-delete-kind="source"
+                                data-delete-id="{{ source.id }}"
+                                data-delete-name="{{ source.name|default:'Untitled source' }}"
+                                title="Delete this knowledge source"
+                            >
+                                <i class="ti ti-trash text-[15px]"></i>
+                                Delete
+                            </button>
+
+                        </div>
+
+                        {% endfor %}
+
+                    </div>
+
+                </div>
+
+                {% endif %}
+
+
+                <!-- ======================================================
+                     UPLOADED DOCUMENTS
+                     ====================================================== -->
+                {% if knowledge_documents %}
+
+                <div>
+
+                    <div
+                        class="
+                            px-6
+                            py-3
+                            bg-gray-50
+                            border-t
+                            border-b
+                            border-gray-100
+                        "
+                    >
+
+                        <p
+                            class="
+                                text-xs
+                                font-semibold
+                                uppercase
+                                tracking-wide
+                                text-gray-500
+                            "
+                        >
+                            Uploaded Documents
+                        </p>
+
+                    </div>
+
+
+                    <div class="divide-y divide-gray-100">
+
+                        {% for document in knowledge_documents %}
+
+                        <div
+                            class="
+                                px-6
+                                py-4
+                                flex
+                                items-center
+                                justify-between
+                                gap-4
+                            "
+                            data-knowledge-row
+                            data-knowledge-kind="document"
+                            data-knowledge-name="{{ document.name|default:'Untitled document'|escape }}"
+                        >
+
+                            <div class="min-w-0">
+
+                                <p
+                                    class="
+                                        text-sm
+                                        font-medium
+                                        text-gray-800
+                                        truncate
+                                    "
+                                >
+                                    {{ document.name|default:"Untitled document" }}
+                                </p>
+
+
+                                <p
+                                    class="
+                                        mt-1
+                                        text-xs
+                                        text-gray-400
+                                    "
+                                >
+                                    Version {{ document.version }}
+
+                                    {% if document.chunk_count is not None %}
+                                        · {{ document.chunk_count }} chunks
+                                    {% endif %}
+                                </p>
+
+
+                                {% if document.processing_error %}
+
+                                    <p
+                                        class="
+                                            mt-1
+                                            text-xs
+                                            text-red-500
+                                            truncate
+                                        "
+                                    >
+                                        {{ document.processing_error }}
+                                    </p>
+
+                                {% endif %}
+
+                            </div>
+
+
+                            <div
+                                class="
+                                    flex
+                                    items-center
+                                    gap-3
+                                    shrink-0
+                                "
+                            >
+
+                                {% if document.processing_status == "completed" %}
+
+                                    <span
+                                        class="
+                                            inline-flex
+                                            items-center
+                                            rounded-full
+                                            bg-green-50
+                                            px-2.5
+                                            py-1
+                                            text-xs
+                                            font-medium
+                                            text-green-700
+                                        "
+                                    >
+                                        Ready
+                                    </span>
+
+                                {% elif document.processing_status == "processing" %}
+
+                                    <span
+                                        class="
+                                            inline-flex
+                                            items-center
+                                            rounded-full
+                                            bg-yellow-50
+                                            px-2.5
+                                            py-1
+                                            text-xs
+                                            font-medium
+                                            text-yellow-700
+                                        "
+                                    >
+                                        Processing
+                                    </span>
+
+                                {% elif document.processing_status == "failed" %}
+
+                                    <span
+                                        class="
+                                            inline-flex
+                                            items-center
+                                            rounded-full
+                                            bg-red-50
+                                            px-2.5
+                                            py-1
+                                            text-xs
+                                            font-medium
+                                            text-red-700
+                                        "
+                                    >
+                                        Failed
+                                    </span>
+
+                                {% else %}
+
+                                    <span
+                                        class="
+                                            inline-flex
+                                            items-center
+                                            rounded-full
+                                            bg-gray-100
+                                            px-2.5
+                                            py-1
+                                            text-xs
+                                            font-medium
+                                            text-gray-600
+                                        "
+                                    >
+                                        Pending
+                                    </span>
+
+                                {% endif %}
+
+                                <button
+                                    type="button"
+                                    class="
+                                        inline-flex
+                                        items-center
+                                        gap-1.5
+                                        rounded-lg
+                                        border
+                                        border-gray-200
+                                        bg-white
+                                        px-2.5
+                                        py-1.5
+                                        text-xs
+                                        font-medium
+                                        text-gray-600
+                                        hover:border-red-200
+                                        hover:bg-red-50
+                                        hover:text-red-600
+                                        transition
+                                    "
+                                    data-knowledge-delete
+                                    data-delete-kind="document"
+                                    data-delete-id="{{ document.id }}"
+                                    data-delete-name="{{ document.name|default:'Untitled document' }}"
+                                    title="Delete this document"
+                                >
+                                    <i class="ti ti-trash text-[15px]"></i>
+                                    Delete
+                                </button>
+
+                            </div>
+
+                        </div>
+
+                        {% endfor %}
+
+                    </div>
+
+                </div>
+
+                {% endif %}
+
+            </section>
+
+            {% endif %}
+
+
+            <!-- ==========================================================
+                 AI-GUIDED FILE SHARING
+                 ========================================================== -->
+            <section
+                class="
+                    bg-white
+                    border
+                    border-gray-200
+                    rounded-xl
+                    overflow-hidden
+                    mt-6
+                "
+            >
+
+                <div
+                    class="
+                        flex
+                        items-center
+                        justify-between
+                        gap-6
+                        px-6
+                        py-5
+                    "
+                >
+
+                    <div class="flex items-start gap-3">
+
+                        <div
+                            class="
+                                flex
+                                items-center
+                                justify-center
+                                w-9
+                                h-9
+                                rounded-lg
+                                bg-gray-50
+                                text-gray-600
+                                shrink-0
+                            "
+                        >
+                            <i class="ti ti-file-export"></i>
+                        </div>
+
+
+                        <div>
+
+                            <h3
+                                class="
+                                    text-sm
+                                    font-semibold
+                                    text-gray-900
+                                "
+                            >
+                                AI-Guided File Sharing
+                            </h3>
+
+                            <p
+                                class="
+                                    mt-1
+                                    text-xs
+                                    text-gray-500
+                                "
+                            >
+                                Allow AI to decide when a relevant knowledge
+                                file should be shared with a customer.
+                            </p>
+
+                        </div>
+
+                    </div>
+
+
+                    <button
+                        type="button"
+                        id="ai-file-sharing-configure"
+                        class="
+                            inline-flex
+                            items-center
+                            gap-2
+                            px-3
+                            py-2
+                            rounded-lg
+                            border
+                            border-gray-300
+                            bg-white
+                            text-xs
+                            font-medium
+                            text-gray-700
+                            hover:bg-gray-50
+                            hover:border-gray-400
+                            transition
+                            shrink-0
+                        "
+                        title="File sharing controls will use the existing AI Engagement backend" aria-haspopup="dialog" aria-controls="ai-file-sharing-modal"
+                    >
+                        Configure
+                    </button>
+
+                </div>
+
+            </section>
+
+
+            <div
+                id="ai-file-sharing-modal"
+                class="hidden fixed inset-0 z-50"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="ai-file-sharing-modal-title"
+            >
+
+                <div
+                    class="absolute inset-0 bg-gray-900/40"
+                    data-ai-file-sharing-close
+                ></div>
+
+                <div class="relative flex min-h-full items-center justify-center p-4">
+
+                    <div
+                        class="
+                            w-full
+                            max-w-lg
+                            rounded-xl
+                            bg-white
+                            border
+                            border-gray-200
+                            shadow-xl
+                            overflow-hidden
+                        "
+                    >
+
+                        <div
+                            class="
+                                flex
+                                items-center
+                                justify-between
+                                gap-4
+                                px-5
+                                py-4
+                                border-b
+                                border-gray-100
+                            "
+                        >
+
+                            <div>
+                                <h3
+                                    id="ai-file-sharing-modal-title"
+                                    class="text-sm font-semibold text-gray-900"
+                                >
+                                    AI-Guided File Sharing
+                                </h3>
+
+                                <p class="mt-1 text-xs text-gray-500">
+                                    Uses your existing knowledge files for AI-guided sharing.
+                                </p>
+                            </div>
+
+                            <button
+                                type="button"
+                                class="
+                                    inline-flex
+                                    items-center
+                                    justify-center
+                                    w-8
+                                    h-8
+                                    rounded-lg
+                                    text-gray-500
+                                    hover:bg-gray-100
+                                    hover:text-gray-700
+                                    transition
+                                "
+                                data-ai-file-sharing-close
+                                aria-label="Close"
+                            >
+                                <i class="ti ti-x text-[18px]"></i>
+                            </button>
+
+                        </div>
+
+                        <div class="max-h-[60vh] overflow-y-auto">
+
+                            {% if knowledge_documents %}
+
+                                <div class="divide-y divide-gray-100">
+
+                                    {% for document in knowledge_documents %}
+
+                                        <div class="px-5 py-4 flex items-center justify-between gap-4">
+
+                                            <div class="min-w-0">
+                                                <p class="text-sm font-medium text-gray-800 truncate">
+                                                    {{ document.name|default:"Untitled document" }}
+                                                </p>
+                                                <p class="mt-1 text-xs text-gray-400">
+                                                    Version {{ document.version }}
+                                                </p>
+                                            </div>
+
+                                            {% if document.processing_status == "completed" %}
+                                                <span class="inline-flex items-center rounded-full bg-green-50 px-2.5 py-1 text-xs font-medium text-green-700 shrink-0">
+                                                    Ready
+                                                </span>
+                                            {% elif document.processing_status == "processing" %}
+                                                <span class="inline-flex items-center rounded-full bg-yellow-50 px-2.5 py-1 text-xs font-medium text-yellow-700 shrink-0">
+                                                    Processing
+                                                </span>
+                                            {% elif document.processing_status == "failed" %}
+                                                <span class="inline-flex items-center rounded-full bg-red-50 px-2.5 py-1 text-xs font-medium text-red-700 shrink-0">
+                                                    Failed
+                                                </span>
+                                            {% else %}
+                                                <span class="inline-flex items-center rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-600 shrink-0">
+                                                    Pending
+                                                </span>
+                                            {% endif %}
+
+                                        </div>
+
+                                    {% endfor %}
+
+                                </div>
+
+                            {% else %}
+
+                                <div class="px-5 py-10 text-center">
+                                    <p class="text-sm font-medium text-gray-800">
+                                        No knowledge files available
+                                    </p>
+                                    <p class="mt-1 text-xs text-gray-500">
+                                        Upload a knowledge file first.
+                                    </p>
+                                </div>
+
+                            {% endif %}
+
+                        </div>
+
+                        <div
+                            class="
+                                flex
+                                justify-end
+                                px-5
+                                py-3
+                                border-t
+                                border-gray-100
+                                bg-gray-50
+                            "
+                        >
+                            <button
+                                type="button"
+                                class="
+                                    inline-flex
+                                    items-center
+                                    justify-center
+                                    px-3
+                                    py-2
+                                    rounded-lg
+                                    bg-gray-900
+                                    text-white
+                                    text-xs
+                                    font-medium
+                                    hover:bg-gray-800
+                                    transition
+                                "
+                                data-ai-file-sharing-close
+                            >
+                                Done
+                            </button>
+                        </div>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+        </div>
+
+
+        <!-- ==========================================================
+             CHAT PLAYGROUND
+             ========================================================== -->
+        <aside
+            class="
+                bg-white
+                border
+                border-gray-200
+                rounded-xl
+                overflow-hidden
+                xl:sticky
+                xl:top-6
+                xl:self-start
+                xl:h-[calc(100vh-3rem)]
+                xl:min-h-[620px]
+                flex
+                flex-col
+            "
+        >
+
+            <div
+                class="
+                    flex
+                    items-center
+                    justify-between
+                    gap-4
+                    px-6
+                    py-5
+                    border-b
+                    border-gray-100
+                    shrink-0
+                "
+            >
+
+                <div class="min-w-0 flex items-start gap-3">
+
+                    <div
+                        class="
+                            flex
+                            items-center
+                            justify-center
+                            w-9
+                            h-9
+                            rounded-lg
+                            bg-blue-50
+                            text-blue-600
+                            shrink-0
+                        "
+                    >
+                        <i class="ti ti-message-2 text-[18px]"></i>
+                    </div>
+
+
+                    <div class="min-w-0">
+
+                        <h3
+                            class="
+                                text-sm
+                                font-semibold
+                                text-gray-900
+                            "
+                        >
+                            Chat Playground
+                        </h3>
+
+                        <p
+                            class="
+                                mt-1
+                                text-xs
+                                text-gray-500
+                            "
+                        >
+                            Test the organization's AI configuration
+                            before using it in production.
+                        </p>
+
+                    </div>
+
+                    <button
+                        id="playground-restart-chat"
+
+                        type="button"
+                        class="
+                            inline-flex
+                            items-center
+                            gap-1.5
+                            rounded-lg
+                            border
+                            border-gray-200
+                            bg-white
+                            px-2.5
+                            py-1.5
+                            text-xs
+                            font-medium
+                            text-gray-600
+                            hover:bg-gray-50
+                            hover:border-gray-300
+                            hover:text-gray-800
+                            transition
+                            shrink-0
+                        "
+                        title="Start a new playground chat"
+                    >
+                        <i class="ti ti-refresh text-[15px]"></i>
+                        Restart chat
+                    </button>
+
+                </div>
+
+
+            </div>
+
+
+            <div class="p-4 flex-1 min-h-0">
+
+                <div
+                    class="
+                        h-full
+                        min-h-0
+                        rounded-lg
+                        border
+                        border-gray-200
+                        bg-gray-50
+                        flex
+                        flex-col
+                    "
+                >
+
+                    <div
+                        id="playground-messages"
+                        class="
+                            flex-1
+                            min-h-0
+                            overflow-y-auto
+                            p-4
+                            space-y-3
+                            overscroll-contain
+                        "
+                    >
+
+                        <div class="flex justify-start">
+
+                            <div
+                                class="
+                                    max-w-[85%]
+                                    rounded-2xl
+                                    rounded-tl-md
+                                    bg-white
+                                    border
+                                    border-gray-200
+                                    px-3
+                                    py-2.5
+                                    text-sm
+                                    text-gray-700
+                                "
+                            >
+                                Hello! How can I help?
+                            </div>
+
+                        </div>
+
+
+                        <div class="flex justify-end">
+
+                            <div
+                                class="
+                                    max-w-[85%]
+                                    rounded-2xl
+                                    rounded-tr-md
+                                    bg-blue-600
+                                    px-3
+                                    py-2.5
+                                    text-sm
+                                    text-white
+                                "
+                            >
+                                What do you offer?
+                            </div>
+
+                        </div>
+
+
+                        <div class="flex justify-start">
+
+                            <div
+                                class="
+                                    max-w-[85%]
+                                    rounded-2xl
+                                    rounded-tl-md
+                                    bg-white
+                                    border
+                                    border-gray-200
+                                    px-3
+                                    py-2.5
+                                    text-sm
+                                    text-gray-700
+                                "
+                            >
+                                We offer products and services based on
+                                your organization's configuration.
+                            </div>
+
+                        </div>
+
+                    </div>
+
+
+                    <div
+                        class="
+                            border-t
+                            border-gray-200
+                            bg-white
+                            p-3
+                        "
+                    >
+
+                        <div class="flex items-center gap-2">
+
+                            <input
+                                id="playground-message-input"
+                                type="text"
+                                autocomplete="off"
+                                placeholder="Type a message..."
+                                class="
+                                    min-w-0
+                                    flex-1
+                                    rounded-lg
+                                    border
+                                    border-gray-300
+                                    bg-white
+                                    px-3
+                                    py-2.5
+                                    text-sm
+                                    text-gray-700
+                                    placeholder-gray-400
+                                    focus:outline-none
+                                    focus:ring-2
+                                    focus:ring-blue-100
+                                    focus:border-blue-500
+                                "
+                            >
+
+                            <button
+                                id="playground-send-message"
+                                type="button"
+                                class="
+                                    inline-flex
+                                    items-center
+                                    justify-center
+                                    w-10
+                                    h-10
+                                    rounded-lg
+                                    bg-gray-900
+                                    text-white
+                                    hover:bg-gray-800
+                                    focus:outline-none
+                                    focus:ring-2
+                                    focus:ring-blue-100
+                                    transition
+                                    shrink-0
+                                "
+                                title="Send message"
+                            >
+                                <i class="ti ti-send text-[18px]"></i>
+                            </button>
+
+                        </div>
+
+                        <p class="mt-2 text-[11px] text-gray-400">
+                            Playground chat is separate from production customer conversations.
+                        </p>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+        </aside>
+
+    </div>
+
+    <div class="pb-8"></div>
+
+</div>
+
+
+<script>
+    (function () {
+        "use strict";
+
+        function initAISetup() {
+            const page = document.getElementById("ai-setup-page");
+
+            if (!page) {
+                return;
+            }
+
+            /* ------------------------------------------------------
+             * AI-GUIDED FILE SHARING
+             * ------------------------------------------------------ */
+            const configureButton = document.getElementById(
+                "ai-file-sharing-configure"
+            );
+            const fileSharingModal = document.getElementById(
+                "ai-file-sharing-modal"
+            );
+
+            function closeFileSharingModal() {
+                if (!fileSharingModal) {
+                    return;
+                }
+
+                fileSharingModal.classList.add("hidden");
+                document.body.classList.remove("overflow-hidden");
+
+                if (configureButton) {
+                    configureButton.focus();
+                }
+            }
+
+            if (configureButton && fileSharingModal) {
+                configureButton.addEventListener("click", function () {
+                    fileSharingModal.classList.remove("hidden");
+                    document.body.classList.add("overflow-hidden");
+                });
+
+                fileSharingModal
+                    .querySelectorAll("[data-ai-file-sharing-close]")
+                    .forEach(function (button) {
+                        button.addEventListener(
+                            "click",
+                            closeFileSharingModal
+                        );
+                    });
+            }
+
+            /* ------------------------------------------------------
+             * CONNECTED KNOWLEDGE DELETE UI
+             * ------------------------------------------------------ */
+            document
+                .querySelectorAll("[data-knowledge-delete]")
+                .forEach(function (button) {
+                    button.addEventListener("click", function () {
+                        const row = button.closest("[data-knowledge-row]");
+
+                        if (!row) {
+                            return;
+                        }
+
+                        const name = button.dataset.deleteName || "this item";
+                        const confirmed = window.confirm(
+                            "Delete " + name + " from this page?"
+                        );
+
+                        if (!confirmed) {
+                            return;
+                        }
+
+                        const kind = button.dataset.deleteKind || "";
+                        const sourceType = row.dataset.knowledgeSourceType || "";
+                        const sourceName = row.dataset.knowledgeName || "";
+
+                        row.remove();
+
+                        /*
+                         * A file KnowledgeSource and its first Document use the
+                         * same logical name in the existing backend. For this
+                         * UI-only pass, remove both rows together when the
+                         * source itself is deleted. Backend hard-delete will
+                         * make the database/storage deletion authoritative.
+                         */
+                        if (kind === "source" && sourceType === "file" && sourceName) {
+                            document
+                                .querySelectorAll(
+                                    '[data-knowledge-row][data-knowledge-kind="document"]'
+                                )
+                                .forEach(function (documentRow) {
+                                    if (
+                                        (documentRow.dataset.knowledgeName || "") ===
+                                        sourceName
+                                    ) {
+                                        documentRow.remove();
+                                    }
+                                });
+                        }
+                    });
+                });
+
+            /* ------------------------------------------------------
+             * PLAYGROUND
+             * ------------------------------------------------------ */
+            const messages = document.getElementById(
+                "playground-messages"
+            );
+            const input = document.getElementById(
+                "playground-message-input"
+            );
+            const sendButton = document.getElementById(
+                "playground-send-message"
+            );
+            const restartButton = document.getElementById(
+                "playground-restart-chat"
+            );
+
+            if (!messages || !input || !sendButton || !restartButton) {
+                return;
+            }
+
+            function createSessionId() {
+                if (
+                    window.crypto &&
+                    typeof window.crypto.randomUUID === "function"
+                ) {
+                    return window.crypto.randomUUID();
+                }
+
+                return (
+                    "playground-" +
+                    Date.now().toString(36) +
+                    "-" +
+                    Math.random().toString(36).slice(2)
+                );
+            }
+
+            function setNewSession() {
+                page.dataset.playgroundSessionId = createSessionId();
+            }
+
+            function scrollMessagesToBottom() {
+                messages.scrollTop = messages.scrollHeight;
+            }
+
+            function appendUserMessage(messageText) {
+                const wrapper = document.createElement("div");
+                wrapper.className = "flex justify-end";
+
+                const bubble = document.createElement("div");
+                bubble.className = [
+                    "max-w-[85%]",
+                    "rounded-2xl",
+                    "rounded-tr-md",
+                    "bg-blue-600",
+                    "px-3",
+                    "py-2.5",
+                    "text-sm",
+                    "text-white",
+                    "break-words",
+                ].join(" ");
+                bubble.textContent = messageText;
+
+                wrapper.appendChild(bubble);
+                messages.appendChild(wrapper);
+                scrollMessagesToBottom();
+            }
+
+            function restartChat() {
+                setNewSession();
+                messages.innerHTML = "";
+                input.value = "";
+                messages.scrollTop = 0;
+                input.focus();
+            }
+
+            setNewSession();
+
+            sendButton.addEventListener("click", function () {
+                const messageText = input.value.trim();
+
+                if (!messageText) {
+                    input.focus();
+                    return;
+                }
+
+                appendUserMessage(messageText);
+                input.value = "";
+                input.focus();
+            });
+
+            input.addEventListener("keydown", function (event) {
+                if (event.key === "Enter" && !event.shiftKey) {
+                    event.preventDefault();
+                    sendButton.click();
+                }
+            });
+
+            restartButton.addEventListener("click", restartChat);
+
+            document.addEventListener("keydown", function (event) {
+                if (
+                    event.key === "Escape" &&
+                    fileSharingModal &&
+                    !fileSharingModal.classList.contains("hidden")
+                ) {
+                    closeFileSharingModal();
+                }
+            });
+        }
+
+        if (document.readyState === "loading") {
+            document.addEventListener("DOMContentLoaded", initAISetup);
+        } else {
+            initAISetup();
+        }
+    })();
+</script>
+
+{% endblock %}
