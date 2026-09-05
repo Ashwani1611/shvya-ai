@@ -1,6 +1,7 @@
 from django.urls import path
 
 from . import views_flat
+from . import whatsapp_ui
 
 urlpatterns = [
     path(
@@ -84,13 +85,28 @@ urlpatterns = [
         name="whatsapp-chat-detail",
     ),
     path(
-    "send-template/<uuid:lead_id>/",
-    views_flat.whatsapp_send_template_view,
-    name="whatsapp-send-template",
+        "send-template/<uuid:lead_id>/",
+        views_flat.whatsapp_send_template_view,
+        name="whatsapp-send-template",
     ),
     path(
         "leads/<uuid:lead_id>/calls.json",
         views_flat.whatsapp_lead_calls_json,
         name="whatsapp-lead-calls-json",
+    ),
+    path(
+        "leads/<uuid:lead_id>/quick-update/",
+        whatsapp_ui.whatsapp_lead_quick_update_view,
+        name="whatsapp-lead-quick-update",
+    ),
+    path(
+        "leads/<uuid:lead_id>/ai-toggle/",
+        whatsapp_ui.whatsapp_lead_ai_toggle_view,
+        name="whatsapp-lead-ai-toggle",
+    ),
+    path(
+        "leads/<uuid:lead_id>/attributes/save/",
+        whatsapp_ui.whatsapp_lead_attributes_save_view,
+        name="whatsapp-lead-attributes-save",
     ),
 ]
