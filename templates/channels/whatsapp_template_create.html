@@ -1,403 +1,48 @@
 {% extends "base.html" %}
-{% load static %}
-
-{% block title %}SHVYA AI — New Message Template{% endblock %}
-
-{% block header %}
-    New Message Template
-{% endblock %}
-
+{% block title %}SHVYA AI — {% if template %}Edit{% else %}New{% endif %} Message Template{% endblock %}
+{% block header %}{% if template %}Edit Message Template{% else %}New Message Template{% endif %}{% endblock %}
 {% block content %}
-
-    {% if form.non_field_errors %}
-
-        <div class="mb-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-
-            {% for error in form.non_field_errors %}
-                {{ error }}
-            {% endfor %}
-
-        </div>
-
-    {% endif %}
-
-
-    <!-- =====================================================
-         TWO COLUMN: FORM + PREVIEW
-         ===================================================== -->
-
-    <form method="post">
-
-        {% csrf_token %}
-
-        <div class="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_320px]">
-
-
-            <!-- =============================================
-                 LEFT — FORM FIELDS
-                 ============================================= -->
-
-            <div class="space-y-6">
-
-
-                <!-- TOP ROW: name / category / business -->
-
-                <div class="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-
-                    <div class="grid grid-cols-1 gap-5 sm:grid-cols-3">
-
-                        <div>
-
-                            <label class="mb-1.5 block text-sm font-medium text-gray-700">
-                                Template Name <span class="text-red-500">*</span>
-                            </label>
-
-                            <input
-                                type="text"
-                                name="name"
-                                value="{{ form.name.value|default:'' }}"
-                                placeholder="Enter the template name"
-                                class="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                            >
-
-                            {% if form.name.errors %}
-                                <p class="mt-1.5 text-sm text-red-600">{{ form.name.errors.0 }}</p>
-                            {% endif %}
-
-                        </div>
-
-
-                        <div>
-
-                            <label class="mb-1.5 block text-sm font-medium text-gray-700">
-                                Category
-                            </label>
-
-                            <select
-                                name="category"
-                                class="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                            >
-
-                                {% for value, label in form.fields.category.choices %}
-
-                                    <option value="{{ value }}" {% if form.category.value == value %}selected{% endif %}>
-                                        {{ label }}
-                                    </option>
-
-                                {% endfor %}
-
-                            </select>
-
-                        </div>
-
-
-                        <div>
-
-                            <label class="mb-1.5 block text-sm font-medium text-gray-700">
-                                Business
-                            </label>
-
-                            <select
-                                name="account"
-                                class="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                            >
-
-                                {% for account in form.fields.account.queryset %}
-
-                                    <option value="{{ account.id }}" {% if form.account.value|stringformat:"s" == account.id|stringformat:"s" %}selected{% endif %}>
-                                        {{ account.business_name|default:account.display_phone_number }}
-                                    </option>
-
-                                {% endfor %}
-
-                            </select>
-
-                            {% if form.account.errors %}
-                                <p class="mt-1.5 text-sm text-red-600">{{ form.account.errors.0 }}</p>
-                            {% endif %}
-
-                        </div>
-
-                    </div>
-
-                </div>
-
-
-                <!-- TEMPLATE FORMAT -->
-
-                <div class="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-
-                    <label class="mb-3 block text-sm font-medium text-gray-700">
-                        Template Format
-                    </label>
-
-                    <div class="space-y-3">
-
-                        {% for value, label in form.fields.template_format.choices %}
-
-                            <label class="flex cursor-pointer items-start gap-3 rounded-lg border border-gray-200 p-4 has-[:checked]:border-blue-500 has-[:checked]:bg-blue-50/50">
-
-                                <input
-                                    type="radio"
-                                    name="template_format"
-                                    value="{{ value }}"
-                                    {% if forloop.first %}checked{% endif %}
-                                    class="mt-1"
-                                >
-
-                                <div>
-
-                                    <span class="text-sm font-medium text-gray-900">{{ label }}</span>
-
-                                    <p class="mt-0.5 text-xs text-gray-500">
-
-                                        {% if value == 'standard' %}
-                                            Send a single message with one image, video, or document and buttons.
-                                        {% else %}
-                                            Send a swipeable set of media cards with different actions on each card.
-                                        {% endif %}
-
-                                    </p>
-
-                                </div>
-
-                            </label>
-
-                        {% endfor %}
-
-                    </div>
-
-                </div>
-
-
-                <!-- MESSAGE BODY -->
-
-                <div class="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-
-                    <label class="mb-2 block text-sm font-medium text-gray-700">
-                        Message
-                    </label>
-
-                    <textarea
-                        name="body"
-                        rows="6"
-                        maxlength="1024"
-                        id="template-body"
-                        placeholder="Type your message here."
-                        class="w-full rounded-lg border border-gray-300 px-4 py-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    >{{ form.body.value|default:'' }}</textarea>
-
-                    {% if form.body.errors %}
-                        <p class="mt-1.5 text-sm text-red-600">{{ form.body.errors.0 }}</p>
-                    {% endif %}
-
-
-                    <!-- VARIABLE CHIPS -->
-
-                    <div class="mt-3 flex flex-wrap gap-2">
-
-                        {% for variable in available_variables %}
-
-                            <button
-                                type="button"
-                                onclick="insertVariable('{{ variable }}')"
-                                class="rounded-md border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700 transition hover:bg-blue-100"
-                            >
-                                <!--
-                                    templatetag openvariable/closevariable is
-                                    Django's own self-contained way to emit a
-                                    literal double-brace pair -- not raw
-                                    double-brace literals, which the template
-                                    engine tries to tokenize as a variable tag
-                                    and mis-parses (this exact spot previously
-                                    threw a TemplateSyntaxError on every render
-                                    via the quote-trick version that was here).
-                                -->
-                                + {% templatetag openvariable %}{{ variable }}{% templatetag closevariable %}
-                            </button>
-
-                        {% endfor %}
-
-                    </div>
-
-                </div>
-
-
-                <!-- ATTACHMENTS -->
-
-                <div class="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-
-                    <label class="mb-3 block text-sm font-medium text-gray-700">
-                        Attachments
-                    </label>
-
-                    <div class="flex flex-wrap gap-4">
-
-                        {% for value, label in form.fields.attachment_type.choices %}
-
-                            <label class="flex items-center gap-2 text-sm text-gray-700">
-
-                                <input
-                                    type="radio"
-                                    name="attachment_type"
-                                    value="{{ value }}"
-                                    {% if forloop.first %}checked{% endif %}
-                                >
-
-                                {{ label }}
-
-                            </label>
-
-                        {% endfor %}
-
-                    </div>
-
-                </div>
-
-
-                <!-- FOOTER -->
-
-                <div class="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-
-                    <label class="mb-2 block text-sm font-medium text-gray-700">
-                        Footer
-                    </label>
-
-                    <input
-                        type="text"
-                        name="footer"
-                        maxlength="60"
-                        value="{{ form.footer.value|default:'' }}"
-                        placeholder="Type your message here"
-                        class="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    >
-
-                </div>
-
-
-                <!-- BUTTONS -->
-
-                <div class="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-
-                    <label class="mb-3 block text-sm font-medium text-gray-700">
-                        Button
-                    </label>
-
-                    <div class="flex flex-wrap gap-5">
-
-                        {% for value, label in form.fields.buttons.choices %}
-
-                            <label class="flex items-center gap-2 text-sm text-gray-700">
-
-                                <input
-                                    type="checkbox"
-                                    name="buttons"
-                                    value="{{ value }}"
-                                >
-
-                                {{ label }}
-
-                            </label>
-
-                        {% endfor %}
-
-                    </div>
-
-                </div>
-
-
-                <div class="flex justify-end gap-3">
-
-                    <a
-                        href="{% url 'whatsapp-template-list' %}"
-                        class="rounded-lg border border-gray-200 bg-white px-5 py-2.5 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
-                    >
-                        Cancel
-                    </a>
-
-                    <button
-                        type="submit"
-                        class="rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700"
-                    >
-                        Save Template
-                    </button>
-
-                </div>
-
-            </div>
-
-
-
-            <!-- =============================================
-                 RIGHT — LIVE PREVIEW
-                 ============================================= -->
-
-            <div>
-
-                <div class="sticky top-6 rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
-
-                    <p class="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-400">
-                        Preview
-                    </p>
-
-                    <div class="overflow-hidden rounded-2xl border border-gray-800 bg-[#e5ddd5]">
-
-                        <div class="bg-[#075e54] px-4 py-3 text-sm font-semibold text-white">
-                            ← WhatsApp
-                        </div>
-
-                        <div class="min-h-[280px] p-4">
-
-                            <div class="max-w-[85%] rounded-lg bg-white p-3 text-sm text-gray-800 shadow">
-                                <span id="preview-body">Type your message here.</span>
-                            </div>
-
-                        </div>
-
-                    </div>
-
-                </div>
-
-            </div>
-
-
-        </div>
-
-    </form>
-
-
-    <script>
-    function insertVariable(name) {
-        var textarea = document.getElementById('template-body');
-
-        /*
-         * Built one brace at a time rather than as two adjacent
-         * literal open/close-brace pairs -- Django's template
-         * engine tokenizes this .html file's raw source before it
-         * ever reaches the browser, so writing the pair directly
-         * in this file (even inside a JS comment) gets read as a
-         * template variable tag and stripped or mis-parsed. Adding
-         * each brace character separately keeps that pair from
-         * ever appearing contiguously in the template source.
-         */
-        var openBrace = String.fromCharCode(123);
-        var closeBrace = String.fromCharCode(125);
-        var placeholder = openBrace + openBrace + name + closeBrace + closeBrace;
-
-        var start = textarea.selectionStart;
-        var end = textarea.selectionEnd;
-        var text = textarea.value;
-        textarea.value = text.slice(0, start) + placeholder + text.slice(end);
-        textarea.focus();
-        updatePreview();
-    }
-
-    function updatePreview() {
-        var body = document.getElementById('template-body').value;
-        document.getElementById('preview-body').textContent = body || 'Type your message here.';
-    }
-
-    document.getElementById('template-body').addEventListener('input', updatePreview);
-    </script>
-
+<form method="post" id="template-form" class="mx-auto max-w-7xl">{% csrf_token %}
+<input type="hidden" name="buttons_json" id="buttons-json" value="{{ buttons_json|escape }}">
+<div class="mb-5 flex flex-wrap items-center justify-between gap-3"><div><h2 class="text-lg font-semibold text-gray-900">{% if template %}Edit Draft{% else %}New Message Template{% endif %}</h2><p class="mt-1 text-sm text-gray-500">Create locally as a draft or submit the validated template to Meta.</p></div><div class="flex gap-2"><button name="action" value="draft" class="rounded-xl border border-gray-300 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50">SAVE AS DRAFT</button><button name="action" value="submit" id="submit-btn" class="rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700">SAVE &amp; SUBMIT</button></div></div>
+<div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
+<div class="space-y-5">
+<section class="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm"><div class="grid gap-5 md:grid-cols-3">
+<label class="text-sm font-medium text-gray-700">Template Name *<input name="name" required maxlength="150" pattern="[a-z0-9_]+" value="{{ values.name }}" placeholder="welcome_message" class="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm"><span class="mt-1 block text-xs text-gray-400">Lowercase letters, numbers, underscores.</span></label>
+<label class="text-sm font-medium text-gray-700">Category<select name="category" class="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm">{% for v,l in categories %}<option value="{{ v }}" {% if values.category == v %}selected{% endif %}>{{ l }}</option>{% endfor %}</select></label>
+<label class="text-sm font-medium text-gray-700">Business<select name="account" required class="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm"><option value="">Select business</option>{% for a in accounts %}<option value="{{ a.id }}" {% if values.account == a.id|stringformat:'s' %}selected{% endif %}>{{ a.business_name|default:a.display_phone_number|default:a.waba_id }}</option>{% endfor %}</select></label>
+</div><div class="mt-4 max-w-xs"><label class="text-sm font-medium text-gray-700">Language<select name="language" class="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm"><option value="en_US" {% if values.language == 'en_US' %}selected{% endif %}>English (US) — en_US</option><option value="en" {% if values.language == 'en' %}selected{% endif %}>English — en</option><option value="hi" {% if values.language == 'hi' %}selected{% endif %}>Hindi — hi</option></select></label></div></section>
+
+<section class="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm"><h3 class="text-sm font-semibold text-gray-900">Template Format</h3><div class="mt-3 grid gap-3 md:grid-cols-2">{% for v,l in formats %}<label class="cursor-pointer rounded-xl border border-gray-200 p-4 has-[:checked]:border-emerald-500 has-[:checked]:bg-emerald-50"><input type="radio" name="template_format" value="{{ v }}" {% if values.template_format == v %}checked{% endif %}> <span class="ml-2 text-sm font-semibold">{{ l }}</span><p class="mt-2 text-xs text-gray-500">{% if v == 'standard' %}Single WhatsApp message with optional supported components.{% else %}Carousel drafts are preserved; Meta submission is blocked until real card media/components are configured.{% endif %}</p></label>{% endfor %}</div></section>
+
+<section class="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm"><div class="flex items-center justify-between"><h3 class="text-sm font-semibold text-gray-900">Message</h3><span id="body-count" class="text-xs text-gray-400">0/1024</span></div><div class="mt-3 flex gap-1"><button type="button" data-wrap="*" class="fmt rounded border px-2 py-1 text-xs font-bold">B</button><button type="button" data-wrap="_" class="fmt rounded border px-2 py-1 text-xs italic">I</button><button type="button" data-wrap="~" class="fmt rounded border px-2 py-1 text-xs line-through">S</button></div><textarea id="body" name="body" required maxlength="1024" rows="8" class="mt-2 w-full rounded-xl border border-gray-300 px-4 py-3 text-sm" placeholder="Type your message here.">{{ values.body }}</textarea><div class="mt-4"><p class="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">Dynamic CRM placeholders</p><div class="flex max-h-36 flex-wrap gap-2 overflow-y-auto">{% for p in placeholders %}<button type="button" class="placeholder rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-xs font-medium text-emerald-700" data-key="{{ p.key }}" title="{{ p.description }}">+ {% templatetag openvariable %}{{ p.key }}{% templatetag closevariable %}</button>{% endfor %}</div></div></section>
+
+<section class="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm"><h3 class="text-sm font-semibold text-gray-900">Attachments</h3><div class="mt-3 flex flex-wrap gap-5">{% for v,l in attachments %}<label class="text-sm text-gray-700"><input type="radio" name="attachment_type" value="{{ v }}" {% if values.attachment_type == v %}checked{% endif %}> {{ l }}</label>{% endfor %}</div><div id="media-note" class="mt-3 hidden rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">Media templates can be saved as drafts. Meta submission requires a real header sample handle; SHVYA will not fake an accepted media template.</div></section>
+
+<section class="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm"><div class="flex items-center justify-between"><h3 class="text-sm font-semibold text-gray-900">Footer</h3><span id="footer-count" class="text-xs text-gray-400">0/60</span></div><input id="footer" name="footer" maxlength="60" value="{{ values.footer }}" class="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm" placeholder="Optional footer"></section>
+
+<section class="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm"><div class="flex items-center justify-between"><h3 class="text-sm font-semibold text-gray-900">Buttons</h3><button id="add-button" type="button" class="rounded-lg border border-emerald-200 px-3 py-1.5 text-xs font-semibold text-emerald-700">+ Add button</button></div><div id="button-list" class="mt-4 space-y-3"></div><p class="mt-3 text-xs text-gray-400">Supported Meta mappings: Website URL, Phone Number, Copy Code, Quick Reply. Request Contact Info is shown as a product option but cannot be submitted as a standard Meta template button.</p></section>
+<div class="flex justify-end"><a href="{% url 'whatsapp-template-list' %}" class="rounded-lg px-4 py-2 text-sm text-gray-500">Cancel</a></div>
+</div>
+
+<aside><div class="sticky top-6 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm"><p class="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-400">WhatsApp Preview</p><div class="overflow-hidden rounded-2xl border border-gray-300 bg-[#efeae2]"><div class="bg-[#075e54] px-4 py-3 text-sm font-semibold text-white">WhatsApp</div><div class="min-h-[420px] p-4"><div class="max-w-[92%] rounded-lg bg-white p-3 text-sm text-gray-800 shadow"><div id="preview-media" class="mb-2 hidden rounded-lg bg-gray-100 p-8 text-center text-xs text-gray-400"></div><div id="preview-body" class="whitespace-pre-wrap">Type your message here.</div><div id="preview-footer" class="mt-2 text-xs text-gray-400"></div><div id="preview-buttons" class="mt-2 divide-y text-center text-sm text-blue-600"></div></div></div></div></div></aside>
+</div>
+</form>
+<script>
+(function(){
+ const body=document.getElementById('body'), footer=document.getElementById('footer'), buttonsInput=document.getElementById('buttons-json'), list=document.getElementById('button-list');
+ const placeholders={{ placeholders_json|safe }};
+ let buttons=[];try{buttons=JSON.parse(buttonsInput.value||'[]')}catch(e){buttons=[]}
+ const brace=n=>String.fromCharCode(n), placeholder=k=>brace(123)+brace(123)+k+brace(125)+brace(125);
+ function insert(text){const s=body.selectionStart,e=body.selectionEnd;body.value=body.value.slice(0,s)+text+body.value.slice(e);body.focus();body.selectionStart=body.selectionEnd=s+text.length;update();}
+ document.querySelectorAll('.placeholder').forEach(b=>b.addEventListener('click',()=>insert(placeholder(b.dataset.key))));
+ document.querySelectorAll('.fmt').forEach(b=>b.addEventListener('click',()=>{const s=body.selectionStart,e=body.selectionEnd,w=b.dataset.wrap,t=body.value.slice(s,e);body.setRangeText(w+t+w,s,e,'end');update();}));
+ function examples(text){placeholders.forEach(p=>{text=text.split(placeholder(p.key)).join(p.example||p.label)});return text;}
+ function update(){document.getElementById('body-count').textContent=`${body.value.length}/1024`;document.getElementById('footer-count').textContent=`${footer.value.length}/60`;document.getElementById('preview-body').textContent=examples(body.value)||'Type your message here.';document.getElementById('preview-footer').textContent=footer.value;const at=document.querySelector('input[name=attachment_type]:checked')?.value||'none',pm=document.getElementById('preview-media'),note=document.getElementById('media-note');pm.classList.toggle('hidden',at==='none');pm.textContent=at==='none'?'':`${at.toUpperCase()} header preview`;note.classList.toggle('hidden',at==='none');document.getElementById('preview-buttons').innerHTML=buttons.map(x=>`<div class="py-2">${escapeHtml(x.text||x.coupon_code||label(x.type))}</div>`).join('');buttonsInput.value=JSON.stringify(buttons);}
+ function label(t){return {visit_website:'Visit Website',call_phone:'Call Phone',copy_offer:'Copy Offer',text_back:'Text Back',request_contact_info:'Request Contact Info'}[t]||t}
+ function escapeHtml(s){const d=document.createElement('div');d.textContent=s||'';return d.innerHTML}
+ function renderButtons(){list.innerHTML='';buttons.forEach((b,i)=>{const row=document.createElement('div');row.className='rounded-xl border border-gray-200 p-3';row.innerHTML=`<div class="flex gap-2"><select data-i="${i}" data-f="type" class="btnfield rounded-lg border px-2 py-2 text-sm"><option value="visit_website">Visit Website</option><option value="call_phone">Call Phone</option><option value="copy_offer">Copy Offer</option><option value="text_back">Text Back</option><option value="request_contact_info">Request Contact Info</option></select><input data-i="${i}" data-f="text" value="${escapeHtml(b.text||'')}" placeholder="Button Text" maxlength="25" class="btnfield flex-1 rounded-lg border px-3 py-2 text-sm"><button type="button" data-remove="${i}" class="rounded-lg px-2 text-red-500">×</button></div><div class="mt-2"><input data-i="${i}" data-f="detail" value="${escapeHtml(b.url||b.phone_number||b.coupon_code||'')}" placeholder="${b.type==='visit_website'?'https://example.com':b.type==='call_phone'?'+919876543210':b.type==='copy_offer'?'Coupon code':'No extra value'}" class="btnfield w-full rounded-lg border px-3 py-2 text-sm"></div>`;row.querySelector('[data-f=type]').value=b.type||'visit_website';list.appendChild(row)});list.querySelectorAll('.btnfield').forEach(el=>el.addEventListener('input',()=>{const i=+el.dataset.i,f=el.dataset.f;if(f==='type')buttons[i]={type:el.value,text:buttons[i].text||''};else if(f==='text')buttons[i].text=el.value;else{delete buttons[i].url;delete buttons[i].phone_number;delete buttons[i].coupon_code;if(buttons[i].type==='visit_website')buttons[i].url=el.value;if(buttons[i].type==='call_phone')buttons[i].phone_number=el.value;if(buttons[i].type==='copy_offer')buttons[i].coupon_code=el.value;}update();if(f==='type')renderButtons()}));list.querySelectorAll('[data-remove]').forEach(x=>x.addEventListener('click',()=>{buttons.splice(+x.dataset.remove,1);renderButtons();update()}));update();}
+ document.getElementById('add-button').addEventListener('click',()=>{if(buttons.length>=10)return;buttons.push({type:'visit_website',text:''});renderButtons()});body.addEventListener('input',update);footer.addEventListener('input',update);document.querySelectorAll('input[name=attachment_type]').forEach(x=>x.addEventListener('change',update));document.getElementById('template-form').addEventListener('submit',()=>{buttonsInput.value=JSON.stringify(buttons);document.querySelectorAll('button[name=action]').forEach(b=>b.disabled=true)});renderButtons();update();
+})();
+</script>
 {% endblock %}
