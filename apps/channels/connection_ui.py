@@ -1,6 +1,6 @@
 """Small UI wrappers for WhatsApp connection state.
 
-Keep the existing connection/service logic in views_flat.py.  These wrappers only
+Keep the existing connection/service logic in views_flat.py. These wrappers only
 control which screen an already-connected organization sees and translate
 embedded-signup failures into SHVYA's global toast UI.
 """
@@ -26,7 +26,7 @@ def _has_connected_api_account(user):
 def _inject_signup_toast(response):
     """Make Meta embedded-signup errors use the shared SHVYA toast UI.
 
-    The existing inline error box is kept as an accessible fallback.  The global
+    The existing inline error box is kept as an accessible fallback. The global
     toast middleware defines ``window.shvyaToast`` later in the page, so this
     wrapper only replaces ``showSignupError`` and calls the toast when an error
     actually occurs.
@@ -77,7 +77,7 @@ def whatsapp_connect_api_view(request):
     """Show onboarding only when needed.
 
     If this organization already has an active connected API account, normal
-    navigation goes straight back to Connected Numbers.  ``?add=1`` is the one
+    navigation goes straight back to Connected Numbers. ``?add=1`` is the one
     intentional escape hatch used by the top-right Connect API button so an
     admin can add another number without putting the onboarding page back in
     the sidebar.
@@ -97,6 +97,13 @@ def whatsapp_connect_api_view(request):
 def whatsapp_embedded_signup_callback_view(request):
     """Delegate the Meta callback and queue a green toast on success."""
     response = views_flat.whatsapp_embedded_signup_callback_view(request)
+
+    # The browser-side embedded-signup handler already shows the specific Meta
+    # error text in a red toast. On success we intentionally wait for the
+    # Connected Numbers redirect and let Django's success message become the
+    # green toast there. Suppress the generic fetch toast in both cases so the
+    # user sees one clear notification, not duplicates.
+    response["X-SHVYA-Toast"] = "off"
 
     if 200 <= response.status_code < 300:
         messages.success(
