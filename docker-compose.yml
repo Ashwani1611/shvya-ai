@@ -163,6 +163,33 @@ services:
       - info
 
 
+  beat:
+    build: .
+    restart: unless-stopped
+
+    env_file:
+      - .env
+
+    environment:
+      DB_HOST: db
+      REDIS_URL: redis://redis:6379/0
+
+    depends_on:
+      db:
+        condition: service_healthy
+
+      redis:
+        condition: service_healthy
+
+    command:
+      - celery
+      - -A
+      - config
+      - beat
+      - -l
+      - info
+
+
   nginx:
     image: nginx:1.27-alpine
     restart: unless-stopped

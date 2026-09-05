@@ -16,12 +16,7 @@ from apps.core.views import HomeView, PricingView
 urlpatterns = [
     # =========================================================
     # SHVYA Admin — Global Search
-    #
-    # IMPORTANT:
-    # This route must appear before Django's admin/ URL so
-    # /admin/search/ is handled by SHVYA's search endpoint.
     # =========================================================
-
     path(
         "admin/search/",
         admin_global_search,
@@ -37,7 +32,6 @@ urlpatterns = [
     # =========================================================
     # Django Admin
     # =========================================================
-
     path(
         "admin/",
         admin.site.urls,
@@ -46,13 +40,11 @@ urlpatterns = [
     # =========================================================
     # JWT Authentication
     # =========================================================
-
     path(
         "api/v1/auth/token/",
         TokenObtainPairView.as_view(),
         name="token_obtain_pair",
     ),
-
     path(
         "api/v1/auth/token/refresh/",
         TokenRefreshView.as_view(),
@@ -62,16 +54,22 @@ urlpatterns = [
     # =========================================================
     # CRM API
     # =========================================================
-
     path(
         "api/v1/leads/",
         include("apps.crm.urls.api_v1"),
     ),
 
     # =========================================================
+    # Co-Pilot API
+    # =========================================================
+    path(
+        "api/v1/copilot/",
+        include("apps.copilot.urls.api_v1"),
+    ),
+
+    # =========================================================
     # Teams API
     # =========================================================
-
     path(
         "api/v1/teams/",
         include("apps.teams.urls.api_v1"),
@@ -79,27 +77,26 @@ urlpatterns = [
 
     # =========================================================
     # Accounts
-    #
-    # Includes:
-    #
-    # /one-time-login/
-    # /logout/
-    #
-    # URL names:
-    #
-    # one-time-login
-    # crm-logout
     # =========================================================
-
     path(
         "",
         include("apps.accounts.urls"),
     ),
 
     # =========================================================
+    # Co-Pilot Web Dashboard
+    #
+    # Keep this before the CRM dashboard include because CRM contains
+    # other /dashboard/* routes and previously owned the placeholder.
+    # =========================================================
+    path(
+        "dashboard/copilot/",
+        include("apps.copilot.urls.web"),
+    ),
+
+    # =========================================================
     # CRM Web Dashboard
     # =========================================================
-
     path(
         "dashboard/",
         include("apps.crm.urls.web"),
@@ -107,19 +104,7 @@ urlpatterns = [
 
     # =========================================================
     # WhatsApp Channels
-    #
-    # Includes (see apps/channels/urls.py):
-    #
-    # /dashboard/whatsapp/settings/
-    # /dashboard/whatsapp/connect/
-    # /dashboard/whatsapp/connect/api/
-    # /dashboard/whatsapp/connect/hosted/
-    # /dashboard/whatsapp/disconnect/
-    #
-    # Nested under dashboard/ so it shares the CRM session area
-    # (crm_login_required / request.crm_user).
     # =========================================================
-
     path(
         "dashboard/whatsapp/",
         include("apps.channels.urls"),
@@ -127,11 +112,7 @@ urlpatterns = [
 
     # =========================================================
     # Teams
-    #
-    # Nested under dashboard/ so it shares the CRM session area
-    # (crm_login_required / request.crm_user), same as WhatsApp.
     # =========================================================
-
     path(
         "dashboard/teams/",
         include("apps.teams.urls.web"),
@@ -139,11 +120,7 @@ urlpatterns = [
 
     # =========================================================
     # Analytics
-    #
-    # Nested under dashboard/ so it shares the CRM session area
-    # (crm_login_required / request.crm_user), same as Teams.
     # =========================================================
-
     path(
         "dashboard/analytics/",
         include("apps.analytics.urls.web"),
@@ -151,13 +128,7 @@ urlpatterns = [
 
     # =========================================================
     # WhatsApp Webhook
-    #
-    # Meta calls this directly (verification handshake + message/status
-    # delivery) -- it is NOT nested under dashboard/ or crm_login_required,
-    # since Meta has no CRM session. Authenticity is instead checked via
-    # X-Hub-Signature-256 inside whatsapp_webhook_view itself.
     # =========================================================
-
     path(
         "webhooks/whatsapp/",
         channels_views_flat.whatsapp_webhook_view,
@@ -167,7 +138,6 @@ urlpatterns = [
     # =========================================================
     # Super Admin Console
     # =========================================================
-
     path(
         "superadmin/",
         include("apps.superadmin.urls"),
@@ -176,31 +146,26 @@ urlpatterns = [
     # =========================================================
     # Marketing Pages
     # =========================================================
-
     path(
         "pricing/",
         PricingView.as_view(),
         name="pricing",
     ),
-
     path(
         "privacy-policy/",
         TemplateView.as_view(template_name="legal/privacy_policy.html"),
         name="privacy_policy",
     ),
-
     path(
         "terms-conditions/",
         TemplateView.as_view(template_name="legal/terms_conditions.html"),
         name="terms_conditions",
     ),
-
     path(
         "cookie-policy/",
         TemplateView.as_view(template_name="legal/cookie_policy.html"),
         name="cookie_policy",
     ),
-
     path(
         "refund-policy/",
         TemplateView.as_view(template_name="legal/refund_policy.html"),
@@ -210,7 +175,6 @@ urlpatterns = [
     # =========================================================
     # AI ENGAGEMENT API
     # =========================================================
-
     path(
         "api/v1/ai-engagement/",
         include("apps.ai_engagement.urls.api_v1"),
