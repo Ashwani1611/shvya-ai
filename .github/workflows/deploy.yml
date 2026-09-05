@@ -65,22 +65,22 @@ jobs:
               exit 1
             fi
 
-            echo "Verifying the host-facing application endpoint..."
+            echo "Verifying Django through the host port with the production Host header..."
             ready=0
-            for attempt in $(seq 1 30); do
-              # The root page may redirect unauthenticated users. curl -f treats
-              # any 2xx/3xx response as success as long as we do not follow it.
-              if curl --fail --silent --show-error --max-time 3 http://127.0.0.1:8000/ >/dev/null; then
+            for attempt in $(seq 1 10); do
+              if curl --fail --silent --show-error --max-time 3 \
+                -H "Host: dashboard.shvya-ai.com" \
+                http://127.0.0.1:8000/ >/dev/null; then
                 ready=1
-                echo "Web endpoint is ready."
+                echo "Django host endpoint is ready."
                 break
               fi
-              echo "Waiting for web endpoint... attempt ${attempt}/30"
+              echo "Waiting for Django host endpoint... attempt ${attempt}/10"
               sleep 2
             done
 
             if [ "$ready" -ne 1 ]; then
-              echo "Web endpoint failed readiness verification."
+              echo "Django host endpoint failed readiness verification."
               docker compose ps
               docker compose logs --tail=150 web
               exit 1
@@ -92,6 +92,26 @@ jobs:
             echo "Testing and gracefully reloading Nginx..."
             docker compose exec -T nginx nginx -t
             docker compose exec -T nginx nginx -s reload
+
+            echo "Verifying the public HTTPS endpoint..."
+            public_ready=0
+            for attempt in $(seq 1 10); do
+              if curl --fail --silent --show-error --max-time 5 \
+                https://dashboard.shvya-ai.com/ >/dev/null; then
+                public_ready=1
+                echo "Public HTTPS endpoint is ready."
+                break
+              fi
+              echo "Waiting for public HTTPS endpoint... attempt ${attempt}/10"
+              sleep 2
+            done
+
+            if [ "$public_ready" -ne 1 ]; then
+              echo "Public HTTPS endpoint failed readiness verification."
+              docker compose ps
+              docker compose logs --tail=100 nginx web
+              exit 1
+            fi
 
             echo "Current service status:"
             docker compose ps
