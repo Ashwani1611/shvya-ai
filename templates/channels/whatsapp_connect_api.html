@@ -1,483 +1,295 @@
 {% extends "base.html" %}
 {% load static %}
 
-{% block title %}SHVYA AI — Connect API{% endblock %}
-
-{% block header %}
-    Connect API
-{% endblock %}
+{% block title %}SHVYA AI — Connect WhatsApp Business API{% endblock %}
+{% block header %}Connect API{% endblock %}
 
 {% block content %}
+<div class="mx-auto max-w-7xl space-y-6 pb-10">
 
-    <div class="mx-auto max-w-2xl">
-
-
-        <!-- =====================================================
-             HERO
-             ===================================================== -->
-
-        <div class="mb-6 text-center">
-
-            <h2 class="text-xl font-bold">
-                Connect WhatsApp Business API
-                <i class="ti ti-bolt text-yellow-500"></i>
-            </h2>
-
-            <p class="mt-2 text-sm text-gray-500">
-                Connect your WhatsApp and start replying to leads
-                instantly, tracking conversations, and scaling
-                follow-ups, all in one place.
-            </p>
-
-        </div>
-
-
-        <div class="rounded-xl border border-gray-200 bg-white p-8 shadow-sm">
-
-
-            {% if form.non_field_errors %}
-
-                <div class="mb-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-
-                    {% for error in form.non_field_errors %}
-                        {{ error }}
-                    {% endfor %}
-
+    <section class="overflow-hidden rounded-2xl border border-emerald-100 bg-gradient-to-br from-emerald-50 via-white to-blue-50 shadow-sm">
+        <div class="grid gap-8 px-6 py-7 lg:grid-cols-[1.08fr_.92fr] lg:px-9 lg:py-9">
+            <div>
+                <div class="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-white/80 px-3 py-1 text-xs font-semibold text-emerald-700 shadow-sm">
+                    <i class="ti ti-brand-whatsapp"></i>
+                    WhatsApp Business API
                 </div>
 
-            {% endif %}
-
-
-            <div id="embedded-signup-error" class="mb-6 hidden rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"></div>
-
-
-            <ul class="mb-8 space-y-4 text-sm text-gray-700">
-
-                <li class="flex gap-3">
-                    <i class="ti ti-bolt mt-0.5 text-blue-600"></i>
-                    <span><strong>Always active</strong> — your WhatsApp responds instantly even when you're offline.</span>
-                </li>
-
-                <li class="flex gap-3">
-                    <i class="ti ti-refresh mt-0.5 text-blue-600"></i>
-                    <span><strong>Smart follow-ups</strong> — automated sequences nudge every lead until they reply.</span>
-                </li>
-
-                <li class="flex gap-3">
-                    <i class="ti ti-inbox-down mt-0.5 text-blue-600"></i>
-                    <span><strong>Unified inbox</strong> — your whole team replies from one official number.</span>
-                </li>
-
-            </ul>
-
-
-            {% if embedded_signup_available %}
-
-                <!-- =========================================
-                     PRIMARY -- META EMBEDDED SIGNUP
-                     ========================================= -->
-
-                <button
-                    type="button"
-                    id="embedded-signup-btn"
-                    disabled
-                    class="w-full rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                    Loading Meta…
-                </button>
-
-                <p class="mt-3 text-center text-xs text-gray-400">
-                    <i class="ti ti-lock"></i>
-                    Secure connection via Meta. No coding required · Takes less than 2 minutes.
+                <h1 class="mt-4 max-w-2xl text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
+                    Connect your WhatsApp and manage every lead from SHVYA
+                    <span class="text-amber-500">⚡</span>
+                </h1>
+                <p class="mt-3 max-w-2xl text-sm leading-6 text-slate-600 sm:text-[15px]">
+                    Use Meta's official WhatsApp Business Platform to reply faster, keep conversations connected to CRM leads, automate follow-ups, and manage team communication from one place.
                 </p>
 
-
-                <div class="my-6 flex items-center gap-3 text-xs text-gray-400">
-                    <div class="h-px flex-1 bg-gray-200"></div>
-                    or connect manually
-                    <div class="h-px flex-1 bg-gray-200"></div>
+                <div class="mt-6 grid gap-3 sm:grid-cols-2">
+                    <div class="rounded-xl border border-white/80 bg-white/85 p-4 shadow-sm">
+                        <div class="flex gap-3">
+                            <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-100 text-emerald-600"><i class="ti ti-bolt text-xl"></i></div>
+                            <div><h3 class="text-sm font-bold text-slate-900">Always active</h3><p class="mt-1 text-xs leading-5 text-slate-500">Respond to leads even when your team is away.</p></div>
+                        </div>
+                    </div>
+                    <div class="rounded-xl border border-white/80 bg-white/85 p-4 shadow-sm">
+                        <div class="flex gap-3">
+                            <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-orange-100 text-orange-500"><i class="ti ti-chart-bar text-xl"></i></div>
+                            <div><h3 class="text-sm font-bold text-slate-900">Campaign insights</h3><p class="mt-1 text-xs leading-5 text-slate-500">See delivery, replies and campaign performance.</p></div>
+                        </div>
+                    </div>
+                    <div class="rounded-xl border border-white/80 bg-white/85 p-4 shadow-sm">
+                        <div class="flex gap-3">
+                            <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-100 text-violet-600"><i class="ti ti-refresh text-xl"></i></div>
+                            <div><h3 class="text-sm font-bold text-slate-900">Smart follow-ups</h3><p class="mt-1 text-xs leading-5 text-slate-500">Automated sequences keep leads moving.</p></div>
+                        </div>
+                    </div>
+                    <div class="rounded-xl border border-white/80 bg-white/85 p-4 shadow-sm">
+                        <div class="flex gap-3">
+                            <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-100 text-blue-600"><i class="ti ti-message-circle text-xl"></i></div>
+                            <div><h3 class="text-sm font-bold text-slate-900">Unified inbox</h3><p class="mt-1 text-xs leading-5 text-slate-500">Your team works from one official conversation view.</p></div>
+                        </div>
+                    </div>
+                    <div class="rounded-xl border border-white/80 bg-white/85 p-4 shadow-sm">
+                        <div class="flex gap-3">
+                            <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-rose-100 text-rose-500"><i class="ti ti-shield-check text-xl"></i></div>
+                            <div><h3 class="text-sm font-bold text-slate-900">Secure & official</h3><p class="mt-1 text-xs leading-5 text-slate-500">Connect through Meta's official onboarding flow.</p></div>
+                        </div>
+                    </div>
+                    <div class="rounded-xl border border-white/80 bg-white/85 p-4 shadow-sm">
+                        <div class="flex gap-3">
+                            <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-teal-100 text-teal-600"><i class="ti ti-clock text-xl"></i></div>
+                            <div><h3 class="text-sm font-bold text-slate-900">Quick setup</h3><p class="mt-1 text-xs leading-5 text-slate-500">Guided connection with no coding required.</p></div>
+                        </div>
+                    </div>
                 </div>
+            </div>
 
+            <div class="flex items-center justify-center">
+                <img src="{% static 'channels/whatsapp_api_hero.svg' %}" alt="WhatsApp Business API connected to SHVYA CRM" class="w-full max-w-[610px] rounded-2xl" loading="lazy">
+            </div>
+        </div>
+    </section>
+
+    {% if form.non_field_errors %}
+    <div class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        {% for error in form.non_field_errors %}{{ error }}{% endfor %}
+    </div>
+    {% endif %}
+    <div id="embedded-signup-error" class="hidden break-words rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 [overflow-wrap:anywhere]"></div>
+
+    <section class="grid gap-6 lg:grid-cols-[1fr_360px]">
+        <div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-7">
+            <div class="flex items-start justify-between gap-4">
+                <div>
+                    <h2 class="text-xl font-bold text-slate-900">Connect WhatsApp now</h2>
+                    <p class="mt-2 max-w-2xl text-sm leading-6 text-slate-500">Start Meta's official embedded signup. You will choose or create your WhatsApp Business Account and connect a phone number securely.</p>
+                </div>
+                <div class="hidden h-11 w-11 items-center justify-center rounded-xl bg-emerald-100 text-emerald-600 sm:flex"><i class="ti ti-lock text-xl"></i></div>
+            </div>
+
+            <div class="mt-5 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+                <div class="flex gap-3">
+                    <i class="ti ti-shield-check mt-0.5 text-lg text-emerald-600"></i>
+                    <div><p class="text-sm font-bold text-emerald-800">Official & secure</p><p class="mt-1 text-xs leading-5 text-emerald-700">Authentication and account selection happen through Meta. SHVYA only stores the connection data required to operate your integration.</p></div>
+                </div>
+            </div>
+
+            {% if embedded_signup_available %}
+            <button type="button" id="embedded-signup-btn" disabled class="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-5 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto sm:min-w-[320px]">
+                <i class="ti ti-brand-whatsapp text-lg"></i>
+                <span>Loading Meta…</span>
+            </button>
+            <p class="mt-3 text-xs text-slate-400"><i class="ti ti-lock"></i> Secure Meta connection · No coding required · Usually takes only a few minutes.</p>
             {% else %}
-
-                <div class="mb-6 rounded-lg border border-yellow-200 bg-yellow-50 px-4 py-3 text-sm text-yellow-800">
-                    <i class="ti ti-alert-triangle"></i>
-                    One-click connect via Meta isn't set up on this server yet
-                    (needs <code class="rounded bg-yellow-100 px-1">META_APP_ID</code> and
-                    <code class="rounded bg-yellow-100 px-1">META_WA_EMBEDDED_SIGNUP_CONFIG_ID</code>).
-                    Use the manual form below for now.
-                </div>
-
+            <div class="mt-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                <i class="ti ti-alert-triangle mr-1"></i>
+                One-click Meta signup is not configured on this server yet. Add <code class="rounded bg-amber-100 px-1">META_APP_ID</code> and <code class="rounded bg-amber-100 px-1">META_WA_EMBEDDED_SIGNUP_CONFIG_ID</code>, or use the manual connection below.
+            </div>
             {% endif %}
 
+            <div class="my-6 flex items-center gap-3 text-xs text-slate-400"><div class="h-px flex-1 bg-slate-200"></div><span>Manual connection</span><div class="h-px flex-1 bg-slate-200"></div></div>
 
-            <!-- =============================================
-                 FALLBACK -- MANUAL CREDENTIALS
-                 ============================================= -->
+            <details class="group" {% if not embedded_signup_available %}open{% endif %}>
+                <summary class="flex cursor-pointer list-none items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-100">
+                    <span><i class="ti ti-settings mr-2 text-slate-500"></i>Enter Meta credentials manually</span>
+                    <i class="ti ti-chevron-down transition group-open:rotate-180"></i>
+                </summary>
 
-            <details {% if not embedded_signup_available %}open{% endif %}>
-
-                {% if embedded_signup_available %}
-
-                    <summary class="cursor-pointer text-sm font-medium text-gray-600 hover:text-gray-900">
-                        Enter phone_number_id / access_token manually instead
-                    </summary>
-
-                {% endif %}
-
-                <div class="{% if embedded_signup_available %}mt-5{% endif %}">
-
-                    <div class="mb-6 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-700">
-
-                        <i class="ti ti-info-circle"></i>
-
-                        You'll need a <strong>phone_number_id</strong> and a
-                        <strong>system-user access token</strong> from your Meta
-                        WhatsApp Business Platform app. Your token is encrypted
-                        and never shown again after saving.
-
+                <div class="mt-4 rounded-xl border border-slate-200 p-4 sm:p-5">
+                    <div class="mb-5 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-xs leading-5 text-blue-700">
+                        You need a <strong>Phone Number ID</strong> and a <strong>system-user access token</strong> from Meta's WhatsApp Business Platform. Tokens are stored securely and are never displayed again after saving.
                     </div>
-
-
-                    <form
-                        method="post"
-                        action="{% url 'whatsapp-connect-api' %}"
-                    >
-
+                    <form method="post" action="{% url 'whatsapp-connect-api' %}" class="grid gap-4 sm:grid-cols-2">
                         {% csrf_token %}
-
-
-                        <!-- PHONE NUMBER ID -->
-
-                        <div class="mb-5">
-
-                            <label class="mb-1.5 block text-sm font-medium text-gray-700">
-                                Phone Number ID
-                            </label>
-
-                            <input
-                                type="text"
-                                name="phone_number_id"
-                                value="{{ form.phone_number_id.value|default:'' }}"
-                                placeholder="e.g. 109876543210987"
-                                class="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                            >
-
-                            {% if form.phone_number_id.errors %}
-
-                                <p class="mt-1.5 text-sm text-red-600">
-                                    {{ form.phone_number_id.errors.0 }}
-                                </p>
-
-                            {% endif %}
-
+                        <div>
+                            <label class="mb-1.5 block text-xs font-semibold text-slate-700">Phone Number ID</label>
+                            <input type="text" name="phone_number_id" value="{{ form.phone_number_id.value|default:'' }}" placeholder="e.g. 109876543210987" class="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100">
+                            {% if form.phone_number_id.errors %}<p class="mt-1 text-xs text-red-600">{{ form.phone_number_id.errors.0 }}</p>{% endif %}
                         </div>
-
-
-                        <!-- WABA ID -->
-
-                        <div class="mb-5">
-
-                            <label class="mb-1.5 block text-sm font-medium text-gray-700">
-                                WhatsApp Business Account ID
-                                <span class="font-normal text-gray-400">(optional)</span>
-                            </label>
-
-                            <input
-                                type="text"
-                                name="waba_id"
-                                value="{{ form.waba_id.value|default:'' }}"
-                                placeholder="e.g. 123456789012345"
-                                class="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                            >
-
+                        <div>
+                            <label class="mb-1.5 block text-xs font-semibold text-slate-700">WhatsApp Business Account ID <span class="font-normal text-slate-400">(optional)</span></label>
+                            <input type="text" name="waba_id" value="{{ form.waba_id.value|default:'' }}" placeholder="e.g. 123456789012345" class="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100">
                         </div>
-
-
-                        <!-- DISPLAY PHONE NUMBER -->
-
-                        <div class="mb-5">
-
-                            <label class="mb-1.5 block text-sm font-medium text-gray-700">
-                                Display Phone Number
-                                <span class="font-normal text-gray-400">(optional)</span>
-                            </label>
-
-                            <input
-                                type="text"
-                                name="display_phone_number"
-                                value="{{ form.display_phone_number.value|default:'' }}"
-                                placeholder="e.g. +91 98765 43210"
-                                class="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                            >
-
+                        <div>
+                            <label class="mb-1.5 block text-xs font-semibold text-slate-700">Display Phone Number <span class="font-normal text-slate-400">(optional)</span></label>
+                            <input type="text" name="display_phone_number" value="{{ form.display_phone_number.value|default:'' }}" placeholder="e.g. +91 98765 43210" class="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100">
                         </div>
-
-
-                        <!-- ACCESS TOKEN -->
-
-                        <div class="mb-8">
-
-                            <label class="mb-1.5 block text-sm font-medium text-gray-700">
-                                Access Token
-                            </label>
-
-                            <input
-                                type="password"
-                                name="access_token"
-                                placeholder="System-user access token"
-                                class="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                            >
-
-                            {% if form.access_token.errors %}
-
-                                <p class="mt-1.5 text-sm text-red-600">
-                                    {{ form.access_token.errors.0 }}
-                                </p>
-
-                            {% endif %}
-
-                            <p class="mt-1.5 text-xs text-gray-400">
-                                Stored encrypted. Never displayed again after saving.
-                            </p>
-
+                        <div>
+                            <label class="mb-1.5 block text-xs font-semibold text-slate-700">Access Token</label>
+                            <input type="password" name="access_token" placeholder="System-user access token" class="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100">
+                            {% if form.access_token.errors %}<p class="mt-1 text-xs text-red-600">{{ form.access_token.errors.0 }}</p>{% endif %}
                         </div>
-
-
-                        <button
-                            type="submit"
-                            class="w-full rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
-                        >
-                            Connect WhatsApp
-                        </button>
-
+                        <div class="sm:col-span-2 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                            <p class="text-xs text-slate-400"><i class="ti ti-lock"></i> Access token is stored securely.</p>
+                            <button type="submit" class="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-5 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"><i class="ti ti-plug-connected"></i>Connect manually</button>
+                        </div>
                     </form>
-
                 </div>
-
             </details>
-
         </div>
 
-    </div>
+        <aside class="space-y-4">
+            <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                <h3 class="text-sm font-bold text-slate-900">What you need</h3>
+                <ul class="mt-4 space-y-3 text-xs leading-5 text-slate-600">
+                    <li class="flex gap-2"><i class="ti ti-circle-check mt-0.5 text-emerald-500"></i><span>Facebook account with access to your business portfolio.</span></li>
+                    <li class="flex gap-2"><i class="ti ti-circle-check mt-0.5 text-emerald-500"></i><span>Business details such as name, website and category.</span></li>
+                    <li class="flex gap-2"><i class="ti ti-circle-check mt-0.5 text-emerald-500"></i><span>Admin permission for the WhatsApp Business Account.</span></li>
+                    <li class="flex gap-2"><i class="ti ti-circle-check mt-0.5 text-emerald-500"></i><span>A phone number that can be used with WhatsApp Business.</span></li>
+                </ul>
+            </div>
 
+            <div class="rounded-2xl border border-blue-100 bg-blue-50/70 p-5">
+                <h3 class="text-sm font-bold text-slate-900">Already connected?</h3>
+                <p class="mt-2 text-xs leading-5 text-slate-600">Manage active numbers, reconnect notifications or remove a number from the connected accounts screen.</p>
+                <a href="{% url 'whatsapp-accounts' %}" class="mt-4 inline-flex items-center gap-2 text-xs font-bold text-blue-600 hover:text-blue-700">Manage connected numbers <i class="ti ti-arrow-right"></i></a>
+            </div>
 
-    {% if embedded_signup_available %}
+            <div class="rounded-2xl border border-violet-100 bg-violet-50/70 p-5">
+                <h3 class="text-sm font-bold text-slate-900">Want a coexisted account?</h3>
+                <p class="mt-2 text-xs leading-5 text-slate-600">Use the Coexisted Accounts option if you want SHVYA's alternative onboarding path.</p>
+                <a href="{% url 'whatsapp-connect-hosted' %}" class="mt-4 inline-flex items-center gap-2 text-xs font-bold text-violet-600 hover:text-violet-700">Open Coexisted Accounts <i class="ti ti-arrow-right"></i></a>
+            </div>
+        </aside>
+    </section>
 
-        <script>
+    <section class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+        <div class="grid gap-5 md:grid-cols-3">
+            <div><div class="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-100 text-emerald-600"><i class="ti ti-message-circle text-lg"></i></div><h3 class="mt-3 text-sm font-bold text-slate-900">1. Connect your number</h3><p class="mt-1 text-xs leading-5 text-slate-500">Complete Meta signup and allow SHVYA to receive message events.</p></div>
+            <div><div class="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-100 text-blue-600"><i class="ti ti-users text-lg"></i></div><h3 class="mt-3 text-sm font-bold text-slate-900">2. Start receiving leads</h3><p class="mt-1 text-xs leading-5 text-slate-500">Incoming WhatsApp conversations stay tied to your CRM records.</p></div>
+            <div><div class="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-100 text-violet-600"><i class="ti ti-rocket text-lg"></i></div><h3 class="mt-3 text-sm font-bold text-slate-900">3. Use chats, templates & broadcasts</h3><p class="mt-1 text-xs leading-5 text-slate-500">Once connected, SHVYA automatically exposes the WhatsApp working tools in the sidebar.</p></div>
+        </div>
+    </section>
+</div>
 
-            /* ============================================================
-               META EMBEDDED SIGNUP
-               Docs: https://developers.facebook.com/docs/whatsapp/embedded-signup
-               (verify against Meta's current docs before going live --
-               this SDK/flow shape does change between API versions.)
+{% if embedded_signup_available %}
+<script>
+var signupData = {code: null, waba_id: null, phone_number_id: null};
+var sdkLoaded = false;
 
-               Two independent things come back from Meta and BOTH are
-               needed before the server-side exchange can run:
+function getCookie(name) {
+    var match = document.cookie.match('(^|;)\\s*' + name + '\\s*=\\s*([^;]+)');
+    return match ? match.pop() : '';
+}
 
-               1. postMessage from the popup with type "WA_EMBEDDED_SIGNUP"
-                  -- carries waba_id and phone_number_id once the person
-                  finishes picking/creating their WABA and number.
+function showSignupError(message) {
+    var box = document.getElementById('embedded-signup-error');
+    box.textContent = message;
+    box.classList.remove('hidden');
+    box.scrollIntoView({behavior: 'smooth', block: 'center'});
+}
 
-               2. FB.login()'s own callback -- carries the short-lived
-                  `code` used to get an access token. This fires
-                  separately (usually after #1, when the popup closes).
+function setSignupButton(text, disabled) {
+    var btn = document.getElementById('embedded-signup-btn');
+    if (!btn) return;
+    var label = btn.querySelector('span');
+    if (label) label.textContent = text;
+    btn.disabled = disabled;
+}
 
-               Until both have arrived, "Connect WhatsApp Now" can't
-               finish -- the code below waits for whichever arrives last.
-               ============================================================ */
+function maybeFinishSignup() {
+    if (!signupData.code || !signupData.waba_id || !signupData.phone_number_id) return;
+    setSignupButton('Connecting…', true);
 
-            var signupData = {
-                code: null,
-                waba_id: null,
-                phone_number_id: null,
-            };
+    var formData = new FormData();
+    formData.append('code', signupData.code);
+    formData.append('waba_id', signupData.waba_id);
+    formData.append('phone_number_id', signupData.phone_number_id);
 
-            function getCookie(name) {
-                var match = document.cookie.match('(^|;)\\s*' + name + '\\s*=\\s*([^;]+)');
-                return match ? match.pop() : '';
-            }
+    fetch('{% url "whatsapp-embedded-signup-callback" %}', {
+        method: 'POST',
+        headers: {'X-CSRFToken': getCookie('csrftoken')},
+        body: formData,
+    })
+    .then(function (response) {
+        return response.json().then(function (data) {
+            if (!response.ok) throw new Error(data.error || 'Could not finish connecting WhatsApp.');
+            return data;
+        });
+    })
+    .then(function (data) { window.location.href = data.redirect_url; })
+    .catch(function (err) {
+        setSignupButton('Connect WhatsApp Business API', false);
+        showSignupError(err.message);
+    });
+}
 
-            function showSignupError(message) {
-                var box = document.getElementById('embedded-signup-error');
-                box.textContent = message;
-                box.classList.remove('hidden');
-            }
+window.addEventListener('message', function (event) {
+    if (!event.origin.endsWith('facebook.com')) return;
+    var data;
+    try { data = JSON.parse(event.data); } catch (e) { return; }
+    if (data.type !== 'WA_EMBEDDED_SIGNUP') return;
 
-            function maybeFinishSignup() {
-                if (!signupData.code || !signupData.waba_id || !signupData.phone_number_id) {
-                    return;
-                }
+    if (data.event === 'FINISH' && data.data) {
+        signupData.waba_id = data.data.waba_id;
+        signupData.phone_number_id = data.data.phone_number_id;
+        maybeFinishSignup();
+    } else if (data.event === 'CANCEL') {
+        showSignupError('WhatsApp connection was cancelled.');
+    } else if (data.event === 'ERROR') {
+        showSignupError((data.data && data.data.error_message) || 'Meta reported an error during signup.');
+    }
+});
 
-                var btn = document.getElementById('embedded-signup-btn');
-                btn.disabled = true;
-                btn.textContent = 'Connecting...';
+window.fbAsyncInit = function () {
+    FB.init({appId: '{{ meta_app_id }}', autoLogAppEvents: true, xfbml: false, version: 'v21.0'});
+    sdkLoaded = true;
+    setSignupButton('Connect WhatsApp Business API', false);
+};
 
-                var formData = new FormData();
-                formData.append('code', signupData.code);
-                formData.append('waba_id', signupData.waba_id);
-                formData.append('phone_number_id', signupData.phone_number_id);
+setTimeout(function () {
+    if (sdkLoaded) return;
+    setSignupButton('Connect WhatsApp Business API', false);
+    showSignupError("Meta's connection script did not load. Disable blockers for this site or try another browser. You can also use the manual connection option below.");
+}, 8000);
 
-                fetch('{% url "whatsapp-embedded-signup-callback" %}', {
-                    method: 'POST',
-                    headers: {'X-CSRFToken': getCookie('csrftoken')},
-                    body: formData,
-                })
-                    .then(function (response) {
-                        return response.json().then(function (data) {
-                            if (!response.ok) {
-                                throw new Error(data.error || 'Could not finish connecting WhatsApp.');
-                            }
-                            return data;
-                        });
-                    })
-                    .then(function (data) {
-                        window.location.href = data.redirect_url;
-                    })
-                    .catch(function (err) {
-                        btn.disabled = false;
-                        btn.textContent = 'Connect WhatsApp Now';
-                        showSignupError(err.message);
-                    });
-            }
+(function (d, s, id) {
+    var js, fjs = d.getElementsByTagName(s)[0];
+    if (d.getElementById(id)) return;
+    js = d.createElement(s); js.id = id;
+    js.src = 'https://connect.facebook.net/en_US/sdk.js';
+    fjs.parentNode.insertBefore(js, fjs);
+}(document, 'script', 'facebook-jssdk'));
 
-            // Meta posts progress/result events here while the popup is open.
-            window.addEventListener('message', function (event) {
-                if (!event.origin.endsWith('facebook.com')) {
-                    return;
-                }
+document.getElementById('embedded-signup-btn').addEventListener('click', function () {
+    if (typeof FB === 'undefined') {
+        showSignupError("Meta's connection script is unavailable. Allow popups and cross-site scripts for this page, or use manual connection.");
+        return;
+    }
 
-                try {
-                    var data = JSON.parse(event.data);
-                } catch (e) {
-                    return;
-                }
-
-                if (data.type !== 'WA_EMBEDDED_SIGNUP') {
-                    return;
-                }
-
-                if (data.event === 'FINISH' && data.data) {
-                    signupData.waba_id = data.data.waba_id;
-                    signupData.phone_number_id = data.data.phone_number_id;
-                    maybeFinishSignup();
-                } else if (data.event === 'CANCEL') {
-                    showSignupError('WhatsApp connection was cancelled.');
-                } else if (data.event === 'ERROR') {
-                    showSignupError((data.data && data.data.error_message) || 'Meta reported an error during signup.');
-                }
-            });
-
-            window.fbAsyncInit = function () {
-                FB.init({
-                    appId: '{{ meta_app_id }}',
-                    autoLogAppEvents: true,
-                    xfbml: false,
-                    version: 'v21.0',
-                });
-
-                sdkLoaded = true;
-
-                var btn = document.getElementById('embedded-signup-btn');
-                btn.disabled = false;
-                btn.textContent = 'Connect WhatsApp Now';
-            };
-
-            var sdkLoaded = false;
-
-            // If Meta's SDK hasn't called fbAsyncInit within 8s, something
-            // is blocking connect.facebook.net before our code ever gets a
-            // chance to show its own error -- most commonly an ad blocker,
-            // Safari's cross-site tracking prevention, or a network/CSP
-            // rule on this server blocking the request outright. This is
-            // the #1 cause of "the button does nothing, no popup, no
-            // error" -- without this timeout, that failure is silent.
-            setTimeout(function () {
-                if (sdkLoaded) {
-                    return;
-                }
-
-                console.error(
-                    'SHVYA: Meta JS SDK (connect.facebook.net/en_US/sdk.js) ' +
-                    'never called fbAsyncInit. Likely blocked by an ad ' +
-                    'blocker / browser tracking-prevention, or this domain ' +
-                    'is not in the Meta App\'s allowed domains.'
-                );
-
-                showSignupError(
-                    "Meta's connect script didn't load. This is usually an " +
-                    'ad blocker or a browser privacy setting blocking ' +
-                    'connect.facebook.net -- try disabling it for this site, ' +
-                    'or use a different browser. You can also use the ' +
-                    'manual form below in the meantime.'
-                );
-
-                var btn = document.getElementById('embedded-signup-btn');
-                btn.textContent = 'Connect WhatsApp Now';
-                // Leave it enabled despite the failed load -- clicking will
-                // hit the "typeof FB === 'undefined'" check below and show
-                // a second, more specific message rather than doing nothing.
-                btn.disabled = false;
-            }, 8000);
-
-            (function (d, s, id) {
-                var js, fjs = d.getElementsByTagName(s)[0];
-                if (d.getElementById(id)) { return; }
-                js = d.createElement(s); js.id = id;
-                js.src = 'https://connect.facebook.net/en_US/sdk.js';
-                js.onerror = function () {
-                    console.error('SHVYA: connect.facebook.net/en_US/sdk.js failed to load (network error).');
-                };
-                fjs.parentNode.insertBefore(js, fjs);
-            }(document, 'script', 'facebook-jssdk'));
-
-            document.getElementById('embedded-signup-btn').addEventListener('click', function () {
-                if (typeof FB === 'undefined') {
-                    showSignupError(
-                        "Meta's connect script isn't available -- check the " +
-                        'browser console for a blocked-request error (often ' +
-                        'an ad blocker), or use the manual form below.'
-                    );
-                    return;
-                }
-
-                console.log('SHVYA: calling FB.login with config_id={{ meta_config_id }}');
-
-                FB.login(
-                    function (response) {
-                        console.log('SHVYA: FB.login callback fired', response);
-
-                        if (response.authResponse && response.authResponse.code) {
-                            signupData.code = response.authResponse.code;
-                            maybeFinishSignup();
-                        } else if (!signupData.waba_id) {
-                            // Only complain here if the postMessage listener
-                            // hasn't already reported a cancel/error -- avoids
-                            // showing two different error messages for the
-                            // same popup-closed-early event.
-                            showSignupError(
-                                'WhatsApp connection was not completed. If no ' +
-                                'popup appeared at all, check whether your ' +
-                                "browser blocked it (look for a popup-blocked " +
-                                'icon in the address bar) and allow popups for this site.'
-                            );
-                        }
-                    },
-                    {
-                        config_id: '{{ meta_config_id }}',
-                        response_type: 'code',
-                        override_default_response_type: true,
-                        extras: {
-                            setup: {},
-                            featureType: '',
-                            sessionInfoVersion: '3',
-                        },
-                    }
-                );
-            });
-
-        </script>
-
-    {% endif %}
-
+    FB.login(function (response) {
+        if (response.authResponse && response.authResponse.code) {
+            signupData.code = response.authResponse.code;
+            maybeFinishSignup();
+        } else if (!signupData.waba_id) {
+            showSignupError('WhatsApp connection was not completed. Allow popups for this site and try again.');
+        }
+    }, {
+        config_id: '{{ meta_config_id }}',
+        response_type: 'code',
+        override_default_response_type: true,
+        extras: {setup: {}, featureType: '', sessionInfoVersion: '3'},
+    });
+});
+</script>
+{% endif %}
 {% endblock %}
