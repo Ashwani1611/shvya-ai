@@ -121,6 +121,17 @@ urlpatterns = [
     ),
 
     # =========================================================
+    # Connect Hub Web Dashboard
+    #
+    # Keep this before the broad CRM dashboard include so the integrations
+    # app owns /dashboard/connect-hub/* and the legacy redirect.
+    # =========================================================
+    path(
+        "dashboard/",
+        include("apps.integrations.urls.web"),
+    ),
+
+    # =========================================================
     # CRM Web Dashboard
     # =========================================================
     path(
