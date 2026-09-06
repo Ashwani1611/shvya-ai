@@ -1,0 +1,100 @@
+"""Install hosted WhatsApp transport without disturbing Meta Cloud API sends."""
+
+from apps.channels.models import WhatsAppMessage
+from apps.channels.providers.whatsapp_web import (
+    WhatsAppWebClient,
+    WhatsAppWebGatewayError,
+)
+
+
+_INSTALLED = False
+_ORIGINAL_SEND = None
+
+
+def _send_hosted_message(*, message):
+    from services.channels.whatsapp_service import WhatsAppSendError
+
+    account = message.account
+    if account.organization_id != message.organization_id:
+        raise WhatsAppSendError(
+            "WhatsApp account does not belong to the message organization."
+        )
+    if not account.is_active:
+        raise WhatsAppSendError("WhatsApp account is inactive.")
+    if account.status != account.Status.CONNECTED:
+        raise WhatsAppSendError("Hosted WhatsApp session is not running.")
+
+    media_url = None
+    filename = None
+    if message.message_type != WhatsAppMessage.MessageType.TEXT:
+        payload = message.media_payload or {}
+        if payload.get("source") != "url" or not payload.get("url"):
+            raise WhatsAppSendError(
+                "Hosted WhatsApp media currently requires a URL-backed media source."
+            )
+        media_url = payload["url"]
+        filename = payload.get("filename")
+
+    try:
+        response = WhatsAppWebClient().send_message(
+            session_id=account.id,
+            to_number=message.to_number,
+            body=message.body,
+            message_type=message.message_type,
+            media_url=media_url,
+            filename=filename,
+        )
+    except WhatsAppWebGatewayError as exc:
+        message.status = WhatsAppMessage.Status.FAILED
+        message.error = str(exc)
+        message.save(update_fields=["status", "error", "updated_at"])
+        raise WhatsAppSendError(str(exc)) from exc
+
+    raw_id = response.get("messageId")
+    if not raw_id:
+        message.status = WhatsAppMessage.Status.FAILED
+        message.error = "Hosted WhatsApp gateway returned no message id."
+        message.save(update_fields=["status", "error", "updated_at"])
+        raise WhatsAppSendError(message.error)
+
+    existing_payload = (
+        message.raw_payload if isinstance(message.raw_payload, dict) else {}
+    )
+    final_payload = dict(response)
+    for key in ("shvya_ai", "shvya_hosted"):
+        if key in existing_payload:
+            final_payload[key] = existing_payload[key]
+
+    message.status = WhatsAppMessage.Status.SENT
+    message.external_id = f"wweb:{raw_id}"
+    message.raw_payload = final_payload
+    message.error = ""
+    message.save(
+        update_fields=[
+            "status",
+            "external_id",
+            "raw_payload",
+            "error",
+            "updated_at",
+        ]
+    )
+    return message
+
+
+def install_hosted_whatsapp_transport():
+    """Patch the canonical Celery send path with provider dispatch once."""
+    global _INSTALLED, _ORIGINAL_SEND
+    if _INSTALLED:
+        return
+
+    from services.channels import whatsapp_service
+
+    _ORIGINAL_SEND = whatsapp_service.send_outbound_message
+
+    def provider_aware_send_outbound_message(*, message):
+        if message.account.connection_type == "hosted":
+            return _send_hosted_message(message=message)
+        return _ORIGINAL_SEND(message=message)
+
+    whatsapp_service.send_outbound_message = provider_aware_send_outbound_message
+    _INSTALLED = True
