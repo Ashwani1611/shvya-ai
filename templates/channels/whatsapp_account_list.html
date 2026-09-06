@@ -70,14 +70,16 @@
                                 </span>
                                 <div class="min-w-0">
                                     <div class="font-semibold text-gray-900">{{ account.display_phone_number|default:"—" }}</div>
-                                    <div class="mt-1 max-w-[240px] break-all text-[11px] text-gray-400">Phone ID: {{ account.phone_number_id|default:"—" }}</div>
+                                    <div class="mt-1 max-w-[240px] break-all text-[11px] text-gray-400">
+                                        {% if account.connection_type == 'hosted' %}Hosted number{% else %}Phone ID{% endif %}: {{ account.phone_number_id|default:"—" }}
+                                    </div>
                                 </div>
                             </div>
                         </td>
                         <td class="px-5 py-4">
                             <div class="font-medium text-gray-700">{{ account.business_name|default:account.get_connection_type_display }}</div>
-                            <div class="mt-1 max-w-[240px] break-all text-[11px] text-gray-400">WABA: {{ account.waba_id|default:"—" }}</div>
-                            <div class="mt-1 text-[11px] text-gray-400">{{ account.get_connection_type_display }}</div>
+                            {% if account.connection_type == 'api' %}<div class="mt-1 max-w-[240px] break-all text-[11px] text-gray-400">WABA: {{ account.waba_id|default:"—" }}</div>{% endif %}
+                            <div class="mt-1 text-[11px] text-gray-400">{% if account.connection_type == 'hosted' %}Hosted Account{% else %}{{ account.get_connection_type_display }}{% endif %}</div>
                         </td>
                         <td class="px-5 py-4">
                             <span class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold {% if account.status == 'connected' %}bg-green-50 text-green-700{% elif account.status == 'pending' %}bg-amber-50 text-amber-700{% elif account.status == 'failed' %}bg-red-50 text-red-700{% else %}bg-gray-100 text-gray-600{% endif %}">
@@ -128,7 +130,7 @@
                 <i class="ti ti-brand-whatsapp"></i>
             </div>
             <h3 class="mt-4 text-base font-semibold text-gray-900">No WhatsApp number connected</h3>
-            <p class="mx-auto mt-1 max-w-md text-sm text-gray-500">Connect an API number or request a coexisted account to unlock Chats, Templates and Broadcasts.</p>
+            <p class="mx-auto mt-1 max-w-md text-sm text-gray-500">Connect an API number or add a Hosted Account to start using WhatsApp in SHVYA.</p>
             {% if can_manage %}
             <a href="{% url 'whatsapp-connect-api' %}" class="mt-5 inline-flex items-center gap-2 rounded-xl bg-[#128c7e] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#0f766e]">
                 <i class="ti ti-plug-connected"></i> Connect WhatsApp
@@ -176,8 +178,6 @@
                     window.shvyaToast('WhatsApp account disconnected.', 'success');
                 }
 
-                // Refresh once so the sidebar and every connected-number selector
-                // immediately use the new connection state too.
                 setTimeout(function () { window.location.reload(); }, 450);
             } catch (error) {
                 button.disabled = false;
