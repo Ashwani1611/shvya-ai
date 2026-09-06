@@ -61,6 +61,8 @@ from services.crm.lead_service import (
 )
 
 from .api import STAGE_THEMES, get_user_pipelines
+from .bulk import bulk_permissions
+from apps.followups.models import LeadSequenceState
 
 
 logger = logging.getLogger(__name__)
@@ -2554,7 +2556,7 @@ def _build_lead_table_context(
     if filter_pipeline:
 
         selected_filter_pipeline = (
-            Pipeline.objects
+            get_user_pipelines(user)
             .filter(
                 organization=organization,
                 id=filter_pipeline,
@@ -2854,6 +2856,8 @@ def _build_lead_table_context(
 
     return {
         "stage_groups": stage_groups,
+        "bulk_permissions": bulk_permissions(user, pipeline),
+        "bulk_query": request.GET.urlencode(),
 
         "all_stages": stages,
 
@@ -3566,6 +3570,11 @@ def _lead_card_context(
     IMPORTANT:
         Keep this isolated from stage-management logic.
     """
+
+    lead.auto_followup_name = (
+        LeadSequenceState.objects.filter(lead=lead, status__in=["active", "paused"])
+        .values_list("sequence__name", flat=True).first()
+    )
 
     lead.days_in_stage = (
         timezone.now()

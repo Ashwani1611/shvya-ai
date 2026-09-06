@@ -8,7 +8,26 @@
 
 {% else %}
 
-<div class="w-full">
+<div class="w-full" data-bulk-root data-pipeline="{{ selected_pipeline_id }}"
+     data-bulk-url="{% url 'crm-leads-bulk' %}"
+     data-refresh-url="{% url 'crm-lead-table-partial' %}?{{ bulk_query }}"
+     data-can-move="{{ bulk_permissions.move|yesno:'true,false' }}"
+     data-can-edit="{{ bulk_permissions.edit|yesno:'true,false' }}"
+     data-can-delete="{{ bulk_permissions.delete|yesno:'true,false' }}">
+
+    <div class="crm-bulk-toolbar" data-bulk-toolbar hidden aria-label="Selected lead actions">
+        <strong data-bulk-count aria-live="polite"></strong>
+        <button type="button" data-bulk-clear class="crm-bulk-link">Clear selection</button>
+        <div class="crm-bulk-actions">
+            {% if bulk_permissions.move or bulk_permissions.edit %}
+            <button type="button" data-bulk-action="update" class="crm-bulk-button crm-bulk-primary">Update Leads</button>
+            {% endif %}
+            <button type="button" data-bulk-action="export" class="crm-bulk-button">Export</button>
+            {% if bulk_permissions.delete %}
+            <button type="button" data-bulk-action="delete" class="crm-bulk-button crm-bulk-danger-outline">Delete</button>
+            {% endif %}
+        </div>
+    </div>
 
     <!-- ============================================================
          STAGE NAVIGATION
@@ -773,6 +792,11 @@
                 {% endif %}
             "
         >
+
+                <label class="crm-stage-select" data-stage-selection {% if not group.leads %}hidden{% endif %}>
+                    <input type="checkbox" data-stage-select aria-label="Select all matching leads in {{ group.stage.name }}">
+                    <span><span data-stage-select-label>Select all {{ group.count }} leads in this stage</span> <small>(matching current filters)</small></span>
+                </label>
 
             {% if group.leads %}
 

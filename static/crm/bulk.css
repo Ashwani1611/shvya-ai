@@ -1,0 +1,42 @@
+[data-bulk-toolbar][hidden], [data-stage-selection][hidden], .crm-bulk-dialog [hidden], .crm-bulk-status[hidden] { display: none !important; }
+.crm-lead-checkbox, .crm-stage-select input, .crm-bulk-dialog input[type=checkbox], .crm-bulk-dialog input[type=radio] { width: 18px; height: 18px; accent-color: #3b82f6; cursor: pointer; flex-shrink: 0; }
+.crm-lead-checkbox { margin-top: 12px; }
+.lead-card.crm-is-selected { outline: 2px solid #3b82f6; outline-offset: -2px; }
+.crm-stage-select { display: flex; align-items: center; gap: 10px; margin: 0 0 16px; color: #374151; cursor: pointer; font-size: 14px; }
+.crm-stage-select small, .crm-bulk-dialog small, .crm-bulk-help { color: #6b7280; font-size: 12px; }
+.crm-bulk-toolbar { position: sticky; top: 0; z-index: 20; display: flex; align-items: center; flex-wrap: wrap; gap: 12px; padding: 12px 16px; margin-bottom: 16px; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 12px; font-size: 14px; }
+.crm-bulk-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-left: auto; }
+.crm-bulk-button { min-height: 42px; padding: 9px 16px; border: 1px solid #d1d5db; border-radius: 9px; background: white; color: #374151; font-size: 14px; font-weight: 600; cursor: pointer; }
+.crm-bulk-button:hover { background: #f3f4f6; }
+.crm-bulk-primary { background: #3b82f6; border-color: #3b82f6; color: white; }
+.crm-bulk-primary:hover { background: #2563eb; }
+.crm-bulk-danger-outline { color: #b91c1c; border-color: #fecaca; }
+.crm-bulk-danger { color: white; background: #c83e4d; border-color: #c83e4d; }
+.crm-bulk-danger:hover { background: #b42333; }
+.crm-bulk-link { color: #2563eb; font-size: 13px; background: none; border: 0; padding: 6px; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
+.crm-bulk-dialog { width: min(620px, calc(100vw - 32px)); max-height: 88vh; padding: 0; margin: auto; border: 1px solid #e5e7eb; border-radius: 16px; box-shadow: 0 24px 60px #0f172a33; color: #1f2937; background: white; }
+.crm-bulk-dialog::backdrop { background: #0f172a66; }
+.crm-bulk-dialog form { display: flex; flex-direction: column; max-height: 88vh; }
+.crm-bulk-dialog-header, .crm-bulk-dialog-footer { display: flex; align-items: center; justify-content: space-between; padding: 18px 24px; gap: 12px; flex-shrink: 0; }
+.crm-bulk-dialog-header { border-bottom: 1px solid #e5e7eb; }
+.crm-bulk-dialog-header h2 { margin: 0; font-size: 20px; font-weight: 600; }
+.crm-bulk-close { font-size: 28px; line-height: 1; width: 36px; height: 36px; border-radius: 6px; background: none; cursor: pointer; color: #6b7280; }
+.crm-bulk-dialog-body { padding: 22px 24px; overflow-y: auto; }
+#crm-bulk-description { margin: 0 0 20px; font-size: 14px; color: #4b5563; }
+.crm-bulk-choice { display: flex; align-items: center; gap: 10px; margin: 14px 0; font-size: 15px; cursor: pointer; }
+.crm-bulk-dialog fieldset { border: 1px solid #bfdbfe; border-radius: 10px; padding: 12px 16px 16px; margin: 8px 0 20px; min-width: 0; }
+.crm-bulk-dialog fieldset:disabled { opacity: .5; }
+.crm-bulk-dialog legend { font-size: 13px; color: #2563eb; padding: 0 6px; }
+.crm-bulk-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.crm-bulk-grid label, .crm-bulk-dialog label[for] { font-size: 13px; }
+.crm-bulk-dialog select { display: block; width: 100%; padding: 10px; margin-top: 6px; border: 1px solid #d1d5db; border-radius: 8px; background: white; font-size: 14px; }
+.crm-bulk-help { margin-top: 12px; line-height: 1.5; }
+.crm-bulk-field-list { display: grid; grid-template-columns: 1fr 1fr; gap: 0 14px; }
+.crm-bulk-field-list label { overflow-wrap: anywhere; }
+.crm-bulk-dialog-footer { border-top: 1px solid #e5e7eb; }
+.crm-bulk-error, .crm-bulk-warning { padding: 12px; border: 1px solid #fca5a5; border-radius: 8px; background: #fff7f7; color: #991b1b; font-size: 14px; margin-bottom: 16px; }
+.crm-bulk-warning p { margin: 8px 0 0; }
+.crm-bulk-status { padding: 12px 16px; margin-bottom: 12px; background: #eff6ff; color: #1e40af; border-radius: 10px; }
+.crm-bulk-dialog :focus-visible, .crm-bulk-toolbar :focus-visible, .crm-stage-select input:focus-visible, .crm-lead-checkbox:focus-visible { outline: 2px solid #2563eb; outline-offset: 3px; }
+.crm-bulk-button:disabled { opacity: .5; cursor: wait; }
+@media (max-width: 540px) { .crm-bulk-grid, .crm-bulk-field-list { grid-template-columns: 1fr; } .crm-bulk-actions { margin-left: 0; width: 100%; } .crm-bulk-dialog-body, .crm-bulk-dialog-header, .crm-bulk-dialog-footer { padding: 16px; } }

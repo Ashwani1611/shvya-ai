@@ -1,6 +1,6 @@
 """Query-efficient context builder for the CRM lead dashboard."""
 
-from django.db.models import Count, Prefetch, Q, TextField
+from django.db.models import Count, OuterRef, Prefetch, Q, Subquery, TextField
 from django.db.models.functions import Cast, Upper
 from django.utils import timezone
 
@@ -10,10 +10,11 @@ from apps.crm.models import (
     LeadCall,
     LeadNote,
     LeadReminder,
-    Pipeline,
     Stage,
 )
-from apps.crm.views.api import STAGE_THEMES
+from apps.crm.views.api import STAGE_THEMES, get_user_pipelines
+from apps.crm.views.bulk import bulk_permissions
+from apps.followups.models import LeadSequenceState
 from services.crm.attribute_cache import get_cached_attribute_definitions
 
 
@@ -112,7 +113,7 @@ def build_lead_table_context(
     # building stages/leads so the core filter logic is applied only once.
     if filter_pipeline:
         selected_filter_pipeline = (
-            Pipeline.objects
+            get_user_pipelines(user)
             .filter(
                 organization=organization,
                 id=filter_pipeline,
@@ -154,7 +155,14 @@ def build_lead_table_context(
             "stage",
             "pipeline",
         )
-        .annotate(call_count=Count("calls"))
+        .annotate(
+            call_count=Count("calls"),
+            auto_followup_name=Subquery(
+                LeadSequenceState.objects.filter(
+                    lead_id=OuterRef("pk"), status__in=["active", "paused"],
+                ).values("sequence__name")[:1]
+            ),
+        )
     )
 
     leads_qs = _apply_core_filters(
@@ -308,6 +316,8 @@ def build_lead_table_context(
 
     return {
         "stage_groups": stage_groups,
+        "bulk_permissions": bulk_permissions(user, pipeline),
+        "bulk_query": request.GET.urlencode(),
         "all_stages": stages,
         "selected_pipeline_id": str(pipeline.id),
         "active_stage_id": active_stage_id,

@@ -1,4 +1,11 @@
 {% extends "base.html" %}
+{% load static %}
+
+{% block extra_head %}
+{{ block.super }}
+<link rel="stylesheet" href="{% static 'crm/bulk.css' %}">
+<script src="{% static 'crm/bulk.js' %}" defer></script>
+{% endblock %}
 
 {% block title %}
     SHVYA AI - CRM
@@ -6,6 +13,8 @@
 
 
 {% block content %}
+{% include "crm/partials/bulk_dialog.html" %}
+<div id="crm-bulk-status" class="crm-bulk-status" role="status" aria-live="polite" hidden></div>
 
 <div class="h-full flex flex-col">
 

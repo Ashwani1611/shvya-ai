@@ -119,6 +119,9 @@
 
         <div class="flex items-start gap-4">
 
+            <input type="checkbox" class="crm-lead-checkbox" data-lead-select
+                   value="{{ lead.id }}" aria-label="Select {{ lead.name }}">
+
             <!-- Avatar -->
 
             <div
@@ -510,7 +513,7 @@
                     text-gray-700
                 "
             >
-                Coming soon
+                {{ lead.auto_followup_name|default:"No sequence assigned" }}
             </p>
 
         </div>

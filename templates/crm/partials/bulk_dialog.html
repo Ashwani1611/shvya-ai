@@ -1,0 +1,49 @@
+<dialog id="crm-bulk-dialog" class="crm-bulk-dialog" aria-labelledby="crm-bulk-title" aria-describedby="crm-bulk-description">
+    <form id="crm-bulk-form">
+        {% csrf_token %}
+        <header class="crm-bulk-dialog-header">
+            <h2 id="crm-bulk-title">Update Leads</h2>
+            <button type="button" data-bulk-cancel class="crm-bulk-close" aria-label="Close dialog">&times;</button>
+        </header>
+        <div class="crm-bulk-dialog-body">
+            <p id="crm-bulk-description"></p>
+            <p id="crm-bulk-error" class="crm-bulk-error" role="alert" hidden></p>
+            <div data-bulk-section="update" hidden>
+                <label class="crm-bulk-choice"><input type="checkbox" id="crm-bulk-move"> Update Pipeline &amp; Stage</label>
+                <fieldset id="crm-bulk-destination" disabled>
+                    <legend>Where should these leads be moved?</legend>
+                    <div class="crm-bulk-grid">
+                        <label>Pipeline<select id="crm-bulk-pipeline" required></select></label>
+                        <label>Stage<select id="crm-bulk-stage" required></select></label>
+                    </div>
+                </fieldset>
+                <label class="crm-bulk-choice"><input type="checkbox" id="crm-bulk-change-sequence"> Update Auto Followup sequence</label>
+                <fieldset id="crm-bulk-followup" disabled>
+                    <legend>Choose a sequence action</legend>
+                    <label class="crm-bulk-choice"><input type="radio" name="sequence_action" value="assign" checked> Assign a sequence</label>
+                    <label for="crm-bulk-sequence">Auto Followup sequence</label>
+                    <select id="crm-bulk-sequence" required></select>
+                    <label class="crm-bulk-choice"><input type="radio" name="sequence_action" value="clear"> Clear current sequences</label>
+                    <p class="crm-bulk-help">Assignment replaces the current sequence using the existing follow-up scheduling rules. The WhatsApp sender must match the destination pipeline.</p>
+                </fieldset>
+            </div>
+            <div data-bulk-section="export" hidden>
+                <label class="crm-bulk-choice"><input type="radio" name="attribute_mode" value="all" checked> <span>Export with All Attributes <small id="crm-bulk-field-count"></small></span></label>
+                <label class="crm-bulk-choice"><input type="radio" name="attribute_mode" value="selected"> Export with Selected Attributes</label>
+                <fieldset id="crm-bulk-attributes" hidden disabled>
+                    <legend>Attributes to include</legend>
+                    <button type="button" data-attributes-all class="crm-bulk-link">Select all</button>
+                    <button type="button" data-attributes-none class="crm-bulk-link">Clear</button>
+                    <div id="crm-bulk-field-list" class="crm-bulk-field-list"></div>
+                </fieldset>
+            </div>
+            <div data-bulk-section="delete" hidden>
+                <div class="crm-bulk-warning"><strong>This action is permanent and cannot be undone.</strong><p>Selected leads and their related CRM records will be removed from the system.</p></div>
+            </div>
+        </div>
+        <footer class="crm-bulk-dialog-footer">
+            <button type="button" data-bulk-cancel class="crm-bulk-button">Cancel</button>
+            <button type="submit" id="crm-bulk-submit" class="crm-bulk-button crm-bulk-primary">Save changes</button>
+        </footer>
+    </form>
+</dialog>
