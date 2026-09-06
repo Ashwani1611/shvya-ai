@@ -1,6 +1,7 @@
 from django.contrib import admin
+from django.templatetags.static import static
 from django.urls import include, path
-from django.views.generic import TemplateView
+from django.views.generic import RedirectView, TemplateView
 
 from apps.channels import views_flat as channels_views_flat
 from apps.superadmin.views import admin_global_search
@@ -14,6 +15,22 @@ from apps.core.views import HomeView, PricingView
 
 
 urlpatterns = [
+    # =========================================================
+    # Browser favicon
+    #
+    # Keep this at the root so every HTML page on the domain gets
+    # the SHVYA icon even when that page does not declare an explicit
+    # <link rel="icon"> tag.
+    # =========================================================
+    path(
+        "favicon.ico",
+        RedirectView.as_view(
+            url=static("images/shvya-logo.svg"),
+            permanent=False,
+        ),
+        name="favicon",
+    ),
+
     # =========================================================
     # SHVYA Admin — Global Search
     # =========================================================
