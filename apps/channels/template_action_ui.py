@@ -75,6 +75,14 @@ def _preserve_action(response):
     return response
 
 
+def _clear_none_rejection_sentinel(user):
+    """Remove Meta's ``NONE`` sentinel from already-synchronized templates."""
+    WhatsAppTemplate.objects.filter(
+        organization=user.organization,
+        rejection_reason__iexact="NONE",
+    ).update(rejection_reason="")
+
+
 def _refresh_pending_templates(user):
     """Synchronize only accounts that currently have pending templates."""
     pending_account_ids = set(
@@ -105,6 +113,7 @@ def _refresh_pending_templates(user):
 @require_GET
 def template_list(request):
     """Refresh pending Meta templates before rendering their real status."""
+    _clear_none_rejection_sentinel(request.crm_user)
     _refresh_pending_templates(request.crm_user)
     return template_ui.template_list(request)
 
