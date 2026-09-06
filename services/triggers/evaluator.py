@@ -208,16 +208,17 @@ def _frequency_skip_reason(trigger, lead, now):
 
 def _begin_execution(*, trigger, lead, event_id, event_type, payload, started_at):
     try:
-        return TriggerExecution.objects.create(
-            organization=trigger.organization,
-            trigger=trigger,
-            lead=lead,
-            event_id=event_id,
-            event_type=event_type,
-            event_payload=payload,
-            status=TriggerExecution.Status.PROCESSING,
-            started_at=started_at,
-        )
+        with transaction.atomic():
+            return TriggerExecution.objects.create(
+                organization=trigger.organization,
+                trigger=trigger,
+                lead=lead,
+                event_id=event_id,
+                event_type=event_type,
+                event_payload=payload,
+                status=TriggerExecution.Status.PROCESSING,
+                started_at=started_at,
+            )
     except IntegrityError:
         return None
 
