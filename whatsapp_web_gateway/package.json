@@ -1,0 +1,20 @@
+{
+  "name": "shvya-whatsapp-web-gateway",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Internal linked-device WhatsApp gateway for SHVYA AI",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "check": "node --check src/index.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "express": "^5.1.0",
+    "qrcode": "^1.5.4",
+    "redis": "^5.8.2",
+    "whatsapp-web.js": "1.34.7"
+  }
+}
