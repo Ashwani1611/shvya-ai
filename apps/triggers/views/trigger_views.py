@@ -12,8 +12,8 @@ from apps.accounts.models import User
 from apps.crm.decorators import crm_login_required
 from apps.crm.models import Lead, Stage
 from apps.followups.models import FollowupSequence
-from apps.triggers.models import SmartTrigger, TriggerExecution
-from services.triggers.evaluator import OPERATORS, TriggerConfigurationError
+from apps.triggers.models import SmartTrigger
+from services.triggers.evaluator import TriggerConfigurationError
 from services.triggers.trigger_service import (
     create_trigger,
     duplicate_trigger,
@@ -176,19 +176,17 @@ def _builder_context(request, trigger=None, submitted=None):
         "initial": initial,
         "event_types": SmartTrigger.EventType.choices,
         "condition_modes": SmartTrigger.ConditionMode.choices,
-        "operator_options": [
-            ("equals", "Equals"),
-            ("not_equals", "Does not equal"),
-            ("contains", "Contains"),
-            ("not_contains", "Does not contain"),
-            ("starts_with", "Starts with"),
-            ("ends_with", "Ends with"),
-            ("is_empty", "Is empty"),
-            ("is_not_empty", "Is not empty"),
-        ],
         "field_options": field_options,
         "action_options": action_options,
         "recent_executions": recent_executions,
+        # The rule-builder JavaScript contains examples such as {{lead_name}}.
+        # Supplying these template variables preserves the literal token text
+        # instead of letting Django render an undefined variable as an empty string.
+        "lead_name": "{{lead_name}}",
+        "phone": "{{phone}}",
+        "email": "{{email}}",
+        "org_name": "{{org_name}}",
+        "city": "{{city}}",
     }
 
 
