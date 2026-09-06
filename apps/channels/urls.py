@@ -4,6 +4,7 @@ from . import connection_ui
 from . import template_action_ui
 from . import template_ui
 from . import views_flat
+from . import whatsapp_template_send_ui
 from . import whatsapp_ui
 
 urlpatterns = [
@@ -37,7 +38,7 @@ urlpatterns = [
 
     path("chats/", views_flat.whatsapp_chat_list_view, name="whatsapp-chats"),
     path("chats/<uuid:lead_id>/", views_flat.whatsapp_chat_detail_view, name="whatsapp-chat-detail"),
-    path("send-template/<uuid:lead_id>/", views_flat.whatsapp_send_template_view, name="whatsapp-send-template"),
+    path("send-template/<uuid:lead_id>/", whatsapp_template_send_ui.whatsapp_send_template_view, name="whatsapp-send-template"),
     path("leads/<uuid:lead_id>/calls.json", views_flat.whatsapp_lead_calls_json, name="whatsapp-lead-calls-json"),
     path("leads/<uuid:lead_id>/pipeline-options/", whatsapp_ui.whatsapp_lead_pipeline_options_view, name="whatsapp-lead-pipeline-options"),
     path("leads/<uuid:lead_id>/quick-update/", whatsapp_ui.whatsapp_lead_quick_update_view, name="whatsapp-lead-quick-update"),
