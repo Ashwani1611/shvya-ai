@@ -41,9 +41,8 @@ class RecurringFollowupTests(TestCase):
             phone_number="+919999999999",
             owner=self.user,
         )
-        self.stage = Stage.objects.create(
+        self.stage = Stage.objects.get(
             pipeline=self.pipeline,
-            name="New Lead",
             display_order=1,
         )
         self.account = WhatsAppAccount.objects.create(

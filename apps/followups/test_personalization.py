@@ -9,7 +9,7 @@ class FollowupPersonalizationPlaceholderTests(TestCase):
     def test_core_and_real_attribute_placeholders_are_exposed(self):
         organization = Organization.objects.create(name="Personalization Org")
         pipeline = Pipeline.objects.create(organization=organization, name="Sales")
-        stage = Stage.objects.create(pipeline=pipeline, name="New", display_order=1)
+        stage = Stage.objects.get(pipeline=pipeline, display_order=1)
         Lead.objects.create(
             organization=organization,
             pipeline=pipeline,

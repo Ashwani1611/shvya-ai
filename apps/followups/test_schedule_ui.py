@@ -1,3 +1,4 @@
+from bs4 import BeautifulSoup
 from django.template import Context, Template
 from django.test import SimpleTestCase
 
@@ -25,7 +26,18 @@ class FollowupScheduleTemplateTests(SimpleTestCase):
             )
         )
 
-        self.assertEqual(rendered.count('name="schedule_type"'), 4)
+        document = BeautifulSoup(rendered, "html.parser")
+        schedule_controls = document.select('input[name="schedule_type"]')
+        self.assertEqual(len(schedule_controls), 4)
+        self.assertTrue(all(control.get("type") == "radio" for control in schedule_controls))
+        self.assertCountEqual(
+            [control.get("value") for control in schedule_controls],
+            ["immediate", "specific_time", "delay", "recurring"],
+        )
+        self.assertEqual(
+            [control.get("value") for control in schedule_controls if control.has_attr("checked")],
+            ["immediate"],
+        )
         self.assertIn('value="immediate"', rendered)
         self.assertIn('value="specific_time"', rendered)
         self.assertIn('value="delay"', rendered)
