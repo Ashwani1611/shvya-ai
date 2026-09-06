@@ -10,3 +10,4 @@ class HostedAutomationConfig(AppConfig):
         from services.channels.hosted_ai_delay import install_hosted_ai_delay_dispatch
 
         install_hosted_ai_delay_dispatch()
+        from . import signals  # noqa: F401
