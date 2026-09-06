@@ -1,0 +1,20 @@
+<form
+    method="post"
+    hx-post="{% url 'crm-lead-ai-toggle' lead.id %}"
+    hx-target="this"
+    hx-swap="outerHTML"
+    class="m-0 p-0"
+>
+    {% csrf_token %}
+    <button
+        type="submit"
+        role="switch"
+        aria-checked="{% if lead.ai_enabled %}true{% else %}false{% endif %}"
+        aria-label="Turn AI {% if lead.ai_enabled %}off{% else %}on{% endif %} for {{ lead.name }}"
+        title="Lead AI is {% if lead.ai_enabled %}on{% else %}off{% endif %}"
+        class="inline-flex h-[45px] items-center gap-1.5 rounded-[11px] border px-3 text-sm font-semibold transition {% if lead.ai_enabled %}border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100{% else %}border-gray-200 bg-gray-50 text-gray-600 hover:bg-gray-100{% endif %}"
+    >
+        <i class="ti ti-sparkles"></i>
+        AI {% if lead.ai_enabled %}On{% else %}Off{% endif %}
+    </button>
+</form>

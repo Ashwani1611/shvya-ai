@@ -1,4 +1,5 @@
-from datetime import datetime, time, timedelta, timezone as datetime_timezone
+from datetime import datetime, time, timedelta
+from datetime import timezone as datetime_timezone
 
 from django.test import TestCase
 from django.utils import timezone
@@ -8,6 +9,7 @@ from apps.channels.models import WhatsAppAccount
 from apps.crm.models import Lead, Pipeline, Stage
 from apps.followups.models import (
     AutoFollowupSettings,
+    FollowupExecution,
     FollowupSequence,
     FollowupStep,
     LeadSequenceState,
@@ -16,6 +18,7 @@ from apps.organizations.models import Organization
 from services.followup_service import (
     assign_sequence,
     calculate_step_due,
+    delete_sequence,
     dispatch_one_due_state,
     register_lead_reply,
 )
@@ -143,6 +146,46 @@ class AutoFollowupServiceTests(TestCase):
             ).count(),
             1,
         )
+
+    def test_assignment_records_triggering_user(self):
+        FollowupStep.objects.create(
+            sequence=self.sequence,
+            position=1,
+            step_type=FollowupStep.StepType.REMINDER,
+            reminder_text="Call lead",
+            schedule_type=FollowupStep.ScheduleType.IMMEDIATE,
+        )
+        state = assign_sequence(lead=self.lead, sequence=self.sequence, actor=self.user)
+        self.assertEqual(state.assigned_by, self.user)
+
+    def test_sequence_delete_removes_active_assignments_steps_and_history(self):
+        step = FollowupStep.objects.create(
+            sequence=self.sequence,
+            position=1,
+            step_type=FollowupStep.StepType.REMINDER,
+            reminder_text="Call lead",
+            schedule_type=FollowupStep.ScheduleType.IMMEDIATE,
+        )
+        state = assign_sequence(lead=self.lead, sequence=self.sequence, actor=self.user)
+        execution = FollowupExecution.objects.create(
+            organization=self.organization,
+            state=state,
+            lead=self.lead,
+            sequence=self.sequence,
+            step=step,
+            scheduled_for=timezone.now(),
+        )
+        sequence_id = self.sequence.id
+        state_id = state.id
+        step_id = step.id
+        execution_id = execution.id
+
+        delete_sequence(sequence=self.sequence)
+
+        self.assertFalse(FollowupSequence.objects.filter(id=sequence_id).exists())
+        self.assertFalse(LeadSequenceState.objects.filter(id=state_id).exists())
+        self.assertFalse(FollowupStep.objects.filter(id=step_id).exists())
+        self.assertFalse(FollowupExecution.objects.filter(id=execution_id).exists())
 
     def test_lead_reply_delays_next_send_without_clearing_sequence(self):
         FollowupStep.objects.create(

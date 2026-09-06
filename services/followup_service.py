@@ -164,11 +164,12 @@ def duplicate_sequence(*, sequence, created_by):
 
 
 def delete_sequence(*, sequence):
-    if sequence.lead_states.filter(
-        status__in=[LeadSequenceState.Status.ACTIVE, LeadSequenceState.Status.PAUSED]
-    ).exists():
-        raise FollowupError("This sequence is assigned to active leads. Clear or change those assignments first.")
-    sequence.delete()
+    # Executions protect their step so delivery history cannot be orphaned by
+    # an accidental step edit. A deliberate sequence deletion is different:
+    # the user asked to remove the whole sequence and all of its history.
+    with transaction.atomic():
+        FollowupExecution.objects.filter(sequence=sequence).delete()
+        sequence.delete()
 
 
 def _next_position(sequence):
@@ -631,6 +632,7 @@ def assign_sequence(*, lead, sequence, actor=None):
     )
     state.organization = lead.organization
     state.status = LeadSequenceState.Status.ACTIVE
+    state.assigned_by = actor
     state.lead_auto_followup_enabled = True
     state.activated_at = timezone.now()
     state.cleared_at = None

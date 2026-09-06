@@ -7,7 +7,7 @@ from django.urls import reverse
 from apps.accounts.models import User
 from apps.accounts.session_utils import set_authenticated_user
 from apps.channels.models import WhatsAppAccount, WhatsAppMessage
-from apps.crm.models import Lead, Pipeline, Stage
+from apps.crm.models import Lead, Pipeline
 from apps.organizations.models import Organization
 from services.channels.hosted_whatsapp_service import (
     HostedWhatsAppValidationError,
@@ -35,11 +35,7 @@ class HostedWhatsAppTests(TestCase):
             phone_number="8700274739",
             owner=self.user,
         )
-        self.stage = Stage.objects.create(
-            pipeline=self.pipeline,
-            name="New",
-            display_order=1,
-        )
+        self.stage = self.pipeline.stages.get(name="New", display_order=1)
 
         session = SessionStore()
         set_authenticated_user(session, self.user)

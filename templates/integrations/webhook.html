@@ -1,0 +1,280 @@
+{% extends "base.html" %}
+
+{% block title %}Webhook | Connect Hub | SHVYA AI{% endblock %}
+{% block header %}Webhook{% endblock %}
+
+{% block content %}
+<div class="mx-auto w-full max-w-[1500px] space-y-5">
+    <a
+        href="{% url 'crm-connect-hub' %}"
+        class="inline-flex items-center gap-2 text-sm font-medium text-gray-600 transition hover:text-blue-600"
+    >
+        <i class="ti ti-arrow-left text-lg"></i>
+        Back to Connect Hub
+    </a>
+
+    <section class="rounded-xl border border-gray-200 bg-white shadow-sm">
+        <form method="post" class="p-5 sm:p-6">
+            {% csrf_token %}
+
+            <p class="text-sm text-gray-800">
+                Provide the URL and secret to be called whenever a lead is created or updated in Shvya.
+            </p>
+
+            <div class="mt-6 space-y-5">
+                <div>
+                    <label for="webhook-url" class="mb-2 block text-sm font-medium text-gray-900">
+                        Webhook URL:
+                    </label>
+                    <div class="flex items-center gap-2">
+                        <input
+                            id="webhook-url"
+                            name="endpoint_url"
+                            type="url"
+                            required
+                            autocomplete="url"
+                            value="{{ webhook.endpoint_url }}"
+                            placeholder="https://your-domain.com/webhook"
+                            class="h-11 min-w-0 flex-1 rounded-lg border border-gray-300 bg-white px-3 text-sm text-gray-900 outline-none transition placeholder:text-gray-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-50"
+                        >
+                        <button
+                            type="button"
+                            data-copy-target="webhook-url"
+                            class="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-gray-500 transition hover:bg-gray-100 hover:text-gray-800"
+                            title="Copy webhook URL"
+                        >
+                            <i class="ti ti-copy text-xl"></i>
+                        </button>
+                    </div>
+                    <p class="mt-1.5 text-xs text-gray-500">HTTPS is required. Internal and localhost targets are blocked.</p>
+                </div>
+
+                <div>
+                    <label for="webhook-secret" class="mb-2 block text-sm font-medium text-gray-900">
+                        Webhook Secret:
+                    </label>
+                    <div class="flex items-center gap-2">
+                        <div class="relative min-w-0 flex-1">
+                            <input
+                                id="webhook-secret"
+                                name="secret"
+                                type="password"
+                                minlength="8"
+                                autocomplete="new-password"
+                                placeholder="{% if webhook.has_secret %}Secret already saved — leave blank to keep it{% else %}<Secret>{% endif %}"
+                                class="h-11 w-full rounded-lg border border-gray-300 bg-white px-3 pr-11 text-sm text-gray-900 outline-none transition placeholder:text-gray-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-50"
+                            >
+                            <button
+                                id="toggle-webhook-secret"
+                                type="button"
+                                class="absolute inset-y-0 right-0 inline-flex w-11 items-center justify-center text-gray-500 hover:text-gray-800"
+                                title="Show or hide secret"
+                            >
+                                <i class="ti ti-eye-off text-xl"></i>
+                            </button>
+                        </div>
+                        <button
+                            type="button"
+                            data-copy-target="webhook-secret"
+                            class="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-gray-500 transition hover:bg-gray-100 hover:text-gray-800"
+                            title="Copy entered secret"
+                        >
+                            <i class="ti ti-copy text-xl"></i>
+                        </button>
+                    </div>
+                    {% if webhook.has_secret %}
+                    <p class="mt-1.5 inline-flex items-center gap-1.5 text-xs font-medium text-emerald-600">
+                        <i class="ti ti-lock-check"></i>
+                        A secret is already configured. Enter a new value only if you want to rotate it.
+                    </p>
+                    {% endif %}
+                </div>
+
+                <div class="flex items-center gap-3 pt-1">
+                    <label class="relative inline-flex cursor-pointer items-center">
+                        <input
+                            type="checkbox"
+                            name="is_enabled"
+                            class="peer sr-only"
+                            {% if webhook.is_enabled %}checked{% endif %}
+                        >
+                        <span class="h-6 w-11 rounded-full bg-gray-300 transition peer-checked:bg-blue-600 peer-focus:ring-4 peer-focus:ring-blue-100"></span>
+                        <span class="absolute left-1 top-1 h-4 w-4 rounded-full bg-white shadow transition peer-checked:translate-x-5"></span>
+                    </label>
+                    <div>
+                        <p class="text-sm font-medium text-gray-900">
+                            {% if webhook.is_enabled %}Enabled{% else %}Disabled{% endif %}
+                        </p>
+                        <p class="text-xs text-gray-500">When enabled, lead create and update events are delivered automatically.</p>
+                    </div>
+                </div>
+
+                <button
+                    type="submit"
+                    class="inline-flex h-10 items-center gap-2 rounded-lg bg-blue-600 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 focus:outline-none focus:ring-4 focus:ring-blue-100"
+                >
+                    <i class="ti ti-device-floppy"></i>
+                    Save
+                </button>
+
+                <p class="text-xs font-medium text-red-600">
+                    Note: The Webhook Secret should be kept safe and not shared with anyone.
+                </p>
+            </div>
+        </form>
+    </section>
+
+    <section class="rounded-xl border border-gray-200 bg-white p-5 shadow-sm sm:p-6">
+        <h2 class="text-lg font-semibold text-gray-950">Documentation</h2>
+
+        <div class="mt-6 space-y-7 text-sm text-gray-700">
+            <div>
+                <h3 class="font-semibold text-gray-900">Request Payload:</h3>
+                <ul class="mt-3 list-disc space-y-1.5 pl-7">
+                    <li><code class="text-xs font-semibold text-gray-900">lead_id</code> - id of the lead</li>
+                    <li><code class="text-xs font-semibold text-gray-900">name</code> - name of the lead</li>
+                    <li><code class="text-xs font-semibold text-gray-900">phone</code> - phone number of the lead</li>
+                    <li><code class="text-xs font-semibold text-gray-900">email</code> - email address of the lead</li>
+                    <li><code class="text-xs font-semibold text-gray-900">notes</code> - notes for the lead</li>
+                    <li><code class="text-xs font-semibold text-gray-900">stage</code> - name of the stage</li>
+                    <li><code class="text-xs font-semibold text-gray-900">pipeline</code> - name of the pipeline</li>
+                    <li><code class="text-xs font-semibold text-gray-900">event_type</code> - <code>create</code> when a lead is created or <code>update</code> when a lead changes</li>
+                    <li><code class="text-xs font-semibold text-gray-900">custom_attributes</code> - custom attributes of the lead</li>
+                </ul>
+            </div>
+
+            <div>
+                <div class="mb-2 flex items-center justify-between gap-3">
+                    <h3 class="font-semibold text-gray-900">Sample Payload:</h3>
+                    <span class="rounded-md bg-gray-100 px-2 py-1 text-xs font-medium text-gray-500">application/json</span>
+                </div>
+                <pre class="overflow-x-auto rounded-lg bg-gray-50 p-4 font-mono text-xs leading-5 text-gray-800"><code>{
+  "lead_id": "2a196b3d-6e54-47be-88f7-f1ad02df827d",
+  "name": "John Doe",
+  "phone": "+919123456789",
+  "email": "john.doe@example.com",
+  "notes": "Interested in product X",
+  "stage": "New leads",
+  "pipeline": "Leads",
+  "event_type": "create",
+  "custom_attributes": {
+    "company": "Example Pvt Ltd"
+  }
+}</code></pre>
+            </div>
+
+            <div>
+                <h3 class="font-semibold text-gray-900">Headers:</h3>
+                <p class="mt-2">
+                    Verify that <code class="rounded bg-gray-100 px-1.5 py-0.5 text-xs font-semibold">X-SHVYA-WEBHOOK-SECRET</code>
+                    matches the secret configured above.
+                </p>
+                <p class="mt-1.5">
+                    Each request also includes
+                    <code class="rounded bg-gray-100 px-1.5 py-0.5 text-xs font-semibold">X-SHVYA-WEBHOOK-ID</code>
+                    so your system can safely identify duplicate retry deliveries.
+                </p>
+            </div>
+
+            <div>
+                <h3 class="font-semibold text-gray-900">Expected Response:</h3>
+                <p class="mt-2">
+                    Return any <code class="font-semibold">2xx</code> status code after successfully accepting the event. Requests time out after 10 seconds.
+                </p>
+            </div>
+
+            <div>
+                <h3 class="font-semibold text-gray-900">Retry Policy:</h3>
+                <p class="mt-2">Failed requests are retried up to 2 times in the background:</p>
+                <ul class="mt-2 list-disc space-y-1 pl-7">
+                    <li>First retry after 30 seconds</li>
+                    <li>Second retry after 60 seconds</li>
+                </ul>
+            </div>
+        </div>
+    </section>
+
+    <section class="rounded-xl border border-gray-200 bg-white shadow-sm">
+        <div class="flex items-center justify-between border-b border-gray-100 px-5 py-4 sm:px-6">
+            <div>
+                <h2 class="font-semibold text-gray-950">Recent deliveries</h2>
+                <p class="mt-0.5 text-xs text-gray-500">Latest webhook attempts for this organization.</p>
+            </div>
+            <span class="rounded-full px-2.5 py-1 text-xs font-semibold {% if webhook.is_enabled %}bg-emerald-50 text-emerald-700{% else %}bg-gray-100 text-gray-600{% endif %}">
+                {% if webhook.is_enabled %}Active{% else %}Inactive{% endif %}
+            </span>
+        </div>
+
+        {% if recent_deliveries %}
+        <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-100 text-left text-sm">
+                <thead class="bg-gray-50 text-xs uppercase tracking-wide text-gray-500">
+                    <tr>
+                        <th class="px-5 py-3 font-semibold sm:px-6">Event</th>
+                        <th class="px-5 py-3 font-semibold sm:px-6">Status</th>
+                        <th class="px-5 py-3 font-semibold sm:px-6">Attempts</th>
+                        <th class="px-5 py-3 font-semibold sm:px-6">HTTP</th>
+                        <th class="px-5 py-3 font-semibold sm:px-6">Created</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-100 bg-white">
+                    {% for delivery in recent_deliveries %}
+                    <tr>
+                        <td class="px-5 py-3 font-medium text-gray-900 sm:px-6">{{ delivery.event_type|title }}</td>
+                        <td class="px-5 py-3 sm:px-6">
+                            <span class="rounded-full px-2 py-1 text-xs font-semibold
+                                {% if delivery.status == 'sent' %}bg-emerald-50 text-emerald-700
+                                {% elif delivery.status == 'failed' %}bg-red-50 text-red-700
+                                {% elif delivery.status == 'retrying' %}bg-amber-50 text-amber-700
+                                {% else %}bg-blue-50 text-blue-700{% endif %}">
+                                {{ delivery.status|title }}
+                            </span>
+                        </td>
+                        <td class="px-5 py-3 text-gray-600 sm:px-6">{{ delivery.attempt_count }}</td>
+                        <td class="px-5 py-3 text-gray-600 sm:px-6">{{ delivery.response_status|default:"—" }}</td>
+                        <td class="px-5 py-3 text-gray-600 sm:px-6">{{ delivery.created_at|date:"M j, Y, g:i A" }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="px-5 py-10 text-center sm:px-6">
+            <i class="ti ti-webhook-off text-3xl text-gray-300"></i>
+            <p class="mt-2 text-sm font-medium text-gray-700">No webhook deliveries yet</p>
+            <p class="mt-1 text-xs text-gray-500">Once the webhook is enabled, lead changes will appear here.</p>
+        </div>
+        {% endif %}
+    </section>
+</div>
+
+<script>
+(function () {
+    const secretInput = document.getElementById('webhook-secret');
+    const secretToggle = document.getElementById('toggle-webhook-secret');
+
+    if (secretInput && secretToggle) {
+        secretToggle.addEventListener('click', function () {
+            const showing = secretInput.type === 'text';
+            secretInput.type = showing ? 'password' : 'text';
+            secretToggle.innerHTML = showing
+                ? '<i class="ti ti-eye-off text-xl"></i>'
+                : '<i class="ti ti-eye text-xl"></i>';
+        });
+    }
+
+    document.querySelectorAll('[data-copy-target]').forEach(function (button) {
+        button.addEventListener('click', function () {
+            const target = document.getElementById(button.dataset.copyTarget);
+            if (!target || !target.value) return;
+
+            navigator.clipboard.writeText(target.value).then(function () {
+                const original = button.innerHTML;
+                button.innerHTML = '<i class="ti ti-check text-xl"></i>';
+                setTimeout(function () { button.innerHTML = original; }, 1200);
+            });
+        });
+    });
+})();
+</script>
+{% endblock %}

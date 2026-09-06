@@ -1,0 +1,43 @@
+<div class="space-y-5">
+    <div>
+        <h4 class="text-sm font-semibold text-gray-800">Sequence history</h4>
+        <p class="mt-0.5 text-xs text-gray-400">Assignments and every scheduled follow-up for this lead</p>
+    </div>
+
+    {% if sequence_states %}
+        <div class="space-y-3">
+            {% for state in sequence_states %}
+                <div class="rounded-lg border border-gray-200 bg-white p-3">
+                    <div class="flex flex-wrap items-center justify-between gap-2">
+                        <a href="{% url 'followups-sequence-edit' state.sequence.id %}" class="text-sm font-semibold text-blue-700 hover:underline">{{ state.sequence.name }} <i class="ti ti-external-link text-xs"></i></a>
+                        <span class="rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase {% if state.status == 'active' or state.status == 'paused' %}bg-emerald-100 text-emerald-700{% elif state.status == 'completed' %}bg-orange-100 text-orange-700{% else %}bg-gray-100 text-gray-600{% endif %}">{{ state.get_status_display }}</span>
+                    </div>
+                    <p class="mt-1 text-xs text-gray-500">Triggered by <strong class="font-medium text-gray-700">{{ state.assigned_by.name|default:"System" }}</strong> · {{ state.activated_at|default:state.assigned_at|date:"d M Y, g:i a" }}</p>
+                </div>
+            {% endfor %}
+        </div>
+    {% endif %}
+
+    <div>
+        <h5 class="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Follow-ups</h5>
+        {% if executions %}
+            <div class="space-y-3">
+                {% for execution in executions %}
+                    <div class="flex gap-3 border-b border-gray-100 pb-3 last:border-b-0 last:pb-0">
+                        <div class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-blue-50 text-blue-600">
+                            {% if execution.step.step_type == 'whatsapp' %}<i class="ti ti-brand-whatsapp"></i>{% elif execution.step.step_type == 'email' %}<i class="ti ti-mail"></i>{% else %}<i class="ti ti-calendar-event"></i>{% endif %}
+                        </div>
+                        <div class="min-w-0 flex-1">
+                            <p class="text-sm font-semibold text-gray-800">{{ execution.step.title|default:execution.step.get_step_type_display }}</p>
+                            <p class="mt-0.5 text-xs text-gray-500">{{ execution.sequence.name }} · {{ execution.get_status_display }}</p>
+                            <p class="mt-1 text-xs text-gray-400">By {{ execution.state.assigned_by.name|default:"System" }} · {{ execution.finished_at|default:execution.scheduled_for|date:"d M Y, g:i a" }}</p>
+                            {% if execution.error %}<p class="mt-1 text-xs text-red-600">{{ execution.error }}</p>{% endif %}
+                        </div>
+                    </div>
+                {% endfor %}
+            </div>
+        {% else %}
+            <div class="rounded-lg border border-dashed border-gray-200 p-5 text-center text-sm text-gray-400">No follow-ups have been sent yet.</div>
+        {% endif %}
+    </div>
+</div>

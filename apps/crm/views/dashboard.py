@@ -62,7 +62,6 @@ from services.crm.lead_service import (
 
 from .api import STAGE_THEMES, get_user_pipelines
 from .bulk import bulk_permissions
-from apps.followups.models import LeadSequenceState
 
 
 logger = logging.getLogger(__name__)
@@ -3452,18 +3451,27 @@ def lead_stage_ai_toggle(
         ]
     )
 
-    # --------------------------------------------------------
-    # RETURN CURRENT STATE
-    #
-    # Backend-only endpoint for now.
-    # Frontend/HTMX wiring will be added separately.
-    # --------------------------------------------------------
+    return render(
+        request,
+        "crm/partials/stage_ai_toggle.html",
+        {"stage": stage},
+    )
 
-    return HttpResponse(
-        "Stage AI enabled."
-        if stage.ai_on
-        else "Stage AI disabled.",
-        status=200,
+
+@crm_login_required
+@require_POST
+def lead_ai_toggle(request, lead_id):
+    lead = get_object_or_404(
+        Lead,
+        id=lead_id,
+        organization=request.crm_user.organization,
+    )
+    lead.ai_enabled = not lead.ai_enabled
+    lead.save(update_fields=["ai_enabled", "updated_at"])
+    return render(
+        request,
+        "crm/partials/lead_ai_toggle.html",
+        {"lead": lead},
     )
 
 # ============================================================
@@ -3570,11 +3578,6 @@ def _lead_card_context(
     IMPORTANT:
         Keep this isolated from stage-management logic.
     """
-
-    lead.auto_followup_name = (
-        LeadSequenceState.objects.filter(lead=lead, status__in=["active", "paused"])
-        .values_list("sequence__name", flat=True).first()
-    )
 
     lead.days_in_stage = (
         timezone.now()

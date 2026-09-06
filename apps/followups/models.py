@@ -216,6 +216,13 @@ class LeadSequenceState(models.Model):
         on_delete=models.CASCADE,
         related_name="lead_states",
     )
+    assigned_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="assigned_followup_sequence_states",
+    )
     status = models.CharField(
         max_length=12,
         choices=Status.choices,

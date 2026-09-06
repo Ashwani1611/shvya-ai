@@ -31,6 +31,7 @@ from apps.crm.views.dashboard import (
     lead_stage_create,
     lead_stage_delete,
     lead_stage_ai_toggle,
+    lead_ai_toggle,
     lead_stage_move,
     lead_stage_rename,
     lead_table_partial,
@@ -326,6 +327,12 @@ urlpatterns = [
         "leads/<uuid:lead_id>/stage/",
         lead_stage_move,
         name="crm-lead-stage-move",
+    ),
+
+    path(
+        "leads/<uuid:lead_id>/ai-toggle/",
+        lead_ai_toggle,
+        name="crm-lead-ai-toggle",
     ),
 
     # ========================================================

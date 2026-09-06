@@ -647,7 +647,7 @@ def lead_assign_sequence(request, lead_id):
         assign_sequence(lead=lead, sequence=sequence, actor=user)
     except FollowupError as exc:
         return HttpResponse(str(exc), status=400)
-    return HttpResponse(status=204)
+    return redirect("followups-lead-control", lead_id=lead.id)
 
 
 @crm_login_required
@@ -659,7 +659,7 @@ def lead_clear_sequence(request, lead_id):
         organization=request.crm_user.organization,
     )
     clear_sequence(lead=lead)
-    return HttpResponse(status=204)
+    return redirect("followups-lead-control", lead_id=lead.id)
 
 
 @crm_login_required
@@ -677,4 +677,4 @@ def lead_toggle_sequence(request, lead_id):
         )
     except FollowupError as exc:
         return HttpResponse(str(exc), status=400)
-    return HttpResponse(status=204)
+    return redirect("followups-lead-control", lead_id=lead.id)

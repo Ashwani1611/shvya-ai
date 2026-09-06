@@ -129,10 +129,10 @@ NAV_ITEMS = [
         ],
     },
     {
-        "label": "Integrations Hub",
+        "label": "Connect Hub",
         "icon": "ti-plug-connected",
-        "url_name": "crm-integrations-hub",
-        "path_exact": "/dashboard/integrations-hub/",
+        "url_name": "crm-connect-hub",
+        "path_prefix": "/dashboard/connect-hub/",
     },
     {
         "label": "Call Scheduler",

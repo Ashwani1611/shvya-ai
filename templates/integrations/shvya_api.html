@@ -1,0 +1,222 @@
+{% extends "base.html" %}
+
+{% block title %}Shvya API | Connect Hub | SHVYA AI{% endblock %}
+{% block header %}Shvya API{% endblock %}
+
+{% block content %}
+<div class="mx-auto w-full max-w-[1280px] space-y-6">
+    <a href="{% url 'crm-connect-hub' %}" class="inline-flex items-center gap-2 text-sm font-medium text-gray-600 transition hover:text-blue-600">
+        <i class="ti ti-arrow-left text-lg"></i>
+        Back to Connect Hub
+    </a>
+
+    <section class="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+        <div class="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+            <div class="flex items-start gap-4">
+                <div class="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
+                    <i class="ti ti-api text-[30px]"></i>
+                </div>
+                <div>
+                    <h2 class="text-xl font-semibold text-gray-950">Shvya API</h2>
+                    <p class="mt-1 max-w-2xl text-sm leading-6 text-gray-600">
+                        Use an organization API key to create or update leads from your website, backend, forms, or other external systems.
+                    </p>
+                </div>
+            </div>
+
+            <form method="post" class="flex w-full max-w-md gap-2">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="create_key">
+                <input
+                    type="text"
+                    name="name"
+                    maxlength="100"
+                    placeholder="Key name, e.g. Website"
+                    class="h-10 min-w-0 flex-1 rounded-lg border border-gray-300 px-3 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-50"
+                >
+                <button type="submit" class="inline-flex h-10 shrink-0 items-center gap-2 rounded-lg bg-gray-900 px-4 text-sm font-semibold text-white transition hover:bg-gray-800">
+                    <i class="ti ti-key"></i>
+                    Create key
+                </button>
+            </form>
+        </div>
+
+        {% if raw_api_key %}
+        <div class="mt-6 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+            <div class="flex items-start gap-3">
+                <i class="ti ti-circle-check mt-0.5 text-xl text-emerald-600"></i>
+                <div class="min-w-0 flex-1">
+                    <p class="text-sm font-semibold text-emerald-800">Your new API key is ready</p>
+                    <p class="mt-1 text-xs leading-5 text-emerald-700">Copy it now. For security, the full key is shown only once.</p>
+                    <div class="mt-3 flex gap-2">
+                        <input id="new-api-key" readonly value="{{ raw_api_key }}" class="h-10 min-w-0 flex-1 rounded-lg border border-emerald-200 bg-white px-3 font-mono text-xs text-gray-800">
+                        <button type="button" data-copy-target="new-api-key" class="inline-flex h-10 items-center gap-2 rounded-lg border border-emerald-300 bg-white px-3 text-sm font-semibold text-emerald-700 hover:bg-emerald-100">
+                            <i class="ti ti-copy"></i>
+                            Copy
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+    </section>
+
+    <section class="grid gap-6 lg:grid-cols-2">
+        <div class="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+            <div class="flex items-center justify-between gap-3">
+                <div>
+                    <h3 class="font-semibold text-gray-950">Lead upsert endpoint</h3>
+                    <p class="mt-1 text-sm text-gray-500">POST to create a new lead or update an existing matching lead.</p>
+                </div>
+                <span class="rounded-lg bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">POST</span>
+            </div>
+            <div class="mt-4 flex gap-2">
+                <input id="upsert-api-url" readonly value="{{ api_url }}" class="h-10 min-w-0 flex-1 rounded-lg border border-gray-200 bg-gray-50 px-3 font-mono text-xs text-gray-700">
+                <button type="button" data-copy-target="upsert-api-url" class="inline-flex h-10 items-center justify-center rounded-lg border border-gray-200 bg-white px-3 text-gray-600 hover:bg-gray-50" title="Copy endpoint">
+                    <i class="ti ti-copy text-lg"></i>
+                </button>
+            </div>
+        </div>
+
+        <div class="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+            <div class="flex items-center justify-between gap-3">
+                <div>
+                    <h3 class="font-semibold text-gray-950">Lead list endpoint</h3>
+                    <p class="mt-1 text-sm text-gray-500">GET up to 100 leads with optional search, pipeline, stage, and tag filters.</p>
+                </div>
+                <span class="rounded-lg bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">GET</span>
+            </div>
+            <div class="mt-4 flex gap-2">
+                <input id="list-api-url" readonly value="{{ list_api_url }}" class="h-10 min-w-0 flex-1 rounded-lg border border-gray-200 bg-gray-50 px-3 font-mono text-xs text-gray-700">
+                <button type="button" data-copy-target="list-api-url" class="inline-flex h-10 items-center justify-center rounded-lg border border-gray-200 bg-white px-3 text-gray-600 hover:bg-gray-50" title="Copy endpoint">
+                    <i class="ti ti-copy text-lg"></i>
+                </button>
+            </div>
+        </div>
+    </section>
+
+    <section class="rounded-2xl border border-gray-200 bg-white shadow-sm">
+        <div class="border-b border-gray-100 px-6 py-5">
+            <h3 class="font-semibold text-gray-950">API keys</h3>
+            <p class="mt-1 text-sm text-gray-500">Keys are scoped to your organization. The full key is never stored after creation.</p>
+        </div>
+
+        {% if active_keys %}
+        <div class="divide-y divide-gray-100">
+            {% for key in active_keys %}
+            <div class="flex flex-col gap-3 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
+                <div class="min-w-0">
+                    <div class="flex flex-wrap items-center gap-2">
+                        <p class="font-medium text-gray-900">{{ key.name }}</p>
+                        <code class="rounded bg-gray-100 px-2 py-0.5 text-xs text-gray-600">{{ key.key_prefix }}...</code>
+                    </div>
+                    <p class="mt-1 text-xs text-gray-500">
+                        Created {{ key.created_at|date:"M j, Y, g:i A" }}
+                        {% if key.last_used_at %} · Last used {{ key.last_used_at|date:"M j, Y, g:i A" }}{% endif %}
+                    </p>
+                </div>
+                <form method="post" onsubmit="return confirm('Revoke this API key? Requests using it will stop working immediately.');">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="revoke_key">
+                    <input type="hidden" name="api_key_id" value="{{ key.id }}">
+                    <button type="submit" class="inline-flex items-center gap-2 rounded-lg border border-red-200 px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50">
+                        <i class="ti ti-trash"></i>
+                        Revoke
+                    </button>
+                </form>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="px-6 py-10 text-center">
+            <i class="ti ti-key-off text-3xl text-gray-300"></i>
+            <p class="mt-2 text-sm font-medium text-gray-700">No active API keys</p>
+            <p class="mt-1 text-xs text-gray-500">Create a key above to start using the Shvya API.</p>
+        </div>
+        {% endif %}
+    </section>
+
+    <section class="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+        <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+                <h3 class="text-lg font-semibold text-gray-950">Lead API documentation</h3>
+                <p class="mt-1 text-sm text-gray-500">Authenticate every API request with your Shvya API key.</p>
+            </div>
+            <code class="w-fit rounded-lg bg-gray-900 px-3 py-2 text-xs text-white">X-SHVYA-API-KEY: &lt;your-key&gt;</code>
+        </div>
+
+        <div class="mt-6 grid gap-6 lg:grid-cols-2">
+            <div>
+                <h4 class="text-sm font-semibold text-gray-900">Required fields</h4>
+                <div class="mt-3 space-y-2">
+                    <div class="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm"><code class="font-semibold text-blue-700">name</code><span class="text-gray-500"> · Lead name, max 150 characters</span></div>
+                    <div class="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm"><code class="font-semibold text-blue-700">phone</code><span class="text-gray-500"> · Phone number, preferably with country code</span></div>
+                </div>
+            </div>
+            <div>
+                <h4 class="text-sm font-semibold text-gray-900">Optional fields</h4>
+                <div class="mt-3 flex flex-wrap gap-2">
+                    <code class="rounded-lg bg-gray-100 px-2.5 py-1.5 text-xs text-gray-700">email</code>
+                    <code class="rounded-lg bg-gray-100 px-2.5 py-1.5 text-xs text-gray-700">notes</code>
+                    <code class="rounded-lg bg-gray-100 px-2.5 py-1.5 text-xs text-gray-700">pipeline</code>
+                    <code class="rounded-lg bg-gray-100 px-2.5 py-1.5 text-xs text-gray-700">stage</code>
+                    <code class="rounded-lg bg-gray-100 px-2.5 py-1.5 text-xs text-gray-700">sequence</code>
+                    <code class="rounded-lg bg-gray-100 px-2.5 py-1.5 text-xs text-gray-700">attributes</code>
+                    <code class="rounded-lg bg-gray-100 px-2.5 py-1.5 text-xs text-gray-700">custom fields</code>
+                </div>
+            </div>
+        </div>
+
+        <div class="mt-6">
+            <div class="mb-2 flex items-center justify-between">
+                <h4 class="text-sm font-semibold text-gray-900">Example request body</h4>
+                <span class="text-xs text-gray-400">application/json</span>
+            </div>
+            <pre class="overflow-x-auto rounded-xl bg-gray-950 p-5 text-xs leading-6 text-gray-100"><code>{
+  "name": "Aarav Sharma",
+  "phone": "+919876543210",
+  "email": "aarav@example.com",
+  "notes": "Requested a product demo",
+  "pipeline": "Sales",
+  "stage": "New Leads",
+  "sequence": "Demo Follow-up",
+  "attributes": {
+    "company": "Example Pvt Ltd",
+    "city": "Delhi"
+  }
+}</code></pre>
+        </div>
+
+        <div class="mt-6 grid gap-3 sm:grid-cols-3">
+            <div class="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+                <p class="text-xs font-semibold text-emerald-700">200 OK</p>
+                <p class="mt-1 text-xs leading-5 text-emerald-700">Lead added or updated successfully.</p>
+            </div>
+            <div class="rounded-xl border border-amber-200 bg-amber-50 p-3">
+                <p class="text-xs font-semibold text-amber-700">400 Bad Request</p>
+                <p class="mt-1 text-xs leading-5 text-amber-700">Validation or lead matching error.</p>
+            </div>
+            <div class="rounded-xl border border-red-200 bg-red-50 p-3">
+                <p class="text-xs font-semibold text-red-700">401 / 403</p>
+                <p class="mt-1 text-xs leading-5 text-red-700">Missing, invalid, expired, or unauthorized API key.</p>
+            </div>
+        </div>
+    </section>
+</div>
+
+<script>
+(function () {
+    document.querySelectorAll('[data-copy-target]').forEach(function (button) {
+        button.addEventListener('click', function () {
+            const target = document.getElementById(button.dataset.copyTarget);
+            if (!target) return;
+            navigator.clipboard.writeText(target.value).then(function () {
+                const original = button.innerHTML;
+                button.innerHTML = '<i class="ti ti-check"></i><span class="hidden sm:inline">Copied</span>';
+                setTimeout(function () { button.innerHTML = original; }, 1200);
+            });
+        });
+    });
+})();
+</script>
+{% endblock %}
