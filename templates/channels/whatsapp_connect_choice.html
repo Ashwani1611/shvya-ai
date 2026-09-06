@@ -9,168 +9,57 @@
 
 {% block content %}
 
-
-    <!-- =====================================================
-         PAGE HEADER
-         ===================================================== -->
-
     <div class="mb-6">
-
         <h2 class="text-lg font-semibold">
             Choose how you want to connect WhatsApp for your organization.
         </h2>
-
     </div>
 
-
-    <!-- =====================================================
-         EXISTING ACCOUNT NOTICE
-         ===================================================== -->
-
     {% if existing_accounts %}
-
         <div class="mb-6 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-700">
-
             <i class="ti ti-info-circle"></i>
-
             Your organization already has
             {{ existing_accounts.count }}
             connected WhatsApp number{{ existing_accounts.count|pluralize }}.
             This will add another one alongside {{ existing_accounts.count|pluralize:"it,them" }}.
-
-            <a
-                href="{% url 'whatsapp-accounts' %}"
-                class="ml-2 font-semibold underline"
-            >
+            <a href="{% url 'whatsapp-accounts' %}" class="ml-2 font-semibold underline">
                 View connected numbers
             </a>
-
         </div>
-
     {% endif %}
 
-
-    <!-- =====================================================
-         CHOICE CARDS
-         ===================================================== -->
-
     <div class="grid grid-cols-1 gap-6 md:grid-cols-2">
-
-
-        <!-- =================================================
-             CONNECT API
-             ================================================= -->
-
-        <a
-            href="{% url 'whatsapp-connect-api' %}"
-            class="group rounded-xl border border-gray-200 bg-white p-8 shadow-sm transition hover:border-blue-400 hover:shadow-md"
-        >
-
-            <div
-                class="flex h-12 w-12 items-center justify-center rounded-lg bg-blue-50 text-2xl text-blue-600"
-            >
-
+        <a href="{% url 'whatsapp-connect-api' %}" class="group rounded-xl border border-gray-200 bg-white p-8 shadow-sm transition hover:border-blue-400 hover:shadow-md">
+            <div class="flex h-12 w-12 items-center justify-center rounded-lg bg-blue-50 text-2xl text-blue-600">
                 <i class="ti ti-plug-connected"></i>
-
             </div>
-
-
-            <h2 class="mt-5 text-lg font-semibold text-gray-900">
-                Connect API
-            </h2>
-
+            <h2 class="mt-5 text-lg font-semibold text-gray-900">Connect API</h2>
             <p class="mt-2 text-sm text-gray-500">
-                Already have a Meta WhatsApp Business Platform account?
-                Connect it directly using your own phone number ID
-                and access token.
+                Already have a Meta WhatsApp Business Platform account? Connect it directly using your own phone number ID and access token.
             </p>
-
             <ul class="mt-4 space-y-2 text-sm text-gray-600">
-
-                <li class="flex items-center gap-2">
-                    <i class="ti ti-check text-green-600"></i>
-                    Full control over your Meta app
-                </li>
-
-                <li class="flex items-center gap-2">
-                    <i class="ti ti-check text-green-600"></i>
-                    Connects instantly
-                </li>
-
-                <li class="flex items-center gap-2">
-                    <i class="ti ti-check text-green-600"></i>
-                    Best if you already send WhatsApp traffic
-                </li>
-
+                <li class="flex items-center gap-2"><i class="ti ti-check text-green-600"></i>Full control over your Meta app</li>
+                <li class="flex items-center gap-2"><i class="ti ti-check text-green-600"></i>Connects instantly</li>
+                <li class="flex items-center gap-2"><i class="ti ti-check text-green-600"></i>Best for official API messaging and templates</li>
             </ul>
-
-
-            <span
-                class="mt-6 inline-flex items-center gap-1 text-sm font-semibold text-blue-600 group-hover:gap-2 transition-all"
-            >
-                Connect now <i class="ti ti-arrow-right"></i>
-            </span>
-
+            <span class="mt-6 inline-flex items-center gap-1 text-sm font-semibold text-blue-600 transition-all group-hover:gap-2">Connect now <i class="ti ti-arrow-right"></i></span>
         </a>
 
-
-        <!-- =================================================
-             coexisted ACCOUNT
-             ================================================= -->
-
-        <a
-            href="{% url 'whatsapp-connect-hosted' %}"
-            class="group rounded-xl border border-gray-200 bg-white p-8 shadow-sm transition hover:border-blue-400 hover:shadow-md"
-        >
-
-            <div
-                class="flex h-12 w-12 items-center justify-center rounded-lg bg-purple-50 text-2xl text-purple-600"
-            >
-
-                <i class="ti ti-cloud"></i>
-
+        <a href="{% url 'whatsapp-connect-hosted' %}" class="group rounded-xl border border-gray-200 bg-white p-8 shadow-sm transition hover:border-emerald-400 hover:shadow-md">
+            <div class="flex h-12 w-12 items-center justify-center rounded-lg bg-emerald-50 text-2xl text-emerald-600">
+                <i class="ti ti-brand-whatsapp"></i>
             </div>
-
-
-            <h2 class="mt-5 text-lg font-semibold text-gray-900">
-                Coexisted Account
-            </h2>
-
+            <h2 class="mt-5 text-lg font-semibold text-gray-900">Hosted Account</h2>
             <p class="mt-2 text-sm text-gray-500">
-                New to WhatsApp Business? Let SHVYA set up and manage
-                a WhatsApp number for you — no Meta setup required.
+                Link an existing WhatsApp or WhatsApp Business app number to SHVYA by scanning a QR code, then use the SHVYA inbox and automations while your laptop is offline.
             </p>
-
             <ul class="mt-4 space-y-2 text-sm text-gray-600">
-
-                <li class="flex items-center gap-2">
-                    <i class="ti ti-check text-green-600"></i>
-                    No technical setup needed
-                </li>
-
-                <li class="flex items-center gap-2">
-                    <i class="ti ti-check text-green-600"></i>
-                    SHVYA handles Meta configuration
-                </li>
-
-                <li class="flex items-center gap-2">
-                    <i class="ti ti-check text-green-600"></i>
-                    Best if you're starting from scratch
-                </li>
-
+                <li class="flex items-center gap-2"><i class="ti ti-check text-green-600"></i>Connect with WhatsApp Linked Devices</li>
+                <li class="flex items-center gap-2"><i class="ti ti-check text-green-600"></i>No Meta Cloud API credentials required</li>
+                <li class="flex items-center gap-2"><i class="ti ti-check text-green-600"></i>Pipeline-mapped session with hosted chats</li>
             </ul>
-
-
-            <span
-                class="mt-6 inline-flex items-center gap-1 text-sm font-semibold text-purple-600 group-hover:gap-2 transition-all"
-            >
-                Request coexisted number <i class="ti ti-arrow-right"></i>
-            </span>
-
+            <span class="mt-6 inline-flex items-center gap-1 text-sm font-semibold text-emerald-600 transition-all group-hover:gap-2">Connect WhatsApp <i class="ti ti-arrow-right"></i></span>
         </a>
-
-
     </div>
-
 
 {% endblock %}
