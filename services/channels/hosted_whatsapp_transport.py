@@ -104,7 +104,7 @@ def send_hosted_message(*, message, defer_on_pause=True):
         register_hosted_manual_outbound(
             account=account,
             lead=message.lead,
-            at=timezone.now() if False else message.updated_at,
+            at=message.updated_at,
         )
     return message
 
