@@ -15,6 +15,8 @@ class AutoFollowupTemplateTests(SimpleTestCase):
             "followups/partials/reminder_step_modal.html",
             "followups/partials/settings_modal.html",
             "followups/partials/lead_control.html",
+            "followups/partials/schedule_fields.html",
+            "followups/partials/personalization_chips.html",
         ]:
             with self.subTest(template=template_name):
                 self.assertIsNotNone(get_template(template_name))

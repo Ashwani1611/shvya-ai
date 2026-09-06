@@ -1,0 +1,53 @@
+<div class="mt-2 rounded-lg border border-blue-100 bg-blue-50/60 p-3">
+    <div class="flex items-start gap-2">
+        <i class="ti ti-sparkles mt-0.5 text-blue-600"></i>
+        <div class="min-w-0 flex-1">
+            <p class="text-xs font-semibold text-gray-700">Personalise with CRM values</p>
+            <p class="mt-0.5 text-[11px] text-gray-500">Click a field to insert it at the cursor. SHVYA fills the current lead's real value when this step runs.</p>
+            <div class="mt-2 flex flex-wrap gap-1.5">
+                {% for item in personalization_placeholders %}
+                <button
+                    type="button"
+                    data-followup-placeholder="{{ item.token }}"
+                    class="inline-flex items-center gap-1 rounded-md border {% if item.is_attribute %}border-violet-200 bg-violet-50 text-violet-700{% else %}border-blue-200 bg-white text-blue-700{% endif %} px-2 py-1 text-[11px] font-medium hover:border-blue-400 hover:bg-blue-50"
+                    title="Insert {{ item.token }}"
+                >
+                    <i class="ti {% if item.is_attribute %}ti-tag{% else %}ti-user-circle{% endif %}"></i>
+                    {{ item.label }}
+                    <span class="font-mono text-[10px] opacity-70">{{ item.token }}</span>
+                </button>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+(function () {
+    if (window.__shvyaFollowupPlaceholderBound) return;
+
+    document.addEventListener('click', function (event) {
+        const button = event.target.closest('[data-followup-placeholder]');
+        if (!button) return;
+
+        const form = button.closest('form');
+        const target = form ? form.querySelector('[data-personalization-target]') : null;
+        if (!target) return;
+
+        const token = button.dataset.followupPlaceholder || '';
+        const start = typeof target.selectionStart === 'number' ? target.selectionStart : target.value.length;
+        const end = typeof target.selectionEnd === 'number' ? target.selectionEnd : target.value.length;
+        const before = target.value.slice(0, start);
+        const after = target.value.slice(end);
+        target.value = before + token + after;
+        const cursor = start + token.length;
+        target.focus();
+        if (typeof target.setSelectionRange === 'function') {
+            target.setSelectionRange(cursor, cursor);
+        }
+        target.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+
+    window.__shvyaFollowupPlaceholderBound = true;
+})();
+</script>

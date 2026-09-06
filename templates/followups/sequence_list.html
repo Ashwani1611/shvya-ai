@@ -1,34 +1,42 @@
 {% extends "base.html" %}
 
 {% block title %}SHVYA AI - Auto Follow-ups{% endblock %}
-{% block header %}Auto Follow-up Sequences{% endblock %}
+{% block header %}Auto Follow-ups{% endblock %}
 
 {% block content %}
 <div class="max-w-[1600px] mx-auto space-y-5">
-    <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
-        <div>
-            <div class="flex items-center gap-3 flex-wrap">
-                <h2 class="text-2xl font-semibold text-gray-900">Auto Follow-up Sequences</h2>
-                <span class="inline-flex items-center gap-1.5 rounded-full border border-orange-300 bg-orange-50 px-3 py-1 text-sm font-medium text-orange-600">
-                    <i class="ti ti-player-play-filled"></i> Watch Tutorial
-                </span>
+    <div class="flex flex-col gap-3 xl:flex-row xl:items-center">
+        <form method="get" class="flex min-w-0 flex-1 gap-2">
+            <div class="relative min-w-0 flex-1">
+                <i class="ti ti-search absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+                <input
+                    type="search"
+                    name="q"
+                    value="{{ search }}"
+                    placeholder="Search sequences"
+                    class="h-11 w-full rounded-full border border-gray-300 bg-white pl-11 pr-4 text-sm text-gray-700 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                >
             </div>
-            <p class="mt-1 text-sm text-gray-500">Build ordered WhatsApp, email, and call-reminder journeys for your CRM leads.</p>
-        </div>
-        <div class="flex items-center gap-2">
+            <button class="inline-flex h-11 items-center gap-2 rounded-lg border border-blue-500 bg-white px-4 text-sm font-semibold text-blue-700 hover:bg-blue-50">
+                <i class="ti ti-search"></i>
+                Search
+            </button>
+        </form>
+
+        <div class="flex shrink-0 flex-wrap items-center gap-2">
             <button
                 type="button"
                 hx-get="{% url 'followups-settings-modal' %}"
                 hx-target="#modal-root"
                 hx-swap="innerHTML"
-                class="inline-flex h-10 items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-medium text-gray-700 hover:border-blue-300 hover:text-blue-600"
+                class="inline-flex h-11 items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-medium text-gray-700 hover:border-blue-300 hover:text-blue-600"
             >
                 <i class="ti ti-settings"></i> Global Settings
             </button>
             {% if is_followup_admin %}
             <a
                 href="{% url 'followups-sequence-create' %}"
-                class="inline-flex h-10 items-center gap-2 rounded-lg bg-[#0067b9] px-4 text-sm font-semibold text-white hover:bg-[#005a9f]"
+                class="inline-flex h-11 items-center gap-2 rounded-lg bg-[#0067b9] px-4 text-sm font-semibold text-white hover:bg-[#005a9f]"
             >
                 <i class="ti ti-plus"></i> New Sequence
             </a>
@@ -48,20 +56,6 @@
             </div>
         </div>
     </div>
-
-    <form method="get" class="flex gap-3">
-        <div class="relative flex-1">
-            <i class="ti ti-search absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
-            <input
-                type="search"
-                name="q"
-                value="{{ search }}"
-                placeholder="Search for any sequence, description, or text"
-                class="h-11 w-full rounded-full border border-gray-300 bg-white pl-11 pr-4 text-sm text-gray-700 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
-            >
-        </div>
-        <button class="hidden rounded-lg border border-gray-300 px-4 text-sm lg:inline-flex lg:items-center">Search</button>
-    </form>
 
     {% if sequences %}
     <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">

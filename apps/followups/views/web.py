@@ -18,6 +18,7 @@ from apps.followups.models import (
 )
 from services.followup_service import (
     FollowupError,
+    _validate_schedule,
     add_email_step,
     add_reminder_step,
     add_whatsapp_step,
@@ -40,7 +41,9 @@ def _is_admin(user):
 
 def _admin_required(request):
     if not _is_admin(request.crm_user):
-        return HttpResponseForbidden("Only organization admins can manage Auto Follow-up sequences.")
+        return HttpResponseForbidden(
+            "Only organization admins can manage Auto Follow-up sequences."
+        )
     return None
 
 
@@ -69,33 +72,93 @@ def _parse_time(value):
         raise FollowupError("Enter time in HH:MM format.") from exc
 
 
+def _parse_optional_int(value, error_message):
+    value = (value or "").strip()
+    if not value:
+        return None
+    try:
+        return int(value)
+    except ValueError as exc:
+        raise FollowupError(error_message) from exc
+
+
 def _schedule_payload(request):
-    schedule_type = request.POST.get("schedule_type", FollowupStep.ScheduleType.IMMEDIATE).strip()
-    delay_value_raw = request.POST.get("delay_value", "").strip()
-    weekday_raw = request.POST.get("specific_weekday", "").strip()
+    schedule_type = request.POST.get(
+        "schedule_type",
+        FollowupStep.ScheduleType.IMMEDIATE,
+    ).strip()
 
-    try:
-        delay_value = int(delay_value_raw) if delay_value_raw else None
-    except ValueError as exc:
-        raise FollowupError("Delay must be a whole number.") from exc
-
-    try:
-        specific_weekday = int(weekday_raw) if weekday_raw else None
-    except ValueError as exc:
-        raise FollowupError("Invalid weekday.") from exc
-
-    return {
+    payload = {
         "schedule_type": schedule_type,
-        "delay_value": delay_value,
-        "delay_unit": request.POST.get("delay_unit", "").strip(),
-        "specific_time": _parse_time(request.POST.get("specific_time", "").strip()),
-        "specific_weekday": specific_weekday,
+        "delay_value": None,
+        "delay_unit": "",
+        "specific_time": None,
+        "specific_weekday": None,
+        "recurring_every": None,
+        "recurring_unit": "",
+        "recurring_weekdays": [],
     }
+
+    if schedule_type == FollowupStep.ScheduleType.IMMEDIATE:
+        return payload
+
+    if schedule_type == FollowupStep.ScheduleType.DELAY:
+        payload["delay_value"] = _parse_optional_int(
+            request.POST.get("delay_value"),
+            "Delay must be a whole number.",
+        )
+        payload["delay_unit"] = request.POST.get("delay_unit", "").strip()
+        return payload
+
+    if schedule_type == FollowupStep.ScheduleType.SPECIFIC_TIME:
+        payload["specific_time"] = _parse_time(
+            request.POST.get("specific_time", "").strip()
+        )
+        payload["specific_weekday"] = _parse_optional_int(
+            request.POST.get("specific_weekday"),
+            "Invalid weekday.",
+        )
+        return payload
+
+    if schedule_type == FollowupStep.ScheduleType.RECURRING:
+        recurring_mode = request.POST.get("recurring_mode", "specific_days").strip()
+        if recurring_mode == "specific_days":
+            recurring_weekdays = []
+            for raw_day in request.POST.getlist("recurring_weekdays"):
+                try:
+                    day = int(raw_day)
+                except ValueError as exc:
+                    raise FollowupError("Invalid recurring weekday.") from exc
+                if day not in recurring_weekdays:
+                    recurring_weekdays.append(day)
+            payload["recurring_weekdays"] = recurring_weekdays
+            payload["specific_time"] = _parse_time(
+                request.POST.get("recurring_time", "").strip()
+            )
+            return payload
+
+        if recurring_mode == "interval":
+            payload["recurring_every"] = _parse_optional_int(
+                request.POST.get("recurring_every"),
+                "Recurring interval must be a whole number.",
+            )
+            payload["recurring_unit"] = request.POST.get(
+                "recurring_unit",
+                "",
+            ).strip()
+            return payload
+
+        raise FollowupError("Choose a valid recurring schedule type.")
+
+    raise FollowupError("Choose a valid delivery schedule.")
 
 
 def _step_context(sequence):
     steps = list(
-        sequence.steps.select_related("whatsapp_template").order_by("position", "created_at")
+        sequence.steps.select_related("whatsapp_template").order_by(
+            "position",
+            "created_at",
+        )
     )
     return {
         "sequence": sequence,
@@ -117,19 +180,38 @@ def sequence_list(request):
         .select_related("whatsapp_account")
         .annotate(
             total_steps=Count("steps", distinct=True),
-            whatsapp_steps=Count("steps", filter=Q(steps__step_type=FollowupStep.StepType.WHATSAPP), distinct=True),
-            email_steps=Count("steps", filter=Q(steps__step_type=FollowupStep.StepType.EMAIL), distinct=True),
-            reminder_steps=Count("steps", filter=Q(steps__step_type=FollowupStep.StepType.REMINDER), distinct=True),
+            whatsapp_steps=Count(
+                "steps",
+                filter=Q(steps__step_type=FollowupStep.StepType.WHATSAPP),
+                distinct=True,
+            ),
+            email_steps=Count(
+                "steps",
+                filter=Q(steps__step_type=FollowupStep.StepType.EMAIL),
+                distinct=True,
+            ),
+            reminder_steps=Count(
+                "steps",
+                filter=Q(steps__step_type=FollowupStep.StepType.REMINDER),
+                distinct=True,
+            ),
             assigned_leads=Count(
                 "lead_states",
-                filter=Q(lead_states__status__in=[LeadSequenceState.Status.ACTIVE, LeadSequenceState.Status.PAUSED]),
+                filter=Q(
+                    lead_states__status__in=[
+                        LeadSequenceState.Status.ACTIVE,
+                        LeadSequenceState.Status.PAUSED,
+                    ]
+                ),
                 distinct=True,
             ),
         )
         .order_by("-updated_at")
     )
     if search:
-        sequences = sequences.filter(Q(name__icontains=search) | Q(description__icontains=search))
+        sequences = sequences.filter(
+            Q(name__icontains=search) | Q(description__icontains=search)
+        )
 
     return render(
         request,
@@ -178,7 +260,10 @@ def sequence_create_save(request):
     except FollowupError as exc:
         messages.error(request, str(exc))
         return redirect("followups-sequence-create")
-    messages.success(request, "Sequence created. Add WhatsApp, email, or reminder steps in any order.")
+    messages.success(
+        request,
+        "Sequence created. Add WhatsApp, email, or reminder steps in any order.",
+    )
     return redirect("followups-sequence-edit", sequence_id=sequence.id)
 
 
@@ -258,11 +343,15 @@ def template_picker(request, sequence_id):
     if blocked:
         return blocked
     sequence = _organization_sequence(request, sequence_id)
-    templates = WhatsAppTemplate.objects.filter(
-        organization=request.crm_user.organization,
-        account=sequence.whatsapp_account,
-        status=WhatsAppTemplate.Status.APPROVED,
-    ).select_related("account", "meta_state").order_by("category", "name")
+    templates = (
+        WhatsAppTemplate.objects.filter(
+            organization=request.crm_user.organization,
+            account=sequence.whatsapp_account,
+            status=WhatsAppTemplate.Status.APPROVED,
+        )
+        .select_related("account", "meta_state")
+        .order_by("category", "name")
+    )
     return render(
         request,
         "followups/partials/template_picker.html",
@@ -351,7 +440,11 @@ def email_step_add(request, sequence_id):
     except FollowupError as exc:
         messages.error(request, str(exc))
     else:
-        messages.success(request, "Email follow-up added. Delivery remains gated until email DNS/sender configuration is enabled.")
+        messages.success(
+            request,
+            "Email follow-up added. Delivery remains gated until email "
+            "DNS/sender configuration is enabled.",
+        )
     return redirect("followups-sequence-edit", sequence_id=sequence.id)
 
 
@@ -399,27 +492,40 @@ def step_update(request, sequence_id, step_id):
     step = get_object_or_404(FollowupStep, id=step_id, sequence=sequence)
     try:
         schedule = _schedule_payload(request)
-        if schedule["schedule_type"] == FollowupStep.ScheduleType.RECURRING:
-            raise FollowupError("Recurring execution is not enabled yet.")
+        _validate_schedule(**schedule)
         retry_count = int(request.POST.get("retry_count", step.retry_count) or 0)
         if retry_count < 0 or retry_count > 5:
             raise FollowupError("Message Retry Count can be from 0 to 5.")
+
         step.schedule_type = schedule["schedule_type"]
         step.delay_value = schedule["delay_value"]
         step.delay_unit = schedule["delay_unit"]
         step.specific_time = schedule["specific_time"]
         step.specific_weekday = schedule["specific_weekday"]
+        step.recurring_every = schedule["recurring_every"]
+        step.recurring_unit = schedule["recurring_unit"]
+        step.recurring_weekdays = schedule["recurring_weekdays"]
+
         if step.step_type == FollowupStep.StepType.WHATSAPP:
             step.retry_count = retry_count
             step.retry_delay_hours = 24
         elif step.step_type == FollowupStep.StepType.EMAIL:
             step.title = request.POST.get("title", step.title).strip()
-            step.email_subject = request.POST.get("email_subject", step.email_subject).strip()
-            step.email_body = request.POST.get("email_body", step.email_body).strip()
+            step.email_subject = request.POST.get(
+                "email_subject",
+                step.email_subject,
+            ).strip()
+            step.email_body = request.POST.get(
+                "email_body",
+                step.email_body,
+            ).strip()
             if not step.email_subject or not step.email_body:
                 raise FollowupError("Email subject and content are required.")
         elif step.step_type == FollowupStep.StepType.REMINDER:
-            step.reminder_text = request.POST.get("reminder_text", step.reminder_text).strip()
+            step.reminder_text = request.POST.get(
+                "reminder_text",
+                step.reminder_text,
+            ).strip()
             if not step.reminder_text:
                 raise FollowupError("Reminder note is required.")
         step.save()
@@ -456,9 +562,13 @@ def step_move(request, sequence_id, step_id):
         return HttpResponse("Invalid direction.", status=400)
     neighbor_qs = sequence.steps.exclude(id=step.id)
     if direction == "up":
-        neighbor = neighbor_qs.filter(position__lt=step.position).order_by("-position").first()
+        neighbor = neighbor_qs.filter(position__lt=step.position).order_by(
+            "-position"
+        ).first()
     else:
-        neighbor = neighbor_qs.filter(position__gt=step.position).order_by("position").first()
+        neighbor = neighbor_qs.filter(position__gt=step.position).order_by(
+            "position"
+        ).first()
     if neighbor:
         old_position = step.position
         step.position = 0
@@ -493,14 +603,23 @@ def settings_save(request):
     if blocked:
         return blocked
     try:
-        delay_value = int(request.POST.get("conversation_delay_value", "2") or 0)
+        delay_value = int(
+            request.POST.get("conversation_delay_value", "2") or 0
+        )
         update_auto_followup_settings(
             request.crm_user.organization,
             enabled=request.POST.get("enabled") == "on",
-            business_hours_start=_parse_time(request.POST.get("business_hours_start", "")),
-            business_hours_end=_parse_time(request.POST.get("business_hours_end", "")),
+            business_hours_start=_parse_time(
+                request.POST.get("business_hours_start", "")
+            ),
+            business_hours_end=_parse_time(
+                request.POST.get("business_hours_end", "")
+            ),
             conversation_delay_value=delay_value,
-            conversation_delay_unit=request.POST.get("conversation_delay_unit", AutoFollowupSettings.DelayUnit.HOURS),
+            conversation_delay_unit=request.POST.get(
+                "conversation_delay_unit",
+                AutoFollowupSettings.DelayUnit.HOURS,
+            ),
         )
     except (FollowupError, ValueError, TypeError) as exc:
         messages.error(request, str(exc))
@@ -513,7 +632,11 @@ def settings_save(request):
 @require_POST
 def lead_assign_sequence(request, lead_id):
     user = request.crm_user
-    lead = get_object_or_404(Lead, id=lead_id, organization=user.organization)
+    lead = get_object_or_404(
+        Lead,
+        id=lead_id,
+        organization=user.organization,
+    )
     sequence = get_object_or_404(
         FollowupSequence,
         id=request.POST.get("sequence_id", ""),
@@ -530,7 +653,11 @@ def lead_assign_sequence(request, lead_id):
 @crm_login_required
 @require_POST
 def lead_clear_sequence(request, lead_id):
-    lead = get_object_or_404(Lead, id=lead_id, organization=request.crm_user.organization)
+    lead = get_object_or_404(
+        Lead,
+        id=lead_id,
+        organization=request.crm_user.organization,
+    )
     clear_sequence(lead=lead)
     return HttpResponse(status=204)
 
@@ -538,9 +665,16 @@ def lead_clear_sequence(request, lead_id):
 @crm_login_required
 @require_POST
 def lead_toggle_sequence(request, lead_id):
-    lead = get_object_or_404(Lead, id=lead_id, organization=request.crm_user.organization)
+    lead = get_object_or_404(
+        Lead,
+        id=lead_id,
+        organization=request.crm_user.organization,
+    )
     try:
-        set_lead_followup_enabled(lead=lead, enabled=request.POST.get("enabled") == "true")
+        set_lead_followup_enabled(
+            lead=lead,
+            enabled=request.POST.get("enabled") == "true",
+        )
     except FollowupError as exc:
         return HttpResponse(str(exc), status=400)
     return HttpResponse(status=204)
