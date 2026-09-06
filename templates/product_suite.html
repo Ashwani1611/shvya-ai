@@ -1,0 +1,113 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="Explore the SHVYA Product Suite: AI sales automation, CRM, inventory, school ERP, hospital ERP, restaurant ERP, HRM and payroll, billing, and geofencing systems.">
+<title>SHVYA Product Suite — Systems for Real Business Problems</title>
+<link rel="icon" type="image/svg+xml" href="{% static 'images/shvya-logo.svg' %}">
+<link rel="shortcut icon" href="{% static 'images/shvya-logo.svg' %}">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{% static 'marketing/home-core.css' %}">
+<link rel="stylesheet" href="{% static 'marketing/home-responsive.css' %}">
+<link rel="stylesheet" href="{% static 'marketing/company-pages.css' %}">
+</head>
+<body class="product-suite-page">
+{% include "marketing/home_header.html" %}
+<main>
+  <section class="company-hero">
+    <div class="wrap company-hero-inner reveal">
+      <div class="eyebrow violet centered">SHVYA Product Suite</div>
+      <h1>Your business does not need more tools. It needs <span class="soft-highlight">better systems</span>.</h1>
+      <p class="lede">Missed leads, manual tracking, disconnected departments, delayed reports, and repetitive admin are usually not people problems. They are system problems. The SHVYA Product Suite turns those frustrations into connected, intelligent workflows.</p>
+      <div class="company-actions"><a href="#suite" class="btn btn-violet">Explore the suite</a><a href="{% url 'services' %}" class="btn btn-secondary">Need a custom system?</a></div>
+      <p class="company-note">From chaos to clarity, one product at a time.</p>
+      <div class="company-visual-row">
+        <article class="company-mini-card"><div class="mini-icon"><svg class="icon" viewBox="0 0 24 24"><path d="M5 5h14v14H5zM8 9h8M8 13h5"/></svg></div><strong>One ecosystem</strong><span>Purpose-built systems for sales, operations, people, and finance.</span></article>
+        <article class="company-mini-card"><div class="mini-icon"><svg class="icon" viewBox="0 0 24 24"><path d="M4 12h5l2-5 3 10 2-5h4"/></svg></div><strong>Automation first</strong><span>Reduce manual steps and make routine work move on its own.</span></article>
+        <article class="company-mini-card"><div class="mini-icon"><svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8 12h8M12 8v8"/></svg></div><strong>Built to connect</strong><span>Keep teams and data aligned instead of creating more silos.</span></article>
+      </div>
+    </div>
+  </section>
+
+  <section class="company-section section-white">
+    <div class="wrap">
+      <div class="section-head centered reveal">
+        <div class="eyebrow centered">If this sounds familiar</div>
+        <h2 class="section-title">You are probably dealing with a system problem</h2>
+        <p class="section-copy">Growing businesses often feel the pain first in spreadsheets, missed handoffs, stock visibility, attendance, billing, and scattered customer information.</p>
+      </div>
+      <div class="problem-grid">
+        <article class="problem-card reveal"><div class="quote-mark">“</div><p>My team spends hours updating Excel sheets instead of doing higher-value work.</p></article>
+        <article class="problem-card reveal"><div class="quote-mark">“</div><p>Leads come in from everywhere and too many go cold before someone follows up.</p></article>
+        <article class="problem-card reveal"><div class="quote-mark">“</div><p>We do not know our actual stock position until a shortage becomes urgent.</p></article>
+        <article class="problem-card reveal"><div class="quote-mark">“</div><p>Orders, bills, attendance, payroll, and field activity all live in separate processes.</p></article>
+      </div>
+      <div class="problem-transition reveal">That is not a people problem. It is a system problem. SHVYA is built to bring those moving parts into clearer workflows.</div>
+    </div>
+  </section>
+
+  <section class="company-section soft" id="suite">
+    <div class="wrap">
+      <div class="section-head reveal">
+        <div class="eyebrow violet">The SHVYA ecosystem</div>
+        <h2 class="section-title">Solutions for real-world business problems</h2>
+        <p class="section-copy">Each product starts with a recurring operational pain point and turns it into a more visible, automated, manageable system.</p>
+      </div>
+      <div class="suite-grid">
+        <article class="suite-card featured reveal"><span class="suite-number">PRODUCT 01</span><div class="suite-icon"><svg class="icon" viewBox="0 0 24 24"><path d="M12 3l1.6 4.2L18 9l-4.4 1.8L12 15l-1.6-4.2L6 9l4.4-1.8zM18 15l.8 2.2L21 18l-2.2.8L18 21l-.8-2.2L15 18l2.2-.8z"/></svg></div><h3>SHVYA AI</h3><p class="suite-pain"><strong>Pain:</strong> Leads can turn cold before a sales team replies.</p><p class="suite-solution"><strong>Solution:</strong> AI-assisted WhatsApp, email, and voice workflows for qualification, nurturing, follow-up, and sales handoff.</p><div class="suite-result"><strong>Designed for:</strong> faster response, more consistent follow-up, and fewer missed opportunities.</div><a class="suite-link" href="{% url 'home' %}#features">Explore SHVYA AI →</a></article>
+        <article class="suite-card reveal"><span class="suite-number">PRODUCT 02</span><div class="suite-icon"><svg class="icon" viewBox="0 0 24 24"><path d="M4 5h16v14H4zM8 9h8M8 13h5M8 17h3"/></svg></div><h3>SHVYA CRM</h3><p class="suite-pain"><strong>Pain:</strong> Leads slip through gaps, replies get delayed, and campaign context disappears.</p><p class="suite-solution"><strong>Solution:</strong> Capture leads, manage pipeline stages, automate reminders and communication, and keep sales activity in one workspace.</p><div class="suite-result"><strong>Designed for:</strong> clearer ownership, stronger follow-up discipline, and better sales visibility.</div><a class="suite-link" href="{% url 'crm-signup' %}">Start with CRM →</a></article>
+        <article class="suite-card reveal"><span class="suite-number">PRODUCT 03</span><div class="suite-icon"><svg class="icon" viewBox="0 0 24 24"><path d="M4 7l8-4 8 4-8 4zM4 7v10l8 4 8-4V7M12 11v10"/></svg></div><h3>SHVYA Inventory</h3><p class="suite-pain"><strong>Pain:</strong> Stockouts, over-purchasing, and spreadsheet-based inventory reduce visibility.</p><p class="suite-solution"><strong>Solution:</strong> Track stock in real time, update quantities around sales, and use reorder alerts before shortages become urgent.</p><div class="suite-result"><strong>Designed for:</strong> smarter purchasing, cleaner stock control, and more dependable forecasting.</div><a class="suite-link" href="#consultation">Discuss Inventory →</a></article>
+        <article class="suite-card reveal"><span class="suite-number">PRODUCT 04</span><div class="suite-icon"><svg class="icon" viewBox="0 0 24 24"><path d="M3 10l9-6 9 6-9 6zM6 13v5M18 13v5M5 20h14"/></svg></div><h3>SHVYA School ERP</h3><p class="suite-pain"><strong>Pain:</strong> Admissions, fees, attendance, exams, and schedules live in different tools.</p><p class="suite-solution"><strong>Solution:</strong> Bring student records, fees, attendance, exams, and teacher operations into one secure administrative platform.</p><div class="suite-result"><strong>Designed for:</strong> less fragmented admin and more time focused on education.</div><a class="suite-link" href="#consultation">Discuss School ERP →</a></article>
+        <article class="suite-card reveal"><span class="suite-number">PRODUCT 05</span><div class="suite-icon"><svg class="icon" viewBox="0 0 24 24"><path d="M4 20V8h16v12M8 8V4h8v4M9 12h6M12 9v6M8 20v-4h8v4"/></svg></div><h3>SHVYA Hospital ERP</h3><p class="suite-pain"><strong>Pain:</strong> Appointments, billing, patient records, diagnostics, and pharmacy data can become disconnected.</p><p class="suite-solution"><strong>Solution:</strong> Unify patient information and operational departments around a shared workflow.</p><div class="suite-result"><strong>Designed for:</strong> better coordination, faster service, and clearer information flow.</div><a class="suite-link" href="#consultation">Discuss Hospital ERP →</a></article>
+        <article class="suite-card reveal"><span class="suite-number">PRODUCT 06</span><div class="suite-icon"><svg class="icon" viewBox="0 0 24 24"><path d="M4 7h16M6 7l1-3h10l1 3M6 7v13h12V7M9 11h6M9 15h6"/></svg></div><h3>SHVYA Restaurant ERP</h3><p class="suite-pain"><strong>Pain:</strong> Orders, kitchen activity, billing, and inventory can fall out of sync.</p><p class="suite-solution"><strong>Solution:</strong> Connect POS, kitchen display, billing, and stock updates in a single operational flow.</p><div class="suite-result"><strong>Designed for:</strong> smoother service, fewer handoff errors, and clearer restaurant operations.</div><a class="suite-link" href="#consultation">Discuss Restaurant ERP →</a></article>
+        <article class="suite-card reveal"><span class="suite-number">PRODUCT 07</span><div class="suite-icon"><svg class="icon" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><path d="M4 20c.7-4 2.4-6 5-6s4.3 2 5 6M16 5h4M18 3v4M16 12h4M16 16h4"/></svg></div><h3>SHVYA HRM + Payroll</h3><p class="suite-pain"><strong>Pain:</strong> Attendance errors, salary delays, and recurring payroll admin consume time every month.</p><p class="suite-solution"><strong>Solution:</strong> Connect attendance, employee records, payroll workflows, and reporting in one dashboard.</p><div class="suite-result"><strong>Designed for:</strong> fewer manual corrections and a more reliable monthly payroll cycle.</div><a class="suite-link" href="#consultation">Discuss HRM + Payroll →</a></article>
+        <article class="suite-card reveal"><span class="suite-number">PRODUCT 08</span><div class="suite-icon"><svg class="icon" viewBox="0 0 24 24"><path d="M5 3h14v18H5zM8 7h8M8 11h8M8 15h4M15 15h1"/></svg></div><h3>SHVYA Billing System</h3><p class="suite-pain"><strong>Pain:</strong> Manual invoicing wastes time and increases the chance of billing errors.</p><p class="suite-solution"><strong>Solution:</strong> Create invoices, connect payments, organize billing history, and surface reports from one flow.</p><div class="suite-result"><strong>Designed for:</strong> faster billing, cleaner records, and better cash-flow visibility.</div><a class="suite-link" href="#consultation">Discuss Billing →</a></article>
+        <article class="suite-card reveal"><span class="suite-number">PRODUCT 09</span><div class="suite-icon"><svg class="icon" viewBox="0 0 24 24"><path d="M12 21s6-5.2 6-11a6 6 0 1 0-12 0c0 5.8 6 11 6 11z"/><circle cx="12" cy="10" r="2"/></svg></div><h3>SHVYA Geofencing EMS</h3><p class="suite-pain"><strong>Pain:</strong> Field-team presence and site activity can be difficult to verify consistently.</p><p class="suite-solution"><strong>Solution:</strong> Use location-aware check-ins, field visibility, and activity tracking for distributed teams.</p><div class="suite-result"><strong>Designed for:</strong> greater transparency and accountability without constant manual verification.</div><a class="suite-link" href="#consultation">Discuss Geofencing →</a></article>
+      </div>
+    </div>
+  </section>
+
+  <section class="company-section lilac">
+    <div class="wrap difference-grid">
+      <article class="difference-story reveal">
+        <div class="eyebrow violet">What makes SHVYA different</div>
+        <h3>We solve what is broken in the business, not just what is missing in the software stack.</h3>
+        <p>SHVYA is built around frustrations businesses already know: missed follow-ups, scattered teams, repetitive admin, disconnected systems, and information that arrives too late to be useful. The goal is to make those operations more human, visible, and manageable.</p>
+        <div class="difference-hooks"><div class="difference-hook">Talk like humans, not forms.</div><div class="difference-hook">Automate the boring, focus on what matters.</div><div class="difference-hook">Turn confusion into insight in real time.</div><div class="difference-hook">Scale the business without scaling unnecessary workload.</div></div>
+      </article>
+      <div class="difference-side">
+        <article class="value-card reveal"><div class="value-icon"><svg class="icon" viewBox="0 0 24 24"><path d="M12 3l2 4 4 2-4 2-2 4-2-4-4-2 4-2z"/></svg></div><h4>AI-driven automation</h4><p>Respond, qualify, route, and nurture with less repetitive manual work.</p></article>
+        <article class="value-card reveal"><div class="value-icon"><svg class="icon" viewBox="0 0 24 24"><path d="M6 7h5v5H6zM13 12h5v5h-5zM11 9h2M9 12v2M15 10v2"/></svg></div><h4>Connected ecosystem</h4><p>Products are designed around shared business workflows instead of isolated modules.</p></article>
+        <article class="value-card reveal"><div class="value-icon"><svg class="icon" viewBox="0 0 24 24"><path d="M5 19V9h4v10M10 19V5h4v14M15 19v-7h4v7"/></svg></div><h4>Data-driven visibility</h4><p>Dashboards and operational records help teams understand what is happening now.</p></article>
+        <article class="value-card reveal"><div class="value-icon"><svg class="icon" viewBox="0 0 24 24"><path d="M12 3l7 3v5c0 4.5-2.5 7.7-7 10-4.5-2.3-7-5.5-7-10V6zM9 12l2 2 4-4"/></svg></div><h4>Security-first thinking</h4><p>Access, data handling, and maintainability are treated as product requirements, not afterthoughts.</p></article>
+      </div>
+    </div>
+  </section>
+
+  <section class="company-section section-white">
+    <div class="wrap">
+      <div class="section-head centered reveal"><div class="eyebrow peach centered">From chaos to control</div><h2 class="section-title">The difference a connected system is meant to create</h2><p class="section-copy">The goal is not more software. It is a cleaner operating picture with fewer manual gaps between people, tools, and decisions.</p></div>
+      <div class="before-after">
+        <article class="state-card reveal"><h3>Before SHVYA</h3><div class="state-list"><div class="state-item"><span class="state-badge">×</span><span>Leads scattered across chats, spreadsheets, and individual inboxes.</span></div><div class="state-item"><span class="state-badge">×</span><span>Duplicate updates, delayed handoffs, and unclear responsibility.</span></div><div class="state-item"><span class="state-badge">×</span><span>Reports assembled manually after the decision window has already passed.</span></div><div class="state-item"><span class="state-badge">×</span><span>Operations depend heavily on memory and follow-up discipline.</span></div></div></article>
+        <article class="state-card after reveal"><h3>With a connected SHVYA workflow</h3><div class="state-list"><div class="state-item"><span class="state-badge">✓</span><span>Shared records and workflows for the information teams need to act on.</span></div><div class="state-item"><span class="state-badge">✓</span><span>Automation handles repeatable steps while people focus on exceptions and decisions.</span></div><div class="state-item"><span class="state-badge">✓</span><span>Operational visibility improves through structured, real-time activity data.</span></div><div class="state-item"><span class="state-badge">✓</span><span>Processes become easier to scale, review, and improve over time.</span></div></div></article>
+      </div>
+    </div>
+  </section>
+
+  <section class="company-cta" id="consultation">
+    <div class="wrap reveal">
+      <div class="eyebrow" style="background:rgba(255,255,255,.12);color:#fff">One problem. One clearer system.</div>
+      <h2>You do not need another tool. You need a workflow that fixes the problem.</h2>
+      <p>Every product in the SHVYA ecosystem starts with a business problem teams already face. Choose a ready product, start with SHVYA AI, or work with SHVYA Services on something more custom.</p>
+      <div class="company-actions"><a href="{% url 'crm-signup' %}" class="btn btn-white">Start with SHVYA AI</a><a href="{% url 'services' %}" class="btn" style="border-color:rgba(255,255,255,.28);color:#fff">Explore SHVYA Services</a></div>
+    </div>
+  </section>
+</main>
+{% include "marketing/home_footer.html" with hide_default_final_cta=True %}
+<script src="{% static 'marketing/home.js' %}" defer></script>
+</body>
+</html>
