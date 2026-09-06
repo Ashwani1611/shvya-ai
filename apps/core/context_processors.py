@@ -53,7 +53,7 @@ NAV_ITEMS = [
         "label": "Smart Triggers",
         "icon": "ti-target-arrow",
         "url_name": "crm-smart-triggers",
-        "path_exact": "/dashboard/smart-triggers/",
+        "path_prefix": "/dashboard/smart-triggers/",
     },
     {
         "label": "Analytics",
