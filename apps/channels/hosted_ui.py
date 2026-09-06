@@ -43,7 +43,8 @@ SESSION_LABELS = {
 
 
 def _organization(request):
-    organization = getattr(request.user, "organization", None)
+    user = getattr(request, "crm_user", None)
+    organization = getattr(user, "organization", None)
     if not organization:
         raise Http404("Organization not found.")
     return organization
@@ -118,7 +119,7 @@ def hosted_session_create_view(request):
     try:
         account, pipeline, created = create_hosted_account(
             organization=_organization(request),
-            created_by=request.user,
+            created_by=request.crm_user,
             country_code=data.get("country_code", "+91"),
             phone_number=data.get("phone_number", ""),
         )
