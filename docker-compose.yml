@@ -190,6 +190,43 @@ services:
       - info
 
 
+  whatsapp-web-gateway:
+    build:
+      context: ./whatsapp_web_gateway
+    restart: unless-stopped
+
+    env_file:
+      - .env
+
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      WHATSAPP_WEB_SESSION_PATH: /data/wwebjs_auth
+      SHVYA_HOSTED_CALLBACK_URL: http://web:8000/dashboard/whatsapp/connect/hosted/events/
+
+    volumes:
+      - whatsapp_sessions:/data/wwebjs_auth
+
+    depends_on:
+      redis:
+        condition: service_healthy
+      web:
+        condition: service_healthy
+
+    expose:
+      - "3000"
+
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "node -e \"fetch('http://127.0.0.1:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\"",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+
   nginx:
     image: nginx:1.27-alpine
     restart: unless-stopped
@@ -246,3 +283,5 @@ volumes:
       type: none
       device: /opt/shvya-ai/media
       o: bind
+
+  whatsapp_sessions:
