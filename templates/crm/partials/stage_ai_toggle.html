@@ -1,0 +1,20 @@
+<form
+    method="post"
+    hx-post="{% url 'crm-stage-ai-toggle' stage.id %}"
+    hx-target="this"
+    hx-swap="outerHTML"
+    class="shrink-0"
+>
+    {% csrf_token %}
+    <button
+        type="submit"
+        role="switch"
+        aria-checked="{% if stage.ai_on %}true{% else %}false{% endif %}"
+        aria-label="Turn AI {% if stage.ai_on %}off{% else %}on{% endif %} for {{ stage.name }}"
+        title="Stage AI is {% if stage.ai_on %}on{% else %}off{% endif %}"
+        class="inline-flex h-9 items-center gap-1.5 rounded-full px-2.5 text-xs font-semibold transition {% if stage.ai_on %}bg-emerald-100 text-emerald-700 hover:bg-emerald-200{% else %}bg-gray-100 text-gray-600 hover:bg-gray-200{% endif %}"
+    >
+        <i class="ti ti-sparkles"></i>
+        AI {% if stage.ai_on %}On{% else %}Off{% endif %}
+    </button>
+</form>

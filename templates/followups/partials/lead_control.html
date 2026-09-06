@@ -1,27 +1,48 @@
-<div id="lead-followup-control" hx-get="{% url 'followups-lead-control' lead.id %}" hx-trigger="refresh" hx-swap="outerHTML" class="rounded-lg border border-blue-100 bg-blue-50/60 px-3 py-2">
-    <div class="flex flex-wrap items-center gap-2">
-        <span class="inline-flex items-center gap-1.5 text-xs font-semibold text-blue-800"><i class="ti ti-repeat"></i>Auto Follow-up</span>
-        {% if current_state %}
-            <span class="max-w-[190px] truncate text-xs text-gray-700" title="{{ current_state.sequence.name }}">{{ current_state.sequence.name }}</span>
-            {% if current_state.next_step %}<span class="text-[11px] text-gray-500">Next: step {{ current_state.next_step.position }}{% if current_state.upcoming_send_at %} · {{ current_state.upcoming_send_at|date:"d M, h:i A" }}{% endif %}</span>{% endif %}
-            <form hx-post="{% url 'followups-lead-toggle' lead.id %}" hx-swap="none" hx-on::after-request="if(event.detail.successful) htmx.trigger('#lead-followup-control','refresh')" class="ml-auto">
+<div
+    id="lead-followup-control-{{ lead.id }}"
+    class="rounded-lg border px-3 py-2.5 {% if current_state %}border-emerald-200 bg-emerald-50{% elif display_state %}border-orange-200 bg-orange-50{% else %}border-blue-200 bg-blue-50{% endif %}"
+>
+    <div class="flex items-center justify-between gap-2">
+        <span class="text-[10px] font-semibold uppercase tracking-wide {% if current_state %}text-emerald-700{% elif display_state %}text-orange-700{% else %}text-blue-700{% endif %}">Auto Follow-up</span>
+        <i class="ti ti-bolt text-sm {% if current_state %}text-emerald-600{% elif display_state %}text-orange-600{% else %}text-blue-600{% endif %}"></i>
+    </div>
+
+    {% if current_state %}
+        <div class="mt-1 flex flex-wrap items-center gap-2">
+            <a href="{% url 'followups-sequence-edit' current_state.sequence.id %}" class="min-w-0 flex-1 truncate text-sm font-semibold text-emerald-900 hover:underline" title="Open {{ current_state.sequence.name }}">
+                {{ current_state.sequence.name }} <i class="ti ti-external-link text-xs"></i>
+            </a>
+            <form hx-post="{% url 'followups-lead-toggle' lead.id %}" hx-target="#lead-followup-control-{{ lead.id }}" hx-swap="outerHTML">
                 {% csrf_token %}
                 <input type="hidden" name="enabled" value="{% if current_state.lead_auto_followup_enabled %}false{% else %}true{% endif %}">
-                <button type="submit" class="rounded-full px-2.5 py-1 text-[11px] font-semibold {% if current_state.lead_auto_followup_enabled %}bg-emerald-100 text-emerald-700{% else %}bg-gray-200 text-gray-600{% endif %}">{% if current_state.lead_auto_followup_enabled %}On{% else %}Paused{% endif %}</button>
+                <button type="submit" class="rounded-full px-2.5 py-1 text-[11px] font-semibold {% if current_state.lead_auto_followup_enabled %}bg-emerald-200 text-emerald-800{% else %}bg-gray-200 text-gray-600{% endif %}">{% if current_state.lead_auto_followup_enabled %}On{% else %}Paused{% endif %}</button>
             </form>
-            <form hx-post="{% url 'followups-lead-clear' lead.id %}" hx-swap="none" hx-on::after-request="if(event.detail.successful) htmx.trigger('#lead-followup-control','refresh')">
-                {% csrf_token %}<button class="text-[11px] font-medium text-red-600 hover:underline">Clear</button>
+        </div>
+        <div class="mt-1 flex items-center justify-between gap-2 text-[11px] text-emerald-800/80">
+            <span>{% if current_state.next_step %}Next: step {{ current_state.next_step.position }}{% if current_state.upcoming_send_at %} · {{ current_state.upcoming_send_at|date:"d M, h:i A" }}{% endif %}{% else %}Running{% endif %}</span>
+            <form hx-post="{% url 'followups-lead-clear' lead.id %}" hx-target="#lead-followup-control-{{ lead.id }}" hx-swap="outerHTML">
+                {% csrf_token %}<button class="font-semibold text-red-600 hover:underline">Clear</button>
             </form>
-        {% else %}
-            {% if sequences %}
-            <form hx-post="{% url 'followups-lead-assign' lead.id %}" hx-swap="none" hx-on::after-request="if(event.detail.successful) htmx.trigger('#lead-followup-control','refresh')" class="ml-auto flex items-center gap-2">
-                {% csrf_token %}
-                <select name="sequence_id" required class="h-8 max-w-[220px] rounded-md border border-blue-200 bg-white px-2 text-xs text-gray-700"><option value="">Select sequence</option>{% for sequence in sequences %}<option value="{{ sequence.id }}">{{ sequence.name }}</option>{% endfor %}</select>
-                <button class="h-8 rounded-md bg-blue-600 px-3 text-xs font-semibold text-white hover:bg-blue-700">Assign</button>
-            </form>
-            {% else %}
-            <span class="ml-auto text-[11px] text-gray-500">No matching active sequence</span>
-            {% endif %}
-        {% endif %}
-    </div>
+        </div>
+    {% elif display_state %}
+        <a href="{% url 'followups-sequence-edit' display_state.sequence.id %}" class="mt-1 block truncate text-sm font-semibold text-orange-900 hover:underline" title="Open {{ display_state.sequence.name }}">
+            {{ display_state.sequence.name }} <i class="ti ti-external-link text-xs"></i>
+        </a>
+        <p class="mt-1 text-[11px] text-orange-700">Sequence completed{% if display_state.completed_at %} · {{ display_state.completed_at|date:"d M, h:i A" }}{% endif %}</p>
+    {% else %}
+        <p class="mt-1 text-sm font-semibold text-blue-900">No sequence assigned</p>
+    {% endif %}
+
+    {% if not current_state and sequences %}
+        <form hx-post="{% url 'followups-lead-assign' lead.id %}" hx-target="#lead-followup-control-{{ lead.id }}" hx-swap="outerHTML" class="mt-2">
+            {% csrf_token %}
+            <label for="lead-sequence-{{ lead.id }}" class="sr-only">Choose a sequence</label>
+            <select id="lead-sequence-{{ lead.id }}" name="sequence_id" required onchange="if(this.value) this.form.requestSubmit()" class="h-8 w-full rounded-md border border-blue-200 bg-white px-2 text-xs text-gray-700 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100">
+                <option value="">Select sequence</option>
+                {% for sequence in sequences %}<option value="{{ sequence.id }}">{{ sequence.name }}</option>{% endfor %}
+            </select>
+        </form>
+    {% elif not current_state and not sequences %}
+        <p class="mt-2 text-[11px] text-gray-500">No matching active sequence</p>
+    {% endif %}
 </div>

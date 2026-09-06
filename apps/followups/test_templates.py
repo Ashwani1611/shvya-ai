@@ -15,6 +15,7 @@ class AutoFollowupTemplateTests(SimpleTestCase):
             "followups/partials/reminder_step_modal.html",
             "followups/partials/settings_modal.html",
             "followups/partials/lead_control.html",
+            "followups/partials/lead_sequence_history.html",
             "followups/partials/schedule_fields.html",
             "followups/partials/personalization_chips.html",
         ]:
