@@ -11,11 +11,11 @@
         <div class="flex items-center gap-3">
             <a href="{% url 'crm-auto-follow-ups-sequences' %}" class="inline-flex h-9 w-9 items-center justify-center rounded-lg hover:bg-gray-100"><i class="ti ti-arrow-left text-xl"></i></a>
             <div>
-                <div class="flex items-center gap-3">
+                <div class="flex flex-wrap items-center gap-3">
                     <h2 class="text-xl font-semibold text-gray-900">Edit: {{ sequence.name }}</h2>
-                    <span class="inline-flex items-center gap-1 rounded-full border border-orange-300 bg-orange-50 px-3 py-1 text-sm font-medium text-orange-600"><i class="ti ti-player-play-filled"></i> Watch Tutorial</span>
+                    {% if is_hosted_sequence %}<span class="inline-flex items-center gap-1 rounded-full border border-emerald-300 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700"><i class="ti ti-brand-whatsapp"></i> WhatsApp</span>{% else %}<span class="inline-flex items-center gap-1 rounded-full border border-blue-300 bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700"><i class="ti ti-api"></i> WhatsApp API</span>{% endif %}
                 </div>
-                <p class="mt-1 text-sm text-gray-500">Steps execute from top to bottom. Drag-free move controls keep ordering explicit and safe.</p>
+                <p class="mt-1 text-sm text-gray-500">Steps execute from top to bottom. The sequence always uses its original WhatsApp provider.</p>
             </div>
         </div>
         <div class="flex flex-wrap items-center gap-2">
@@ -27,19 +27,10 @@
     <form method="post" action="{% url 'followups-sequence-update' sequence.id %}" class="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
         {% csrf_token %}
         <div class="grid grid-cols-1 gap-5">
-            <div>
-                <label class="text-sm font-semibold text-gray-800">Sequence Name <span class="text-red-500">*</span></label>
-                <input name="name" maxlength="255" required value="{{ sequence.name }}" class="mt-2 h-11 w-full rounded-lg border border-gray-300 px-4 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100">
-            </div>
-            <div>
-                <label class="text-sm font-semibold text-gray-800">Description</label>
-                <textarea name="description" maxlength="300" rows="3" class="mt-2 w-full resize-none rounded-lg border border-gray-300 px-4 py-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100">{{ sequence.description }}</textarea>
-            </div>
-            <div class="flex flex-col gap-3 rounded-lg border-l-4 border-blue-600 bg-blue-50 px-4 py-3 text-sm text-blue-800 lg:flex-row lg:items-center lg:justify-between">
-                <div class="flex items-start gap-2">
-                    <i class="ti ti-info-circle-filled mt-0.5"></i>
-                    <span><strong>Delivery: WhatsApp API · {{ sequence.whatsapp_account.display_phone_number|default:sequence.whatsapp_account.phone_number_id }}</strong>{% if sequence.whatsapp_account.business_name %} · {{ sequence.whatsapp_account.business_name }}{% endif %}. Approved templates in this sequence send through this connected number.</span>
-                </div>
+            <div><label class="text-sm font-semibold text-gray-800">Sequence Name <span class="text-red-500">*</span></label><input name="name" maxlength="255" required value="{{ sequence.name }}" class="mt-2 h-11 w-full rounded-lg border border-gray-300 px-4 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"></div>
+            <div><label class="text-sm font-semibold text-gray-800">Description</label><textarea name="description" maxlength="300" rows="3" class="mt-2 w-full resize-none rounded-lg border border-gray-300 px-4 py-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100">{{ sequence.description }}</textarea></div>
+            <div class="flex flex-col gap-3 rounded-lg border-l-4 {% if is_hosted_sequence %}border-emerald-600 bg-emerald-50 text-emerald-900{% else %}border-blue-600 bg-blue-50 text-blue-800{% endif %} px-4 py-3 text-sm lg:flex-row lg:items-center lg:justify-between">
+                <div class="flex items-start gap-2"><i class="ti ti-info-circle-filled mt-0.5"></i><span><strong>Delivery: {{ provider_label }} · {{ sequence.whatsapp_account.display_phone_number|default:sequence.whatsapp_account.phone_number_id }}</strong>{% if sequence.whatsapp_account.business_name %} · {{ sequence.whatsapp_account.business_name }}{% endif %}. {% if is_hosted_sequence %}Hosted hard rules, Account Health, CRM placeholders, and free-form WhatsApp messages apply.{% else %}Approved Meta templates send through this API number.{% endif %}</span></div>
                 <button class="shrink-0 rounded-lg bg-blue-600 px-4 py-2 text-xs font-semibold text-white hover:bg-blue-700">Save sequence details</button>
             </div>
         </div>
@@ -47,95 +38,48 @@
 
     <div class="rounded-xl border border-blue-500 bg-white p-3 shadow-sm">
         <div class="flex flex-wrap items-center justify-center gap-3">
-            <button type="button" hx-get="{% url 'followups-template-picker' sequence.id %}" hx-target="#modal-root" hx-swap="innerHTML" class="inline-flex h-10 items-center gap-2 rounded-full border border-blue-500 bg-white px-5 text-sm font-semibold text-blue-700 hover:bg-blue-50"><i class="ti ti-brand-whatsapp"></i>Add WhatsApp API</button>
+            {% if is_hosted_sequence %}<button type="button" hx-get="{% url 'followups-hosted-whatsapp-step-modal' sequence.id %}" hx-target="#modal-root" hx-swap="innerHTML" class="inline-flex h-10 items-center gap-2 rounded-full border border-emerald-500 bg-white px-5 text-sm font-semibold text-emerald-700 hover:bg-emerald-50"><i class="ti ti-brand-whatsapp"></i>Add WhatsApp</button>{% else %}<button type="button" hx-get="{% url 'followups-template-picker' sequence.id %}" hx-target="#modal-root" hx-swap="innerHTML" class="inline-flex h-10 items-center gap-2 rounded-full border border-blue-500 bg-white px-5 text-sm font-semibold text-blue-700 hover:bg-blue-50"><i class="ti ti-brand-whatsapp"></i>Add WhatsApp API</button>{% endif %}
             <button type="button" hx-get="{% url 'followups-email-step-modal' sequence.id %}" hx-target="#modal-root" hx-swap="innerHTML" class="inline-flex h-10 items-center gap-2 rounded-full border border-blue-500 bg-white px-5 text-sm font-semibold text-blue-700 hover:bg-blue-50"><i class="ti ti-mail"></i>Add Email</button>
             <button type="button" hx-get="{% url 'followups-reminder-step-modal' sequence.id %}" hx-target="#modal-root" hx-swap="innerHTML" class="inline-flex h-10 items-center gap-2 rounded-full border border-blue-500 bg-white px-5 text-sm font-semibold text-blue-700 hover:bg-blue-50"><i class="ti ti-calendar-event"></i>Add Call Reminder</button>
         </div>
     </div>
 
-    {% if not steps %}
-    <div class="rounded-xl border border-dashed border-gray-300 bg-white py-16 text-center">
-        <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-gray-100 text-xl text-gray-500"><i class="ti ti-list-details"></i></div>
-        <h3 class="mt-3 font-semibold text-gray-900">No follow-up steps yet</h3>
-        <p class="mt-1 text-sm text-gray-500">Add WhatsApp API templates, emails, and reminders in any order. You can add as many as you need.</p>
-    </div>
-    {% endif %}
+    {% if not steps %}<div class="rounded-xl border border-dashed border-gray-300 bg-white py-16 text-center"><div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-gray-100 text-xl text-gray-500"><i class="ti ti-list-details"></i></div><h3 class="mt-3 font-semibold text-gray-900">No follow-up steps yet</h3><p class="mt-1 text-sm text-gray-500">Add {{ provider_label }} messages, emails, and reminders in the order you need.</p></div>{% endif %}
 
     {% for step in steps %}
     <section class="rounded-xl border border-gray-200 bg-white shadow-sm">
         <div class="flex flex-wrap items-center justify-between gap-3 border-b border-gray-200 px-5 py-3">
-            <div class="flex items-center gap-3">
-                <span class="inline-flex h-7 w-7 items-center justify-center rounded-full bg-gray-100 text-xs font-bold text-gray-700">{{ step.position }}</span>
-                {% if step.step_type == 'whatsapp' %}<i class="ti ti-brand-whatsapp text-lg text-emerald-600"></i>{% elif step.step_type == 'email' %}<i class="ti ti-mail text-lg text-blue-600"></i>{% else %}<i class="ti ti-calendar-event text-lg text-amber-600"></i>{% endif %}
-                <div>
-                    <h3 class="text-sm font-semibold text-gray-900">{{ step.title|default:step.get_step_type_display }}</h3>
-                    <p class="text-xs text-gray-500">{{ step.get_step_type_display }} · {{ step.get_schedule_type_display }}</p>
-                </div>
-            </div>
+            <div class="flex items-center gap-3"><span class="inline-flex h-7 w-7 items-center justify-center rounded-full bg-gray-100 text-xs font-bold text-gray-700">{{ step.position }}</span>{% if step.step_type == 'whatsapp' %}<i class="ti ti-brand-whatsapp text-lg text-emerald-600"></i>{% elif step.step_type == 'email' %}<i class="ti ti-mail text-lg text-blue-600"></i>{% else %}<i class="ti ti-calendar-event text-lg text-amber-600"></i>{% endif %}<div><h3 class="text-sm font-semibold text-gray-900">{{ step.title|default:step.get_step_type_display }}</h3><p class="text-xs text-gray-500">{% if step.step_type == 'whatsapp' %}{{ provider_label }}{% else %}{{ step.get_step_type_display }}{% endif %} · {{ step.get_schedule_type_display }}</p></div></div>
             <div class="flex items-center gap-1">
                 <form method="post" action="{% url 'followups-step-move' sequence.id step.id %}">{% csrf_token %}<input type="hidden" name="direction" value="up"><button title="Move up" class="inline-flex h-8 w-8 items-center justify-center rounded-md text-gray-500 hover:bg-gray-100 hover:text-blue-600"><i class="ti ti-arrow-up"></i></button></form>
                 <form method="post" action="{% url 'followups-step-move' sequence.id step.id %}">{% csrf_token %}<input type="hidden" name="direction" value="down"><button title="Move down" class="inline-flex h-8 w-8 items-center justify-center rounded-md text-gray-500 hover:bg-gray-100 hover:text-blue-600"><i class="ti ti-arrow-down"></i></button></form>
-                {% if step.step_type == 'whatsapp' %}<button type="button" hx-get="{% url 'followups-template-preview' sequence.id step.whatsapp_template_id %}" hx-target="#modal-root" hx-swap="innerHTML" class="inline-flex h-8 items-center gap-1 rounded-md px-2 text-xs font-medium text-blue-600 hover:bg-blue-50"><i class="ti ti-eye"></i>Preview</button>{% endif %}
+                {% if step.step_type == 'whatsapp' and not is_hosted_sequence %}<button type="button" hx-get="{% url 'followups-template-preview' sequence.id step.whatsapp_template_id %}" hx-target="#modal-root" hx-swap="innerHTML" class="inline-flex h-8 items-center gap-1 rounded-md px-2 text-xs font-medium text-blue-600 hover:bg-blue-50"><i class="ti ti-eye"></i>Preview</button>{% endif %}
                 <form method="post" action="{% url 'followups-step-delete' sequence.id step.id %}" onsubmit="return confirm('Delete this step?');">{% csrf_token %}<button class="inline-flex h-8 items-center gap-1 rounded-md px-2 text-xs font-medium text-red-500 hover:bg-red-50"><i class="ti ti-trash"></i>Delete</button></form>
             </div>
         </div>
 
-        <form method="post" action="{% url 'followups-step-update' sequence.id step.id %}" class="p-5">
+        <form method="post" enctype="multipart/form-data" action="{% url 'followups-step-update' sequence.id step.id %}" class="p-5">
             {% csrf_token %}
-            {% if step.step_type == 'whatsapp' %}
-            <div class="mb-5">
-                <label class="text-xs font-semibold uppercase tracking-wide text-gray-500">Chosen Template</label>
-                <div class="mt-2 rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
-                    <div class="flex items-center justify-between gap-3"><span class="font-medium text-gray-800">{{ step.whatsapp_template.name }}</span><span class="rounded-full bg-emerald-50 px-2 py-1 text-[11px] font-semibold uppercase text-emerald-700">{{ step.whatsapp_template.category }}</span></div>
-                    <p class="mt-2 whitespace-pre-line text-sm text-gray-600">{{ step.whatsapp_template.body }}</p>
-                </div>
-            </div>
+            {% if step.step_type == 'whatsapp' and is_hosted_sequence %}
+                <div class="grid gap-4 lg:grid-cols-2"><div><label class="text-sm font-medium text-gray-700">Message Name <span class="text-red-500">*</span></label><input name="title" maxlength="255" required value="{{ step.title }}" class="mt-1 h-10 w-full rounded-lg border border-gray-300 px-3 text-sm"></div><div class="flex items-end"><span class="inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700"><i class="ti ti-shield-check mr-1"></i>Hosted WhatsApp hard rules enabled</span></div></div>
+                <div class="mt-4"><label class="text-sm font-medium text-gray-700">Content <span class="text-red-500">*</span></label><textarea name="body" data-personalization-target required rows="7" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100">{{ step.hosted_config.body }}</textarea>{% include "followups/partials/personalization_chips.html" %}</div>
+                <div class="mt-4 max-w-xl"><label class="flex cursor-pointer items-center gap-4 rounded-xl border border-dashed border-blue-500 px-5 py-4 hover:bg-blue-50/40"><i class="ti ti-cloud-upload text-3xl text-blue-200"></i><div class="min-w-0"><p class="text-sm font-medium text-gray-600">Browse files to Upload</p><p class="text-xs text-gray-400">PDF, DOC/DOCX, TXT, JPEG/JPG, PNG, Voice Notes, Audio, Video · max 50 MB</p>{% if step.hosted_config.attachment %}<p class="mt-1 truncate text-xs font-medium text-blue-700">Current: {{ step.hosted_config.attachment_original_name }}</p>{% endif %}</div><input type="file" name="attachment" class="hidden" accept=".pdf,.doc,.docx,.txt,.jpg,.jpeg,.png,.mp3,.m4a,.aac,.wav,.ogg,.opus,.mp4,.mov,.webm,.3gp,audio/*,video/*,image/jpeg,image/png"></label>{% if step.hosted_config.attachment %}<label class="mt-2 inline-flex items-center gap-2 text-xs text-red-600"><input type="checkbox" name="remove_attachment"> Remove current attachment</label>{% endif %}</div>
+            {% elif step.step_type == 'whatsapp' %}
+                <div class="mb-5"><label class="text-xs font-semibold uppercase tracking-wide text-gray-500">Chosen Template</label><div class="mt-2 rounded-lg border border-gray-200 bg-gray-50 px-4 py-3"><div class="flex items-center justify-between gap-3"><span class="font-medium text-gray-800">{{ step.whatsapp_template.name }}</span><span class="rounded-full bg-emerald-50 px-2 py-1 text-[11px] font-semibold uppercase text-emerald-700">{{ step.whatsapp_template.category }}</span></div><p class="mt-2 whitespace-pre-line text-sm text-gray-600">{{ step.whatsapp_template.body }}</p></div></div>
             {% elif step.step_type == 'email' %}
-            <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
-                <div><label class="text-sm font-medium text-gray-700">Message Name</label><input name="title" value="{{ step.title }}" class="mt-1 h-10 w-full rounded-lg border border-gray-300 px-3 text-sm"></div>
-                <div><label class="text-sm font-medium text-gray-700">Subject <span class="text-red-500">*</span></label><input name="email_subject" required value="{{ step.email_subject }}" class="mt-1 h-10 w-full rounded-lg border border-gray-300 px-3 text-sm"></div>
-            </div>
-            <div class="mt-4">
-                <label class="text-sm font-medium text-gray-700">Content <span class="text-red-500">*</span></label>
-                <textarea name="email_body" data-personalization-target required rows="6" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100">{{ step.email_body }}</textarea>
-                {% include "followups/partials/personalization_chips.html" %}
-                <p class="mt-1 text-xs text-gray-400">Email delivery is architecture-ready but remains gated until your organization DNS/sender configuration is enabled.</p>
-            </div>
+                <div class="grid grid-cols-1 gap-4 lg:grid-cols-2"><div><label class="text-sm font-medium text-gray-700">Message Name</label><input name="title" value="{{ step.title }}" class="mt-1 h-10 w-full rounded-lg border border-gray-300 px-3 text-sm"></div><div><label class="text-sm font-medium text-gray-700">Subject <span class="text-red-500">*</span></label><input name="email_subject" required value="{{ step.email_subject }}" class="mt-1 h-10 w-full rounded-lg border border-gray-300 px-3 text-sm"></div></div>
+                <div class="mt-4"><label class="text-sm font-medium text-gray-700">Content <span class="text-red-500">*</span></label><textarea name="email_body" data-personalization-target required rows="6" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100">{{ step.email_body }}</textarea>{% include "followups/partials/personalization_chips.html" %}</div>
             {% else %}
-            <div class="mb-5 rounded-lg border border-orange-200 bg-orange-50 px-4 py-3 text-xs text-orange-800"><i class="ti ti-info-circle mr-1"></i>When this step is due, SHVYA creates a CRM reminder for the lead and replaces an existing pending reminder.</div>
-            <label class="text-sm font-medium text-gray-700">Follow-up Note <span class="text-red-500">*</span></label>
-            <textarea name="reminder_text" data-personalization-target required rows="4" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100">{{ step.reminder_text }}</textarea>
-            {% include "followups/partials/personalization_chips.html" %}
+                <div class="mb-5 rounded-lg border border-orange-200 bg-orange-50 px-4 py-3 text-xs text-orange-800"><i class="ti ti-info-circle mr-1"></i>When due, SHVYA creates a CRM reminder for the lead.</div><label class="text-sm font-medium text-gray-700">Follow-up Note <span class="text-red-500">*</span></label><textarea name="reminder_text" data-personalization-target required rows="4" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100">{{ step.reminder_text }}</textarea>{% include "followups/partials/personalization_chips.html" %}
             {% endif %}
 
-            <div class="mt-5 rounded-xl bg-gray-50 p-4">
-                <div class="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
-                    <div class="flex-1">
-                        <p class="mb-1 text-sm font-semibold text-gray-800">Delivery Settings</p>
-                        {% include "followups/partials/schedule_fields.html" %}
-                    </div>
-                    {% if step.step_type == 'whatsapp' %}
-                    <div class="w-full xl:w-[300px]">
-                        <label class="text-sm font-semibold text-gray-800">Message Retry Count <span class="text-red-500">*</span></label>
-                        <input type="number" name="retry_count" min="0" max="5" value="{{ step.retry_count }}" class="mt-2 h-10 w-full rounded-lg border border-gray-300 px-3 text-sm">
-                        <p class="mt-2 text-xs italic text-gray-400">If delivery fails, SHVYA retries after 24 hours, up to 5 configured retries.</p>
-                    </div>
-                    {% endif %}
-                </div>
-            </div>
+            <div class="mt-5 rounded-xl bg-gray-50 p-4"><div class="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between"><div class="flex-1"><p class="mb-1 text-sm font-semibold text-gray-800">Delivery Settings</p>{% include "followups/partials/schedule_fields.html" %}</div>{% if step.step_type == 'whatsapp' and not is_hosted_sequence %}<div class="w-full xl:w-[300px]"><label class="text-sm font-semibold text-gray-800">Message Retry Count <span class="text-red-500">*</span></label><input type="number" name="retry_count" min="0" max="5" value="{{ step.retry_count }}" class="mt-2 h-10 w-full rounded-lg border border-gray-300 px-3 text-sm"><p class="mt-2 text-xs italic text-gray-400">Meta delivery failures retry after 24 hours, up to the configured count.</p></div>{% endif %}</div></div>
+            {% if step.step_type == 'whatsapp' and is_hosted_sequence %}<div class="mt-3 rounded-lg border border-emerald-100 bg-emerald-50 px-4 py-3 text-xs text-emerald-800"><strong>Hosted rules:</strong> engine checks every 20 seconds; identical authored content is never resent to the same lead; sender gap is 3 minutes for the same authored content and 90 seconds for different content; AI Engagement has priority.</div>{% endif %}
             <div class="mt-4 flex justify-end"><button class="inline-flex h-9 items-center gap-2 rounded-lg bg-[#0067b9] px-4 text-sm font-semibold text-white hover:bg-[#005a9f]"><i class="ti ti-device-floppy"></i>Save Step</button></div>
         </form>
     </section>
     {% endfor %}
 
-    {% if steps %}
-    <div class="rounded-xl border border-blue-500 bg-white p-3 shadow-sm">
-        <div class="flex flex-wrap items-center justify-center gap-3">
-            <button type="button" hx-get="{% url 'followups-template-picker' sequence.id %}" hx-target="#modal-root" hx-swap="innerHTML" class="inline-flex h-10 items-center gap-2 rounded-full border border-blue-500 px-5 text-sm font-semibold text-blue-700 hover:bg-blue-50"><i class="ti ti-brand-whatsapp"></i>Add WhatsApp API</button>
-            <button type="button" hx-get="{% url 'followups-email-step-modal' sequence.id %}" hx-target="#modal-root" hx-swap="innerHTML" class="inline-flex h-10 items-center gap-2 rounded-full border border-blue-500 px-5 text-sm font-semibold text-blue-700 hover:bg-blue-50"><i class="ti ti-mail"></i>Add Email</button>
-            <button type="button" hx-get="{% url 'followups-reminder-step-modal' sequence.id %}" hx-target="#modal-root" hx-swap="innerHTML" class="inline-flex h-10 items-center gap-2 rounded-full border border-blue-500 px-5 text-sm font-semibold text-blue-700 hover:bg-blue-50"><i class="ti ti-calendar-event"></i>Add Call Reminder</button>
-        </div>
-    </div>
-    {% endif %}
+    {% if steps %}<div class="rounded-xl border border-blue-500 bg-white p-3 shadow-sm"><div class="flex flex-wrap items-center justify-center gap-3">{% if is_hosted_sequence %}<button type="button" hx-get="{% url 'followups-hosted-whatsapp-step-modal' sequence.id %}" hx-target="#modal-root" hx-swap="innerHTML" class="inline-flex h-10 items-center gap-2 rounded-full border border-emerald-500 px-5 text-sm font-semibold text-emerald-700 hover:bg-emerald-50"><i class="ti ti-brand-whatsapp"></i>Add WhatsApp</button>{% else %}<button type="button" hx-get="{% url 'followups-template-picker' sequence.id %}" hx-target="#modal-root" hx-swap="innerHTML" class="inline-flex h-10 items-center gap-2 rounded-full border border-blue-500 px-5 text-sm font-semibold text-blue-700 hover:bg-blue-50"><i class="ti ti-brand-whatsapp"></i>Add WhatsApp API</button>{% endif %}<button type="button" hx-get="{% url 'followups-email-step-modal' sequence.id %}" hx-target="#modal-root" hx-swap="innerHTML" class="inline-flex h-10 items-center gap-2 rounded-full border border-blue-500 px-5 text-sm font-semibold text-blue-700 hover:bg-blue-50"><i class="ti ti-mail"></i>Add Email</button><button type="button" hx-get="{% url 'followups-reminder-step-modal' sequence.id %}" hx-target="#modal-root" hx-swap="innerHTML" class="inline-flex h-10 items-center gap-2 rounded-full border border-blue-500 px-5 text-sm font-semibold text-blue-700 hover:bg-blue-50"><i class="ti ti-calendar-event"></i>Add Call Reminder</button></div></div>{% endif %}
 </div>
 {% endblock %}
