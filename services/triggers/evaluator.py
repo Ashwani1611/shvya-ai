@@ -224,76 +224,101 @@ def _begin_execution(*, trigger, lead, event_id, event_type, payload, started_at
 
 
 def _evaluate_one(*, trigger, lead, event_id, event_type, payload):
-    started_at = timezone.now()
-    execution = _begin_execution(
-        trigger=trigger,
-        lead=lead,
-        event_id=event_id,
-        event_type=event_type,
-        payload=payload,
-        started_at=started_at,
-    )
-    if execution is None:
-        return None
-
-    reason = _frequency_skip_reason(trigger, lead, started_at)
-    if reason:
-        _finish_skipped(execution, reason)
-        return execution
-
-    try:
-        validate_trigger_configuration(
-            event_type=trigger.event_type,
-            condition_mode=trigger.condition_mode,
-            conditions=trigger.conditions,
-            actions=trigger.actions,
-            organization=trigger.organization,
+    # Serializing automation for one lead prevents two simultaneous events from
+    # both passing once-per-lead/cooldown checks and also avoids conflicting CRM
+    # actions mutating the same lead at the same time.
+    with transaction.atomic():
+        locked_lead = (
+            Lead.objects.select_for_update()
+            .select_related("organization", "pipeline", "stage")
+            .filter(id=lead.id, organization_id=lead.organization_id)
+            .first()
         )
-        if not conditions_match(trigger=trigger, lead=lead, payload=payload):
-            _finish_skipped(execution, "Conditions did not match.")
+        if locked_lead is None:
+            return None
+
+        current_trigger = (
+            SmartTrigger.objects.select_related("organization", "created_by")
+            .filter(id=trigger.id, is_active=True)
+            .first()
+        )
+        if current_trigger is None:
+            return None
+
+        started_at = timezone.now()
+        execution = _begin_execution(
+            trigger=current_trigger,
+            lead=locked_lead,
+            event_id=event_id,
+            event_type=event_type,
+            payload=payload,
+            started_at=started_at,
+        )
+        if execution is None:
+            return None
+
+        reason = _frequency_skip_reason(current_trigger, locked_lead, started_at)
+        if reason:
+            _finish_skipped(execution, reason)
             return execution
 
-        action_results = execute_actions(
-            trigger=trigger,
-            lead=lead,
-            actions=trigger.actions,
-        )
-        finished_at = timezone.now()
-        execution.status = TriggerExecution.Status.SUCCESS
-        execution.matched = True
-        execution.action_results = action_results
-        execution.finished_at = finished_at
-        execution.save(
-            update_fields=[
-                "status",
-                "matched",
-                "action_results",
-                "finished_at",
-            ]
-        )
-        SmartTrigger.objects.filter(id=trigger.id).update(
-            successful_runs=F("successful_runs") + 1,
-            last_fired_at=finished_at,
-        )
-    except Exception as exc:
-        finished_at = timezone.now()
-        execution.status = TriggerExecution.Status.FAILED
-        execution.matched = True
-        execution.error = str(exc)
-        execution.finished_at = finished_at
-        execution.save(
-            update_fields=[
-                "status",
-                "matched",
-                "error",
-                "finished_at",
-            ]
-        )
-        SmartTrigger.objects.filter(id=trigger.id).update(
-            failed_runs=F("failed_runs") + 1,
-            last_fired_at=finished_at,
-        )
-    return execution
+        try:
+            validate_trigger_configuration(
+                event_type=current_trigger.event_type,
+                condition_mode=current_trigger.condition_mode,
+                conditions=current_trigger.conditions,
+                actions=current_trigger.actions,
+                organization=current_trigger.organization,
+            )
+            if not conditions_match(
+                trigger=current_trigger,
+                lead=locked_lead,
+                payload=payload,
+            ):
+                _finish_skipped(execution, "Conditions did not match.")
+                return execution
+
+            action_results = execute_actions(
+                trigger=current_trigger,
+                lead=locked_lead,
+                actions=current_trigger.actions,
+            )
+            finished_at = timezone.now()
+            execution.status = TriggerExecution.Status.SUCCESS
+            execution.matched = True
+            execution.action_results = action_results
+            execution.finished_at = finished_at
+            execution.save(
+                update_fields=[
+                    "status",
+                    "matched",
+                    "action_results",
+                    "finished_at",
+                ]
+            )
+            SmartTrigger.objects.filter(id=current_trigger.id).update(
+                successful_runs=F("successful_runs") + 1,
+                last_fired_at=finished_at,
+            )
+        except Exception as exc:
+            finished_at = timezone.now()
+            execution.status = TriggerExecution.Status.FAILED
+            execution.matched = True
+            execution.error = str(exc)
+            execution.finished_at = finished_at
+            execution.save(
+                update_fields=[
+                    "status",
+                    "matched",
+                    "error",
+                    "finished_at",
+                ]
+            )
+            SmartTrigger.objects.filter(id=current_trigger.id).update(
+                failed_runs=F("failed_runs") + 1,
+                last_fired_at=finished_at,
+            )
+        return execution
 
 
 def process_event(*, event_id, organization_id, lead_id, event_type, payload=None):
