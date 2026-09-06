@@ -14,16 +14,17 @@ logger = logging.getLogger(__name__)
 
 @shared_task(name="apps.followups.tasks.dispatch_auto_followups_task")
 def dispatch_auto_followups_task():
-    """Run the 20-second automation scheduler with Hosted AI first."""
+    """Run the 20-second scheduler.
+
+    Hosted Account priority is strict: a due AI Engagement job is dispatched
+    before any Hosted Auto Follow-up. Meta WhatsApp API has its own provider
+    lane and continues independently so Hosted traffic cannot starve it.
+    """
     ai_result = dispatch_one_hosted_ai_job()
     if ai_result.get("status") == "dispatched":
-        logger.debug("Hosted AI dispatcher result: %s", ai_result)
-        return {"lane": "hosted_ai", **ai_result}
-
-    hosted_result = dispatch_one_hosted_due_state()
-    if hosted_result.get("status") in {"processed", "deferred"}:
-        logger.debug("Hosted follow-up dispatcher result: %s", hosted_result)
-        return {"lane": "hosted_followup", **hosted_result}
+        hosted_result = {"status": "waiting_for_ai_priority"}
+    else:
+        hosted_result = dispatch_one_hosted_due_state()
 
     api_result = dispatch_one_api_due_state()
     logger.debug(
@@ -32,4 +33,8 @@ def dispatch_auto_followups_task():
         hosted_result,
         api_result,
     )
-    return {"lane": "whatsapp_api", **api_result}
+    return {
+        "hosted_ai": ai_result,
+        "hosted_followup": hosted_result,
+        "whatsapp_api": api_result,
+    }
