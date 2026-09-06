@@ -1,6 +1,7 @@
 from django.urls import path
 
 from . import connection_ui
+from . import template_action_ui
 from . import template_ui
 from . import views_flat
 from . import whatsapp_ui
@@ -22,9 +23,12 @@ urlpatterns = [
 
     # Real WABA template management. The old views in views_flat are retained
     # only for compatibility with imports; active routes use the focused flow.
-    path("templates/", template_ui.template_list, name="whatsapp-template-list"),
-    path("templates/new/", template_ui.template_create, name="whatsapp-template-create"),
-    path("templates/<uuid:template_id>/edit/", template_ui.template_edit, name="whatsapp-template-edit"),
+    # Editor routes preserve the clicked submit action before the page's
+    # duplicate-submit guard disables the buttons. The list refreshes pending
+    # templates from Meta so approval/rejection is reflected on reload.
+    path("templates/", template_action_ui.template_list, name="whatsapp-template-list"),
+    path("templates/new/", template_action_ui.template_create, name="whatsapp-template-create"),
+    path("templates/<uuid:template_id>/edit/", template_action_ui.template_edit, name="whatsapp-template-edit"),
     path("templates/<uuid:template_id>/submit/", template_ui.template_submit, name="whatsapp-template-submit"),
     path("templates/<uuid:template_id>/copy/", template_ui.template_copy, name="whatsapp-template-copy"),
     path("templates/<uuid:template_id>/delete/", template_ui.template_delete, name="whatsapp-template-delete"),
