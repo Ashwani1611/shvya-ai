@@ -11,6 +11,7 @@ DEBUG = False
 INSTALLED_APPS = [
     *INSTALLED_APPS,
     "django.contrib.postgres",
+    "apps.hosted_automation",
 ]
 
 # Emails go to memory during tests, never real SMTP.
