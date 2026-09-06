@@ -15,7 +15,7 @@ _FAILURE_SUMMARY_SCRIPT = b"""
 
     const diagnostic = heading.textContent.trim();
     if (!diagnostic) return;
-    summary.textContent = 'Not sent · ' + diagnostic + ' · View details';
+    summary.textContent = 'Not sent \\u00b7 ' + diagnostic + ' \\u00b7 View details';
   });
 })();
 </script>
