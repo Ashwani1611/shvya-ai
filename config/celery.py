@@ -16,7 +16,7 @@ app.config_from_object(
 app.autodiscover_tasks()
 
 # Central Beat schedule for recurring background work. Hosted WhatsApp
-# automation is intentionally evaluated every 20 seconds. The dispatcher
+# automation is intentionally evaluated every 10 seconds. The dispatcher
 # processes one prioritized lane at a time and the service layer provides
 # durable account/lead throttling so queued work cannot fan out in a burst.
 app.conf.beat_schedule = {
@@ -29,8 +29,8 @@ app.conf.beat_schedule = {
         "task": "apps.copilot.tasks.refresh_copilot_flags_task",
         "schedule": 1800.0,
     },
-    "dispatch-auto-followups-every-20-seconds": {
+    "dispatch-auto-followups-every-10-seconds": {
         "task": "apps.followups.tasks.dispatch_auto_followups_task",
-        "schedule": 20.0,
+        "schedule": 10.0,
     },
 }
