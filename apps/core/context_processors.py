@@ -102,7 +102,7 @@ NAV_ITEMS = [
                 "requires_whatsapp_connection": True,
             },
             {
-                "label": "Coexisted Accounts",
+                "label": "Hosted Account",
                 "icon": "ti-server",
                 "url_name": "whatsapp-connect-hosted",
                 "path_prefix": "/dashboard/whatsapp/connect/hosted/",
