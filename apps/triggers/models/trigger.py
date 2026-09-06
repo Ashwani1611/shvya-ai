@@ -76,6 +76,7 @@ class TriggerExecution(models.Model):
     """Immutable-ish audit record for one trigger evaluating one event."""
 
     class Status(models.TextChoices):
+        PROCESSING = "processing", "Processing"
         SUCCESS = "success", "Success"
         SKIPPED = "skipped", "Skipped"
         FAILED = "failed", "Failed"
