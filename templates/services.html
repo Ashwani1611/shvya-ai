@@ -1,0 +1,153 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="SHVYA Services turns business bottlenecks into practical web, app, automation, and integrated digital systems built around growth and simplicity.">
+<title>SHVYA Services — Digital Systems Built for Growth</title>
+<link rel="icon" type="image/svg+xml" href="{% static 'images/shvya-logo.svg' %}">
+<link rel="shortcut icon" href="{% static 'images/shvya-logo.svg' %}">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{% static 'marketing/home-core.css' %}">
+<link rel="stylesheet" href="{% static 'marketing/home-responsive.css' %}">
+<link rel="stylesheet" href="{% static 'marketing/company-pages.css' %}">
+</head>
+<body class="services-page">
+{% include "marketing/home_header.html" %}
+<main>
+  <section class="company-hero">
+    <div class="wrap company-hero-inner reveal">
+      <div class="eyebrow centered">SHVYA Services</div>
+      <h1>Turning business problems into <span class="soft-highlight">digital systems</span> that work</h1>
+      <p class="lede">Growing teams often manage leads in spreadsheets, operations in email, and customers over WhatsApp. SHVYA turns those everyday bottlenecks into streamlined, automated, scalable systems built around the way your business actually works.</p>
+      <div class="company-actions">
+        <a href="#services" class="btn btn-primary">Explore our services</a>
+        <a href="{% url 'product_suite' %}" class="btn btn-secondary">See SHVYA Product Suite</a>
+      </div>
+      <p class="company-note">Strategy, design, engineering, integration, and post-launch support in one delivery flow.</p>
+      <div class="company-visual-row">
+        <article class="company-mini-card"><div class="mini-icon"><svg class="icon" viewBox="0 0 24 24"><path d="M3 5h18v14H3zM3 9h18M7 7h.01M10 7h.01"/></svg></div><strong>Lead-ready websites</strong><span>Digital experiences built to turn attention into action.</span></article>
+        <article class="company-mini-card"><div class="mini-icon"><svg class="icon" viewBox="0 0 24 24"><rect x="6" y="2" width="12" height="20" rx="2"/><path d="M10 18h4"/></svg></div><strong>Business applications</strong><span>Simple mobile and web apps connected to your operations.</span></article>
+        <article class="company-mini-card"><div class="mini-icon"><svg class="icon" viewBox="0 0 24 24"><path d="M5 12h4l2-5 3 10 2-5h3"/><circle cx="12" cy="12" r="9"/></svg></div><strong>Connected workflows</strong><span>CRM, ERP, billing, HR, and automation working together.</span></article>
+      </div>
+    </div>
+  </section>
+
+  <section class="company-section section-white" id="problems">
+    <div class="wrap">
+      <div class="section-head centered reveal">
+        <div class="eyebrow violet centered">The problem we solve</div>
+        <h2 class="section-title">You do not need another disconnected tool. You need clarity.</h2>
+        <p class="section-copy">Most teams do not struggle because they lack software. They struggle because their website, data, people, and daily processes do not work as one system.</p>
+      </div>
+      <div class="problem-grid">
+        <article class="problem-card reveal"><div class="quote-mark">“</div><p>Our website looks good, but it does not consistently turn visitors into serious enquiries.</p></article>
+        <article class="problem-card reveal"><div class="quote-mark">“</div><p>Our team repeats the same manual tasks every day and important follow-ups still get missed.</p></article>
+        <article class="problem-card reveal"><div class="quote-mark">“</div><p>We use too many tools, but the data never seems to move cleanly between them.</p></article>
+        <article class="problem-card reveal"><div class="quote-mark">“</div><p>We have outgrown spreadsheets, but replacing them feels like another complicated project.</p></article>
+      </div>
+      <div class="problem-transition reveal">That is where SHVYA Services comes in: business-first thinking, automation, and engineering brought together as one practical delivery system.</div>
+    </div>
+  </section>
+
+  <section class="company-section soft" id="services">
+    <div class="wrap">
+      <div class="section-head reveal">
+        <div class="eyebrow">Core services</div>
+        <h2 class="section-title">Build the digital layer your business can actually grow on</h2>
+        <p class="section-copy">We start with the workflow, customer journey, and business objective first. Technology comes after the problem is clear.</p>
+      </div>
+      <div class="service-grid">
+        <article class="service-card reveal">
+          <div class="service-icon"><svg class="icon-lg" viewBox="0 0 24 24"><path d="M3 5h18v14H3zM3 9h18M8 15h8"/></svg></div>
+          <h3>Web Development</h3>
+          <p class="card-copy">Your website should do more than explain what you do. We build mobile-first, conversion-aware websites designed to create trust, capture demand, and connect directly into your sales workflow.</p>
+          <ul class="service-list">
+            <li><span class="check">✓</span><span>Audience, positioning, and goal discovery before design begins.</span></li>
+            <li><span class="check">✓</span><span>Fast, responsive, SEO-ready builds with clear calls to action.</span></li>
+            <li><span class="check">✓</span><span>Trust signals, analytics, forms, CRM, and automation integrations.</span></li>
+            <li><span class="check">✓</span><span>Architecture designed to stay maintainable as the business grows.</span></li>
+          </ul>
+          <div class="service-result"><strong>What this is built to improve</strong><p>More useful inbound enquiries, clearer performance data, and a digital presence that supports the sales process instead of sitting beside it.</p></div>
+        </article>
+        <article class="service-card violet reveal">
+          <div class="service-icon"><svg class="icon-lg" viewBox="0 0 24 24"><rect x="6" y="2" width="12" height="20" rx="2"/><path d="M9 6h6M10 18h4"/></svg></div>
+          <h3>App Development</h3>
+          <p class="card-copy">For customers, staff, or partners, the right application can turn a slow multi-step process into something people can complete in seconds. We design apps around real workflows, not feature lists.</p>
+          <ul class="service-list">
+            <li><span class="check">✓</span><span>Workflow and pain-point mapping before development starts.</span></li>
+            <li><span class="check">✓</span><span>Simple interfaces designed around the people who will use them daily.</span></li>
+            <li><span class="check">✓</span><span>Integration with CRM, ERP, HR, billing, and other business systems.</span></li>
+            <li><span class="check">✓</span><span>Performance, security, and reliable data sync across the experience.</span></li>
+          </ul>
+          <div class="service-result"><strong>Apps we can shape</strong><p>Business automation, CRM and sales tracking, HR and attendance, e-learning, healthcare, restaurant operations, and custom startup or enterprise applications.</p></div>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="company-section lilac">
+    <div class="wrap">
+      <div class="section-head centered reveal">
+        <div class="eyebrow violet centered">Why SHVYA</div>
+        <h2 class="section-title">We build around business outcomes, not around a stack</h2>
+        <p class="section-copy">The strongest systems are easy to use, connected to the rest of the business, and capable of changing as the company changes.</p>
+      </div>
+      <div class="value-points">
+        <article class="value-point reveal"><div class="value-icon"><svg class="icon" viewBox="0 0 24 24"><path d="M4 18V8l8-4 8 4v10M8 18v-5h8v5"/></svg></div><h3>Business-first thinking</h3><p>Every feature is tied back to a real operational or growth objective.</p></article>
+        <article class="value-point reveal"><div class="value-icon"><svg class="icon" viewBox="0 0 24 24"><path d="M12 3v18M3 12h18M5 5l14 14M19 5 5 19"/></svg></div><h3>Product experience</h3><p>Our SaaS mindset helps us think in systems, users, data, and repeatable workflows.</p></article>
+        <article class="value-point reveal"><div class="value-icon"><svg class="icon" viewBox="0 0 24 24"><path d="M5 19V9h4v10M10 19V5h4v14M15 19v-7h4v7"/></svg></div><h3>Scalable architecture</h3><p>Build for today without making tomorrow's change unnecessarily expensive.</p></article>
+        <article class="value-point reveal"><div class="value-icon"><svg class="icon" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><circle cx="17" cy="9" r="2"/><path d="M3 20c.7-4 2.8-6 6-6s5.3 2 6 6M15 14c2.8 0 4.7 1.7 5.2 5"/></svg></div><h3>User-centred design</h3><p>Interfaces are shaped for clarity and adoption, not decoration alone.</p></article>
+        <article class="value-point reveal"><div class="value-icon"><svg class="icon" viewBox="0 0 24 24"><path d="M4 12a8 8 0 1 0 2.3-5.7L4 8.5M4 4v4.5h4.5"/></svg></div><h3>Post-launch support</h3><p>Launch is the beginning of refinement, monitoring, and improvement.</p></article>
+      </div>
+    </div>
+  </section>
+
+  <section class="company-section section-white" id="process">
+    <div class="wrap">
+      <div class="section-head centered reveal">
+        <div class="eyebrow peach centered">How we work</div>
+        <h2 class="section-title">A clear five-step path from bottleneck to working system</h2>
+        <p class="section-copy">The process keeps strategy, design, engineering, testing, and support connected from the first conversation onward.</p>
+      </div>
+      <div class="process-grid">
+        <article class="process-card reveal"><h3>Discovery Call</h3><p>We map the current pain points, users, tools, constraints, and goals before proposing a solution.</p></article>
+        <article class="process-card reveal"><h3>Blueprint Design</h3><p>We turn the discovery into a visual and technical roadmap so the system is clear before build work begins.</p></article>
+        <article class="process-card reveal"><h3>Development</h3><p>Designers and engineers build the experience, integrations, data flow, and business logic.</p></article>
+        <article class="process-card reveal"><h3>Testing &amp; Refinement</h3><p>We check usability, performance, reliability, and integration behaviour end to end.</p></article>
+        <article class="process-card reveal"><h3>Launch + Support</h3><p>We deploy, monitor, refine, and help the platform evolve after it reaches real users.</p></article>
+      </div>
+    </div>
+  </section>
+
+  <section class="company-section cream">
+    <div class="wrap outcome-band">
+      <article class="outcome-main reveal">
+        <div class="eyebrow" style="background:rgba(255,255,255,.12);color:#fff">The SHVYA difference</div>
+        <h3>Make business simpler, smarter, and stronger</h3>
+        <p>A great website should tell your story clearly. A great app should make work easier. A great system should connect your tools, data, people, and customers without creating another layer of chaos.</p>
+        <div class="outcome-list"><div class="outcome-pill">Clearer customer journeys and stronger digital trust.</div><div class="outcome-pill">Less repetitive manual work across the team.</div><div class="outcome-pill">Connected information instead of isolated data silos.</div><div class="outcome-pill">A foundation that can evolve as operations grow.</div></div>
+      </article>
+      <div class="outcome-side">
+        <article class="side-card reveal"><strong>Not just development</strong><p>We combine product thinking, workflow design, automation, and engineering so the result works as one operating system.</p></article>
+        <article class="side-card reveal"><strong>Not just launch</strong><p>Real users always reveal the next improvement. We treat feedback and optimization as part of the product journey.</p></article>
+      </div>
+    </div>
+  </section>
+
+  <section class="company-cta" id="consultation">
+    <div class="wrap reveal">
+      <div class="eyebrow" style="background:rgba(255,255,255,.12);color:#fff">Build what your business actually needs</div>
+      <h2>Stop patching disconnected tools together. Build the system that finally fits.</h2>
+      <p>From a conversion-focused website to a connected business application, SHVYA can help turn your operational bottlenecks into a clearer digital workflow.</p>
+      <div class="company-actions"><a href="{% url 'crm-signup' %}" class="btn btn-white">Start with SHVYA</a><a href="{% url 'product_suite' %}" class="btn" style="border-color:rgba(255,255,255,.28);color:#fff">Explore Product Suite</a></div>
+    </div>
+  </section>
+</main>
+{% include "marketing/home_footer.html" with hide_default_final_cta=True %}
+<script src="{% static 'marketing/home.js' %}" defer></script>
+</body>
+</html>
