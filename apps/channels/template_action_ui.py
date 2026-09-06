@@ -65,11 +65,8 @@ def _preserve_action(response):
     return response
 
 
-@crm_login_required
-@require_GET
-def template_list(request):
-    """Refresh only pending Meta templates before rendering their real status."""
-    user = request.crm_user
+def _refresh_pending_templates(user):
+    """Synchronize only accounts that currently have pending templates."""
     pending_account_ids = set(
         WhatsAppTemplate.objects.filter(
             organization=user.organization,
@@ -77,20 +74,28 @@ def template_list(request):
         ).values_list("account_id", flat=True)
     )
 
-    if pending_account_ids:
-        for account in template_ui._accounts(user).filter(id__in=pending_account_ids):
-            try:
-                sync_templates(organization=user.organization, account=account)
-            except TemplateError as exc:
-                # A temporary Meta/API problem must not make the template list
-                # unavailable. The existing manual Sync Templates action remains
-                # available for an explicit retry and surfaces the API error.
-                logger.warning(
-                    "Could not refresh pending WhatsApp templates for account %s: %s",
-                    account.id,
-                    exc,
-                )
+    if not pending_account_ids:
+        return
 
+    for account in template_ui._accounts(user).filter(id__in=pending_account_ids):
+        try:
+            sync_templates(organization=user.organization, account=account)
+        except TemplateError as exc:
+            # A temporary Meta/API problem must not make the template list
+            # unavailable. The existing manual Sync Templates action remains
+            # available for an explicit retry and surfaces the API error.
+            logger.warning(
+                "Could not refresh pending WhatsApp templates for account %s: %s",
+                account.id,
+                exc,
+            )
+
+
+@crm_login_required
+@require_GET
+def template_list(request):
+    """Refresh pending Meta templates before rendering their real status."""
+    _refresh_pending_templates(request.crm_user)
     return template_ui.template_list(request)
 
 
