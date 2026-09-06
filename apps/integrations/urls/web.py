@@ -6,6 +6,7 @@ from apps.integrations.views.web import (
     integration_detail_view,
     shvya_api_view,
 )
+from apps.integrations.views.webhook import webhook_view
 
 
 urlpatterns = [
@@ -21,8 +22,7 @@ urlpatterns = [
     ),
     path(
         "connect-hub/webhook/",
-        integration_detail_view,
-        {"integration_slug": "webhook"},
+        webhook_view,
         name="crm-connect-hub-webhook",
     ),
     path(
