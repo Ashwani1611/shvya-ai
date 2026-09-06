@@ -46,8 +46,6 @@ def normalize_whatsapp_number(*, country_code="", phone_number=""):
     if not phone_digits:
         return ""
 
-    # If the caller supplied a full international number, do not prepend the
-    # separately selected country code a second time.
     if raw_phone.startswith("+"):
         combined = phone_digits
     elif country_digits and phone_digits.startswith(country_digits):
@@ -183,9 +181,7 @@ def ensure_session_settings(*, account):
 
 def get_session_settings(*, account):
     org_settings = account.organization.settings or {}
-    sessions = (
-        org_settings.get("hosted_whatsapp", {}).get("sessions", {})
-    )
+    sessions = org_settings.get("hosted_whatsapp", {}).get("sessions", {})
     return {
         **DEFAULT_SESSION_SETTINGS,
         **deepcopy(sessions.get(str(account.id), {})),
@@ -324,11 +320,11 @@ def handle_gateway_event(*, payload):
             phone_number=account.display_phone_number
         )
         if connected_number and expected and connected_number != expected:
+            # The gateway also logs this linked device out. Persist FAILED and
+            # return normally so the surrounding atomic callback commits it.
             account.status = WhatsAppAccount.Status.FAILED
             account.save(update_fields=["status", "updated_at"])
-            raise HostedWhatsAppValidationError(
-                "The scanned WhatsApp account does not match the pipeline-linked number."
-            )
+            return account
         account.status = WhatsAppAccount.Status.CONNECTED
         if connected_number:
             account.display_phone_number = connected_number
@@ -421,9 +417,6 @@ def handle_gateway_event(*, payload):
                         stage=stage,
                         name=payload.get("contactName") or from_number,
                         phone=from_number,
-                        # Keep the existing CRM source choice so full_clean()
-                        # accepts the record while the transport is still
-                        # distinguished by WhatsAppAccount.connection_type.
                         lead_source="whatsapp_api",
                     )
                 except ValidationError:
