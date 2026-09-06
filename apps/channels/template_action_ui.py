@@ -5,12 +5,22 @@ import logging
 from django.views.decorators.http import require_GET
 
 from apps.crm.decorators import crm_login_required
-from services.channels.template_service import TemplateError, sync_templates
+from services.channels.template_meta_fix import (
+    TemplateError,
+    submit_template as meta_submit_template,
+    sync_templates,
+)
 
 from . import template_ui
 from .models import WhatsAppTemplate
 
 logger = logging.getLogger(__name__)
+
+# The active template UI module resolves these service functions from its
+# module globals at request time. Wire both manual submit/sync endpoints and
+# the create/edit flows through the Meta-compatibility layer in one place.
+template_ui.submit_template = meta_submit_template
+template_ui.sync_templates = sync_templates
 
 # The template editor disables its action buttons during the submit event to
 # prevent duplicate clicks. Disabled controls are excluded from the browser's
@@ -65,6 +75,14 @@ def _preserve_action(response):
     return response
 
 
+def _clear_none_rejection_sentinel(user):
+    """Remove Meta's ``NONE`` sentinel from already-synchronized templates."""
+    WhatsAppTemplate.objects.filter(
+        organization=user.organization,
+        rejection_reason__iexact="NONE",
+    ).update(rejection_reason="")
+
+
 def _refresh_pending_templates(user):
     """Synchronize only accounts that currently have pending templates."""
     pending_account_ids = set(
@@ -95,6 +113,7 @@ def _refresh_pending_templates(user):
 @require_GET
 def template_list(request):
     """Refresh pending Meta templates before rendering their real status."""
+    _clear_none_rejection_sentinel(request.crm_user)
     _refresh_pending_templates(request.crm_user)
     return template_ui.template_list(request)
 
