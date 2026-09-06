@@ -5,66 +5,74 @@
 
 {% block content %}
 <div class="mx-auto max-w-[1450px] space-y-5">
-    <div class="flex items-center justify-between gap-3">
-        <div class="flex items-center gap-3">
-            <a href="{% url 'crm-auto-follow-ups-sequences' %}" class="inline-flex h-9 w-9 items-center justify-center rounded-lg hover:bg-gray-100" aria-label="Back">
-                <i class="ti ti-arrow-left text-xl"></i>
-            </a>
-            <div>
-                <div class="flex items-center gap-3">
-                    <h2 class="text-xl font-semibold">New Sequence</h2>
-                    <span class="inline-flex items-center gap-1 rounded-full border border-orange-300 bg-orange-50 px-3 py-1 text-sm font-medium text-orange-600"><i class="ti ti-player-play-filled"></i> Watch Tutorial</span>
-                </div>
-                <p class="mt-1 text-sm text-gray-500">Choose the WhatsApp API number first. It becomes the sender for every WhatsApp step in this sequence.</p>
-            </div>
+    <div class="flex items-center gap-3">
+        <a href="{% url 'crm-auto-follow-ups-sequences' %}" class="inline-flex h-9 w-9 items-center justify-center rounded-lg hover:bg-gray-100" aria-label="Back"><i class="ti ti-arrow-left text-xl"></i></a>
+        <div>
+            <div class="flex items-center gap-3"><h2 class="text-xl font-semibold">New Sequence</h2><span class="inline-flex items-center gap-1 rounded-full border border-orange-300 bg-orange-50 px-3 py-1 text-sm font-medium text-orange-600"><i class="ti ti-player-play-filled"></i> Watch Tutorial</span></div>
+            <p class="mt-1 text-sm text-gray-500">Choose how WhatsApp messages in this sequence will be delivered. The sender is locked to the sequence after creation.</p>
         </div>
     </div>
 
-    <form method="post" action="{% url 'followups-sequence-create-save' %}" class="space-y-5">
+    <form method="post" action="{% url 'followups-sequence-create-save' %}" class="space-y-5" id="sequence-create-form">
         {% csrf_token %}
+        <input type="hidden" name="provider" id="provider" value="{% if api_accounts %}api{% else %}hosted{% endif %}">
         <section class="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
             <label for="name" class="text-sm font-semibold text-gray-800">Sequence Name <span class="text-red-500">*</span></label>
             <input id="name" name="name" maxlength="255" required placeholder="Enter the Sequence Name" class="mt-2 h-11 w-full rounded-lg border border-gray-300 px-4 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100">
-            <div class="mt-5">
-                <label for="description" class="text-sm font-semibold text-gray-800">Description</label>
-                <textarea id="description" name="description" maxlength="300" rows="4" placeholder="Write a description about the sequence" class="mt-2 w-full resize-none rounded-lg border border-gray-300 px-4 py-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"></textarea>
+            <div class="mt-5"><label for="description" class="text-sm font-semibold text-gray-800">Description</label><textarea id="description" name="description" maxlength="300" rows="4" placeholder="Write a description about the sequence" class="mt-2 w-full resize-none rounded-lg border border-gray-300 px-4 py-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"></textarea></div>
+        </section>
+
+        <section class="rounded-xl border border-blue-300 bg-white p-7 shadow-sm">
+            <div class="text-center"><div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-blue-50 text-2xl text-blue-600"><i class="ti ti-brand-whatsapp"></i></div><h3 class="mt-3 text-lg font-semibold text-gray-900">How will this sequence be sent?</h3><p class="mt-1 text-sm text-gray-500">Meta Cloud API and Hosted Account sequences stay isolated so the correct WhatsApp transport and rules are always used.</p></div>
+
+            <div class="mx-auto mt-6 grid max-w-3xl gap-4 md:grid-cols-2">
+                <button type="button" data-provider-choice="api" class="provider-choice rounded-xl border-2 border-gray-200 p-5 text-left transition hover:border-blue-400 hover:bg-blue-50/40">
+                    <div class="flex items-center gap-3"><span class="flex h-10 w-10 items-center justify-center rounded-full bg-blue-50 text-blue-600"><i class="ti ti-api"></i></span><div><div class="font-semibold text-gray-900">Use WhatsApp API</div><div class="text-xs text-gray-500">Meta Cloud API</div></div></div>
+                    <p class="mt-3 text-xs leading-5 text-gray-500">Uses approved Meta templates and your connected WhatsApp Business API number.</p>
+                </button>
+                <button type="button" data-provider-choice="hosted" class="provider-choice rounded-xl border-2 border-gray-200 p-5 text-left transition hover:border-emerald-400 hover:bg-emerald-50/40">
+                    <div class="flex items-center gap-3"><span class="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-50 text-emerald-600"><i class="ti ti-brand-whatsapp"></i></span><div><div class="font-semibold text-gray-900">Use WhatsApp</div><div class="text-xs text-gray-500">Hosted Account</div></div></div>
+                    <p class="mt-3 text-xs leading-5 text-gray-500">Uses your Hosted Account with free-form messages, CRM placeholders, files, and Hosted safety rules.</p>
+                </button>
+            </div>
+
+            <div class="mx-auto mt-7 max-w-xl">
+                <div data-provider-panel="api" class="hidden">
+                    <label class="block text-sm font-semibold text-gray-800">Choose WhatsApp API Number</label>
+                    <p class="mt-1 text-xs text-gray-500">Only active Meta Cloud API numbers are shown.</p>
+                    {% if api_accounts %}<select data-provider-select="api" class="mt-3 h-11 w-full rounded-lg border border-gray-300 bg-white px-4 text-sm"><option value="">Select WhatsApp API number</option>{% for account in api_accounts %}<option value="{{ account.id }}">{{ account.display_phone_number|default:account.phone_number_id }}{% if account.business_name %} · {{ account.business_name }}{% endif %}</option>{% endfor %}</select>{% else %}<div class="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">No connected WhatsApp API number is available.</div>{% endif %}
+                </div>
+                <div data-provider-panel="hosted" class="hidden">
+                    <label class="block text-sm font-semibold text-gray-800">Choose Hosted Account Number</label>
+                    <p class="mt-1 text-xs text-gray-500">Only running Hosted Account numbers are shown.</p>
+                    {% if hosted_accounts %}<select data-provider-select="hosted" class="mt-3 h-11 w-full rounded-lg border border-gray-300 bg-white px-4 text-sm"><option value="">Select Hosted WhatsApp number</option>{% for account in hosted_accounts %}<option value="{{ account.id }}">{{ account.display_phone_number|default:account.phone_number_id }}{% if account.business_name %} · {{ account.business_name }}{% endif %}</option>{% endfor %}</select>{% else %}<div class="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">No running Hosted Account is available. Connect WhatsApp from Hosted Account first.</div>{% endif %}
+                </div>
+                <input type="hidden" name="whatsapp_account" id="whatsapp_account" value="">
             </div>
         </section>
 
-        <section class="rounded-xl border border-blue-400 bg-white p-7 text-center shadow-sm">
-            <div class="mx-auto max-w-xl">
-                <div class="flex h-12 w-12 mx-auto items-center justify-center rounded-full bg-blue-50 text-2xl text-blue-600"><i class="ti ti-brand-whatsapp"></i></div>
-                <h3 class="mt-3 text-lg font-semibold text-gray-900">How will this sequence be sent?</h3>
-                <p class="mt-1 text-sm text-gray-500">SHVYA Auto Follow-ups use your connected WhatsApp Business API. This sender cannot be changed after the sequence is created.</p>
-
-                <div class="mt-5 inline-flex items-center gap-2 rounded-full bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm">
-                    <i class="ti ti-brand-whatsapp"></i> Use WhatsApp API
-                </div>
-
-                <div class="mt-6">
-                    <label for="whatsapp_account" class="block text-sm font-semibold text-gray-800">Choose WhatsApp API Number</label>
-                    <p class="mt-1 text-xs text-gray-500">Only active connected numbers in your organization are shown.</p>
-                    {% if accounts %}
-                    <select id="whatsapp_account" name="whatsapp_account" required class="mx-auto mt-3 h-11 min-w-[330px] rounded-lg border border-gray-300 bg-white px-4 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100">
-                        <option value="">Select WhatsApp API number</option>
-                        {% for account in accounts %}
-                        <option value="{{ account.id }}">{{ account.display_phone_number|default:account.phone_number_id }}{% if account.business_name %} · {{ account.business_name }}{% endif %}</option>
-                        {% endfor %}
-                    </select>
-                    {% else %}
-                    <div class="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-                        No active WhatsApp API number is connected. Connect a number before creating a sequence.
-                    </div>
-                    {% endif %}
-                </div>
-            </div>
-        </section>
-
-        <div class="flex justify-end rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
-            <button type="submit" {% if not accounts %}disabled{% endif %} class="inline-flex h-11 min-w-[210px] items-center justify-center rounded-lg bg-emerald-600 px-6 text-sm font-semibold text-white shadow-sm hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-gray-300">
-                Create Sequence
-            </button>
-        </div>
+        <div class="flex justify-end rounded-xl border border-gray-200 bg-white p-4 shadow-sm"><button type="submit" id="create-sequence-button" class="inline-flex h-11 min-w-[210px] items-center justify-center rounded-lg bg-emerald-600 px-6 text-sm font-semibold text-white shadow-sm hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-gray-300">Create Sequence</button></div>
     </form>
 </div>
+<script>
+(function(){
+  const provider=document.getElementById('provider');
+  const account=document.getElementById('whatsapp_account');
+  const submit=document.getElementById('create-sequence-button');
+  const choices=[...document.querySelectorAll('[data-provider-choice]')];
+  const panels=[...document.querySelectorAll('[data-provider-panel]')];
+  const selects=[...document.querySelectorAll('[data-provider-select]')];
+  function activate(value){
+    provider.value=value;
+    choices.forEach(function(btn){const on=btn.dataset.providerChoice===value;btn.classList.toggle('border-blue-500',on);btn.classList.toggle('ring-2',on);btn.classList.toggle('ring-blue-100',on);});
+    panels.forEach(function(panel){panel.classList.toggle('hidden',panel.dataset.providerPanel!==value);});
+    const selected=selects.find(function(s){return s.dataset.providerSelect===value;});
+    account.value=selected?selected.value:'';
+    submit.disabled=!selected || !selected.options.length || selected.options.length<2 || !selected.value;
+  }
+  choices.forEach(function(btn){btn.addEventListener('click',function(){activate(btn.dataset.providerChoice);});});
+  selects.forEach(function(select){select.addEventListener('change',function(){if(select.dataset.providerSelect===provider.value){account.value=select.value;submit.disabled=!select.value;}});});
+  activate(provider.value || 'api');
+})();
+</script>
 {% endblock %}
