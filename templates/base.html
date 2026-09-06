@@ -1,6 +1,9 @@
 {% extends "base_legacy.html" %}
+{% load static %}
 
 {% block extra_head %}
 {{ block.super }}
+<link rel="icon" type="image/svg+xml" href="{% static 'images/shvya-logo.svg' %}">
+<link rel="shortcut icon" href="{% static 'images/shvya-logo.svg' %}">
 {% include "base/base.html" %}
 {% endblock %}
