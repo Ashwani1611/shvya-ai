@@ -177,6 +177,16 @@ urlpatterns = [
         name="pricing",
     ),
     path(
+        "services/",
+        TemplateView.as_view(template_name="services.html"),
+        name="services",
+    ),
+    path(
+        "product-suite/",
+        TemplateView.as_view(template_name="product_suite.html"),
+        name="product_suite",
+    ),
+    path(
         "privacy-policy/",
         TemplateView.as_view(template_name="legal/privacy_policy.html"),
         name="privacy_policy",
