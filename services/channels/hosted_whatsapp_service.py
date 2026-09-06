@@ -421,7 +421,10 @@ def handle_gateway_event(*, payload):
                         stage=stage,
                         name=payload.get("contactName") or from_number,
                         phone=from_number,
-                        lead_source="whatsapp_hosted",
+                        # Keep the existing CRM source choice so full_clean()
+                        # accepts the record while the transport is still
+                        # distinguished by WhatsAppAccount.connection_type.
+                        lead_source="whatsapp_api",
                     )
                 except ValidationError:
                     lead = Lead.objects.filter(
@@ -464,9 +467,15 @@ def handle_gateway_event(*, payload):
 
 
 def queue_hosted_text_message(*, account, to_number, body, lead=None, metadata=None):
-    normalized_to = normalize_whatsapp_number(phone_number=to_number)
-    if not normalized_to:
-        raise HostedWhatsAppValidationError("Enter a valid WhatsApp recipient number.")
+    raw_to = str(to_number or "").strip()
+    if raw_to.endswith("@g.us"):
+        normalized_to = raw_to
+    else:
+        normalized_to = normalize_whatsapp_number(phone_number=raw_to)
+        if not normalized_to:
+            raise HostedWhatsAppValidationError(
+                "Enter a valid WhatsApp recipient number."
+            )
     if not str(body or "").strip():
         raise HostedWhatsAppValidationError("Message cannot be empty.")
 
