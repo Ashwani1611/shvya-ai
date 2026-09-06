@@ -1,4 +1,5 @@
 {% load static %}
+{% if not hide_default_final_cta %}
 <section class="final-cta">
   <div class="wrap reveal">
     <div class="eyebrow" style="background:rgba(255,255,255,.12);color:#fff">Build a better sales rhythm</div>
@@ -15,13 +16,14 @@
     </div>
   </div>
 </section>
+{% endif %}
 
 <footer class="footer">
   <div class="wrap">
     <div class="footer-grid">
-      <div class="footer-brand"><a href="{% url 'home' %}" class="brand"><img class="brand-logo" src="{% static 'images/shvya-logo.svg' %}" alt="SHVYA AI logo"><span class="brand-name"><span>SHVYA</span><span>AI</span></span></a><p>AI-powered CRM and communication workflows for teams that want more consistent follow-up and clearer sales context.</p></div>
-      <div><h4>Product</h4><div class="footer-links"><a href="{% url 'home' %}#features">Features</a><a href="{% url 'home' %}#integrations">Integrations</a><a href="{% url 'home' %}#whatsapp">WhatsApp CRM</a><a href="{% url 'pricing' %}">Pricing</a></div></div>
-      <div><h4>Explore</h4><div class="footer-links"><a href="{% url 'home' %}#industries">Use Cases</a><a href="{% url 'home' %}#proof">Why SHVYA</a><a href="{% url 'home' %}#calculator">Calculator</a><a href="{% url 'home' %}#faq">FAQ</a></div></div>
+      <div class="footer-brand"><a href="{% url 'home' %}" class="brand"><img class="brand-logo" src="{% static 'images/shvya-logo.svg' %}" alt="SHVYA AI logo"><span class="brand-name"><span>SHVYA</span><span>AI</span></span></a><p>AI-powered CRM, product, and digital-system workflows for teams that want more clarity, automation, and consistent execution.</p></div>
+      <div><h4>Product</h4><div class="footer-links"><a href="{% url 'home' %}#features">SHVYA AI</a><a href="{% url 'product_suite' %}">Product Suite</a><a href="{% url 'home' %}#integrations">Integrations</a><a href="{% url 'pricing' %}">Pricing</a></div></div>
+      <div><h4>Explore</h4><div class="footer-links"><a href="{% url 'services' %}">SHVYA Services</a><a href="{% url 'home' %}#industries">Use Cases</a><a href="{% url 'home' %}#proof">Why SHVYA</a><a href="{% url 'home' %}#faq">FAQ</a></div></div>
       <div><h4>Account</h4><div class="footer-links">{% if crm_user %}<a href="{% url 'crm-dashboard' %}">Dashboard</a><a href="{% url 'crm-profile' %}">Profile</a><a href="{% url 'crm-logout' %}">Logout</a>{% else %}<a href="{% url 'crm-login' %}">Login</a><a href="{% url 'crm-signup' %}">Create account</a>{% endif %}</div></div>
     </div>
     <div class="footer-bottom"><span>© 2026 SHVYA AI. All rights reserved.</span><div class="footer-legal"><a href="{% url 'privacy_policy' %}">Privacy Policy</a><a href="{% url 'terms_conditions' %}">Terms &amp; Conditions</a><a href="{% url 'cookie_policy' %}">Cookie Policy</a><a href="{% url 'refund_policy' %}">Refund Policy</a></div></div>
