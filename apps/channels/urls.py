@@ -1,5 +1,7 @@
 from django.urls import path
 
+from apps.hosted_automation import views as hosted_automation_views
+
 from . import connection_ui
 from . import hosted_ui
 from . import template_action_ui
@@ -20,6 +22,8 @@ urlpatterns = [
     path("connect/hosted/", hosted_ui.whatsapp_connect_hosted_view, name="whatsapp-connect-hosted"),
     path("connect/hosted/sessions/", hosted_ui.hosted_session_create_view, name="whatsapp-hosted-session-create"),
     path("connect/hosted/events/", hosted_ui.hosted_gateway_event_view, name="whatsapp-hosted-gateway-event"),
+    path("connect/hosted/media/<uuid:config_id>/", hosted_automation_views.hosted_followup_media, name="whatsapp-hosted-automation-media"),
+    path("connect/hosted/<uuid:account_id>/health/", hosted_automation_views.hosted_account_health, name="whatsapp-hosted-account-health"),
     path("connect/hosted/<uuid:account_id>/status/", hosted_ui.hosted_session_status_view, name="whatsapp-hosted-session-status"),
     path("connect/hosted/<uuid:account_id>/qr/", hosted_ui.hosted_session_qr_view, name="whatsapp-hosted-session-qr"),
     path("connect/hosted/<uuid:account_id>/qr/refresh/", hosted_ui.hosted_session_qr_refresh_view, name="whatsapp-hosted-session-qr-refresh"),
@@ -39,9 +43,6 @@ urlpatterns = [
 
     # Real WABA template management. The old views in views_flat are retained
     # only for compatibility with imports; active routes use the focused flow.
-    # Editor routes preserve the clicked submit action before the page's
-    # duplicate-submit guard disables the buttons. The list refreshes pending
-    # templates from Meta so approval/rejection is reflected on reload.
     path("templates/", template_action_ui.template_list, name="whatsapp-template-list"),
     path("templates/new/", template_action_ui.template_create, name="whatsapp-template-create"),
     path("templates/<uuid:template_id>/edit/", template_action_ui.template_edit, name="whatsapp-template-edit"),
