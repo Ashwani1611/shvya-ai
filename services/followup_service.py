@@ -1031,7 +1031,8 @@ def _create_reminder_step(state, step, execution):
 @transaction.atomic
 def process_due_state(state_id):
     state = (
-        LeadSequenceState.objects.select_for_update()
+        # Lock only the state row; nullable related rows cannot be locked by PostgreSQL.
+        LeadSequenceState.objects.select_for_update(of=("self",))
         .select_related(
             "organization",
             "lead",
