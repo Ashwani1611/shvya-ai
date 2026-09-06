@@ -1,8 +1,10 @@
-from django.db.models.signals import post_save
+from django.db.models.signals import post_delete, post_save
 from django.dispatch import receiver
 
 from apps.organizations.models import Organization
+from services.crm.attribute_cache import invalidate_attribute_definitions
 
+from .attribute import AttributeDefinition
 from .pipeline import Pipeline
 from .stage import Stage
 
@@ -100,3 +102,18 @@ def create_default_stages(sender, instance, created, **kwargs):
                 "is_active": True,
             },
         )
+
+
+# ============================================================
+# ATTRIBUTE DEFINITION CACHE
+# ============================================================
+
+@receiver(post_save, sender=AttributeDefinition)
+@receiver(post_delete, sender=AttributeDefinition)
+def invalidate_attribute_definition_cache(
+    sender,
+    instance,
+    **kwargs,
+):
+    """Keep organization-scoped Lead-card metadata cache coherent."""
+    invalidate_attribute_definitions(instance.organization_id)

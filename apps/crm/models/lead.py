@@ -1,8 +1,10 @@
 import re
 import uuid
 
+from django.contrib.postgres.indexes import GinIndex, OpClass
 from django.core.exceptions import ValidationError
 from django.db import models
+from django.db.models.functions import Cast, Upper
 from django.utils import timezone
 
 from apps.organizations.models import Organization
@@ -62,7 +64,7 @@ class Lead(models.Model):
         related_name="leads",
     )
     stage_entered_at = models.DateTimeField(
-    default=timezone.now,
+        default=timezone.now,
     )
 
     pipeline = models.ForeignKey(
@@ -105,15 +107,15 @@ class Lead(models.Model):
     )
 
     lead_source = models.CharField(
-    max_length=30,
-    choices=[
-        ("system", "System"),
-        ("external_api", "External API"),
-        ("whatsapp_api", "WhatsApp API"),
-        ("google_sheets", "Google Sheets"),
-        ("csv_import", "CSV Import"),
-    ],
-    default="system",
+        max_length=30,
+        choices=[
+            ("system", "System"),
+            ("external_api", "External API"),
+            ("whatsapp_api", "WhatsApp API"),
+            ("google_sheets", "Google Sheets"),
+            ("csv_import", "CSV Import"),
+        ],
+        default="system",
     )
 
     created_at = models.DateTimeField(
@@ -149,6 +151,50 @@ class Lead(models.Model):
             ),
             models.Index(
                 fields=["created_at"],
+            ),
+            models.Index(
+                fields=[
+                    "organization",
+                    "pipeline",
+                    "stage",
+                ],
+                name="crm_lead_org_pipe_stage",
+            ),
+            GinIndex(
+                fields=["name"],
+                name="crm_lead_name_trgm",
+                opclasses=["gin_trgm_ops"],
+            ),
+            GinIndex(
+                fields=["phone"],
+                name="crm_lead_phone_trgm",
+                opclasses=["gin_trgm_ops"],
+            ),
+            GinIndex(
+                fields=["email"],
+                name="crm_lead_email_trgm",
+                opclasses=["gin_trgm_ops"],
+            ),
+            GinIndex(
+                fields=["notes"],
+                name="crm_lead_notes_trgm",
+                opclasses=["gin_trgm_ops"],
+            ),
+            GinIndex(
+                fields=["attributes"],
+                name="crm_lead_attr_gin",
+            ),
+            GinIndex(
+                OpClass(
+                    Upper(
+                        Cast(
+                            "attributes",
+                            output_field=models.TextField(),
+                        )
+                    ),
+                    name="gin_trgm_ops",
+                ),
+                name="crm_lead_attr_trgm",
             ),
         ]
 

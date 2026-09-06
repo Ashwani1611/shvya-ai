@@ -8,6 +8,11 @@ from .base import *  # noqa: F401,F403
 
 DEBUG = False
 
+INSTALLED_APPS = [
+    *INSTALLED_APPS,
+    "django.contrib.postgres",
+]
+
 # Emails go to memory during tests, never real SMTP.
 EMAIL_BACKEND = "django.core.mail.backends.locmem.EmailBackend"
 
