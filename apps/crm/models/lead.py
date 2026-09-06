@@ -161,32 +161,24 @@ class Lead(models.Model):
                 name="crm_lead_org_pipe_stage",
             ),
             GinIndex(
-                OpClass(
-                    Upper("name"),
-                    name="gin_trgm_ops",
-                ),
+                fields=["name"],
                 name="crm_lead_name_trgm",
+                opclasses=["gin_trgm_ops"],
             ),
             GinIndex(
-                OpClass(
-                    Upper("phone"),
-                    name="gin_trgm_ops",
-                ),
+                fields=["phone"],
                 name="crm_lead_phone_trgm",
+                opclasses=["gin_trgm_ops"],
             ),
             GinIndex(
-                OpClass(
-                    Upper("email"),
-                    name="gin_trgm_ops",
-                ),
+                fields=["email"],
                 name="crm_lead_email_trgm",
+                opclasses=["gin_trgm_ops"],
             ),
             GinIndex(
-                OpClass(
-                    Upper("notes"),
-                    name="gin_trgm_ops",
-                ),
+                fields=["notes"],
                 name="crm_lead_notes_trgm",
+                opclasses=["gin_trgm_ops"],
             ),
             GinIndex(
                 fields=["attributes"],
