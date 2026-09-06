@@ -12,3 +12,11 @@ class ChannelsConfig(AppConfig):
         # connection/template operational audit concerns.
         from . import connection_attempts  # noqa: F401
         from . import template_models  # noqa: F401
+
+        # Preserve Meta's exact WhatsApp failure payload/code and enrich the
+        # existing Chats "View details" block with Code / Why / Resolve help.
+        from services.channels.whatsapp_failure_patch import (
+            install_whatsapp_failure_diagnostics,
+        )
+
+        install_whatsapp_failure_diagnostics()
