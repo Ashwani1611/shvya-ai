@@ -12,9 +12,12 @@ _SAFE_ATTRIBUTE_KEY = re.compile(r"^[A-Za-z_][A-Za-z0-9_.-]{0,63}$")
 _BASE_PLACEHOLDERS = [
     {"token": "{{lead_name}}", "label": "Lead name"},
     {"token": "{{lead_first_name}}", "label": "First name"},
-    {"token": "{{phone}}", "label": "Phone"},
+    {"token": "{{phone}}", "label": "Number"},
     {"token": "{{email}}", "label": "Email"},
+    {"token": "{{user_name}}", "label": "User name"},
     {"token": "{{org_name}}", "label": "Organisation"},
+    {"token": "{{pipeline_name}}", "label": "Pipeline"},
+    {"token": "{{stage_name}}", "label": "Stage"},
 ]
 
 
