@@ -27,11 +27,6 @@ COMING_SOON_FEATURES = {
         "icon": "ti-brand-instagram",
         "description": "Manage Instagram DMs and comments from the same inbox as everything else.",
     },
-    "integrations-hub": {
-        "label": "Integrations Hub",
-        "icon": "ti-plug",
-        "description": "Connect the tools you already use — no code required.",
-    },
     "call-scheduler": {
         "label": "Call Scheduler",
         "icon": "ti-calendar-event",
