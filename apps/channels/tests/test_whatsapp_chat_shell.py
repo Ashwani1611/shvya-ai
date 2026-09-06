@@ -40,17 +40,19 @@ class WhatsAppChatShellTests(SimpleTestCase):
 
     @patch("apps.channels.whatsapp_chat_failure_ui.views_flat.whatsapp_chat_list_view")
     def test_list_route_uses_same_locked_shell(self, list_view):
+        request = object()
         list_view.return_value = self._html_response()
 
-        response = whatsapp_chat_failure_ui.whatsapp_chat_list_view(object())
+        response = whatsapp_chat_failure_ui.whatsapp_chat_list_view(request)
         html = response.content.decode("utf-8")
 
-        list_view.assert_called_once()
+        list_view.assert_called_once_with(request)
         self.assertIn("data-shvya-whatsapp-web-shell", html)
         self.assertIn("wa-empty-chat", html)
 
     @patch("apps.channels.whatsapp_chat_failure_ui.views_flat.whatsapp_chat_detail_view")
     def test_detail_route_keeps_failure_summary_enrichment(self, detail_view):
+        request = object()
         detail_view.return_value = HttpResponse(
             "<html><head></head><body>"
             "<main><div id='thread' class='wa-chat-surface'>"
@@ -60,9 +62,9 @@ class WhatsAppChatShellTests(SimpleTestCase):
             "</body></html>"
         )
 
-        response = whatsapp_chat_failure_ui.whatsapp_chat_detail_view(object(), "lead-id")
+        response = whatsapp_chat_failure_ui.whatsapp_chat_detail_view(request, "lead-id")
         html = response.content.decode("utf-8")
 
-        detail_view.assert_called_once_with(object(), "lead-id")
+        detail_view.assert_called_once_with(request, "lead-id")
         self.assertIn("Not sent \\u00b7", html)
         self.assertIn("data-shvya-whatsapp-chat-ui", html)
