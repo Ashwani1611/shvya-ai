@@ -11,7 +11,7 @@ _INSTALLED = False
 _ORIGINAL_SEND = None
 
 
-def send_hosted_message(*, message, defer_on_pause=False):
+def send_hosted_message(*, message, defer_on_pause=True):
     from services.channels.hosted_automation_service import (
         HostedAutomationPaused,
         automation_pause_until,
@@ -35,8 +35,6 @@ def send_hosted_message(*, message, defer_on_pause=False):
         if paused_until:
             if defer_on_pause:
                 raise HostedAutomationPaused(paused_until)
-            # The canonical channels Celery sender treats a provider-style 5xx
-            # as transient and retries while leaving this message QUEUED.
             provider_error = WhatsAppWebGatewayError(
                 f"Hosted automation paused by Account Health until {paused_until.isoformat()}.",
                 status_code=503,
@@ -98,6 +96,16 @@ def send_hosted_message(*, message, defer_on_pause=False):
         ]
     )
     record_hosted_send(account=account, message=message)
+
+    hosted_meta = existing_payload.get("shvya_hosted") or {}
+    if hosted_meta.get("origin") == "agent" and message.lead_id:
+        from services.channels.hosted_automation_service import register_hosted_manual_outbound
+
+        register_hosted_manual_outbound(
+            account=account,
+            lead=message.lead,
+            at=timezone.now() if False else message.updated_at,
+        )
     return message
 
 
@@ -113,7 +121,7 @@ def install_hosted_whatsapp_transport():
 
     def provider_aware_send_outbound_message(*, message):
         if message.account.connection_type == "hosted":
-            return send_hosted_message(message=message)
+            return send_hosted_message(message=message, defer_on_pause=False)
         return _ORIGINAL_SEND(message=message)
 
     whatsapp_service.send_outbound_message = provider_aware_send_outbound_message
