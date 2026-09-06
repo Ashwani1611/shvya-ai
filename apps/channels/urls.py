@@ -12,7 +12,7 @@ urlpatterns = [
     path("accounts/", views_flat.whatsapp_account_list_view, name="whatsapp-accounts"),
     path("connect/", views_flat.whatsapp_connect_choice_view, name="whatsapp-connect-choice"),
     path("connect/api/", connection_ui.whatsapp_connect_api_view, name="whatsapp-connect-api"),
-    path("connect/api/attempt-event/", connection_ui.whatsapp_connection_attempt_event_view, name="whatsapp-connection-attempt-event"),
+    path("connect/api/attempt-event/", connection_ui.whatsapp_connection_attempt_event_view, name="whatsapp-connect-attempt-event"),
     path("connect/api/embedded-signup/", connection_ui.whatsapp_embedded_signup_callback_view, name="whatsapp-embedded-signup-callback"),
     path("connect/hosted/", views_flat.whatsapp_connect_hosted_view, name="whatsapp-connect-hosted"),
     path("accounts/<uuid:account_id>/disconnect/", views_flat.whatsapp_disconnect_view, name="whatsapp-disconnect"),
@@ -37,7 +37,7 @@ urlpatterns = [
     path("templates/sync/", template_ui.template_sync, name="whatsapp-template-sync"),
     path("templates/placeholders/", template_ui.template_placeholders, name="whatsapp-template-placeholders"),
 
-    path("chats/", views_flat.whatsapp_chat_list_view, name="whatsapp-chats"),
+    path("chats/", whatsapp_chat_failure_ui.whatsapp_chat_list_view, name="whatsapp-chats"),
     path("chats/<uuid:lead_id>/", whatsapp_chat_failure_ui.whatsapp_chat_detail_view, name="whatsapp-chat-detail"),
     path("send-template/<uuid:lead_id>/", whatsapp_template_send_ui.whatsapp_send_template_view, name="whatsapp-send-template"),
     path("leads/<uuid:lead_id>/calls.json", views_flat.whatsapp_lead_calls_json, name="whatsapp-lead-calls-json"),
