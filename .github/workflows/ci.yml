@@ -88,18 +88,6 @@ jobs:
       - name: Django system check
         run: python manage.py check --settings=config.settings.testing
 
-      - name: Check personalization tests
-        continue-on-error: true
-        run: pytest -q apps/followups/tests/test_personalization.py
-
-      - name: Check schedule UI tests
-        continue-on-error: true
-        run: pytest -q apps/followups/tests/test_schedule_template.py
-
-      - name: Check recurring tests
-        continue-on-error: true
-        run: pytest -q apps/followups/tests/test_recurring.py
-
       - name: Run tests with coverage
         run: pytest --cov
 
