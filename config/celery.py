@@ -15,10 +15,10 @@ app.config_from_object(
 
 app.autodiscover_tasks()
 
-# Central Beat schedule for recurring background work. The Auto Follow-ups
-# dispatcher intentionally runs frequently but processes at most one due lead
-# per invocation; service-layer locking and per-sender throttling prevent a
-# burst where every assigned lead is sent at once.
+# Central Beat schedule for recurring background work. Hosted WhatsApp
+# automation is intentionally evaluated every 20 seconds. The dispatcher
+# processes one prioritized lane at a time and the service layer provides
+# durable account/lead throttling so queued work cannot fan out in a burst.
 app.conf.beat_schedule = {
     "dispatch-smart-triggers-every-10-seconds": {
         "task": "apps.triggers.tasks.dispatch_smart_triggers",
@@ -29,8 +29,8 @@ app.conf.beat_schedule = {
         "task": "apps.copilot.tasks.refresh_copilot_flags_task",
         "schedule": 1800.0,
     },
-    "dispatch-auto-followups-every-10-seconds": {
+    "dispatch-auto-followups-every-20-seconds": {
         "task": "apps.followups.tasks.dispatch_auto_followups_task",
-        "schedule": 10.0,
+        "schedule": 20.0,
     },
 }
