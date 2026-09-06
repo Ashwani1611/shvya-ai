@@ -186,13 +186,13 @@ class HostedWhatsAppTests(TestCase):
 
     def test_ready_event_rejects_scanned_wrong_number(self):
         account = self.create_account()
-        with self.assertRaises(HostedWhatsAppValidationError):
-            handle_gateway_event(
-                payload={
-                    "sessionId": str(account.id),
-                    "event": "ready",
-                    "phoneNumber": "+919999999999",
-                }
-            )
+        result = handle_gateway_event(
+            payload={
+                "sessionId": str(account.id),
+                "event": "ready",
+                "phoneNumber": "+919999999999",
+            }
+        )
+        self.assertEqual(result.id, account.id)
         account.refresh_from_db()
         self.assertEqual(account.status, WhatsAppAccount.Status.FAILED)
