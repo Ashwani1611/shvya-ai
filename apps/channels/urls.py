@@ -1,5 +1,6 @@
 from django.urls import path
 
+from apps.hosted_automation import queue_views as hosted_queue_views
 from apps.hosted_automation import views as hosted_automation_views
 
 from . import connection_ui
@@ -27,7 +28,7 @@ urlpatterns = [
     path("connect/hosted/<uuid:account_id>/status/", hosted_ui.hosted_session_status_view, name="whatsapp-hosted-session-status"),
     path("connect/hosted/<uuid:account_id>/qr/", hosted_ui.hosted_session_qr_view, name="whatsapp-hosted-session-qr"),
     path("connect/hosted/<uuid:account_id>/qr/refresh/", hosted_ui.hosted_session_qr_refresh_view, name="whatsapp-hosted-session-qr-refresh"),
-    path("connect/hosted/<uuid:account_id>/queue/", hosted_ui.hosted_session_queue_view, name="whatsapp-hosted-session-queue"),
+    path("connect/hosted/<uuid:account_id>/queue/", hosted_queue_views.hosted_session_queue_view, name="whatsapp-hosted-session-queue"),
     path("connect/hosted/<uuid:account_id>/settings/", hosted_ui.hosted_session_settings_view, name="whatsapp-hosted-session-settings"),
     path("connect/hosted/<uuid:account_id>/logout/", hosted_ui.hosted_session_logout_view, name="whatsapp-hosted-session-logout"),
     path("connect/hosted/<uuid:account_id>/chats/", hosted_ui.hosted_session_chats_view, name="whatsapp-hosted-session-chats"),
@@ -41,8 +42,6 @@ urlpatterns = [
     path("campaigns/<uuid:campaign_id>/", views_flat.whatsapp_campaign_detail_view, name="whatsapp-campaign-detail"),
     path("campaigns/<uuid:campaign_id>/launch/", views_flat.whatsapp_campaign_launch_view, name="whatsapp-campaign-launch"),
 
-    # Real WABA template management. The old views in views_flat are retained
-    # only for compatibility with imports; active routes use the focused flow.
     path("templates/", template_action_ui.template_list, name="whatsapp-template-list"),
     path("templates/new/", template_action_ui.template_create, name="whatsapp-template-create"),
     path("templates/<uuid:template_id>/edit/", template_action_ui.template_edit, name="whatsapp-template-edit"),
