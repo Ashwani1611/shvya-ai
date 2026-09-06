@@ -4,6 +4,11 @@ DEBUG = True
 
 CORS_ALLOW_ALL_ORIGINS = True
 
+INSTALLED_APPS = [
+    *INSTALLED_APPS,
+    "django.contrib.postgres",
+]
+
 # ---------------------------------------------------------------------------
 # Celery -- run tasks synchronously in local dev
 # ---------------------------------------------------------------------------
