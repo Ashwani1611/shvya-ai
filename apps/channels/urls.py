@@ -24,8 +24,9 @@ urlpatterns = [
     # Real WABA template management. The old views in views_flat are retained
     # only for compatibility with imports; active routes use the focused flow.
     # Editor routes preserve the clicked submit action before the page's
-    # duplicate-submit guard disables the buttons.
-    path("templates/", template_ui.template_list, name="whatsapp-template-list"),
+    # duplicate-submit guard disables the buttons. The list refreshes pending
+    # templates from Meta so approval/rejection is reflected on reload.
+    path("templates/", template_action_ui.template_list, name="whatsapp-template-list"),
     path("templates/new/", template_action_ui.template_create, name="whatsapp-template-create"),
     path("templates/<uuid:template_id>/edit/", template_action_ui.template_edit, name="whatsapp-template-edit"),
     path("templates/<uuid:template_id>/submit/", template_ui.template_submit, name="whatsapp-template-submit"),
