@@ -13,10 +13,15 @@ class ChannelsConfig(AppConfig):
         from . import connection_attempts  # noqa: F401
         from . import template_models  # noqa: F401
 
-        # Preserve Meta's exact WhatsApp failure payload/code and enrich the
-        # existing Chats "View details" block with Code / Why / Resolve help.
+        # Install the actual Meta template transport first. The failure layer
+        # then wraps every transport, including templates, so exact Meta error
+        # codes are preserved consistently.
+        from services.channels.whatsapp_template_delivery import (
+            install_whatsapp_template_transport,
+        )
         from services.channels.whatsapp_failure_patch import (
             install_whatsapp_failure_diagnostics,
         )
 
+        install_whatsapp_template_transport()
         install_whatsapp_failure_diagnostics()
