@@ -105,6 +105,7 @@ class Migration(migrations.Migration):
                     "status",
                     models.CharField(
                         choices=[
+                            ("processing", "Processing"),
                             ("success", "Success"),
                             ("skipped", "Skipped"),
                             ("failed", "Failed"),
