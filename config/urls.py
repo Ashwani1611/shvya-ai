@@ -15,6 +15,7 @@ from apps.core.views import HomeView, PricingView
 
 
 urlpatterns = [
+    path('dashboard/smart-triggers/', include('apps.triggers.urls.web')),
     # =========================================================
     # Browser favicon
     #

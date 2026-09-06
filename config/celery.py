@@ -20,6 +20,10 @@ app.autodiscover_tasks()
 # per invocation; service-layer locking and per-sender throttling prevent a
 # burst where every assigned lead is sent at once.
 app.conf.beat_schedule = {
+    "dispatch-smart-triggers-every-10-seconds": {
+        "task": "apps.triggers.tasks.dispatch_smart_triggers",
+        "schedule": 10.0,
+    },
     **(app.conf.beat_schedule or {}),
     "refresh-copilot-flags-every-30-minutes": {
         "task": "apps.copilot.tasks.refresh_copilot_flags_task",

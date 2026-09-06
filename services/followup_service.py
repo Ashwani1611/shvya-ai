@@ -43,7 +43,11 @@ class FollowupError(Exception):
 
 
 def get_auto_followup_settings(organization):
-    result, _ = AutoFollowupSettings.objects.get_or_create(organization=organization)
+    result, created = AutoFollowupSettings.objects.get_or_create(organization=organization)
+    if created:
+        # TimeField defaults are strings until hydrated by the database.
+        # First-time sequence assignment must receive datetime.time values.
+        result.refresh_from_db()
     return result
 
 

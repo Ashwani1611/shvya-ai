@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}Smart Triggers · SHVYA AI{% endblock %}
+{% block header %}<button id="st-mobile-nav" type="button" aria-label="Open navigation" aria-expanded="false" aria-controls="app-sidebar">☰</button> Smart Triggers{% endblock %}
+{% block content %}
+<link rel="stylesheet" href="{% static 'triggers/dashboard.css' %}?v=1">
+{{ trigger_catalog|json_script:"trigger-catalog" }}
+<main id="smart-triggers" class="st" data-admin="{{ trigger_admin|yesno:'true,false' }}" data-api="{% url 'crm-smart-triggers' %}">
+  <button id="st-nav-backdrop" aria-label="Close navigation" hidden></button>
+  <div hidden>{% csrf_token %}</div>
+  <div id="st-notice" role="status" aria-live="polite" hidden></div>
+  <section id="st-home">
+    <div class="st-heading"><div><span class="st-eyebrow">YOUR CRM, ON AUTOPILOT</span><h1>Small rules. Less busywork.</h1><p>Turn lead activity into the right next step, automatically.</p></div>{% if trigger_admin %}<button class="st-primary" id="st-new">＋ Create rule</button>{% endif %}</div>
+    <div class="st-stats"><div><span class="st-stat-icon">ϟ</span><div><strong id="st-total">—</strong><span>Total rules</span></div></div><div><span class="st-stat-icon st-green">✓</span><div><strong id="st-active">—</strong><span>Enabled rules</span></div></div><div><span class="st-stat-icon st-purple">↕</span><div><strong>Top to bottom</strong><span>Rules run in your chosen order</span></div></div></div>
+    <div class="st-tabs" role="tablist" aria-label="Smart Triggers views"><button id="st-rules-tab" role="tab" aria-selected="true">Rules</button><button id="st-history-tab" role="tab" aria-selected="false">Run history</button></div>
+    <section id="st-rules-panel" class="st-panel">
+      <div class="st-toolbar"><label class="st-search"><span>⌕</span><input id="st-search" type="search" placeholder="Search rules" aria-label="Search rules"></label><select id="st-filter" aria-label="Filter rule status"><option value="all">All statuses</option><option value="enabled">Enabled</option><option value="disabled">Disabled</option></select></div>
+      <p class="st-caption">Put specific rules first. Use the arrows or drag to change their order. {% if not trigger_admin %}You have view-only access.{% endif %}</p>
+      <div id="st-rule-list" aria-live="polite"><div class="st-empty">Loading your rules…</div></div>
+    </section>
+    <section id="st-history-panel" class="st-panel" hidden><div class="st-toolbar"><div><h2>Recent activity</h2><p>Latest 100 runs, including skipped and blocked actions.</p></div><button id="st-refresh-history">Refresh</button></div><div id="st-history-list"></div></section>
+    <details class="st-help"><summary>How Smart Triggers work</summary><p>Choose when a rule runs, narrow it down with pipeline, stage, and attribute conditions, then pick one action. All attribute conditions must match; any selected value may match within a condition. Pipeline groups are alternatives.</p><p>Matching rules are evaluated in list order. A 30-second cooldown prevents the same rule from repeatedly acting on a lead. Admins manage rules; team members can view them.</p><p>Stage timers run once per stage entry. No-response timers start from the latest sent WhatsApp message and are cancelled by a reply. Background processing may add a short delay.</p></details>
+  </section>
+  <section id="st-editor" hidden>
+    <div class="st-heading"><div><button class="st-link" id="st-back">← All rules</button><h1 id="st-editor-title">Create a rule</h1><p>Choose a moment. Define the next step.</p></div><button id="st-cancel">Cancel</button></div>
+    <form id="st-form">
+      <fieldset id="st-fields">
+        <section class="st-panel st-name"><label for="st-name">Rule name <span class="st-required">*</span></label><input id="st-name" maxlength="255" required placeholder="e.g. Start nurturing when a lead becomes qualified"><small id="st-name-count">0 / 255</small></section>
+        <div class="st-builder">
+          <section class="st-panel st-card"><div class="st-card-title"><span class="st-step">1</span><div><h2>When this happens</h2><p>The event that starts your rule</p></div></div><label for="st-trigger">Trigger <span class="st-required">*</span></label><select id="st-trigger" required></select><p id="st-trigger-help" class="st-hint"></p><div id="st-trigger-extra"></div><div class="st-section-label"><h3>Pipeline & stages</h3><button type="button" id="st-add-scope" class="st-link">＋ Add pipeline</button></div><p class="st-hint">Match any of these pipeline and stage groups.</p><div id="st-scopes"></div><div class="st-section-label"><h3>Attribute conditions <span class="st-muted">Optional</span></h3><button type="button" id="st-add-condition" class="st-link">＋ Add condition</button></div><p class="st-hint">All conditions below must match.</p><div id="st-conditions"></div></section>
+          <div class="st-flow-arrow" aria-hidden="true">→</div>
+          <section class="st-panel st-card"><div class="st-card-title"><span class="st-step st-step-action">2</span><div><h2>Then do this</h2><p>One clear action for your lead</p></div></div><label for="st-action">Action <span class="st-required">*</span></label><select id="st-action" required></select><div id="st-action-fields"></div></section>
+        </div>
+        <section class="st-summary"><div><span class="st-eyebrow">YOUR RULE AT A GLANCE</span><p id="st-summary-text">Choose a trigger and an action.</p></div><label class="st-check"><input type="checkbox" id="st-enabled"> Enable this rule</label></section>
+      </fieldset>
+      <div id="st-form-error" class="st-error" role="alert" hidden></div>
+      {% if trigger_admin %}<div class="st-form-footer"><p>Disabled rules are saved without running.</p><button type="submit" class="st-primary" id="st-save">Save rule</button></div>{% endif %}
+    </form>
+  </section>
+  <dialog id="st-confirm"><h2>Delete this rule?</h2><p id="st-confirm-text"></p><p>Its run history will also be removed. Completed CRM actions will remain.</p><div class="st-dialog-actions"><button id="st-delete-cancel">Keep rule</button><button id="st-delete-confirm" class="st-danger">Delete rule</button></div></dialog>
+</main>
+<script src="{% static 'triggers/dashboard.js' %}?v=1" defer></script>
+{% endblock %}

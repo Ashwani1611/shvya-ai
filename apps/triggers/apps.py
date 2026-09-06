@@ -2,6 +2,9 @@ from django.apps import AppConfig
 
 
 class TriggersConfig(AppConfig):
-    default_auto_field = 'django.db.models.BigAutoField'
-    name = 'apps.triggers'
-    label = 'triggers'
+    default_auto_field = "django.db.models.BigAutoField"
+    name = "apps.triggers"
+    label = "triggers"
+
+    def ready(self):
+        from . import signals  # noqa: F401
