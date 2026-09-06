@@ -42,6 +42,11 @@ def validate_webhook_url(value):
     if parsed.scheme.lower() != "https":
         raise ValidationError("Webhook URL must use HTTPS.")
 
+    if parsed.username or parsed.password:
+        raise ValidationError(
+            "Webhook URL must not contain embedded username or password credentials."
+        )
+
     hostname = (parsed.hostname or "").strip().lower()
     if not hostname:
         raise ValidationError("Webhook URL must include a hostname.")
