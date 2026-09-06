@@ -10,8 +10,13 @@ INSTALLED_APPS = [
 ]
 
 # The whatsapp-web.js gateway fetches short-lived signed follow-up media from
-# Gunicorn over the private Docker network. This single signed route may stay
-# HTTP internally; public browser traffic is still forced to HTTPS.
+# Gunicorn over the private Docker network. Permit only the Docker service host
+# in addition to the public hosts already supplied by the environment.
+if "web" not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS = [*ALLOWED_HOSTS, "web"]
+
+# This single signed route may stay HTTP on the private Docker network; public
+# browser traffic is still forced to HTTPS.
 SECURE_REDIRECT_EXEMPT = [
     r"^dashboard/whatsapp/connect/hosted/media/",
 ]
