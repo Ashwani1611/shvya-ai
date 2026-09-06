@@ -1,4 +1,4 @@
-"""Install hosted WhatsApp transport without disturbing Meta Cloud API sends."""
+"""Provider dispatch for Hosted Account sends without disturbing Meta Cloud API."""
 
 from apps.channels.models import WhatsAppMessage
 from apps.channels.providers.whatsapp_web import (
@@ -11,7 +11,13 @@ _INSTALLED = False
 _ORIGINAL_SEND = None
 
 
-def _send_hosted_message(*, message):
+def send_hosted_message(*, message, defer_on_pause=False):
+    from services.channels.hosted_automation_service import (
+        HostedAutomationPaused,
+        automation_pause_until,
+        message_is_automation,
+        record_hosted_send,
+    )
     from services.channels.whatsapp_service import WhatsAppSendError
 
     account = message.account
@@ -24,13 +30,26 @@ def _send_hosted_message(*, message):
     if account.status != account.Status.CONNECTED:
         raise WhatsAppSendError("Hosted WhatsApp session is not running.")
 
+    if message_is_automation(message):
+        paused_until = automation_pause_until(account=account)
+        if paused_until:
+            if defer_on_pause:
+                raise HostedAutomationPaused(paused_until)
+            # The canonical channels Celery sender treats a provider-style 5xx
+            # as transient and retries while leaving this message QUEUED.
+            provider_error = WhatsAppWebGatewayError(
+                f"Hosted automation paused by Account Health until {paused_until.isoformat()}.",
+                status_code=503,
+            )
+            raise WhatsAppSendError(str(provider_error)) from provider_error
+
     media_url = None
     filename = None
     if message.message_type != WhatsAppMessage.MessageType.TEXT:
         payload = message.media_payload or {}
         if payload.get("source") != "url" or not payload.get("url"):
             raise WhatsAppSendError(
-                "Hosted WhatsApp media currently requires a URL-backed media source."
+                "Hosted WhatsApp media requires a URL-backed media source."
             )
         media_url = payload["url"]
         filename = payload.get("filename")
@@ -61,7 +80,7 @@ def _send_hosted_message(*, message):
         message.raw_payload if isinstance(message.raw_payload, dict) else {}
     )
     final_payload = dict(response)
-    for key in ("shvya_ai", "shvya_hosted"):
+    for key in ("shvya_ai", "shvya_hosted", "shvya_auto_followup"):
         if key in existing_payload:
             final_payload[key] = existing_payload[key]
 
@@ -78,6 +97,7 @@ def _send_hosted_message(*, message):
             "updated_at",
         ]
     )
+    record_hosted_send(account=account, message=message)
     return message
 
 
@@ -93,7 +113,7 @@ def install_hosted_whatsapp_transport():
 
     def provider_aware_send_outbound_message(*, message):
         if message.account.connection_type == "hosted":
-            return _send_hosted_message(message=message)
+            return send_hosted_message(message=message)
         return _ORIGINAL_SEND(message=message)
 
     whatsapp_service.send_outbound_message = provider_aware_send_outbound_message
