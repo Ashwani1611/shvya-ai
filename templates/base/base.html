@@ -1,0 +1,235 @@
+{% load static %}
+<style>
+    /* Dashboard sidebar polish. Kept separate so the legacy base layout and CRM JS remain untouched. */
+    #app-sidebar {
+        position: relative;
+        width: 16rem;
+        overflow: visible;
+        box-shadow: 1px 0 0 rgba(15, 23, 42, .02);
+        transition: width 180ms ease;
+    }
+
+    #app-sidebar.sidebar-collapsed {
+        width: 5rem;
+    }
+
+    #app-sidebar .sidebar-brand-header {
+        position: relative;
+        min-height: 70px;
+        justify-content: flex-start;
+        gap: .65rem;
+        padding: .75rem 1rem;
+        overflow: visible;
+    }
+
+    #app-sidebar .sidebar-brand-logo {
+        display: block;
+        width: 36px;
+        height: 36px;
+        flex: 0 0 36px;
+        object-fit: contain;
+    }
+
+    #app-sidebar .brand-label {
+        white-space: nowrap;
+        font-size: 1.05rem;
+        font-weight: 800;
+        letter-spacing: -.02em;
+        color: #0f172a;
+    }
+
+    #app-sidebar.sidebar-collapsed .sidebar-brand-header {
+        justify-content: center;
+        padding-left: .5rem;
+        padding-right: .5rem;
+    }
+
+    #app-sidebar #sidebar-toggle {
+        position: absolute;
+        top: 20px;
+        right: -15px;
+        z-index: 50;
+        width: 30px;
+        height: 30px;
+        border: 1px solid #dbeafe;
+        border-radius: 9px;
+        background: #ffffff;
+        color: #2563eb;
+        box-shadow: 0 3px 10px rgba(15, 23, 42, .12);
+        transition: background-color 150ms ease, color 150ms ease, box-shadow 150ms ease;
+    }
+
+    #app-sidebar #sidebar-toggle:hover {
+        background: #eff6ff;
+        color: #1d4ed8;
+        box-shadow: 0 4px 12px rgba(37, 99, 235, .16);
+    }
+
+    #app-sidebar .sidebar-nav {
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        gap: .35rem;
+        padding: .75rem .5rem 1rem;
+        scrollbar-width: thin;
+    }
+
+    #app-sidebar .sidebar-nav > [data-nav-group],
+    #app-sidebar .sidebar-nav > .nav-row {
+        flex: 0 0 auto;
+    }
+
+    #app-sidebar .nav-row {
+        min-height: 46px;
+        border-radius: .65rem;
+        transition: background-color 140ms ease, color 140ms ease, box-shadow 140ms ease;
+    }
+
+    #app-sidebar .nav-row:hover {
+        background: #f8fafc;
+    }
+
+    #app-sidebar .nav-row.bg-blue-50 {
+        box-shadow: inset 3px 0 0 #2563eb;
+    }
+
+    #app-sidebar.sidebar-collapsed .nav-row {
+        justify-content: center;
+        padding-left: .6rem !important;
+        padding-right: .6rem !important;
+        margin-left: 0;
+        margin-right: 0;
+    }
+
+    #app-sidebar.sidebar-collapsed .nav-row:hover {
+        background: #eaf3ff !important;
+        color: #2563eb !important;
+    }
+
+    #app-sidebar.sidebar-collapsed .nav-row.bg-blue-50 {
+        background: #eaf3ff !important;
+        color: #2563eb !important;
+        box-shadow: inset 3px 0 0 #2563eb;
+    }
+
+    #app-sidebar.sidebar-collapsed .sidebar-icon {
+        width: 24px;
+        min-width: 24px;
+        height: 24px;
+        font-size: 21px;
+    }
+
+    .shvya-sidebar-tooltip {
+        position: fixed;
+        z-index: 9999;
+        display: none;
+        max-width: 220px;
+        padding: .45rem .65rem;
+        border-radius: .5rem;
+        background: #0f172a;
+        color: #ffffff;
+        font-size: .75rem;
+        font-weight: 600;
+        line-height: 1.2;
+        white-space: nowrap;
+        pointer-events: none;
+        box-shadow: 0 8px 22px rgba(15, 23, 42, .2);
+    }
+
+    .shvya-sidebar-tooltip.is-visible {
+        display: block;
+    }
+
+    @media (max-height: 720px) {
+        #app-sidebar .sidebar-nav {
+            justify-content: flex-start;
+            gap: .2rem;
+        }
+
+        #app-sidebar .nav-row {
+            min-height: 42px;
+        }
+    }
+</style>
+
+<script>
+(function () {
+    function initSidebarEnhancements() {
+        var sidebar = document.getElementById('app-sidebar');
+        if (!sidebar || sidebar.dataset.shvyaEnhanced === '1') return;
+        sidebar.dataset.shvyaEnhanced = '1';
+
+        var header = sidebar.firstElementChild;
+        var brandLabel = sidebar.querySelector('.brand-label');
+        var toggle = document.getElementById('sidebar-toggle');
+        var nav = sidebar.querySelector('nav');
+
+        if (header) header.classList.add('sidebar-brand-header');
+        if (nav) nav.classList.add('sidebar-nav');
+
+        if (header && brandLabel && !header.querySelector('.sidebar-brand-logo')) {
+            var logo = document.createElement('img');
+            logo.className = 'sidebar-brand-logo';
+            logo.src = "{% static 'images/shvya-logo.svg' %}";
+            logo.alt = 'SHVYA AI';
+            brandLabel.textContent = 'SHVYA AI';
+            header.insertBefore(logo, brandLabel);
+        }
+
+        var tooltip = document.createElement('div');
+        tooltip.className = 'shvya-sidebar-tooltip';
+        tooltip.setAttribute('role', 'tooltip');
+        document.body.appendChild(tooltip);
+
+        function syncToggleState() {
+            var collapsed = sidebar.classList.contains('sidebar-collapsed');
+            if (toggle) {
+                var label = collapsed ? 'Expand sidebar' : 'Collapse sidebar';
+                toggle.title = label;
+                toggle.setAttribute('aria-label', label);
+                toggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+            }
+            if (!collapsed) tooltip.classList.remove('is-visible');
+        }
+
+        sidebar.querySelectorAll('.nav-row').forEach(function (row) {
+            var labelNode = row.querySelector('.nav-label');
+            if (!labelNode) return;
+            var label = labelNode.textContent.trim();
+            if (!label) return;
+
+            row.dataset.sidebarLabel = label;
+            row.setAttribute('aria-label', label);
+            row.title = label;
+
+            row.addEventListener('mouseenter', function () {
+                if (!sidebar.classList.contains('sidebar-collapsed')) return;
+                var rect = row.getBoundingClientRect();
+                tooltip.textContent = label;
+                tooltip.style.left = (rect.right + 10) + 'px';
+                tooltip.style.top = (rect.top + rect.height / 2) + 'px';
+                tooltip.style.transform = 'translateY(-50%)';
+                tooltip.classList.add('is-visible');
+            });
+
+            row.addEventListener('mouseleave', function () {
+                tooltip.classList.remove('is-visible');
+            });
+        });
+
+        if (toggle) {
+            toggle.addEventListener('click', function () {
+                window.requestAnimationFrame(syncToggleState);
+            });
+        }
+
+        syncToggleState();
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initSidebarEnhancements, { once: true });
+    } else {
+        initSidebarEnhancements();
+    }
+})();
+</script>

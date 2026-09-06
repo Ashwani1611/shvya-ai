@@ -1,0 +1,3493 @@
+{% load crm_extras %}
+{% load static %}
+
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+    <meta charset="UTF-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
+
+    <title>
+        {% block title %}
+            SHVYA AI
+        {% endblock %}
+    </title>
+
+
+    <!-- ========================================================
+         TAILWIND
+         ======================================================== -->
+
+    <script src="https://cdn.tailwindcss.com"></script>
+
+
+    <!-- ========================================================
+         TABLER ICONS
+         ======================================================== -->
+
+    <link
+        rel="stylesheet"
+        href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.34.0/dist/tabler-icons.min.css"
+    >
+
+
+    <!-- ========================================================
+         ICON FONT STYLING
+         ======================================================== -->
+
+    <style>
+
+        .ti {
+            font-family: "tabler-icons" !important;
+            font-style: normal;
+            font-weight: normal;
+            font-variant: normal;
+            line-height: 1;
+            display: inline-block;
+            text-rendering: auto;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+
+        .sidebar-icon {
+            width: 20px;
+            height: 20px;
+            min-width: 20px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+        }
+
+
+        /* ============================================================
+           SIDEBAR EXPAND / COLLAPSE
+           "collapsed" hides labels, chevrons, and any open group's
+           sub-links, leaving just the icon rail -- same behaviour as
+           the "«" toggle in the reference design. State persists
+           across page loads via localStorage (see script below),
+           since this is a normal multi-page Django app, not an SPA.
+           ============================================================ */
+
+        #app-sidebar {
+            width: 15rem;
+            transition: width 150ms ease;
+        }
+
+        #app-sidebar.sidebar-collapsed {
+            width: 4.25rem;
+        }
+
+        #app-sidebar.sidebar-collapsed .nav-label,
+        #app-sidebar.sidebar-collapsed .nav-chevron,
+        #app-sidebar.sidebar-collapsed .nav-group-children,
+        #app-sidebar.sidebar-collapsed .brand-label {
+            display: none;
+        }
+
+        #app-sidebar.sidebar-collapsed .nav-row {
+            justify-content: center;
+        }
+
+        #sidebar-toggle .ti {
+            transition: transform 150ms ease;
+        }
+
+        #app-sidebar.sidebar-collapsed #sidebar-toggle .ti {
+            transform: rotate(180deg);
+        }
+
+    </style>
+
+
+    <!-- ========================================================
+         HTMX
+         ======================================================== -->
+
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+
+
+    {% block extra_head %}
+    {% endblock %}
+
+</head>
+
+
+<body class="bg-gray-50 text-gray-900">
+
+
+<div class="flex h-screen overflow-hidden">
+
+
+    <!-- ========================================================
+         SIDEBAR
+         ======================================================== -->
+
+    <aside
+        id="app-sidebar"
+        class="bg-white
+               border-r
+               border-gray-200
+               flex
+               flex-col
+               shrink-0"
+    >
+
+        <div
+            class="flex
+                   items-center
+                   justify-between
+                   px-4
+                   py-4
+                   border-b
+                   border-gray-100"
+        >
+
+            <span class="brand-label font-bold text-lg">
+                SHVYA AI
+            </span>
+
+            <button
+                type="button"
+                id="sidebar-toggle"
+                title="Collapse sidebar"
+
+                class="flex
+                       items-center
+                       justify-center
+                       w-7
+                       h-7
+                       rounded-md
+                       text-gray-400
+                       hover:bg-gray-100
+                       hover:text-gray-600
+                       shrink-0"
+            >
+
+                <i class="ti ti-layout-sidebar-left-collapse text-[18px]"></i>
+
+            </button>
+
+        </div>
+
+
+        <nav
+            class="flex-1
+                   overflow-y-auto
+                   overflow-x-hidden
+                   py-2"
+        >
+
+            <!-- ==================================================
+                 NOTE:
+                 The hardcoded "CRM" link that used to live here
+                 has been removed. It was rendering in addition to
+                 the CRM entry already coming from `nav_items`,
+                 which produced two "CRM" rows in the sidebar.
+
+                 `nav_items` (built in your view / context
+                 processor) is now the single source of truth for
+                 every sidebar entry, including CRM. Make sure it
+                 contains an entry like:
+
+                     {
+                         'label': 'CRM',
+                         'icon': 'ti-users',
+                         'url_name': 'crm-dashboard',
+                         'is_active': request.resolver_match.url_name == 'crm-dashboard',
+                     }
+
+                 as the first item in the list, and this loop will
+                 render it exactly once, in the same style as every
+                 other item.
+                 ================================================== -->
+
+
+            <!-- ==================================================
+                 NAV ITEMS (including CRM)
+                 ================================================== -->
+
+            {% for item in nav_items %}
+
+                {% if item.children %}
+
+                    <!-- ==========================================
+                         DROPDOWN GROUP (e.g. WhatsApp)
+                         "data-nav-group" toggles open/closed on
+                         click; starts open when item.is_active
+                         (one of its children is the current page)
+                         so navigating straight to a child page
+                         doesn't land with its own section collapsed.
+                         ========================================== -->
+
+                    <div data-nav-group>
+
+                        <button
+                            type="button"
+                            data-nav-group-toggle
+
+                            class="nav-row
+                                   flex
+                                   w-full
+                                   items-center
+                                   gap-3
+                                   px-4
+                                   py-2
+                                   text-sm
+                                   font-medium
+                            {% if item.is_active %}
+                                text-blue-700
+                            {% else %}
+                                text-gray-700 hover:bg-gray-50
+                            {% endif %}"
+                        >
+
+                            <i
+                                class="ti
+                                       {{ item.icon }}
+                                       sidebar-icon"
+                            ></i>
+
+                            <span class="nav-label flex-1 text-left">
+                                {{ item.label }}
+                            </span>
+
+                            <i
+                                class="ti
+                                       ti-chevron-down
+                                       nav-chevron
+                                       text-[14px]
+                                       transition-transform
+                                {% if item.is_active %}
+                                    rotate-180
+                                {% endif %}"
+                            ></i>
+
+                        </button>
+
+
+                        <div
+                            data-nav-group-children
+
+                            class="nav-group-children
+                                   flex
+                                   flex-col
+                            {% if not item.is_active %}
+                                hidden
+                            {% endif %}"
+                        >
+
+                            {% for child in item.children %}
+
+                                <a
+                                    href="{% url child.url_name %}"
+
+                                    class="nav-row
+                                           flex
+                                           items-center
+                                           gap-3
+                                           py-2
+                                           pl-11
+                                           pr-4
+                                           text-sm
+                                    {% if child.is_active %}
+                                        bg-blue-50 text-blue-700 font-medium
+                                    {% else %}
+                                        text-gray-600 hover:bg-gray-50
+                                    {% endif %}"
+                                >
+
+                                    <i
+                                        class="ti
+                                               {{ child.icon }}
+                                               text-[16px]"
+                                    ></i>
+
+                                    <span class="nav-label">
+                                        {{ child.label }}
+                                    </span>
+
+                                </a>
+
+                            {% endfor %}
+
+                        </div>
+
+                    </div>
+
+                {% elif item.url_name %}
+
+                    <a
+                        href="{% url item.url_name %}"
+
+                        class="nav-row
+                               flex
+                               items-center
+                               gap-3
+                               px-4
+                               py-2
+                               text-sm
+                               font-medium
+                        {% if item.is_active %}
+                            bg-blue-50 text-blue-700
+                        {% else %}
+                            text-gray-700 hover:bg-gray-50
+                        {% endif %}"
+                    >
+
+                        <i
+                            class="ti
+                                   {{ item.icon }}
+                                   sidebar-icon"
+                        ></i>
+
+                        <span class="nav-label">
+                            {{ item.label }}
+                        </span>
+
+                    </a>
+
+                {% else %}
+
+                    <div
+                        class="nav-row
+                               flex
+                               items-center
+                               gap-3
+                               px-4
+                               py-2
+                               text-sm
+                               text-gray-400
+                               cursor-not-allowed"
+                        title="Coming soon"
+                    >
+
+                        <i
+                            class="ti
+                                   {{ item.icon }}
+                                   sidebar-icon"
+                        ></i>
+
+                        <span class="nav-label">
+                            {{ item.label }}
+                        </span>
+
+                    </div>
+
+                {% endif %}
+
+            {% endfor %}
+
+        </nav>
+
+    </aside>
+
+
+    <!-- ========================================================
+         MAIN AREA
+         ======================================================== -->
+
+    <div
+        class="flex-1
+               flex
+               flex-col
+               overflow-hidden"
+    >
+
+
+        <!-- ====================================================
+             TOPBAR
+             ==================================================== -->
+
+        <header
+            class="bg-white
+                   border-b
+                   border-gray-200
+                   px-6
+                   py-3
+                   flex
+                   items-center
+                   justify-between
+                   shrink-0"
+        >
+
+            <h1
+                class="text-lg
+                       font-semibold
+                       text-gray-900"
+            >
+
+                {% block header %}
+
+                    Welcome,
+                    {{ request.user.name|default:"User" }}
+
+                {% endblock %}
+
+            </h1>
+
+
+            <div
+                class="flex
+                       items-center
+                       gap-2"
+            >
+
+                <!-- Reminders -->
+
+                <a
+                    href="#"
+                     hx-get="{% url 'crm-global-reminders-modal' %}"
+
+                    hx-target="#modal-root"
+
+                    hx-swap="innerHTML"
+
+                    class="group
+                           inline-flex
+                           items-center
+                           gap-2
+                           px-3
+                           py-2
+                           text-sm
+                           font-medium
+                           text-gray-700
+                           rounded-lg
+                           border
+                           border-transparent
+                           transition-all
+                           duration-150
+
+                           hover:bg-blue-50
+                           hover:border-blue-100
+                           hover:text-[#3B82F6]
+                    "
+                >
+
+                    <i
+                        class="
+                            ti
+                            ti-bell
+                            text-[18px]
+                            text-red-500
+                            transition-colors
+                            duration-150
+
+                            group-hover:text-[#3B82F6]
+
+                       "     
+                    ></i>
+
+                    <span>
+                        Reminders
+                    </span>
+
+                    {% if pending_reminder_count %}
+
+                    <span
+                        class="inline-flex
+                               items-center
+                               justify-center
+                               min-w-[20px]
+                               h-5
+                               px-1.5
+                               rounded-full
+                               bg-blue-100
+                               text-blue-700
+                               text-xs
+                               font-semibold
+                               transition-all
+                               duration-150
+
+                               group-hover:bg-blue-100
+                               group-hover:text-[#3B82F6]
+                        "
+                    >
+                        {{ pending_reminder_count }}
+                    </span>
+
+                    {% endif %}
+
+                </a>
+
+
+                <!-- Import -->
+
+                <button
+                    type="button"
+
+                    hx-get="{% url 'crm-lead-import-start-modal' %}"
+                    hx-target="#modal-root"
+                    hx-swap="innerHTML"
+
+                    class="inline-flex
+                           items-center
+                           gap-2
+                           px-3
+                           py-2
+                           text-sm
+                           font-medium
+                           text-gray-700
+                           rounded-lg
+                           transition-all
+                           duration-150
+
+                           hover:bg-blue-50
+                           hover:border-blue-100
+                           hover:text-[#3B82F6]
+                    "
+                >
+
+                    <i
+                        class="ti ti-upload text-[18px]"
+                    ></i>
+
+                    <span>
+                        Import
+                    </span>
+
+                </button>
+
+
+                <!-- New Lead -->
+
+                <button
+                    type="button"
+
+                    hx-get="{% url 'crm-lead-create-modal' %}"
+
+                    hx-target="#modal-root"
+
+                    hx-swap="innerHTML"
+
+                    class="inline-flex
+                           items-center
+                           gap-2
+                           px-3
+                           py-2
+                           text-sm
+                           font-medium
+                           text-white
+                           bg-gray-900
+                           rounded-lg
+                           hover:bg-gray-800
+                           transition"
+                >
+
+                    <i
+                        class="ti ti-plus text-[18px]"
+                    ></i>
+
+                    <span>
+                        New lead
+                    </span>
+
+                </button>
+
+
+                <!-- Profile -->
+
+                <a
+                    href="{% url 'crm-profile' %}"
+
+                    class="inline-flex
+                           items-center
+                           gap-2
+                           px-3
+                           py-2
+                           text-sm
+                           font-medium
+                           text-gray-700
+                           rounded-lg
+                           transition-all
+                           duration-150
+
+                           hover:bg-blue-50
+                        hover:border-blue-100
+                        hover:text-[#3B82F6]
+                    "    
+                >
+
+                    <i
+                        class="ti ti-user text-[18px]"
+                    ></i>
+
+                    <span>
+                        Profile
+                    </span>
+
+                </a>
+
+
+                <!-- Logout -->
+
+                <a
+                    href="{% url 'crm-logout' %}"
+
+                    class="inline-flex
+                           items-center
+                           gap-2
+                           px-3
+                           py-2
+                           text-sm
+                           font-medium
+                           text-gray-700
+                           rounded-lg
+                           transition-all
+                           duration-150
+
+                           hover:bg-blue-50
+                           hover:border-blue-100
+                           hover:text-[#3B82F6]
+                    "       
+                >
+
+                    <i
+                        class="ti ti-logout text-[18px]"
+                    ></i>
+
+                    <span>
+                        Logout
+                    </span>
+
+                </a>
+
+            </div>
+
+        </header>
+
+
+        <!-- ====================================================
+             PAGE CONTENT
+             ==================================================== -->
+
+        <main
+            class="flex-1
+                   overflow-y-auto
+                   p-6"
+        >
+
+            {% if messages %}
+
+                <div class="mb-4 space-y-2">
+
+                    {% for message in messages %}
+
+                        <div
+                            class="rounded-lg border px-4 py-3 text-sm
+                            {% if message.tags == 'success' %}
+                                border-green-200 bg-green-50 text-green-700
+                            {% elif message.tags == 'error' %}
+                                border-red-200 bg-red-50 text-red-700
+                            {% else %}
+                                border-gray-200 bg-gray-50 text-gray-700
+                            {% endif %}"
+                        >
+
+                            {{ message }}
+
+                        </div>
+
+                    {% endfor %}
+
+                </div>
+
+            {% endif %}
+
+            {% block content %}
+            {% endblock %}
+
+        </main>
+
+    </div>
+
+</div>
+
+
+<!-- ============================================================
+     SHARED MODAL ROOT
+     ============================================================ -->
+
+<div id="modal-root"></div>
+
+
+<!-- ============================================================
+     JAVASCRIPT
+     ============================================================ -->
+
+<script>
+
+    /* ============================================================
+       SIDEBAR EXPAND / COLLAPSE
+       Persisted in localStorage so it stays consistent as the user
+       moves between pages (this is a normal server-rendered app,
+       not an SPA, so state has to survive a full page load).
+       ============================================================ */
+
+    (function () {
+
+        var STORAGE_KEY = 'shvya-sidebar-collapsed';
+
+        var sidebar = document.getElementById('app-sidebar');
+
+        var toggleButton = document.getElementById('sidebar-toggle');
+
+
+        if (!sidebar) {
+
+            return;
+
+        }
+
+
+        if (window.localStorage.getItem(STORAGE_KEY) === '1') {
+
+            sidebar.classList.add('sidebar-collapsed');
+
+        }
+
+
+        if (toggleButton) {
+
+            toggleButton.addEventListener('click', function () {
+
+                var isCollapsed =
+                    sidebar.classList.toggle('sidebar-collapsed');
+
+                window.localStorage.setItem(
+                    STORAGE_KEY,
+                    isCollapsed ? '1' : '0'
+                );
+
+            });
+
+        }
+
+
+        /* ========================================================
+           DROPDOWN NAV GROUPS (e.g. WhatsApp)
+           Each group toggles its own children open/closed
+           independently -- more than one section can be open at
+           once, same as the reference sidebar.
+           ======================================================== */
+
+        document
+            .querySelectorAll('[data-nav-group-toggle]')
+            .forEach(function (button) {
+
+                button.addEventListener('click', function () {
+
+                    var group = button.closest('[data-nav-group]');
+
+                    if (!group) {
+
+                        return;
+
+                    }
+
+                    var children = group.querySelector(
+                        '[data-nav-group-children]'
+                    );
+
+                    var chevron = button.querySelector('.nav-chevron');
+
+                    if (children) {
+
+                        children.classList.toggle('hidden');
+
+                    }
+
+                    if (chevron) {
+
+                        chevron.classList.toggle('rotate-180');
+
+                    }
+
+                });
+
+            });
+
+    })();
+
+
+    /* ============================================================
+       LEAD CARD STATE
+       ============================================================ */
+
+    window.shvyaLeadCardState =
+        window.shvyaLeadCardState || {};
+
+
+    /* ============================================================
+       LEGACY LEAD UPDATED
+       ============================================================ */
+
+    document.body.addEventListener(
+        'leadUpdated',
+        function() {
+
+            const modalRoot =
+                document.getElementById(
+                    'modal-root'
+                );
+
+
+            if (modalRoot) {
+
+                modalRoot.innerHTML = '';
+
+            }
+
+
+            const container =
+                document.getElementById(
+                    'lead-table-container'
+                );
+
+
+            if (container) {
+
+                htmx.trigger(
+                    container,
+                    'load'
+                );
+
+            }
+
+        }
+    );
+
+
+    /* ============================================================
+       ORGANIZATION UPDATED
+       ============================================================ */
+
+    document.body.addEventListener(
+        'orgUpdated',
+        function() {
+
+            const modalRoot =
+                document.getElementById(
+                    'modal-root'
+                );
+
+
+            if (modalRoot) {
+
+                modalRoot.innerHTML = '';
+
+            }
+
+
+            window.location.reload();
+
+        }
+    );
+
+
+/* ============================================================
+   DETAILS / ACTIVITY TOGGLE
+   ============================================================ */
+
+document.body.addEventListener(
+    'click',
+    function(event) {
+
+        const leadTab =
+            event.target.closest(
+                '.lead-detail-tab'
+            );
+
+        if (!leadTab) {
+            return;
+        }
+
+        event.preventDefault();
+        event.stopPropagation();
+
+        const card =
+            leadTab.closest(
+                'article[id^="lead-card-"]'
+            );
+
+        if (!card) {
+            return;
+        }
+
+        const targetId =
+            leadTab.getAttribute(
+                'data-target'
+            );
+
+        if (!targetId) {
+            return;
+        }
+
+        const targetPanel =
+            card.querySelector(
+                '[id="' + targetId + '"]'
+            );
+
+        if (!targetPanel) {
+            return;
+        }
+
+        const tabName =
+            leadTab.getAttribute(
+                'data-tab-name'
+            ) || 'details';
+
+        const isCurrentlyOpen =
+            !targetPanel.classList.contains(
+                'hidden'
+            );
+
+        /* ----------------------------------------------------
+           IF CURRENT TAB IS OPEN → CLOSE IT
+           ---------------------------------------------------- */
+
+        if (isCurrentlyOpen) {
+
+            targetPanel.classList.add(
+                'hidden'
+            );
+
+            leadTab.classList.remove(
+                'text-blue-600'
+            );
+
+            leadTab.classList.add(
+                'text-gray-500'
+            );
+
+            const icon =
+                leadTab.querySelector(
+                    '.lead-tab-chevron'
+                );
+
+            if (icon) {
+
+                icon.classList.remove(
+                    'ti-chevron-up'
+                );
+
+                icon.classList.add(
+                    'ti-chevron-down'
+                );
+            }
+
+            const label =
+                leadTab.querySelector(
+                    '.lead-tab-label'
+                );
+
+            if (label) {
+
+                label.textContent =
+                    tabName === 'activity'
+                        ? 'Activity'
+                        : 'Details';
+            }
+
+            window.shvyaLeadCardState[
+                card.id.replace(
+                    'lead-card-',
+                    ''
+                )
+            ] = {
+                activePanel: null
+            };
+
+            return;
+        }
+
+        /* ----------------------------------------------------
+           CLOSE ALL PANELS IN THIS LEAD CARD
+           ---------------------------------------------------- */
+
+        card
+            .querySelectorAll(
+                '.lead-tab-panel'
+            )
+            .forEach(
+                function(panel) {
+
+                    panel.classList.add(
+                        'hidden'
+                    );
+
+                }
+            );
+
+        /* ----------------------------------------------------
+           RESET ALL TABS
+           ---------------------------------------------------- */
+
+        card
+            .querySelectorAll(
+                '.lead-detail-tab'
+            )
+            .forEach(
+                function(tab) {
+
+                    tab.classList.remove(
+                        'text-blue-600'
+                    );
+
+                    tab.classList.add(
+                        'text-gray-500'
+                    );
+
+                    const icon =
+                        tab.querySelector(
+                            '.lead-tab-chevron'
+                        );
+
+                    if (icon) {
+
+                        icon.classList.remove(
+                            'ti-chevron-up'
+                        );
+
+                        icon.classList.add(
+                            'ti-chevron-down'
+                        );
+                    }
+
+                    const label =
+                        tab.querySelector(
+                            '.lead-tab-label'
+                        );
+
+                    if (label) {
+
+                        label.textContent =
+                            tab.dataset.tabName ===
+                            'activity'
+                                ? 'Activity'
+                                : 'Details';
+                    }
+
+                }
+            );
+
+        /* ----------------------------------------------------
+           OPEN SELECTED PANEL
+           ---------------------------------------------------- */
+
+        targetPanel.classList.remove(
+            'hidden'
+        );
+
+        /* ----------------------------------------------------
+           ACTIVATE SELECTED TAB
+           ---------------------------------------------------- */
+
+        leadTab.classList.remove(
+            'text-gray-500'
+        );
+
+        leadTab.classList.add(
+            'text-blue-600'
+        );
+
+        const activeIcon =
+            leadTab.querySelector(
+                '.lead-tab-chevron'
+            );
+
+        if (activeIcon) {
+
+            activeIcon.classList.remove(
+                'ti-chevron-down'
+            );
+
+            activeIcon.classList.add(
+                'ti-chevron-up'
+            );
+        }
+
+        const activeLabel =
+            leadTab.querySelector(
+                '.lead-tab-label'
+            );
+
+        if (activeLabel) {
+
+            activeLabel.textContent =
+                tabName === 'activity'
+                    ? 'Hide activity'
+                    : 'Hide details';
+        }
+
+        /* ----------------------------------------------------
+           SAVE STATE
+           ---------------------------------------------------- */
+
+        const leadId =
+            card.id.replace(
+                'lead-card-',
+                ''
+            );
+
+        window.shvyaLeadCardState[
+            leadId
+        ] = {
+            activePanel: targetId
+        };
+
+    }
+);
+
+
+    /* ============================================================
+       LEAD CARD UPDATED
+       SAME LEAD + SAME TAB + REINITIALIZE HTMX
+       ============================================================ */
+
+    document.body.addEventListener(
+        'leadCardUpdated',
+        async function(event) {
+
+            const leadId =
+                event.detail &&
+                event.detail.lead_id;
+
+
+            if (!leadId) {
+
+                return;
+
+            }
+
+
+            const currentCard =
+                document.getElementById(
+                    'lead-card-' + leadId
+                );
+
+
+            if (!currentCard) {
+
+                return;
+
+            }
+
+
+            /* ----------------------------------------------------
+               CAPTURE STATE BEFORE REPLACEMENT
+               ---------------------------------------------------- */
+
+            const savedState =
+                window.shvyaLeadCardState[
+                    leadId
+                ] || {
+                    activePanel: null
+                };
+
+
+            const activePanelId =
+                savedState.activePanel ||
+                null;
+
+
+            /* ----------------------------------------------------
+               CLOSE MODAL
+               ---------------------------------------------------- */
+
+            const modalRoot =
+                document.getElementById(
+                    'modal-root'
+                );
+
+
+            if (modalRoot) {
+
+                modalRoot.innerHTML = '';
+
+            }
+
+
+            try {
+
+                /* ------------------------------------------------
+                   FETCH UPDATED CARD
+                   ------------------------------------------------ */
+
+                const response =
+    await fetch(
+        '/dashboard/leads/' +
+            leadId +
+            '/card/?_=' +
+            Date.now(),
+        {
+            method: 'GET',
+
+            cache: 'no-store',
+
+            headers: {
+                'HX-Request':
+                    'true',
+
+                'Cache-Control':
+                    'no-cache'
+            },
+
+            credentials:
+                'same-origin'
+        }
+    );
+
+
+                if (!response.ok) {
+
+                    console.error(
+                        'Lead card refresh failed:',
+                        response.status
+                    );
+
+                    return;
+
+                }
+
+
+                const html =
+                    await response.text();
+
+
+                /* ------------------------------------------------
+                   PARSE CARD
+                   ------------------------------------------------ */
+
+                const parser =
+                    new DOMParser();
+
+
+                const parsed =
+                    parser.parseFromString(
+                        html,
+                        'text/html'
+                    );
+
+
+                const newCard =
+                    parsed.querySelector(
+                        '#lead-card-' +
+                        leadId
+                    );
+
+
+                if (!newCard) {
+
+                    console.error(
+                        'Updated lead card was not found.'
+                    );
+
+                    return;
+
+                }
+
+
+                /* ------------------------------------------------
+                   DETERMINE THE SAVED STAGE
+                   ------------------------------------------------ */
+
+                const stageSelect =
+                    newCard.querySelector(
+                        'select[name="stage"], select[name="stage_id"]'
+                    );
+
+
+                const savedStageId =
+                    stageSelect
+                        ? stageSelect.value
+                        : '';
+
+
+                /* ------------------------------------------------
+                   FIND OLD AND NEW STAGE PANELS
+                   ------------------------------------------------ */
+
+                const oldPanel =
+                    currentCard.closest(
+                        '.stage-panel'
+                    );
+
+
+                const newPanel =
+                    savedStageId
+                        ? document.getElementById(
+                            'stage-panel-' +
+                            savedStageId
+                        )
+                        : null;
+
+
+                /* ------------------------------------------------
+                   REPLACE OR MOVE THE REFRESHED CARD
+                   ------------------------------------------------ */
+
+                if (
+                    newPanel &&
+                    oldPanel &&
+                    oldPanel !== newPanel
+                ) {
+
+                    let targetCards =
+                        newPanel.querySelector(
+                            '[data-lead-cards]'
+                        );
+
+
+                    if (!targetCards) {
+
+                        targetCards =
+                            document.createElement(
+                                'div'
+                            );
+
+
+                        targetCards.className =
+                            'flex flex-col gap-3';
+
+
+                        targetCards.setAttribute(
+                            'data-lead-cards',
+                            ''
+                        );
+
+
+                        const targetEmpty =
+                            newPanel.querySelector(
+                                '[data-empty-stage]'
+                            );
+
+
+                        if (targetEmpty) {
+
+                            targetEmpty.remove();
+
+                        }
+
+
+                        newPanel.appendChild(
+                            targetCards
+                        );
+
+                    }
+
+
+                    currentCard.remove();
+
+                    targetCards.appendChild(
+                        newCard
+                    );
+
+                } else if (
+                    newPanel &&
+                    !oldPanel
+                ) {
+
+                    let targetCards =
+                        newPanel.querySelector(
+                            '[data-lead-cards]'
+                        );
+
+
+                    if (!targetCards) {
+
+                        targetCards =
+                            document.createElement(
+                                'div'
+                            );
+
+
+                        targetCards.className =
+                            'flex flex-col gap-3';
+
+
+                        targetCards.setAttribute(
+                            'data-lead-cards',
+                            ''
+                        );
+
+
+                        const targetEmpty =
+                            newPanel.querySelector(
+                                '[data-empty-stage]'
+                            );
+
+
+                        if (targetEmpty) {
+
+                            targetEmpty.remove();
+
+                        }
+
+
+                        newPanel.appendChild(
+                            targetCards
+                        );
+
+                    }
+
+
+                    targetCards.appendChild(
+                        newCard
+                    );
+
+                } else if (
+                    newPanel &&
+                    oldPanel === newPanel
+                ) {
+
+                    currentCard.replaceWith(
+                        newCard
+                    );
+
+                } else {
+
+                    /*
+                     * The lead no longer belongs to a stage visible
+                     * in the currently selected pipeline. Remove it
+                     * from the current dashboard view.
+                     */
+
+                    currentCard.remove();
+
+                }
+
+
+                const insertedCard =
+                    document.getElementById(
+                        'lead-card-' +
+                        leadId
+                    );
+
+
+                if (!insertedCard) {
+
+                    /*
+                     * The lead moved outside the current pipeline,
+                     * so there is no card to reinitialize or restore.
+                     */
+
+                    if (oldPanel) {
+
+                        const oldCardsContainer =
+                            oldPanel.querySelector(
+                                '[data-lead-cards]'
+                            );
+
+
+                        const remainingOldCards =
+                            oldPanel.querySelectorAll(
+                                '[id^="lead-card-"]'
+                            ).length;
+
+
+                        if (
+                            oldCardsContainer &&
+                            oldCardsContainer.children.length === 0
+                        ) {
+
+                            oldCardsContainer.remove();
+
+                        }
+
+
+                        if (
+                            remainingOldCards === 0 &&
+                            !oldPanel.querySelector(
+                                '[data-empty-stage]'
+                            )
+                        ) {
+
+                            const stageName =
+                                document
+                                    .querySelector(
+                                        '.stage-tab[data-stage-id="' +
+                                        oldPanel.dataset.stagePanel +
+                                        '"] span:first-child'
+                                    )
+                                    ?.textContent
+                                    ?.trim() ||
+                                'this stage';
+
+
+                            const emptyState =
+                                document.createElement(
+                                    'div'
+                                );
+
+
+                            emptyState.setAttribute(
+                                'data-empty-stage',
+                                ''
+                            );
+
+
+                            emptyState.className = `
+                                w-full
+                                min-h-[220px]
+                                flex
+                                flex-col
+                                items-center
+                                justify-center
+                                text-center
+                                border
+                                border-dashed
+                                border-gray-200
+                                rounded-xl
+                                bg-white
+                            `;
+
+
+                            emptyState.innerHTML = `
+                                <div
+                                    class="
+                                        w-11
+                                        h-11
+                                        rounded-full
+                                        bg-gray-50
+                                        flex
+                                        items-center
+                                        justify-center
+                                        mb-3
+                                    "
+                                >
+                                    <i
+                                        class="
+                                            ti
+                                            ti-inbox
+                                            text-gray-400
+                                            text-xl
+                                        "
+                                    ></i>
+                                </div>
+
+                                <p
+                                    class="
+                                        text-sm
+                                        font-medium
+                                        text-gray-700
+                                    "
+                                >
+                                    No leads in ${stageName}
+                                </p>
+
+                                <p
+                                    class="
+                                        text-xs
+                                        text-gray-400
+                                        mt-1
+                                    "
+                                >
+                                    Leads added to this stage will appear here.
+                                </p>
+                            `;
+
+
+                            oldPanel.appendChild(
+                                emptyState
+                            );
+
+                        }
+
+
+                        const oldTab =
+                            document.querySelector(
+                                '.stage-tab[data-stage-id="' +
+                                oldPanel.dataset.stagePanel +
+                                '"]'
+                            );
+
+
+                        if (oldTab) {
+
+                            const oldCount =
+                                oldTab.querySelector(
+                                    '[data-stage-count]'
+                                );
+
+
+                            if (oldCount) {
+
+                                oldCount.textContent =
+                                    remainingOldCards;
+
+                            }
+
+                        }
+
+                    }
+
+                    return;
+
+                }
+
+
+                /* ------------------------------------------------
+                   UPDATE OLD / NEW STAGE COUNTS
+                   ------------------------------------------------ */
+
+                if (
+                    oldPanel &&
+                    newPanel &&
+                    oldPanel !== newPanel
+                ) {
+
+                    const oldCardsContainer =
+                        oldPanel.querySelector(
+                            '[data-lead-cards]'
+                        );
+
+
+                    const remainingOldCards =
+                        oldPanel.querySelectorAll(
+                            '[id^="lead-card-"]'
+                        ).length;
+
+
+                    if (
+                        oldCardsContainer &&
+                        oldCardsContainer.children.length === 0
+                    ) {
+
+                        oldCardsContainer.remove();
+
+                    }
+
+
+                    if (
+                        remainingOldCards === 0 &&
+                        !oldPanel.querySelector(
+                            '[data-empty-stage]'
+                        )
+                    ) {
+
+                        const stageName =
+                            document
+                                .querySelector(
+                                    '.stage-tab[data-stage-id="' +
+                                    oldPanel.dataset.stagePanel +
+                                    '"] span:first-child'
+                                )
+                                ?.textContent
+                                ?.trim() ||
+                            'this stage';
+
+
+                        const emptyState =
+                            document.createElement(
+                                'div'
+                            );
+
+
+                        emptyState.setAttribute(
+                            'data-empty-stage',
+                            ''
+                        );
+
+
+                        emptyState.className = `
+                            w-full
+                            min-h-[220px]
+                            flex
+                            flex-col
+                            items-center
+                            justify-center
+                            text-center
+                            border
+                            border-dashed
+                            border-gray-200
+                            rounded-xl
+                            bg-white
+                        `;
+
+
+                        emptyState.innerHTML = `
+                            <div
+                                class="
+                                    w-11
+                                    h-11
+                                    rounded-full
+                                    bg-gray-50
+                                    flex
+                                    items-center
+                                    justify-center
+                                    mb-3
+                                "
+                            >
+                                <i
+                                    class="
+                                        ti
+                                        ti-inbox
+                                        text-gray-400
+                                        text-xl
+                                    "
+                                ></i>
+                            </div>
+
+                            <p
+                                class="
+                                    text-sm
+                                    font-medium
+                                    text-gray-700
+                                "
+                            >
+                                No leads in ${stageName}
+                            </p>
+
+                            <p
+                                class="
+                                    text-xs
+                                    text-gray-400
+                                    mt-1
+                                "
+                            >
+                                Leads added to this stage will appear here.
+                            </p>
+                        `;
+
+
+                        oldPanel.appendChild(
+                            emptyState
+                        );
+
+                    }
+
+
+                    const oldTab =
+                        document.querySelector(
+                            '.stage-tab[data-stage-id="' +
+                            oldPanel.dataset.stagePanel +
+                            '"]'
+                        );
+
+
+                    if (oldTab) {
+
+                        const oldCount =
+                            oldTab.querySelector(
+                                '[data-stage-count]'
+                            );
+
+
+                        if (oldCount) {
+
+                            oldCount.textContent =
+                                remainingOldCards;
+
+                        }
+
+                    }
+
+
+                    const newTab =
+                        document.querySelector(
+                            '.stage-tab[data-stage-id="' +
+                            savedStageId +
+                            '"]'
+                        );
+
+
+                    if (newTab) {
+
+                        const newCount =
+                            newTab.querySelector(
+                                '[data-stage-count]'
+                            );
+
+
+                        if (newCount) {
+
+                            newCount.textContent =
+                                newPanel.querySelectorAll(
+                                    '[id^="lead-card-"]'
+                                ).length;
+
+                        }
+
+                    }
+
+                }
+
+
+                /* ------------------------------------------------
+                   REINITIALIZE HTMX
+                   ------------------------------------------------ */
+
+                htmx.process(
+                    insertedCard
+                );
+
+
+                /* ------------------------------------------------
+                   RESET PANELS
+                   ------------------------------------------------ */
+
+                insertedCard
+                    .querySelectorAll(
+                        '.lead-tab-panel'
+                    )
+                    .forEach(
+                        function(panel) {
+
+                            panel.classList.add(
+                                'hidden'
+                            );
+
+                        }
+                    );
+
+
+                /* ------------------------------------------------
+                   RESET TABS
+                   ------------------------------------------------ */
+
+                insertedCard
+                    .querySelectorAll(
+                        '.lead-detail-tab'
+                    )
+                    .forEach(
+                        function(tab) {
+
+                            tab.classList.remove(
+                                'text-blue-600'
+                            );
+
+
+                            tab.classList.add(
+                                'text-gray-500'
+                            );
+
+
+                            const icon =
+                                tab.querySelector(
+                                    '.lead-tab-chevron'
+                                );
+
+
+                            if (icon) {
+
+                                icon.classList.remove(
+                                    'ti-chevron-up'
+                                );
+
+
+                                icon.classList.add(
+                                    'ti-chevron-down'
+                                );
+
+                            }
+
+
+                            const label =
+                                tab.querySelector(
+                                    '.lead-tab-label'
+                                );
+
+
+                            if (label) {
+
+                                label.textContent =
+                                    tab.dataset.tabName ===
+                                    'activity'
+                                        ? 'Activity'
+                                        : 'Details';
+
+                            }
+
+                        }
+                    );
+
+
+                /* ------------------------------------------------
+                   NOTHING WAS OPEN
+                   ------------------------------------------------ */
+
+                if (!activePanelId) {
+
+                    return;
+
+                }
+
+
+                /* ------------------------------------------------
+                   RESTORE SAME PANEL
+                   ------------------------------------------------ */
+
+                const restoredPanel =
+                    insertedCard.querySelector(
+                        '#' +
+                        activePanelId
+                    );
+
+
+                if (!restoredPanel) {
+
+                    return;
+
+                }
+
+
+                restoredPanel.classList.remove(
+                    'hidden'
+                );
+
+
+                /* ------------------------------------------------
+                   RESTORE SAME TAB
+                   ------------------------------------------------ */
+
+                const restoredTab =
+                    insertedCard.querySelector(
+                        '[data-target="' +
+                            activePanelId +
+                        '"]'
+                    );
+
+
+                if (!restoredTab) {
+
+                    return;
+
+                }
+
+
+                restoredTab.classList.remove(
+                    'text-gray-500'
+                );
+
+
+                restoredTab.classList.add(
+                    'text-blue-600'
+                );
+
+
+                /* ------------------------------------------------
+                   RESTORE UP ARROW
+                   ------------------------------------------------ */
+
+                const restoredIcon =
+                    restoredTab.querySelector(
+                        '.lead-tab-chevron'
+                    );
+
+
+                if (restoredIcon) {
+
+                    restoredIcon.classList.remove(
+                        'ti-chevron-down'
+                    );
+
+
+                    restoredIcon.classList.add(
+                        'ti-chevron-up'
+                    );
+
+                }
+
+
+                /* ------------------------------------------------
+                   RESTORE HIDE LABEL
+                   ------------------------------------------------ */
+
+                const restoredLabel =
+                    restoredTab.querySelector(
+                        '.lead-tab-label'
+                    );
+
+
+                if (restoredLabel) {
+
+                    restoredLabel.textContent =
+                        restoredTab.dataset.tabName ===
+                        'activity'
+                            ? 'Hide activity'
+                            : 'Hide details';
+
+                }
+
+
+                /* ------------------------------------------------
+                   KEEP STATE
+                   ------------------------------------------------ */
+
+                window.shvyaLeadCardState[
+                    leadId
+                ] = {
+                    activePanel:
+                        activePanelId
+                };
+
+
+            } catch (error) {
+
+                console.error(
+                    'Unable to refresh lead card:',
+                    error
+                );
+
+            }
+
+        }
+    );
+
+
+    /* ============================================================
+       STAGE MANAGER
+       SINGLE HANDLER
+       ============================================================ */
+
+    document.body.addEventListener(
+        'click',
+        function(event) {
+
+            const trigger =
+                event.target.closest(
+                    '.stage-manager-trigger'
+                );
+
+
+            const closeButton =
+                event.target.closest(
+                    '.stage-manager-close'
+                );
+
+
+            /* ----------------------------------------------------
+               OPEN / CLOSE
+               ---------------------------------------------------- */
+
+            if (trigger) {
+
+                event.preventDefault();
+
+                event.stopPropagation();
+
+
+                const manager =
+                    trigger.closest(
+                        '[data-stage-manager]'
+                    );
+
+
+                if (!manager) {
+
+                    return;
+
+                }
+
+
+                const popover =
+                    manager.querySelector(
+                        '.stage-manager-popover'
+                    );
+
+
+                if (!popover) {
+
+                    return;
+
+                }
+
+
+                /*
+                 * Close any other popovers.
+                 */
+
+                document
+                    .querySelectorAll(
+                        '.stage-manager-popover'
+                    )
+                    .forEach(
+                        function(otherPopover) {
+
+                            if (
+                                otherPopover !==
+                                popover
+                            ) {
+
+                                otherPopover.classList.add(
+                                    'hidden'
+                                );
+
+                            }
+
+                        }
+                    );
+
+
+                /*
+                 * Toggle current popover.
+                 */
+
+                popover.classList.toggle(
+                    'hidden'
+                );
+
+
+                /*
+                 * Detect active stage from the
+                 * stage panel currently visible.
+                 */
+
+                const visiblePanel =
+                    document.querySelector(
+                        '.stage-panel:not(.hidden)'
+                    );
+
+
+                const activeStageId =
+                    visiblePanel
+                        ? visiblePanel.dataset.stagePanel
+                        : '';
+
+
+                /*
+                 * Synchronize forms.
+                 */
+
+                manager
+                    .querySelectorAll(
+                        '[data-active-stage-input]'
+                    )
+                    .forEach(
+                        function(input) {
+
+                            input.value =
+                                activeStageId;
+
+                        }
+                    );
+
+
+                return;
+
+            }
+
+
+            /* ----------------------------------------------------
+               CLOSE BUTTON
+               ---------------------------------------------------- */
+
+            if (closeButton) {
+
+                event.preventDefault();
+
+                event.stopPropagation();
+
+
+                const manager =
+                    closeButton.closest(
+                        '[data-stage-manager]'
+                    );
+
+
+                if (!manager) {
+
+                    return;
+
+                }
+
+
+                const popover =
+                    manager.querySelector(
+                        '.stage-manager-popover'
+                    );
+
+
+                if (popover) {
+
+                    popover.classList.add(
+                        'hidden'
+                    );
+
+                }
+
+
+                return;
+
+            }
+
+        }
+    );
+
+
+    /* ============================================================
+       CLOSE STAGE MANAGER ON OUTSIDE CLICK
+       ============================================================ */
+
+    document.addEventListener(
+        'click',
+        function(event) {
+
+            document
+                .querySelectorAll(
+                    '.stage-manager-popover'
+                )
+                .forEach(
+                    function(popover) {
+
+                        const manager =
+                            popover.closest(
+                                '[data-stage-manager]'
+                            );
+
+
+                        if (!manager) {
+
+                            return;
+
+                        }
+
+
+                        if (
+                            !manager.contains(
+                                event.target
+                            )
+                        ) {
+
+                            popover.classList.add(
+                                'hidden'
+                            );
+
+                        }
+
+                    }
+                );
+
+        }
+    );
+
+
+    /* ============================================================
+       CLOSE STAGE MANAGER AFTER TABLE SWAP
+       ============================================================ */
+
+    document.body.addEventListener(
+        'htmx:afterSwap',
+        function(event) {
+
+            const target =
+                event.detail &&
+                event.detail.target;
+
+
+            if (
+                target &&
+                target.id ===
+                    'lead-table-container'
+            ) {
+
+                const popover =
+                    target.querySelector(
+                        '.stage-manager-popover'
+                    );
+
+
+                if (popover) {
+
+                    popover.classList.add(
+                        'hidden'
+                    );
+
+                }
+
+            }
+
+        }
+    );
+
+/* ============================================================
+   LEAD STAGE UPDATED
+   DIRECT DOM MOVE — NO DASHBOARD REFRESH
+   ============================================================ */
+
+document.body.addEventListener(
+    'leadStageUpdated',
+    function(event) {
+
+        const detail =
+            event.detail || {};
+
+
+        const leadId =
+            detail.lead_id;
+
+
+        const oldStageId =
+            detail.old_stage_id;
+
+
+        const newStageId =
+            detail.stage_id;
+
+
+        if (
+            !leadId ||
+            !newStageId
+        ) {
+
+            return;
+
+        }
+
+
+        const card =
+            document.getElementById(
+                'lead-card-' +
+                leadId
+            );
+
+
+        if (!card) {
+
+            return;
+
+        }
+
+
+        const oldPanel =
+            oldStageId
+                ? document.getElementById(
+                    'stage-panel-' +
+                    oldStageId
+                )
+                : card.closest(
+                    '.stage-panel'
+                );
+
+
+        const newPanel =
+            document.getElementById(
+                'stage-panel-' +
+                newStageId
+            );
+
+
+        if (!newPanel) {
+
+            console.error(
+                'Target stage panel not found:',
+                newStageId
+            );
+
+            return;
+
+        }
+        
+
+        /* ======================================================
+           FIND / CREATE TARGET CARD CONTAINER
+           ====================================================== */
+
+        let cardsContainer =
+            newPanel.querySelector(
+                '[data-lead-cards]'
+            );
+
+
+        if (!cardsContainer) {
+
+            cardsContainer =
+                document.createElement(
+                    'div'
+                );
+
+
+            cardsContainer.className =
+                'flex flex-col gap-3';
+
+
+            cardsContainer.setAttribute(
+                'data-lead-cards',
+                ''
+            );
+
+
+            newPanel.innerHTML = '';
+
+            newPanel.appendChild(
+                cardsContainer
+            );
+
+        }
+
+
+        /* ======================================================
+           REMOVE OLD EMPTY STATE
+           ====================================================== */
+
+        const newEmptyState =
+            newPanel.querySelector(
+                '[data-empty-stage]'
+            );
+
+
+        if (newEmptyState) {
+
+            newEmptyState.remove();
+
+        }
+
+
+        /* ======================================================
+           MOVE EXISTING CARD
+           ====================================================== */
+
+        cardsContainer.appendChild(
+            card
+        );
+
+
+        /* ======================================================
+           UPDATE SELECT VALUE
+           ====================================================== */
+
+        card
+            .querySelectorAll(
+                'select[name="stage_id"]'
+            )
+            .forEach(
+                function(select) {
+
+                    select.value =
+                        newStageId;
+
+                }
+            );
+
+
+        /* ======================================================
+           UPDATE OLD STAGE
+           ====================================================== */
+
+        if (oldPanel) {
+
+            const oldCards =
+                oldPanel.querySelectorAll(
+                    '[id^="lead-card-"]'
+                );
+
+
+            if (
+                oldCards.length === 0
+            ) {
+
+                const stageName =
+                    document
+                        .querySelector(
+                            '.stage-tab[data-stage-id="' +
+                            oldStageId +
+                            '"] span:first-child'
+                        )
+                        ?.textContent
+                        ?.trim() ||
+                    'this stage';
+
+
+                const emptyState =
+                    document.createElement(
+                        'div'
+                    );
+
+
+                emptyState.setAttribute(
+                    'data-empty-stage',
+                    ''
+                );
+
+
+                emptyState.className =
+                    `
+                    w-full
+                    min-h-[220px]
+                    flex
+                    flex-col
+                    items-center
+                    justify-center
+                    text-center
+                    border
+                    border-dashed
+                    border-gray-200
+                    rounded-xl
+                    bg-white
+                    `;
+
+
+                emptyState.innerHTML =
+                    `
+                    <div
+                        class="
+                            w-11
+                            h-11
+                            rounded-full
+                            bg-gray-50
+                            flex
+                            items-center
+                            justify-center
+                            mb-3
+                        "
+                    >
+                        <i
+                            class="
+                                ti
+                                ti-inbox
+                                text-gray-400
+                                text-xl
+                            "
+                        ></i>
+                    </div>
+
+                    <p
+                        class="
+                            text-sm
+                            font-medium
+                            text-gray-700
+                        "
+                    >
+                        No leads in ${stageName}
+                    </p>
+
+                    <p
+                        class="
+                            text-xs
+                            text-gray-400
+                            mt-1
+                        "
+                    >
+                        Leads added to this stage will appear here.
+                    </p>
+                    `;
+
+
+                oldPanel
+                    .querySelectorAll(
+                        '[data-lead-cards]'
+                    )
+                    .forEach(
+                        function(container) {
+
+                            if (
+                                container.children.length === 0
+                            ) {
+
+                                container.remove();
+
+                            }
+
+                        }
+                    );
+
+
+                oldPanel.appendChild(
+                    emptyState
+                );
+
+            }
+
+        }
+
+
+        /* ======================================================
+           UPDATE STAGE COUNTS
+           ====================================================== */
+
+        if (
+            oldStageId
+        ) {
+
+            const oldTab =
+                document.querySelector(
+                    '.stage-tab[data-stage-id="' +
+                    oldStageId +
+                    '"]'
+                );
+
+
+            if (oldTab) {
+
+                const oldCount =
+                    oldTab.querySelector(
+                        '[data-stage-count]'
+                    );
+
+
+                if (oldCount) {
+
+                    const count =
+                        oldPanel
+                            ? oldPanel.querySelectorAll(
+                                '[id^="lead-card-"]'
+                            ).length
+                            : 0;
+
+
+                    oldCount.textContent =
+                        count;
+
+                }
+
+            }
+
+        }
+
+
+        const newTab =
+            document.querySelector(
+                '.stage-tab[data-stage-id="' +
+                newStageId +
+                '"]'
+            );
+
+
+        if (newTab) {
+
+            const newCount =
+                newTab.querySelector(
+                    '[data-stage-count]'
+                );
+
+
+            if (newCount) {
+
+                newCount.textContent =
+                    newPanel.querySelectorAll(
+                        '[id^="lead-card-"]'
+                    ).length;
+
+            }
+
+        }
+
+
+        /* ======================================================
+           NO PAGE RELOAD
+           ====================================================== */
+
+        console.debug(
+            'Lead moved:',
+            leadId,
+            oldStageId,
+            '→',
+            newStageId
+        );
+
+    }
+);
+
+/* ============================================================
+   ADDITIONAL INFO ATTRIBUTE MENU
+   ============================================================ */
+
+document.body.addEventListener(
+    'click',
+    function(event) {
+
+        const trigger =
+            event.target.closest(
+                '[data-attribute-menu-trigger]'
+            );
+
+        const menus =
+            document.querySelectorAll(
+                '[data-attribute-menu]'
+            );
+
+
+        if (trigger) {
+
+            const wrapper =
+                trigger.closest(
+                    '.relative'
+                );
+
+            if (!wrapper) {
+                return;
+            }
+
+            const menu =
+                wrapper.querySelector(
+                    '[data-attribute-menu]'
+                );
+
+            if (!menu) {
+                return;
+            }
+
+            const isOpen =
+                !menu.classList.contains(
+                    'hidden'
+                );
+
+
+            /* Close all other attribute menus */
+
+            menus.forEach(
+                function(otherMenu) {
+
+                    if (otherMenu !== menu) {
+
+                        otherMenu.classList.add(
+                            'hidden'
+                        );
+
+                        const otherWrapper =
+                            otherMenu.closest(
+                                '.relative'
+                            );
+
+                        const otherTrigger =
+                            otherWrapper &&
+                            otherWrapper.querySelector(
+                                '[data-attribute-menu-trigger]'
+                            );
+
+                        if (otherTrigger) {
+
+                            otherTrigger.setAttribute(
+                                'aria-expanded',
+                                'false'
+                            );
+
+                        }
+
+                    }
+
+                }
+            );
+
+
+            if (isOpen) {
+
+                menu.classList.add(
+                    'hidden'
+                );
+
+                trigger.setAttribute(
+                    'aria-expanded',
+                    'false'
+                );
+
+            } else {
+
+                menu.classList.remove(
+                    'hidden'
+                );
+
+                trigger.setAttribute(
+                    'aria-expanded',
+                    'true'
+                );
+
+            }
+
+            return;
+        }
+
+
+        /* ----------------------------------------------------
+           CLICK OUTSIDE
+           ---------------------------------------------------- */
+
+        menus.forEach(
+            function(menu) {
+
+                if (
+                    !menu.contains(
+                        event.target
+                    )
+                ) {
+
+                    menu.classList.add(
+                        'hidden'
+                    );
+
+                    const wrapper =
+                        menu.closest(
+                            '.relative'
+                        );
+
+                    const menuTrigger =
+                        wrapper &&
+                        wrapper.querySelector(
+                            '[data-attribute-menu-trigger]'
+                        );
+
+                    if (menuTrigger) {
+
+                        menuTrigger.setAttribute(
+                            'aria-expanded',
+                            'false'
+                        );
+
+                    }
+
+                }
+
+            }
+        );
+
+    }
+);
+
+/* ============================================================
+   ATTRIBUTE / LEAD VALUE EVENTS
+   ============================================================ */
+
+document.body.addEventListener(
+    'attributeCreated',
+    function(event) {
+
+        const detail =
+            event.detail || {};
+
+        const leadId =
+            detail.lead_id;
+
+        if (!leadId) {
+
+            return;
+
+        }
+
+        htmx.trigger(
+            document.body,
+            'leadCardUpdated',
+            {
+                lead_id: leadId
+            }
+        );
+
+    }
+);
+
+
+document.body.addEventListener(
+    'leadAttributeValuesUpdated',
+    function(event) {
+
+        const detail =
+            event.detail || {};
+
+        const leadId =
+            detail.lead_id;
+
+        if (!leadId) {
+
+            return;
+
+        }
+
+        htmx.trigger(
+            document.body,
+            'leadCardUpdated',
+            {
+                lead_id: leadId
+            }
+        );
+
+    }
+);
+
+
+document.body.addEventListener(
+    'attributeUpdated',
+    function(event) {
+
+        const detail =
+            event.detail || {};
+
+        const leadId =
+            detail.lead_id;
+
+        if (leadId) {
+
+            htmx.trigger(
+                document.body,
+                'leadCardUpdated',
+                {
+                    lead_id: leadId
+                }
+            );
+
+            return;
+
+        }
+
+        htmx.ajax(
+            'GET',
+            '/dashboard/attributes/manage/',
+            {
+                target: '#modal-root',
+                swap: 'innerHTML'
+            }
+        );
+
+    }
+);
+
+
+document.body.addEventListener(
+    'attributeDeleted',
+    function(event) {
+
+        const detail =
+            event.detail || {};
+
+        const leadId =
+            detail.lead_id;
+
+        if (leadId) {
+
+            htmx.trigger(
+                document.body,
+                'leadCardUpdated',
+                {
+                    lead_id: leadId
+                }
+            );
+
+            return;
+
+        }
+
+        htmx.ajax(
+            'GET',
+            '/dashboard/attributes/manage/',
+            {
+                target: '#modal-root',
+                swap: 'innerHTML'
+            }
+        );
+
+    }
+);
+
+/* ============================================================
+   ATTRIBUTE CREATED FROM IMPORT MAPPING
+   ============================================================ */
+
+document.body.addEventListener(
+    'attributeCreatedForImport',
+    function(event) {
+
+        const detail =
+            event.detail || {};
+
+        const importToken =
+            detail.import_token;
+
+        if (!importToken) {
+
+            console.error(
+                'Missing import token after attribute creation.'
+            );
+
+            return;
+
+        }
+
+        htmx.ajax(
+            'GET',
+            '/dashboard/leads/import/mapping/?token=' +
+            encodeURIComponent(
+                importToken
+            ),
+            {
+                target: '#modal-root',
+                swap: 'innerHTML'
+            }
+        );
+
+    }
+);
+
+/* ============================================================
+   NEW LEAD CREATED
+   INSERT INTO CURRENT PIPELINE / STAGE
+   NO BROWSER REFRESH
+   ============================================================ */
+
+document.body.addEventListener(
+    'leadCreated',
+    async function(event) {
+
+        const detail =
+            event.detail || {};
+
+        const leadId =
+            detail.lead_id;
+
+        const pipelineId =
+            detail.pipeline_id;
+
+        const stageId =
+            detail.stage_id;
+
+
+        if (
+            !leadId ||
+            !pipelineId ||
+            !stageId
+        ) {
+
+            console.error(
+                'Invalid leadCreated event:',
+                detail
+            );
+
+            return;
+
+        }
+
+
+        /* ----------------------------------------------------
+           CLOSE NEW LEAD MODAL
+           ---------------------------------------------------- */
+
+        const modalRoot =
+            document.getElementById(
+                'modal-root'
+            );
+
+        if (modalRoot) {
+
+            modalRoot.innerHTML = '';
+
+        }
+
+
+        /* ----------------------------------------------------
+           READ CURRENTLY DISPLAYED PIPELINE
+           FROM EXISTING LEAD TABLE REQUEST
+           ---------------------------------------------------- */
+
+        const leadTable =
+            document.getElementById(
+                'lead-table-container'
+            );
+
+        if (!leadTable) {
+
+            return;
+
+        }
+
+
+        const tableRequest =
+            leadTable.getAttribute(
+                'hx-get'
+            );
+
+        if (!tableRequest) {
+
+            return;
+
+        }
+
+
+        let currentPipelineId = '';
+
+
+        try {
+
+            const requestUrl =
+                new URL(
+                    tableRequest,
+                    window.location.origin
+                );
+
+            currentPipelineId =
+                requestUrl.searchParams.get(
+                    'pipeline'
+                ) || '';
+
+        } catch (error) {
+
+            console.error(
+                'Unable to determine current pipeline:',
+                error
+            );
+
+            return;
+
+        }
+
+
+        /* ----------------------------------------------------
+           DON'T INSERT INTO A DIFFERENT PIPELINE
+           ---------------------------------------------------- */
+
+        if (
+            currentPipelineId &&
+            currentPipelineId !== pipelineId
+        ) {
+
+            return;
+
+        }
+
+
+        /* ----------------------------------------------------
+           FIND TARGET STAGE PANEL
+           ---------------------------------------------------- */
+
+        const targetPanel =
+            document.getElementById(
+                'stage-panel-' +
+                stageId
+            );
+
+
+        if (!targetPanel) {
+
+            console.warn(
+                'Target stage panel not found:',
+                stageId
+            );
+
+            return;
+
+        }
+
+
+        try {
+
+            /* ------------------------------------------------
+               FETCH THE NEW LEAD CARD
+               ------------------------------------------------ */
+
+            const response =
+                await fetch(
+                    '/dashboard/leads/' +
+                    leadId +
+                    '/card/?_=' +
+                    Date.now(),
+                    {
+                        method: 'GET',
+
+                        cache: 'no-store',
+
+                        headers: {
+                            'HX-Request': 'true',
+                            'Cache-Control': 'no-cache'
+                        },
+
+                        credentials:
+                            'same-origin'
+                    }
+                );
+
+
+            if (!response.ok) {
+
+                console.error(
+                    'New lead card fetch failed:',
+                    response.status
+                );
+
+                return;
+
+            }
+
+
+            const html =
+                await response.text();
+
+
+            /* ------------------------------------------------
+               PARSE NEW CARD
+               ------------------------------------------------ */
+
+            const parser =
+                new DOMParser();
+
+
+            const parsed =
+                parser.parseFromString(
+                    html,
+                    'text/html'
+                );
+
+
+            const newCard =
+                parsed.querySelector(
+                    '#lead-card-' +
+                    leadId
+                );
+
+
+            if (!newCard) {
+
+                console.error(
+                    'New lead card not found.'
+                );
+
+                return;
+
+            }
+
+
+            /* ------------------------------------------------
+               PREVENT DUPLICATE
+               ------------------------------------------------ */
+
+            if (
+                document.getElementById(
+                    'lead-card-' +
+                    leadId
+                )
+            ) {
+
+                return;
+
+            }
+
+
+            /* ------------------------------------------------
+               FIND / CREATE CARD CONTAINER
+               ------------------------------------------------ */
+
+            let cardsContainer =
+                targetPanel.querySelector(
+                    '[data-lead-cards]'
+                );
+
+
+            if (!cardsContainer) {
+
+                cardsContainer =
+                    document.createElement(
+                        'div'
+                    );
+
+                cardsContainer.className =
+                    'flex flex-col gap-3';
+
+                cardsContainer.setAttribute(
+                    'data-lead-cards',
+                    ''
+                );
+
+
+                const emptyState =
+                    targetPanel.querySelector(
+                        '[data-empty-stage]'
+                    );
+
+
+                if (emptyState) {
+
+                    emptyState.remove();
+
+                }
+
+
+                targetPanel.appendChild(
+                    cardsContainer
+                );
+
+            }
+
+
+            /* ------------------------------------------------
+               INSERT NEW LEAD
+               ------------------------------------------------ */
+
+            cardsContainer.appendChild(
+                newCard
+            );
+
+
+            /* ------------------------------------------------
+               INITIALIZE HTMX BEHAVIOR
+               ------------------------------------------------ */
+
+            if (
+                typeof htmx !== 'undefined'
+            ) {
+
+                htmx.process(
+                    newCard
+                );
+
+            }
+
+
+            /* ------------------------------------------------
+               UPDATE STAGE COUNT
+               ------------------------------------------------ */
+
+            const stageTab =
+                document.querySelector(
+                    '.stage-tab[data-stage-id="' +
+                    stageId +
+                    '"]'
+                );
+
+
+            if (stageTab) {
+
+                const stageCount =
+                    stageTab.querySelector(
+                        '[data-stage-count]'
+                    );
+
+
+                if (stageCount) {
+
+                    stageCount.textContent =
+                        targetPanel.querySelectorAll(
+                            '[id^="lead-card-"]'
+                        ).length;
+
+                }
+
+            }
+
+        } catch (error) {
+
+            console.error(
+                'Unable to insert new lead:',
+                error
+            );
+
+        }
+
+    }
+);
+
+/* ============================================================
+   IMPORT LEADS — STEP 1 → STEP 2
+   ============================================================ */
+
+document.body.addEventListener(
+    'leadImportUpload',
+    function(event) {
+
+        const detail =
+            event.detail || {};
+
+        const importToken =
+            detail.import_token;
+
+        if (!importToken) {
+
+            console.error(
+                'Missing import token.'
+            );
+
+            return;
+
+        }
+
+        htmx.ajax(
+            'GET',
+            '/dashboard/leads/import/upload/?token=' +
+            encodeURIComponent(
+                importToken
+            ),
+            {
+                target: '#modal-root',
+                swap: 'innerHTML'
+            }
+        );
+
+    }
+);
+
+/* ============================================================
+   IMPORT LEADS — STEP 2 → STEP 3
+   ============================================================ */
+
+document.body.addEventListener(
+    'leadImportMapping',
+    function(event) {
+
+        const detail =
+            event.detail || {};
+
+        const importToken =
+            detail.import_token;
+
+        if (!importToken) {
+
+            console.error(
+                'Missing import token.'
+            );
+
+            return;
+
+        }
+
+        htmx.ajax(
+            'GET',
+            '/dashboard/leads/import/mapping/?token=' +
+            encodeURIComponent(
+                importToken
+            ),
+            {
+                target: '#modal-root',
+                swap: 'innerHTML'
+            }
+        );
+
+    }
+);
+
+/* ============================================================
+   IMPORT LEADS — STEP 3 → STEP 4
+   ============================================================ */
+
+document.body.addEventListener(
+    'leadImportDestination',
+    function(event) {
+
+        const detail =
+            event.detail || {};
+
+        const importToken =
+            detail.import_token;
+
+        if (!importToken) {
+
+            console.error(
+                'Missing import token.'
+            );
+
+            return;
+
+        }
+
+        htmx.ajax(
+            'GET',
+            '/dashboard/leads/import/destination/?token=' +
+            encodeURIComponent(
+                importToken
+            ),
+            {
+                target: '#modal-root',
+                swap: 'innerHTML'
+            }
+        );
+
+    }
+);
+
+
+</script>
+
+
+</body>
+
+</html>
