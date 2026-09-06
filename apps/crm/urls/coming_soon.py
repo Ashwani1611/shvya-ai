@@ -1,10 +1,10 @@
-from django.urls import path
+from django.urls import include, path
 
 from apps.core.coming_soon import coming_soon
 
 
 coming_soon_urlpatterns = [
-    path("smart-triggers/", coming_soon, {"feature": "smart-triggers"}, name="crm-smart-triggers"),
+    path("smart-triggers/", include("apps.triggers.urls.web")),
     path("integrations-hub/", coming_soon, {"feature": "integrations-hub"}, name="crm-integrations-hub"),
     path("call-scheduler/", coming_soon, {"feature": "call-scheduler"}, name="crm-call-scheduler"),
     path("call-tracker/", coming_soon, {"feature": "call-tracker"}, name="crm-call-tracker"),
