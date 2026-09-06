@@ -5,12 +5,22 @@ import logging
 from django.views.decorators.http import require_GET
 
 from apps.crm.decorators import crm_login_required
-from services.channels.template_service import TemplateError, sync_templates
+from services.channels.template_meta_fix import (
+    TemplateError,
+    submit_template as meta_submit_template,
+    sync_templates,
+)
 
 from . import template_ui
 from .models import WhatsAppTemplate
 
 logger = logging.getLogger(__name__)
+
+# The active template UI module resolves these service functions from its
+# module globals at request time. Wire both manual submit/sync endpoints and
+# the create/edit flows through the Meta-compatibility layer in one place.
+template_ui.submit_template = meta_submit_template
+template_ui.sync_templates = sync_templates
 
 # The template editor disables its action buttons during the submit event to
 # prevent duplicate clicks. Disabled controls are excluded from the browser's
