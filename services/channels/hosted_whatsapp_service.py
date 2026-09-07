@@ -6,6 +6,7 @@ settings, inbound persistence, and hosted conversation helpers.
 """
 
 from copy import deepcopy
+from datetime import datetime, timezone as dt_timezone
 
 from django.core.exceptions import ValidationError
 from django.db import transaction
@@ -292,6 +293,146 @@ def _normalize_contact_number(value):
     return normalize_whatsapp_number(phone_number=value)
 
 
+def _message_timestamp(payload):
+    try:
+        timestamp = float(payload.get("timestamp") or 0)
+    except (TypeError, ValueError):
+        return None
+    if timestamp <= 0:
+        return None
+    try:
+        return datetime.fromtimestamp(timestamp, tz=dt_timezone.utc)
+    except (OverflowError, OSError, ValueError):
+        return None
+
+
+def _message_type(payload):
+    message_type = str(payload.get("messageType") or "text").lower()
+    allowed = {choice for choice, _label in WhatsAppMessage.MessageType.choices}
+    if message_type not in allowed:
+        return WhatsAppMessage.MessageType.TEXT
+    return message_type
+
+
+def _outbound_status(payload):
+    status = str(payload.get("status") or "").lower()
+    return {
+        "sent": WhatsAppMessage.Status.SENT,
+        "delivered": WhatsAppMessage.Status.DELIVERED,
+        "read": WhatsAppMessage.Status.READ,
+        "failed": WhatsAppMessage.Status.FAILED,
+    }.get(status, WhatsAppMessage.Status.SENT)
+
+
+def _persist_gateway_message(*, account, payload, historical=False):
+    raw_message_id = payload.get("messageId")
+    if not raw_message_id:
+        return None
+
+    external_id = f"wweb:{raw_message_id}"
+    is_group = bool(payload.get("isGroup"))
+    is_outbound = bool(payload.get("fromMe"))
+    account_number = normalize_whatsapp_number(
+        phone_number=account.display_phone_number or account.phone_number_id
+    )
+    chat_id = str(payload.get("chatId") or "")
+
+    if is_group:
+        peer = chat_id or str(payload.get("from") or payload.get("to") or "")
+    elif is_outbound:
+        peer = _normalize_contact_number(payload.get("to") or chat_id)
+    else:
+        peer = _normalize_contact_number(payload.get("from") or chat_id)
+
+    direction = (
+        WhatsAppMessage.Direction.OUTBOUND
+        if is_outbound
+        else WhatsAppMessage.Direction.INBOUND
+    )
+    from_number = account_number if is_outbound else peer
+    to_number = peer if is_outbound else account_number
+
+    lead = None
+    if not is_group and peer:
+        lead = Lead.objects.filter(
+            organization=account.organization,
+            phone=peer,
+        ).first()
+
+    settings = get_session_settings(account=account)
+    pipeline = get_pipeline_for_account(account=account)
+    if (
+        not is_outbound
+        and not historical
+        and not lead
+        and peer
+        and settings["auto_lead_creation"]
+        and pipeline
+    ):
+        stage = _first_stage(pipeline)
+        if stage:
+            try:
+                lead, _created = upsert_lead(
+                    organization=account.organization,
+                    pipeline=pipeline,
+                    stage=stage,
+                    name=payload.get("contactName") or peer,
+                    phone=peer,
+                    lead_source="whatsapp_api",
+                )
+            except ValidationError:
+                lead = Lead.objects.filter(
+                    organization=account.organization,
+                    phone=peer,
+                ).first()
+
+    defaults = {
+        "organization": account.organization,
+        "account": account,
+        "lead": lead,
+        "direction": direction,
+        "from_number": from_number or "unknown",
+        "to_number": to_number or account.display_phone_number or "unknown",
+        "body": str(payload.get("body") or ""),
+        "message_type": _message_type(payload),
+        "status": (
+            _outbound_status(payload)
+            if is_outbound
+            else WhatsAppMessage.Status.RECEIVED
+        ),
+        "raw_payload": {**payload, "isHistory": bool(historical)},
+        "is_read": True if is_outbound or historical else False,
+    }
+    message, created = WhatsAppMessage.objects.get_or_create(
+        external_id=external_id,
+        defaults=defaults,
+    )
+    if not created:
+        return message
+
+    occurred_at = _message_timestamp(payload)
+    if occurred_at:
+        WhatsAppMessage.objects.filter(pk=message.pk).update(created_at=occurred_at)
+        message.created_at = occurred_at
+
+    if (
+        lead
+        and not is_outbound
+        and not historical
+        and settings["ai_auto_reply"]
+    ):
+        lead_id = str(lead.id)
+
+        def queue_ai_reply():
+            from apps.ai_engagement.tasks import generate_ai_engagement_response
+
+            generate_ai_engagement_response.delay(lead_id)
+
+        transaction.on_commit(queue_ai_reply)
+
+    return message
+
+
 @transaction.atomic
 def handle_gateway_event(*, payload):
     """Apply one authenticated callback from the hosted gateway."""
@@ -376,87 +517,29 @@ def handle_gateway_event(*, payload):
             message.save(update_fields=["status", "raw_payload", "updated_at"])
         return message
 
+    if event == "history_sync":
+        messages = payload.get("messages")
+        if not isinstance(messages, list):
+            return None
+        last_message = None
+        for item in messages:
+            if not isinstance(item, dict):
+                continue
+            last_message = _persist_gateway_message(
+                account=account,
+                payload=item,
+                historical=True,
+            ) or last_message
+        return last_message or account
+
     if event != "message":
         return None
 
-    raw_message_id = payload.get("messageId")
-    if not raw_message_id:
-        return None
-    external_id = f"wweb:{raw_message_id}"
-    existing = WhatsAppMessage.objects.filter(external_id=external_id).first()
-    if existing:
-        return existing
-
-    is_group = bool(payload.get("isGroup"))
-    from_number = (
-        str(payload.get("chatId") or payload.get("from") or "")
-        if is_group
-        else _normalize_contact_number(payload.get("from"))
-    )
-    to_number = normalize_whatsapp_number(
-        phone_number=account.display_phone_number or account.phone_number_id
-    )
-    body = str(payload.get("body") or "")
-    settings = get_session_settings(account=account)
-
-    lead = None
-    pipeline = get_pipeline_for_account(account=account)
-    if not is_group and from_number:
-        lead = Lead.objects.filter(
-            organization=account.organization,
-            phone=from_number,
-        ).first()
-
-        if not lead and settings["auto_lead_creation"] and pipeline:
-            stage = _first_stage(pipeline)
-            if stage:
-                try:
-                    lead, _created = upsert_lead(
-                        organization=account.organization,
-                        pipeline=pipeline,
-                        stage=stage,
-                        name=payload.get("contactName") or from_number,
-                        phone=from_number,
-                        lead_source="whatsapp_api",
-                    )
-                except ValidationError:
-                    lead = Lead.objects.filter(
-                        organization=account.organization,
-                        phone=from_number,
-                    ).first()
-
-    message_type = str(payload.get("messageType") or "text").lower()
-    if message_type not in {
-        choice for choice, _label in WhatsAppMessage.MessageType.choices
-    }:
-        message_type = WhatsAppMessage.MessageType.TEXT
-
-    message = WhatsAppMessage.objects.create(
-        organization=account.organization,
+    return _persist_gateway_message(
         account=account,
-        lead=lead,
-        direction=WhatsAppMessage.Direction.INBOUND,
-        external_id=external_id,
-        from_number=from_number or "unknown",
-        to_number=to_number or account.display_phone_number or "unknown",
-        body=body,
-        message_type=message_type,
-        status=WhatsAppMessage.Status.RECEIVED,
-        raw_payload=payload,
-        is_read=False,
+        payload=payload,
+        historical=False,
     )
-
-    if lead and settings["ai_auto_reply"]:
-        lead_id = str(lead.id)
-
-        def queue_ai_reply():
-            from apps.ai_engagement.tasks import generate_ai_engagement_response
-
-            generate_ai_engagement_response.delay(lead_id)
-
-        transaction.on_commit(queue_ai_reply)
-
-    return message
 
 
 def queue_hosted_text_message(*, account, to_number, body, lead=None, metadata=None):

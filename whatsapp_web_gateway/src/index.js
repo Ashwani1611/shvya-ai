@@ -20,6 +20,9 @@ const CALLBACK_URL = process.env.SHVYA_HOSTED_CALLBACK_URL || '';
 const REDIS_URL = process.env.REDIS_URL || '';
 const INSTANCE_ID = crypto.randomUUID();
 const QR_EXPIRES_SECONDS = 60;
+const HISTORY_CHAT_LIMIT = 100;
+const HISTORY_MESSAGE_LIMIT = 30;
+const HISTORY_BATCH_SIZE = 100;
 
 fs.mkdirSync(AUTH_PATH, { recursive: true });
 
@@ -40,7 +43,7 @@ function publicSession(sessionId, state) {
 }
 
 async function callback(sessionId, event, payload = {}) {
-  if (!CALLBACK_URL || !CALLBACK_TOKEN) return;
+  if (!CALLBACK_URL || !CALLBACK_TOKEN) return false;
   try {
     const response = await fetch(CALLBACK_URL, {
       method: 'POST',
@@ -53,9 +56,12 @@ async function callback(sessionId, event, payload = {}) {
     });
     if (!response.ok) {
       console.warn(`Hosted callback ${event} for ${sessionId} returned ${response.status}`);
+      return false;
     }
+    return true;
   } catch (error) {
     console.warn(`Hosted callback ${event} for ${sessionId} failed:`, error.message);
+    return false;
   }
 }
 
@@ -107,6 +113,81 @@ function ackStatus(ack) {
   return '';
 }
 
+async function serializeMessage(message, chat = null, includeContactLookup = true) {
+  const resolvedChat = chat || await message.getChat();
+  let contactName = (resolvedChat && resolvedChat.name) || '';
+
+  if (includeContactLookup && !resolvedChat.isGroup) {
+    try {
+      const contact = await message.getContact();
+      contactName = (
+        contact && (contact.pushname || contact.name || contact.shortName)
+      ) || contactName;
+    } catch (_) {}
+  }
+
+  return {
+    messageId: message.id && message.id._serialized,
+    from: message.from,
+    to: message.to,
+    fromMe: Boolean(message.fromMe),
+    body: message.body || '',
+    messageType: mapMessageType(message.type),
+    timestamp: message.timestamp,
+    status: ackStatus(message.ack),
+    chatId: resolvedChat && resolvedChat.id && resolvedChat.id._serialized,
+    chatName: resolvedChat && resolvedChat.name,
+    isGroup: Boolean(resolvedChat && resolvedChat.isGroup),
+    contactName,
+    author: message.author || '',
+  };
+}
+
+async function syncRecentHistory(sessionId, state) {
+  const chats = await state.client.getChats();
+  const selectedChats = chats.slice(0, HISTORY_CHAT_LIMIT);
+  let batch = [];
+  let syncedMessages = 0;
+
+  for (const chat of selectedChats) {
+    let messages;
+    try {
+      messages = await chat.fetchMessages({ limit: HISTORY_MESSAGE_LIMIT });
+    } catch (error) {
+      console.warn(
+        `Could not fetch history for ${sessionId}/${chat.id && chat.id._serialized}:`,
+        error.message,
+      );
+      continue;
+    }
+
+    for (const message of messages) {
+      if (!message || !message.id || !message.id._serialized) continue;
+      try {
+        batch.push(await serializeMessage(message, chat, false));
+        syncedMessages += 1;
+      } catch (error) {
+        console.warn(`Could not serialize history for ${sessionId}:`, error.message);
+        continue;
+      }
+
+      if (batch.length >= HISTORY_BATCH_SIZE) {
+        await callback(sessionId, 'history_sync', { messages: batch });
+        batch = [];
+      }
+    }
+  }
+
+  if (batch.length) {
+    await callback(sessionId, 'history_sync', { messages: batch });
+  }
+
+  return {
+    chats: selectedChats.length,
+    messages: syncedMessages,
+  };
+}
+
 function wireClientEvents(sessionId, state) {
   const client = state.client;
 
@@ -148,34 +229,33 @@ function wireClientEvents(sessionId, state) {
       return;
     }
 
+    let history = { chats: 0, messages: 0 };
     try {
-      // A lightweight initial chat fetch gives the linked device a chance to
-      // finish its first sync before SHVYA exposes the session as Running.
-      await client.getChats();
-    } catch (_) {}
+      history = await syncRecentHistory(sessionId, state);
+      console.log(
+        `Synced hosted history for ${sessionId}: ${history.chats} chats, ${history.messages} messages`,
+      );
+    } catch (error) {
+      console.warn(`Could not sync hosted history for ${sessionId}:`, error.message);
+    }
 
     state.status = 'running';
     state.lastError = '';
-    await callback(sessionId, 'ready', { phoneNumber: state.phoneNumber });
+    await callback(sessionId, 'ready', {
+      phoneNumber: state.phoneNumber,
+      historyChats: history.chats,
+      historyMessages: history.messages,
+    });
   });
 
   client.on('message', async (message) => {
     if (message.fromMe) return;
     try {
-      const chat = await message.getChat();
-      const contact = await message.getContact();
-      await callback(sessionId, 'message', {
-        messageId: message.id && message.id._serialized,
-        from: message.from,
-        to: message.to,
-        body: message.body || '',
-        messageType: mapMessageType(message.type),
-        timestamp: message.timestamp,
-        chatId: chat && chat.id && chat.id._serialized,
-        chatName: chat && chat.name,
-        isGroup: Boolean(chat && chat.isGroup),
-        contactName: (contact && (contact.pushname || contact.name || contact.shortName)) || '',
-      });
+      await callback(
+        sessionId,
+        'message',
+        await serializeMessage(message, null, true),
+      );
     } catch (error) {
       console.warn(`Could not forward message for ${sessionId}:`, error.message);
     }
@@ -357,6 +437,21 @@ app.post('/sessions/:sessionId/refresh-qr', async (req, res) => {
     return res.status(202).json(publicSession(req.params.sessionId, state));
   } catch (error) {
     return res.status(error.statusCode || 500).json({ error: error.message });
+  }
+});
+
+app.post('/sessions/:sessionId/sync', async (req, res) => {
+  const state = sessions.get(req.params.sessionId);
+  if (!state) return res.status(404).json({ error: 'Session not found.' });
+  if (state.status !== 'running') {
+    return res.status(409).json({ error: 'Session is not running.' });
+  }
+
+  try {
+    const result = await syncRecentHistory(req.params.sessionId, state);
+    return res.json({ ok: true, ...result });
+  } catch (error) {
+    return res.status(502).json({ error: error.message || String(error) });
   }
 });
 
