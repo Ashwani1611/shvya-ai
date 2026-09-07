@@ -14,6 +14,10 @@ from django.db import transaction
 from apps.channels.models import WhatsAppAccount, WhatsAppMessage
 from apps.crm.models import Lead, Pipeline, Stage
 from apps.organizations.models import Organization
+from services.channels.hosted_ignore_service import (
+    ignored_contact_for_chat,
+    is_hosted_contact_ignored,
+)
 from services.crm.lead_service import upsert_lead
 
 
@@ -287,7 +291,12 @@ def _first_stage(pipeline):
 
 
 def _normalize_contact_number(value):
-    value = str(value or "")
+    value = str(value or "").strip()
+    # WhatsApp's privacy LID is not a telephone number.  Never turn the digits
+    # before @lid into a CRM phone; use the resolved gateway phone or the
+    # existing-chat snapshot's chat-id mapping instead.
+    if value.endswith("@lid"):
+        return ""
     if "@" in value:
         value = value.split("@", 1)[0]
     return normalize_whatsapp_number(phone_number=value)
@@ -337,12 +346,26 @@ def _persist_gateway_message(*, account, payload, historical=False):
     )
     chat_id = str(payload.get("chatId") or "")
 
+    resolved_peer = payload.get("contactPhoneNumber") or payload.get("peerPhone")
     if is_group:
         peer = chat_id or str(payload.get("from") or payload.get("to") or "")
     elif is_outbound:
-        peer = _normalize_contact_number(payload.get("to") or chat_id)
+        peer = _normalize_contact_number(
+            resolved_peer or payload.get("to") or chat_id
+        )
     else:
-        peer = _normalize_contact_number(payload.get("from") or chat_id)
+        peer = _normalize_contact_number(
+            resolved_peer or payload.get("from") or chat_id
+        )
+
+    # If a live LID message reaches Django before the gateway can expose its
+    # phone, a previous ignore-list snapshot can still map that exact chat id
+    # back to the real number.  This also lets a manually-created Lead attach
+    # correctly on the next message from an ignored existing chat.
+    if not is_group and not peer and chat_id:
+        ignored_chat = ignored_contact_for_chat(account=account, chat_id=chat_id)
+        if ignored_chat:
+            peer = ignored_chat.phone_number
 
     direction = (
         WhatsAppMessage.Direction.OUTBOUND
@@ -359,6 +382,17 @@ def _persist_gateway_message(*, account, payload, historical=False):
             phone=peer,
         ).first()
 
+    ignored_existing_chat = bool(
+        not is_group
+        and not is_outbound
+        and not historical
+        and peer
+        and is_hosted_contact_ignored(
+            account=account,
+            phone_number=peer,
+        )
+    )
+
     settings = get_session_settings(account=account)
     pipeline = get_pipeline_for_account(account=account)
     if (
@@ -366,6 +400,7 @@ def _persist_gateway_message(*, account, payload, historical=False):
         and not historical
         and not lead
         and peer
+        and not ignored_existing_chat
         and settings["auto_lead_creation"]
         and pipeline
     ):
@@ -400,7 +435,11 @@ def _persist_gateway_message(*, account, payload, historical=False):
             if is_outbound
             else WhatsAppMessage.Status.RECEIVED
         ),
-        "raw_payload": {**payload, "isHistory": bool(historical)},
+        "raw_payload": {
+            **payload,
+            "isHistory": bool(historical),
+            "ignoredExistingChat": ignored_existing_chat,
+        },
         "is_read": True if is_outbound or historical else False,
     }
     message, created = WhatsAppMessage.objects.get_or_create(
