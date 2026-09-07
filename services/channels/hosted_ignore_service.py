@@ -76,7 +76,8 @@ def sync_existing_hosted_chats(*, organization):
     """Replace ignore snapshots for every currently connected Hosted Account.
 
     Gateway reads happen before any database delete. If one account cannot be
-    read, the existing ignore list is left untouched.
+    read, or any direct LID chat cannot be resolved to a real phone number, the
+    existing ignore list is left untouched rather than saving a partial list.
     """
     accounts = _connected_hosted_accounts(organization)
     if not accounts:
@@ -94,6 +95,18 @@ def sync_existing_hosted_chats(*, organization):
                 raise HostedIgnoreSyncError(
                     f"Hosted Account {account.display_phone_number or account.id} "
                     "returned an invalid chat list."
+                )
+
+            try:
+                unresolved = int(response.get("unresolved", 0))
+            except (TypeError, ValueError):
+                unresolved = 0
+            if unresolved > 0:
+                raise HostedIgnoreSyncError(
+                    f"Hosted Account {account.display_phone_number or account.id} has "
+                    f"{unresolved} existing chat(s) whose WhatsApp privacy ID could "
+                    "not be resolved to a phone number. The previous ignore list "
+                    "was kept unchanged. Reconnect or retry the sync."
                 )
 
             deduped = {}
