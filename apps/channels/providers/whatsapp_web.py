@@ -104,6 +104,15 @@ class WhatsAppWebClient:
             timeout=120,
         )
 
+    def download_media(self, *, session_id, message_id):
+        """Fetch one WhatsApp message's media from the private gateway."""
+        return self._request(
+            "POST",
+            f"/sessions/{session_id}/media",
+            payload={"messageId": str(message_id)},
+            timeout=45,
+        )
+
     def send_message(
         self,
         *,
