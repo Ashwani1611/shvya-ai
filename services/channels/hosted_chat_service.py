@@ -1,13 +1,10 @@
 """Hosted WhatsApp chat read-model, identity repair, and realtime notifications.
 
-The linked-device gateway is the source of WhatsApp chat identity.  Current
+The linked-device gateway is the source of WhatsApp chat identity. Current
 WhatsApp Web can expose direct chats as ``@lid`` ids, so a LID must never be
-mistaken for a phone number.  The gateway sends ``peerKey`` / ``peerPhone``
+mistaken for a phone number. The gateway sends ``peerKey`` / ``peerPhone``
 metadata and this module keeps persisted WhatsAppMessage rows aligned with
 that canonical identity.
-
-This module deliberately wraps the existing hosted WhatsApp service rather
-than duplicating its lead/automation rules.
 """
 
 from __future__ import annotations
@@ -15,6 +12,7 @@ from __future__ import annotations
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
 from django.db import transaction
+from django.db.models import Q
 
 from apps.channels.models import WhatsAppMessage
 from apps.crm.models import Lead
@@ -97,9 +95,7 @@ def chat_phone_for_message(message):
 
 def _canonical_peer(message, payload):
     is_group = bool(payload.get("isGroup"))
-    raw_chat_id = _raw_id(
-        payload.get("rawChatId") or payload.get("chatId")
-    )
+    raw_chat_id = _raw_id(payload.get("rawChatId") or payload.get("chatId"))
 
     if is_group:
         key = _raw_id(payload.get("peerKey")) or raw_chat_id
@@ -110,14 +106,8 @@ def _canonical_peer(message, payload):
     if not phone and peer_key and not peer_key.endswith("@lid"):
         phone = _phone_from_value(peer_key)
 
-    # Older gateway payloads used from/to directly.  Only accept c.us/plain
-    # phone ids here; an @lid numeric value is not a telephone number.
     if not phone:
-        candidate = (
-            payload.get("to")
-            if bool(payload.get("fromMe"))
-            else payload.get("from")
-        )
+        candidate = payload.get("to") if bool(payload.get("fromMe")) else payload.get("from")
         phone = _phone_from_value(candidate)
 
     key = phone or peer_key or raw_chat_id
@@ -128,8 +118,8 @@ def repair_gateway_message_identity(*, message, payload, historical=False):
     """Enrich a persisted message with canonical phone/chat identity.
 
     History re-syncs are intentionally allowed to repair rows that already
-    exist.  This is important for messages first imported while WhatsApp Web
-    exposed the peer only as an @lid id.
+    exist. This repairs messages first imported while WhatsApp exposed only a
+    LID instead of the contact's phone number.
     """
     if not message or not isinstance(payload, dict):
         return message
@@ -150,10 +140,7 @@ def repair_gateway_message_identity(*, message, payload, historical=False):
         merged["isHistory"] = True
 
     account_phone = normalize_whatsapp_number(
-        phone_number=(
-            message.account.display_phone_number
-            or message.account.phone_number_id
-        )
+        phone_number=(message.account.display_phone_number or message.account.phone_number_id)
     )
 
     update_fields = []
@@ -161,11 +148,7 @@ def repair_gateway_message_identity(*, message, payload, historical=False):
         message.raw_payload = merged
         update_fields.append("raw_payload")
 
-    if is_group:
-        peer = key or raw_chat_id
-    else:
-        peer = peer_phone or key
-
+    peer = (key or raw_chat_id) if is_group else (peer_phone or key)
     if peer:
         desired_from = account_phone if is_outbound else peer
         desired_to = peer if is_outbound else account_phone
@@ -245,8 +228,6 @@ def handle_hosted_gateway_event(*, payload):
                 last_key = chat_key_for_message(message) or last_key
         if result is not None:
             account_id = getattr(result, "account_id", None) or getattr(result, "id", None)
-            # legacy history handler returns a message when at least one was
-            # persisted, otherwise the account itself.
             if isinstance(result, WhatsAppMessage):
                 account_id = result.account_id
             if account_id:
@@ -281,10 +262,7 @@ def handle_hosted_gateway_event(*, payload):
     if event in {"history_complete", "history_failed"}:
         session_id = payload.get("sessionId")
         if session_id:
-            queue_hosted_chat_refresh(
-                account_id=session_id,
-                reason=event,
-            )
+            queue_hosted_chat_refresh(account_id=session_id, reason=event)
 
     return result
 
@@ -305,6 +283,32 @@ def _search_matches(row, query):
         haystack_digits = "".join(ch for ch in haystack if ch.isdigit())
         return digits_query in haystack_digits
     return False
+
+
+def _selected_thread_queryset(account, selected):
+    base = WhatsAppMessage.objects.filter(
+        organization=account.organization,
+        account=account,
+    ).select_related("lead", "account")
+
+    if selected.startswith("+"):
+        return base.filter(
+            Q(from_number=selected)
+            | Q(to_number=selected)
+            | Q(raw_payload__peerPhone=selected)
+            | Q(raw_payload__peerKey=selected)
+        )
+
+    if "@" in selected:
+        return base.filter(
+            Q(from_number=selected)
+            | Q(to_number=selected)
+            | Q(raw_payload__peerKey=selected)
+            | Q(raw_payload__rawChatId=selected)
+            | Q(raw_payload__chatId=selected)
+        )
+
+    return base
 
 
 def build_hosted_chat_snapshot(*, account, selected_chat="", query=""):
@@ -329,48 +333,33 @@ def build_hosted_chat_snapshot(*, account, selected_chat="", query=""):
                 "key": key,
                 "name": chat_name_for_message(message),
                 "phone": chat_phone_for_message(message),
-                "raw_chat_id": _raw_id(
-                    payload.get("rawChatId") or payload.get("chatId")
-                ),
+                "raw_chat_id": _raw_id(payload.get("rawChatId") or payload.get("chatId")),
                 "is_group": bool(payload.get("isGroup")),
-                "last_message": (
-                    message.body or message.get_message_type_display()
-                ),
+                "last_message": message.body or message.get_message_type_display(),
                 "last_at": message.created_at,
                 "unread": 0,
             }
-        if (
-            message.direction == WhatsAppMessage.Direction.INBOUND
-            and not message.is_read
-        ):
+        if message.direction == WhatsAppMessage.Direction.INBOUND and not message.is_read:
             conversations[key]["unread"] += 1
 
-    rows = list(conversations.values())
-    rows = [row for row in rows if _search_matches(row, query)]
+    rows = [row for row in conversations.values() if _search_matches(row, query)]
     rows = rows[:MAX_CONVERSATIONS]
 
     selected = str(selected_chat or "").strip()
     if not selected and rows:
         selected = rows[0]["key"]
 
-    # The conversation list is bounded for speed, but the selected thread is
-    # independently scanned so a busy inbox cannot truncate the open chat to
-    # whichever messages happened to fit in the global list window.
     thread = []
     if selected:
-        thread_scan = list(
-            WhatsAppMessage.objects.filter(
-                organization=account.organization,
-                account=account,
-            )
-            .select_related("lead", "account")
-            .order_by("-created_at")[:MAX_CONVERSATION_SCAN]
+        candidates = list(
+            _selected_thread_queryset(account, selected)
+            .order_by("-created_at")[:MAX_THREAD_MESSAGES]
         )
         thread = [
             message
-            for message in reversed(thread_scan)
+            for message in reversed(candidates)
             if chat_key_for_message(message) == selected
-        ][-MAX_THREAD_MESSAGES:]
+        ]
 
     selected_row = conversations.get(selected, {})
     selected_name = selected_row.get("name") or selected
@@ -387,10 +376,7 @@ def build_hosted_chat_snapshot(*, account, selected_chat="", query=""):
 def serialize_hosted_chat_snapshot(snapshot):
     return {
         "conversations": [
-            {
-                **row,
-                "last_at": row["last_at"].isoformat(),
-            }
+            {**row, "last_at": row["last_at"].isoformat()}
             for row in snapshot["conversations"]
         ],
         "selected_chat": snapshot["selected_chat"],
