@@ -184,6 +184,108 @@ class HostedWhatsAppTests(TestCase):
             1,
         )
 
+    def test_history_sync_backfills_inbound_and_outbound_messages(self):
+        account = self.create_account()
+        timestamp = 1_725_000_000
+
+        handle_gateway_event(
+            payload={
+                "sessionId": str(account.id),
+                "event": "history_sync",
+                "messages": [
+                    {
+                        "messageId": "HIST-IN",
+                        "from": "919812345678@c.us",
+                        "to": "918700274739@c.us",
+                        "fromMe": False,
+                        "body": "Older inbound",
+                        "messageType": "text",
+                        "timestamp": timestamp,
+                        "chatId": "919812345678@c.us",
+                        "chatName": "History Contact",
+                        "contactName": "History Contact",
+                        "isGroup": False,
+                    },
+                    {
+                        "messageId": "HIST-OUT",
+                        "from": "918700274739@c.us",
+                        "to": "919812345678@c.us",
+                        "fromMe": True,
+                        "body": "Older outbound",
+                        "messageType": "text",
+                        "timestamp": timestamp + 60,
+                        "status": "read",
+                        "chatId": "919812345678@c.us",
+                        "chatName": "History Contact",
+                        "contactName": "History Contact",
+                        "isGroup": False,
+                    },
+                ],
+            }
+        )
+
+        inbound = WhatsAppMessage.objects.get(external_id="wweb:HIST-IN")
+        outbound = WhatsAppMessage.objects.get(external_id="wweb:HIST-OUT")
+
+        self.assertEqual(inbound.direction, WhatsAppMessage.Direction.INBOUND)
+        self.assertEqual(inbound.from_number, "+919812345678")
+        self.assertEqual(inbound.to_number, "+918700274739")
+        self.assertTrue(inbound.is_read)
+        self.assertTrue(inbound.raw_payload["isHistory"])
+        self.assertEqual(inbound.raw_payload["chatName"], "History Contact")
+        self.assertEqual(int(inbound.created_at.timestamp()), timestamp)
+
+        self.assertEqual(outbound.direction, WhatsAppMessage.Direction.OUTBOUND)
+        self.assertEqual(outbound.from_number, "+918700274739")
+        self.assertEqual(outbound.to_number, "+919812345678")
+        self.assertEqual(outbound.status, WhatsAppMessage.Status.READ)
+        self.assertTrue(outbound.is_read)
+        self.assertEqual(int(outbound.created_at.timestamp()), timestamp + 60)
+
+    def test_history_sync_is_idempotent_without_automation_side_effects(self):
+        account = self.create_account()
+        update_session_settings(
+            account=account,
+            payload={
+                "auto_lead_creation": True,
+                "ai_auto_reply": True,
+            },
+        )
+        history_payload = {
+            "sessionId": str(account.id),
+            "event": "history_sync",
+            "messages": [
+                {
+                    "messageId": "HIST-IDEMPOTENT",
+                    "from": "919811112222@c.us",
+                    "to": "918700274739@c.us",
+                    "fromMe": False,
+                    "body": "Old history must not trigger automation",
+                    "messageType": "text",
+                    "timestamp": 1_725_000_000,
+                    "chatId": "919811112222@c.us",
+                    "chatName": "Old Contact",
+                    "isGroup": False,
+                }
+            ],
+        }
+
+        handle_gateway_event(payload=history_payload)
+        handle_gateway_event(payload=history_payload)
+
+        self.assertEqual(
+            WhatsAppMessage.objects.filter(
+                external_id="wweb:HIST-IDEMPOTENT"
+            ).count(),
+            1,
+        )
+        self.assertFalse(
+            Lead.objects.filter(
+                organization=self.org,
+                phone="+919811112222",
+            ).exists()
+        )
+
     def test_ready_event_rejects_scanned_wrong_number(self):
         account = self.create_account()
         result = handle_gateway_event(
