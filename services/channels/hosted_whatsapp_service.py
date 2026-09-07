@@ -361,11 +361,29 @@ def _persist_gateway_message(*, account, payload, historical=False):
 
     settings = get_session_settings(account=account)
     pipeline = get_pipeline_for_account(account=account)
+    ignored_existing_chat = False
     if (
         not is_outbound
         and not historical
         and not lead
         and peer
+        and settings["auto_lead_creation"]
+    ):
+        from services.channels.hosted_ignore_service import (
+            is_hosted_contact_ignored,
+        )
+
+        ignored_existing_chat = is_hosted_contact_ignored(
+            account=account,
+            phone_number=peer,
+        )
+
+    if (
+        not is_outbound
+        and not historical
+        and not lead
+        and peer
+        and not ignored_existing_chat
         and settings["auto_lead_creation"]
         and pipeline
     ):
