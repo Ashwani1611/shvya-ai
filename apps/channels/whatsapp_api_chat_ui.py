@@ -13,6 +13,7 @@ from apps.crm.decorators import crm_login_required
 from apps.crm.models import Lead
 from services.channels.whatsapp_api_chat_service import (
     get_api_conversation_messages,
+    is_within_api_24h_window,
     list_api_accounts,
     list_api_conversations,
     mark_api_conversation_read,
@@ -164,7 +165,6 @@ def whatsapp_chat_detail_view(request, lead_id):
 @require_POST
 def whatsapp_send_message_view(request, lead_id):
     from apps.channels.tasks import send_whatsapp_message_task
-    from services.channels.bulk_service import is_within_24h_window
     from services.channels.whatsapp_service import queue_outbound_message
 
     user = request.crm_user
@@ -189,7 +189,7 @@ def whatsapp_send_message_view(request, lead_id):
     if not body:
         return JsonResponse({"error": "Message body is required."}, status=400)
 
-    if not is_within_24h_window(lead=lead):
+    if not is_within_api_24h_window(lead=lead):
         return JsonResponse(
             {
                 "error": (
