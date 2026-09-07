@@ -16,17 +16,25 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_POST
 
 from apps.crm.decorators import crm_login_required
+from apps.crm.models import Lead
 from apps.organizations.features import is_hosted_account_enabled
 from services.channels.hosted_chat_service import (
     build_hosted_chat_snapshot,
     handle_hosted_gateway_event,
+    queue_hosted_chat_refresh,
     serialize_hosted_chat_snapshot,
 )
-from services.channels.hosted_whatsapp_service import handle_gateway_event
+from services.channels.hosted_whatsapp_service import (
+    HostedWhatsAppValidationError,
+    handle_gateway_event,
+    normalize_whatsapp_number,
+    queue_hosted_text_message,
+)
 
 from .hosted_tasks import sync_hosted_history_task
 from .models import WhatsAppAccount, WhatsAppMessage
 from .providers.whatsapp_web import WhatsAppWebClient, WhatsAppWebGatewayError
+from .tasks import send_whatsapp_message_task
 
 
 SYNC_THROTTLE_SECONDS = 180
@@ -53,6 +61,15 @@ def _hosted_account(request, account_id):
         )
         .first()
     )
+
+
+def _payload(request):
+    if request.content_type and "application/json" in request.content_type:
+        try:
+            return json.loads(request.body.decode("utf-8") or "{}")
+        except (ValueError, UnicodeDecodeError):
+            return {}
+    return request.POST.dict()
 
 
 def _repair_live_status(account):
@@ -163,6 +180,113 @@ def hosted_session_chats_data_view(request, account_id):
     return JsonResponse(payload)
 
 
+@crm_login_required
+@require_POST
+def hosted_session_chat_send_view(request, account_id):
+    """Queue a Hosted message using the exact canonical conversation key."""
+    account = _hosted_account(request, account_id)
+    if not account:
+        raise Http404
+
+    data = _payload(request)
+    chat = str(data.get("chat") or "").strip()
+    body = str(data.get("body") or "").strip()
+    if not chat or not body:
+        return JsonResponse(
+            {"ok": False, "error": "Chat and message are required."},
+            status=400,
+        )
+
+    raw_whatsapp_id = chat if "@" in chat else ""
+    normalized_chat = ""
+    lead = None
+
+    if raw_whatsapp_id:
+        # Group and LID chat ids are valid whatsapp-web.js destinations. A
+        # normal @c.us id is converted to our canonical +digits form so the
+        # CRM lead association remains stable.
+        if chat.endswith("@c.us"):
+            normalized_chat = normalize_whatsapp_number(
+                phone_number=chat.split("@", 1)[0]
+            )
+        elif chat.endswith("@g.us") or chat.endswith("@lid"):
+            normalized_chat = chat
+        else:
+            return JsonResponse(
+                {"ok": False, "error": "Unsupported WhatsApp chat id."},
+                status=400,
+            )
+    else:
+        normalized_chat = normalize_whatsapp_number(phone_number=chat)
+
+    if not normalized_chat:
+        return JsonResponse(
+            {"ok": False, "error": "Invalid WhatsApp recipient."},
+            status=400,
+        )
+
+    if normalized_chat.startswith("+"):
+        lead = Lead.objects.filter(
+            organization=account.organization,
+            phone=normalized_chat,
+        ).first()
+
+    try:
+        if normalized_chat.endswith("@lid"):
+            # A rare fallback for a direct chat whose phone identity has not
+            # yet been resolved by WhatsApp. Keep the LID as a transport key;
+            # a subsequent history/live payload will repair it to peerPhone.
+            message = WhatsAppMessage.objects.create(
+                organization=account.organization,
+                account=account,
+                lead=None,
+                direction=WhatsAppMessage.Direction.OUTBOUND,
+                from_number=(
+                    account.display_phone_number or account.phone_number_id
+                ),
+                to_number=normalized_chat,
+                body=body,
+                message_type=WhatsAppMessage.MessageType.TEXT,
+                status=WhatsAppMessage.Status.QUEUED,
+                raw_payload={
+                    "peerKey": normalized_chat,
+                    "rawChatId": normalized_chat,
+                    "shvya_hosted": {
+                        "origin": "agent",
+                        "chat_id": normalized_chat,
+                    },
+                },
+            )
+        else:
+            message = queue_hosted_text_message(
+                account=account,
+                to_number=normalized_chat,
+                body=body,
+                lead=lead,
+                metadata={"origin": "agent", "chat_id": chat},
+            )
+    except HostedWhatsAppValidationError as exc:
+        return JsonResponse({"ok": False, "error": str(exc)}, status=400)
+
+    send_whatsapp_message_task.delay(str(message.id))
+    queue_hosted_chat_refresh(
+        account_id=account.id,
+        reason="queued",
+        chat_key=normalized_chat,
+    )
+    return JsonResponse(
+        {
+            "ok": True,
+            "message": {
+                "id": str(message.id),
+                "body": message.body,
+                "status": message.status,
+            },
+        },
+        status=201,
+    )
+
+
 @csrf_exempt
 @require_POST
 def hosted_gateway_event_view(request):
@@ -177,5 +301,9 @@ def hosted_gateway_event_view(request):
     except (ValueError, UnicodeDecodeError):
         return JsonResponse({"ok": False, "error": "Invalid JSON"}, status=400)
 
-    result = handle_hosted_gateway_event(payload=data)
+    try:
+        result = handle_hosted_gateway_event(payload=data)
+    except HostedWhatsAppValidationError as exc:
+        return JsonResponse({"ok": False, "error": str(exc)}, status=409)
+
     return JsonResponse({"ok": True, "handled": result is not None})
