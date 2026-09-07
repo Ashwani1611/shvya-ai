@@ -52,6 +52,24 @@ def _raw_chat_id_for_message(message):
     return _raw_id(payload.get("rawChatId") or payload.get("chatId"))
 
 
+def _is_lid_derived_phone(phone, raw_chat_id):
+    """Reject pseudo-phones created by stripping ``@lid`` from a chat id."""
+    phone = _phone_from_value(phone)
+    raw_chat_id = _raw_id(raw_chat_id)
+    if not phone or not raw_chat_id.endswith("@lid"):
+        return False
+    lid_digits = "".join(ch for ch in raw_chat_id.split("@", 1)[0] if ch.isdigit())
+    phone_digits = "".join(ch for ch in phone if ch.isdigit())
+    return bool(lid_digits and phone_digits and lid_digits == phone_digits)
+
+
+def _valid_peer_phone(value, raw_chat_id):
+    phone = _phone_from_value(value)
+    if _is_lid_derived_phone(phone, raw_chat_id):
+        return ""
+    return phone
+
+
 def _message_sort_key(message):
     """Use WhatsApp's event timestamp for ordering, falling back to DB time."""
     try:
@@ -66,15 +84,20 @@ def _message_sort_key(message):
 def chat_key_for_message(message):
     """Canonical conversation key carried directly on one message."""
     payload = _payload(message)
+    raw_chat_id = _raw_chat_id_for_message(message)
 
     peer_key = _raw_id(payload.get("peerKey"))
     if peer_key:
         if peer_key.endswith("@lid"):
-            peer_phone = _phone_from_value(payload.get("peerPhone"))
+            peer_phone = _valid_peer_phone(payload.get("peerPhone"), raw_chat_id)
             return peer_phone or peer_key
-        return peer_key
+        peer_key_phone = _valid_peer_phone(peer_key, raw_chat_id)
+        if peer_key_phone:
+            return peer_key_phone
+        if "@" in peer_key:
+            return peer_key
 
-    peer_phone = _phone_from_value(payload.get("peerPhone"))
+    peer_phone = _valid_peer_phone(payload.get("peerPhone"), raw_chat_id)
     if peer_phone:
         return peer_phone
 
@@ -86,7 +109,8 @@ def chat_key_for_message(message):
         if message.direction == WhatsAppMessage.Direction.INBOUND
         else message.to_number
     )
-    return _phone_from_value(candidate) or _raw_id(candidate)
+    candidate_phone = _valid_peer_phone(candidate, raw_chat_id)
+    return candidate_phone or raw_chat_id or _raw_id(candidate)
 
 
 def chat_name_for_message(message):
@@ -103,9 +127,10 @@ def chat_name_for_message(message):
 
 def chat_phone_for_message(message):
     payload = _payload(message)
+    raw_chat_id = _raw_chat_id_for_message(message)
     return (
-        _phone_from_value(payload.get("peerPhone"))
-        or _phone_from_value(chat_key_for_message(message))
+        _valid_peer_phone(payload.get("peerPhone"), raw_chat_id)
+        or _valid_peer_phone(chat_key_for_message(message), raw_chat_id)
     )
 
 
@@ -117,16 +142,24 @@ def _canonical_peer(message, payload):
         key = _raw_id(payload.get("peerKey")) or raw_chat_id
         return key, "", raw_chat_id or key
 
-    phone = _phone_from_value(payload.get("peerPhone"))
+    phone = _valid_peer_phone(payload.get("peerPhone"), raw_chat_id)
     peer_key = _raw_id(payload.get("peerKey"))
     if not phone and peer_key and not peer_key.endswith("@lid"):
-        phone = _phone_from_value(peer_key)
+        phone = _valid_peer_phone(peer_key, raw_chat_id)
 
     if not phone:
         candidate = payload.get("to") if bool(payload.get("fromMe")) else payload.get("from")
-        phone = _phone_from_value(candidate)
+        phone = _valid_peer_phone(candidate, raw_chat_id)
 
-    key = phone or peer_key or raw_chat_id
+    if not phone:
+        existing_payload = _payload(message)
+        existing_raw_chat_id = (
+            raw_chat_id
+            or _raw_id(existing_payload.get("rawChatId") or existing_payload.get("chatId"))
+        )
+        phone = _valid_peer_phone(existing_payload.get("peerPhone"), existing_raw_chat_id)
+
+    key = phone or (peer_key if peer_key.endswith("@lid") else "") or raw_chat_id
     return key, phone, raw_chat_id
 
 
@@ -145,7 +178,12 @@ def repair_gateway_message_identity(*, message, payload, historical=False):
     is_outbound = bool(payload.get("fromMe"))
 
     merged = dict(_payload(message))
-    merged.update({k: v for k, v in payload.items() if v is not None})
+    incoming = {k: v for k, v in payload.items() if v is not None}
+    if _is_lid_derived_phone(incoming.get("peerPhone"), raw_chat_id):
+        incoming.pop("peerPhone", None)
+    if _is_lid_derived_phone(incoming.get("peerKey"), raw_chat_id):
+        incoming.pop("peerKey", None)
+    merged.update(incoming)
     if key:
         merged["peerKey"] = key
     if peer_phone:
@@ -298,7 +336,9 @@ def _conversation_aliases(messages):
             continue
         phone = chat_phone_for_message(message)
         if phone:
-            aliases[raw_chat_id] = phone
+            # Messages are sorted newest-first. Keep the first trustworthy
+            # resolution and never let an older legacy row overwrite it.
+            aliases.setdefault(raw_chat_id, phone)
     return aliases
 
 
