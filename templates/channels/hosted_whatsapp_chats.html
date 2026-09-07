@@ -8,16 +8,19 @@
 @media(max-width:900px){.hosted-chat-shell{grid-template-columns:300px 1fr}.hosted-thread-bg{padding:18px}.bubble{max-width:86%}}
 </style>
 
-<div class="mb-4 flex items-center justify-between">
+<div class="mb-4 flex items-center justify-between gap-3">
   <div>
     <a href="{% url 'whatsapp-connect-hosted' %}" class="text-sm text-emerald-700 hover:underline"><i class="ti ti-arrow-left mr-1"></i>Hosted Accounts</a>
     <h2 class="mt-1 text-lg font-bold text-gray-950">Chats</h2>
     <p class="text-xs text-gray-500">{{ account.display_phone_number }}</p>
   </div>
-  <div class="flex items-center gap-2 rounded-full bg-green-50 px-3 py-1.5 text-xs font-semibold text-green-700"><span class="live-dot"></span><span>Live hosted session</span></div>
+  <div class="flex items-center gap-2">
+    <div class="flex items-center gap-2 rounded-full bg-green-50 px-3 py-1.5 text-xs font-semibold text-green-700"><span class="live-dot"></span><span>Live hosted session</span></div>
+    <button id="remove-hosted-session" type="button" class="rounded-lg border border-red-200 bg-white px-3 py-2 text-xs font-semibold text-red-600 hover:bg-red-50"><i class="ti ti-trash mr-1"></i>Remove Session</button>
+  </div>
 </div>
 
-<div id="hosted-chat-app" class="hosted-chat-shell" data-data-url="{% url 'whatsapp-hosted-session-chats-data' account.id %}" data-send-url="{% url 'whatsapp-hosted-session-chat-send' account.id %}" data-account-id="{{ account.id }}">
+<div id="hosted-chat-app" class="hosted-chat-shell" data-data-url="{% url 'whatsapp-hosted-session-chats-data' account.id %}" data-send-url="{% url 'whatsapp-hosted-session-chat-send' account.id %}" data-remove-url="{% url 'whatsapp-hosted-session-remove' account.id %}" data-return-url="{% url 'whatsapp-connect-hosted' %}" data-account-id="{{ account.id }}">
   <aside class="hosted-chat-list">
     <div class="border-b p-4">
       <div class="relative">
@@ -98,10 +101,11 @@
 (function(){
   const app=document.getElementById('hosted-chat-app');
   if(!app)return;
-  const dataUrl=app.dataset.dataUrl,sendUrl=app.dataset.sendUrl,accountId=app.dataset.accountId;
+  const dataUrl=app.dataset.dataUrl,sendUrl=app.dataset.sendUrl,removeUrl=app.dataset.removeUrl,returnUrl=app.dataset.returnUrl,accountId=app.dataset.accountId;
   const list=document.getElementById('conversation-list'),search=document.getElementById('chat-search'),searchMeta=document.getElementById('search-meta');
   const header=document.getElementById('thread-header'),thread=document.getElementById('thread-scroll'),empty=document.getElementById('thread-empty');
   const threadName=document.getElementById('thread-name'),threadKey=document.getElementById('thread-key'),form=document.getElementById('chat-form'),chatInput=document.getElementById('chat-key-input');
+  const removeButton=document.getElementById('remove-hosted-session');
   const csrf=document.querySelector('input[name=csrfmiddlewaretoken]')?.value||'';
   const initial=new URLSearchParams(location.search);
   const state={selected:initial.get('chat')||'',query:initial.get('q')||search.value||'',seq:0,busy:false};
@@ -183,6 +187,18 @@
       const j=await r.json();if(!r.ok)throw new Error(j.error||'Could not send message');form.elements.body.value='';await refresh();
     }catch(err){alert(err.message)}finally{button.disabled=false;form.elements.body.focus();}
   });
+
+  if(removeButton){
+    removeButton.addEventListener('click',async()=>{
+      if(!confirm('Remove this Hosted WhatsApp session? The linked browser session will be logged out and this account will be hidden. Message history in SHVYA is kept.'))return;
+      removeButton.disabled=true;
+      try{
+        const r=await fetch(removeUrl,{method:'POST',headers:{'X-CSRFToken':csrf,'X-Requested-With':'XMLHttpRequest'}});
+        const j=await r.json();if(!r.ok)throw new Error(j.error||'Could not remove Hosted session');
+        location.href=returnUrl;
+      }catch(err){alert(err.message);removeButton.disabled=false;}
+    });
+  }
 
   function scheduleRefresh(delay=120){clearTimeout(refreshTimer);refreshTimer=setTimeout(()=>refresh(),delay)}
   function connectSocket(){
