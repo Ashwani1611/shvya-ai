@@ -89,11 +89,11 @@ class WhatsAppWebClient:
         return self._request("POST", f"/sessions/{session_id}/refresh-qr")
 
     def sync_history(self, *, session_id):
-        """Ask a running linked-device session to backfill recent chat history."""
+        """Ask a running linked-device session to backfill its searchable chat index."""
         return self._request(
             "POST",
             f"/sessions/{session_id}/sync",
-            timeout=120,
+            timeout=360,
         )
 
     def send_message(
