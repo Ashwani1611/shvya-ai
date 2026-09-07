@@ -7,12 +7,12 @@ from . import connection_ui
 from . import hosted_chat_ui
 from . import hosted_media_ui
 from . import hosted_remove_ui
+from . import hosted_send_ui
 from . import hosted_ui
 from . import template_action_ui
 from . import template_ui
 from . import views_flat
-from . import whatsapp_chat_failure_ui
-from . import whatsapp_template_send_ui
+from . import whatsapp_api_chat_ui
 from . import whatsapp_ui
 
 urlpatterns = [
@@ -37,12 +37,14 @@ urlpatterns = [
     path("connect/hosted/<uuid:account_id>/remove/", hosted_remove_ui.hosted_session_remove_view, name="whatsapp-hosted-session-remove"),
     path("connect/hosted/<uuid:account_id>/chats/", hosted_chat_ui.hosted_session_chats_view, name="whatsapp-hosted-session-chats"),
     path("connect/hosted/<uuid:account_id>/chats/data/", hosted_chat_ui.hosted_session_chats_data_view, name="whatsapp-hosted-session-chats-data"),
-    path("connect/hosted/<uuid:account_id>/chats/send/", hosted_chat_ui.hosted_session_chat_send_view, name="whatsapp-hosted-session-chat-send"),
+    path("connect/hosted/<uuid:account_id>/chats/send/", hosted_send_ui.hosted_session_chat_send_view, name="whatsapp-hosted-session-chat-send"),
+    path("connect/hosted/<uuid:account_id>/chats/send-media/", hosted_send_ui.hosted_session_chat_media_send_view, name="whatsapp-hosted-session-chat-media-send"),
     path("connect/hosted/<uuid:account_id>/messages/<uuid:message_id>/media/", hosted_media_ui.hosted_message_media_view, name="whatsapp-hosted-message-media"),
 
+    # Meta WhatsApp API-only endpoints. Hosted Account traffic never uses these.
     path("accounts/<uuid:account_id>/disconnect/", views_flat.whatsapp_disconnect_view, name="whatsapp-disconnect"),
     path("accounts/<uuid:account_id>/resubscribe/", views_flat.whatsapp_resubscribe_view, name="whatsapp-resubscribe"),
-    path("send/<uuid:lead_id>/", views_flat.whatsapp_send_message_view, name="whatsapp-send-message"),
+    path("send/<uuid:lead_id>/", whatsapp_api_chat_ui.whatsapp_send_message_view, name="whatsapp-send-message"),
     path("campaigns/", views_flat.whatsapp_campaign_list_view, name="whatsapp-campaign-list"),
     path("campaigns/new/", views_flat.whatsapp_campaign_create_view, name="whatsapp-campaign-create"),
     path("campaigns/<uuid:campaign_id>/", views_flat.whatsapp_campaign_detail_view, name="whatsapp-campaign-detail"),
@@ -57,9 +59,9 @@ urlpatterns = [
     path("templates/sync/", template_ui.template_sync, name="whatsapp-template-sync"),
     path("templates/placeholders/", template_ui.template_placeholders, name="whatsapp-template-placeholders"),
 
-    path("chats/", whatsapp_chat_failure_ui.whatsapp_chat_list_view, name="whatsapp-chats"),
-    path("chats/<uuid:lead_id>/", whatsapp_chat_failure_ui.whatsapp_chat_detail_view, name="whatsapp-chat-detail"),
-    path("send-template/<uuid:lead_id>/", whatsapp_template_send_ui.whatsapp_send_template_view, name="whatsapp-send-template"),
+    path("chats/", whatsapp_api_chat_ui.whatsapp_chat_list_view, name="whatsapp-chats"),
+    path("chats/<uuid:lead_id>/", whatsapp_api_chat_ui.whatsapp_chat_detail_view, name="whatsapp-chat-detail"),
+    path("send-template/<uuid:lead_id>/", whatsapp_api_chat_ui.whatsapp_send_template_view, name="whatsapp-send-template"),
     path("leads/<uuid:lead_id>/calls.json", views_flat.whatsapp_lead_calls_json, name="whatsapp-lead-calls-json"),
     path("leads/<uuid:lead_id>/pipeline-options/", whatsapp_ui.whatsapp_lead_pipeline_options_view, name="whatsapp-lead-pipeline-options"),
     path("leads/<uuid:lead_id>/quick-update/", whatsapp_ui.whatsapp_lead_quick_update_view, name="whatsapp-lead-quick-update"),
