@@ -2,7 +2,6 @@
 
 const crypto = require('crypto');
 const fs = require('fs');
-const path = require('path');
 const express = require('express');
 const QRCode = require('qrcode');
 const { createClient: createRedisClient } = require('redis');
@@ -20,10 +19,13 @@ const CALLBACK_URL = process.env.SHVYA_HOSTED_CALLBACK_URL || '';
 const REDIS_URL = process.env.REDIS_URL || '';
 const INSTANCE_ID = crypto.randomUUID();
 const QR_EXPIRES_SECONDS = 60;
-const HISTORY_CHAT_LIMIT = 50;
-const HISTORY_MESSAGE_LIMIT = 20;
+const HISTORY_CHAT_LIMIT = 100;
+const HISTORY_MESSAGE_LIMIT = 30;
+const HISTORY_SYNC_CONCURRENCY = 4;
 const HISTORY_CHAT_FETCH_TIMEOUT_MS = 12000;
 const HISTORY_GET_CHATS_TIMEOUT_MS = 20000;
+const CONTACT_LOOKUP_TIMEOUT_MS = 5000;
+const LOCAL_SEND_MATCH_MS = 20000;
 
 fs.mkdirSync(AUTH_PATH, { recursive: true });
 
@@ -34,6 +36,28 @@ function digits(value) {
   return String(value || '').replace(/\D/g, '');
 }
 
+function serializedId(value) {
+  if (!value) return '';
+  if (typeof value === 'string') return value;
+  if (value._serialized) return String(value._serialized);
+  if (value.$1) return String(value.$1);
+  if (value.user && value.server) return `${value.user}@${value.server}`;
+  return '';
+}
+
+function phoneFromId(value) {
+  const raw = serializedId(value);
+  if (!raw.endsWith('@c.us')) return '';
+  const number = digits(raw.split('@', 1)[0]);
+  return number ? `+${number}` : '';
+}
+
+function phoneFromContact(contact) {
+  const number = digits(contact && contact.number);
+  if (number) return `+${number}`;
+  return phoneFromId(contact && contact.id);
+}
+
 function publicSession(sessionId, state) {
   return {
     sessionId,
@@ -42,6 +66,8 @@ function publicSession(sessionId, state) {
     lastError: state.lastError || '',
     historySyncing: Boolean(state.historySyncPromise),
     historySynced: Boolean(state.historySynced),
+    historyError: state.historyError || '',
+    historyResult: state.historyResult || null,
   };
 }
 
@@ -124,32 +150,78 @@ function withTimeout(promise, timeoutMs, label) {
   return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
 
-async function serializeMessage(message, chat = null, includeContactLookup = true) {
-  const resolvedChat = chat || await message.getChat();
-  let contactName = (resolvedChat && resolvedChat.name) || '';
+async function resolveChatIdentity(chat) {
+  const rawChatId = serializedId(chat && chat.id);
+  const isGroup = Boolean(chat && chat.isGroup);
+  if (isGroup) {
+    return {
+      rawChatId,
+      peerKey: rawChatId,
+      peerPhone: '',
+      contactName: (chat && chat.name) || rawChatId,
+      isGroup: true,
+    };
+  }
 
-  if (includeContactLookup && !resolvedChat.isGroup) {
-    try {
-      const contact = await message.getContact();
-      contactName = (
-        contact && (contact.pushname || contact.name || contact.shortName)
-      ) || contactName;
-    } catch (_) {}
+  let contact = null;
+  try {
+    contact = await withTimeout(
+      chat.getContact(),
+      CONTACT_LOOKUP_TIMEOUT_MS,
+      `getContact ${rawChatId}`,
+    );
+  } catch (_) {}
+
+  const peerPhone = phoneFromContact(contact) || phoneFromId(rawChatId);
+  const contactName = (
+    contact && (
+      contact.name ||
+      contact.pushname ||
+      contact.shortName ||
+      contact.verifiedName
+    )
+  ) || (chat && chat.name) || peerPhone || rawChatId;
+
+  return {
+    rawChatId,
+    peerKey: peerPhone || rawChatId,
+    peerPhone,
+    contactName,
+    isGroup: false,
+  };
+}
+
+async function serializeMessage(message, chat = null, identity = null) {
+  const resolvedChat = chat || await message.getChat();
+  const resolvedIdentity = identity || await resolveChatIdentity(resolvedChat);
+  const fromMe = Boolean(message.fromMe);
+  let from = serializedId(message.from) || String(message.from || '');
+  let to = serializedId(message.to) || String(message.to || '');
+
+  // Direct chats may now be represented internally as @lid.  Django should
+  // receive the real phone identity when WhatsApp exposes it on Contact.
+  if (!resolvedIdentity.isGroup && resolvedIdentity.peerPhone) {
+    const peerId = `${digits(resolvedIdentity.peerPhone)}@c.us`;
+    if (fromMe) to = peerId;
+    else from = peerId;
   }
 
   return {
-    messageId: message.id && message.id._serialized,
-    from: message.from,
-    to: message.to,
-    fromMe: Boolean(message.fromMe),
+    messageId: serializedId(message.id),
+    from,
+    to,
+    fromMe,
     body: message.body || '',
     messageType: mapMessageType(message.type),
     timestamp: message.timestamp,
     status: ackStatus(message.ack),
-    chatId: resolvedChat && resolvedChat.id && resolvedChat.id._serialized,
-    chatName: resolvedChat && resolvedChat.name,
-    isGroup: Boolean(resolvedChat && resolvedChat.isGroup),
-    contactName,
+    chatId: resolvedIdentity.rawChatId,
+    rawChatId: resolvedIdentity.rawChatId,
+    peerKey: resolvedIdentity.peerKey,
+    peerPhone: resolvedIdentity.peerPhone,
+    chatName: (resolvedChat && resolvedChat.name) || resolvedIdentity.contactName,
+    isGroup: resolvedIdentity.isGroup,
+    contactName: resolvedIdentity.contactName,
     author: message.author || '',
   };
 }
@@ -162,6 +234,52 @@ async function sendHistoryBatch(sessionId, messages) {
   }
 }
 
+async function syncOneChat(sessionId, chat) {
+  const rawChatId = serializedId(chat && chat.id);
+  if (!rawChatId || rawChatId === 'status@broadcast' || rawChatId.includes('@newsletter')) {
+    return { chats: 0, messages: 0 };
+  }
+
+  let identity;
+  try {
+    identity = await resolveChatIdentity(chat);
+  } catch (error) {
+    console.warn(`Could not resolve chat identity for ${sessionId}/${rawChatId}:`, error.message);
+    identity = {
+      rawChatId,
+      peerKey: rawChatId,
+      peerPhone: phoneFromId(rawChatId),
+      contactName: chat.name || rawChatId,
+      isGroup: Boolean(chat.isGroup),
+    };
+  }
+
+  let messages;
+  try {
+    messages = await withTimeout(
+      chat.fetchMessages({ limit: HISTORY_MESSAGE_LIMIT }),
+      HISTORY_CHAT_FETCH_TIMEOUT_MS,
+      `fetchMessages ${rawChatId}`,
+    );
+  } catch (error) {
+    console.warn(`Could not fetch history for ${sessionId}/${rawChatId}:`, error.message);
+    return { chats: 1, messages: 0 };
+  }
+
+  const batch = [];
+  for (const message of messages) {
+    if (!message || !serializedId(message.id)) continue;
+    try {
+      batch.push(await serializeMessage(message, chat, identity));
+    } catch (error) {
+      console.warn(`Could not serialize history for ${sessionId}/${rawChatId}:`, error.message);
+    }
+  }
+
+  if (batch.length) await sendHistoryBatch(sessionId, batch);
+  return { chats: 1, messages: batch.length };
+}
+
 async function syncRecentHistory(sessionId, state) {
   const chats = await withTimeout(
     state.client.getChats(),
@@ -169,46 +287,26 @@ async function syncRecentHistory(sessionId, state) {
     'getChats',
   );
   const selectedChats = chats.slice(0, HISTORY_CHAT_LIMIT);
+  let cursor = 0;
   let syncedMessages = 0;
   let syncedChats = 0;
 
-  for (const chat of selectedChats) {
-    let messages;
-    try {
-      messages = await withTimeout(
-        chat.fetchMessages({ limit: HISTORY_MESSAGE_LIMIT }),
-        HISTORY_CHAT_FETCH_TIMEOUT_MS,
-        `fetchMessages ${chat.id && chat.id._serialized}`,
-      );
-    } catch (error) {
-      console.warn(
-        `Could not fetch history for ${sessionId}/${chat.id && chat.id._serialized}:`,
-        error.message,
-      );
-      continue;
+  async function worker() {
+    while (true) {
+      const index = cursor++;
+      if (index >= selectedChats.length) return;
+      const result = await syncOneChat(sessionId, selectedChats[index]);
+      syncedChats += result.chats;
+      syncedMessages += result.messages;
     }
-
-    const batch = [];
-    for (const message of messages) {
-      if (!message || !message.id || !message.id._serialized) continue;
-      try {
-        batch.push(await serializeMessage(message, chat, false));
-      } catch (error) {
-        console.warn(`Could not serialize history for ${sessionId}:`, error.message);
-      }
-    }
-
-    if (batch.length) {
-      await sendHistoryBatch(sessionId, batch);
-      syncedMessages += batch.length;
-    }
-    syncedChats += 1;
   }
 
-  return {
-    chats: syncedChats,
-    messages: syncedMessages,
-  };
+  const workers = Array.from(
+    { length: Math.min(HISTORY_SYNC_CONCURRENCY, selectedChats.length || 1) },
+    () => worker(),
+  );
+  await Promise.all(workers);
+  return { chats: syncedChats, messages: syncedMessages };
 }
 
 function startHistorySync(sessionId, state, { force = false } = {}) {
@@ -217,14 +315,23 @@ function startHistorySync(sessionId, state, { force = false } = {}) {
     return Promise.resolve(state.historyResult || { chats: 0, messages: 0 });
   }
 
+  state.historyError = '';
   state.historySyncPromise = syncRecentHistory(sessionId, state)
-    .then((result) => {
+    .then(async (result) => {
       state.historySynced = true;
       state.historyResult = result;
+      state.historyError = '';
       console.log(
         `Synced hosted history for ${sessionId}: ${result.chats} chats, ${result.messages} messages`,
       );
+      await callback(sessionId, 'history_complete', result);
       return result;
+    })
+    .catch(async (error) => {
+      state.historySynced = false;
+      state.historyError = error.message || String(error);
+      await callback(sessionId, 'history_failed', { error: state.historyError });
+      throw error;
     })
     .finally(() => {
       state.historySyncPromise = null;
@@ -258,9 +365,6 @@ async function promoteRunningSession(sessionId, state, source = 'ready') {
       return false;
     }
 
-    // The session is usable as soon as WhatsApp reports CONNECTED/ready.
-    // History backfill must never block this transition because a slow chat
-    // can otherwise leave the UI on QR/Syncing and Django on Pending forever.
     state.status = 'running';
     state.qr = null;
     state.qrGeneratedAt = 0;
@@ -271,7 +375,6 @@ async function promoteRunningSession(sessionId, state, source = 'ready') {
     });
 
     startHistorySync(sessionId, state).catch((error) => {
-      state.historySynced = false;
       console.warn(`Could not sync hosted history for ${sessionId}:`, error.message);
     });
     return true;
@@ -291,10 +394,42 @@ async function reconcileClientState(sessionId, state) {
     if (waState === 'CONNECTED') {
       await promoteRunningSession(sessionId, state, 'state_probe');
     }
-  } catch (_) {
-    // During Chromium startup getState can throw. The normal ready event or
-    // the next status/QR poll will reconcile it once WhatsApp is available.
+  } catch (_) {}
+}
+
+function pruneLocalSendState(state) {
+  const now = Date.now();
+  for (const token of state.localSendTokens) {
+    if (now - token.startedAt > LOCAL_SEND_MATCH_MS) state.localSendTokens.delete(token);
   }
+  for (const [messageId, expiresAt] of state.localMessageIds.entries()) {
+    if (expiresAt <= now) state.localMessageIds.delete(messageId);
+  }
+}
+
+function sameRecipient(a, b) {
+  if (!a || !b) return false;
+  if (a === b) return true;
+  const aDigits = digits(a);
+  const bDigits = digits(b);
+  return aDigits && bDigits && aDigits === bDigits;
+}
+
+function isGatewayOriginatedOwnMessage(state, message) {
+  pruneLocalSendState(state);
+  const messageId = serializedId(message && message.id);
+  if (messageId && state.localMessageIds.has(messageId)) return true;
+
+  const to = serializedId(message && message.to) || String((message && message.to) || '');
+  const body = String((message && message.body) || '');
+  for (const token of state.localSendTokens) {
+    if (!sameRecipient(token.chatId, to)) continue;
+    if (!token.media && token.body !== body) continue;
+    if (messageId) state.localMessageIds.set(messageId, Date.now() + 30000);
+    token.matched = true;
+    return true;
+  }
+  return false;
 }
 
 function wireClientEvents(sessionId, state) {
@@ -335,25 +470,45 @@ function wireClientEvents(sessionId, state) {
     }
   });
 
+  // Incoming messages arrive on `message`.  Keep this separate from
+  // `message_create` to avoid delivering inbound events twice.
   client.on('message', async (message) => {
     if (message.fromMe) return;
     try {
       await callback(
         sessionId,
         'message',
-        await serializeMessage(message, null, true),
+        await serializeMessage(message),
       );
     } catch (error) {
-      console.warn(`Could not forward message for ${sessionId}:`, error.message);
+      console.warn(`Could not forward inbound message for ${sessionId}:`, error.message);
+    }
+  });
+
+  // `message_create` includes messages sent from the linked phone and other
+  // companion devices.  Those were previously invisible to SHVYA.  Suppress
+  // only messages that this gateway itself just sent through the HTTP API;
+  // their existing queued DB row is updated by the Django transport path.
+  client.on('message_create', async (message) => {
+    if (!message.fromMe || isGatewayOriginatedOwnMessage(state, message)) return;
+    try {
+      await callback(
+        sessionId,
+        'message',
+        await serializeMessage(message),
+      );
+    } catch (error) {
+      console.warn(`Could not forward linked-device outbound for ${sessionId}:`, error.message);
     }
   });
 
   client.on('message_ack', async (message, ack) => {
     if (!message.fromMe) return;
     const status = ackStatus(ack);
-    if (!status) return;
+    const messageId = serializedId(message.id);
+    if (!status || !messageId) return;
     await callback(sessionId, 'message_ack', {
-      messageId: message.id && message.id._serialized,
+      messageId,
       status,
     });
   });
@@ -394,7 +549,10 @@ async function createSession(sessionId, requestedPhone = '') {
     historySyncPromise: null,
     historySynced: false,
     historyResult: null,
+    historyError: '',
     readyPromise: null,
+    localSendTokens: new Set(),
+    localMessageIds: new Map(),
   };
 
   const client = new Client({
@@ -439,8 +597,6 @@ async function refreshQr(sessionId) {
   try { await current.client.destroy(); } catch (_) {}
   sessions.delete(sessionId);
   await releaseLock(sessionId).catch(() => {});
-  // Keep LocalAuth files. For an unpaired session this produces a fresh QR;
-  // for an already-paired session it restores and returns to Running.
   return createSession(sessionId, requestedPhone);
 }
 
@@ -522,7 +678,9 @@ app.get('/sessions/:sessionId/qr', async (req, res) => {
   const state = sessions.get(req.params.sessionId);
   if (!state) return res.status(404).json({ error: 'Session not found.' });
   await reconcileClientState(req.params.sessionId, state);
-  const ageSeconds = state.qrGeneratedAt ? Math.floor((Date.now() - state.qrGeneratedAt) / 1000) : 0;
+  const ageSeconds = state.qrGeneratedAt
+    ? Math.floor((Date.now() - state.qrGeneratedAt) / 1000)
+    : 0;
   return res.json({
     ...publicSession(req.params.sessionId, state),
     qr: state.qr,
@@ -546,7 +704,6 @@ app.post('/sessions/:sessionId/sync', async (req, res) => {
   if (state.status !== 'running') {
     return res.status(409).json({ error: 'Session is not running.' });
   }
-
   try {
     const result = await startHistorySync(req.params.sessionId, state, { force: true });
     return res.json({ ok: true, ...result });
@@ -559,13 +716,26 @@ app.post('/sessions/:sessionId/messages', async (req, res) => {
   const state = sessions.get(req.params.sessionId);
   if (!state) return res.status(404).json({ error: 'Session not found.' });
   await reconcileClientState(req.params.sessionId, state);
-  if (state.status !== 'running') return res.status(409).json({ error: 'Session is not running.' });
+  if (state.status !== 'running') {
+    return res.status(409).json({ error: 'Session is not running.' });
+  }
 
   const to = String(req.body.to || '').trim();
   const body = String(req.body.body || '');
   if (!to) return res.status(400).json({ error: 'Recipient is required.' });
   const chatId = to.includes('@') ? to : `${digits(to)}@c.us`;
-  if (!chatId || chatId === '@c.us') return res.status(400).json({ error: 'Invalid recipient.' });
+  if (!chatId || chatId === '@c.us') {
+    return res.status(400).json({ error: 'Invalid recipient.' });
+  }
+
+  const token = {
+    chatId,
+    body,
+    media: Boolean(req.body.mediaUrl),
+    startedAt: Date.now(),
+    matched: false,
+  };
+  state.localSendTokens.add(token);
 
   try {
     let sent;
@@ -578,15 +748,24 @@ app.post('/sessions/:sessionId/messages', async (req, res) => {
         caption: body || undefined,
       });
     } else {
-      if (!body.trim()) return res.status(400).json({ error: 'Message cannot be empty.' });
+      if (!body.trim()) {
+        state.localSendTokens.delete(token);
+        return res.status(400).json({ error: 'Message cannot be empty.' });
+      }
       sent = await state.client.sendMessage(chatId, body);
     }
+
+    const messageId = serializedId(sent.id);
+    if (messageId) state.localMessageIds.set(messageId, Date.now() + 30000);
+    setTimeout(() => state.localSendTokens.delete(token), 5000).unref();
+
     return res.status(201).json({
       ok: true,
-      messageId: sent.id && sent.id._serialized,
+      messageId,
       timestamp: sent.timestamp,
     });
   } catch (error) {
+    state.localSendTokens.delete(token);
     return res.status(502).json({ error: error.message || String(error) });
   }
 });
