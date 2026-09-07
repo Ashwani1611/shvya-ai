@@ -11,6 +11,7 @@ from decouple import config
 from django.core.cache import cache
 from django.http import Http404, JsonResponse
 from django.shortcuts import render
+from django.urls import reverse
 from django.utils.crypto import constant_time_compare
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_POST
@@ -129,6 +130,30 @@ def _mark_thread_read(snapshot):
                 break
 
 
+def _message_has_media(message):
+    raw = message.raw_payload if isinstance(message.raw_payload, dict) else {}
+    return bool(raw.get("hasMedia")) or message.message_type in {
+        WhatsAppMessage.MessageType.IMAGE,
+        WhatsAppMessage.MessageType.AUDIO,
+        WhatsAppMessage.MessageType.VIDEO,
+        WhatsAppMessage.MessageType.DOCUMENT,
+    }
+
+
+def _decorate_media_urls(snapshot, account):
+    for message in snapshot.get("thread") or []:
+        message.hosted_has_media = _message_has_media(message)
+        message.hosted_media_url = (
+            reverse(
+                "whatsapp-hosted-message-media",
+                args=[account.id, message.id],
+            )
+            if message.hosted_has_media
+            else ""
+        )
+    return snapshot
+
+
 @crm_login_required
 @require_GET
 def hosted_session_chats_view(request, account_id):
@@ -144,6 +169,7 @@ def hosted_session_chats_view(request, account_id):
         query=request.GET.get("q", ""),
     )
     decorate_hosted_chat_snapshot(snapshot)
+    _decorate_media_urls(snapshot, account)
     _mark_thread_read(snapshot)
 
     return render(
@@ -174,8 +200,14 @@ def hosted_session_chats_data_view(request, account_id):
         query=request.GET.get("q", ""),
     )
     decorate_hosted_chat_snapshot(snapshot)
+    _decorate_media_urls(snapshot, account)
     _mark_thread_read(snapshot)
     payload = serialize_hosted_chat_snapshot(snapshot)
+    for row, message in zip(payload.get("thread", []), snapshot.get("thread", [])):
+        row["has_media"] = bool(getattr(message, "hosted_has_media", False))
+        row["media_url"] = getattr(message, "hosted_media_url", "")
+        raw = message.raw_payload if isinstance(message.raw_payload, dict) else {}
+        row["raw_message_type"] = str(raw.get("rawMessageType") or "")
     payload.update(
         {
             "ok": True,
@@ -208,9 +240,6 @@ def hosted_session_chat_send_view(request, account_id):
     lead = None
 
     if raw_whatsapp_id:
-        # Group and LID chat ids are valid whatsapp-web.js destinations. A
-        # normal @c.us id is converted to our canonical +digits form so the
-        # CRM lead association remains stable.
         if chat.endswith("@c.us"):
             normalized_chat = normalize_whatsapp_number(
                 phone_number=chat.split("@", 1)[0]
@@ -239,9 +268,6 @@ def hosted_session_chat_send_view(request, account_id):
 
     try:
         if normalized_chat.endswith("@lid"):
-            # A rare fallback for a direct chat whose phone identity has not
-            # yet been resolved by WhatsApp. Keep the LID as a transport key;
-            # a subsequent history/live payload will repair it to peerPhone.
             message = WhatsAppMessage.objects.create(
                 organization=account.organization,
                 account=account,
