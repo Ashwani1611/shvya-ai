@@ -52,6 +52,17 @@ def _raw_chat_id_for_message(message):
     return _raw_id(payload.get("rawChatId") or payload.get("chatId"))
 
 
+def _message_sort_key(message):
+    """Use WhatsApp's event timestamp for ordering, falling back to DB time."""
+    try:
+        timestamp = float(_payload(message).get("timestamp") or 0)
+    except (TypeError, ValueError):
+        timestamp = 0
+    if timestamp <= 0:
+        timestamp = message.created_at.timestamp()
+    return timestamp, str(message.id)
+
+
 def chat_key_for_message(message):
     """Canonical conversation key carried directly on one message."""
     payload = _payload(message)
@@ -379,6 +390,7 @@ def build_hosted_chat_snapshot(*, account, selected_chat="", query=""):
         .select_related("lead", "account")
         .order_by("-created_at")[:MAX_CONVERSATION_SCAN]
     )
+    recent_messages.sort(key=_message_sort_key, reverse=True)
 
     aliases = _conversation_aliases(recent_messages)
     conversations = {}
@@ -459,9 +471,10 @@ def build_hosted_chat_snapshot(*, account, selected_chat="", query=""):
         )
         thread = [
             message
-            for message in reversed(candidates)
+            for message in candidates
             if _canonical_chat_key(message, aliases) == selected
         ]
+        thread.sort(key=_message_sort_key)
 
     selected_row = conversations.get(selected, {})
     selected_name = selected_row.get("name") or selected
