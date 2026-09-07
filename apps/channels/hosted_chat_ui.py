@@ -24,6 +24,7 @@ from services.channels.hosted_chat_service import (
     queue_hosted_chat_refresh,
     serialize_hosted_chat_snapshot,
 )
+from services.channels.hosted_contact_sync import sync_hosted_contact_names
 from services.channels.hosted_message_content import (
     decorate_hosted_chat_snapshot,
     repair_content_after_gateway_event,
@@ -310,6 +311,7 @@ def hosted_gateway_event_view(request):
     try:
         result = handle_hosted_gateway_event(payload=data)
         repair_content_after_gateway_event(payload=data)
+        sync_hosted_contact_names(payload=data)
     except HostedWhatsAppValidationError as exc:
         return JsonResponse({"ok": False, "error": str(exc)}, status=409)
 
