@@ -14,6 +14,7 @@ COPY package*.json ./
 RUN npm install --omit=dev
 
 COPY src ./src
+RUN node --check src/index.js
 
 RUN mkdir -p /data/wwebjs_auth && chown -R node:node /app /data/wwebjs_auth
 USER node

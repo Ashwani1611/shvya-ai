@@ -20,9 +20,10 @@ const CALLBACK_URL = process.env.SHVYA_HOSTED_CALLBACK_URL || '';
 const REDIS_URL = process.env.REDIS_URL || '';
 const INSTANCE_ID = crypto.randomUUID();
 const QR_EXPIRES_SECONDS = 60;
-const HISTORY_CHAT_LIMIT = 100;
-const HISTORY_MESSAGE_LIMIT = 30;
-const HISTORY_BATCH_SIZE = 100;
+const HISTORY_CHAT_LIMIT = 50;
+const HISTORY_MESSAGE_LIMIT = 20;
+const HISTORY_CHAT_FETCH_TIMEOUT_MS = 12000;
+const HISTORY_GET_CHATS_TIMEOUT_MS = 20000;
 
 fs.mkdirSync(AUTH_PATH, { recursive: true });
 
@@ -39,6 +40,8 @@ function publicSession(sessionId, state) {
     status: state.status,
     phoneNumber: state.phoneNumber || state.requestedPhone || '',
     lastError: state.lastError || '',
+    historySyncing: Boolean(state.historySyncPromise),
+    historySynced: Boolean(state.historySynced),
   };
 }
 
@@ -113,6 +116,14 @@ function ackStatus(ack) {
   return '';
 }
 
+function withTimeout(promise, timeoutMs, label) {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${label} timed out`)), timeoutMs);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
 async function serializeMessage(message, chat = null, includeContactLookup = true) {
   const resolvedChat = chat || await message.getChat();
   let contactName = (resolvedChat && resolvedChat.name) || '';
@@ -143,16 +154,32 @@ async function serializeMessage(message, chat = null, includeContactLookup = tru
   };
 }
 
+async function sendHistoryBatch(sessionId, messages) {
+  if (!messages.length) return;
+  const delivered = await callback(sessionId, 'history_sync', { messages });
+  if (!delivered) {
+    throw new Error('Django rejected or did not receive hosted history batch');
+  }
+}
+
 async function syncRecentHistory(sessionId, state) {
-  const chats = await state.client.getChats();
+  const chats = await withTimeout(
+    state.client.getChats(),
+    HISTORY_GET_CHATS_TIMEOUT_MS,
+    'getChats',
+  );
   const selectedChats = chats.slice(0, HISTORY_CHAT_LIMIT);
-  let batch = [];
   let syncedMessages = 0;
+  let syncedChats = 0;
 
   for (const chat of selectedChats) {
     let messages;
     try {
-      messages = await chat.fetchMessages({ limit: HISTORY_MESSAGE_LIMIT });
+      messages = await withTimeout(
+        chat.fetchMessages({ limit: HISTORY_MESSAGE_LIMIT }),
+        HISTORY_CHAT_FETCH_TIMEOUT_MS,
+        `fetchMessages ${chat.id && chat.id._serialized}`,
+      );
     } catch (error) {
       console.warn(
         `Could not fetch history for ${sessionId}/${chat.id && chat.id._serialized}:`,
@@ -161,31 +188,113 @@ async function syncRecentHistory(sessionId, state) {
       continue;
     }
 
+    const batch = [];
     for (const message of messages) {
       if (!message || !message.id || !message.id._serialized) continue;
       try {
         batch.push(await serializeMessage(message, chat, false));
-        syncedMessages += 1;
       } catch (error) {
         console.warn(`Could not serialize history for ${sessionId}:`, error.message);
-        continue;
-      }
-
-      if (batch.length >= HISTORY_BATCH_SIZE) {
-        await callback(sessionId, 'history_sync', { messages: batch });
-        batch = [];
       }
     }
-  }
 
-  if (batch.length) {
-    await callback(sessionId, 'history_sync', { messages: batch });
+    if (batch.length) {
+      await sendHistoryBatch(sessionId, batch);
+      syncedMessages += batch.length;
+    }
+    syncedChats += 1;
   }
 
   return {
-    chats: selectedChats.length,
+    chats: syncedChats,
     messages: syncedMessages,
   };
+}
+
+function startHistorySync(sessionId, state, { force = false } = {}) {
+  if (state.historySyncPromise) return state.historySyncPromise;
+  if (state.historySynced && !force) {
+    return Promise.resolve(state.historyResult || { chats: 0, messages: 0 });
+  }
+
+  state.historySyncPromise = syncRecentHistory(sessionId, state)
+    .then((result) => {
+      state.historySynced = true;
+      state.historyResult = result;
+      console.log(
+        `Synced hosted history for ${sessionId}: ${result.chats} chats, ${result.messages} messages`,
+      );
+      return result;
+    })
+    .finally(() => {
+      state.historySyncPromise = null;
+    });
+
+  return state.historySyncPromise;
+}
+
+async function promoteRunningSession(sessionId, state, source = 'ready') {
+  if (state.status === 'failed' || state.status === 'disconnected') return false;
+  if (state.readyPromise) return state.readyPromise;
+  if (state.status === 'running') return true;
+
+  state.readyPromise = (async () => {
+    const client = state.client;
+    const connectedDigits = digits(client.info && client.info.wid && client.info.wid.user);
+    if (connectedDigits) state.phoneNumber = `+${connectedDigits}`;
+
+    const requested = digits(state.requestedPhone);
+    const connected = digits(state.phoneNumber);
+    if (requested && connected && requested !== connected) {
+      state.status = 'failed';
+      state.qr = null;
+      state.qrGeneratedAt = 0;
+      state.lastError = 'Scanned WhatsApp number does not match the pipeline-linked number.';
+      await callback(sessionId, 'failed', {
+        phoneNumber: state.phoneNumber,
+        error: state.lastError,
+      });
+      try { await client.logout(); } catch (_) {}
+      return false;
+    }
+
+    // The session is usable as soon as WhatsApp reports CONNECTED/ready.
+    // History backfill must never block this transition because a slow chat
+    // can otherwise leave the UI on QR/Syncing and Django on Pending forever.
+    state.status = 'running';
+    state.qr = null;
+    state.qrGeneratedAt = 0;
+    state.lastError = '';
+    await callback(sessionId, 'ready', {
+      phoneNumber: state.phoneNumber,
+      source,
+    });
+
+    startHistorySync(sessionId, state).catch((error) => {
+      state.historySynced = false;
+      console.warn(`Could not sync hosted history for ${sessionId}:`, error.message);
+    });
+    return true;
+  })().finally(() => {
+    state.readyPromise = null;
+  });
+
+  return state.readyPromise;
+}
+
+async function reconcileClientState(sessionId, state) {
+  if (!state || state.status === 'running' || state.status === 'failed' || state.status === 'disconnected') {
+    return;
+  }
+  try {
+    const waState = String(await state.client.getState() || '').toUpperCase();
+    if (waState === 'CONNECTED') {
+      await promoteRunningSession(sessionId, state, 'state_probe');
+    }
+  } catch (_) {
+    // During Chromium startup getState can throw. The normal ready event or
+    // the next status/QR poll will reconcile it once WhatsApp is available.
+  }
 }
 
 function wireClientEvents(sessionId, state) {
@@ -202,50 +311,28 @@ function wireClientEvents(sessionId, state) {
   client.on('authenticated', async () => {
     state.status = 'connecting';
     state.qr = null;
+    state.qrGeneratedAt = 0;
     await callback(sessionId, 'authenticated');
+    setTimeout(() => reconcileClientState(sessionId, state), 2000).unref();
+    setTimeout(() => reconcileClientState(sessionId, state), 6000).unref();
   });
 
   client.on('auth_failure', async (message) => {
     state.status = 'failed';
+    state.qr = null;
+    state.qrGeneratedAt = 0;
     state.lastError = String(message || 'Authentication failed');
     await callback(sessionId, 'auth_failure', { error: state.lastError });
   });
 
   client.on('ready', async () => {
-    state.status = 'syncing';
-    state.phoneNumber = `+${digits(client.info && client.info.wid && client.info.wid.user)}`;
-    await callback(sessionId, 'syncing', { phoneNumber: state.phoneNumber });
+    await promoteRunningSession(sessionId, state, 'ready_event');
+  });
 
-    const requested = digits(state.requestedPhone);
-    const connected = digits(state.phoneNumber);
-    if (requested && connected && requested !== connected) {
-      state.status = 'failed';
-      state.lastError = 'Scanned WhatsApp number does not match the pipeline-linked number.';
-      await callback(sessionId, 'failed', {
-        phoneNumber: state.phoneNumber,
-        error: state.lastError,
-      });
-      try { await client.logout(); } catch (_) {}
-      return;
+  client.on('change_state', async (waState) => {
+    if (String(waState || '').toUpperCase() === 'CONNECTED') {
+      await promoteRunningSession(sessionId, state, 'change_state');
     }
-
-    let history = { chats: 0, messages: 0 };
-    try {
-      history = await syncRecentHistory(sessionId, state);
-      console.log(
-        `Synced hosted history for ${sessionId}: ${history.chats} chats, ${history.messages} messages`,
-      );
-    } catch (error) {
-      console.warn(`Could not sync hosted history for ${sessionId}:`, error.message);
-    }
-
-    state.status = 'running';
-    state.lastError = '';
-    await callback(sessionId, 'ready', {
-      phoneNumber: state.phoneNumber,
-      historyChats: history.chats,
-      historyMessages: history.messages,
-    });
   });
 
   client.on('message', async (message) => {
@@ -274,6 +361,7 @@ function wireClientEvents(sessionId, state) {
   client.on('disconnected', async (reason) => {
     state.status = 'disconnected';
     state.qr = null;
+    state.qrGeneratedAt = 0;
     state.lastError = String(reason || 'Disconnected');
     await callback(sessionId, 'disconnected', { reason: state.lastError });
   });
@@ -285,6 +373,7 @@ async function createSession(sessionId, requestedPhone = '') {
   const existing = sessions.get(sessionId);
   if (existing) {
     if (requestedPhone) existing.requestedPhone = requestedPhone;
+    await reconcileClientState(sessionId, existing);
     return existing;
   }
 
@@ -302,6 +391,10 @@ async function createSession(sessionId, requestedPhone = '') {
     phoneNumber: '',
     requestedPhone,
     lastError: '',
+    historySyncPromise: null,
+    historySynced: false,
+    historyResult: null,
+    readyPromise: null,
   };
 
   const client = new Client({
@@ -327,6 +420,8 @@ async function createSession(sessionId, requestedPhone = '') {
 
   client.initialize().catch(async (error) => {
     state.status = 'failed';
+    state.qr = null;
+    state.qrGeneratedAt = 0;
     state.lastError = error.message || String(error);
     await callback(sessionId, 'failed', { error: state.lastError });
   });
@@ -337,13 +432,15 @@ async function createSession(sessionId, requestedPhone = '') {
 async function refreshQr(sessionId) {
   const current = sessions.get(sessionId);
   if (!current) return createSession(sessionId);
+  await reconcileClientState(sessionId, current);
   if (current.status === 'running') return current;
 
   const requestedPhone = current.requestedPhone;
   try { await current.client.destroy(); } catch (_) {}
   sessions.delete(sessionId);
-  // Keep LocalAuth files. For an unpaired session this simply starts another
-  // browser and produces a fresh QR; for a valid paired session it restores.
+  await releaseLock(sessionId).catch(() => {});
+  // Keep LocalAuth files. For an unpaired session this produces a fresh QR;
+  // for an already-paired session it restores and returns to Running.
   return createSession(sessionId, requestedPhone);
 }
 
@@ -414,15 +511,17 @@ app.post('/sessions', async (req, res) => {
   }
 });
 
-app.get('/sessions/:sessionId', (req, res) => {
+app.get('/sessions/:sessionId', async (req, res) => {
   const state = sessions.get(req.params.sessionId);
   if (!state) return res.status(404).json({ error: 'Session not found.' });
+  await reconcileClientState(req.params.sessionId, state);
   return res.json(publicSession(req.params.sessionId, state));
 });
 
-app.get('/sessions/:sessionId/qr', (req, res) => {
+app.get('/sessions/:sessionId/qr', async (req, res) => {
   const state = sessions.get(req.params.sessionId);
   if (!state) return res.status(404).json({ error: 'Session not found.' });
+  await reconcileClientState(req.params.sessionId, state);
   const ageSeconds = state.qrGeneratedAt ? Math.floor((Date.now() - state.qrGeneratedAt) / 1000) : 0;
   return res.json({
     ...publicSession(req.params.sessionId, state),
@@ -443,12 +542,13 @@ app.post('/sessions/:sessionId/refresh-qr', async (req, res) => {
 app.post('/sessions/:sessionId/sync', async (req, res) => {
   const state = sessions.get(req.params.sessionId);
   if (!state) return res.status(404).json({ error: 'Session not found.' });
+  await reconcileClientState(req.params.sessionId, state);
   if (state.status !== 'running') {
     return res.status(409).json({ error: 'Session is not running.' });
   }
 
   try {
-    const result = await syncRecentHistory(req.params.sessionId, state);
+    const result = await startHistorySync(req.params.sessionId, state, { force: true });
     return res.json({ ok: true, ...result });
   } catch (error) {
     return res.status(502).json({ error: error.message || String(error) });
@@ -458,6 +558,7 @@ app.post('/sessions/:sessionId/sync', async (req, res) => {
 app.post('/sessions/:sessionId/messages', async (req, res) => {
   const state = sessions.get(req.params.sessionId);
   if (!state) return res.status(404).json({ error: 'Session not found.' });
+  await reconcileClientState(req.params.sessionId, state);
   if (state.status !== 'running') return res.status(409).json({ error: 'Session is not running.' });
 
   const to = String(req.body.to || '').trim();

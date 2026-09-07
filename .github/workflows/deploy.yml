@@ -96,8 +96,8 @@ jobs:
               exit 1
             fi
 
-            echo "Starting WhatsApp Web gateway..."
-            if ! docker compose up -d --wait --no-deps whatsapp-web-gateway; then
+            echo "Recreating WhatsApp Web gateway with the freshly built image..."
+            if ! docker compose up -d --wait --no-deps --force-recreate whatsapp-web-gateway; then
               echo "WhatsApp Web gateway did not become healthy."
               docker compose ps
               docker compose logs --tail=150 whatsapp-web-gateway
