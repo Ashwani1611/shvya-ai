@@ -112,6 +112,14 @@ jobs:
               exit 1
             fi
 
+            echo "Verifying the WhatsApp Web gateway can post callbacks to Django over the private network..."
+            if ! docker compose exec -T whatsapp-web-gateway node -e "(async()=>{const url=String(process.env.SHVYA_HOSTED_CALLBACK_URL||'').trim();const token=String(process.env.WHATSAPP_WEB_CALLBACK_TOKEN||'').trim();if(!url)throw new Error('SHVYA_HOSTED_CALLBACK_URL is not configured');if(!token)throw new Error('WHATSAPP_WEB_CALLBACK_TOKEN is not configured');const response=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json','X-SHVYA-Hosted-Token':token},body:JSON.stringify({sessionId:'00000000-0000-0000-0000-000000000000',event:'ready'})});const body=await response.text();if(response.status!==200)throw new Error('callback probe returned HTTP '+response.status+': '+body.slice(0,200));})().catch(error=>{console.error(error.message);process.exit(1)})"; then
+              echo "WhatsApp Web gateway cannot post callbacks to Django."
+              docker compose ps
+              docker compose logs --tail=150 whatsapp-web-gateway web
+              exit 1
+            fi
+
             echo "Verifying Django through the host port with the production Host header..."
             ready=0
             for attempt in $(seq 1 10); do

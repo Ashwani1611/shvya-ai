@@ -88,6 +88,14 @@ class WhatsAppWebClient:
     def refresh_qr(self, *, session_id):
         return self._request("POST", f"/sessions/{session_id}/refresh-qr")
 
+    def sync_history(self, *, session_id):
+        """Ask a running linked-device session to backfill recent chat history."""
+        return self._request(
+            "POST",
+            f"/sessions/{session_id}/sync",
+            timeout=120,
+        )
+
     def send_message(
         self,
         *,

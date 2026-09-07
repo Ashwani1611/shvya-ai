@@ -25,6 +25,7 @@ from .hosted_tasks import (
     initialize_hosted_session_task,
     logout_hosted_session_task,
     refresh_hosted_qr_task,
+    sync_hosted_history_task,
 )
 from .models import WhatsAppAccount, WhatsAppMessage
 from .providers.whatsapp_web import WhatsAppWebClient, WhatsAppWebGatewayError
@@ -76,6 +77,38 @@ def _initial_status(account):
     if account.status == WhatsAppAccount.Status.DISCONNECTED:
         return "Disconnected"
     return "QR Ready"
+
+
+def _reconcile_gateway_status(account, result):
+    """Keep the database status aligned with the live gateway session state."""
+    raw_status = str(result.get("status") or "initializing").lower()
+    phone_number = result.get("phoneNumber") or account.display_phone_number
+
+    if raw_status == "running":
+        handle_gateway_event(
+            payload={
+                "sessionId": str(account.id),
+                "event": "ready",
+                "phoneNumber": phone_number,
+            }
+        )
+    elif raw_status in {"failed", "disconnected"}:
+        handle_gateway_event(
+            payload={
+                "sessionId": str(account.id),
+                "event": raw_status,
+            }
+        )
+    elif raw_status in {"initializing", "qr_ready", "connecting", "syncing"}:
+        handle_gateway_event(
+            payload={
+                "sessionId": str(account.id),
+                "event": "syncing" if raw_status == "syncing" else "connecting",
+            }
+        )
+
+    account.refresh_from_db()
+    return raw_status
 
 
 @crm_login_required
@@ -148,12 +181,15 @@ def hosted_session_status_view(request, account_id):
         raise Http404
     try:
         result = WhatsAppWebClient().get_session(session_id=account.id)
-        raw_status = str(result.get("status") or "initializing")
+        raw_status = _reconcile_gateway_status(account, result)
         return JsonResponse(
             {
                 "ok": True,
                 "status": raw_status,
-                "label": SESSION_LABELS.get(raw_status, raw_status.replace("_", " ").title()),
+                "label": SESSION_LABELS.get(
+                    raw_status,
+                    raw_status.replace("_", " ").title(),
+                ),
                 "phone_number": result.get("phoneNumber") or account.display_phone_number,
             }
         )
@@ -242,7 +278,10 @@ def hosted_session_queue_view(request, account_id):
             "created_at": message.created_at.isoformat(),
             "origin": (message.raw_payload or {}).get("shvya_hosted", {}).get(
                 "origin",
-                (message.raw_payload or {}).get("shvya_ai", {}).get("origin", "Queued message"),
+                (message.raw_payload or {}).get("shvya_ai", {}).get(
+                    "origin",
+                    "Queued message",
+                ),
             ),
         }
         for message in queued_messages(account=account)[:200]
@@ -298,8 +337,17 @@ def hosted_session_chats_view(request, account_id):
         WhatsAppMessage.objects.filter(
             organization=account.organization,
             account=account,
-        ).select_related("lead").order_by("-created_at")[:500]
+        )
+        .select_related("lead")
+        .order_by("-created_at")[:500]
     )
+
+    # An empty inbox should repair itself. This covers sessions that were
+    # paired successfully while a gateway callback was temporarily lost.
+    sync_requested = False
+    if not recent_messages:
+        sync_hosted_history_task.delay(str(account.id))
+        sync_requested = True
 
     conversations = {}
     for message in recent_messages:
@@ -344,6 +392,7 @@ def hosted_session_chats_view(request, account_id):
             "selected_chat": selected,
             "selected_name": conversations.get(selected, {}).get("name", selected),
             "thread": thread,
+            "sync_requested": sync_requested,
         },
     )
 
@@ -366,12 +415,15 @@ def hosted_session_chat_send_view(request, account_id):
     lead = None
     normalized_chat = chat
     if "@g.us" not in chat:
-        from services.channels.hosted_whatsapp_service import normalize_whatsapp_number
         from apps.crm.models import Lead
+        from services.channels.hosted_whatsapp_service import normalize_whatsapp_number
 
         normalized_chat = normalize_whatsapp_number(phone_number=chat)
         if not normalized_chat:
-            return JsonResponse({"ok": False, "error": "Invalid chat number."}, status=400)
+            return JsonResponse(
+                {"ok": False, "error": "Invalid chat number."},
+                status=400,
+            )
         lead = Lead.objects.filter(
             organization=account.organization,
             phone=normalized_chat,
