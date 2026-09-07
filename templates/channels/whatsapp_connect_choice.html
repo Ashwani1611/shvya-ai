@@ -28,7 +28,7 @@
         </div>
     {% endif %}
 
-    <div class="grid grid-cols-1 gap-6 md:grid-cols-2">
+    <div class="grid grid-cols-1 gap-6 {% if request.crm_user.organization.settings.hosted_account_enabled %}md:grid-cols-2{% else %}max-w-2xl{% endif %}">
         <a href="{% url 'whatsapp-connect-api' %}" class="group rounded-xl border border-gray-200 bg-white p-8 shadow-sm transition hover:border-blue-400 hover:shadow-md">
             <div class="flex h-12 w-12 items-center justify-center rounded-lg bg-blue-50 text-2xl text-blue-600">
                 <i class="ti ti-plug-connected"></i>
@@ -45,21 +45,23 @@
             <span class="mt-6 inline-flex items-center gap-1 text-sm font-semibold text-blue-600 transition-all group-hover:gap-2">Connect now <i class="ti ti-arrow-right"></i></span>
         </a>
 
-        <a href="{% url 'whatsapp-connect-hosted' %}" class="group rounded-xl border border-gray-200 bg-white p-8 shadow-sm transition hover:border-emerald-400 hover:shadow-md">
-            <div class="flex h-12 w-12 items-center justify-center rounded-lg bg-emerald-50 text-2xl text-emerald-600">
-                <i class="ti ti-brand-whatsapp"></i>
-            </div>
-            <h2 class="mt-5 text-lg font-semibold text-gray-900">Hosted Account</h2>
-            <p class="mt-2 text-sm text-gray-500">
-                Link an existing WhatsApp or WhatsApp Business app number to SHVYA by scanning a QR code, then use the SHVYA inbox and automations while your laptop is offline.
-            </p>
-            <ul class="mt-4 space-y-2 text-sm text-gray-600">
-                <li class="flex items-center gap-2"><i class="ti ti-check text-green-600"></i>Connect with WhatsApp Linked Devices</li>
-                <li class="flex items-center gap-2"><i class="ti ti-check text-green-600"></i>No Meta Cloud API credentials required</li>
-                <li class="flex items-center gap-2"><i class="ti ti-check text-green-600"></i>Pipeline-mapped session with hosted chats</li>
-            </ul>
-            <span class="mt-6 inline-flex items-center gap-1 text-sm font-semibold text-emerald-600 transition-all group-hover:gap-2">Connect WhatsApp <i class="ti ti-arrow-right"></i></span>
-        </a>
+        {% if request.crm_user.organization.settings.hosted_account_enabled %}
+            <a href="{% url 'whatsapp-connect-hosted' %}" class="group rounded-xl border border-gray-200 bg-white p-8 shadow-sm transition hover:border-emerald-400 hover:shadow-md">
+                <div class="flex h-12 w-12 items-center justify-center rounded-lg bg-emerald-50 text-2xl text-emerald-600">
+                    <i class="ti ti-brand-whatsapp"></i>
+                </div>
+                <h2 class="mt-5 text-lg font-semibold text-gray-900">Hosted Account</h2>
+                <p class="mt-2 text-sm text-gray-500">
+                    Link an existing WhatsApp or WhatsApp Business app number to SHVYA by scanning a QR code, then use the SHVYA inbox and automations while your laptop is offline.
+                </p>
+                <ul class="mt-4 space-y-2 text-sm text-gray-600">
+                    <li class="flex items-center gap-2"><i class="ti ti-check text-green-600"></i>Connect with WhatsApp Linked Devices</li>
+                    <li class="flex items-center gap-2"><i class="ti ti-check text-green-600"></i>No Meta Cloud API credentials required</li>
+                    <li class="flex items-center gap-2"><i class="ti ti-check text-green-600"></i>Pipeline-mapped session with hosted chats</li>
+                </ul>
+                <span class="mt-6 inline-flex items-center gap-1 text-sm font-semibold text-emerald-600 transition-all group-hover:gap-2">Connect WhatsApp <i class="ti ti-arrow-right"></i></span>
+            </a>
+        {% endif %}
     </div>
 
 {% endblock %}
