@@ -11,6 +11,7 @@ class ChannelsConfig(AppConfig):
         # without making the already-large channels/models.py carry unrelated
         # connection/template operational audit concerns.
         from . import connection_attempts  # noqa: F401
+        from . import hosted_ignore_models  # noqa: F401
         from . import template_models  # noqa: F401
 
         # Register hosted-session Celery tasks in both web and worker startup.

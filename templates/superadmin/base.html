@@ -14,14 +14,42 @@
 <body class="bg-gray-50 text-gray-900">
 
     <!-- Super Admin Top Header -->
-    <header class="h-12 bg-white border-b flex items-center justify-between px-5">
+    <header class="min-h-12 bg-white border-b flex flex-wrap items-center justify-between gap-3 px-5 py-2">
 
         <div class="font-semibold text-sm">
             SHVYA AI
         </div>
 
-        <div class="text-sm">
-            Welcome, {{ request.user.get_full_name|default:request.user.email }}
+        <div class="flex flex-wrap items-center gap-2">
+            {% if organization and request.resolver_match.url_name == 'superadmin-organization-detail' %}
+                <a
+                    href="{% url 'superadmin-organization-hosted-ignore-list' organization_id=organization.id %}"
+                    class="inline-flex items-center gap-2 px-3 py-1.5 text-xs border border-indigo-200 rounded-md text-indigo-700 bg-indigo-50 hover:bg-indigo-100"
+                    title="View, download or reset existing Hosted WhatsApp chats that are blocked from auto lead creation"
+                >
+                    <span aria-hidden="true">🛡️</span>
+                    Existing Chat Ignore List
+                </a>
+
+                <form
+                    method="post"
+                    action="{% url 'superadmin-organization-hosted-ignore-sync' organization_id=organization.id %}"
+                    class="inline"
+                    onsubmit="return confirm('Sync all currently existing direct chats from every connected Hosted Account? A successful sync replaces the current ignore-list snapshot.');"
+                >
+                    {% csrf_token %}
+                    <button
+                        type="submit"
+                        class="inline-flex items-center gap-2 px-3 py-1.5 text-xs rounded-md bg-indigo-600 text-white hover:bg-indigo-700"
+                    >
+                        ↻ Sync all existing chats
+                    </button>
+                </form>
+            {% endif %}
+
+            <div class="text-sm">
+                Welcome, {{ request.user.get_full_name|default:request.user.email }}
+            </div>
         </div>
 
     </header>
@@ -29,6 +57,18 @@
 
     <!-- Super Admin Content -->
     <main class="p-5">
+
+        {% if messages %}
+            <div class="mb-5 space-y-2">
+                {% for message in messages %}
+                    <div
+                        class="rounded-md border px-4 py-3 text-sm {% if 'error' in message.tags %}border-red-200 bg-red-50 text-red-700{% elif 'success' in message.tags %}border-green-200 bg-green-50 text-green-700{% elif 'warning' in message.tags %}border-amber-200 bg-amber-50 text-amber-800{% else %}border-blue-200 bg-blue-50 text-blue-700{% endif %}"
+                    >
+                        {{ message }}
+                    </div>
+                {% endfor %}
+            </div>
+        {% endif %}
 
         {% block content %}
         {% endblock %}
