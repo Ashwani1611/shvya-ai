@@ -287,7 +287,9 @@ def _first_stage(pipeline):
 
 
 def _normalize_contact_number(value):
-    value = str(value or "")
+    value = str(value or "").strip()
+    if value.endswith("@lid"):
+        return ""
     if "@" in value:
         value = value.split("@", 1)[0]
     return normalize_whatsapp_number(phone_number=value)
@@ -340,9 +342,27 @@ def _persist_gateway_message(*, account, payload, historical=False):
     if is_group:
         peer = chat_id or str(payload.get("from") or payload.get("to") or "")
     elif is_outbound:
-        peer = _normalize_contact_number(payload.get("to") or chat_id)
+        peer = _normalize_contact_number(
+            payload.get("contactPhoneNumber") or payload.get("to") or chat_id
+        )
     else:
-        peer = _normalize_contact_number(payload.get("from") or chat_id)
+        peer = _normalize_contact_number(
+            payload.get("contactPhoneNumber") or payload.get("from") or chat_id
+        )
+
+    if not is_group and not is_outbound and not peer and chat_id:
+        # WhatsApp may expose a privacy @lid identifier. A previous ignore-list
+        # snapshot stores both its chat id and resolved phone number, so reuse
+        # that mapping if live contact resolution is temporarily unavailable.
+        from apps.channels.hosted_ignore_models import HostedChatIgnoreContact
+
+        matched_snapshot = HostedChatIgnoreContact.objects.filter(
+            organization=account.organization,
+            account=account,
+            chat_id=chat_id,
+        ).first()
+        if matched_snapshot:
+            peer = matched_snapshot.phone_number
 
     direction = (
         WhatsAppMessage.Direction.OUTBOUND
@@ -410,7 +430,7 @@ def _persist_gateway_message(*, account, payload, historical=False):
         "lead": lead,
         "direction": direction,
         "from_number": from_number or "unknown",
-        "to_number": to_number or account.display_phone_number or "unknown",
+        "to_number": peer if is_outbound else account_number or "unknown",
         "body": str(payload.get("body") or ""),
         "message_type": _message_type(payload),
         "status": (
@@ -418,7 +438,11 @@ def _persist_gateway_message(*, account, payload, historical=False):
             if is_outbound
             else WhatsAppMessage.Status.RECEIVED
         ),
-        "raw_payload": {**payload, "isHistory": bool(historical)},
+        "raw_payload": {
+            **payload,
+            "isHistory": bool(historical),
+            "ignoredExistingChat": bool(ignored_existing_chat),
+        },
         "is_read": True if is_outbound or historical else False,
     }
     message, created = WhatsAppMessage.objects.get_or_create(
