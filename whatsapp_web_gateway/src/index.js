@@ -25,6 +25,8 @@ const HISTORY_MESSAGE_LIMIT = 20;
 const HISTORY_CHAT_FETCH_TIMEOUT_MS = 12000;
 const HISTORY_GET_CHATS_TIMEOUT_MS = 20000;
 const EXISTING_CHATS_TIMEOUT_MS = 60000;
+const LID_RESOLVE_BATCH_SIZE = 20;
+const LID_RESOLVE_TIMEOUT_MS = 10000;
 
 fs.mkdirSync(AUTH_PATH, { recursive: true });
 
@@ -47,6 +49,16 @@ function serializedWid(value) {
 function phoneNumberFromWid(value) {
   const serialized = serializedWid(value);
   if (!serialized.endsWith('@c.us')) return '';
+  const phoneDigits = digits(serialized);
+  if (phoneDigits.length < 8 || phoneDigits.length > 15) return '';
+  return `+${phoneDigits}`;
+}
+
+function phoneNumberFromPhoneValue(value) {
+  const serialized = serializedWid(value);
+  const fromWid = phoneNumberFromWid(serialized);
+  if (fromWid) return fromWid;
+
   const phoneDigits = digits(serialized);
   if (phoneDigits.length < 8 || phoneDigits.length > 15) return '';
   return `+${phoneDigits}`;
@@ -142,12 +154,41 @@ function withTimeout(promise, timeoutMs, label) {
   return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
 
-async function serializeMessage(message, chat = null, includeContactLookup = true) {
+async function resolveLidPhoneMap(client, lidIds) {
+  const resolved = new Map();
+  const uniqueIds = [...new Set((lidIds || []).filter((id) => id && id.endsWith('@lid')))];
+
+  for (let offset = 0; offset < uniqueIds.length; offset += LID_RESOLVE_BATCH_SIZE) {
+    const batch = uniqueIds.slice(offset, offset + LID_RESOLVE_BATCH_SIZE);
+    try {
+      const mappings = await withTimeout(
+        client.getContactLidAndPhone(batch),
+        LID_RESOLVE_TIMEOUT_MS,
+        `resolve ${batch.length} LID contact(s)`,
+      );
+      for (const mapping of Array.isArray(mappings) ? mappings : []) {
+        const lid = serializedWid(mapping && mapping.lid);
+        const phoneNumber = phoneNumberFromPhoneValue(mapping && mapping.pn);
+        if (lid && phoneNumber) resolved.set(lid, phoneNumber);
+      }
+    } catch (error) {
+      console.warn(`Could not resolve LID contact batch:`, error.message);
+    }
+  }
+
+  return resolved;
+}
+
+async function serializeMessage(
+  message,
+  chat = null,
+  includeContactLookup = true,
+  client = null,
+) {
   const resolvedChat = chat || await message.getChat();
+  const peerId = serializedWid(message.fromMe ? message.to : message.from);
   let contactName = (resolvedChat && resolvedChat.name) || '';
-  let contactPhoneNumber = phoneNumberFromWid(
-    message.fromMe ? message.to : message.from,
-  );
+  let contactPhoneNumber = phoneNumberFromWid(peerId);
 
   if (includeContactLookup && !resolvedChat.isGroup) {
     try {
@@ -155,12 +196,13 @@ async function serializeMessage(message, chat = null, includeContactLookup = tru
       contactName = (
         contact && (contact.pushname || contact.name || contact.shortName)
       ) || contactName;
-      contactPhoneNumber = (
-        phoneNumberFromWid(contact && contact.id)
-        || phoneNumberFromWid(contact && contact.phoneNumber)
-        || contactPhoneNumber
-      );
+      contactPhoneNumber = phoneNumberFromWid(contact && contact.id) || contactPhoneNumber;
     } catch (_) {}
+
+    if (!contactPhoneNumber && peerId.endsWith('@lid') && client) {
+      const lidPhones = await resolveLidPhoneMap(client, [peerId]);
+      contactPhoneNumber = lidPhones.get(peerId) || '';
+    }
   }
 
   return {
@@ -244,50 +286,35 @@ async function listExistingDirectChats(state) {
     EXISTING_CHATS_TIMEOUT_MS,
     'getChats for existing-chat snapshot',
   );
+  const directChats = chats.filter((chat) => {
+    if (!chat || chat.isGroup) return false;
+    const chatId = serializedWid(chat.id);
+    return Boolean(
+      chatId
+      && !chatId.endsWith('@g.us')
+      && !chatId.endsWith('@broadcast'),
+    );
+  });
+  const lidIds = directChats
+    .map((chat) => serializedWid(chat.id))
+    .filter((chatId) => chatId.endsWith('@lid'));
+  const lidPhones = await resolveLidPhoneMap(state.client, lidIds);
   const rows = [];
   let unresolved = 0;
 
-  for (const chat of chats) {
-    if (!chat || chat.isGroup) continue;
-
+  for (const chat of directChats) {
     const chatId = serializedWid(chat.id);
-    if (!chatId || chatId.endsWith('@g.us') || chatId.endsWith('@broadcast')) {
-      continue;
-    }
-
-    let contact = null;
-    let phoneNumber = phoneNumberFromWid(chatId);
-
-    if (!phoneNumber && chatId.endsWith('@lid')) {
-      try {
-        contact = await withTimeout(
-          state.client.getContactById(chatId),
-          5000,
-          `resolve contact ${chatId}`,
-        );
-        phoneNumber = (
-          phoneNumberFromWid(contact && contact.id)
-          || phoneNumberFromWid(contact && contact.phoneNumber)
-        );
-      } catch (error) {
-        console.warn(`Could not resolve LID chat ${chatId}:`, error.message);
-      }
-    }
+    const phoneNumber = phoneNumberFromWid(chatId) || lidPhones.get(chatId) || '';
 
     if (!phoneNumber) {
       if (chatId.endsWith('@lid')) unresolved += 1;
       continue;
     }
 
-    const contactName = (
-      (contact && (contact.pushname || contact.name || contact.shortName))
-      || chat.name
-      || phoneNumber
-    );
     rows.push({
       chatId,
       phoneNumber,
-      contactName,
+      contactName: chat.name || phoneNumber,
       isGroup: false,
     });
   }
@@ -425,7 +452,7 @@ function wireClientEvents(sessionId, state) {
       await callback(
         sessionId,
         'message',
-        await serializeMessage(message, null, true),
+        await serializeMessage(message, null, true, client),
       );
     } catch (error) {
       console.warn(`Could not forward message for ${sessionId}:`, error.message);
