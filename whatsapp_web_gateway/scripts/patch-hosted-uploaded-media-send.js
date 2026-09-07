@@ -43,7 +43,7 @@ app.post(
       return res.status(400).json({ error: 'Unsupported media type.' });
     }
 
-    const chatId = to.includes('@') ? to : \`${'${digits(to)}'}@c.us\`;
+    const chatId = to.includes('@') ? to : (digits(to) + '@c.us');
     if (!chatId || chatId === '@c.us') {
       return res.status(400).json({ error: 'Invalid recipient.' });
     }
