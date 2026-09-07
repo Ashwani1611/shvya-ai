@@ -28,6 +28,9 @@ RUN node scripts/patch-hosted-chat-complete-sync.js
 # Recover persisted Hosted sessions automatically after stale Redis leases
 # expire, and release leases when Chromium initialization fails.
 RUN node scripts/patch-hosted-session-recovery.js
+# Every active in-memory session must continuously own a Redis lease. Recreate
+# missing leases safely, and fence the local client if a foreign owner appears.
+RUN node scripts/patch-hosted-lease-invariant.js
 # If a persisted profile itself fails Chromium initialization, retry that
 # failed in-memory state safely instead of treating it as already restored.
 RUN node scripts/patch-hosted-failed-session-retry.js
