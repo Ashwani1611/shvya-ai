@@ -24,6 +24,10 @@ from services.channels.hosted_chat_service import (
     queue_hosted_chat_refresh,
     serialize_hosted_chat_snapshot,
 )
+from services.channels.hosted_message_content import (
+    decorate_hosted_chat_snapshot,
+    repair_content_after_gateway_event,
+)
 from services.channels.hosted_whatsapp_service import (
     HostedWhatsAppValidationError,
     handle_gateway_event,
@@ -139,6 +143,7 @@ def hosted_session_chats_view(request, account_id):
         selected_chat=request.GET.get("chat", ""),
         query=request.GET.get("q", ""),
     )
+    decorate_hosted_chat_snapshot(snapshot)
     _mark_thread_read(snapshot)
 
     return render(
@@ -168,6 +173,7 @@ def hosted_session_chats_data_view(request, account_id):
         selected_chat=request.GET.get("chat", ""),
         query=request.GET.get("q", ""),
     )
+    decorate_hosted_chat_snapshot(snapshot)
     _mark_thread_read(snapshot)
     payload = serialize_hosted_chat_snapshot(snapshot)
     payload.update(
@@ -290,7 +296,7 @@ def hosted_session_chat_send_view(request, account_id):
 @csrf_exempt
 @require_POST
 def hosted_gateway_event_view(request):
-    """Authenticated gateway callback with canonical chat repair + push."""
+    """Authenticated gateway callback with canonical chat/content repair + push."""
     expected = config("WHATSAPP_WEB_CALLBACK_TOKEN", default="")
     supplied = request.headers.get("X-SHVYA-Hosted-Token", "")
     if not expected or not constant_time_compare(expected, supplied):
@@ -303,6 +309,7 @@ def hosted_gateway_event_view(request):
 
     try:
         result = handle_hosted_gateway_event(payload=data)
+        repair_content_after_gateway_event(payload=data)
     except HostedWhatsAppValidationError as exc:
         return JsonResponse({"ok": False, "error": str(exc)}, status=409)
 
