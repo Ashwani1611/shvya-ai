@@ -35,10 +35,11 @@ from .tasks import send_whatsapp_message_task
 
 SESSION_LABELS = {
     "initializing": "Connecting",
-    "qr_ready": "QR Ready",
+    "qr_ready": "Waiting for QR scan",
     "connecting": "Connecting",
     "syncing": "Syncing",
     "running": "Running",
+    "expired": "QR Expired",
     "disconnected": "Disconnected",
     "failed": "Failed",
 }
@@ -79,7 +80,7 @@ def _initial_status(account):
         return "Failed"
     if account.status == WhatsAppAccount.Status.DISCONNECTED:
         return "Disconnected"
-    return "QR Ready"
+    return "Waiting for QR scan"
 
 
 def _reconcile_gateway_status(account, result):
@@ -95,11 +96,11 @@ def _reconcile_gateway_status(account, result):
                 "phoneNumber": phone_number,
             }
         )
-    elif raw_status in {"failed", "disconnected"}:
+    elif raw_status in {"failed", "disconnected", "expired"}:
         handle_gateway_event(
             payload={
                 "sessionId": str(account.id),
-                "event": raw_status,
+                "event": "disconnected" if raw_status == "expired" else raw_status,
             }
         )
     elif raw_status in {"initializing", "qr_ready", "connecting", "syncing"}:
@@ -194,6 +195,7 @@ def hosted_session_status_view(request, account_id):
                     raw_status.replace("_", " ").title(),
                 ),
                 "phone_number": result.get("phoneNumber") or account.display_phone_number,
+                "error": result.get("lastError") or "",
             }
         )
     except WhatsAppWebGatewayError as exc:
@@ -228,6 +230,7 @@ def hosted_session_qr_view(request, account_id):
             ),
             "qr": result.get("qr"),
             "expires_in": result.get("expiresIn", 60),
+            "error": result.get("lastError") or "",
         }
     )
 
@@ -345,8 +348,6 @@ def hosted_session_chats_view(request, account_id):
         .order_by("-created_at")[:500]
     )
 
-    # An empty inbox should repair itself. This covers sessions that were
-    # paired successfully while a gateway callback was temporarily lost.
     sync_requested = False
     if not recent_messages:
         sync_hosted_history_task.delay(str(account.id))
