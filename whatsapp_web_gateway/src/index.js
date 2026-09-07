@@ -24,6 +24,9 @@ const HISTORY_CHAT_LIMIT = 50;
 const HISTORY_MESSAGE_LIMIT = 20;
 const HISTORY_CHAT_FETCH_TIMEOUT_MS = 12000;
 const HISTORY_GET_CHATS_TIMEOUT_MS = 20000;
+const EXISTING_CHATS_TIMEOUT_MS = 60000;
+const LID_RESOLVE_BATCH_SIZE = 20;
+const LID_RESOLVE_TIMEOUT_MS = 10000;
 
 fs.mkdirSync(AUTH_PATH, { recursive: true });
 
@@ -32,6 +35,33 @@ let redis = null;
 
 function digits(value) {
   return String(value || '').replace(/\D/g, '');
+}
+
+function serializedWid(value) {
+  if (!value) return '';
+  if (typeof value === 'string') return value;
+  if (value._serialized) return String(value._serialized);
+  if (value.$1) return String(value.$1);
+  if (value.user && value.server) return `${value.user}@${value.server}`;
+  return '';
+}
+
+function phoneNumberFromWid(value) {
+  const serialized = serializedWid(value);
+  if (!serialized.endsWith('@c.us')) return '';
+  const phoneDigits = digits(serialized);
+  if (phoneDigits.length < 8 || phoneDigits.length > 15) return '';
+  return `+${phoneDigits}`;
+}
+
+function phoneNumberFromPhoneValue(value) {
+  const serialized = serializedWid(value);
+  const fromWid = phoneNumberFromWid(serialized);
+  if (fromWid) return fromWid;
+
+  const phoneDigits = digits(serialized);
+  if (phoneDigits.length < 8 || phoneDigits.length > 15) return '';
+  return `+${phoneDigits}`;
 }
 
 function publicSession(sessionId, state) {
@@ -124,9 +154,41 @@ function withTimeout(promise, timeoutMs, label) {
   return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
 
-async function serializeMessage(message, chat = null, includeContactLookup = true) {
+async function resolveLidPhoneMap(client, lidIds) {
+  const resolved = new Map();
+  const uniqueIds = [...new Set((lidIds || []).filter((id) => id && id.endsWith('@lid')))];
+
+  for (let offset = 0; offset < uniqueIds.length; offset += LID_RESOLVE_BATCH_SIZE) {
+    const batch = uniqueIds.slice(offset, offset + LID_RESOLVE_BATCH_SIZE);
+    try {
+      const mappings = await withTimeout(
+        client.getContactLidAndPhone(batch),
+        LID_RESOLVE_TIMEOUT_MS,
+        `resolve ${batch.length} LID contact(s)`,
+      );
+      for (const mapping of Array.isArray(mappings) ? mappings : []) {
+        const lid = serializedWid(mapping && mapping.lid);
+        const phoneNumber = phoneNumberFromPhoneValue(mapping && mapping.pn);
+        if (lid && phoneNumber) resolved.set(lid, phoneNumber);
+      }
+    } catch (error) {
+      console.warn(`Could not resolve LID contact batch:`, error.message);
+    }
+  }
+
+  return resolved;
+}
+
+async function serializeMessage(
+  message,
+  chat = null,
+  includeContactLookup = true,
+  client = null,
+) {
   const resolvedChat = chat || await message.getChat();
+  const peerId = serializedWid(message.fromMe ? message.to : message.from);
   let contactName = (resolvedChat && resolvedChat.name) || '';
+  let contactPhoneNumber = phoneNumberFromWid(peerId);
 
   if (includeContactLookup && !resolvedChat.isGroup) {
     try {
@@ -134,7 +196,13 @@ async function serializeMessage(message, chat = null, includeContactLookup = tru
       contactName = (
         contact && (contact.pushname || contact.name || contact.shortName)
       ) || contactName;
+      contactPhoneNumber = phoneNumberFromWid(contact && contact.id) || contactPhoneNumber;
     } catch (_) {}
+
+    if (!contactPhoneNumber && peerId.endsWith('@lid') && client) {
+      const lidPhones = await resolveLidPhoneMap(client, [peerId]);
+      contactPhoneNumber = lidPhones.get(peerId) || '';
+    }
   }
 
   return {
@@ -150,6 +218,7 @@ async function serializeMessage(message, chat = null, includeContactLookup = tru
     chatName: resolvedChat && resolvedChat.name,
     isGroup: Boolean(resolvedChat && resolvedChat.isGroup),
     contactName,
+    contactPhoneNumber,
     author: message.author || '',
   };
 }
@@ -209,6 +278,48 @@ async function syncRecentHistory(sessionId, state) {
     chats: syncedChats,
     messages: syncedMessages,
   };
+}
+
+async function listExistingDirectChats(state) {
+  const chats = await withTimeout(
+    state.client.getChats(),
+    EXISTING_CHATS_TIMEOUT_MS,
+    'getChats for existing-chat snapshot',
+  );
+  const directChats = chats.filter((chat) => {
+    if (!chat || chat.isGroup) return false;
+    const chatId = serializedWid(chat.id);
+    return Boolean(
+      chatId
+      && !chatId.endsWith('@g.us')
+      && !chatId.endsWith('@broadcast'),
+    );
+  });
+  const lidIds = directChats
+    .map((chat) => serializedWid(chat.id))
+    .filter((chatId) => chatId.endsWith('@lid'));
+  const lidPhones = await resolveLidPhoneMap(state.client, lidIds);
+  const rows = [];
+  let unresolved = 0;
+
+  for (const chat of directChats) {
+    const chatId = serializedWid(chat.id);
+    const phoneNumber = phoneNumberFromWid(chatId) || lidPhones.get(chatId) || '';
+
+    if (!phoneNumber) {
+      if (chatId.endsWith('@lid')) unresolved += 1;
+      continue;
+    }
+
+    rows.push({
+      chatId,
+      phoneNumber,
+      contactName: chat.name || phoneNumber,
+      isGroup: false,
+    });
+  }
+
+  return { chats: rows, unresolved };
 }
 
 function startHistorySync(sessionId, state, { force = false } = {}) {
@@ -341,7 +452,7 @@ function wireClientEvents(sessionId, state) {
       await callback(
         sessionId,
         'message',
-        await serializeMessage(message, null, true),
+        await serializeMessage(message, null, true, client),
       );
     } catch (error) {
       console.warn(`Could not forward message for ${sessionId}:`, error.message);
@@ -550,6 +661,27 @@ app.post('/sessions/:sessionId/sync', async (req, res) => {
   try {
     const result = await startHistorySync(req.params.sessionId, state, { force: true });
     return res.json({ ok: true, ...result });
+  } catch (error) {
+    return res.status(502).json({ error: error.message || String(error) });
+  }
+});
+
+app.get('/sessions/:sessionId/existing-chats', async (req, res) => {
+  const state = sessions.get(req.params.sessionId);
+  if (!state) return res.status(404).json({ error: 'Session not found.' });
+  await reconcileClientState(req.params.sessionId, state);
+  if (state.status !== 'running') {
+    return res.status(409).json({ error: 'Session is not running.' });
+  }
+
+  try {
+    const result = await listExistingDirectChats(state);
+    return res.json({
+      ok: true,
+      total: result.chats.length,
+      unresolved: result.unresolved,
+      chats: result.chats,
+    });
   } catch (error) {
     return res.status(502).json({ error: error.message || String(error) });
   }

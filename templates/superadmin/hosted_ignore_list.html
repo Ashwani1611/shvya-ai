@@ -1,0 +1,208 @@
+{% extends "superadmin/base.html" %}
+
+{% block title %}Hosted Ignore List - {{ organization.name }}{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto">
+    <div class="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+            <a
+                href="{% url 'superadmin-organization-detail' organization_id=organization.id %}"
+                class="text-sm text-gray-500 hover:text-indigo-600"
+            >
+                ← Back to {{ organization.name }}
+            </a>
+            <div class="mt-3 flex items-center gap-3">
+                <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" class="h-5 w-5" aria-hidden="true">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 3 4.5 6v5.3c0 4.7 3.2 8.9 7.5 9.7 4.3-.8 7.5-5 7.5-9.7V6L12 3Z" />
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="m9.4 12 1.7 1.7 3.6-3.8" />
+                    </svg>
+                </div>
+                <div>
+                    <h1 class="text-xl font-semibold">Existing Chat Ignore List</h1>
+                    <p class="mt-1 text-sm text-gray-500">{{ organization.name }}</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="flex flex-wrap gap-2">
+            {% if ignore_count %}
+                <a
+                    href="{% url 'superadmin-organization-hosted-ignore-download' organization_id=organization.id %}"
+                    class="inline-flex items-center rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                >
+                    Download CSV
+                </a>
+            {% endif %}
+
+            <form
+                method="post"
+                action="{% url 'superadmin-organization-hosted-ignore-sync' organization_id=organization.id %}"
+            >
+                {% csrf_token %}
+                <button
+                    type="submit"
+                    {% if not hosted_feature_enabled or not connected_count %}disabled{% endif %}
+                    class="inline-flex items-center rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-gray-300"
+                >
+                    Sync all existing chats
+                </button>
+            </form>
+        </div>
+    </div>
+
+    {% if messages %}
+        <div class="mb-5 space-y-2">
+            {% for message in messages %}
+                <div class="rounded-md border px-4 py-3 text-sm {% if message.tags == 'error' %}border-red-200 bg-red-50 text-red-700{% else %}border-green-200 bg-green-50 text-green-700{% endif %}">
+                    {{ message }}
+                </div>
+            {% endfor %}
+        </div>
+    {% endif %}
+
+    <div class="mb-6 rounded-lg border border-indigo-100 bg-indigo-50 p-5">
+        <h2 class="text-sm font-semibold text-indigo-950">How this protection works</h2>
+        <p class="mt-2 text-sm leading-6 text-indigo-900/80">
+            Sync takes a snapshot of direct chats already present in every currently connected Hosted Account. Their names and phone numbers are stored here. Future live messages from these numbers are still saved in WhatsApp Chats, but they cannot automatically create a new CRM lead. If your team manually creates a lead for one of these numbers, normal lead-based AI engagement can continue for that lead.
+        </p>
+        <p class="mt-2 text-sm leading-6 text-indigo-900/80">
+            Resetting the list removes that protection. After reset, a future live message from a previously ignored number may create a lead automatically when Auto Lead Creation is enabled. You can build a fresh snapshot at any time by clicking <strong>Sync all existing chats</strong> again.
+        </p>
+    </div>
+
+    <div class="mb-6 grid grid-cols-1 gap-4 md:grid-cols-3">
+        <div class="rounded-lg border bg-white p-5">
+            <div class="text-xs font-medium uppercase tracking-wide text-gray-400">Hosted feature</div>
+            <div class="mt-2 flex items-center gap-2">
+                {% if hosted_feature_enabled %}
+                    <span class="h-2.5 w-2.5 rounded-full bg-green-500"></span>
+                    <span class="font-semibold text-green-700">Enabled</span>
+                {% else %}
+                    <span class="h-2.5 w-2.5 rounded-full bg-gray-300"></span>
+                    <span class="font-semibold text-gray-600">Disabled</span>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="rounded-lg border bg-white p-5">
+            <div class="text-xs font-medium uppercase tracking-wide text-gray-400">Connected Hosted Accounts</div>
+            <div class="mt-2 text-2xl font-semibold">{{ connected_count }}</div>
+        </div>
+
+        <div class="rounded-lg border bg-white p-5">
+            <div class="text-xs font-medium uppercase tracking-wide text-gray-400">Ignored existing chats</div>
+            <div class="mt-2 text-2xl font-semibold">{{ ignore_count }}</div>
+        </div>
+    </div>
+
+    {% if not hosted_feature_enabled %}
+        <div class="mb-6 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+            Hosted Account is disabled for this organization. Enable the Hosted Account feature first, then connect the WhatsApp account before creating an ignore-list snapshot.
+        </div>
+    {% elif not connected_count %}
+        <div class="mb-6 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+            No Hosted Account is currently connected. Connect the Hosted Account first, then return here and sync existing chats.
+        </div>
+    {% endif %}
+
+    <div class="mb-6 rounded-lg border bg-white">
+        <div class="border-b px-5 py-4">
+            <h2 class="text-base font-semibold">Hosted Accounts</h2>
+            <p class="mt-1 text-xs text-gray-400">Only accounts with Connected status are read when you sync.</p>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="min-w-full text-sm">
+                <thead class="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-400">
+                    <tr>
+                        <th class="px-5 py-3">Number</th>
+                        <th class="px-5 py-3">Business / Pipeline</th>
+                        <th class="px-5 py-3">Status</th>
+                        <th class="px-5 py-3">Ignored chats</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y">
+                    {% for account in hosted_accounts %}
+                        <tr>
+                            <td class="px-5 py-3 font-medium">{{ account.display_phone_number|default:account.phone_number_id }}</td>
+                            <td class="px-5 py-3 text-gray-600">{{ account.business_name|default:"—" }}</td>
+                            <td class="px-5 py-3">
+                                {% if account.status == 'connected' %}
+                                    <span class="rounded-full bg-green-100 px-2 py-1 text-xs font-medium text-green-700">Connected</span>
+                                {% else %}
+                                    <span class="rounded-full bg-gray-100 px-2 py-1 text-xs font-medium text-gray-600">{{ account.get_status_display }}</span>
+                                {% endif %}
+                            </td>
+                            <td class="px-5 py-3">{{ account.ignored_existing_chats.count }}</td>
+                        </tr>
+                    {% empty %}
+                        <tr>
+                            <td colspan="4" class="px-5 py-8 text-center text-gray-400">No Hosted Accounts found for this organization.</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="rounded-lg border bg-white">
+        <div class="flex flex-col gap-3 border-b px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+                <h2 class="text-base font-semibold">Ignored contacts</h2>
+                <p class="mt-1 text-xs text-gray-400">Current snapshot of pre-existing direct conversations.</p>
+            </div>
+
+            {% if ignore_count %}
+                <form
+                    method="post"
+                    action="{% url 'superadmin-organization-hosted-ignore-reset' organization_id=organization.id %}"
+                    onsubmit="return confirm('Reset the entire ignore list for this organization? Future live messages from these numbers may auto-create leads again.');"
+                >
+                    {% csrf_token %}
+                    <button
+                        type="submit"
+                        class="rounded-md border border-red-200 bg-white px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50"
+                    >
+                        Delete / Reset ignore list
+                    </button>
+                </form>
+            {% endif %}
+        </div>
+
+        {% if ignore_contacts %}
+            <div class="max-h-[32rem] overflow-auto">
+                <table class="min-w-full text-sm">
+                    <thead class="sticky top-0 bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-400">
+                        <tr>
+                            <th class="px-5 py-3">Name</th>
+                            <th class="px-5 py-3">Number</th>
+                            <th class="px-5 py-3">Hosted Account</th>
+                            <th class="px-5 py-3">Chat ID</th>
+                            <th class="px-5 py-3">Synced</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y">
+                        {% for contact in ignore_contacts %}
+                            <tr class="hover:bg-gray-50">
+                                <td class="px-5 py-3 font-medium">{{ contact.contact_name|default:"—" }}</td>
+                                <td class="px-5 py-3 font-mono text-xs">{{ contact.phone_number }}</td>
+                                <td class="px-5 py-3">{{ contact.account.display_phone_number|default:contact.account.phone_number_id }}</td>
+                                <td class="max-w-xs truncate px-5 py-3 font-mono text-xs text-gray-500" title="{{ contact.chat_id }}">{{ contact.chat_id|default:"—" }}</td>
+                                <td class="whitespace-nowrap px-5 py-3 text-gray-500">{{ contact.synced_at|date:"d M Y, H:i" }}</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% else %}
+            <div class="px-5 py-12 text-center">
+                <div class="text-sm font-medium text-gray-600">Ignore list is empty</div>
+                <p class="mx-auto mt-1 max-w-xl text-sm text-gray-400">
+                    Existing WhatsApp conversations are not currently protected from auto lead creation. Connect a Hosted Account and click Sync all existing chats to create the snapshot.
+                </p>
+            </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

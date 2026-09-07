@@ -96,6 +96,14 @@ class WhatsAppWebClient:
             timeout=120,
         )
 
+    def get_existing_chats(self, *, session_id):
+        """Return all direct chats for building the existing-chat ignore snapshot."""
+        return self._request(
+            "GET",
+            f"/sessions/{session_id}/existing-chats",
+            timeout=120,
+        )
+
     def send_message(
         self,
         *,

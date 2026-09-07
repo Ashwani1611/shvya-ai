@@ -7,6 +7,10 @@ from .views import (
     organization_detail_view,
     organization_generate_login_link_view,
     organization_hosted_account_toggle_view,
+    organization_hosted_ignore_download_view,
+    organization_hosted_ignore_list_view,
+    organization_hosted_ignore_reset_view,
+    organization_hosted_ignore_sync_view,
     organization_payment_create_view,
     organization_payment_delete_view,
     organization_payment_update_view,
@@ -111,6 +115,31 @@ urlpatterns = [
         "organization/<uuid:organization_id>/hosted-account/toggle/",
         organization_hosted_account_toggle_view,
         name="superadmin-organization-hosted-account-toggle",
+    ),
+
+    # =========================================================
+    # SUPER ADMIN — HOSTED EXISTING CHAT IGNORE LIST
+    # =========================================================
+
+    path(
+        "organization/<uuid:organization_id>/hosted-ignore/",
+        organization_hosted_ignore_list_view,
+        name="superadmin-organization-hosted-ignore-list",
+    ),
+    path(
+        "organization/<uuid:organization_id>/hosted-ignore/sync/",
+        organization_hosted_ignore_sync_view,
+        name="superadmin-organization-hosted-ignore-sync",
+    ),
+    path(
+        "organization/<uuid:organization_id>/hosted-ignore/download/",
+        organization_hosted_ignore_download_view,
+        name="superadmin-organization-hosted-ignore-download",
+    ),
+    path(
+        "organization/<uuid:organization_id>/hosted-ignore/reset/",
+        organization_hosted_ignore_reset_view,
+        name="superadmin-organization-hosted-ignore-reset",
     ),
 
     # =========================================================
