@@ -25,6 +25,9 @@ COPY src ./src
 # Harden SHVYA's gateway for current LID identities, larger searchable chat
 # indexes, resilient callbacks, and linked-device realtime message delivery.
 RUN node scripts/patch-hosted-chat-complete-sync.js
+# Recover persisted Hosted sessions automatically after stale Redis leases
+# expire, and release leases when Chromium initialization fails.
+RUN node scripts/patch-hosted-session-recovery.js
 RUN node --check src/index.js
 
 RUN mkdir -p /data/wwebjs_auth && chown -R node:node /app /data/wwebjs_auth
