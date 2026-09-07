@@ -10,7 +10,7 @@ from services.channels.whatsapp_template_delivery import (
     queue_template_message,
 )
 
-from .models import WhatsAppTemplate
+from .models import WhatsAppAccount, WhatsAppTemplate
 
 
 @crm_login_required
@@ -39,12 +39,17 @@ def whatsapp_send_template_view(request, lead_id):
             id=template_id,
             organization=user.organization,
             status=WhatsAppTemplate.Status.APPROVED,
+            account__connection_type=WhatsAppAccount.ConnectionType.API,
+            account__is_active=True,
         )
         .select_related("account")
         .first()
     )
     if not template:
-        return JsonResponse({"error": "Approved template not found."}, status=404)
+        return JsonResponse(
+            {"error": "Approved WhatsApp API template not found."},
+            status=404,
+        )
 
     try:
         message = queue_template_message(
