@@ -106,6 +106,7 @@ NAV_ITEMS = [
                 "icon": "ti-server",
                 "url_name": "whatsapp-connect-hosted",
                 "path_prefix": "/dashboard/whatsapp/connect/hosted/",
+                "requires_hosted_account_enabled": True,
             },
         ],
     },
@@ -181,10 +182,23 @@ def _has_connected_whatsapp_account(request):
     ).exists()
 
 
+def _has_hosted_account_access(request):
+    """Return whether Superadmin enabled Hosted Account for this organization."""
+    user = getattr(request, "crm_user", None)
+    organization = getattr(user, "organization", None)
+    if not organization:
+        return False
+
+    from apps.organizations.features import is_hosted_account_enabled
+
+    return is_hosted_account_enabled(organization)
+
+
 def sidebar_nav(request):
     """Build shared sidebar navigation with connection-aware WhatsApp items."""
     nav_items = []
     has_whatsapp_connection = _has_connected_whatsapp_account(request)
+    has_hosted_account_access = _has_hosted_account_access(request)
 
     for item in NAV_ITEMS:
         entry = dict(item)
@@ -203,6 +217,12 @@ def sidebar_nav(request):
                 if (
                     child.get("hide_when_whatsapp_connected")
                     and has_whatsapp_connection
+                ):
+                    continue
+
+                if (
+                    child.get("requires_hosted_account_enabled")
+                    and not has_hosted_account_access
                 ):
                     continue
 
