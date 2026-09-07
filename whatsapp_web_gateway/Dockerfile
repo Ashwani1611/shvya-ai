@@ -34,6 +34,9 @@ RUN node scripts/patch-hosted-lease-invariant.js
 # If a persisted profile itself fails Chromium initialization, retry that
 # failed in-memory state safely instead of treating it as already restored.
 RUN node scripts/patch-hosted-failed-session-retry.js
+# Expire abandoned QR sessions, clean their unpaired LocalAuth profile, release
+# their lease, and expose per-state counts from the gateway health endpoint.
+RUN node scripts/patch-hosted-qr-expiry.js
 # Preserve the original whatsapp-web.js message type and retry hydration for
 # empty text rows before they are sent to Django history/live callbacks.
 RUN node scripts/patch-hosted-message-hydration.js
