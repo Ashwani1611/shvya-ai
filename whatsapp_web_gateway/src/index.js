@@ -44,6 +44,14 @@ function serializedWid(value) {
   return '';
 }
 
+function phoneNumberFromWid(value) {
+  const serialized = serializedWid(value);
+  if (!serialized.endsWith('@c.us')) return '';
+  const phoneDigits = digits(serialized);
+  if (phoneDigits.length < 8 || phoneDigits.length > 15) return '';
+  return `+${phoneDigits}`;
+}
+
 function publicSession(sessionId, state) {
   return {
     sessionId,
@@ -137,6 +145,9 @@ function withTimeout(promise, timeoutMs, label) {
 async function serializeMessage(message, chat = null, includeContactLookup = true) {
   const resolvedChat = chat || await message.getChat();
   let contactName = (resolvedChat && resolvedChat.name) || '';
+  let contactPhoneNumber = phoneNumberFromWid(
+    message.fromMe ? message.to : message.from,
+  );
 
   if (includeContactLookup && !resolvedChat.isGroup) {
     try {
@@ -144,6 +155,11 @@ async function serializeMessage(message, chat = null, includeContactLookup = tru
       contactName = (
         contact && (contact.pushname || contact.name || contact.shortName)
       ) || contactName;
+      contactPhoneNumber = (
+        phoneNumberFromWid(contact && contact.id)
+        || phoneNumberFromWid(contact && contact.phoneNumber)
+        || contactPhoneNumber
+      );
     } catch (_) {}
   }
 
@@ -160,6 +176,7 @@ async function serializeMessage(message, chat = null, includeContactLookup = tru
     chatName: resolvedChat && resolvedChat.name,
     isGroup: Boolean(resolvedChat && resolvedChat.isGroup),
     contactName,
+    contactPhoneNumber,
     author: message.author || '',
   };
 }
@@ -238,35 +255,34 @@ async function listExistingDirectChats(state) {
     }
 
     let contact = null;
-    let phoneWid = chatId.endsWith('@c.us') ? chatId : '';
+    let phoneNumber = phoneNumberFromWid(chatId);
 
-    if (!phoneWid && chatId.endsWith('@lid')) {
+    if (!phoneNumber && chatId.endsWith('@lid')) {
       try {
         contact = await withTimeout(
           state.client.getContactById(chatId),
           5000,
           `resolve contact ${chatId}`,
         );
-        const resolvedId = serializedWid(contact && contact.id);
-        const phoneNumberId = serializedWid(contact && contact.phoneNumber);
-        if (resolvedId.endsWith('@c.us')) phoneWid = resolvedId;
-        else if (phoneNumberId.endsWith('@c.us')) phoneWid = phoneNumberId;
+        phoneNumber = (
+          phoneNumberFromWid(contact && contact.id)
+          || phoneNumberFromWid(contact && contact.phoneNumber)
+        );
       } catch (error) {
         console.warn(`Could not resolve LID chat ${chatId}:`, error.message);
       }
     }
 
-    const phoneDigits = digits(phoneWid);
-    if (phoneDigits.length < 8 || phoneDigits.length > 15) continue;
+    if (!phoneNumber) continue;
 
     const contactName = (
       (contact && (contact.pushname || contact.name || contact.shortName))
       || chat.name
-      || `+${phoneDigits}`
+      || phoneNumber
     );
     rows.push({
       chatId,
-      phoneNumber: `+${phoneDigits}`,
+      phoneNumber,
       contactName,
       isGroup: false,
     });
