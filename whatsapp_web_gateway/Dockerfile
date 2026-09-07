@@ -40,6 +40,9 @@ RUN node scripts/patch-hosted-qr-expiry.js
 # Preserve the original whatsapp-web.js message type and retry hydration for
 # empty text rows before they are sent to Django history/live callbacks.
 RUN node scripts/patch-hosted-message-hydration.js
+# Fetch message media on demand. Django remains the tenant-authenticated proxy;
+# media bytes are never made publicly reachable from the internal gateway.
+RUN node scripts/patch-hosted-media-download.js
 RUN node --check src/index.js
 
 RUN mkdir -p /data/wwebjs_auth && chown -R node:node /app /data/wwebjs_auth
