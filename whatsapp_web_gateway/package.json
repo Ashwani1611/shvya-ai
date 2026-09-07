@@ -5,8 +5,8 @@
   "description": "Internal linked-device WhatsApp gateway for SHVYA AI",
   "main": "src/index.js",
   "scripts": {
-    "start": "node src/index.js",
-    "check": "node --check src/index.js"
+    "start": "node scripts/cleanup-chromium-profile-locks.js && node src/index.js",
+    "check": "node --check scripts/cleanup-chromium-profile-locks.js && node --check src/index.js"
   },
   "engines": {
     "node": ">=18"
