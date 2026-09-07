@@ -30,8 +30,11 @@ def _organization(organization_id):
     return get_object_or_404(Organization, pk=organization_id)
 
 
-def _ignore_list_url(organization):
-    return "superadmin-organization-hosted-ignore-list", [organization.id]
+def _redirect_to_ignore_list(organization):
+    return redirect(
+        "superadmin-organization-hosted-ignore-list",
+        organization_id=organization.id,
+    )
 
 
 @superuser_required
@@ -80,13 +83,13 @@ def organization_hosted_ignore_sync_view(request, organization_id):
             request,
             "Enable Hosted Account for this organization before syncing existing chats.",
         )
-        return redirect(*_ignore_list_url(organization))
+        return _redirect_to_ignore_list(organization)
 
     try:
         result = sync_existing_hosted_chats(organization=organization)
     except HostedIgnoreSyncError as exc:
         messages.error(request, f"Existing chat sync failed: {exc}")
-        return redirect(*_ignore_list_url(organization))
+        return _redirect_to_ignore_list(organization)
 
     AuditLog.record(
         actor=request.user,
@@ -101,7 +104,7 @@ def organization_hosted_ignore_sync_view(request, organization_id):
             f"Account(s): {result.contact_count} existing direct chat(s) ignored."
         ),
     )
-    return redirect(*_ignore_list_url(organization))
+    return _redirect_to_ignore_list(organization)
 
 
 @superuser_required
@@ -123,7 +126,7 @@ def organization_hosted_ignore_reset_view(request, organization_id):
             "from those numbers may auto-create leads again."
         ),
     )
-    return redirect(*_ignore_list_url(organization))
+    return _redirect_to_ignore_list(organization)
 
 
 @superuser_required
