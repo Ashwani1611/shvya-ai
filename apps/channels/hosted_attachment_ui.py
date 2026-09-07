@@ -111,7 +111,7 @@ _ATTACHMENT_SCRIPT = b"""
     data.append('caption',caption);
 
     attachmentButton.disabled=true;
-    showStatus('Uploading '+file.name+'…',false);
+    showStatus('Uploading '+file.name+'...',false);
     try{
       const base=location.pathname.endsWith('/')?location.pathname:location.pathname+'/';
       const response=await fetch(base+'send-media/',{
