@@ -20,8 +20,22 @@
             SHVYA AI
         </div>
 
-        <div class="text-sm">
-            Welcome, {{ request.user.get_full_name|default:request.user.email }}
+        <div class="flex items-center gap-3 text-sm">
+            {% if request.resolver_match.url_name == 'superadmin-organization-detail' %}
+                <a
+                    href="{% url 'superadmin-organization-hosted-ignore-list' organization_id=request.resolver_match.kwargs.organization_id %}"
+                    class="inline-flex items-center gap-2 rounded-md border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs font-medium text-indigo-700 hover:bg-indigo-100"
+                    title="Manage existing Hosted WhatsApp chats that must not auto-create leads"
+                >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" class="h-4 w-4" aria-hidden="true">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 3 4.5 6v5.3c0 4.7 3.2 8.9 7.5 9.7 4.3-.8 7.5-5 7.5-9.7V6L12 3Z" />
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M9 12h6" />
+                    </svg>
+                    Existing Chat Ignore List
+                </a>
+            {% endif %}
+
+            <span>Welcome, {{ request.user.get_full_name|default:request.user.email }}</span>
         </div>
 
     </header>
