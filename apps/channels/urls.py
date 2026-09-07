@@ -4,6 +4,7 @@ from apps.hosted_automation import queue_views as hosted_queue_views
 from apps.hosted_automation import views as hosted_automation_views
 
 from . import connection_ui
+from . import hosted_chat_ui
 from . import hosted_ui
 from . import template_action_ui
 from . import template_ui
@@ -22,7 +23,7 @@ urlpatterns = [
     # Hosted linked-device WhatsApp sessions (whatsapp-web.js gateway).
     path("connect/hosted/", hosted_ui.whatsapp_connect_hosted_view, name="whatsapp-connect-hosted"),
     path("connect/hosted/sessions/", hosted_ui.hosted_session_create_view, name="whatsapp-hosted-session-create"),
-    path("connect/hosted/events/", hosted_ui.hosted_gateway_event_view, name="whatsapp-hosted-gateway-event"),
+    path("connect/hosted/events/", hosted_chat_ui.hosted_gateway_event_view, name="whatsapp-hosted-gateway-event"),
     path("connect/hosted/media/<uuid:config_id>/", hosted_automation_views.hosted_followup_media, name="whatsapp-hosted-automation-media"),
     path("connect/hosted/<uuid:account_id>/health/", hosted_automation_views.hosted_account_health, name="whatsapp-hosted-account-health"),
     path("connect/hosted/<uuid:account_id>/status/", hosted_ui.hosted_session_status_view, name="whatsapp-hosted-session-status"),
@@ -31,7 +32,8 @@ urlpatterns = [
     path("connect/hosted/<uuid:account_id>/queue/", hosted_queue_views.hosted_session_queue_view, name="whatsapp-hosted-session-queue"),
     path("connect/hosted/<uuid:account_id>/settings/", hosted_ui.hosted_session_settings_view, name="whatsapp-hosted-session-settings"),
     path("connect/hosted/<uuid:account_id>/logout/", hosted_ui.hosted_session_logout_view, name="whatsapp-hosted-session-logout"),
-    path("connect/hosted/<uuid:account_id>/chats/", hosted_ui.hosted_session_chats_view, name="whatsapp-hosted-session-chats"),
+    path("connect/hosted/<uuid:account_id>/chats/", hosted_chat_ui.hosted_session_chats_view, name="whatsapp-hosted-session-chats"),
+    path("connect/hosted/<uuid:account_id>/chats/data/", hosted_chat_ui.hosted_session_chats_data_view, name="whatsapp-hosted-session-chats-data"),
     path("connect/hosted/<uuid:account_id>/chats/send/", hosted_ui.hosted_session_chat_send_view, name="whatsapp-hosted-session-chat-send"),
 
     path("accounts/<uuid:account_id>/disconnect/", views_flat.whatsapp_disconnect_view, name="whatsapp-disconnect"),
