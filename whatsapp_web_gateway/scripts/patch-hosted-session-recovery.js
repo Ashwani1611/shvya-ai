@@ -27,15 +27,8 @@ function replaceOnce(before, after, label) {
 }
 
 replaceOnce(
-  lines(
-    'const sessions = new Map();',
-    'let redis = null;',
-  ),
-  lines(
-    'const sessions = new Map();',
-    'let redis = null;',
-    'let shuttingDown = false;',
-  ),
+  lines('const sessions = new Map();', 'let redis = null;'),
+  lines('const sessions = new Map();', 'let redis = null;', 'let shuttingDown = false;'),
   'track gateway shutdown state',
 );
 
@@ -73,14 +66,8 @@ replaceOnce(
 );
 
 replaceOnce(
-  lines(
-    'async function renewLocks() {',
-    '  if (!redis) return;',
-  ),
-  lines(
-    'async function renewLocks() {',
-    '  if (!redis || shuttingDown) return;',
-  ),
+  lines('async function renewLocks() {', '  if (!redis) return;'),
+  lines('async function renewLocks() {', '  if (!redis || shuttingDown) return;'),
   'stop renewing leases during shutdown',
 );
 
@@ -101,7 +88,7 @@ replaceOnce(
     '  if (current === INSTANCE_ID) await redis.del(key);',
     '}',
     '',
-    'async function destroyClientBounded(sessionId, state, reason = \'destroy\') {',
+    "async function destroyClientBounded(sessionId, state, reason = 'destroy') {",
     '  if (!state || !state.client) return;',
     '  try {',
     '    await withTimeout(',
@@ -152,7 +139,7 @@ replaceOnce(
     '    state.lastError = error.message || String(error);',
     "    console.warn('Hosted session ' + sessionId + ' failed to initialize:', state.lastError);",
     "    await callback(sessionId, 'failed', { error: state.lastError });",
-    '    // Failed Chromium startup must never keep this process\'s lease alive.',
+    "    // Failed Chromium startup must never keep this process's lease alive.",
     '    await releaseLock(sessionId).catch(() => {});',
     '  });',
   ),
@@ -169,8 +156,7 @@ replaceOnce(
   ),
   lines(
     '  const requestedPhone = current.requestedPhone;',
-    '  // Stop renewal and release our lease before browser teardown. If Chromium',
-    '  // hangs, Redis ownership still becomes available to the replacement.',
+    '  // Stop renewal and release our lease before browser teardown.',
     '  sessions.delete(sessionId);',
     '  await releaseLock(sessionId).catch(() => {});',
     "  await destroyClientBounded(sessionId, current, 'refresh');",
@@ -234,15 +220,14 @@ replaceOnce(
     '  if (shuttingDown) return;',
     '  shuttingDown = true;',
     '  const activeSessions = Array.from(sessions.entries());',
-    '  // First stop renewal and release every lease in parallel. This happens',
-    '  // before any potentially slow Puppeteer teardown, so Docker SIGKILL cannot',
-    '  // leave our Redis ownership behind merely because Chromium hung.',
+    '  // Release every owned Redis lease first and stop renewal before touching',
+    '  // Puppeteer. A slow Chromium teardown can no longer strand ownership.',
     '  sessions.clear();',
     '  await Promise.allSettled(',
     '    activeSessions.map(([sessionId]) => releaseLock(sessionId)),',
     '  );',
     '  await Promise.allSettled(',
-    "    activeSessions.map(([sessionId, state]) => destroyClientBounded(sessionId, state, 'shutdown')),
+    "    activeSessions.map(([sessionId, state]) => destroyClientBounded(sessionId, state, 'shutdown')),",
     '  );',
     '  if (redis) {',
     '    try {',
@@ -267,9 +252,8 @@ replaceOnce(
   lines(
     '    await startRedis();',
     '    await restoreSessions();',
-    '    // If an old process was SIGKILLed, its lease naturally expires within',
-    '    // 90 seconds. Re-scan persisted profiles so skipped sessions recover',
-    '    // automatically; never delete or steal a foreign instance\'s lease.',
+    '    // If an old process was SIGKILLed, its foreign lease expires naturally.',
+    '    // Re-scan profiles until they can be acquired; never DEL/steal that lock.',
     '    setInterval(() => {',
     '      if (shuttingDown) return;',
     '      restoreSessions().catch((error) => {',
