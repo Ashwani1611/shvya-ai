@@ -6,6 +6,7 @@ Nothing in this module is allowed to read or select a Hosted account.
 
 from django.db import models
 from django.db.models import Count, Max, OuterRef, Q, Subquery
+from django.utils import timezone
 
 from apps.channels.models import WhatsAppAccount, WhatsAppMessage
 from apps.crm.models import Lead
@@ -63,6 +64,22 @@ def resolve_api_account_for_lead(*, organization, lead):
             return account
 
     return _api_accounts(organization=organization, connected_only=True).first()
+
+
+def is_within_api_24h_window(*, lead):
+    """Return True only when a recent inbound exists on a Meta API account."""
+    last_inbound = (
+        WhatsAppMessage.objects.filter(
+            lead=lead,
+            account__connection_type=API_CONNECTION_TYPE,
+            direction=WhatsAppMessage.Direction.INBOUND,
+        )
+        .order_by("-created_at", "-pk")
+        .first()
+    )
+    if not last_inbound:
+        return False
+    return (timezone.now() - last_inbound.created_at).total_seconds() < 24 * 3600
 
 
 def list_api_conversations(*, organization, account=None, tab="all"):
