@@ -245,6 +245,7 @@ async function listExistingDirectChats(state) {
     'getChats for existing-chat snapshot',
   );
   const rows = [];
+  let unresolved = 0;
 
   for (const chat of chats) {
     if (!chat || chat.isGroup) continue;
@@ -273,7 +274,10 @@ async function listExistingDirectChats(state) {
       }
     }
 
-    if (!phoneNumber) continue;
+    if (!phoneNumber) {
+      if (chatId.endsWith('@lid')) unresolved += 1;
+      continue;
+    }
 
     const contactName = (
       (contact && (contact.pushname || contact.name || contact.shortName))
@@ -288,7 +292,7 @@ async function listExistingDirectChats(state) {
     });
   }
 
-  return rows;
+  return { chats: rows, unresolved };
 }
 
 function startHistorySync(sessionId, state, { force = false } = {}) {
@@ -644,8 +648,13 @@ app.get('/sessions/:sessionId/existing-chats', async (req, res) => {
   }
 
   try {
-    const chats = await listExistingDirectChats(state);
-    return res.json({ ok: true, total: chats.length, chats });
+    const result = await listExistingDirectChats(state);
+    return res.json({
+      ok: true,
+      total: result.chats.length,
+      unresolved: result.unresolved,
+      chats: result.chats,
+    });
   } catch (error) {
     return res.status(502).json({ error: error.message || String(error) });
   }
