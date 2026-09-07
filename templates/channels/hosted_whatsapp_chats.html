@@ -77,28 +77,6 @@
   </section>
 </div>
 
-<script>
-(function(){
-  const app=document.getElementById('hosted-chat-app');
-  if(!app)return;
-  const dataUrl=app.dataset.dataUrl;
-  const sendUrl=app.dataset.sendUrl;
-  const accountId=app.dataset.accountId;
-  const list=document.getElementById('conversation-list');
-  const search=document.getElementById('chat-search');
-  const searchMeta=document.getElementById('search-meta');
-  const header=document.getElementById('thread-header');
-  const thread=document.getElementById('thread-scroll');
-  const empty=document.getElementById('thread-empty');
-  const threadName=document.getElementById('thread-name');
-  const threadKey=document.getElementById('thread-key');
-  const form=document.getElementById('chat-form');
-  const chatInput=document.getElementById('chat-key-input');
-  const csrf=document.querySelector('input[name=csrfmiddlewaretoken]')?.value||'';
-
-  let selected={{ selected_chat|default:""|escapejs|safe|json_script:"selected-chat-json" }};
-})();
-</script>
 <script id="hosted-chat-script">
 (function(){
   const app=document.getElementById('hosted-chat-app');
@@ -162,7 +140,6 @@
   }
 
   list.addEventListener('click',e=>{const a=e.target.closest('[data-chat-key]');if(!a)return;e.preventDefault();state.selected=a.dataset.chatKey||'';refresh({updateHistory:true});});
-
   search.addEventListener('input',()=>{clearTimeout(searchTimer);searchTimer=setTimeout(()=>{state.query=search.value.trim();state.selected='';refresh({updateHistory:true});},280)});
 
   form.addEventListener('submit',async e=>{
@@ -176,12 +153,19 @@
 
   function scheduleRefresh(delay=120){clearTimeout(refreshTimer);refreshTimer=setTimeout(()=>refresh(),delay)}
   function connectSocket(){
-    clearTimeout(reconnectTimer);try{const proto=location.protocol==='https:'?'wss':'ws';socket=new WebSocket(`${proto}://${location.host}/ws/whatsapp/hosted/${accountId}/`);socket.onmessage=e=>{try{const data=JSON.parse(e.data);if(data.kind==='refresh')scheduleRefresh(80)}catch(_){}};socket.onclose=()=>{reconnectTimer=setTimeout(connectSocket,2500)};socket.onerror=()=>socket.close();}catch(_){reconnectTimer=setTimeout(connectSocket,3000)}
+    clearTimeout(reconnectTimer);
+    try{
+      const proto=location.protocol==='https:'?'wss':'ws';
+      socket=new WebSocket(`${proto}://${location.host}/ws/whatsapp/hosted/${accountId}/`);
+      socket.onmessage=e=>{try{const data=JSON.parse(e.data);if(data.kind==='refresh')scheduleRefresh(80)}catch(_){}};
+      socket.onclose=()=>{reconnectTimer=setTimeout(connectSocket,2500)};
+      socket.onerror=()=>socket.close();
+    }catch(_){reconnectTimer=setTimeout(connectSocket,3000)}
   }
   connectSocket();
 
   // WebSocket is primary. This lightweight poll is a safety net for proxy,
-  // mobile-network, or browser sleep/reconnect edge cases.
+  // mobile-network, browser sleep, and reconnect edge cases.
   setInterval(()=>{if(document.visibilityState==='visible'&&!state.busy)refresh()},4000);
   document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')scheduleRefresh(50)});
   window.addEventListener('beforeunload',()=>{if(socket)socket.close()});
