@@ -19,6 +19,8 @@ RUN npm install --omit=dev
 COPY scripts ./scripts
 RUN node scripts/patch-whatsapp-web-1.34.7.js
 
+# Copy the gateway source before applying SHVYA's runtime source patch.
+# patch-hosted-chat-complete-sync.js reads and updates src/index.js.
 COPY src ./src
 # Harden SHVYA's gateway for current LID identities, larger searchable chat
 # indexes, resilient callbacks, and linked-device realtime message delivery.
