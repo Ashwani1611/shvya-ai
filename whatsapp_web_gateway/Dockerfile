@@ -20,6 +20,9 @@ COPY scripts ./scripts
 RUN node scripts/patch-whatsapp-web-1.34.7.js
 
 COPY src ./src
+# Harden SHVYA's gateway for current LID identities, larger searchable chat
+# indexes, resilient callbacks, and linked-device realtime message delivery.
+RUN node scripts/patch-hosted-chat-complete-sync.js
 RUN node --check src/index.js
 
 RUN mkdir -p /data/wwebjs_auth && chown -R node:node /app /data/wwebjs_auth
