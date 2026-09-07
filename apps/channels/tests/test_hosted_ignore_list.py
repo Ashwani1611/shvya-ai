@@ -278,7 +278,6 @@ class HostedIgnoreListTests(TestCase):
             stage=self.stage,
             name="Manually Added Customer",
             phone="+919876543210",
-            lead_source="manual",
         )
 
         message = handle_gateway_event(
