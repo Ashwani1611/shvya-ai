@@ -6,6 +6,7 @@ from apps.hosted_automation import views as hosted_automation_views
 from . import connection_ui
 from . import hosted_chat_ui
 from . import hosted_media_ui
+from . import hosted_remove_ui
 from . import hosted_ui
 from . import template_action_ui
 from . import template_ui
@@ -33,7 +34,7 @@ urlpatterns = [
     path("connect/hosted/<uuid:account_id>/queue/", hosted_queue_views.hosted_session_queue_view, name="whatsapp-hosted-session-queue"),
     path("connect/hosted/<uuid:account_id>/settings/", hosted_ui.hosted_session_settings_view, name="whatsapp-hosted-session-settings"),
     path("connect/hosted/<uuid:account_id>/logout/", hosted_ui.hosted_session_logout_view, name="whatsapp-hosted-session-logout"),
-    path("connect/hosted/<uuid:account_id>/remove/", hosted_ui.hosted_session_remove_view, name="whatsapp-hosted-session-remove"),
+    path("connect/hosted/<uuid:account_id>/remove/", hosted_remove_ui.hosted_session_remove_view, name="whatsapp-hosted-session-remove"),
     path("connect/hosted/<uuid:account_id>/chats/", hosted_chat_ui.hosted_session_chats_view, name="whatsapp-hosted-session-chats"),
     path("connect/hosted/<uuid:account_id>/chats/data/", hosted_chat_ui.hosted_session_chats_data_view, name="whatsapp-hosted-session-chats-data"),
     path("connect/hosted/<uuid:account_id>/chats/send/", hosted_chat_ui.hosted_session_chat_send_view, name="whatsapp-hosted-session-chat-send"),
