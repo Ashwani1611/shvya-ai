@@ -28,6 +28,9 @@ RUN node scripts/patch-hosted-chat-complete-sync.js
 # Recover persisted Hosted sessions automatically after stale Redis leases
 # expire, and release leases when Chromium initialization fails.
 RUN node scripts/patch-hosted-session-recovery.js
+# If a persisted profile itself fails Chromium initialization, retry that
+# failed in-memory state safely instead of treating it as already restored.
+RUN node scripts/patch-hosted-failed-session-retry.js
 # Preserve the original whatsapp-web.js message type and retry hydration for
 # empty text rows before they are sent to Django history/live callbacks.
 RUN node scripts/patch-hosted-message-hydration.js
