@@ -10,6 +10,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
 from apps.crm.decorators import crm_login_required
+from apps.organizations.features import is_hosted_account_enabled
 from services.channels.hosted_whatsapp_service import (
     HostedWhatsAppValidationError,
     create_hosted_account,
@@ -48,6 +49,8 @@ def _organization(request):
     organization = getattr(user, "organization", None)
     if not organization:
         raise Http404("Organization not found.")
+    if not is_hosted_account_enabled(organization):
+        raise Http404("Hosted Account is not enabled for this organization.")
     return organization
 
 
