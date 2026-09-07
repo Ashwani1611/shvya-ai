@@ -11,6 +11,19 @@ _INSTALLED = False
 _ORIGINAL_SEND = None
 
 
+def _push_chat_refresh(message, reason):
+    from services.channels.hosted_chat_service import (
+        chat_key_for_message,
+        queue_hosted_chat_refresh,
+    )
+
+    queue_hosted_chat_refresh(
+        account_id=message.account_id,
+        reason=reason,
+        chat_key=chat_key_for_message(message),
+    )
+
+
 def send_hosted_message(*, message, defer_on_pause=True):
     from services.channels.hosted_automation_service import (
         HostedAutomationPaused,
@@ -65,6 +78,7 @@ def send_hosted_message(*, message, defer_on_pause=True):
         message.status = WhatsAppMessage.Status.FAILED
         message.error = str(exc)
         message.save(update_fields=["status", "error", "updated_at"])
+        _push_chat_refresh(message, "failed")
         raise WhatsAppSendError(str(exc)) from exc
 
     raw_id = response.get("messageId")
@@ -72,13 +86,25 @@ def send_hosted_message(*, message, defer_on_pause=True):
         message.status = WhatsAppMessage.Status.FAILED
         message.error = "Hosted WhatsApp gateway returned no message id."
         message.save(update_fields=["status", "error", "updated_at"])
+        _push_chat_refresh(message, "failed")
         raise WhatsAppSendError(message.error)
 
     existing_payload = (
         message.raw_payload if isinstance(message.raw_payload, dict) else {}
     )
     final_payload = dict(response)
-    for key in ("shvya_ai", "shvya_hosted", "shvya_auto_followup"):
+    for key in (
+        "shvya_ai",
+        "shvya_hosted",
+        "shvya_auto_followup",
+        "peerKey",
+        "peerPhone",
+        "rawChatId",
+        "chatId",
+        "chatName",
+        "contactName",
+        "isGroup",
+    ):
         if key in existing_payload:
             final_payload[key] = existing_payload[key]
 
@@ -95,6 +121,7 @@ def send_hosted_message(*, message, defer_on_pause=True):
             "updated_at",
         ]
     )
+    _push_chat_refresh(message, "sent")
     record_hosted_send(account=account, message=message)
 
     hosted_meta = existing_payload.get("shvya_hosted") or {}
