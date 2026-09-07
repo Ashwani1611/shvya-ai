@@ -9,7 +9,7 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ("channels", "0010_whatsapptemplatemetadata_carousel_config"),
-        ("organizations", "0001_initial"),
+        ("organizations", "0004_organizationpayment"),
     ]
 
     operations = [
