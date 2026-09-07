@@ -14,7 +14,10 @@ from services.channels.hosted_whatsapp_service import create_hosted_account
 
 class HostedWhatsAppRecoveryTests(TestCase):
     def setUp(self):
-        self.org = Organization.objects.create(name="Hosted Recovery Org")
+        self.org = Organization.objects.create(
+            name="Hosted Recovery Org",
+            settings={"hosted_account_enabled": True},
+        )
         self.user = User.objects.create_user(
             email="hosted-recovery@example.com",
             password="test-password",
