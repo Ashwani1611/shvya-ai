@@ -60,8 +60,14 @@ class HostedWhatsAppRecoveryTests(TestCase):
         self.account.refresh_from_db()
         self.assertEqual(self.account.status, WhatsAppAccount.Status.CONNECTED)
 
-    @patch("apps.channels.hosted_ui.sync_hosted_history_task.delay")
-    def test_empty_chat_page_queues_history_recovery(self, delay):
+    @patch("apps.channels.hosted_chat_ui.sync_hosted_history_task.delay")
+    @patch("apps.channels.hosted_chat_ui.WhatsAppWebClient.get_session")
+    def test_empty_chat_page_queues_history_recovery(self, get_session, delay):
+        get_session.return_value = {
+            "status": "running",
+            "phoneNumber": "+918700274739",
+        }
+
         response = self.client.get(
             reverse("whatsapp-hosted-session-chats", args=[self.account.id])
         )
@@ -69,27 +75,26 @@ class HostedWhatsAppRecoveryTests(TestCase):
         self.assertEqual(response.status_code, 200)
         delay.assert_called_once_with(str(self.account.id))
         self.assertTrue(response.context["sync_requested"])
+        self.account.refresh_from_db()
+        self.assertEqual(self.account.status, WhatsAppAccount.Status.CONNECTED)
 
-    @patch("apps.channels.hosted_ui.sync_hosted_history_task.delay")
-    def test_chat_page_does_not_resync_when_messages_exist(self, delay):
-        from apps.channels.models import WhatsAppMessage
+    @patch("apps.channels.hosted_chat_ui.sync_hosted_history_task.delay")
+    @patch("apps.channels.hosted_chat_ui.WhatsAppWebClient.get_session")
+    def test_chat_page_throttles_repeated_history_refreshes(self, get_session, delay):
+        get_session.return_value = {
+            "status": "running",
+            "phoneNumber": "+918700274739",
+        }
 
-        WhatsAppMessage.objects.create(
-            organization=self.org,
-            account=self.account,
-            direction=WhatsAppMessage.Direction.INBOUND,
-            from_number="+919811112222",
-            to_number="+918700274739",
-            body="Existing message",
-            message_type=WhatsAppMessage.MessageType.TEXT,
-            status=WhatsAppMessage.Status.RECEIVED,
-            external_id="wweb:existing-recovery-message",
+        first_response = self.client.get(
+            reverse("whatsapp-hosted-session-chats", args=[self.account.id])
         )
-
-        response = self.client.get(
+        second_response = self.client.get(
             reverse("whatsapp-hosted-session-chats", args=[self.account.id])
         )
 
-        self.assertEqual(response.status_code, 200)
-        delay.assert_not_called()
-        self.assertFalse(response.context["sync_requested"])
+        self.assertEqual(first_response.status_code, 200)
+        self.assertEqual(second_response.status_code, 200)
+        delay.assert_called_once_with(str(self.account.id))
+        self.assertTrue(first_response.context["sync_requested"])
+        self.assertFalse(second_response.context["sync_requested"])
