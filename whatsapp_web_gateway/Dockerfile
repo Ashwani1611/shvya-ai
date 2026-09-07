@@ -37,4 +37,10 @@ RUN mkdir -p /data/wwebjs_auth && chown -R node:node /app /data/wwebjs_auth
 USER node
 
 EXPOSE 3000
-CMD ["npm", "start"]
+STOPSIGNAL SIGTERM
+
+# Do not run the gateway through `npm start`: Docker signals PID 1, and npm's
+# child process forwarding is not reliable enough for session-lease cleanup.
+# The shell exists only for the one-time cleanup; `exec` replaces it with Node,
+# making src/index.js PID 1 so its SIGTERM handler always receives Docker stop.
+CMD ["sh", "-c", "node scripts/cleanup-chromium-profile-locks.js && exec node src/index.js"]
