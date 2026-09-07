@@ -20,7 +20,10 @@ from services.channels.hosted_whatsapp_service import (
 
 class HostedWhatsAppTests(TestCase):
     def setUp(self):
-        self.org = Organization.objects.create(name="Hosted Org")
+        self.org = Organization.objects.create(
+            name="Hosted Org",
+            settings={"hosted_account_enabled": True},
+        )
         self.user = User.objects.create_user(
             email="hosted@example.com",
             password="test-password",
@@ -90,6 +93,45 @@ class HostedWhatsAppTests(TestCase):
         self.assertFalse(session_settings["ai_auto_reply"])
         self.assertTrue(session_settings["auto_follow_up"])
         self.assertEqual(session_settings["bump_up_count"], 2)
+
+    def test_connect_choice_hides_hosted_account_when_disabled(self):
+        settings = dict(self.org.settings)
+        settings["hosted_account_enabled"] = False
+        self.org.settings = settings
+        self.org.save(update_fields=["settings", "updated_at"])
+
+        response = self.client.get(reverse("whatsapp-connect-choice"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, "Hosted Account")
+        self.assertNotContains(response, reverse("whatsapp-connect-hosted"))
+
+    def test_connect_choice_shows_hosted_account_when_enabled(self):
+        response = self.client.get(reverse("whatsapp-connect-choice"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Hosted Account")
+        self.assertContains(response, reverse("whatsapp-connect-hosted"))
+
+    @patch("apps.channels.hosted_ui.initialize_hosted_session_task.delay")
+    def test_hosted_routes_are_blocked_when_feature_disabled(self, delay):
+        settings = dict(self.org.settings)
+        settings["hosted_account_enabled"] = False
+        self.org.settings = settings
+        self.org.save(update_fields=["settings", "updated_at"])
+
+        page_response = self.client.get(reverse("whatsapp-connect-hosted"))
+        create_response = self.client.post(
+            reverse("whatsapp-hosted-session-create"),
+            data={
+                "country_code": "+91",
+                "phone_number": "8700274739",
+            },
+        )
+
+        self.assertEqual(page_response.status_code, 404)
+        self.assertEqual(create_response.status_code, 404)
+        delay.assert_not_called()
 
     @patch("apps.channels.hosted_ui.initialize_hosted_session_task.delay")
     def test_create_endpoint_queues_gateway_initialization(self, delay):

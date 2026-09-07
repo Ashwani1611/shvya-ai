@@ -10,6 +10,7 @@ from apps.channels.models import WhatsAppAccount
 from apps.crm.decorators import crm_login_required
 from apps.followups.models import FollowupSequence, FollowupStep
 from apps.hosted_automation.models import HostedFollowupStepConfig
+from apps.organizations.features import is_hosted_account_enabled
 from services.channels.hosted_automation_service import (
     MEDIA_TOKEN_MAX_AGE_SECONDS,
     HostedAutomationError,
@@ -37,6 +38,8 @@ def _organization_sequence(request, sequence_id):
 
 
 def _connected_accounts(user, connection_type):
+    if connection_type == "hosted" and not is_hosted_account_enabled(user.organization):
+        return WhatsAppAccount.objects.none()
     return WhatsAppAccount.objects.filter(
         organization=user.organization,
         connection_type=connection_type,
@@ -228,6 +231,9 @@ def step_update(request, sequence_id, step_id):
 @crm_login_required
 @require_http_methods(["GET", "POST"])
 def hosted_account_health(request, account_id):
+    if not is_hosted_account_enabled(request.crm_user.organization):
+        raise Http404("Hosted Account is not enabled for this organization.")
+
     account = get_object_or_404(
         WhatsAppAccount,
         id=account_id,

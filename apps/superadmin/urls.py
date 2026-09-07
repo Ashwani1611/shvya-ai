@@ -6,6 +6,7 @@ from .views import (
     organization_create_view,
     organization_detail_view,
     organization_generate_login_link_view,
+    organization_hosted_account_toggle_view,
     organization_payment_create_view,
     organization_payment_delete_view,
     organization_payment_update_view,
@@ -104,6 +105,12 @@ urlpatterns = [
         "organization/<uuid:organization_id>/update/",
         organization_update_view,
         name="superadmin-organization-update",
+    ),
+
+    path(
+        "organization/<uuid:organization_id>/hosted-account/toggle/",
+        organization_hosted_account_toggle_view,
+        name="superadmin-organization-hosted-account-toggle",
     ),
 
     # =========================================================

@@ -1,15 +1,19 @@
-from django.http import JsonResponse
+from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404
 from django.views.decorators.http import require_GET
 
 from apps.channels.models import WhatsAppAccount, WhatsAppMessage
 from apps.crm.decorators import crm_login_required
+from apps.organizations.features import is_hosted_account_enabled
 from services.channels.hosted_automation_service import hosted_queue_items
 
 
 @crm_login_required
 @require_GET
 def hosted_session_queue_view(request, account_id):
+    if not is_hosted_account_enabled(request.crm_user.organization):
+        raise Http404("Hosted Account is not enabled for this organization.")
+
     account = get_object_or_404(
         WhatsAppAccount,
         id=account_id,

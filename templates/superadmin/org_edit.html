@@ -29,6 +29,59 @@
 
 
     <!-- =====================================================
+         Hosted Account Feature Access
+    ====================================================== -->
+
+    <div class="mb-6 rounded-lg border bg-white p-5">
+        <div class="flex items-center justify-between gap-4">
+            <div>
+                <div class="flex items-center gap-2">
+                    <h2 class="text-sm font-semibold text-gray-900">
+                        Hosted Account
+                    </h2>
+                    {% if organization.settings.hosted_account_enabled %}
+                        <span class="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
+                            Enabled
+                        </span>
+                    {% else %}
+                        <span class="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600">
+                            Disabled
+                        </span>
+                    {% endif %}
+                </div>
+                <p class="mt-1 text-xs text-gray-500">
+                    Disabled by default. Enable this only for organizations that should see and use the WhatsApp Hosted Account connection flow.
+                </p>
+            </div>
+
+            <form
+                method="post"
+                action="{% url 'superadmin-organization-hosted-account-toggle' organization_id=organization.id %}"
+                class="shrink-0"
+            >
+                {% csrf_token %}
+                <input
+                    type="hidden"
+                    name="enabled"
+                    value="{% if organization.settings.hosted_account_enabled %}1{% else %}0{% endif %}"
+                >
+                <label class="relative inline-flex cursor-pointer items-center">
+                    <input
+                        type="checkbox"
+                        class="peer sr-only"
+                        {% if organization.settings.hosted_account_enabled %}checked{% endif %}
+                        onchange="this.form.elements.enabled.value = this.checked ? '1' : '0'; this.form.submit();"
+                        aria-label="Toggle Hosted Account for {{ organization.name }}"
+                    >
+                    <span class="h-6 w-11 rounded-full bg-gray-200 transition peer-checked:bg-indigo-600"></span>
+                    <span class="absolute left-1 top-1 h-4 w-4 rounded-full bg-white shadow transition-transform peer-checked:translate-x-5"></span>
+                </label>
+            </form>
+        </div>
+    </div>
+
+
+    <!-- =====================================================
          Form
     ====================================================== -->
 
