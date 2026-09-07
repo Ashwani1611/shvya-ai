@@ -4,7 +4,7 @@
 {% block content %}
 {% csrf_token %}
 <style>
-.hosted-chat-shell{height:calc(100vh - 150px);min-height:620px;display:grid;grid-template-columns:380px 1fr;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;background:#fff}.hosted-chat-list{border-right:1px solid #e5e7eb;overflow:hidden;display:flex;flex-direction:column;background:#fff}.hosted-chat-scroll{overflow-y:auto;flex:1}.hosted-conversation{display:block;padding:14px 16px;border-bottom:1px solid #eef0f2;cursor:pointer}.hosted-conversation:hover,.hosted-conversation.active{background:#f0f2f5}.hosted-thread{display:flex;flex-direction:column;min-width:0;background:#efeae2}.hosted-thread-bg{flex:1;overflow-y:auto;padding:26px 32px;background-color:#efeae2;background-image:radial-gradient(#d7d0c8 1px,transparent 1px);background-size:24px 24px}.bubble{max-width:72%;padding:10px 13px;border-radius:9px;margin-bottom:8px;box-shadow:0 1px 1px rgba(0,0,0,.10);font-size:14px;line-height:1.48;color:#111827}.bubble.in{background:#fff;margin-right:auto;border-top-left-radius:3px}.bubble.out{background:#d9fdd3;margin-left:auto;border-top-right-radius:3px}.bubble-body{color:#111827;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word}.bubble-media{margin-bottom:4px;font-size:11px;font-weight:700;text-transform:uppercase;color:#64748b}.bubble-placeholder{font-style:italic;color:#64748b}.bubble-time{display:block;margin-top:5px;text-align:right;font-size:10px;line-height:1.2;color:#667781}.thread-no-messages{margin:80px auto 0;max-width:360px;border:1px solid rgba(148,163,184,.35);border-radius:12px;background:rgba(255,255,255,.88);padding:18px;text-align:center;color:#64748b;box-shadow:0 2px 8px rgba(15,23,42,.05)}.chat-compose{display:flex;align-items:center;gap:10px;padding:11px 14px;background:#f0f2f5;border-top:1px solid #e5e7eb}.chat-compose input[type=text]{flex:1;border:0;border-radius:8px;padding:11px 14px;outline:none;background:#fff;color:#111827}.chat-send{width:42px;height:42px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:#00a884;color:#fff;font-size:21px}.chat-send:disabled{opacity:.55}.live-dot{width:7px;height:7px;border-radius:999px;background:#22c55e;display:inline-block}.hosted-empty{display:flex;min-height:220px;align-items:center;justify-content:center;text-align:center;color:#94a3b8}.hosted-search-meta{font-size:11px;color:#94a3b8;padding:7px 16px;border-bottom:1px solid #f1f5f9;background:#fafafa}
+.hosted-chat-shell{height:calc(100vh - 150px);min-height:620px;display:grid;grid-template-columns:380px 1fr;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;background:#fff}.hosted-chat-list{border-right:1px solid #e5e7eb;overflow:hidden;display:flex;flex-direction:column;background:#fff}.hosted-chat-scroll{overflow-y:auto;flex:1}.hosted-conversation{display:block;padding:14px 16px;border-bottom:1px solid #eef0f2;cursor:pointer}.hosted-conversation:hover,.hosted-conversation.active{background:#f0f2f5}.hosted-thread{display:flex;flex-direction:column;min-width:0;background:#efeae2}.hosted-thread-bg{flex:1;overflow-y:auto;padding:26px 32px;background-color:#efeae2;background-image:radial-gradient(#d7d0c8 1px,transparent 1px);background-size:24px 24px}.bubble{max-width:72%;padding:10px 13px;border-radius:9px;margin-bottom:8px;box-shadow:0 1px 1px rgba(0,0,0,.10);font-size:14px;line-height:1.48;color:#111827}.bubble.in{background:#fff;margin-right:auto;border-top-left-radius:3px}.bubble.out{background:#d9fdd3;margin-left:auto;border-top-right-radius:3px}.bubble-body{color:#111827;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word}.bubble-media{margin-bottom:4px;font-size:11px;font-weight:700;text-transform:uppercase;color:#64748b}.bubble-placeholder{font-style:italic;color:#64748b}.bubble-time{display:block;margin-top:5px;text-align:right;font-size:10px;line-height:1.2;color:#667781}.bubble-asset{display:block;max-width:100%;margin:5px 0 7px}.bubble-asset-image,.bubble-asset-video{display:block;max-width:100%;max-height:380px;border-radius:8px;background:#f8fafc;object-fit:contain}.bubble-asset-audio{width:min(330px,100%);height:42px}.bubble-asset-link{display:flex;align-items:center;gap:8px;max-width:320px;border:1px solid rgba(100,116,139,.25);border-radius:8px;background:rgba(255,255,255,.65);padding:9px 11px;color:#047857;font-size:12px;font-weight:600;text-decoration:none}.bubble-asset-link:hover{text-decoration:underline}.thread-no-messages{margin:80px auto 0;max-width:360px;border:1px solid rgba(148,163,184,.35);border-radius:12px;background:rgba(255,255,255,.88);padding:18px;text-align:center;color:#64748b;box-shadow:0 2px 8px rgba(15,23,42,.05)}.chat-compose{display:flex;align-items:center;gap:10px;padding:11px 14px;background:#f0f2f5;border-top:1px solid #e5e7eb}.chat-compose input[type=text]{flex:1;border:0;border-radius:8px;padding:11px 14px;outline:none;background:#fff;color:#111827}.chat-send{width:42px;height:42px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:#00a884;color:#fff;font-size:21px}.chat-send:disabled{opacity:.55}.live-dot{width:7px;height:7px;border-radius:999px;background:#22c55e;display:inline-block}.hosted-empty{display:flex;min-height:220px;align-items:center;justify-content:center;text-align:center;color:#94a3b8}.hosted-search-meta{font-size:11px;color:#94a3b8;padding:7px 16px;border-bottom:1px solid #f1f5f9;background:#fafafa}
 @media(max-width:900px){.hosted-chat-shell{grid-template-columns:300px 1fr}.hosted-thread-bg{padding:18px}.bubble{max-width:86%}}
 </style>
 
@@ -57,6 +57,17 @@
       {% for message in thread %}
       <div class="bubble {% if message.direction == 'outbound' %}out{% else %}in{% endif %}">
         {% if message.message_type != 'text' %}<div class="bubble-media"><i class="ti ti-paperclip"></i> {{ message.get_message_type_display }}</div>{% endif %}
+        {% if message.hosted_has_media and message.hosted_media_url %}
+          {% if message.message_type == 'image' %}
+            <a href="{{ message.hosted_media_url }}" target="_blank" rel="noopener"><img class="bubble-asset bubble-asset-image" src="{{ message.hosted_media_url }}" loading="lazy" alt="WhatsApp image"></a>
+          {% elif message.message_type == 'audio' %}
+            <audio class="bubble-asset bubble-asset-audio" controls preload="none" src="{{ message.hosted_media_url }}"></audio>
+          {% elif message.message_type == 'video' %}
+            <video class="bubble-asset bubble-asset-video" controls preload="metadata" src="{{ message.hosted_media_url }}"></video>
+          {% else %}
+            <a class="bubble-asset bubble-asset-link" href="{{ message.hosted_media_url }}" target="_blank" rel="noopener"><i class="ti ti-file-download text-lg"></i><span>Open WhatsApp attachment</span></a>
+          {% endif %}
+        {% endif %}
         <div class="bubble-body" dir="auto">{% if message.body %}{{ message.body }}{% elif message.message_type == 'text' %}<span class="bubble-placeholder">Message has no text content</span>{% endif %}</div>
         <span class="bubble-time">{{ message.created_at|date:"g:i A" }}{% if message.direction == 'outbound' %} · {{ message.get_status_display }}{% endif %}</span>
       </div>
@@ -116,6 +127,15 @@
     }).join('');
   }
 
+  function mediaMarkup(m){
+    if(!m.has_media||!m.media_url)return'';
+    const url=esc(m.media_url),type=String(m.raw_message_type||m.message_type||'').toLowerCase();
+    if(type==='image'||type==='sticker')return `<a href="${url}" target="_blank" rel="noopener"><img class="bubble-asset bubble-asset-image" src="${url}" loading="lazy" alt="WhatsApp image"></a>`;
+    if(type==='audio'||type==='ptt')return `<audio class="bubble-asset bubble-asset-audio" controls preload="none" src="${url}"></audio>`;
+    if(type==='video')return `<video class="bubble-asset bubble-asset-video" controls preload="metadata" src="${url}"></video>`;
+    return `<a class="bubble-asset bubble-asset-link" href="${url}" target="_blank" rel="noopener"><i class="ti ti-file-download text-lg"></i><span>Open WhatsApp attachment</span></a>`;
+  }
+
   function renderThread(data){
     state.selected=data.selected_chat||state.selected||'';
     const has=Boolean(state.selected);
@@ -129,11 +149,12 @@
     }else{
       thread.innerHTML=messages.map(m=>{
         const out=m.direction==='outbound';
-        const media=m.message_type!=='text'?`<div class="bubble-media"><i class="ti ti-paperclip"></i> ${esc(m.message_type_label||m.message_type)}</div>`:'';
+        const mediaLabel=m.message_type!=='text'?`<div class="bubble-media"><i class="ti ti-paperclip"></i> ${esc(m.message_type_label||m.message_type)}</div>`:'';
+        const asset=mediaMarkup(m);
         const rawBody=String(m.body||'');
         const body=rawBody?esc(rawBody):(m.message_type==='text'?'<span class="bubble-placeholder">Message has no text content</span>':'');
         const status=out?` · ${esc(m.status_label||m.status||'')}`:'';
-        return `<div class="bubble ${out?'out':'in'}">${media}<div class="bubble-body" dir="auto">${body}</div><span class="bubble-time">${esc(fmtBubble(m.created_at))}${status}</span></div>`;
+        return `<div class="bubble ${out?'out':'in'}">${mediaLabel}${asset}<div class="bubble-body" dir="auto">${body}</div><span class="bubble-time">${esc(fmtBubble(m.created_at))}${status}</span></div>`;
       }).join('');
     }
     if(stick||!thread.dataset.loaded){thread.scrollTop=thread.scrollHeight;thread.dataset.loaded='1';}
@@ -176,8 +197,6 @@
   }
   connectSocket();
 
-  // WebSocket is primary. This lightweight poll is a safety net for proxy,
-  // mobile-network, browser sleep, and reconnect edge cases.
   setInterval(()=>{if(document.visibilityState==='visible'&&!state.busy)refresh()},4000);
   document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')scheduleRefresh(50)});
   window.addEventListener('beforeunload',()=>{if(socket)socket.close()});
