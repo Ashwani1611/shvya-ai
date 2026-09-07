@@ -9,7 +9,7 @@ from django.urls import reverse
 from apps.accounts.models import User
 from apps.accounts.session_utils import set_authenticated_user
 from apps.channels.models import WhatsAppAccount, WhatsAppMessage
-from apps.crm.models import Lead, Pipeline, Stage
+from apps.crm.models import Lead, Pipeline
 from apps.organizations.models import Organization
 
 
@@ -37,11 +37,7 @@ class WhatsAppChatTransportSeparationTests(TestCase):
             phone_number="9000000000",
             owner=self.user,
         )
-        self.stage = Stage.objects.create(
-            pipeline=self.pipeline,
-            name="New",
-            display_order=1,
-        )
+        self.stage = self.pipeline.stages.get(display_order=1)
         self.api_account = WhatsAppAccount.objects.create(
             organization=self.org,
             connection_type=WhatsAppAccount.ConnectionType.API,
