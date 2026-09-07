@@ -22,7 +22,7 @@ from services.channels.hosted_whatsapp_service import (
 )
 
 
-MAX_CONVERSATION_SCAN = 10000
+MAX_CONVERSATION_SCAN = 20000
 MAX_CONVERSATIONS = 250
 MAX_THREAD_MESSAGES = 1000
 
@@ -47,8 +47,13 @@ def _phone_from_value(value):
     return normalize_whatsapp_number(phone_number=raw)
 
 
+def _raw_chat_id_for_message(message):
+    payload = _payload(message)
+    return _raw_id(payload.get("rawChatId") or payload.get("chatId"))
+
+
 def chat_key_for_message(message):
-    """Canonical conversation key used by the Hosted Chats UI."""
+    """Canonical conversation key carried directly on one message."""
     payload = _payload(message)
 
     peer_key = _raw_id(payload.get("peerKey"))
@@ -211,6 +216,7 @@ def handle_hosted_gateway_event(*, payload):
 
     if event == "history_sync":
         last_key = ""
+        account_id = None
         for item in payload.get("messages") or []:
             if not isinstance(item, dict) or not item.get("messageId"):
                 continue
@@ -225,17 +231,14 @@ def handle_hosted_gateway_event(*, payload):
                     payload=item,
                     historical=True,
                 )
+                account_id = message.account_id
                 last_key = chat_key_for_message(message) or last_key
-        if result is not None:
-            account_id = getattr(result, "account_id", None) or getattr(result, "id", None)
-            if isinstance(result, WhatsAppMessage):
-                account_id = result.account_id
-            if account_id:
-                queue_hosted_chat_refresh(
-                    account_id=account_id,
-                    reason="history",
-                    chat_key=last_key,
-                )
+        if account_id:
+            queue_hosted_chat_refresh(
+                account_id=account_id,
+                reason="history",
+                chat_key=last_key,
+            )
         return result
 
     if event == "message" and isinstance(result, WhatsAppMessage):
@@ -251,12 +254,10 @@ def handle_hosted_gateway_event(*, payload):
         )
         return result
 
-    if event == "message_ack" and isinstance(result, WhatsAppMessage):
-        queue_hosted_chat_refresh(
-            account_id=result.account_id,
-            reason="status",
-            chat_key=chat_key_for_message(result),
-        )
+    if event == "message_ack":
+        session_id = payload.get("sessionId")
+        if session_id:
+            queue_hosted_chat_refresh(account_id=session_id, reason="status")
         return result
 
     if event in {"history_complete", "history_failed"}:
@@ -267,37 +268,94 @@ def handle_hosted_gateway_event(*, payload):
     return result
 
 
+def _conversation_aliases(messages):
+    """Map every raw WhatsApp chat id to its resolved canonical phone/key.
+
+    Older rows may have been saved while WhatsApp exposed only ``@lid``. A
+    later message from the same raw chat can carry the real phone. Applying
+    this map while reading keeps those rows in one conversation immediately,
+    even before every old database row has been physically repaired.
+    """
+    aliases = {}
+    for message in messages:
+        raw_chat_id = _raw_chat_id_for_message(message)
+        if not raw_chat_id:
+            continue
+        payload = _payload(message)
+        if payload.get("isGroup"):
+            aliases.setdefault(raw_chat_id, raw_chat_id)
+            continue
+        phone = chat_phone_for_message(message)
+        if phone:
+            aliases[raw_chat_id] = phone
+    return aliases
+
+
+def _canonical_chat_key(message, aliases):
+    raw_chat_id = _raw_chat_id_for_message(message)
+    if raw_chat_id and raw_chat_id in aliases:
+        return aliases[raw_chat_id]
+    key = chat_key_for_message(message)
+    return aliases.get(key, key)
+
+
+def _name_quality(value, *, key="", phone="", raw_chat_id=""):
+    value = _raw_id(value)
+    if not value:
+        return 0
+    if value in {key, phone, raw_chat_id}:
+        return 1
+    if value.endswith(("@lid", "@c.us", "@g.us")):
+        return 1
+    if value.lstrip("+").isdigit():
+        return 1
+    return 3
+
+
 def _search_matches(row, query):
     query = str(query or "").strip().lower()
     if not query:
         return True
 
-    digits_query = "".join(ch for ch in query if ch.isdigit())
+    raw_ids = row.get("raw_chat_ids") or []
     haystack = " ".join(
-        str(row.get(field) or "")
-        for field in ("name", "key", "phone", "raw_chat_id")
+        [
+            str(row.get("name") or ""),
+            str(row.get("key") or ""),
+            str(row.get("phone") or ""),
+            str(row.get("raw_chat_id") or ""),
+            *(str(value or "") for value in raw_ids),
+        ]
     ).lower()
     if query in haystack:
         return True
+
+    digits_query = "".join(ch for ch in query if ch.isdigit())
     if digits_query:
         haystack_digits = "".join(ch for ch in haystack if ch.isdigit())
         return digits_query in haystack_digits
     return False
 
 
-def _selected_thread_queryset(account, selected):
+def _selected_thread_queryset(account, selected, raw_chat_ids=None):
     base = WhatsAppMessage.objects.filter(
         organization=account.organization,
         account=account,
     ).select_related("lead", "account")
 
+    raw_chat_ids = [value for value in (raw_chat_ids or []) if value]
+
     if selected.startswith("+"):
-        return base.filter(
+        lookup = (
             Q(from_number=selected)
             | Q(to_number=selected)
             | Q(raw_payload__peerPhone=selected)
             | Q(raw_payload__peerKey=selected)
         )
+        if raw_chat_ids:
+            lookup |= Q(raw_payload__rawChatId__in=raw_chat_ids)
+            lookup |= Q(raw_payload__chatId__in=raw_chat_ids)
+        return base.filter(lookup)
 
     if "@" in selected:
         return base.filter(
@@ -322,23 +380,57 @@ def build_hosted_chat_snapshot(*, account, selected_chat="", query=""):
         .order_by("-created_at")[:MAX_CONVERSATION_SCAN]
     )
 
+    aliases = _conversation_aliases(recent_messages)
     conversations = {}
+
     for message in recent_messages:
-        key = chat_key_for_message(message)
+        key = _canonical_chat_key(message, aliases)
         if not key:
             continue
+
+        payload = _payload(message)
+        raw_chat_id = _raw_chat_id_for_message(message)
+        phone = chat_phone_for_message(message)
+        if not phone and raw_chat_id:
+            phone = _phone_from_value(aliases.get(raw_chat_id))
+        name = chat_name_for_message(message)
+
         if key not in conversations:
-            payload = _payload(message)
             conversations[key] = {
                 "key": key,
-                "name": chat_name_for_message(message),
-                "phone": chat_phone_for_message(message),
-                "raw_chat_id": _raw_id(payload.get("rawChatId") or payload.get("chatId")),
+                "name": name,
+                "phone": phone,
+                "raw_chat_id": raw_chat_id,
+                "raw_chat_ids": [raw_chat_id] if raw_chat_id else [],
                 "is_group": bool(payload.get("isGroup")),
                 "last_message": message.body or message.get_message_type_display(),
                 "last_at": message.created_at,
                 "unread": 0,
             }
+        else:
+            row = conversations[key]
+            if raw_chat_id and raw_chat_id not in row["raw_chat_ids"]:
+                row["raw_chat_ids"].append(raw_chat_id)
+            if not row["phone"] and phone:
+                row["phone"] = phone
+            if not row["raw_chat_id"] and raw_chat_id:
+                row["raw_chat_id"] = raw_chat_id
+
+            current_quality = _name_quality(
+                row["name"],
+                key=key,
+                phone=row["phone"],
+                raw_chat_id=row["raw_chat_id"],
+            )
+            candidate_quality = _name_quality(
+                name,
+                key=key,
+                phone=phone,
+                raw_chat_id=raw_chat_id,
+            )
+            if candidate_quality > current_quality:
+                row["name"] = name
+
         if message.direction == WhatsAppMessage.Direction.INBOUND and not message.is_read:
             conversations[key]["unread"] += 1
 
@@ -346,19 +438,29 @@ def build_hosted_chat_snapshot(*, account, selected_chat="", query=""):
     rows = rows[:MAX_CONVERSATIONS]
 
     selected = str(selected_chat or "").strip()
+    selected = aliases.get(selected, selected)
     if not selected and rows:
         selected = rows[0]["key"]
 
     thread = []
     if selected:
+        selected_raw_ids = [
+            raw_id
+            for raw_id, canonical in aliases.items()
+            if canonical == selected
+        ]
         candidates = list(
-            _selected_thread_queryset(account, selected)
+            _selected_thread_queryset(
+                account,
+                selected,
+                raw_chat_ids=selected_raw_ids,
+            )
             .order_by("-created_at")[:MAX_THREAD_MESSAGES]
         )
         thread = [
             message
             for message in reversed(candidates)
-            if chat_key_for_message(message) == selected
+            if _canonical_chat_key(message, aliases) == selected
         ]
 
     selected_row = conversations.get(selected, {})
