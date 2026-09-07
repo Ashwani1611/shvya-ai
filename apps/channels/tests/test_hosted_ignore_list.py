@@ -8,6 +8,7 @@ from apps.channels.models import WhatsAppAccount, WhatsAppMessage
 from apps.crm.models import Lead, Pipeline, Stage
 from apps.organizations.models import Organization
 from services.channels.hosted_ignore_service import (
+    HostedIgnoreSyncError,
     reset_hosted_ignore_list,
     sync_existing_hosted_chats,
 )
@@ -16,6 +17,7 @@ from services.channels.hosted_whatsapp_service import (
     handle_gateway_event,
     update_session_settings,
 )
+from services.crm.lead_service import create_lead
 
 
 class HostedIgnoreListTests(TestCase):
@@ -38,7 +40,7 @@ class HostedIgnoreListTests(TestCase):
             phone_number="8700274739",
             owner=self.user,
         )
-        Stage.objects.get_or_create(
+        self.stage, _ = Stage.objects.get_or_create(
             pipeline=self.pipeline,
             display_order=1,
             defaults={"name": "New"},
@@ -67,6 +69,7 @@ class HostedIgnoreListTests(TestCase):
     def test_sync_builds_replaceable_snapshot_from_direct_chats(self, get_existing_chats):
         get_existing_chats.return_value = {
             "ok": True,
+            "unresolved": 0,
             "chats": [
                 {
                     "chatId": "919811112222@c.us",
@@ -108,6 +111,7 @@ class HostedIgnoreListTests(TestCase):
 
         get_existing_chats.return_value = {
             "ok": True,
+            "unresolved": 0,
             "chats": [
                 {
                     "chatId": "919833334444@c.us",
@@ -130,6 +134,36 @@ class HostedIgnoreListTests(TestCase):
             HostedChatIgnoreContact.objects.filter(
                 account=self.account,
                 phone_number="+919833334444",
+            ).exists()
+        )
+
+    @patch(
+        "services.channels.hosted_ignore_service.WhatsAppWebClient.get_existing_chats"
+    )
+    def test_incomplete_lid_snapshot_is_rejected_without_deleting_old_list(
+        self,
+        get_existing_chats,
+    ):
+        HostedChatIgnoreContact.objects.create(
+            organization=self.organization,
+            account=self.account,
+            phone_number="+919811112222",
+            contact_name="Protected Existing Contact",
+            chat_id="919811112222@c.us",
+        )
+        get_existing_chats.return_value = {
+            "ok": True,
+            "unresolved": 1,
+            "chats": [],
+        }
+
+        with self.assertRaises(HostedIgnoreSyncError):
+            sync_existing_hosted_chats(organization=self.organization)
+
+        self.assertTrue(
+            HostedChatIgnoreContact.objects.filter(
+                account=self.account,
+                phone_number="+919811112222",
             ).exists()
         )
 
@@ -165,6 +199,112 @@ class HostedIgnoreListTests(TestCase):
         )
         self.assertIsNone(message.lead)
         self.assertEqual(message.status, WhatsAppMessage.Status.RECEIVED)
+        self.assertTrue(message.raw_payload["ignoredExistingChat"])
+
+    def test_lid_message_uses_resolved_number_for_ignore_matching(self):
+        HostedChatIgnoreContact.objects.create(
+            organization=self.organization,
+            account=self.account,
+            phone_number="+919876543210",
+            contact_name="Existing LID Customer",
+            chat_id="27028229202012@lid",
+        )
+
+        message = handle_gateway_event(
+            payload={
+                "sessionId": str(self.account.id),
+                "event": "message",
+                "messageId": "IGNORED-LID-LIVE-1",
+                "from": "27028229202012@lid",
+                "to": "918700274739@c.us",
+                "chatId": "27028229202012@lid",
+                "contactPhoneNumber": "+919876543210",
+                "contactName": "Existing LID Customer",
+                "body": "Hello from current WhatsApp Web",
+                "messageType": "text",
+                "isGroup": False,
+            }
+        )
+
+        self.assertEqual(message.from_number, "+919876543210")
+        self.assertIsNone(message.lead)
+        self.assertTrue(message.raw_payload["ignoredExistingChat"])
+        self.assertFalse(
+            Lead.objects.filter(
+                organization=self.organization,
+                phone="+919876543210",
+            ).exists()
+        )
+
+    def test_lid_message_can_fall_back_to_snapshot_chat_id_mapping(self):
+        HostedChatIgnoreContact.objects.create(
+            organization=self.organization,
+            account=self.account,
+            phone_number="+919876543210",
+            contact_name="Existing LID Customer",
+            chat_id="27028229202012@lid",
+        )
+
+        message = handle_gateway_event(
+            payload={
+                "sessionId": str(self.account.id),
+                "event": "message",
+                "messageId": "IGNORED-LID-FALLBACK-1",
+                "from": "27028229202012@lid",
+                "to": "918700274739@c.us",
+                "chatId": "27028229202012@lid",
+                "contactName": "Existing LID Customer",
+                "body": "Contact lookup temporarily unavailable",
+                "messageType": "text",
+                "isGroup": False,
+            }
+        )
+
+        self.assertEqual(message.from_number, "+919876543210")
+        self.assertIsNone(message.lead)
+        self.assertTrue(message.raw_payload["ignoredExistingChat"])
+
+    def test_manual_lead_is_used_even_when_number_is_on_ignore_list(self):
+        HostedChatIgnoreContact.objects.create(
+            organization=self.organization,
+            account=self.account,
+            phone_number="+919876543210",
+            contact_name="Existing Customer",
+            chat_id="919876543210@c.us",
+        )
+        lead = create_lead(
+            organization=self.organization,
+            pipeline=self.pipeline,
+            stage=self.stage,
+            name="Manually Added Customer",
+            phone="+919876543210",
+            lead_source="manual",
+        )
+
+        message = handle_gateway_event(
+            payload={
+                "sessionId": str(self.account.id),
+                "event": "message",
+                "messageId": "MANUAL-LEAD-IGNORED-1",
+                "from": "919876543210@c.us",
+                "to": "918700274739@c.us",
+                "chatId": "919876543210@c.us",
+                "contactName": "Existing Customer",
+                "body": "Message after manual lead creation",
+                "messageType": "text",
+                "isGroup": False,
+            }
+        )
+
+        self.assertEqual(message.lead, lead)
+        self.assertFalse(message.raw_payload["ignoredExistingChat"])
+        self.assertEqual(
+            Lead.objects.filter(
+                organization=self.organization,
+                phone="+919876543210",
+            ).count(),
+            1,
+        )
 
     def test_reset_allows_future_live_message_to_auto_create_lead(self):
         HostedChatIgnoreContact.objects.create(
