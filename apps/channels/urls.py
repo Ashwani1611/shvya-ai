@@ -34,7 +34,7 @@ urlpatterns = [
     path("connect/hosted/<uuid:account_id>/logout/", hosted_ui.hosted_session_logout_view, name="whatsapp-hosted-session-logout"),
     path("connect/hosted/<uuid:account_id>/chats/", hosted_chat_ui.hosted_session_chats_view, name="whatsapp-hosted-session-chats"),
     path("connect/hosted/<uuid:account_id>/chats/data/", hosted_chat_ui.hosted_session_chats_data_view, name="whatsapp-hosted-session-chats-data"),
-    path("connect/hosted/<uuid:account_id>/chats/send/", hosted_ui.hosted_session_chat_send_view, name="whatsapp-hosted-session-chat-send"),
+    path("connect/hosted/<uuid:account_id>/chats/send/", hosted_chat_ui.hosted_session_chat_send_view, name="whatsapp-hosted-session-chat-send"),
 
     path("accounts/<uuid:account_id>/disconnect/", views_flat.whatsapp_disconnect_view, name="whatsapp-disconnect"),
     path("accounts/<uuid:account_id>/resubscribe/", views_flat.whatsapp_resubscribe_view, name="whatsapp-resubscribe"),
