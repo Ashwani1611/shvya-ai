@@ -1,9 +1,11 @@
 from unittest.mock import patch
 
+from django.contrib.sessions.backends.db import SessionStore
 from django.test import TestCase
 from django.urls import reverse
 
 from apps.accounts.models import User
+from apps.accounts.session_utils import set_authenticated_user
 from apps.channels.hosted_ignore_models import HostedChatIgnoreContact
 from apps.channels.models import WhatsAppAccount
 from apps.organizations.models import Organization
@@ -17,7 +19,11 @@ class SuperadminHostedIgnoreViewsTests(TestCase):
             password="test-password-123",
             name="Super Admin",
         )
-        self.client.force_login(self.superuser)
+
+        session = SessionStore()
+        set_authenticated_user(session, self.superuser)
+        session.save()
+        self.client.cookies["shvya_superadmin_sessionid"] = session.session_key
 
         self.organization = Organization.objects.create(
             name="Hosted Ignore Org",

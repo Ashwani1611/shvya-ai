@@ -147,7 +147,12 @@ class HostedChatRealtimeTests(TestCase):
         }
         handle_gateway_event(payload=old_payload)
         message = WhatsAppMessage.objects.get(external_id="wweb:LID-REPAIR-1")
-        self.assertEqual(message.from_number, "+123456789012")
+
+        # Simulate the legacy persisted state that existed before LIDs were
+        # explicitly rejected as phone numbers. Current ingestion correctly
+        # stores unresolved LIDs as unknown until a real peer phone arrives.
+        message.from_number = "+123456789012"
+        message.save(update_fields=["from_number"])
 
         repaired = self.history_item(
             message_id="LID-REPAIR-1",
