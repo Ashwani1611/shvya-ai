@@ -39,6 +39,37 @@ jobs:
             git checkout main
             git reset --hard origin/main
 
+            if [ ! -f .env ]; then
+              echo "Production .env file is missing."
+              exit 1
+            fi
+
+            ensure_env_secret() {
+              key="$1"
+              current="$(sed -n "s/^${key}=//p" .env | tail -n 1 | tr -d '\r')"
+
+              case "$current" in
+                ""|'""'|"''"|change-me-*) ;;
+                *) return ;;
+              esac
+
+              value="$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')"
+
+              if grep -q "^${key}=" .env; then
+                sed -i "s|^${key}=.*$|${key}=${value}|" .env
+              else
+                printf '\n%s=%s\n' "$key" "$value" >> .env
+              fi
+
+              unset value
+              echo "Generated missing ${key} in production .env."
+            }
+
+            echo "Ensuring internal WhatsApp gateway secrets exist..."
+            ensure_env_secret WHATSAPP_WEB_GATEWAY_TOKEN
+            ensure_env_secret WHATSAPP_WEB_CALLBACK_TOKEN
+            chmod 600 .env
+
             echo "Validating Docker Compose configuration..."
             docker compose config --quiet
 
@@ -74,7 +105,7 @@ jobs:
             fi
 
             echo "Verifying Django can resolve and authenticate to the WhatsApp Web gateway..."
-            if ! docker compose exec -T web python -c "import os, requests; base=os.getenv('WHATSAPP_WEB_GATEWAY_URL', 'http://whatsapp-web-gateway:3000').rstrip('/'); token=os.getenv('WHATSAPP_WEB_GATEWAY_TOKEN', '').strip(); assert token, 'WHATSAPP_WEB_GATEWAY_TOKEN is not configured'; response=requests.get(base + '/sessions/__deployment_probe__', headers={'Authorization': 'Bearer ' + token}, timeout=5); assert response.status_code == 404, 'gateway probe returned HTTP ' + str(response.status_code) + ': ' + response.text[:200]"; then
+            if ! docker compose exec -T web python -c "import os, requests; base=os.getenv('WHATSAPP_WEB_GATEWAY_URL', 'http://whatsapp-web-gateway:3000').rstrip('/'); token=os.getenv('WHATSAPP_WEB_GATEWAY_TOKEN', '').strip(); callback_token=os.getenv('WHATSAPP_WEB_CALLBACK_TOKEN', '').strip(); assert token, 'WHATSAPP_WEB_GATEWAY_TOKEN is not configured'; assert callback_token, 'WHATSAPP_WEB_CALLBACK_TOKEN is not configured'; response=requests.get(base + '/sessions/__deployment_probe__', headers={'Authorization': 'Bearer ' + token}, timeout=5); assert response.status_code == 404, 'gateway probe returned HTTP ' + str(response.status_code) + ': ' + response.text[:200]"; then
               echo "Django cannot use the WhatsApp Web gateway."
               docker compose ps
               docker compose logs --tail=150 whatsapp-web-gateway web
