@@ -102,3 +102,6 @@ jobs:
 
       - name: Build application image
         run: docker build --tag shvya-ai:${{ github.sha }} .
+
+      - name: Build WhatsApp Web gateway image
+        run: docker build --tag shvya-whatsapp-web-gateway:${{ github.sha }} ./whatsapp_web_gateway
