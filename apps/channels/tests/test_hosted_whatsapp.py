@@ -90,7 +90,7 @@ class HostedWhatsAppTests(TestCase):
         self.assertEqual(account.status, WhatsAppAccount.Status.PENDING)
         self.org.refresh_from_db()
         session_settings = self.org.settings["hosted_whatsapp"]["sessions"][str(account.id)]
-        self.assertFalse(session_settings["ai_auto_reply"])
+        self.assertEqual(session_settings["ai_auto_reply"], self.pipeline.ai_enabled)
         self.assertTrue(session_settings["auto_follow_up"])
         self.assertEqual(session_settings["bump_up_count"], 2)
 

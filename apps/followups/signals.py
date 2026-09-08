@@ -1,11 +1,35 @@
 """Runtime hooks for Auto Follow-ups."""
 
+from datetime import time
+
 from django.db import transaction
 from django.db.models.signals import post_delete, post_save
 from django.dispatch import receiver
 
 from apps.channels.models import WhatsAppMessage
-from apps.followups.models import FollowupStep
+from apps.followups.models import AutoFollowupSettings, FollowupStep
+
+
+@receiver(post_save, sender=AutoFollowupSettings)
+def neutralize_legacy_global_followup_controls(sender, instance, **kwargs):
+    """Keep the retired organization switch neutral for old scheduler paths.
+
+    User-facing follow-up controls now live on the WhatsApp account linked to a
+    pipeline. A few legacy dispatcher queries still reference this row, so it
+    must never override the per-pipeline account settings.
+    """
+    neutral_start = time(0, 0)
+    neutral_end = time(23, 59, 59)
+    if (
+        not instance.enabled
+        or instance.business_hours_start != neutral_start
+        or instance.business_hours_end != neutral_end
+    ):
+        AutoFollowupSettings.objects.filter(pk=instance.pk).update(
+            enabled=True,
+            business_hours_start=neutral_start,
+            business_hours_end=neutral_end,
+        )
 
 
 @receiver(post_save, sender=WhatsAppMessage)
