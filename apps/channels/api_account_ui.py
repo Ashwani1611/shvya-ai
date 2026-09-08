@@ -17,7 +17,7 @@ def whatsapp_account_list_view(request):
         connection_type=WhatsAppAccount.ConnectionType.API,
         status=WhatsAppAccount.Status.CONNECTED,
         is_active=True,
-    ).order_by("-created_at")
+    ).order_by("-updated_at")
     return render(
         request,
         "channels/whatsapp_account_list.html",
