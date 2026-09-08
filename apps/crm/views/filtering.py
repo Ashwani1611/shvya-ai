@@ -1,13 +1,10 @@
-from datetime import datetime
-
-from django.http import HttpResponse
 from django.shortcuts import render
 from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_GET
 
 from apps.crm.decorators import crm_login_required
-from apps.crm.models import AttributeDefinition, Lead, LeadNote, LeadReminder, Stage
+from apps.crm.models import Lead, LeadNote, LeadReminder, Stage
 from services.crm.lead_filter_service import (
     accessible_pipelines,
     active_filter_items,
@@ -44,23 +41,19 @@ def _prepare_lead(lead, attribute_definitions):
     )
     lead.initials = "".join(part[0] for part in lead.name.split()[:2]).upper() or "?"
 
-    latest_note = (
-        LeadNote.objects.filter(lead=lead).order_by("-created_at").first()
-    )
+    latest_note = LeadNote.objects.filter(lead=lead).order_by("-created_at").first()
     lead.display_note = latest_note
     lead.display_note_text = (lead.notes or "").strip()
     if not lead.display_note_text and latest_note:
         lead.display_note_text = (latest_note.note or "").strip()
 
-    lead.activities_for_card = (
-        lead.activities.select_related(
-            "actor",
-            "old_pipeline",
-            "new_pipeline",
-            "old_stage",
-            "new_stage",
-        ).order_by("-created_at")
-    )
+    lead.activities_for_card = lead.activities.select_related(
+        "actor",
+        "old_pipeline",
+        "new_pipeline",
+        "old_stage",
+        "new_stage",
+    ).order_by("-created_at")
     lead.attribute_definitions = attribute_definitions
     return lead
 
@@ -82,7 +75,11 @@ def lead_table_partial(request):
     requested_pipeline_id = str(request.GET.get("pipeline") or "").strip()
     filter_pipeline = str(request.GET.get("filter_pipeline") or "").strip()
 
-    current_pipeline = pipelines.filter(id=requested_pipeline_id).first()
+    current_pipeline = (
+        pipelines.filter(id=requested_pipeline_id).first()
+        if requested_pipeline_id
+        else None
+    )
     if current_pipeline is None:
         current_pipeline = pipelines.first()
 
@@ -144,6 +141,7 @@ def lead_table_partial(request):
         user=user,
         include_search=True,
     )
+    has_current_matches = queryset.exists()
 
     attribute_definitions = list(public_attribute_definitions(user.organization))
     stage_groups = []
@@ -167,19 +165,21 @@ def lead_table_partial(request):
     if active_stage_id not in valid_stage_ids:
         active_stage_id = str(stages[0].id) if stages else ""
 
-    matches = cross_pipeline_matches(
-        request.GET,
-        user=user,
-        current_pipeline=current_pipeline,
-    )
-    for item in matches:
-        item["query"] = query_with(
+    matches = []
+    if not has_current_matches and has_active_filters(request.GET):
+        matches = cross_pipeline_matches(
             request.GET,
-            pipeline=item["pipeline"].id,
-            filter_pipeline=item["pipeline"].id,
-            stage=None,
-            filter_stage=None,
+            user=user,
+            current_pipeline=current_pipeline,
         )
+        for item in matches:
+            item["query"] = query_with(
+                request.GET,
+                pipeline=item["pipeline"].id,
+                filter_pipeline=item["pipeline"].id,
+                stage=None,
+                filter_stage=None,
+            )
 
     context.update(
         {
@@ -268,9 +268,7 @@ def lead_filters_modal(request):
             "selected_filter_pipeline": str(
                 request.GET.get("filter_pipeline") or ""
             ),
-            "selected_filter_stage": str(
-                request.GET.get("filter_stage") or ""
-            ),
+            "selected_filter_stage": str(request.GET.get("filter_stage") or ""),
         },
     )
 
@@ -320,7 +318,11 @@ def global_reminders_modal(request):
             "overdue_count": len(overdue_reminders),
             "today_count": len(today_reminders),
             "upcoming_count": len(upcoming_reminders),
-            "total_count": len(overdue_reminders) + len(today_reminders) + len(upcoming_reminders),
+            "total_count": (
+                len(overdue_reminders)
+                + len(today_reminders)
+                + len(upcoming_reminders)
+            ),
             "active_filters": active_filter_items(request.GET, user=user),
             "filters_query": request.GET.urlencode(),
         },
