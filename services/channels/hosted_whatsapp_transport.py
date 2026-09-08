@@ -48,8 +48,8 @@ def send_hosted_message(*, message, defer_on_pause=True):
     if account.status != account.Status.CONNECTED:
         raise WhatsAppSendError("Hosted WhatsApp session is not running.")
 
-    payload = message.raw_payload if isinstance(message.raw_payload, dict) else {}
-    if payload.get("shvya_ai"):
+    raw_payload = message.raw_payload if isinstance(message.raw_payload, dict) else {}
+    if raw_payload.get("shvya_ai"):
         from services.channels.hosted_automation_service import hosted_ai_block_reason
 
         reason = hosted_ai_block_reason(account=account, lead=message.lead) if message.lead_id else "lead_missing"
@@ -73,13 +73,13 @@ def send_hosted_message(*, message, defer_on_pause=True):
     media_url = None
     filename = None
     if message.message_type != WhatsAppMessage.MessageType.TEXT:
-        payload = message.media_payload or {}
-        if payload.get("source") != "url" or not payload.get("url"):
+        media_payload = message.media_payload or {}
+        if media_payload.get("source") != "url" or not media_payload.get("url"):
             raise WhatsAppSendError(
                 "Hosted WhatsApp media requires a URL-backed media source."
             )
-        media_url = payload["url"]
-        filename = payload.get("filename")
+        media_url = media_payload["url"]
+        filename = media_payload.get("filename")
 
     try:
         response = WhatsAppWebClient().send_message(
@@ -96,14 +96,14 @@ def send_hosted_message(*, message, defer_on_pause=True):
         message.save(update_fields=["status", "error", "updated_at"])
         _push_chat_refresh(message, "failed")
 
-        # A temporary gateway/network outage must not permanently pause an
-        # automation sequence just because the step has zero user retries.
-        # Reuse the existing HostedAutomationPaused deferral path so the same
-        # execution/job is retried after a short delay. Manual sends still
-        # surface the failure immediately.
+        # A temporary gateway/network outage must not permanently pause a
+        # Hosted Auto Follow-up just because the step has zero user retries.
+        # The existing HostedAutomationPaused path reschedules the same
+        # execution/state after a short delay. Keep AI jobs on their existing
+        # delivery semantics because they retain a specific generated message.
         if (
             defer_on_pause
-            and message_is_automation(message)
+            and raw_payload.get("shvya_auto_followup")
             and (exc.status_code is None or exc.status_code >= 500)
         ):
             raise HostedAutomationPaused(
