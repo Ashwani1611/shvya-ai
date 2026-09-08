@@ -2,7 +2,7 @@
     "use strict";
 
     const DELETE_SELECTOR = "[data-knowledge-delete]";
-    const API_BASE = "/api/v1/ai-engagement/";
+    const DELETE_BASE = "/api/v1/ai-engagement/dashboard/knowledge/";
 
     function getCsrfToken(button) {
         const page = button.closest("#ai-setup-page") || document;
@@ -25,19 +25,17 @@
     }
 
     function getDeleteEndpoint(kind, id) {
-        if (!id) {
+        if (!id || (kind !== "source" && kind !== "document")) {
             return "";
         }
 
-        if (kind === "source") {
-            return API_BASE + "sources/" + encodeURIComponent(id) + "/";
-        }
-
-        if (kind === "document") {
-            return API_BASE + "documents/" + encodeURIComponent(id) + "/";
-        }
-
-        return "";
+        return (
+            DELETE_BASE +
+            encodeURIComponent(kind) +
+            "/" +
+            encodeURIComponent(id) +
+            "/delete/"
+        );
     }
 
     async function getErrorMessage(response) {
@@ -98,7 +96,7 @@
 
             try {
                 const response = await fetch(endpoint, {
-                    method: "DELETE",
+                    method: "POST",
                     credentials: "same-origin",
                     headers: {
                         "X-CSRFToken": csrfToken,
@@ -110,11 +108,7 @@
                     throw new Error(await getErrorMessage(response));
                 }
 
-                /*
-                 * Reload from the server so URL sources, file sources, their
-                 * matching Document versions, and status/counts all reflect
-                 * the authoritative backend state after deletion.
-                 */
+                /* Reload authoritative server state after the hard delete. */
                 window.location.reload();
             } catch (error) {
                 window.alert(error.message || "Unable to delete this knowledge item.");
