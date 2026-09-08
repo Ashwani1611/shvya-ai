@@ -1,6 +1,7 @@
 from django.test import TestCase
 
 from apps.ai_engagement.services.ai_permissions import AIPermissionService
+from apps.ai_engagement.services.credits import AICreditService
 from apps.ai_engagement.services.qualification_state import (
     MODE_CONVERSATION,
     MODE_QUALIFICATION,
@@ -18,6 +19,11 @@ from apps.organizations.models import Organization
 class AIEngagementControlTests(TestCase):
     def setUp(self):
         self.organization = Organization.objects.create(name="Acme")
+        AICreditService.add_manual_credits(
+            organization=self.organization,
+            amount=1000,
+            reason="Fund AI permission test fixture",
+        )
         self.pipeline = Pipeline.objects.create(
             organization=self.organization,
             name="Sales",
@@ -117,6 +123,21 @@ class AIEngagementControlTests(TestCase):
         )
         self.assertFalse(decision.allowed)
         self.assertEqual(decision.reason, "pipeline_whatsapp_account_mismatch")
+
+    def test_ai_permission_stops_when_organization_credits_are_exhausted(self):
+        AICreditService.deduct_manual_credits(
+            organization=self.organization,
+            amount=1000,
+            reason="Exhaust permission test wallet",
+        )
+
+        decision = AIPermissionService().evaluate(
+            organization=self.organization,
+            lead=self.lead,
+        )
+
+        self.assertFalse(decision.allowed)
+        self.assertEqual(decision.reason, "organization_ai_credits_exhausted")
 
     def test_queued_ai_message_is_cancelled_when_current_stage_ai_is_off(self):
         self._inbound()
