@@ -14,6 +14,12 @@ from openai import (
     RateLimitError,
 )
 
+from apps.ai_engagement.services.credits import (
+    AICreditError,
+    AICreditService,
+    AICreditUnavailableError,
+)
+
 
 class AIProviderError(Exception):
     """
@@ -41,6 +47,7 @@ class AIProviderPermanentError(AIProviderError):
         - invalid authentication
         - invalid request
         - permission/model access problems
+        - organization AI credits are unavailable
     """
 
     retryable = False
@@ -72,6 +79,9 @@ class OpenAIProvider:
 
     Business services should depend on this adapter rather than
     importing the OpenAI SDK directly.
+
+    Organization-scoped calls are metered by AICreditService before the
+    provider request. A zero/blocked wallet fails before OpenAI is called.
     """
 
     DEFAULT_MODEL = "gpt-4.1-nano"
@@ -110,6 +120,16 @@ class OpenAIProvider:
             )
         )
 
+    def _release_credit_reservation(self, reservation) -> None:
+        if reservation is None:
+            return
+        try:
+            AICreditService.release(reservation)
+        except AICreditError:
+            # Do not hide the original provider error. The still-active
+            # reservation remains visible to Superadmin for investigation.
+            pass
+
     def generate_text(
         self,
         *,
@@ -119,6 +139,10 @@ class OpenAIProvider:
     ) -> AITextResult:
         """
         Generate text using the OpenAI Responses API.
+
+        Production SHVYA callers provide organization_id in metadata. Those
+        calls reserve credits before the network request and settle from the
+        provider's reported input/output token usage.
         """
 
         instructions = (
@@ -148,6 +172,26 @@ class OpenAIProvider:
         if metadata:
             request_kwargs["metadata"] = metadata
 
+        reservation = None
+        organization_id = (metadata or {}).get("organization_id")
+
+        if organization_id:
+            try:
+                reservation = AICreditService.reserve_text(
+                    organization_id=organization_id,
+                    model=self.model,
+                    instructions=instructions,
+                    input_text=input_text,
+                    feature=AICreditService.feature_from_metadata(metadata),
+                    reference_id=AICreditService.reference_from_metadata(metadata),
+                )
+            except AICreditUnavailableError as exc:
+                raise AIProviderPermanentError(str(exc)) from exc
+            except AICreditError as exc:
+                raise AIProviderPermanentError(
+                    f"Unable to reserve organization AI credits: {exc}"
+                ) from exc
+
         try:
 
             response = (
@@ -157,37 +201,37 @@ class OpenAIProvider:
             )
 
         except RateLimitError as exc:
-
+            self._release_credit_reservation(reservation)
             raise AIProviderTransientError(
                 f"OpenAI rate limit: {exc}"
             ) from exc
 
         except APIConnectionError as exc:
-
+            self._release_credit_reservation(reservation)
             raise AIProviderTransientError(
                 f"OpenAI connection failure: {exc}"
             ) from exc
 
         except AuthenticationError as exc:
-
+            self._release_credit_reservation(reservation)
             raise AIProviderPermanentError(
                 f"OpenAI authentication failed: {exc}"
             ) from exc
 
         except PermissionDeniedError as exc:
-
+            self._release_credit_reservation(reservation)
             raise AIProviderPermanentError(
                 f"OpenAI permission denied: {exc}"
             ) from exc
 
         except BadRequestError as exc:
-
+            self._release_credit_reservation(reservation)
             raise AIProviderPermanentError(
                 f"OpenAI rejected the request: {exc}"
             ) from exc
 
         except APIStatusError as exc:
-
+            self._release_credit_reservation(reservation)
             status_code = getattr(
                 exc,
                 "status_code",
@@ -204,10 +248,30 @@ class OpenAIProvider:
             ) from exc
 
         except Exception as exc:
-
+            self._release_credit_reservation(reservation)
             raise AIProviderTransientError(
                 f"Unexpected OpenAI failure: {exc}"
             ) from exc
+
+        if reservation is not None:
+            input_tokens, output_tokens = AICreditService.extract_usage(response)
+            try:
+                AICreditService.settle(
+                    reservation=reservation,
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
+                    embedding=False,
+                    metadata={
+                        "provider": "openai",
+                        "provider_model": str(
+                            getattr(response, "model", None) or self.model
+                        ),
+                    },
+                )
+            except AICreditError as exc:
+                raise AIProviderPermanentError(
+                    f"OpenAI completed but AI-credit settlement failed: {exc}"
+                ) from exc
 
         output_text = (
             getattr(
