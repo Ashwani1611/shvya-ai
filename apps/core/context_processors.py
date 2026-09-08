@@ -168,7 +168,7 @@ def _resolve_active(entry, request_path):
 
 
 def _has_connected_whatsapp_account(request):
-    """Keep post-connection WhatsApp tools out of the sidebar until usable."""
+    """Return True only for a usable Meta WhatsApp API connection."""
     user = getattr(request, "crm_user", None)
     if not user or not getattr(user, "organization_id", None):
         return False
@@ -177,6 +177,7 @@ def _has_connected_whatsapp_account(request):
 
     return WhatsAppAccount.objects.filter(
         organization_id=user.organization_id,
+        connection_type=WhatsAppAccount.ConnectionType.API,
         status=WhatsAppAccount.Status.CONNECTED,
         is_active=True,
     ).exists()
@@ -192,6 +193,20 @@ def _has_hosted_account_access(request):
     from apps.organizations.features import is_hosted_account_enabled
 
     return is_hosted_account_enabled(organization)
+
+
+def _pending_reminder_count(request):
+    """Expose the live pending-reminder badge on every authenticated dashboard page."""
+    user = getattr(request, "crm_user", None)
+    if not user or not getattr(user, "organization_id", None):
+        return 0
+
+    from apps.crm.models import LeadReminder
+
+    return LeadReminder.objects.filter(
+        lead__organization_id=user.organization_id,
+        status="pending",
+    ).count()
 
 
 def sidebar_nav(request):
@@ -246,4 +261,5 @@ def sidebar_nav(request):
     return {
         "nav_items": nav_items,
         "has_whatsapp_connection": has_whatsapp_connection,
+        "pending_reminder_count": _pending_reminder_count(request),
     }
