@@ -5,6 +5,7 @@ inbox under /dashboard/whatsapp/connect/hosted/.
 """
 
 from django.contrib import messages
+from django.db import models
 from django.http import JsonResponse
 from django.shortcuts import redirect, render
 from django.views.decorators.http import require_GET, require_POST
@@ -24,7 +25,7 @@ from services.channels.whatsapp_failure_patch import _failure_block
 from services.crm.lead_filter_service import active_filter_items, apply_lead_filters
 
 from .models import WhatsAppAccount, WhatsAppTemplate
-from .whatsapp_chat_failure_ui import _inject_chat_ui
+from .whatsapp_chat_smooth_ui import _inject_chat_ui
 
 
 def _lead_initials(lead):
