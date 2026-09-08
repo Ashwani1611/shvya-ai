@@ -75,10 +75,12 @@ def sequence_create_save(request):
     if provider not in {"api", "hosted"}:
         messages.error(request, "Choose Use WhatsApp API or Use WhatsApp.")
         return redirect("followups-sequence-create")
-    account = get_object_or_404(
-        _connected_accounts(user, provider),
-        id=request.POST.get("whatsapp_account", ""),
-    )
+    account = None
+    if provider == "api":
+        account = get_object_or_404(
+            _connected_accounts(user, provider),
+            id=request.POST.get("whatsapp_account", ""),
+        )
     try:
         sequence = create_sequence(
             organization=user.organization,
@@ -86,6 +88,7 @@ def sequence_create_save(request):
             name=request.POST.get("name", ""),
             description=request.POST.get("description", ""),
             whatsapp_account=account,
+            provider=provider,
         )
     except FollowupError as exc:
         messages.error(request, str(exc))
