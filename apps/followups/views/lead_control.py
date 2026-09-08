@@ -1,10 +1,10 @@
-from django.db.models import Q
 from django.shortcuts import get_object_or_404, render
 from django.views.decorators.http import require_GET
 
 from apps.crm.decorators import crm_login_required
 from apps.crm.models import Lead
 from apps.followups.models import FollowupExecution, FollowupSequence, LeadSequenceState
+from services.followup_service import resolve_linked_whatsapp_account
 
 
 @crm_login_required
@@ -17,20 +17,23 @@ def lead_followup_control(request, lead_id):
         organization=user.organization,
     )
 
-    sequences = FollowupSequence.objects.filter(
+    candidates = FollowupSequence.objects.filter(
         organization=user.organization,
         is_active=True,
         whatsapp_account__is_active=True,
     ).select_related("whatsapp_account").order_by("name")
 
-    # Prefer sequences using the number mapped to the lead's pipeline. If the
-    # pipeline has no sender configured, keep every connected sequence visible.
-    pipeline_number = getattr(lead.pipeline, "phone_number", "") if lead.pipeline_id else ""
-    if pipeline_number:
-        sequences = sequences.filter(
-            Q(whatsapp_account__display_phone_number=pipeline_number)
-            | Q(whatsapp_account__phone_number_id=pipeline_number)
+    sequences = []
+    for sequence in candidates:
+        linked = resolve_linked_whatsapp_account(
+            lead=lead,
+            connection_type=sequence.whatsapp_account.connection_type,
         )
+        if linked and (
+            sequence.whatsapp_account.connection_type == "hosted"
+            or linked.id == sequence.whatsapp_account_id
+        ):
+            sequences.append(sequence)
 
     current_state = (
         LeadSequenceState.objects.filter(
