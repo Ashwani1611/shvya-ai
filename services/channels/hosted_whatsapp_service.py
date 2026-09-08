@@ -185,20 +185,30 @@ def ensure_session_settings(*, account):
     key = str(account.id)
     current = sessions.get(key, {})
     merged = {**_default_settings_for_account(account), **current}
+    account.organization = organization
+    pipeline = get_pipeline_for_account(account=account)
+    if pipeline:
+        merged["ai_auto_reply"] = bool(pipeline.ai_enabled)
     sessions[key] = merged
     organization.settings = org_settings
     organization.save(update_fields=["settings", "updated_at"])
-    account.organization = organization
     return deepcopy(merged)
 
 
 def get_session_settings(*, account):
     org_settings = account.organization.settings or {}
     sessions = org_settings.get("hosted_whatsapp", {}).get("sessions", {})
-    return {
+    settings = {
         **_default_settings_for_account(account),
         **deepcopy(sessions.get(str(account.id), {})),
     }
+    pipeline = get_pipeline_for_account(account=account)
+    if pipeline:
+        # Pipeline.ai_enabled is the single source of truth used by Knowledge
+        # Base AI Setup and AIPermissionService. The gear must show that exact
+        # value instead of maintaining a second independent AI switch.
+        settings["ai_auto_reply"] = bool(pipeline.ai_enabled)
+    return settings
 
 
 def _as_bool(value):
@@ -212,6 +222,19 @@ def update_session_settings(*, account, payload):
     organization = Organization.objects.select_for_update().get(
         pk=account.organization_id
     )
+    account.organization = organization
+    linked_pipeline = get_pipeline_for_account(account=account)
+    if linked_pipeline is None:
+        raise HostedWhatsAppValidationError(
+            "This WhatsApp number is not linked to an active pipeline. "
+            "Link the number to a pipeline before changing automation settings."
+        )
+    pipeline = Pipeline.objects.select_for_update().get(
+        pk=linked_pipeline.pk,
+        organization=organization,
+        is_active=True,
+    )
+
     org_settings = deepcopy(organization.settings or {})
     sessions = _settings_root(org_settings)
     current = {
@@ -227,6 +250,16 @@ def update_session_settings(*, account, payload):
     ):
         if key in payload:
             current[key] = _as_bool(payload.get(key))
+
+    # AI Auto-Reply is the pipeline-level organization AI control. Keep the
+    # legacy session value mirrored for compatibility, but persist the actual
+    # permission to Pipeline.ai_enabled so Knowledge Base and both WhatsApp
+    # providers always read the same state.
+    if "ai_auto_reply" in payload:
+        pipeline.ai_enabled = current["ai_auto_reply"]
+        pipeline.save(update_fields=["ai_enabled", "updated_at"])
+    else:
+        current["ai_auto_reply"] = bool(pipeline.ai_enabled)
 
     try:
         bump_count = int(payload.get("bump_up_count", current["bump_up_count"]))
@@ -285,7 +318,18 @@ def update_session_settings(*, account, payload):
     sessions[str(account.id)] = current
     organization.settings = org_settings
     organization.save(update_fields=["settings", "updated_at"])
-    account.organization = organization
+
+    # The old organization switch is retained only as an internal scheduler
+    # master flag. Once pipeline/account controls are used it must stay on so
+    # an enabled pipeline is never blocked by the removed Global Settings UI.
+    if "auto_follow_up" in payload:
+        from apps.followups.models import AutoFollowupSettings
+
+        AutoFollowupSettings.objects.update_or_create(
+            organization=organization,
+            defaults={"enabled": True},
+        )
+
     return deepcopy(current)
 
 
