@@ -20,7 +20,7 @@ def set_hosted_created_lead_source(sender, instance, created, **kwargs):
         return
     if instance.direction != WhatsAppMessage.Direction.INBOUND:
         return
-    if instance.account.connection_type != WhatsAppAccount.ConnectionType.HOSTED:
+    if instance.account.connection_type != WhatsAppAccount.ConnectionType.coexisted:
         return
 
     lead = instance.lead
