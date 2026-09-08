@@ -48,12 +48,6 @@ class AIPermissionService:
     AI may operate only when pipeline, current stage, and lead switches are
     enabled. For an existing WhatsApp conversation, the account carrying that
     conversation must also be the number linked to the lead's current pipeline.
-
-    Organization AI credits are enforced at the provider/reservation boundary,
-    rather than here, because this permission service is intentionally called
-    again after generation. A response that legitimately consumes the last
-    available credits must still pass the post-generation safety re-check and
-    be delivered; the next provider call will then fail closed at zero credits.
     """
 
     def __init__(
