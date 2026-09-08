@@ -207,7 +207,7 @@ class HostedWhatsAppTests(TestCase):
         )
         lead = Lead.objects.get(organization=self.org, phone="+919876543210")
         self.assertEqual(lead.pipeline, self.pipeline)
-        self.assertEqual(lead.lead_source, "whatsapp_api")
+        self.assertEqual(lead.lead_source, "whatsapp")
         self.assertEqual(message.lead, lead)
         self.assertEqual(message.external_id, "wweb:ABC123")
 
