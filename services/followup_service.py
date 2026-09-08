@@ -48,6 +48,12 @@ def get_auto_followup_settings(organization):
         # TimeField defaults are strings until hydrated by the database.
         # First-time sequence assignment must receive datetime.time values.
         result.refresh_from_db()
+    # Global Settings has been retired. Keep this legacy row enabled only as
+    # an internal scheduler master so pipeline/account switches are the actual
+    # user-facing source of truth.
+    if not result.enabled:
+        result.enabled = True
+        result.save(update_fields=["enabled", "updated_at"])
     return result
 
 
@@ -70,7 +76,7 @@ def update_auto_followup_settings(
         raise FollowupError("Invalid conversation delay unit.")
 
     config = get_auto_followup_settings(organization)
-    config.enabled = bool(enabled)
+    config.enabled = True
     config.business_hours_start = business_hours_start
     config.business_hours_end = business_hours_end
     config.conversation_delay_value = conversation_delay_value
@@ -487,22 +493,46 @@ def calculate_step_due(*, step, reference, organization):
     raise FollowupError("Unsupported follow-up schedule.")
 
 
-def _move_into_business_hours(*, organization, due):
-    config = get_auto_followup_settings(organization)
+def _move_into_business_hours(*, organization, due, automation_settings=None):
+    if automation_settings:
+        try:
+            start_time = datetime.strptime(
+                automation_settings["business_hours_start"], "%H:%M"
+            ).time()
+            end_time = datetime.strptime(
+                automation_settings["business_hours_end"], "%H:%M"
+            ).time()
+        except (KeyError, TypeError, ValueError):
+            start_time = end_time = None
+    else:
+        config = get_auto_followup_settings(organization)
+        start_time = config.business_hours_start
+        end_time = config.business_hours_end
+
+    if start_time is None or end_time is None:
+        return due
+
     zone = _org_zone(organization)
     local_due = due.astimezone(zone)
-    start = datetime.combine(local_due.date(), config.business_hours_start, tzinfo=zone)
-    end = datetime.combine(local_due.date(), config.business_hours_end, tzinfo=zone)
-    if local_due < start:
-        return start.astimezone(datetime_timezone.utc)
-    if local_due >= end:
-        next_start = datetime.combine(
-            local_due.date() + timedelta(days=1),
-            config.business_hours_start,
-            tzinfo=zone,
-        )
-        return next_start.astimezone(datetime_timezone.utc)
-    return due
+    start = datetime.combine(local_due.date(), start_time, tzinfo=zone)
+    end = datetime.combine(local_due.date(), end_time, tzinfo=zone)
+
+    if start_time < end_time:
+        if local_due < start:
+            return start.astimezone(datetime_timezone.utc)
+        if local_due >= end:
+            next_start = datetime.combine(
+                local_due.date() + timedelta(days=1),
+                start_time,
+                tzinfo=zone,
+            )
+            return next_start.astimezone(datetime_timezone.utc)
+        return due
+
+    # Overnight business window, for example 20:00 to 06:00.
+    if local_due.time() >= start_time or local_due.time() < end_time:
+        return due
+    return start.astimezone(datetime_timezone.utc)
 
 
 def _next_step_for_state(state):
@@ -539,7 +569,11 @@ def _set_next_step(state, *, reference=None):
         reference=reference,
         organization=state.organization,
     )
-    due = _move_into_business_hours(organization=state.organization, due=due)
+    due = _move_into_business_hours(
+        organization=state.organization,
+        due=due,
+        automation_settings=_automation_settings_for_state(state),
+    )
     if state.paused_until and due < state.paused_until:
         due = state.paused_until
     state.next_step = next_step
@@ -566,7 +600,11 @@ def _repeat_or_advance(state, step, *, completed_at):
             reference=completed_at,
             organization=state.organization,
         )
-        due = _move_into_business_hours(organization=state.organization, due=due)
+        due = _move_into_business_hours(
+            organization=state.organization,
+            due=due,
+            automation_settings=_automation_settings_for_state(state),
+        )
         if state.paused_until and due < state.paused_until:
             due = state.paused_until
         state.next_step = step
@@ -693,6 +731,27 @@ def _validate_lead_sender(lead, sequence):
     )
 
 
+def _automation_settings_for_state(state):
+    """Return automation settings for the sender linked to this lead pipeline."""
+    try:
+        account = _validate_lead_sender(state.lead, state.sequence)
+    except FollowupError:
+        return None
+    from services.channels.hosted_whatsapp_service import get_session_settings
+
+    return get_session_settings(account=account)
+
+
+def _state_conversation_delay(state):
+    automation_settings = _automation_settings_for_state(state)
+    if automation_settings:
+        return _delay_delta(
+            automation_settings.get("active_conversation_delay_value", 2),
+            automation_settings.get("active_conversation_delay_unit", "hours"),
+        )
+    return _conversation_delay(get_auto_followup_settings(state.organization))
+
+
 @transaction.atomic
 def assign_sequence(*, lead, sequence, actor=None):
     if lead.organization_id != sequence.organization_id:
@@ -769,12 +828,11 @@ def register_lead_reply(*, lead, at=None):
     state = LeadSequenceState.objects.filter(
         lead=lead,
         status__in=[LeadSequenceState.Status.ACTIVE, LeadSequenceState.Status.PAUSED],
-    ).first()
+    ).select_related("organization", "lead", "lead__pipeline", "sequence", "sequence__whatsapp_account").first()
     if not state:
         return None
-    config = get_auto_followup_settings(lead.organization)
     state.last_inbound_at = at
-    state.paused_until = at + _conversation_delay(config)
+    state.paused_until = at + _state_conversation_delay(state)
     if state.upcoming_send_at is None or state.upcoming_send_at < state.paused_until:
         state.upcoming_send_at = state.paused_until
     state.save(
@@ -794,12 +852,11 @@ def register_manual_outbound(*, lead, at=None):
     state = LeadSequenceState.objects.filter(
         lead=lead,
         status__in=[LeadSequenceState.Status.ACTIVE, LeadSequenceState.Status.PAUSED],
-    ).first()
+    ).select_related("organization", "lead", "lead__pipeline", "sequence", "sequence__whatsapp_account").first()
     if not state:
         return None
-    config = get_auto_followup_settings(lead.organization)
     state.last_manual_outbound_at = at
-    state.paused_until = at + _conversation_delay(config)
+    state.paused_until = at + _state_conversation_delay(state)
     if state.upcoming_send_at is None or state.upcoming_send_at < state.paused_until:
         state.upcoming_send_at = state.paused_until
     state.save(
@@ -907,6 +964,7 @@ def _handle_failure(state, execution, exc):
         state.upcoming_send_at = _move_into_business_hours(
             organization=state.organization,
             due=retry_at,
+            automation_settings=_automation_settings_for_state(state),
         )
         state.save(update_fields=["upcoming_send_at", "updated_at"])
         return
@@ -1144,11 +1202,15 @@ def process_due_state(state_id):
     )
     if not state or state.status != LeadSequenceState.Status.ACTIVE:
         return False
+    if state.sequence.whatsapp_account.connection_type != WhatsAppAccount.ConnectionType.API:
+        return False
     if not state.lead_auto_followup_enabled or not state.sequence.is_active:
         return False
-    config = get_auto_followup_settings(state.organization)
-    if not config.enabled:
+
+    automation_settings = _automation_settings_for_state(state)
+    if not automation_settings or not automation_settings.get("auto_follow_up", True):
         return False
+
     now = timezone.now()
     if state.paused_until and state.paused_until > now:
         state.upcoming_send_at = state.paused_until
@@ -1160,7 +1222,11 @@ def process_due_state(state_id):
     if state.upcoming_send_at and state.upcoming_send_at > now:
         return False
 
-    adjusted = _move_into_business_hours(organization=state.organization, due=now)
+    adjusted = _move_into_business_hours(
+        organization=state.organization,
+        due=now,
+        automation_settings=automation_settings,
+    )
     if adjusted > now:
         state.upcoming_send_at = adjusted
         state.save(update_fields=["upcoming_send_at", "updated_at"])
@@ -1184,30 +1250,28 @@ def process_due_state(state_id):
 
 
 def dispatch_one_due_state():
-    """Process at most one due lead per invocation, preventing fan-out bursts."""
+    """Process at most one API due lead per invocation, preventing fan-out bursts."""
     if not cache.add(DISPATCH_LOCK_KEY, "1", timeout=DISPATCH_LOCK_SECONDS):
         return {"status": "locked"}
     try:
         now = timezone.now()
-        state_id = (
+        state_ids = list(
             LeadSequenceState.objects.filter(
                 status=LeadSequenceState.Status.ACTIVE,
                 lead_auto_followup_enabled=True,
                 sequence__is_active=True,
+                sequence__whatsapp_account__connection_type=WhatsAppAccount.ConnectionType.API,
                 upcoming_send_at__isnull=False,
                 upcoming_send_at__lte=now,
-                organization__auto_followup_settings__enabled=True,
             )
             .order_by("upcoming_send_at", "assigned_at")
-            .values_list("id", flat=True)
-            .first()
+            .values_list("id", flat=True)[:50]
         )
-        if not state_id:
+        if not state_ids:
             return {"status": "idle"}
-        processed = process_due_state(state_id)
-        return {
-            "status": "processed" if processed else "deferred",
-            "state_id": str(state_id),
-        }
+        for state_id in state_ids:
+            if process_due_state(state_id):
+                return {"status": "processed", "state_id": str(state_id)}
+        return {"status": "deferred", "state_id": str(state_ids[0])}
     finally:
         cache.delete(DISPATCH_LOCK_KEY)
