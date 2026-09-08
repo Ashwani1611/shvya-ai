@@ -22,7 +22,6 @@ from apps.crm.views.dashboard import (
     lead_edit_modal,
     lead_edit_save,
     lead_edit_stages,
-    lead_filters_modal,
     lead_filters_values,
     lead_note_modal,
     lead_note_save,
@@ -34,7 +33,6 @@ from apps.crm.views.dashboard import (
     lead_ai_toggle,
     lead_stage_move,
     lead_stage_rename,
-    lead_table_partial,
     attribute_manage_modal,
     attribute_edit_modal,
     attribute_update_save,
@@ -54,11 +52,16 @@ from apps.crm.views.dashboard import (
     lead_import_destination_save,
     lead_import_review_modal,
     lead_import_execute,
-    global_reminders_modal,
     global_reminder_complete,
     global_reminder_delete,
     global_reminder_edit_save,
     global_reminder_snooze,
+)
+
+from apps.crm.views.filtering import (
+    global_reminders_modal,
+    lead_filters_modal,
+    lead_table_partial,
 )
 
 from apps.crm.views.ai_setup import (
