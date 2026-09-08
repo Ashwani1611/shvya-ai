@@ -2,7 +2,9 @@ from django.urls import path
 
 from .views import (
     admin_global_search,
+    ai_credit_overview_view,
     org_list_view,
+    organization_ai_credit_view,
     organization_create_view,
     organization_detail_view,
     organization_generate_login_link_view,
@@ -44,6 +46,21 @@ urlpatterns = [
         "",
         org_list_view,
         name="superadmin-org-list",
+    ),
+
+    # =========================================================
+    # SUPER ADMIN — AI CREDITS
+    # =========================================================
+
+    path(
+        "ai-credits/",
+        ai_credit_overview_view,
+        name="superadmin-ai-credit-overview",
+    ),
+    path(
+        "organization/<uuid:organization_id>/ai-credits/",
+        organization_ai_credit_view,
+        name="superadmin-organization-ai-credits",
     ),
 
     # =========================================================
