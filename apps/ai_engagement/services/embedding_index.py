@@ -19,11 +19,16 @@ class EmbeddingIndexService:
     """
     Coordinates embedding generation and persistence.
 
+    Organization-scoped AI-credit metering lives at the real
+    ``EmbeddingService`` provider boundary. Keeping accounting there avoids
+    duplicate reservation logic and guarantees that an actual OpenAI
+    embedding request cannot bypass the manual AI-credit wallet.
+
     Flow:
 
         Chunk
           ↓
-        EmbeddingService
+        EmbeddingService (organization-scoped + metered)
           ↓
         embedding vector
           ↓
@@ -47,6 +52,47 @@ class EmbeddingIndexService:
         if self._embedding_service is None:
             self._embedding_service = EmbeddingService()
         return self._embedding_service
+
+    def _embed_text(
+        self,
+        *,
+        text: str,
+        organization_id,
+        reference_id,
+    ) -> list[float]:
+        """
+        Use organization metering for the real provider while preserving
+        compatibility with injected provider doubles used by focused tests.
+        """
+        if isinstance(self.embedding_service, EmbeddingService):
+            return self.embedding_service.embed_text(
+                text,
+                organization_id=organization_id,
+                feature="knowledge_embedding",
+                reference_id=str(reference_id or "")[:150],
+            )
+
+        return self.embedding_service.embed_text(text)
+
+    def _embed_texts(
+        self,
+        *,
+        texts: list[str],
+        organization_id,
+        reference_id,
+    ) -> list[list[float]]:
+        """
+        Generate one metered provider batch for a single organization.
+        """
+        if isinstance(self.embedding_service, EmbeddingService):
+            return self.embedding_service.embed_texts(
+                texts,
+                organization_id=organization_id,
+                feature="knowledge_embedding",
+                reference_id=str(reference_id or "")[:150],
+            )
+
+        return self.embedding_service.embed_texts(texts)
 
     # ============================================================
     # SINGLE CHUNK
@@ -75,10 +121,10 @@ class EmbeddingIndexService:
             )
 
         try:
-            vector = (
-                self.embedding_service.embed_text(
-                    content
-                )
+            vector = self._embed_text(
+                text=content,
+                organization_id=chunk.organization_id,
+                reference_id=chunk.pk,
             )
         except EmbeddingError as exc:
             raise EmbeddingIndexError(
@@ -154,14 +200,26 @@ class EmbeddingIndexService:
                     f"Chunk {chunk.pk} has empty content."
                 )
 
+        organization_ids = {
+            chunk.organization_id
+            for chunk in chunk_list
+        }
+
+        if len(organization_ids) != 1:
+            raise EmbeddingIndexError(
+                "An embedding batch cannot contain multiple organizations."
+            )
+
+        normalized_texts = [
+            chunk.content.strip()
+            for chunk in chunk_list
+        ]
+
         try:
-            vectors = (
-                self.embedding_service.embed_texts(
-                    [
-                        chunk.content.strip()
-                        for chunk in chunk_list
-                    ]
-                )
+            vectors = self._embed_texts(
+                texts=normalized_texts,
+                organization_id=chunk_list[0].organization_id,
+                reference_id=chunk_list[0].document_id,
             )
         except EmbeddingError as exc:
             raise EmbeddingIndexError(

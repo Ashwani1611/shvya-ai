@@ -16,8 +16,25 @@
     <!-- Super Admin Top Header -->
     <header class="min-h-12 bg-white border-b flex flex-wrap items-center justify-between gap-3 px-5 py-2">
 
-        <div class="font-semibold text-sm">
-            SHVYA AI
+        <div class="flex flex-wrap items-center gap-4">
+            <div class="font-semibold text-sm">
+                SHVYA AI
+            </div>
+
+            <nav class="flex items-center gap-1 text-xs">
+                <a
+                    href="{% url 'superadmin-org-list' %}"
+                    class="rounded-md px-3 py-1.5 {% if request.resolver_match.url_name == 'superadmin-org-list' or request.resolver_match.url_name == 'superadmin-organization-detail' %}bg-gray-900 text-white{% else %}text-gray-600 hover:bg-gray-100 hover:text-gray-900{% endif %}"
+                >
+                    Organizations
+                </a>
+                <a
+                    href="{% url 'superadmin-ai-credit-overview' %}"
+                    class="rounded-md px-3 py-1.5 {% if request.resolver_match.url_name == 'superadmin-ai-credit-overview' or request.resolver_match.url_name == 'superadmin-organization-ai-credits' %}bg-indigo-600 text-white{% else %}text-gray-600 hover:bg-indigo-50 hover:text-indigo-700{% endif %}"
+                >
+                    AI Credits
+                </a>
+            </nav>
         </div>
 
         <div class="flex flex-wrap items-center gap-2">

@@ -448,7 +448,10 @@ class PlaygroundService:
         try:
             query_vector = (
                 self.embedding_service.embed_text(
-                    query
+                    query,
+                    organization_id=organization.id,
+                    feature="playground_knowledge_query",
+                    reference_id=str(organization.id),
                 )
             )
 

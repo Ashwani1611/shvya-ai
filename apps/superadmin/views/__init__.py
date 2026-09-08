@@ -7,3 +7,7 @@ from apps.superadmin.hosted_ignore_views import (
     organization_hosted_ignore_reset_view,
     organization_hosted_ignore_sync_view,
 )
+from apps.superadmin.ai_credit_views import (
+    ai_credit_overview_view,
+    organization_ai_credit_view,
+)
