@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from typing import Any
 
@@ -82,9 +83,20 @@ class OpenAIProvider:
 
     Organization-scoped calls are metered by AICreditService before the
     provider request. A zero/blocked wallet fails before OpenAI is called.
+
+    A caller may explicitly pin ``model`` when constructing the provider.
+    Otherwise SHVYA resolves task-specific model environment settings and
+    falls back to ``OPENAI_AI_MODEL`` for backward compatibility.
     """
 
     DEFAULT_MODEL = "gpt-4.1-nano"
+
+    TASK_MODEL_ENV = {
+        "engagement": "OPENAI_ENGAGEMENT_MODEL",
+        "playground": "OPENAI_ENGAGEMENT_MODEL",
+        "qualification": "OPENAI_QUALIFICATION_MODEL",
+        "internal_summary": "OPENAI_SUMMARY_MODEL",
+    }
 
     def __init__(
         self,
@@ -111,6 +123,7 @@ class OpenAIProvider:
             )
         )
 
+        self._explicit_model = bool((model or "").strip())
         self.model = (
             model
             or getattr(
@@ -118,7 +131,29 @@ class OpenAIProvider:
                 "OPENAI_AI_MODEL",
                 self.DEFAULT_MODEL,
             )
-        )
+            or self.DEFAULT_MODEL
+        ).strip()
+
+    def _model_for_metadata(
+        self,
+        metadata: dict[str, str] | None,
+    ) -> str:
+        """Resolve a task-specific model while preserving explicit overrides."""
+        if self._explicit_model:
+            return self.model
+
+        feature = AICreditService.feature_from_metadata(metadata)
+        env_name = self.TASK_MODEL_ENV.get(feature)
+        if not env_name:
+            return self.model
+
+        configured = (
+            os.getenv(env_name, "")
+            or getattr(settings, env_name, "")
+            or ""
+        ).strip()
+
+        return configured or self.model
 
     def _release_credit_reservation(self, reservation) -> None:
         if reservation is None:
@@ -163,8 +198,10 @@ class OpenAIProvider:
                 "AI input cannot be empty."
             )
 
+        request_model = self._model_for_metadata(metadata)
+
         request_kwargs: dict[str, Any] = {
-            "model": self.model,
+            "model": request_model,
             "instructions": instructions,
             "input": input_text,
         }
@@ -179,7 +216,7 @@ class OpenAIProvider:
             try:
                 reservation = AICreditService.reserve_text(
                     organization_id=organization_id,
-                    model=self.model,
+                    model=request_model,
                     instructions=instructions,
                     input_text=input_text,
                     feature=AICreditService.feature_from_metadata(metadata),
@@ -264,7 +301,7 @@ class OpenAIProvider:
                     metadata={
                         "provider": "openai",
                         "provider_model": str(
-                            getattr(response, "model", None) or self.model
+                            getattr(response, "model", None) or request_model
                         ),
                     },
                 )
@@ -295,6 +332,6 @@ class OpenAIProvider:
                     "model",
                     None,
                 )
-                or self.model
+                or request_model
             ),
         )
