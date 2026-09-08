@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import time, timedelta
 
 from django.test import TestCase
 from django.utils import timezone
@@ -11,6 +11,7 @@ from apps.followups.models import (
     FollowupExecution,
     FollowupSequence,
     FollowupStep,
+    LeadSequenceState,
 )
 from apps.organizations.models import Organization
 from services.channels.hosted_whatsapp_service import (
@@ -82,6 +83,8 @@ class PipelineAutomationSettingsTests(TestCase):
         AutoFollowupSettings.objects.create(
             organization=self.organization,
             enabled=False,
+            business_hours_start=time(0, 1),
+            business_hours_end=time(23, 59),
         )
 
     def test_ai_and_followup_settings_are_isolated_by_linked_pipeline(self):
@@ -162,7 +165,7 @@ class PipelineAutomationSettingsTests(TestCase):
 
         self.assertTrue(process_due_state(state.id))
         state.refresh_from_db()
-        self.assertEqual(state.status, state.Status.COMPLETED)
+        self.assertEqual(state.status, LeadSequenceState.Status.COMPLETED)
 
     def test_conversation_delay_uses_linked_pipeline_number_settings(self):
         sequence = FollowupSequence.objects.create(
