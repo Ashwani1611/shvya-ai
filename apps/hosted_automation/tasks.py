@@ -68,7 +68,12 @@ def _send_generated_ai_message(job):
 
     from services.channels.hosted_whatsapp_transport import send_hosted_message
 
-    send_hosted_message(message=message, defer_on_pause=True)
+    from services.channels.whatsapp_service import WhatsAppSendError
+
+    try:
+        send_hosted_message(message=message, defer_on_pause=True)
+    except WhatsAppSendError as exc:
+        return {"status": "failed", "reason": str(exc), "message_id": str(message.id)}
     return {"status": "sent", "message_id": str(message.id)}
 
 

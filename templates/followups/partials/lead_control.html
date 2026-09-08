@@ -19,7 +19,7 @@
             </form>
         </div>
         <div class="mt-1 flex items-center justify-between gap-2 text-[11px] text-emerald-800/80">
-            <span>{% if current_state.next_step %}Next: step {{ current_state.next_step.position }}{% if current_state.upcoming_send_at %} · {{ current_state.upcoming_send_at|date:"d M, h:i A" }}{% endif %}{% else %}Running{% endif %}</span>
+            <span>{% if current_state.next_step %}Next: step {{ current_state.next_step.position }}{% if current_state.upcoming_send_at %} Â· {{ current_state.upcoming_send_at|date:"d M, h:i A" }}{% endif %}{% else %}Running{% endif %}</span>
             <form hx-post="{% url 'followups-lead-clear' lead.id %}" hx-target="#lead-followup-control-{{ lead.id }}" hx-swap="outerHTML">
                 {% csrf_token %}<button class="font-semibold text-red-600 hover:underline">Clear sequence</button>
             </form>
@@ -28,7 +28,10 @@
         <a href="{% url 'followups-sequence-edit' display_state.sequence.id %}" class="mt-1 block truncate text-sm font-semibold text-orange-900 hover:underline" title="Open {{ display_state.sequence.name }}">
             {{ display_state.sequence.name }} <i class="ti ti-external-link text-xs"></i>
         </a>
-        <p class="mt-1 text-[11px] text-orange-700">Sequence completed{% if display_state.completed_at %} · {{ display_state.completed_at|date:"d M, h:i A" }}{% endif %}</p>
+        <p class="mt-1 text-[11px] text-orange-700">Sequence completed{% if display_state.completed_at %} Â· {{ display_state.completed_at|date:"d M, h:i A" }}{% endif %}</p>
+        <form hx-post="{% url 'followups-lead-clear' lead.id %}" hx-target="#lead-followup-control-{{ lead.id }}" hx-swap="outerHTML" class="mt-1">
+            {% csrf_token %}<button type="submit" class="text-[11px] font-semibold text-red-600 hover:underline">Clear sequence</button>
+        </form>
     {% else %}
         <p class="mt-1 text-sm font-semibold text-blue-900">No sequence assigned</p>
     {% endif %}

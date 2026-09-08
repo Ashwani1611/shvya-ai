@@ -348,7 +348,7 @@ class AIContextBuilder:
         Build normalized Lead context.
         """
 
-        from apps.ai_engagement.services.qualification_state import attributes_with_state, state_for_lead
+        from apps.ai_engagement.services.qualification_state import state_for_lead
 
         return {
             "id": str(
@@ -358,7 +358,8 @@ class AIContextBuilder:
             "phone": lead.phone,
             "email": lead.email,
             "notes": lead.notes,
-            "attributes": attributes_with_state(lead, state_for_lead(lead)),
+            "attributes": lead.attributes,
+            "qualification": state_for_lead(lead),
             "lead_source": lead.lead_source,
             "stage_entered_at": (
                 lead.stage_entered_at.isoformat()

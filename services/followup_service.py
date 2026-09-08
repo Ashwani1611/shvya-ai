@@ -735,7 +735,7 @@ def assign_sequence(*, lead, sequence, actor=None):
 def clear_sequence(*, lead):
     states = LeadSequenceState.objects.select_for_update().filter(
         lead=lead,
-        status__in=[LeadSequenceState.Status.ACTIVE, LeadSequenceState.Status.PAUSED],
+        status__in=[LeadSequenceState.Status.ACTIVE, LeadSequenceState.Status.PAUSED, LeadSequenceState.Status.COMPLETED],
     )
     now = timezone.now()
     states.update(

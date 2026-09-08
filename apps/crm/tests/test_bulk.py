@@ -283,3 +283,16 @@ class BulkLeadTests(TestCase):
         self.assertEqual(self.post("options").json()["sequences"][0]["id"], str(sequence.pk))
         response = self.post("update", sequence_action="assign", sequence=str(sequence.pk))
         self.assertEqual(response.status_code, 200, response.content)
+
+    def test_completed_sequence_can_be_cleared_from_lead_control(self):
+        sequence = self.sequence()
+        lead = self.leads[0]
+        state = assign_sequence(lead=lead, sequence=sequence, actor=self.user)
+        state.status = LeadSequenceState.Status.COMPLETED
+        state.save(update_fields=["status"])
+        response = self.client.get(reverse("followups-lead-control", args=[lead.pk]))
+        self.assertContains(response, "Clear sequence")
+        response = self.client.post(reverse("followups-lead-clear", args=[lead.pk]), follow=True)
+        self.assertContains(response, "No sequence assigned")
+        state.refresh_from_db()
+        self.assertEqual(state.status, LeadSequenceState.Status.CLEARED)

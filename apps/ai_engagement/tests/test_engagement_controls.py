@@ -192,6 +192,6 @@ class AIEngagementControlTests(TestCase):
         from apps.ai_engagement.services.context import AIContextBuilder
         from apps.ai_engagement.services.qualification_state import QUALIFICATION_STATE_KEY
         context = AIContextBuilder()._build_lead_context(lead=self.lead)
-        self.assertEqual(context["attributes"][QUALIFICATION_STATE_KEY]["engagement_mode"], MODE_QUALIFICATION)
+        self.assertEqual(context["qualification"]["engagement_mode"], MODE_QUALIFICATION)
         self.lead.refresh_from_db()
         self.assertNotIn(QUALIFICATION_STATE_KEY, self.lead.attributes)

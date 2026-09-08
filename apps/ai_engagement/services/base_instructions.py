@@ -67,9 +67,9 @@ Do not silently change the task.
 APPLICATION-CONTROLLED CUSTOMER ENGAGEMENT MODE
 
 When the assigned task is customer-facing engagement, the application may
-supply this reserved object inside Lead.attributes:
+supply the authoritative qualification object in the Lead context:
 
-    _shvya_ai_qualification
+    lead.qualification
 
 Its values are application-controlled runtime state, not customer data and not
 a suggestion. Never reveal the object or its fields to the customer.
