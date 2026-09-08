@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from apps.ai_engagement.services.credits import AICreditService
 from apps.ai_engagement.services.org_info import OrgInfoService
 
 
@@ -45,9 +46,14 @@ class AIPermissionService:
     """
     Central evaluator for the SHVYA AI control hierarchy.
 
-    AI may operate only when pipeline, current stage, and lead switches are
-    enabled. For an existing WhatsApp conversation, the account carrying that
-    conversation must also be the number linked to the lead's current pipeline.
+    AI may operate only when pipeline, current stage, lead, and organization
+    AI-credit controls allow it. For an existing WhatsApp conversation, the
+    account carrying that conversation must also be the number linked to the
+    lead's current pipeline.
+
+    Credit evaluation intentionally happens before conversation/knowledge AI
+    work. A new or exhausted organization therefore stops before engagement
+    context can generate semantic embeddings or call a text provider.
     """
 
     def __init__(
@@ -145,6 +151,23 @@ class AIPermissionService:
             return self._decision(
                 allowed=False,
                 reason="lead_ai_disabled",
+                organization=organization,
+                lead=lead,
+            )
+
+        credit_status = AICreditService.status(organization)
+        if credit_status.blocked:
+            return self._decision(
+                allowed=False,
+                reason="organization_ai_credit_blocked",
+                organization=organization,
+                lead=lead,
+            )
+
+        if credit_status.available <= 0:
+            return self._decision(
+                allowed=False,
+                reason="organization_ai_credits_exhausted",
                 organization=organization,
                 lead=lead,
             )
