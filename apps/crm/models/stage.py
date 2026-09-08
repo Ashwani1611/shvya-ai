@@ -1,6 +1,5 @@
 import uuid
 
-from django.core.exceptions import ValidationError
 from django.db import models
 
 from .pipeline import Pipeline
@@ -102,22 +101,35 @@ class Stage(models.Model):
     def is_name_locked(self):
         return self._normalized_name(self.name) in self.PROTECTED_STAGE_NAMES
 
+    @property
+    def is_system_locked(self):
+        return self.is_name_locked
+
     def save(self, *args, **kwargs):
+        """Keep SHVYA's required system stages active and canonically named."""
         if self.pk:
-            original_name = (
+            original = (
                 Stage.objects.filter(pk=self.pk)
-                .values_list("name", flat=True)
+                .values("name", "is_active")
                 .first()
             )
             if (
-                original_name
-                and self._normalized_name(original_name) in self.PROTECTED_STAGE_NAMES
-                and self._normalized_name(self.name) != self._normalized_name(original_name)
+                original
+                and self._normalized_name(original["name"])
+                in self.PROTECTED_STAGE_NAMES
             ):
-                raise ValidationError(
-                    {"name": f"{original_name} is a system stage and cannot be renamed."}
-                )
+                # Direct service/API calls must not be able to rename or
+                # soft-delete these stages. The AI toggle remains editable.
+                self.name = original["name"]
+                self.is_active = True
+
         return super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        """Prevent direct model deletion of the two system stages."""
+        if self.is_system_locked:
+            return (0, {})
+        return super().delete(*args, **kwargs)
 
     def __str__(self):
         return f"{self.pipeline.name} → {self.name}"
