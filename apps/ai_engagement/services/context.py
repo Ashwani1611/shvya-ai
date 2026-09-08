@@ -757,13 +757,17 @@ class AIContextBuilder:
             try:
                 query_vector = (
                     EmbeddingService().embed_text(
-                        normalized_query
+                        normalized_query,
+                        organization_id=organization.id,
+                        feature="knowledge_query",
+                        reference_id=str(organization.id),
                     )
                 )
             except EmbeddingError:
-                # No provider key, or the provider call failed:
-                # degrade to no knowledge rather than break the
-                # whole AI context build.
+                # No provider key, no available AI credits, or the provider
+                # call failed: degrade to no knowledge rather than fabricate
+                # a vector. The generative provider independently enforces the
+                # same organization wallet before any response is generated.
                 return []
 
         results = (
