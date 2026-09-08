@@ -213,13 +213,11 @@ def resolve_pipeline(
     organization's first active pipeline, so a new inbound
     message never fails just because no number was configured.
     """
-    pipeline = (
-        Pipeline.objects.filter(
-            organization=organization,
-            phone_number=to_number,
-            is_active=True,
-        )
-        .first()
+    from services.channels.hosted_whatsapp_service import resolve_pipeline_for_number
+
+    pipeline = resolve_pipeline_for_number(
+        organization=organization,
+        phone_number=to_number,
     )
 
     if pipeline:
@@ -372,7 +370,9 @@ def handle_inbound_message(
 
     pipeline = resolve_pipeline(
         organization=organization,
-        to_number=to_number,
+        # Meta's phone_number_id is an opaque resource ID, not a phone.
+        # Prefer the account number even for older callers passing that ID.
+        to_number=account.display_phone_number or to_number,
     )
 
     if pipeline:

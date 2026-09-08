@@ -546,7 +546,11 @@ def _handle_webhook_delivery(request):
                     account=account,
                     external_id=message.get("id"),
                     from_number=message.get("from", ""),
-                    to_number=phone_number_id,
+                    to_number=(
+                        metadata.get("display_phone_number")
+                        or account.display_phone_number
+                        or ""
+                    ),
                     body=body,
                     raw_payload=message,
                 )
