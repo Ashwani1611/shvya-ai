@@ -1,5 +1,9 @@
 """Provider dispatch for Hosted Account sends without disturbing Meta Cloud API."""
 
+from datetime import timedelta
+
+from django.utils import timezone
+
 from apps.channels.models import WhatsAppMessage
 from apps.channels.providers.whatsapp_web import (
     WhatsAppWebClient,
@@ -9,6 +13,7 @@ from apps.channels.providers.whatsapp_web import (
 
 _INSTALLED = False
 _ORIGINAL_SEND = None
+TRANSIENT_AUTOMATION_RETRY_SECONDS = 60
 
 
 def _push_chat_refresh(message, reason):
@@ -90,6 +95,21 @@ def send_hosted_message(*, message, defer_on_pause=True):
         message.error = str(exc)
         message.save(update_fields=["status", "error", "updated_at"])
         _push_chat_refresh(message, "failed")
+
+        # A temporary gateway/network outage must not permanently pause an
+        # automation sequence just because the step has zero user retries.
+        # Reuse the existing HostedAutomationPaused deferral path so the same
+        # execution/job is retried after a short delay. Manual sends still
+        # surface the failure immediately.
+        if (
+            defer_on_pause
+            and message_is_automation(message)
+            and (exc.status_code is None or exc.status_code >= 500)
+        ):
+            raise HostedAutomationPaused(
+                timezone.now() + timedelta(seconds=TRANSIENT_AUTOMATION_RETRY_SECONDS)
+            ) from exc
+
         raise WhatsAppSendError(str(exc)) from exc
 
     raw_id = response.get("messageId")
