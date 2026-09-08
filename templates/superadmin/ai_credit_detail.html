@@ -3,287 +3,556 @@
 {% block title %}{{ organization.name }} AI Credits - SHVYA Super Admin{% endblock %}
 
 {% block content %}
-<div class="max-w-7xl mx-auto space-y-6">
-    <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-            <div class="flex items-center gap-2 text-sm text-gray-500">
-                <a href="{% url 'superadmin-ai-credit-overview' %}" class="hover:text-indigo-600">AI Credits</a>
-                <span>/</span>
-                <span>{{ organization.name }}</span>
-            </div>
-            <h1 class="mt-1 text-xl font-semibold">{{ organization.name }} · AI Credit Wallet</h1>
-            <p class="mt-1 text-sm text-gray-500">Credits are changed only by explicit Superadmin actions or settled AI usage.</p>
-        </div>
-        <a href="{% url 'superadmin-organization-detail' organization_id=organization.id %}" class="inline-flex items-center justify-center rounded-md border px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">Organization details</a>
-    </div>
+<div class="mx-auto max-w-7xl space-y-5 pb-10">
+    <!-- Organization title card -->
+    <section class="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
+        <div class="border-b border-gray-100 bg-gradient-to-r from-indigo-50 via-white to-white px-5 py-5 sm:px-6">
+            <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                <div class="min-w-0">
+                    <div class="mb-3 flex flex-wrap items-center gap-2 text-xs font-medium text-gray-500">
+                        <a href="{% url 'superadmin-ai-credit-overview' %}" class="inline-flex items-center gap-1.5 hover:text-indigo-600">
+                            <i class="ti ti-coins"></i>
+                            AI Credits
+                        </a>
+                        <i class="ti ti-chevron-right text-gray-300"></i>
+                        <span class="truncate">{{ organization.name }}</span>
+                    </div>
 
-    <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
-        <div class="rounded-lg border bg-white p-4">
-            <div class="text-xs font-medium uppercase tracking-wide text-gray-400">Available</div>
-            <div class="mt-2 text-2xl font-semibold {% if wallet.available_credits == 0 %}text-red-600{% elif wallet.is_low %}text-amber-600{% endif %}">{{ wallet.available_credits }}</div>
-        </div>
-        <div class="rounded-lg border bg-white p-4">
-            <div class="text-xs font-medium uppercase tracking-wide text-gray-400">Reserved now</div>
-            <div class="mt-2 text-2xl font-semibold">{{ wallet.reserved_credits }}</div>
-        </div>
-        <div class="rounded-lg border bg-white p-4">
-            <div class="text-xs font-medium uppercase tracking-wide text-gray-400">Used today</div>
-            <div class="mt-2 text-2xl font-semibold">{{ used_today }}</div>
-        </div>
-        <div class="rounded-lg border bg-white p-4">
-            <div class="text-xs font-medium uppercase tracking-wide text-gray-400">Used this month</div>
-            <div class="mt-2 text-2xl font-semibold">{{ used_this_month }}</div>
-        </div>
-        <div class="rounded-lg border bg-white p-4">
-            <div class="text-xs font-medium uppercase tracking-wide text-gray-400">AI status</div>
-            <div class="mt-2">
-                {% if wallet.is_blocked %}
-                    <span class="rounded-full bg-red-100 px-2.5 py-1 text-sm font-medium text-red-700">Blocked by Superadmin</span>
-                {% elif wallet.available_credits == 0 %}
-                    <span class="rounded-full bg-red-100 px-2.5 py-1 text-sm font-medium text-red-700">Paused · 0 credits</span>
-                {% elif wallet.is_low %}
-                    <span class="rounded-full bg-amber-100 px-2.5 py-1 text-sm font-medium text-amber-700">Low credits</span>
-                {% else %}
-                    <span class="rounded-full bg-green-100 px-2.5 py-1 text-sm font-medium text-green-700">Available</span>
-                {% endif %}
-            </div>
-        </div>
-    </div>
-
-    <div class="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800">
-        <strong>Manual funding only.</strong> Creating an organization does not grant AI credits, and package/plan renewal does not refill this wallet. At 0 available credits, organization-scoped OpenAI generation is blocked before the provider call.
-    </div>
-
-    <div class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
-        <div class="border-b border-gray-100 px-5 py-5">
-            <div class="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
-                <div>
-                    <div class="flex items-center gap-2">
-                        <span class="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600">
-                            <i class="ti ti-chart-bar text-lg"></i>
+                    <div class="flex items-start gap-3">
+                        <span class="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-indigo-600 text-white shadow-sm">
+                            <i class="ti ti-wallet text-2xl"></i>
                         </span>
-                        <div>
-                            <h2 class="font-semibold text-gray-900">AI credit usage by action</h2>
-                            <p class="mt-0.5 text-xs text-gray-500">See exactly where credits were added or consumed for {{ organization.name }}.</p>
+                        <div class="min-w-0">
+                            <h1 class="truncate text-xl font-semibold text-gray-950 sm:text-2xl">{{ organization.name }}</h1>
+                            <p class="mt-1 text-sm text-gray-500">AI Credit Wallet · usage, recharge, controls and audit history</p>
                         </div>
                     </div>
                 </div>
 
-                <form method="get" class="flex flex-col gap-2 sm:flex-row sm:items-end">
+                <div class="flex flex-wrap items-center gap-2">
+                    {% if wallet.is_blocked %}
+                        <span class="inline-flex items-center gap-1.5 rounded-full bg-red-100 px-3 py-1.5 text-xs font-semibold text-red-700">
+                            <span class="h-2 w-2 rounded-full bg-red-500"></span>
+                            AI blocked
+                        </span>
+                    {% elif wallet.available_credits == 0 %}
+                        <span class="inline-flex items-center gap-1.5 rounded-full bg-red-100 px-3 py-1.5 text-xs font-semibold text-red-700">
+                            <span class="h-2 w-2 rounded-full bg-red-500"></span>
+                            Paused · 0 credits
+                        </span>
+                    {% elif wallet.is_low %}
+                        <span class="inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-3 py-1.5 text-xs font-semibold text-amber-700">
+                            <span class="h-2 w-2 rounded-full bg-amber-500"></span>
+                            Low credits
+                        </span>
+                    {% else %}
+                        <span class="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-3 py-1.5 text-xs font-semibold text-emerald-700">
+                            <span class="h-2 w-2 rounded-full bg-emerald-500"></span>
+                            AI available
+                        </span>
+                    {% endif %}
+
+                    <a href="#manage-credits" class="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-3.5 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700">
+                        <i class="ti ti-plus"></i>
+                        Add credits
+                    </a>
+                    <a href="{% url 'superadmin-organization-detail' organization_id=organization.id %}" class="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3.5 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
+                        <i class="ti ti-building"></i>
+                        Organization
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <!-- Simple page navigation -->
+        <nav class="overflow-x-auto px-3 py-3 sm:px-5" aria-label="AI credit page sections">
+            <div class="flex min-w-max items-center gap-1.5">
+                <a href="#overview" class="inline-flex items-center gap-2 rounded-lg bg-gray-900 px-3.5 py-2 text-sm font-medium text-white">
+                    <i class="ti ti-layout-dashboard"></i>
+                    Overview
+                </a>
+                <a href="#usage-report" class="inline-flex items-center gap-2 rounded-lg px-3.5 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900">
+                    <i class="ti ti-chart-bar"></i>
+                    Usage report
+                </a>
+                <a href="#manage-credits" class="inline-flex items-center gap-2 rounded-lg px-3.5 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900">
+                    <i class="ti ti-coins"></i>
+                    Manage credits
+                </a>
+                <a href="#settings" class="inline-flex items-center gap-2 rounded-lg px-3.5 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900">
+                    <i class="ti ti-settings"></i>
+                    Settings
+                </a>
+                <a href="#history" class="inline-flex items-center gap-2 rounded-lg px-3.5 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900">
+                    <i class="ti ti-history"></i>
+                    History
+                </a>
+            </div>
+        </nav>
+    </section>
+
+    <!-- Overview card -->
+    <section id="overview" class="scroll-mt-6 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
+        <div class="flex flex-col gap-3 border-b border-gray-100 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+            <div class="flex items-center gap-3">
+                <span class="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100 text-slate-700">
+                    <i class="ti ti-layout-dashboard text-xl"></i>
+                </span>
+                <div>
+                    <h2 class="font-semibold text-gray-950">Wallet overview</h2>
+                    <p class="mt-0.5 text-xs text-gray-500">Current balance and live AI-credit health.</p>
+                </div>
+            </div>
+            <div class="inline-flex items-center gap-2 rounded-lg bg-blue-50 px-3 py-2 text-xs text-blue-700">
+                <i class="ti ti-info-circle"></i>
+                Manual funding only · no plan or monthly auto-refill
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 gap-3 p-5 sm:grid-cols-2 lg:grid-cols-5 sm:p-6">
+            <div class="rounded-xl border border-gray-200 bg-gray-50/70 p-4">
+                <div class="flex items-center justify-between">
+                    <span class="text-xs font-semibold uppercase tracking-wide text-gray-400">Available</span>
+                    <span class="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-white text-indigo-600 shadow-sm"><i class="ti ti-coins"></i></span>
+                </div>
+                <div class="mt-3 text-2xl font-semibold {% if wallet.available_credits == 0 %}text-red-600{% elif wallet.is_low %}text-amber-600{% else %}text-gray-950{% endif %}">{{ wallet.available_credits }}</div>
+                <p class="mt-1 text-xs text-gray-500">Spendable credits now</p>
+            </div>
+
+            <div class="rounded-xl border border-gray-200 bg-gray-50/70 p-4">
+                <div class="flex items-center justify-between">
+                    <span class="text-xs font-semibold uppercase tracking-wide text-gray-400">Reserved</span>
+                    <span class="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-white text-violet-600 shadow-sm"><i class="ti ti-lock"></i></span>
+                </div>
+                <div class="mt-3 text-2xl font-semibold text-gray-950">{{ wallet.reserved_credits }}</div>
+                <p class="mt-1 text-xs text-gray-500">Held by in-flight requests</p>
+            </div>
+
+            <div class="rounded-xl border border-gray-200 bg-gray-50/70 p-4">
+                <div class="flex items-center justify-between">
+                    <span class="text-xs font-semibold uppercase tracking-wide text-gray-400">Used today</span>
+                    <span class="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-white text-rose-600 shadow-sm"><i class="ti ti-calendar-stats"></i></span>
+                </div>
+                <div class="mt-3 text-2xl font-semibold text-gray-950">{{ used_today }}</div>
+                <p class="mt-1 text-xs text-gray-500">AI usage today</p>
+            </div>
+
+            <div class="rounded-xl border border-gray-200 bg-gray-50/70 p-4">
+                <div class="flex items-center justify-between">
+                    <span class="text-xs font-semibold uppercase tracking-wide text-gray-400">This month</span>
+                    <span class="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-white text-orange-600 shadow-sm"><i class="ti ti-chart-line"></i></span>
+                </div>
+                <div class="mt-3 text-2xl font-semibold text-gray-950">{{ used_this_month }}</div>
+                <p class="mt-1 text-xs text-gray-500">AI usage this month</p>
+            </div>
+
+            <div class="rounded-xl border border-gray-200 bg-gray-50/70 p-4">
+                <div class="flex items-center justify-between">
+                    <span class="text-xs font-semibold uppercase tracking-wide text-gray-400">Low alert</span>
+                    <span class="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-white text-amber-600 shadow-sm"><i class="ti ti-bell"></i></span>
+                </div>
+                <div class="mt-3 text-2xl font-semibold text-gray-950">{{ wallet.low_credit_threshold }}</div>
+                <p class="mt-1 text-xs text-gray-500">Superadmin warning threshold</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Usage report card -->
+    <section id="usage-report" class="scroll-mt-6 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
+        <div class="border-b border-gray-100 px-5 py-4 sm:px-6">
+            <div class="flex items-center gap-3">
+                <span class="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600">
+                    <i class="ti ti-chart-bar text-xl"></i>
+                </span>
+                <div>
+                    <h2 class="font-semibold text-gray-950">AI credit usage report</h2>
+                    <p class="mt-0.5 text-xs text-gray-500">Filter by date and see exactly where this organization's credits were added or consumed.</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="space-y-5 p-5 sm:p-6">
+            <!-- Date filter panel -->
+            <div class="rounded-xl border border-gray-200 bg-gray-50 p-4">
+                <div class="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+                    <div class="min-w-0">
+                        <div class="flex items-center gap-2 text-sm font-semibold text-gray-900">
+                            <i class="ti ti-calendar-search text-indigo-600"></i>
+                            Date range
+                        </div>
+                        <p class="mt-1 text-xs text-gray-500">Currently showing <span class="font-semibold text-gray-700">{{ date_filter.label }}</span></p>
+
+                        <div class="mt-3 flex flex-wrap gap-2">
+                            <a href="?range=today#usage-report" class="rounded-lg border px-3 py-1.5 text-xs font-medium {% if date_filter.preset == 'today' %}border-indigo-200 bg-indigo-600 text-white{% else %}border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:bg-gray-50{% endif %}">Today</a>
+                            <a href="?range=7d#usage-report" class="rounded-lg border px-3 py-1.5 text-xs font-medium {% if date_filter.preset == '7d' %}border-indigo-200 bg-indigo-600 text-white{% else %}border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:bg-gray-50{% endif %}">7 days</a>
+                            <a href="?range=30d#usage-report" class="rounded-lg border px-3 py-1.5 text-xs font-medium {% if date_filter.preset == '30d' %}border-indigo-200 bg-indigo-600 text-white{% else %}border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:bg-gray-50{% endif %}">30 days</a>
+                            <a href="?range=month#usage-report" class="rounded-lg border px-3 py-1.5 text-xs font-medium {% if date_filter.preset == 'month' %}border-indigo-200 bg-indigo-600 text-white{% else %}border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:bg-gray-50{% endif %}">This month</a>
+                            <a href="?range=all#usage-report" class="rounded-lg border px-3 py-1.5 text-xs font-medium {% if date_filter.preset == 'all' %}border-indigo-200 bg-indigo-600 text-white{% else %}border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:bg-gray-50{% endif %}">All time</a>
+                            {% if date_filter.preset == 'custom' %}
+                                <span class="rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700">Custom range</span>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <form method="get" class="grid w-full grid-cols-1 gap-2 sm:grid-cols-[1fr_1fr_auto] xl:w-auto">
+                        <div>
+                            <label for="credit-date-from" class="mb-1 block text-xs font-medium text-gray-500">From</label>
+                            <input id="credit-date-from" type="date" name="from" value="{{ date_filter.start_value }}" class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                        </div>
+                        <div>
+                            <label for="credit-date-to" class="mb-1 block text-xs font-medium text-gray-500">To</label>
+                            <input id="credit-date-to" type="date" name="to" value="{{ date_filter.end_value }}" class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                        </div>
+                        <button type="submit" class="inline-flex items-center justify-center gap-2 self-end rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800">
+                            <i class="ti ti-filter"></i>
+                            Apply
+                        </button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Period summary -->
+            <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                <div class="rounded-xl border border-emerald-100 bg-emerald-50/60 p-4">
+                    <div class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-emerald-700">
+                        <i class="ti ti-circle-plus"></i>
+                        Credits added
+                    </div>
+                    <div class="mt-2 text-2xl font-semibold text-emerald-700">+{{ usage_report.credits_added_display }}</div>
+                    <p class="mt-1 text-xs text-emerald-700/70">Manual recharge</p>
+                </div>
+
+                <div class="rounded-xl border border-red-100 bg-red-50/60 p-4">
+                    <div class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-red-700">
+                        <i class="ti ti-sparkles"></i>
+                        AI credits used
+                    </div>
+                    <div class="mt-2 text-2xl font-semibold text-red-700">-{{ usage_report.ai_used_display }}</div>
+                    <p class="mt-1 text-xs text-red-700/70">Settled AI provider usage</p>
+                </div>
+
+                <div class="rounded-xl border border-orange-100 bg-orange-50/60 p-4">
+                    <div class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-orange-700">
+                        <i class="ti ti-circle-minus"></i>
+                        Manual deductions
+                    </div>
+                    <div class="mt-2 text-2xl font-semibold {% if usage_report.manual_deducted %}text-orange-700{% else %}text-gray-700{% endif %}">-{{ usage_report.manual_deducted_display }}</div>
+                    <p class="mt-1 text-xs text-orange-700/70">Corrections by Superadmin</p>
+                </div>
+
+                <div class="rounded-xl border border-gray-200 bg-gray-50 p-4">
+                    <div class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-gray-600">
+                        <i class="ti ti-arrows-exchange"></i>
+                        Net change
+                    </div>
+                    <div class="mt-2 text-2xl font-semibold {% if usage_report.net_change > 0 %}text-emerald-700{% elif usage_report.net_change < 0 %}text-red-700{% else %}text-gray-700{% endif %}">{{ usage_report.net_change_display }}</div>
+                    <p class="mt-1 text-xs text-gray-500">All balance changes</p>
+                </div>
+            </div>
+
+            <!-- Action breakdown -->
+            <div class="overflow-hidden rounded-xl border border-gray-200">
+                <div class="flex flex-col gap-2 border-b border-gray-100 bg-gray-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
                     <div>
-                        <label for="credit-date-from" class="mb-1 block text-xs font-medium text-gray-500">From</label>
-                        <input id="credit-date-from" type="date" name="from" value="{{ date_filter.start_value }}" class="rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                        <h3 class="text-sm font-semibold text-gray-900">Usage by action</h3>
+                        <p class="mt-0.5 text-xs text-gray-500">Positive = credits added · Negative = credits consumed</p>
+                    </div>
+                    <span class="inline-flex w-fit items-center gap-1.5 rounded-full bg-white px-2.5 py-1 text-xs font-medium text-gray-600 ring-1 ring-inset ring-gray-200">
+                        <i class="ti ti-building"></i>
+                        {{ organization.name }}
+                    </span>
+                </div>
+
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-100 text-sm">
+                        <thead class="bg-white text-left text-xs uppercase tracking-wide text-gray-400">
+                            <tr>
+                                <th class="px-5 py-3">Organization</th>
+                                <th class="px-5 py-3">Action</th>
+                                <th class="px-5 py-3 text-right">Credits</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-100 bg-white">
+                            <tr class="bg-emerald-50/40">
+                                <td class="whitespace-nowrap px-5 py-3 text-xs font-medium text-gray-500">{{ organization.name }}</td>
+                                <td class="px-5 py-3">
+                                    <div class="font-semibold text-gray-900">Total</div>
+                                    <div class="mt-0.5 text-xs text-gray-400">Credits added during {{ date_filter.label }}</div>
+                                </td>
+                                <td class="px-5 py-3 text-right text-base font-semibold text-emerald-600">+{{ usage_report.credits_added_display }}</td>
+                            </tr>
+                            {% for row in usage_report.usage_rows %}
+                            <tr class="hover:bg-gray-50/70">
+                                <td class="whitespace-nowrap px-5 py-3 text-xs font-medium text-gray-500">{{ organization.name }}</td>
+                                <td class="px-5 py-3 font-medium text-gray-700">{{ row.label }}</td>
+                                <td class="px-5 py-3 text-right font-semibold text-red-600">{{ row.signed_display }}</td>
+                            </tr>
+                            {% empty %}
+                            <tr>
+                                <td class="whitespace-nowrap px-5 py-4 text-xs font-medium text-gray-500">{{ organization.name }}</td>
+                                <td class="px-5 py-6 text-gray-500">No AI usage in this date range.</td>
+                                <td class="px-5 py-6 text-right font-semibold text-gray-400">0</td>
+                            </tr>
+                            {% endfor %}
+                            {% if usage_report.manual_deducted %}
+                            <tr class="bg-orange-50/40">
+                                <td class="whitespace-nowrap px-5 py-3 text-xs font-medium text-gray-500">{{ organization.name }}</td>
+                                <td class="px-5 py-3 font-medium text-gray-700">Manual Deduction</td>
+                                <td class="px-5 py-3 text-right font-semibold text-orange-700">-{{ usage_report.manual_deducted_display }}</td>
+                            </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Manage credits card -->
+    <section id="manage-credits" class="scroll-mt-6 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
+        <div class="border-b border-gray-100 px-5 py-4 sm:px-6">
+            <div class="flex items-center gap-3">
+                <span class="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600">
+                    <i class="ti ti-coins text-xl"></i>
+                </span>
+                <div>
+                    <h2 class="font-semibold text-gray-950">Manage credits</h2>
+                    <p class="mt-0.5 text-xs text-gray-500">Recharge or correct this organization's AI-credit wallet.</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 gap-4 p-5 lg:grid-cols-2 sm:p-6">
+            <div class="rounded-xl border border-emerald-200 bg-emerald-50/30">
+                <div class="flex items-center gap-3 border-b border-emerald-100 px-5 py-4">
+                    <span class="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700"><i class="ti ti-plus"></i></span>
+                    <div>
+                        <h3 class="font-semibold text-gray-900">Add AI credits</h3>
+                        <p class="mt-0.5 text-xs text-gray-500">Manual recharge by Superadmin</p>
+                    </div>
+                </div>
+                <form method="post" class="space-y-4 p-5">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="add">
+                    <div>
+                        <label class="mb-1.5 block text-sm font-medium text-gray-700">Credits to add</label>
+                        <input type="number" min="1" step="1" name="amount" required class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500" placeholder="e.g. 10000">
                     </div>
                     <div>
-                        <label for="credit-date-to" class="mb-1 block text-xs font-medium text-gray-500">To</label>
-                        <input id="credit-date-to" type="date" name="to" value="{{ date_filter.end_value }}" class="rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                        <label class="mb-1.5 block text-sm font-medium text-gray-700">Reason</label>
+                        <input type="text" maxlength="500" name="reason" required class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500" placeholder="e.g. Manual recharge approved by sales">
                     </div>
-                    <button type="submit" class="inline-flex items-center justify-center gap-2 rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800">
-                        <i class="ti ti-filter"></i>
-                        Apply
+                    <button type="submit" class="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700 sm:w-auto">
+                        <i class="ti ti-circle-plus"></i>
+                        Add credits
                     </button>
                 </form>
             </div>
 
-            <div class="mt-4 flex flex-wrap items-center gap-2">
-                <span class="mr-1 text-xs font-medium text-gray-400">Quick range</span>
-                <a href="?range=today" class="rounded-full border px-3 py-1.5 text-xs font-medium {% if date_filter.preset == 'today' %}border-indigo-200 bg-indigo-50 text-indigo-700{% else %}border-gray-200 text-gray-600 hover:bg-gray-50{% endif %}">Today</a>
-                <a href="?range=7d" class="rounded-full border px-3 py-1.5 text-xs font-medium {% if date_filter.preset == '7d' %}border-indigo-200 bg-indigo-50 text-indigo-700{% else %}border-gray-200 text-gray-600 hover:bg-gray-50{% endif %}">7 days</a>
-                <a href="?range=30d" class="rounded-full border px-3 py-1.5 text-xs font-medium {% if date_filter.preset == '30d' %}border-indigo-200 bg-indigo-50 text-indigo-700{% else %}border-gray-200 text-gray-600 hover:bg-gray-50{% endif %}">30 days</a>
-                <a href="?range=month" class="rounded-full border px-3 py-1.5 text-xs font-medium {% if date_filter.preset == 'month' %}border-indigo-200 bg-indigo-50 text-indigo-700{% else %}border-gray-200 text-gray-600 hover:bg-gray-50{% endif %}">This month</a>
-                <a href="?range=all" class="rounded-full border px-3 py-1.5 text-xs font-medium {% if date_filter.preset == 'all' %}border-indigo-200 bg-indigo-50 text-indigo-700{% else %}border-gray-200 text-gray-600 hover:bg-gray-50{% endif %}">All time</a>
-                {% if date_filter.preset == 'custom' %}
-                    <span class="rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs font-medium text-indigo-700">Custom</span>
-                {% endif %}
-                <span class="ml-auto text-xs font-medium text-gray-500">Showing: {{ date_filter.label }}</span>
+            <div class="rounded-xl border border-red-200 bg-red-50/30">
+                <div class="flex items-center gap-3 border-b border-red-100 px-5 py-4">
+                    <span class="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-red-100 text-red-700"><i class="ti ti-minus"></i></span>
+                    <div>
+                        <h3 class="font-semibold text-gray-900">Deduct AI credits</h3>
+                        <p class="mt-0.5 text-xs text-gray-500">Correction only · reserved credits stay protected</p>
+                    </div>
+                </div>
+                <form method="post" class="space-y-4 p-5" onsubmit="return confirm('Deduct these AI credits from {{ organization.name|escapejs }}?');">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="deduct">
+                    <div>
+                        <label class="mb-1.5 block text-sm font-medium text-gray-700">Credits to deduct</label>
+                        <input type="number" min="1" step="1" name="amount" required class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm focus:border-red-500 focus:outline-none focus:ring-1 focus:ring-red-500" placeholder="e.g. 500">
+                    </div>
+                    <div>
+                        <label class="mb-1.5 block text-sm font-medium text-gray-700">Reason</label>
+                        <input type="text" maxlength="500" name="reason" required class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm focus:border-red-500 focus:outline-none focus:ring-1 focus:ring-red-500" placeholder="e.g. Correcting an accidental recharge">
+                    </div>
+                    <button type="submit" class="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-red-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-red-700 sm:w-auto">
+                        <i class="ti ti-circle-minus"></i>
+                        Deduct credits
+                    </button>
+                </form>
+            </div>
+        </div>
+    </section>
+
+    <!-- Settings card -->
+    <section id="settings" class="scroll-mt-6 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
+        <div class="border-b border-gray-100 px-5 py-4 sm:px-6">
+            <div class="flex items-center gap-3">
+                <span class="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-gray-100 text-gray-700">
+                    <i class="ti ti-settings text-xl"></i>
+                </span>
+                <div>
+                    <h2 class="font-semibold text-gray-950">Wallet settings & safety</h2>
+                    <p class="mt-0.5 text-xs text-gray-500">Administrative controls that do not change plan allocations or create automatic credits.</p>
+                </div>
             </div>
         </div>
 
-        <div class="grid grid-cols-1 border-b border-gray-100 sm:grid-cols-2 xl:grid-cols-4">
-            <div class="border-b border-gray-100 p-5 sm:border-r xl:border-b-0">
-                <div class="text-xs font-medium uppercase tracking-wide text-gray-400">Credits added</div>
-                <div class="mt-2 text-2xl font-semibold text-green-600">+{{ usage_report.credits_added_display }}</div>
-                <div class="mt-1 text-xs text-gray-400">Manual recharge in selected period</div>
-            </div>
-            <div class="border-b border-gray-100 p-5 xl:border-b-0 xl:border-r">
-                <div class="text-xs font-medium uppercase tracking-wide text-gray-400">AI credits used</div>
-                <div class="mt-2 text-2xl font-semibold text-red-600">-{{ usage_report.ai_used_display }}</div>
-                <div class="mt-1 text-xs text-gray-400">Settled AI provider usage</div>
-            </div>
-            <div class="border-b border-gray-100 p-5 sm:border-r xl:border-b-0">
-                <div class="text-xs font-medium uppercase tracking-wide text-gray-400">Manual deductions</div>
-                <div class="mt-2 text-2xl font-semibold {% if usage_report.manual_deducted %}text-red-600{% else %}text-gray-700{% endif %}">-{{ usage_report.manual_deducted_display }}</div>
-                <div class="mt-1 text-xs text-gray-400">Superadmin corrections / deductions</div>
-            </div>
-            <div class="p-5">
-                <div class="text-xs font-medium uppercase tracking-wide text-gray-400">Net change</div>
-                <div class="mt-2 text-2xl font-semibold {% if usage_report.net_change > 0 %}text-green-600{% elif usage_report.net_change < 0 %}text-red-600{% else %}text-gray-700{% endif %}">{{ usage_report.net_change_display }}</div>
-                <div class="mt-1 text-xs text-gray-400">All balance changes in selected period</div>
-            </div>
-        </div>
-
-        <div class="overflow-x-auto">
-            <table class="min-w-full divide-y divide-gray-100 text-sm">
-                <thead class="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500">
-                    <tr>
-                        <th class="px-5 py-3">Organization</th>
-                        <th class="px-5 py-3">Action</th>
-                        <th class="px-5 py-3 text-right">Credits</th>
-                    </tr>
-                </thead>
-                <tbody class="divide-y divide-gray-100">
-                    <tr class="bg-green-50/40">
-                        <td class="px-5 py-3 font-medium text-gray-900">{{ organization.name }}</td>
-                        <td class="px-5 py-3">
-                            <div class="font-medium text-gray-900">Total</div>
-                            <div class="mt-0.5 text-xs text-gray-400">Credits added during {{ date_filter.label }}</div>
-                        </td>
-                        <td class="px-5 py-3 text-right font-semibold text-green-600">+{{ usage_report.credits_added_display }}</td>
-                    </tr>
-                    {% for row in usage_report.usage_rows %}
-                    <tr>
-                        <td class="px-5 py-3 font-medium text-gray-900">{{ organization.name }}</td>
-                        <td class="px-5 py-3 text-gray-700">{{ row.label }}</td>
-                        <td class="px-5 py-3 text-right font-semibold text-red-600">{{ row.signed_display }}</td>
-                    </tr>
-                    {% empty %}
-                    <tr>
-                        <td class="px-5 py-3 font-medium text-gray-900">{{ organization.name }}</td>
-                        <td class="px-5 py-6 text-gray-500">No AI usage in this date range.</td>
-                        <td class="px-5 py-6 text-right font-semibold text-gray-400">0</td>
-                    </tr>
-                    {% endfor %}
-                    {% if usage_report.manual_deducted %}
-                    <tr class="bg-red-50/30">
-                        <td class="px-5 py-3 font-medium text-gray-900">{{ organization.name }}</td>
-                        <td class="px-5 py-3 text-gray-700">Manual Deduction</td>
-                        <td class="px-5 py-3 text-right font-semibold text-red-600">-{{ usage_report.manual_deducted_display }}</td>
-                    </tr>
+        <div class="grid grid-cols-1 gap-4 p-5 lg:grid-cols-2 sm:p-6">
+            <div class="rounded-xl border border-gray-200 p-5">
+                <div class="flex items-start justify-between gap-4">
+                    <div>
+                        <div class="flex items-center gap-2 font-semibold text-gray-900">
+                            <i class="ti ti-shield-lock text-gray-500"></i>
+                            Administrative AI block
+                        </div>
+                        <p class="mt-1.5 text-sm leading-5 text-gray-500">Stops organization AI usage independently of balance and pipeline, stage, or lead AI toggles.</p>
+                    </div>
+                    {% if wallet.is_blocked %}
+                        <span class="shrink-0 rounded-full bg-red-100 px-2.5 py-1 text-xs font-semibold text-red-700">Blocked</span>
+                    {% else %}
+                        <span class="shrink-0 rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-700">Allowed</span>
                     {% endif %}
-                </tbody>
-            </table>
-        </div>
-    </div>
-
-    <div class="grid grid-cols-1 gap-5 xl:grid-cols-2">
-        <div class="rounded-lg border bg-white">
-            <div class="border-b px-5 py-4">
-                <h2 class="font-semibold">Add AI credits</h2>
-                <p class="mt-1 text-xs text-gray-500">Manual recharge by Superadmin.</p>
+                </div>
+                <form method="post" class="mt-5">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="block">
+                    {% if wallet.is_blocked %}
+                        <input type="hidden" name="blocked" value="0">
+                        <button type="submit" class="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700">
+                            <i class="ti ti-lock-open"></i>
+                            Unblock AI usage
+                        </button>
+                    {% else %}
+                        <input type="hidden" name="blocked" value="1">
+                        <button type="submit" class="inline-flex items-center gap-2 rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800">
+                            <i class="ti ti-lock"></i>
+                            Block AI usage
+                        </button>
+                    {% endif %}
+                </form>
             </div>
-            <form method="post" class="space-y-4 p-5">
-                {% csrf_token %}
-                <input type="hidden" name="action" value="add">
-                <div>
-                    <label class="mb-1 block text-sm font-medium">Credits to add</label>
-                    <input type="number" min="1" step="1" name="amount" required class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500" placeholder="e.g. 10000">
-                </div>
-                <div>
-                    <label class="mb-1 block text-sm font-medium">Reason</label>
-                    <input type="text" maxlength="500" name="reason" required class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500" placeholder="e.g. Manual recharge approved by sales">
-                </div>
-                <button type="submit" class="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700">Add credits</button>
-            </form>
-        </div>
 
-        <div class="rounded-lg border bg-white">
-            <div class="border-b px-5 py-4">
-                <h2 class="font-semibold">Deduct AI credits</h2>
-                <p class="mt-1 text-xs text-gray-500">Cannot deduct credits currently reserved by in-flight AI requests.</p>
+            <div class="rounded-xl border border-gray-200 p-5">
+                <div class="flex items-start justify-between gap-4">
+                    <div>
+                        <div class="flex items-center gap-2 font-semibold text-gray-900">
+                            <i class="ti ti-bell-ringing text-amber-500"></i>
+                            Low-credit threshold
+                        </div>
+                        <p class="mt-1.5 text-sm leading-5 text-gray-500">Controls the Superadmin low-balance warning. AI is still allowed until available credits reach zero.</p>
+                    </div>
+                    <span class="shrink-0 rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-700">{{ wallet.low_credit_threshold }}</span>
+                </div>
+                <form method="post" class="mt-5 flex flex-col gap-2 sm:flex-row">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="threshold">
+                    <input type="number" min="0" step="1" name="threshold" value="{{ wallet.low_credit_threshold }}" required class="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                    <button type="submit" class="inline-flex items-center justify-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-100">
+                        <i class="ti ti-device-floppy"></i>
+                        Update
+                    </button>
+                </form>
             </div>
-            <form method="post" class="space-y-4 p-5" onsubmit="return confirm('Deduct these AI credits from {{ organization.name|escapejs }}?');">
-                {% csrf_token %}
-                <input type="hidden" name="action" value="deduct">
-                <div>
-                    <label class="mb-1 block text-sm font-medium">Credits to deduct</label>
-                    <input type="number" min="1" step="1" name="amount" required class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-red-500 focus:outline-none focus:ring-1 focus:ring-red-500" placeholder="e.g. 500">
+        </div>
+
+        {% if active_reservations %}
+        <div class="border-t border-gray-100 px-5 py-5 sm:px-6">
+            <div class="overflow-hidden rounded-xl border border-amber-200">
+                <div class="flex items-center gap-3 border-b border-amber-100 bg-amber-50 px-4 py-3">
+                    <span class="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-white text-amber-600"><i class="ti ti-hourglass"></i></span>
+                    <div>
+                        <h3 class="text-sm font-semibold text-gray-900">Active reservations</h3>
+                        <p class="mt-0.5 text-xs text-gray-500">Credits temporarily held by AI requests currently in flight.</p>
+                    </div>
                 </div>
-                <div>
-                    <label class="mb-1 block text-sm font-medium">Reason</label>
-                    <input type="text" maxlength="500" name="reason" required class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-red-500 focus:outline-none focus:ring-1 focus:ring-red-500" placeholder="e.g. Correcting an accidental recharge">
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-100 text-sm">
+                        <thead class="bg-white text-left text-xs uppercase tracking-wide text-gray-400">
+                            <tr>
+                                <th class="px-4 py-3">Created</th>
+                                <th class="px-4 py-3">Feature</th>
+                                <th class="px-4 py-3">Model</th>
+                                <th class="px-4 py-3">Reserved</th>
+                                <th class="px-4 py-3">Reference</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-100 bg-white">
+                            {% for reservation in active_reservations %}
+                            <tr class="hover:bg-gray-50/70">
+                                <td class="whitespace-nowrap px-4 py-3 text-gray-600">{{ reservation.created_at|date:"d M Y H:i:s" }}</td>
+                                <td class="px-4 py-3 font-medium text-gray-800">{{ reservation.feature }}</td>
+                                <td class="px-4 py-3 text-gray-600">{{ reservation.model }}</td>
+                                <td class="px-4 py-3 font-semibold text-amber-700">{{ reservation.reserved_credits }}</td>
+                                <td class="px-4 py-3 text-xs text-gray-500">{{ reservation.reference_id|default:"—" }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
                 </div>
-                <button type="submit" class="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700">Deduct credits</button>
-            </form>
+            </div>
         </div>
-    </div>
+        {% endif %}
+    </section>
 
-    <div class="grid grid-cols-1 gap-5 xl:grid-cols-2">
-        <div class="rounded-lg border bg-white p-5">
-            <h2 class="font-semibold">Administrative AI block</h2>
-            <p class="mt-1 text-sm text-gray-500">This is independent of credit balance and the pipeline/stage/lead AI toggles.</p>
-            <form method="post" class="mt-4">
-                {% csrf_token %}
-                <input type="hidden" name="action" value="block">
-                {% if wallet.is_blocked %}
-                    <input type="hidden" name="blocked" value="0">
-                    <button type="submit" class="rounded-md bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700">Unblock AI usage</button>
-                {% else %}
-                    <input type="hidden" name="blocked" value="1">
-                    <button type="submit" class="rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800">Block AI usage</button>
-                {% endif %}
-            </form>
+    <!-- History card -->
+    <section id="history" class="scroll-mt-6 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
+        <div class="flex flex-col gap-3 border-b border-gray-100 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+            <div class="flex items-center gap-3">
+                <span class="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
+                    <i class="ti ti-history text-xl"></i>
+                </span>
+                <div>
+                    <h2 class="font-semibold text-gray-950">Transaction history</h2>
+                    <p class="mt-0.5 text-xs text-gray-500">Latest 100 balance changes with provider usage, model, tokens, reason and actor.</p>
+                </div>
+            </div>
+            <span class="inline-flex w-fit items-center gap-1.5 rounded-full bg-gray-100 px-3 py-1.5 text-xs font-semibold text-gray-600">
+                <i class="ti ti-calendar"></i>
+                {{ date_filter.label }}
+            </span>
         </div>
 
-        <div class="rounded-lg border bg-white p-5">
-            <h2 class="font-semibold">Low-credit threshold</h2>
-            <p class="mt-1 text-sm text-gray-500">Used for Superadmin warning status; it does not auto-refill or disable AI before zero.</p>
-            <form method="post" class="mt-4 flex gap-3">
-                {% csrf_token %}
-                <input type="hidden" name="action" value="threshold">
-                <input type="number" min="0" step="1" name="threshold" value="{{ wallet.low_credit_threshold }}" required class="min-w-0 flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
-                <button type="submit" class="rounded-md border border-indigo-200 px-4 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-50">Update</button>
-            </form>
-        </div>
-    </div>
-
-    {% if active_reservations %}
-    <div class="rounded-lg border border-amber-200 bg-white">
-        <div class="border-b border-amber-100 px-5 py-4">
-            <h2 class="font-semibold">Active reservations</h2>
-            <p class="mt-1 text-xs text-gray-500">Credits temporarily held by AI requests currently in flight.</p>
-        </div>
-        <div class="overflow-x-auto">
-            <table class="min-w-full divide-y divide-gray-100 text-sm">
-                <thead class="bg-amber-50 text-left text-xs uppercase tracking-wide text-gray-500">
-                    <tr><th class="px-4 py-3">Created</th><th class="px-4 py-3">Feature</th><th class="px-4 py-3">Model</th><th class="px-4 py-3">Reserved</th><th class="px-4 py-3">Reference</th></tr>
-                </thead>
-                <tbody class="divide-y divide-gray-100">
-                    {% for reservation in active_reservations %}
-                    <tr><td class="px-4 py-3">{{ reservation.created_at|date:"d M Y H:i:s" }}</td><td class="px-4 py-3">{{ reservation.feature }}</td><td class="px-4 py-3">{{ reservation.model }}</td><td class="px-4 py-3 font-medium">{{ reservation.reserved_credits }}</td><td class="px-4 py-3 text-xs text-gray-500">{{ reservation.reference_id|default:"—" }}</td></tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-    </div>
-    {% endif %}
-
-    <div class="rounded-lg border bg-white">
-        <div class="border-b px-5 py-4">
-            <h2 class="font-semibold">AI credit transaction history</h2>
-            <p class="mt-1 text-xs text-gray-500">Latest 100 balance changes for {{ date_filter.label }}. Provider usage records include feature, model and token usage.</p>
-        </div>
         <div class="overflow-x-auto">
             <table class="min-w-full divide-y divide-gray-200 text-sm">
-                <thead class="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500">
-                    <tr><th class="px-4 py-3">Time</th><th class="px-4 py-3">Type</th><th class="px-4 py-3">Change</th><th class="px-4 py-3">Balance after</th><th class="px-4 py-3">Feature / model</th><th class="px-4 py-3">Tokens</th><th class="px-4 py-3">Reason / actor</th></tr>
-                </thead>
-                <tbody class="divide-y divide-gray-100">
-                    {% for transaction in transactions %}
+                <thead class="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-400">
                     <tr>
-                        <td class="whitespace-nowrap px-4 py-3 text-gray-600">{{ transaction.created_at|date:"d M Y H:i:s" }}</td>
-                        <td class="px-4 py-3">{{ transaction.get_transaction_type_display }}</td>
-                        <td class="px-4 py-3 font-semibold {% if transaction.amount > 0 %}text-green-600{% else %}text-red-600{% endif %}">{% if transaction.amount > 0 %}+{% endif %}{{ transaction.amount }}</td>
-                        <td class="px-4 py-3">{{ transaction.balance_after }}</td>
-                        <td class="px-4 py-3"><div>{{ transaction.feature|default:"—" }}</div><div class="text-xs text-gray-400">{{ transaction.model|default:"" }}</div></td>
-                        <td class="px-4 py-3 text-xs text-gray-600">In {{ transaction.input_tokens }} · Out {{ transaction.output_tokens }}</td>
-                        <td class="px-4 py-3"><div>{{ transaction.description|default:"—" }}</div>{% if transaction.actor_label %}<div class="mt-0.5 text-xs text-gray-400">{{ transaction.actor_label }}</div>{% endif %}</td>
+                        <th class="px-4 py-3">Time</th>
+                        <th class="px-4 py-3">Type</th>
+                        <th class="px-4 py-3 text-right">Change</th>
+                        <th class="px-4 py-3 text-right">Balance after</th>
+                        <th class="px-4 py-3">Feature / model</th>
+                        <th class="px-4 py-3">Tokens</th>
+                        <th class="px-4 py-3">Reason / actor</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-100 bg-white">
+                    {% for transaction in transactions %}
+                    <tr class="align-top hover:bg-gray-50/60">
+                        <td class="whitespace-nowrap px-4 py-3 text-xs text-gray-500">{{ transaction.created_at|date:"d M Y H:i:s" }}</td>
+                        <td class="px-4 py-3">
+                            <span class="inline-flex rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-700">{{ transaction.get_transaction_type_display }}</span>
+                        </td>
+                        <td class="px-4 py-3 text-right font-semibold {% if transaction.amount > 0 %}text-emerald-600{% else %}text-red-600{% endif %}">{% if transaction.amount > 0 %}+{% endif %}{{ transaction.amount }}</td>
+                        <td class="px-4 py-3 text-right font-medium text-gray-700">{{ transaction.balance_after }}</td>
+                        <td class="px-4 py-3">
+                            <div class="font-medium text-gray-800">{{ transaction.feature|default:"—" }}</div>
+                            {% if transaction.model %}<div class="mt-0.5 text-xs text-gray-400">{{ transaction.model }}</div>{% endif %}
+                        </td>
+                        <td class="whitespace-nowrap px-4 py-3 text-xs text-gray-600">
+                            <div>In {{ transaction.input_tokens }}</div>
+                            <div class="mt-0.5">Out {{ transaction.output_tokens }}</div>
+                        </td>
+                        <td class="min-w-[220px] px-4 py-3">
+                            <div class="text-gray-700">{{ transaction.description|default:"—" }}</div>
+                            {% if transaction.actor_label %}<div class="mt-1 text-xs text-gray-400">By {{ transaction.actor_label }}</div>{% endif %}
+                        </td>
                     </tr>
                     {% empty %}
-                    <tr><td colspan="7" class="px-4 py-10 text-center text-gray-500">No AI credit transactions in this date range.</td></tr>
+                    <tr>
+                        <td colspan="7" class="px-4 py-12 text-center">
+                            <div class="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-gray-100 text-gray-400"><i class="ti ti-receipt-off"></i></div>
+                            <p class="mt-3 text-sm font-medium text-gray-600">No transactions in this date range</p>
+                            <p class="mt-1 text-xs text-gray-400">Try another date range from the Usage Report section.</p>
+                        </td>
+                    </tr>
                     {% endfor %}
                 </tbody>
             </table>
         </div>
-    </div>
+    </section>
 </div>
 {% endblock %}
