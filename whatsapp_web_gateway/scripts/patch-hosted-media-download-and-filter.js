@@ -44,7 +44,6 @@ if (!source.includes('function isHiddenHostedChatId(value) {')) {
   return Boolean(
     chatId && (
       chatId === 'status@broadcast' ||
-      chatId.endsWith('@broadcast') ||
       chatId.includes('@newsletter')
     )
   );
@@ -73,19 +72,19 @@ function isHiddenHostedMessage(message) {
 replaceOnce(
   "    if (message.fromMe) return;",
   "    if (message.fromMe || isHiddenHostedMessage(message)) return;",
-  'drop inbound Status/broadcast/newsletter callbacks',
+  'drop inbound WhatsApp Status/newsletter callbacks',
 );
 
 replaceOnce(
   "    if (!message.fromMe || isGatewayOriginatedOwnMessage(state, message)) return;",
   "    if (!message.fromMe || isHiddenHostedMessage(message) || isGatewayOriginatedOwnMessage(state, message)) return;",
-  'drop linked-device Status/broadcast/newsletter callbacks',
+  'drop linked-device WhatsApp Status/newsletter callbacks',
 );
 
 replaceOnce(
   "  if (!rawChatId || rawChatId === 'status@broadcast' || rawChatId.includes('@newsletter')) {",
   "  if (!rawChatId || isHiddenHostedChatId(rawChatId)) {",
-  'exclude all broadcast/status chats from history sync',
+  'exclude WhatsApp Status/newsletter chats from history sync',
 );
 
 const messagesRoute = "app.post('/sessions/:sessionId/messages', async (req, res) => {";
