@@ -1,5 +1,8 @@
 from django.urls import path
 
+from apps.ai_engagement.views.dashboard_knowledge_delete import (
+    dashboard_knowledge_delete,
+)
 from apps.ai_engagement.views.document_views import (
     DocumentDetailAPIView,
     DocumentListAPIView,
@@ -57,6 +60,11 @@ urlpatterns = [
         "sources/<int:source_id>/",
         KnowledgeSourceDetailAPIView.as_view(),
         name="ai-knowledge-source-detail",
+    ),
+    path(
+        "dashboard/knowledge/<str:kind>/<int:item_id>/delete/",
+        dashboard_knowledge_delete,
+        name="ai-dashboard-knowledge-delete",
     ),
     path(
         "playground/",
