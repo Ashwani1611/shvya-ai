@@ -43,6 +43,9 @@ RUN node scripts/patch-hosted-message-hydration.js
 # Accept authenticated binary uploads from Django for agent-sent photo/video/
 # document attachments without exposing the gateway publicly.
 RUN node scripts/patch-hosted-uploaded-media-send.js
+# Fix URL-backed follow-up media MIME handling, expose authenticated on-demand
+# message media downloads, and drop WhatsApp Status/broadcast callbacks.
+RUN node scripts/patch-hosted-media-download-and-filter.js
 RUN node --check src/index.js
 
 RUN mkdir -p /data/wwebjs_auth && chown -R node:node /app /data/wwebjs_auth
