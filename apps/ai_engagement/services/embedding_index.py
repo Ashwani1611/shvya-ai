@@ -3,11 +3,6 @@ from __future__ import annotations
 from collections.abc import Iterable
 
 from apps.ai_engagement.models import Chunk
-from apps.ai_engagement.services.credits import (
-    AICreditError,
-    AICreditService,
-    AICreditUnavailableError,
-)
 from apps.ai_engagement.services.embeddings import (
     EmbeddingError,
     EmbeddingService,
@@ -22,17 +17,18 @@ class EmbeddingIndexError(Exception):
 
 class EmbeddingIndexService:
     """
-    Coordinates embedding generation, AI-credit metering, and persistence.
+    Coordinates embedding generation and persistence.
+
+    Organization-scoped AI-credit metering lives at the real
+    ``EmbeddingService`` provider boundary. Keeping accounting there avoids
+    duplicate reservation logic and guarantees that an actual OpenAI
+    embedding request cannot bypass the manual AI-credit wallet.
 
     Flow:
 
         Chunk
           ↓
-        reserve organization AI credits
-          ↓
-        EmbeddingService
-          ↓
-        settle / release credits
+        EmbeddingService (organization-scoped + metered)
           ↓
         embedding vector
           ↓
@@ -57,52 +53,46 @@ class EmbeddingIndexService:
             self._embedding_service = EmbeddingService()
         return self._embedding_service
 
-    def _uses_real_embedding_service(self) -> bool:
-        """Do not make injected unit-test provider doubles require a wallet."""
-        return isinstance(self.embedding_service, EmbeddingService)
-
-    def _reserve_embedding_credits(self, *, organization_id, texts, reference_id=""):
-        if not self._uses_real_embedding_service():
-            return None
-        model = getattr(
-            self.embedding_service,
-            "model",
-            EmbeddingService.DEFAULT_MODEL,
-        )
-        try:
-            return AICreditService.reserve_embedding(
+    def _embed_text(
+        self,
+        *,
+        text: str,
+        organization_id,
+        reference_id,
+    ) -> list[float]:
+        """
+        Use organization metering for the real provider while preserving
+        compatibility with injected provider doubles used by focused tests.
+        """
+        if isinstance(self.embedding_service, EmbeddingService):
+            return self.embedding_service.embed_text(
+                text,
                 organization_id=organization_id,
-                model=model,
-                texts=list(texts),
                 feature="knowledge_embedding",
-                reference_id=str(reference_id or ""),
+                reference_id=str(reference_id or "")[:150],
             )
-        except AICreditUnavailableError as exc:
-            raise EmbeddingIndexError(str(exc)) from exc
-        except AICreditError as exc:
-            raise EmbeddingIndexError(
-                f"Unable to reserve AI credits for embeddings: {exc}"
-            ) from exc
 
-    def _settle_embedding_credits(self, reservation, *, texts) -> None:
-        if reservation is None:
-            return
-        estimated_tokens = sum(
-            AICreditService.estimate_tokens(text)
-            for text in texts
-        )
-        try:
-            AICreditService.settle(
-                reservation=reservation,
-                input_tokens=estimated_tokens,
-                output_tokens=0,
-                embedding=True,
-                metadata={"provider": "openai", "operation": "embedding"},
+        return self.embedding_service.embed_text(text)
+
+    def _embed_texts(
+        self,
+        *,
+        texts: list[str],
+        organization_id,
+        reference_id,
+    ) -> list[list[float]]:
+        """
+        Generate one metered provider batch for a single organization.
+        """
+        if isinstance(self.embedding_service, EmbeddingService):
+            return self.embedding_service.embed_texts(
+                texts,
+                organization_id=organization_id,
+                feature="knowledge_embedding",
+                reference_id=str(reference_id or "")[:150],
             )
-        except AICreditError as exc:
-            raise EmbeddingIndexError(
-                f"Embedding completed but AI-credit settlement failed: {exc}"
-            ) from exc
+
+        return self.embedding_service.embed_texts(texts)
 
     # ============================================================
     # SINGLE CHUNK
@@ -130,34 +120,17 @@ class EmbeddingIndexService:
                 f"Chunk {chunk.pk} has empty content."
             )
 
-        reservation = self._reserve_embedding_credits(
-            organization_id=chunk.organization_id,
-            texts=[content],
-            reference_id=chunk.pk,
-        )
-
         try:
-            vector = (
-                self.embedding_service.embed_text(
-                    content
-                )
+            vector = self._embed_text(
+                text=content,
+                organization_id=chunk.organization_id,
+                reference_id=chunk.pk,
             )
         except EmbeddingError as exc:
-            if reservation is not None:
-                AICreditService.release(reservation)
             raise EmbeddingIndexError(
                 f"Unable to generate embedding "
                 f"for chunk {chunk.pk}: {exc}"
             ) from exc
-        except Exception:
-            if reservation is not None:
-                AICreditService.release(reservation)
-            raise
-
-        self._settle_embedding_credits(
-            reservation,
-            texts=[content],
-        )
 
         expected_dimensions = (
             Chunk.EMBEDDING_DIMENSIONS
@@ -227,43 +200,31 @@ class EmbeddingIndexService:
                     f"Chunk {chunk.pk} has empty content."
                 )
 
-        organization_ids = {chunk.organization_id for chunk in chunk_list}
-        if self._uses_real_embedding_service() and len(organization_ids) != 1:
+        organization_ids = {
+            chunk.organization_id
+            for chunk in chunk_list
+        }
+
+        if len(organization_ids) != 1:
             raise EmbeddingIndexError(
-                "A metered embedding batch cannot contain multiple organizations."
+                "An embedding batch cannot contain multiple organizations."
             )
 
         normalized_texts = [
             chunk.content.strip()
             for chunk in chunk_list
         ]
-        reservation = self._reserve_embedding_credits(
-            organization_id=chunk_list[0].organization_id,
-            texts=normalized_texts,
-            reference_id=chunk_list[0].document_id,
-        )
 
         try:
-            vectors = (
-                self.embedding_service.embed_texts(
-                    normalized_texts
-                )
+            vectors = self._embed_texts(
+                texts=normalized_texts,
+                organization_id=chunk_list[0].organization_id,
+                reference_id=chunk_list[0].document_id,
             )
         except EmbeddingError as exc:
-            if reservation is not None:
-                AICreditService.release(reservation)
             raise EmbeddingIndexError(
                 f"Unable to generate batch embeddings: {exc}"
             ) from exc
-        except Exception:
-            if reservation is not None:
-                AICreditService.release(reservation)
-            raise
-
-        self._settle_embedding_credits(
-            reservation,
-            texts=normalized_texts,
-        )
 
         if len(vectors) != len(
             chunk_list
