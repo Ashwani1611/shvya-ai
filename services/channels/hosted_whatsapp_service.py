@@ -413,7 +413,7 @@ def _persist_gateway_message(*, account, payload, historical=False):
                     stage=stage,
                     name=payload.get("contactName") or peer,
                     phone=peer,
-                    lead_source="whatsapp_api",
+                    lead_source="whatsapp",
                 )
             except ValidationError:
                 lead = Lead.objects.filter(
