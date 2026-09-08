@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+from datetime import timedelta
+
 from django.contrib import messages
 from django.db.models import Q, Sum
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
+from django.utils.dateparse import parse_date
 from django.views.decorators.http import require_http_methods
 
 from apps.ai_engagement.models import (
@@ -17,6 +20,157 @@ from apps.ai_engagement.services.credits import (
 from apps.organizations.models import Organization
 
 from .views_flat import superuser_required
+
+
+AI_FEATURE_LABELS = {
+    "engagement": "AI Engagement",
+    "qualification": "Qualification",
+    "internal_summary": "Conversation Summary",
+    "knowledge_embedding": "Knowledge Embedding",
+    "knowledge_retrieval": "Knowledge Retrieval",
+    "playground": "AI Playground",
+    "playground_retrieval": "Playground Retrieval",
+    "embedding": "Knowledge Embedding",
+    "other": "Other AI Usage",
+}
+
+USAGE_RANGE_PRESETS = {"today", "7d", "30d", "month", "all", "custom"}
+
+
+def _feature_label(feature: str) -> str:
+    normalized = (feature or "other").strip().lower()
+    return AI_FEATURE_LABELS.get(
+        normalized,
+        normalized.replace("_", " ").strip().title() or "Other AI Usage",
+    )
+
+
+def _resolve_usage_date_filter(request):
+    """Resolve quick presets or an explicit inclusive date range."""
+
+    today = timezone.localdate()
+    raw_from = (request.GET.get("from") or "").strip()
+    raw_to = (request.GET.get("to") or "").strip()
+    preset = (request.GET.get("range") or "30d").strip().lower()
+    if preset not in USAGE_RANGE_PRESETS:
+        preset = "30d"
+
+    start_date = parse_date(raw_from) if raw_from else None
+    end_date = parse_date(raw_to) if raw_to else None
+
+    # Explicit dates always take precedence over a quick preset.
+    if raw_from or raw_to:
+        preset = "custom"
+    elif preset == "today":
+        start_date = today
+        end_date = today
+    elif preset == "7d":
+        start_date = today - timedelta(days=6)
+        end_date = today
+    elif preset == "30d":
+        start_date = today - timedelta(days=29)
+        end_date = today
+    elif preset == "month":
+        start_date = today.replace(day=1)
+        end_date = today
+    elif preset == "all":
+        start_date = None
+        end_date = None
+
+    if start_date and end_date and start_date > end_date:
+        start_date, end_date = end_date, start_date
+
+    if start_date and end_date:
+        if start_date == end_date:
+            label = start_date.strftime("%d %b %Y")
+        else:
+            label = (
+                f"{start_date.strftime('%d %b %Y')} – "
+                f"{end_date.strftime('%d %b %Y')}"
+            )
+    elif start_date:
+        label = f"From {start_date.strftime('%d %b %Y')}"
+    elif end_date:
+        label = f"Through {end_date.strftime('%d %b %Y')}"
+    else:
+        label = "All time"
+
+    return {
+        "preset": preset,
+        "start_date": start_date,
+        "end_date": end_date,
+        "start_value": start_date.isoformat() if start_date else "",
+        "end_value": end_date.isoformat() if end_date else "",
+        "label": label,
+    }
+
+
+def _filter_transactions_for_dates(queryset, date_filter):
+    start_date = date_filter["start_date"]
+    end_date = date_filter["end_date"]
+
+    if start_date:
+        queryset = queryset.filter(created_at__date__gte=start_date)
+    if end_date:
+        queryset = queryset.filter(created_at__date__lte=end_date)
+    return queryset
+
+
+def _build_usage_report(transactions):
+    """Build signed credit totals and action-level AI usage for one date range."""
+
+    credits_added = transactions.filter(
+        transaction_type=AICreditTransaction.TransactionType.MANUAL_CREDIT,
+    ).aggregate(total=Sum("amount"))["total"] or 0
+    manual_debits = transactions.filter(
+        transaction_type=AICreditTransaction.TransactionType.MANUAL_DEBIT,
+    ).aggregate(total=Sum("amount"))["total"] or 0
+    ai_usage_total = transactions.filter(
+        transaction_type=AICreditTransaction.TransactionType.AI_USAGE,
+    ).aggregate(total=Sum("amount"))["total"] or 0
+    net_change = transactions.aggregate(total=Sum("amount"))["total"] or 0
+
+    usage_rows = []
+    grouped_usage = (
+        transactions.filter(
+            transaction_type=AICreditTransaction.TransactionType.AI_USAGE,
+        )
+        .values("feature")
+        .annotate(total=Sum("amount"))
+        .order_by("feature")
+    )
+    for row in grouped_usage:
+        amount = int(row["total"] or 0)
+        if amount == 0:
+            continue
+        usage_rows.append(
+            {
+                "feature": row["feature"] or "other",
+                "label": _feature_label(row["feature"]),
+                "amount": amount,
+                "signed_display": f"{amount:+,}",
+            }
+        )
+
+    # Highest-consuming AI action first, regardless of the underlying feature key.
+    usage_rows.sort(key=lambda row: abs(row["amount"]), reverse=True)
+
+    credits_added = int(credits_added)
+    manual_debits = int(manual_debits)
+    ai_usage_total = int(ai_usage_total)
+    net_change = int(net_change)
+
+    return {
+        "credits_added": max(credits_added, 0),
+        "credits_added_display": f"{max(credits_added, 0):,}",
+        "manual_deducted": max(-manual_debits, 0),
+        "manual_deducted_display": f"{max(-manual_debits, 0):,}",
+        "ai_used": max(-ai_usage_total, 0),
+        "ai_used_display": f"{max(-ai_usage_total, 0):,}",
+        "net_change": net_change,
+        "net_change_display": f"{net_change:+,}",
+        "usage_rows": usage_rows,
+    }
 
 
 @superuser_required
@@ -156,7 +310,14 @@ def organization_ai_credit_view(request, organization_id):
         created_at__month=now.month,
     ).aggregate(total=Sum("amount"))["total"] or 0
 
-    transactions = wallet.transactions.all()[:100]
+    date_filter = _resolve_usage_date_filter(request)
+    filtered_transactions = _filter_transactions_for_dates(
+        wallet.transactions.all(),
+        date_filter,
+    )
+    usage_report = _build_usage_report(filtered_transactions)
+
+    transactions = filtered_transactions[:100]
     active_reservations = wallet.reservations.filter(
         status="active",
     ).order_by("-created_at")[:25]
@@ -171,5 +332,7 @@ def organization_ai_credit_view(request, organization_id):
             "active_reservations": active_reservations,
             "used_today": max(-int(today_total), 0),
             "used_this_month": max(-int(month_total), 0),
+            "date_filter": date_filter,
+            "usage_report": usage_report,
         },
     )

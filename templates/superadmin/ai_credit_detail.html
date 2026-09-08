@@ -54,6 +54,117 @@
         <strong>Manual funding only.</strong> Creating an organization does not grant AI credits, and package/plan renewal does not refill this wallet. At 0 available credits, organization-scoped OpenAI generation is blocked before the provider call.
     </div>
 
+    <div class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+        <div class="border-b border-gray-100 px-5 py-5">
+            <div class="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+                <div>
+                    <div class="flex items-center gap-2">
+                        <span class="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600">
+                            <i class="ti ti-chart-bar text-lg"></i>
+                        </span>
+                        <div>
+                            <h2 class="font-semibold text-gray-900">AI credit usage by action</h2>
+                            <p class="mt-0.5 text-xs text-gray-500">See exactly where credits were added or consumed for {{ organization.name }}.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <form method="get" class="flex flex-col gap-2 sm:flex-row sm:items-end">
+                    <div>
+                        <label for="credit-date-from" class="mb-1 block text-xs font-medium text-gray-500">From</label>
+                        <input id="credit-date-from" type="date" name="from" value="{{ date_filter.start_value }}" class="rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                    </div>
+                    <div>
+                        <label for="credit-date-to" class="mb-1 block text-xs font-medium text-gray-500">To</label>
+                        <input id="credit-date-to" type="date" name="to" value="{{ date_filter.end_value }}" class="rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                    </div>
+                    <button type="submit" class="inline-flex items-center justify-center gap-2 rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800">
+                        <i class="ti ti-filter"></i>
+                        Apply
+                    </button>
+                </form>
+            </div>
+
+            <div class="mt-4 flex flex-wrap items-center gap-2">
+                <span class="mr-1 text-xs font-medium text-gray-400">Quick range</span>
+                <a href="?range=today" class="rounded-full border px-3 py-1.5 text-xs font-medium {% if date_filter.preset == 'today' %}border-indigo-200 bg-indigo-50 text-indigo-700{% else %}border-gray-200 text-gray-600 hover:bg-gray-50{% endif %}">Today</a>
+                <a href="?range=7d" class="rounded-full border px-3 py-1.5 text-xs font-medium {% if date_filter.preset == '7d' %}border-indigo-200 bg-indigo-50 text-indigo-700{% else %}border-gray-200 text-gray-600 hover:bg-gray-50{% endif %}">7 days</a>
+                <a href="?range=30d" class="rounded-full border px-3 py-1.5 text-xs font-medium {% if date_filter.preset == '30d' %}border-indigo-200 bg-indigo-50 text-indigo-700{% else %}border-gray-200 text-gray-600 hover:bg-gray-50{% endif %}">30 days</a>
+                <a href="?range=month" class="rounded-full border px-3 py-1.5 text-xs font-medium {% if date_filter.preset == 'month' %}border-indigo-200 bg-indigo-50 text-indigo-700{% else %}border-gray-200 text-gray-600 hover:bg-gray-50{% endif %}">This month</a>
+                <a href="?range=all" class="rounded-full border px-3 py-1.5 text-xs font-medium {% if date_filter.preset == 'all' %}border-indigo-200 bg-indigo-50 text-indigo-700{% else %}border-gray-200 text-gray-600 hover:bg-gray-50{% endif %}">All time</a>
+                {% if date_filter.preset == 'custom' %}
+                    <span class="rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs font-medium text-indigo-700">Custom</span>
+                {% endif %}
+                <span class="ml-auto text-xs font-medium text-gray-500">Showing: {{ date_filter.label }}</span>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 border-b border-gray-100 sm:grid-cols-2 xl:grid-cols-4">
+            <div class="border-b border-gray-100 p-5 sm:border-r xl:border-b-0">
+                <div class="text-xs font-medium uppercase tracking-wide text-gray-400">Credits added</div>
+                <div class="mt-2 text-2xl font-semibold text-green-600">+{{ usage_report.credits_added_display }}</div>
+                <div class="mt-1 text-xs text-gray-400">Manual recharge in selected period</div>
+            </div>
+            <div class="border-b border-gray-100 p-5 xl:border-b-0 xl:border-r">
+                <div class="text-xs font-medium uppercase tracking-wide text-gray-400">AI credits used</div>
+                <div class="mt-2 text-2xl font-semibold text-red-600">-{{ usage_report.ai_used_display }}</div>
+                <div class="mt-1 text-xs text-gray-400">Settled AI provider usage</div>
+            </div>
+            <div class="border-b border-gray-100 p-5 sm:border-r xl:border-b-0">
+                <div class="text-xs font-medium uppercase tracking-wide text-gray-400">Manual deductions</div>
+                <div class="mt-2 text-2xl font-semibold {% if usage_report.manual_deducted %}text-red-600{% else %}text-gray-700{% endif %}">-{{ usage_report.manual_deducted_display }}</div>
+                <div class="mt-1 text-xs text-gray-400">Superadmin corrections / deductions</div>
+            </div>
+            <div class="p-5">
+                <div class="text-xs font-medium uppercase tracking-wide text-gray-400">Net change</div>
+                <div class="mt-2 text-2xl font-semibold {% if usage_report.net_change > 0 %}text-green-600{% elif usage_report.net_change < 0 %}text-red-600{% else %}text-gray-700{% endif %}">{{ usage_report.net_change_display }}</div>
+                <div class="mt-1 text-xs text-gray-400">All balance changes in selected period</div>
+            </div>
+        </div>
+
+        <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-100 text-sm">
+                <thead class="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500">
+                    <tr>
+                        <th class="px-5 py-3">Organization</th>
+                        <th class="px-5 py-3">Action</th>
+                        <th class="px-5 py-3 text-right">Credits</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-100">
+                    <tr class="bg-green-50/40">
+                        <td class="px-5 py-3 font-medium text-gray-900">{{ organization.name }}</td>
+                        <td class="px-5 py-3">
+                            <div class="font-medium text-gray-900">Total</div>
+                            <div class="mt-0.5 text-xs text-gray-400">Credits added during {{ date_filter.label }}</div>
+                        </td>
+                        <td class="px-5 py-3 text-right font-semibold text-green-600">+{{ usage_report.credits_added_display }}</td>
+                    </tr>
+                    {% for row in usage_report.usage_rows %}
+                    <tr>
+                        <td class="px-5 py-3 font-medium text-gray-900">{{ organization.name }}</td>
+                        <td class="px-5 py-3 text-gray-700">{{ row.label }}</td>
+                        <td class="px-5 py-3 text-right font-semibold text-red-600">{{ row.signed_display }}</td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td class="px-5 py-3 font-medium text-gray-900">{{ organization.name }}</td>
+                        <td class="px-5 py-6 text-gray-500">No AI usage in this date range.</td>
+                        <td class="px-5 py-6 text-right font-semibold text-gray-400">0</td>
+                    </tr>
+                    {% endfor %}
+                    {% if usage_report.manual_deducted %}
+                    <tr class="bg-red-50/30">
+                        <td class="px-5 py-3 font-medium text-gray-900">{{ organization.name }}</td>
+                        <td class="px-5 py-3 text-gray-700">Manual Deduction</td>
+                        <td class="px-5 py-3 text-right font-semibold text-red-600">-{{ usage_report.manual_deducted_display }}</td>
+                    </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
     <div class="grid grid-cols-1 gap-5 xl:grid-cols-2">
         <div class="rounded-lg border bg-white">
             <div class="border-b px-5 py-4">
@@ -149,7 +260,7 @@
     <div class="rounded-lg border bg-white">
         <div class="border-b px-5 py-4">
             <h2 class="font-semibold">AI credit transaction history</h2>
-            <p class="mt-1 text-xs text-gray-500">Latest 100 settled balance changes. Provider usage records include feature, model and token usage.</p>
+            <p class="mt-1 text-xs text-gray-500">Latest 100 balance changes for {{ date_filter.label }}. Provider usage records include feature, model and token usage.</p>
         </div>
         <div class="overflow-x-auto">
             <table class="min-w-full divide-y divide-gray-200 text-sm">
@@ -168,7 +279,7 @@
                         <td class="px-4 py-3"><div>{{ transaction.description|default:"—" }}</div>{% if transaction.actor_label %}<div class="mt-0.5 text-xs text-gray-400">{{ transaction.actor_label }}</div>{% endif %}</td>
                     </tr>
                     {% empty %}
-                    <tr><td colspan="7" class="px-4 py-10 text-center text-gray-500">No AI credit transactions yet.</td></tr>
+                    <tr><td colspan="7" class="px-4 py-10 text-center text-gray-500">No AI credit transactions in this date range.</td></tr>
                     {% endfor %}
                 </tbody>
             </table>
