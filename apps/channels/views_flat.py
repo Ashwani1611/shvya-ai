@@ -285,6 +285,29 @@ def whatsapp_account_list_view(request):
     accounts = WhatsAppAccount.objects.filter(
         organization=user.organization,
     )
+    selected_owner = None
+    owner_id = request.GET.get("owner", "").strip()
+    if owner_id:
+        selected_owner = User.objects.filter(
+            id=owner_id,
+            organization=user.organization,
+            is_active=True,
+        ).first()
+        if selected_owner:
+            from services.channels.hosted_whatsapp_service import (
+                normalize_whatsapp_number,
+                pipeline_whatsapp_number,
+            )
+            owner_numbers = {
+                pipeline_whatsapp_number(pipeline)
+                for pipeline in selected_owner.owned_pipelines.filter(is_active=True)
+            }
+            accounts = [
+                account for account in accounts
+                if normalize_whatsapp_number(
+                    phone_number=account.display_phone_number or account.phone_number_id
+                ) in owner_numbers
+            ]
 
     return render(
         request,
@@ -292,6 +315,7 @@ def whatsapp_account_list_view(request):
         {
             "accounts": accounts,
             "can_manage": _admin_required(user),
+            "selected_owner": selected_owner,
         },
     )
 
@@ -1119,3 +1143,45 @@ def whatsapp_chat_detail_view(request, lead_id):
         "channels/whatsapp_chat_list.html",
         context,
     )
+
+
+@crm_login_required
+@require_http_methods(["GET", "POST"])
+def whatsapp_account_automation_settings_view(request, account_id):
+    """Shared automation settings for Hosted and Meta API numbers."""
+    from services.channels.hosted_whatsapp_service import (
+        HostedWhatsAppValidationError,
+        get_pipeline_for_account,
+        get_session_settings,
+        update_session_settings,
+    )
+
+    user = request.crm_user
+    if not _admin_required(user):
+        return JsonResponse({"ok": False, "error": "Only organization admins can manage automation settings."}, status=403)
+    account = WhatsAppAccount.objects.select_related("organization").filter(
+        id=account_id,
+        organization=user.organization,
+        is_active=True,
+    ).first()
+    if account is None:
+        return JsonResponse({"ok": False, "error": "Account not found."}, status=404)
+    if request.method == "GET":
+        pipeline = get_pipeline_for_account(account=account)
+        return JsonResponse({
+            "ok": True,
+            "phone_number": account.display_phone_number,
+            "pipeline": pipeline.name if pipeline else "",
+            "settings": get_session_settings(account=account),
+        })
+    payload = request.POST.dict()
+    if request.content_type and "application/json" in request.content_type:
+        try:
+            payload = json.loads(request.body.decode("utf-8") or "{}")
+        except (ValueError, UnicodeDecodeError):
+            payload = {}
+    try:
+        updated = update_session_settings(account=account, payload=payload)
+    except HostedWhatsAppValidationError as exc:
+        return JsonResponse({"ok": False, "error": str(exc)}, status=400)
+    return JsonResponse({"ok": True, "settings": updated})

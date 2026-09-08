@@ -33,4 +33,8 @@ app.conf.beat_schedule = {
         "task": "apps.followups.tasks.dispatch_auto_followups_task",
         "schedule": 10.0,
     },
+    "dispatch-ai-bump-ups-every-minute": {
+        "task": "ai.dispatch_bump_ups",
+        "schedule": 60.0,
+    },
 }

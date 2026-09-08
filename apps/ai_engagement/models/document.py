@@ -80,6 +80,11 @@ class Document(models.Model):
         blank=True,
     )
 
+    share_instruction = models.TextField(
+        blank=True,
+        help_text="Tell the AI when and why this file should be sent to a lead.",
+    )
+
     # ============================================================
     # PROCESSING
     # ============================================================

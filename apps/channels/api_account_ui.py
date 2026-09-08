@@ -18,11 +18,35 @@ def whatsapp_account_list_view(request):
         status=WhatsAppAccount.Status.CONNECTED,
         is_active=True,
     ).order_by("-updated_at")
+    selected_owner = None
+    owner_id = request.GET.get("owner", "").strip()
+    if owner_id:
+        selected_owner = User.objects.filter(
+            id=owner_id,
+            organization=user.organization,
+            is_active=True,
+        ).first()
+        if selected_owner:
+            from services.channels.hosted_whatsapp_service import (
+                normalize_whatsapp_number,
+                pipeline_whatsapp_number,
+            )
+            owner_numbers = {
+                pipeline_whatsapp_number(pipeline)
+                for pipeline in selected_owner.owned_pipelines.filter(is_active=True)
+            }
+            accounts = [
+                account for account in accounts
+                if normalize_whatsapp_number(
+                    phone_number=account.display_phone_number or account.phone_number_id
+                ) in owner_numbers
+            ]
     return render(
         request,
         "channels/whatsapp_account_list.html",
         {
             "accounts": accounts,
             "can_manage": user.role == User.Role.ADMIN,
+            "selected_owner": selected_owner,
         },
     )

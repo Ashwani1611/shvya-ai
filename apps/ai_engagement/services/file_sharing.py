@@ -153,6 +153,12 @@ Rules for the fields:
             )
         )
 
+        # Once an organization configures guided files, only those files are
+        # candidates. Before that, preserve compatibility with existing
+        # knowledge-file installations.
+        if queryset.exclude(share_instruction="").exists():
+            queryset = queryset.exclude(share_instruction="")
+
         if document_ids is not None:
             if not document_ids:
                 return []
@@ -240,6 +246,7 @@ Rules for the fields:
                     "name": document.name,
                     "version": document.version,
                     "source_url": document.source_url,
+                    "share_instruction": document.share_instruction,
                     "relevance": float(
                         item.get(
                             "similarity",
@@ -405,6 +412,10 @@ Rules for the fields:
                         (
                             f"Evidence: "
                             f"{candidate['evidence']}"
+                        ),
+                        (
+                            f"When and why to send: "
+                            f"{candidate['share_instruction']}"
                         ),
                         "",
                     ]

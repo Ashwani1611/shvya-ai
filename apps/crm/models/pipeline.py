@@ -50,6 +50,11 @@ class Pipeline(models.Model):
         default=True,
     )
 
+    ai_enabled = models.BooleanField(
+        default=True,
+        help_text="Allow SHVYA AI to engage leads in this pipeline.",
+    )
+
     created_at = models.DateTimeField(
         auto_now_add=True,
     )

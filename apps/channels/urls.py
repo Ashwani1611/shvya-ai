@@ -18,6 +18,7 @@ from . import whatsapp_ui
 
 urlpatterns = [
     path("accounts/", api_account_ui.whatsapp_account_list_view, name="whatsapp-accounts"),
+    path("accounts/<uuid:account_id>/automation-settings/", views_flat.whatsapp_account_automation_settings_view, name="whatsapp-account-automation-settings"),
     path("connect/", views_flat.whatsapp_connect_choice_view, name="whatsapp-connect-choice"),
     path("connect/api/", connection_ui.whatsapp_connect_api_view, name="whatsapp-connect-api"),
     path("connect/api/attempt-event/", connection_ui.whatsapp_connection_attempt_event_view, name="whatsapp-connection-attempt-event"),

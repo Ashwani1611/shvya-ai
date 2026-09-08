@@ -47,57 +47,28 @@
 
             <div class="flex items-center gap-3 shrink-0">
 
-                <div class="text-right">
-                    <p class="text-xs font-semibold text-gray-800">
-                        Organization AI
-                    </p>
-
-                    <p class="mt-0.5 text-[11px] text-gray-500">
-                        {% if org_info.ai_enabled %}
-                            On
-                        {% else %}
-                            Off
-                        {% endif %}
-                    </p>
-                </div>
-
-                <label
-                    class="relative inline-flex cursor-pointer shrink-0"
-                    title="Turn AI on or off for this organization"
-                >
-                    <input
-                        type="checkbox"
-                        name="ai_enabled"
-                        form="org-ai-settings-form"
-                        class="peer sr-only"
-                        {% if org_info.ai_enabled %}
-                            checked
-                        {% endif %}
-                    >
-
-                    <span
-                        class="
-                            w-11
-                            h-6
-                            rounded-full
-                            bg-gray-200
-                            transition
-                            peer-checked:bg-blue-600
-                            peer-focus:ring-4
-                            peer-focus:ring-blue-100
-                            after:content-['']
-                            after:absolute
-                            after:top-[2px]
-                            after:left-[2px]
-                            after:bg-white
-                            after:rounded-full
-                            after:h-5
-                            after:w-5
-                            after:transition
-                            peer-checked:after:translate-x-5
-                        "
-                    ></span>
-                </label>
+                <details class="relative">
+                    <summary class="flex cursor-pointer list-none items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50">
+                        <i class="ti ti-adjustments"></i> Organization AI <i class="ti ti-chevron-down"></i>
+                    </summary>
+                    <div class="absolute right-0 z-40 mt-2 w-80 rounded-xl border border-gray-200 bg-white p-3 shadow-xl">
+                        <p class="mb-3 text-xs text-gray-500">Control AI engagement independently for each pipeline.</p>
+                        <div class="space-y-2">
+                            {% for pipeline in pipelines %}
+                            <form method="post" class="flex items-center justify-between rounded-lg bg-gray-50 px-3 py-2">
+                                {% csrf_token %}
+                                <input type="hidden" name="action" value="save_pipeline_ai">
+                                <input type="hidden" name="pipeline_id" value="{{ pipeline.id }}">
+                                <span class="truncate pr-3 text-sm font-medium text-gray-800">{{ pipeline.name }}</span>
+                                <label class="relative inline-flex cursor-pointer shrink-0">
+                                    <input type="checkbox" name="ai_enabled" class="peer sr-only" {% if pipeline.ai_enabled %}checked{% endif %} onchange="this.form.submit()">
+                                    <span class="h-6 w-11 rounded-full bg-gray-300 transition peer-checked:bg-blue-600 after:absolute after:left-0.5 after:top-0.5 after:h-5 after:w-5 after:rounded-full after:bg-white after:transition peer-checked:after:translate-x-5"></span>
+                                </label>
+                            </form>
+                            {% empty %}<p class="py-3 text-center text-xs text-gray-500">No active pipelines.</p>{% endfor %}
+                        </div>
+                    </div>
+                </details>
 
             </div>
         </div>
@@ -1865,7 +1836,7 @@
                                 </h3>
 
                                 <p class="mt-1 text-xs text-gray-500">
-                                    Uses your existing knowledge files for AI-guided sharing.
+                                    Upload files and tell the AI exactly when and why to send them.
                                 </p>
                             </div>
 
@@ -1893,20 +1864,21 @@
 
                         <div class="max-h-[60vh] overflow-y-auto">
 
-                            {% if knowledge_documents %}
+                            {% if guided_documents %}
 
                                 <div class="divide-y divide-gray-100">
 
-                                    {% for document in knowledge_documents %}
+                                    {% for document in guided_documents %}
 
-                                        <div class="px-5 py-4 flex items-center justify-between gap-4">
+                                        <div class="px-5 py-4">
+                                            <div class="flex items-center justify-between gap-4">
 
                                             <div class="min-w-0">
                                                 <p class="text-sm font-medium text-gray-800 truncate">
                                                     {{ document.name|default:"Untitled document" }}
                                                 </p>
-                                                <p class="mt-1 text-xs text-gray-400">
-                                                    Version {{ document.version }}
+                                                <p class="mt-1 text-xs text-gray-500">
+                                                    When to send: {{ document.share_instruction }}
                                                 </p>
                                             </div>
 
@@ -1928,6 +1900,18 @@
                                                 </span>
                                             {% endif %}
 
+                                            </div>
+                                            <div class="mt-3 flex gap-2">
+                                                <form method="post" class="flex flex-1 gap-2">
+                                                    {% csrf_token %}<input type="hidden" name="action" value="update_guided_file"><input type="hidden" name="document_id" value="{{ document.id }}">
+                                                    <input name="share_instruction" value="{{ document.share_instruction }}" required class="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-2 text-xs">
+                                                    <button class="rounded-lg border border-blue-300 px-3 text-xs font-semibold text-blue-700" title="Save instruction"><i class="ti ti-device-floppy"></i></button>
+                                                </form>
+                                                <form method="post" onsubmit="return confirm('Permanently delete this file and all indexed data?')">
+                                                    {% csrf_token %}<input type="hidden" name="action" value="delete_guided_file"><input type="hidden" name="document_id" value="{{ document.id }}">
+                                                    <button class="h-9 w-9 rounded-lg text-red-600 hover:bg-red-50" title="Delete file"><i class="ti ti-trash"></i></button>
+                                                </form>
+                                            </div>
                                         </div>
 
                                     {% endfor %}
@@ -1941,7 +1925,7 @@
                                         No knowledge files available
                                     </p>
                                     <p class="mt-1 text-xs text-gray-500">
-                                        Upload a knowledge file first.
+                                        Add a file and an instruction below.
                                     </p>
                                 </div>
 
@@ -1949,17 +1933,13 @@
 
                         </div>
 
-                        <div
-                            class="
-                                flex
-                                justify-end
-                                px-5
-                                py-3
-                                border-t
-                                border-gray-100
-                                bg-gray-50
-                            "
-                        >
+                        <form method="post" enctype="multipart/form-data" class="space-y-3 border-t border-gray-100 bg-gray-50 px-5 py-4">
+                            {% csrf_token %}<input type="hidden" name="action" value="upload_guided_file">
+                            <label class="block text-xs font-semibold text-gray-700">Add File</label>
+                            <input type="file" name="file" required accept=".pdf,.docx,.txt,.csv,.xlsx" class="block w-full text-xs text-gray-600">
+                            <textarea name="share_instruction" required rows="3" placeholder="Describe this file and when the AI should send it" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"></textarea>
+                            <p class="text-xs text-blue-600"><i class="ti ti-info-circle"></i> Explain what this file is and when the AI should send it.</p>
+                            <div class="flex justify-end gap-2">
                             <button
                                 type="button"
                                 class="
@@ -1978,9 +1958,11 @@
                                 "
                                 data-ai-file-sharing-close
                             >
-                                Done
+                                Cancel
                             </button>
-                        </div>
+                            <button type="submit" class="rounded-lg bg-blue-600 px-4 py-2 text-xs font-semibold text-white hover:bg-blue-700">Save Instruction</button>
+                            </div>
+                        </form>
 
                     </div>
 

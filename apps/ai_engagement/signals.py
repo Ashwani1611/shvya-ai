@@ -12,7 +12,6 @@ from django.db.models.signals import post_save, pre_save
 from django.dispatch import receiver
 from django.utils import timezone
 
-from apps.ai_engagement.models import OrgInfo
 from apps.ai_engagement.services.ai_permissions import (
     AIPermissionError,
     AIPermissionService,
@@ -25,26 +24,6 @@ from apps.ai_engagement.services.qualification_state import (
 )
 from apps.channels.models import WhatsAppMessage
 from apps.crm.models import Lead
-from apps.hosted_automation.models import HostedAutomationJob
-
-
-@receiver(post_save, sender=OrgInfo)
-def skip_queued_hosted_ai_when_org_ai_disabled(sender, instance, **kwargs):
-    """Do not let disabled organization AI block a due Hosted sequence."""
-
-    if instance.ai_enabled:
-        return
-
-    now = timezone.now()
-    HostedAutomationJob.objects.filter(
-        organization=instance.organization,
-        status=HostedAutomationJob.Status.QUEUED,
-    ).update(
-        status=HostedAutomationJob.Status.SKIPPED,
-        completed_at=now,
-        result={"reason": "organization_ai_disabled"},
-        updated_at=now,
-    )
 
 
 @receiver(pre_save, sender=Lead)

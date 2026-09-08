@@ -161,11 +161,6 @@ class PlaygroundService:
             )
         )
 
-        if not org_info.ai_enabled:
-            raise PlaygroundError(
-                "AI is disabled for this organization."
-            )
-
         # --------------------------------------------------------
         # KNOWLEDGE
         # --------------------------------------------------------

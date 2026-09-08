@@ -17,6 +17,7 @@ from apps.ai_engagement.tasks import (
     ingest_and_index_url_source,
     reindex_document_embeddings,
 )
+from apps.crm.models import Pipeline
 from apps.crm.authentication import crm_login_required
 
 
@@ -93,11 +94,6 @@ def ai_setup_view(request):
                 "",
             )
 
-            ai_enabled = (
-                request.POST.get("ai_enabled")
-                == "on"
-            )
-
             bump_up_enabled = (
                 request.POST.get("bump_up_enabled")
                 == "on"
@@ -138,7 +134,6 @@ def ai_setup_view(request):
                         "engagement_instructions": (
                             engagement_instructions
                         ),
-                        "ai_enabled": ai_enabled,
                         "bump_up_enabled": bump_up_enabled,
                         "bump_up_count": bump_up_count,
                     },
@@ -162,6 +157,75 @@ def ai_setup_view(request):
             return redirect(
                 "crm-knowledge-base-ai-setup"
             )
+
+        if action == "save_pipeline_ai":
+            pipeline_id = request.POST.get("pipeline_id", "")
+            pipeline = Pipeline.objects.filter(
+                id=pipeline_id,
+                organization=organization,
+                is_active=True,
+            ).first()
+            if pipeline is None:
+                messages.error(request, "Pipeline not found.")
+            else:
+                pipeline.ai_enabled = request.POST.get("ai_enabled") == "on"
+                pipeline.save(update_fields=["ai_enabled", "updated_at"])
+                messages.success(
+                    request,
+                    f"AI engagement for {pipeline.name} is now "
+                    f"{'on' if pipeline.ai_enabled else 'off'}.",
+                )
+            return redirect("crm-knowledge-base-ai-setup")
+
+        if action == "upload_guided_file":
+            uploaded_file = request.FILES.get("file")
+            instruction = request.POST.get("share_instruction", "").strip()
+            if uploaded_file is None or not instruction:
+                messages.error(request, "Choose a file and describe when the AI should send it.")
+                return redirect("crm-knowledge-base-ai-setup")
+            try:
+                _source, document = source_service.create_file_source(
+                    organization=organization,
+                    uploaded_file=uploaded_file,
+                    name=request.POST.get("name", "").strip(),
+                )
+                document.share_instruction = instruction
+                document.save(update_fields=["share_instruction", "updated_at"])
+                ingest_and_index_document.delay(
+                    document_id=document.id,
+                    organization_id=organization.id,
+                )
+            except KnowledgeSourceServiceError as exc:
+                messages.error(request, str(exc))
+            else:
+                messages.success(request, "AI-guided file added and processing started.")
+            return redirect("crm-knowledge-base-ai-setup")
+
+        if action == "update_guided_file":
+            instruction = request.POST.get("share_instruction", "").strip()
+            document = Document.objects.filter(
+                id=request.POST.get("document_id", ""),
+                organization=organization,
+            ).exclude(file="").first()
+            if document is None or not instruction:
+                messages.error(request, "File and sending instruction are required.")
+            else:
+                document.share_instruction = instruction
+                document.save(update_fields=["share_instruction", "updated_at"])
+                messages.success(request, "File instruction updated.")
+            return redirect("crm-knowledge-base-ai-setup")
+
+        if action == "delete_guided_file":
+            document = Document.objects.filter(
+                id=request.POST.get("document_id", ""),
+                organization=organization,
+            ).exclude(file="").first()
+            if document is None:
+                messages.error(request, "File not found.")
+            else:
+                source_service.delete_document(document=document)
+                messages.success(request, "File and its indexed data were permanently deleted.")
+            return redirect("crm-knowledge-base-ai-setup")
 
         # =========================================================
         # ADD URL KNOWLEDGE SOURCE
@@ -420,6 +484,11 @@ def ai_setup_view(request):
             "organization": organization,
             "knowledge_sources": sources,
             "knowledge_documents": documents,
+            "guided_documents": documents.exclude(share_instruction=""),
+            "pipelines": Pipeline.objects.filter(
+                organization=organization,
+                is_active=True,
+            ).order_by("name"),
             "supported_file_extensions": (
                 KnowledgeSourceService()
                 .ingestion_service

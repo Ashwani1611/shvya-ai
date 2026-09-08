@@ -45,7 +45,7 @@ class AIPermissionService:
     """
     Central evaluator for the SHVYA AI control hierarchy.
 
-    AI may operate only when organization, current stage, and lead switches are
+    AI may operate only when pipeline, current stage, and lead switches are
     enabled. For an existing WhatsApp conversation, the account carrying that
     conversation must also be the number linked to the lead's current pipeline.
     """
@@ -125,13 +125,10 @@ class AIPermissionService:
                 lead=lead,
             )
 
-        org_info = self.org_info_service.get_or_create(
-            organization=organization,
-        )
-        if not org_info.ai_enabled:
+        if not getattr(lead.pipeline, "ai_enabled", True):
             return self._decision(
                 allowed=False,
-                reason="organization_ai_disabled",
+                reason="pipeline_ai_disabled",
                 organization=organization,
                 lead=lead,
             )

@@ -36,6 +36,14 @@ DEFAULT_SESSION_SETTINGS = {
 }
 
 
+def _default_settings_for_account(account):
+    defaults = deepcopy(DEFAULT_SESSION_SETTINGS)
+    # Preserve the pre-settings behaviour for existing Meta API numbers while
+    # Hosted linked-device sessions remain opt-in for automatic replies.
+    defaults["ai_auto_reply"] = account.connection_type == WhatsAppAccount.ConnectionType.API
+    return defaults
+
+
 class HostedWhatsAppValidationError(ValueError):
     pass
 
@@ -176,7 +184,7 @@ def ensure_session_settings(*, account):
     sessions = _settings_root(org_settings)
     key = str(account.id)
     current = sessions.get(key, {})
-    merged = {**DEFAULT_SESSION_SETTINGS, **current}
+    merged = {**_default_settings_for_account(account), **current}
     sessions[key] = merged
     organization.settings = org_settings
     organization.save(update_fields=["settings", "updated_at"])
@@ -188,7 +196,7 @@ def get_session_settings(*, account):
     org_settings = account.organization.settings or {}
     sessions = org_settings.get("hosted_whatsapp", {}).get("sessions", {})
     return {
-        **DEFAULT_SESSION_SETTINGS,
+        **_default_settings_for_account(account),
         **deepcopy(sessions.get(str(account.id), {})),
     }
 
@@ -207,7 +215,7 @@ def update_session_settings(*, account, payload):
     org_settings = deepcopy(organization.settings or {})
     sessions = _settings_root(org_settings)
     current = {
-        **DEFAULT_SESSION_SETTINGS,
+        **_default_settings_for_account(account),
         **sessions.get(str(account.id), {}),
     }
 
