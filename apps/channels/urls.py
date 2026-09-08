@@ -3,6 +3,7 @@ from django.urls import path
 from apps.hosted_automation import queue_views as hosted_queue_views
 from apps.hosted_automation import views as hosted_automation_views
 
+from . import api_account_ui
 from . import connection_ui
 from . import hosted_attachment_ui
 from . import hosted_chat_ui
@@ -16,7 +17,7 @@ from . import whatsapp_template_send_ui
 from . import whatsapp_ui
 
 urlpatterns = [
-    path("accounts/", views_flat.whatsapp_account_list_view, name="whatsapp-accounts"),
+    path("accounts/", api_account_ui.whatsapp_account_list_view, name="whatsapp-accounts"),
     path("connect/", views_flat.whatsapp_connect_choice_view, name="whatsapp-connect-choice"),
     path("connect/api/", connection_ui.whatsapp_connect_api_view, name="whatsapp-connect-api"),
     path("connect/api/attempt-event/", connection_ui.whatsapp_connection_attempt_event_view, name="whatsapp-connection-attempt-event"),
