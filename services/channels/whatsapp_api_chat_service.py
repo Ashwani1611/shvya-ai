@@ -67,11 +67,13 @@ def resolve_api_account_for_lead(*, organization, lead):
 
 
 def is_within_api_24h_window(*, lead):
-    """Return True only when a recent inbound exists on a Meta API account."""
+    """Return True only when a recent inbound exists on a connected Meta API account."""
     last_inbound = (
         WhatsAppMessage.objects.filter(
             lead=lead,
             account__connection_type=API_CONNECTION_TYPE,
+            account__is_active=True,
+            account__status=WhatsAppAccount.Status.CONNECTED,
             direction=WhatsAppMessage.Direction.INBOUND,
         )
         .order_by("-created_at", "-pk")
@@ -83,13 +85,19 @@ def is_within_api_24h_window(*, lead):
 
 
 def list_api_conversations(*, organization, account=None, tab="all"):
-    """Return conversation rows backed only by Meta WhatsApp API messages."""
-    if account is not None and account.connection_type != API_CONNECTION_TYPE:
+    """Return conversation rows backed only by currently connected Meta API accounts."""
+    if account is not None and (
+        account.connection_type != API_CONNECTION_TYPE
+        or not account.is_active
+        or account.status != WhatsAppAccount.Status.CONNECTED
+    ):
         account = None
 
     acc_q = Q(
         whatsapp_messages__organization=organization,
         whatsapp_messages__account__connection_type=API_CONNECTION_TYPE,
+        whatsapp_messages__account__is_active=True,
+        whatsapp_messages__account__status=WhatsAppAccount.Status.CONNECTED,
     )
     if account:
         acc_q &= Q(whatsapp_messages__account=account)
@@ -98,6 +106,8 @@ def list_api_conversations(*, organization, account=None, tab="all"):
         organization=organization,
         lead__isnull=False,
         account__connection_type=API_CONNECTION_TYPE,
+        account__is_active=True,
+        account__status=WhatsAppAccount.Status.CONNECTED,
     )
     if account:
         base_msg_qs = base_msg_qs.filter(account=account)
@@ -153,6 +163,8 @@ def list_api_conversations(*, organization, account=None, tab="all"):
             WhatsAppMessage.objects.filter(
                 organization=organization,
                 account__connection_type=API_CONNECTION_TYPE,
+                account__is_active=True,
+                account__status=WhatsAppAccount.Status.CONNECTED,
                 bulk_recipient__isnull=False,
                 **({"account": account} if account else {}),
             )
@@ -169,9 +181,15 @@ def get_api_conversation_messages(*, organization, lead, account=None):
         organization=organization,
         lead=lead,
         account__connection_type=API_CONNECTION_TYPE,
+        account__is_active=True,
+        account__status=WhatsAppAccount.Status.CONNECTED,
     )
     if account:
-        if account.connection_type != API_CONNECTION_TYPE:
+        if (
+            account.connection_type != API_CONNECTION_TYPE
+            or not account.is_active
+            or account.status != WhatsAppAccount.Status.CONNECTED
+        ):
             return queryset.none()
         queryset = queryset.filter(account=account)
     return queryset.order_by("created_at", "pk")
@@ -182,6 +200,8 @@ def mark_api_conversation_read(*, organization, lead):
         organization=organization,
         lead=lead,
         account__connection_type=API_CONNECTION_TYPE,
+        account__is_active=True,
+        account__status=WhatsAppAccount.Status.CONNECTED,
         direction=WhatsAppMessage.Direction.INBOUND,
         is_read=False,
     ).update(is_read=True)

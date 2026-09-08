@@ -13,6 +13,7 @@ class ChannelsConfig(AppConfig):
         from . import connection_attempts  # noqa: F401
         from . import hosted_ignore_models  # noqa: F401
         from . import template_models  # noqa: F401
+        from . import lead_source_signals  # noqa: F401
 
         # Register hosted-session Celery tasks in both web and worker startup.
         # The task bodies import their models/providers lazily, so importing the
