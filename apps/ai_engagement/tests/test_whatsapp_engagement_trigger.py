@@ -4,6 +4,7 @@ from unittest.mock import patch
 
 from django.test import TestCase
 
+from apps.ai_engagement.services.credits import AICreditService
 from apps.channels.models import WhatsAppAccount, WhatsAppMessage
 from apps.crm.models import Lead, Pipeline, Stage
 from apps.organizations.models import Organization
@@ -17,6 +18,11 @@ class WhatsAppEngagementTriggerTests(TestCase):
     def setUpTestData(cls):
         cls.organization = Organization.objects.create(
             name="WhatsApp Engagement Test Organization",
+        )
+        AICreditService.add_manual_credits(
+            organization=cls.organization,
+            amount=1000,
+            reason="Fund WhatsApp AI trigger test fixture",
         )
 
         cls.pipeline = Pipeline.objects.create(
