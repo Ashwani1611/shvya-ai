@@ -112,6 +112,7 @@ class Lead(models.Model):
             ("system", "System"),
             ("external_api", "External API"),
             ("whatsapp_api", "WhatsApp API"),
+            ("whatsapp", "WhatsApp"),
             ("google_sheets", "Google Sheets"),
             ("csv_import", "CSV Import"),
         ],
