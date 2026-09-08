@@ -21,6 +21,7 @@ from services.channels.whatsapp_api_chat_service import (
 )
 from services.channels.whatsapp_error_service import message_failure_details
 from services.channels.whatsapp_failure_patch import _failure_block
+from services.crm.lead_filter_service import active_filter_items, apply_lead_filters
 
 from .models import WhatsAppAccount, WhatsAppTemplate
 from .whatsapp_chat_failure_ui import _inject_chat_ui
@@ -38,6 +39,7 @@ def _chat_sidebar_context(request, user):
             id=account_id,
             organization=user.organization,
             connection_type=WhatsAppAccount.ConnectionType.API,
+            status=WhatsAppAccount.Status.CONNECTED,
             is_active=True,
         ).first()
 
@@ -55,21 +57,32 @@ def _chat_sidebar_context(request, user):
         tab=tab,
     )
 
+    all_conversations = apply_lead_filters(
+        all_conversations,
+        request.GET,
+        user=user,
+    )
+    conversations = apply_lead_filters(
+        conversations,
+        request.GET,
+        user=user,
+    )
+
     query = (request.GET.get("q") or "").strip()
     if query:
-        query_lower = query.lower()
-        conversations = [
-            lead
-            for lead in conversations
-            if query_lower in (lead.name or "").lower()
-            or query in (lead.phone or "")
-        ]
+        conversations = conversations.filter(
+            models.Q(name__icontains=query)
+            | models.Q(phone__icontains=query)
+            | models.Q(email__icontains=query)
+        )
 
     accounts = list_api_accounts(
         organization=user.organization,
         connected_only=True,
     )
 
+    conversations = list(conversations)
+    all_conversations = list(all_conversations)
     for lead in conversations:
         lead.initials = _lead_initials(lead)
 
@@ -93,6 +106,8 @@ def _chat_sidebar_context(request, user):
         "selected_account": account,
         "search_query": query,
         "active_tab": tab,
+        "active_filters": active_filter_items(request.GET, user=user),
+        "filter_query": request.GET.urlencode(),
         "tab_counts": {
             "unread": unread_count,
             "needs_reply": needs_reply_count,
@@ -127,7 +142,7 @@ def whatsapp_chat_detail_view(request, lead_id):
         lead=lead,
     )
     if not chat_messages.exists():
-        messages.error(request, "No WhatsApp API conversation exists for this lead.")
+        messages.error(request, "No active WhatsApp API conversation exists for this lead.")
         return redirect("whatsapp-chats")
 
     chat_messages = list(chat_messages)
@@ -143,6 +158,8 @@ def whatsapp_chat_detail_view(request, lead_id):
     lead_templates = WhatsAppTemplate.objects.filter(
         organization=user.organization,
         account__connection_type=WhatsAppAccount.ConnectionType.API,
+        account__is_active=True,
+        account__status=WhatsAppAccount.Status.CONNECTED,
         status=WhatsAppTemplate.Status.APPROVED,
     ).order_by("name")
 
@@ -241,6 +258,8 @@ def whatsapp_send_template_view(request, lead_id):
         id=template_id,
         organization=user.organization,
         account__connection_type=WhatsAppAccount.ConnectionType.API,
+        account__is_active=True,
+        account__status=WhatsAppAccount.Status.CONNECTED,
         status=WhatsAppTemplate.Status.APPROVED,
     ).first()
     if not template:
