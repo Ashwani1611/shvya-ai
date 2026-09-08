@@ -140,6 +140,64 @@
         display: block;
     }
 
+    /* Organization AI-credit balance in the shared dashboard topbar. */
+    .ai-credit-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: .45rem;
+        min-height: 36px;
+        padding: .45rem .7rem;
+        border: 1px solid #dbeafe;
+        border-radius: .65rem;
+        background: #eff6ff;
+        color: #1d4ed8;
+        font-size: .8rem;
+        font-weight: 700;
+        line-height: 1;
+        white-space: nowrap;
+        box-shadow: 0 1px 2px rgba(15, 23, 42, .04);
+    }
+
+    .ai-credit-badge .ai-credit-icon {
+        font-size: 18px;
+    }
+
+    .ai-credit-badge .ai-credit-value {
+        font-size: .85rem;
+        font-weight: 800;
+        font-variant-numeric: tabular-nums;
+    }
+
+    .ai-credit-badge--low {
+        border-color: #fecaca;
+        background: #fef2f2;
+        color: #dc2626;
+        animation: shvya-ai-credit-alert 1s ease-in-out infinite;
+    }
+
+    @keyframes shvya-ai-credit-alert {
+        0%, 100% {
+            opacity: 1;
+            box-shadow: 0 0 0 0 rgba(220, 38, 38, .08);
+        }
+        50% {
+            opacity: .58;
+            box-shadow: 0 0 0 5px rgba(220, 38, 38, .12);
+        }
+    }
+
+    @media (max-width: 1280px) {
+        .ai-credit-badge .ai-credit-label {
+            display: none;
+        }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        .ai-credit-badge--low {
+            animation: none;
+        }
+    }
+
     @media (max-height: 720px) {
         #app-sidebar .sidebar-nav {
             justify-content: flex-start;
@@ -154,6 +212,57 @@
 
 <script>
 (function () {
+    function initAICreditBadge() {
+        var rawBalance = "{{ ai_credit_balance|default_if_none:''|escapejs }}";
+        if (rawBalance === '') return;
+
+        var topbar = document.querySelector('header');
+        if (!topbar || topbar.querySelector('[data-ai-credit-badge]')) return;
+
+        var actions = topbar.querySelector('.flex.items-center.gap-2');
+        if (!actions) return;
+
+        var balance = Number(rawBalance);
+        if (!Number.isFinite(balance)) balance = 0;
+
+        var isLow = "{{ ai_credit_is_low|yesno:'1,0' }}" === '1';
+        var threshold = "{{ ai_credit_alert_threshold|default:500|escapejs }}";
+        var badge = document.createElement('div');
+        badge.dataset.aiCreditBadge = '1';
+        badge.className = 'ai-credit-badge' + (isLow ? ' ai-credit-badge--low' : '');
+        badge.setAttribute(
+            'title',
+            isLow
+                ? 'Low AI credits (' + threshold + ' or below). Add credits to keep AI Engagement available.'
+                : 'Available AI credits for your organization.'
+        );
+        badge.setAttribute(
+            'aria-label',
+            'AI credits: ' + balance.toLocaleString() + ' available' + (isLow ? '. Low credit alert.' : '.')
+        );
+        if (isLow) {
+            badge.setAttribute('role', 'status');
+            badge.setAttribute('aria-live', 'polite');
+        }
+
+        var icon = document.createElement('i');
+        icon.className = 'ti ti-coins ai-credit-icon';
+        icon.setAttribute('aria-hidden', 'true');
+
+        var label = document.createElement('span');
+        label.className = 'ai-credit-label';
+        label.textContent = 'AI Credits';
+
+        var value = document.createElement('span');
+        value.className = 'ai-credit-value';
+        value.textContent = balance.toLocaleString();
+
+        badge.appendChild(icon);
+        badge.appendChild(label);
+        badge.appendChild(value);
+        actions.insertBefore(badge, actions.firstChild);
+    }
+
     function initSidebarEnhancements() {
         var sidebar = document.getElementById('app-sidebar');
         if (!sidebar || sidebar.dataset.shvyaEnhanced === '1') return;
@@ -226,10 +335,15 @@
         syncToggleState();
     }
 
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', initSidebarEnhancements, { once: true });
-    } else {
+    function initDashboardChrome() {
         initSidebarEnhancements();
+        initAICreditBadge();
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initDashboardChrome, { once: true });
+    } else {
+        initDashboardChrome();
     }
 })();
 </script>
