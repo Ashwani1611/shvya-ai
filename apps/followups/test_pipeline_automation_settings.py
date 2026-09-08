@@ -52,15 +52,15 @@ class PipelineAutomationSettingsTests(TestCase):
             owner=self.user,
             ai_enabled=True,
         )
-        self.stage_a = Stage.objects.create(
+        self.stage_a, _ = Stage.objects.get_or_create(
             pipeline=self.pipeline_a,
-            name="New Lead",
             display_order=1,
+            defaults={"name": "New Lead"},
         )
-        self.stage_b = Stage.objects.create(
+        self.stage_b, _ = Stage.objects.get_or_create(
             pipeline=self.pipeline_b,
-            name="New Lead",
             display_order=1,
+            defaults={"name": "New Lead"},
         )
         self.account_a = WhatsAppAccount.objects.create(
             organization=self.organization,
