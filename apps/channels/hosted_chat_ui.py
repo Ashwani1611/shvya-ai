@@ -6,11 +6,15 @@ refreshes.
 """
 
 import json
+import mimetypes
+from pathlib import Path
 
 from decouple import config
 from django.core.cache import cache
-from django.http import Http404, JsonResponse
+from django.core.files.storage import default_storage
+from django.http import Http404, HttpResponse, JsonResponse
 from django.shortcuts import render
+from django.urls import reverse
 from django.utils.crypto import constant_time_compare
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_POST
@@ -77,6 +81,105 @@ def _payload(request):
     return request.POST.dict()
 
 
+def _is_hidden_hosted_chat_value(value):
+    raw = str(value or "").strip().lower()
+    if not raw:
+        return False
+    return bool(raw == "status@broadcast" or "@newsletter" in raw)
+
+
+def _gateway_payload_is_hidden(payload):
+    if not isinstance(payload, dict):
+        return False
+    if bool(payload.get("isStatus")):
+        return True
+    values = (
+        payload.get("from"),
+        payload.get("to"),
+        payload.get("chatId"),
+        payload.get("rawChatId"),
+        payload.get("peerKey"),
+    )
+    return any(_is_hidden_hosted_chat_value(value) for value in values)
+
+
+def _message_is_hidden(message):
+    payload = message.raw_payload if isinstance(message.raw_payload, dict) else {}
+    return _gateway_payload_is_hidden(
+        {
+            **payload,
+            "from": payload.get("from") or message.from_number,
+            "to": payload.get("to") or message.to_number,
+        }
+    )
+
+
+def _apply_inbox_policy(snapshot, requested_chat=""):
+    """Hide WhatsApp system rows and never auto-open a conversation."""
+    visible = []
+    for row in snapshot.get("conversations") or []:
+        values = [
+            row.get("key"),
+            row.get("raw_chat_id"),
+            *(row.get("raw_chat_ids") or []),
+        ]
+        if any(_is_hidden_hosted_chat_value(value) for value in values):
+            continue
+        visible.append(row)
+    snapshot["conversations"] = visible
+    snapshot["total_conversations"] = len(visible)
+
+    requested = str(requested_chat or "").strip()
+    selected = str(snapshot.get("selected_chat") or "").strip()
+    if (
+        not requested
+        or _is_hidden_hosted_chat_value(requested)
+        or _is_hidden_hosted_chat_value(selected)
+    ):
+        snapshot["selected_chat"] = ""
+        snapshot["selected_name"] = ""
+        snapshot["thread"] = []
+        return snapshot
+
+    snapshot["thread"] = [
+        message
+        for message in (snapshot.get("thread") or [])
+        if not _message_is_hidden(message)
+    ]
+    return snapshot
+
+
+def _media_filename(message):
+    media_payload = message.media_payload if isinstance(message.media_payload, dict) else {}
+    raw_payload = message.raw_payload if isinstance(message.raw_payload, dict) else {}
+    candidate = (
+        media_payload.get("filename")
+        or raw_payload.get("filename")
+        or raw_payload.get("fileName")
+        or ""
+    )
+    if candidate:
+        return Path(str(candidate)).name[:240]
+    extension = mimetypes.guess_extension(
+        str(media_payload.get("mime_type") or raw_payload.get("mimetype") or "")
+    ) or ""
+    return f"whatsapp-{message.message_type}{extension}"
+
+
+def _serialize_snapshot(snapshot, account):
+    payload = serialize_hosted_chat_snapshot(snapshot)
+    for item, message in zip(payload.get("thread") or [], snapshot.get("thread") or []):
+        if message.message_type == WhatsAppMessage.MessageType.TEXT:
+            continue
+        item["media_url"] = reverse(
+            "whatsapp-hosted-session-chat-media",
+            args=[account.id, message.id],
+        )
+        item["media_download_url"] = f'{item["media_url"]}?download=1'
+        item["filename"] = _media_filename(message)
+    return payload
+
+
 def _repair_live_status(account):
     """Reconcile a restored gateway session before rendering the inbox."""
     try:
@@ -139,11 +242,13 @@ def hosted_session_chats_view(request, account_id):
 
     _repair_live_status(account)
     sync_requested = _request_history_refresh(account)
+    requested_chat = request.GET.get("chat", "")
     snapshot = build_hosted_chat_snapshot(
         account=account,
-        selected_chat=request.GET.get("chat", ""),
+        selected_chat=requested_chat,
         query=request.GET.get("q", ""),
     )
+    _apply_inbox_policy(snapshot, requested_chat=requested_chat)
     decorate_hosted_chat_snapshot(snapshot)
     _mark_thread_read(snapshot)
 
@@ -169,14 +274,16 @@ def hosted_session_chats_data_view(request, account_id):
     if not account:
         raise Http404
 
+    requested_chat = request.GET.get("chat", "")
     snapshot = build_hosted_chat_snapshot(
         account=account,
-        selected_chat=request.GET.get("chat", ""),
+        selected_chat=requested_chat,
         query=request.GET.get("q", ""),
     )
+    _apply_inbox_policy(snapshot, requested_chat=requested_chat)
     decorate_hosted_chat_snapshot(snapshot)
     _mark_thread_read(snapshot)
-    payload = serialize_hosted_chat_snapshot(snapshot)
+    payload = _serialize_snapshot(snapshot, account)
     payload.update(
         {
             "ok": True,
@@ -185,6 +292,71 @@ def hosted_session_chats_data_view(request, account_id):
         }
     )
     return JsonResponse(payload)
+
+
+@crm_login_required
+@require_GET
+def hosted_session_chat_media_view(request, account_id, message_id):
+    """Proxy one Hosted message attachment without exposing the gateway."""
+    account = _hosted_account(request, account_id)
+    if not account:
+        raise Http404
+
+    message = WhatsAppMessage.objects.filter(
+        id=message_id,
+        organization=account.organization,
+        account=account,
+    ).first()
+    if (
+        not message
+        or message.message_type == WhatsAppMessage.MessageType.TEXT
+        or _message_is_hidden(message)
+    ):
+        raise Http404
+
+    filename = _media_filename(message)
+    content = None
+    content_type = ""
+    media_payload = message.media_payload if isinstance(message.media_payload, dict) else {}
+    storage_path = str(media_payload.get("storage_path") or "")
+    if storage_path and default_storage.exists(storage_path):
+        with default_storage.open(storage_path, "rb") as file_obj:
+            content = file_obj.read()
+        content_type = str(media_payload.get("mime_type") or "")
+
+    if content is None:
+        external_id = str(message.external_id or "")
+        if not external_id.startswith("wweb:"):
+            return JsonResponse(
+                {"ok": False, "error": "Media is still being sent to WhatsApp."},
+                status=409,
+            )
+        try:
+            result = WhatsAppWebClient().download_message_media(
+                session_id=account.id,
+                message_id=external_id[len("wweb:"):],
+            )
+        except WhatsAppWebGatewayError as exc:
+            status = 404 if exc.status_code in {404, 410} else 502
+            return JsonResponse({"ok": False, "error": str(exc)}, status=status)
+        content = result["content"]
+        content_type = result.get("content_type") or content_type
+        filename = result.get("filename") or filename
+
+    if not content_type:
+        content_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
+    safe_filename = Path(str(filename or "attachment")).name.replace('"', "")[:240]
+    disposition = (
+        "attachment"
+        if request.GET.get("download") == "1"
+        or message.message_type == WhatsAppMessage.MessageType.DOCUMENT
+        else "inline"
+    )
+    response = HttpResponse(content, content_type=content_type)
+    response["Content-Disposition"] = f'{disposition}; filename="{safe_filename}"'
+    response["Cache-Control"] = "private, max-age=60"
+    response["X-Content-Type-Options"] = "nosniff"
+    return response
 
 
 @crm_login_required
@@ -307,6 +479,16 @@ def hosted_gateway_event_view(request):
         data = json.loads(request.body.decode("utf-8") or "{}")
     except (ValueError, UnicodeDecodeError):
         return JsonResponse({"ok": False, "error": "Invalid JSON"}, status=400)
+
+    event = str(data.get("event") or "").strip().lower()
+    if event == "message" and _gateway_payload_is_hidden(data):
+        return JsonResponse({"ok": True, "handled": False, "ignored": "system_chat"})
+    if event == "history_sync" and isinstance(data.get("messages"), list):
+        data["messages"] = [
+            item
+            for item in data["messages"]
+            if isinstance(item, dict) and not _gateway_payload_is_hidden(item)
+        ]
 
     try:
         result = handle_hosted_gateway_event(payload=data)

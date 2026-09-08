@@ -6,6 +6,7 @@ rules live in services.channels.hosted_whatsapp_service.
 """
 
 import base64
+from urllib.parse import quote
 
 import requests
 from decouple import config
@@ -187,6 +188,58 @@ class WhatsAppWebClient:
                 status_code=response.status_code,
                 response_body=response.text,
             ) from exc
+
+    def download_message_media(self, *, session_id, message_id):
+        """Fetch one message attachment from the private linked-device session."""
+        headers = {}
+        if self.token:
+            headers["Authorization"] = f"Bearer {self.token}"
+        encoded_message_id = quote(str(message_id), safe="")
+        try:
+            response = requests.get(
+                f"{self.base_url}/sessions/{session_id}/messages/{encoded_message_id}/media",
+                headers=headers,
+                timeout=120,
+            )
+        except requests.RequestException as exc:
+            raise WhatsAppWebGatewayError(
+                f"WhatsApp Web gateway network error: {exc}",
+                status_code=None,
+            ) from exc
+
+        if not response.ok:
+            try:
+                body = response.json()
+                detail = body.get("error") or body.get("detail") or response.text
+            except ValueError:
+                detail = response.text
+            raise WhatsAppWebGatewayError(
+                f"WhatsApp Web gateway returned {response.status_code}: {detail}",
+                status_code=response.status_code,
+                response_body=response.text,
+            )
+
+        filename = ""
+        encoded_filename = response.headers.get("X-SHVYA-Filename-B64", "")
+        if encoded_filename:
+            try:
+                padding = "=" * (-len(encoded_filename) % 4)
+                filename = base64.urlsafe_b64decode(
+                    (encoded_filename + padding).encode("ascii")
+                ).decode("utf-8")
+            except (ValueError, UnicodeDecodeError):
+                filename = ""
+
+        return {
+            "content": response.content,
+            "content_type": (
+                response.headers.get("Content-Type", "application/octet-stream")
+                .split(";", 1)[0]
+                .strip()
+                or "application/octet-stream"
+            ),
+            "filename": filename,
+        }
 
     def logout(self, *, session_id):
         return self._request("DELETE", f"/sessions/{session_id}", timeout=30)

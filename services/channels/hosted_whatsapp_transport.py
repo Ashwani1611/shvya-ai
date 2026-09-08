@@ -1,5 +1,9 @@
 """Provider dispatch for Hosted Account sends without disturbing Meta Cloud API."""
 
+from datetime import timedelta
+
+from django.utils import timezone
+
 from apps.channels.models import WhatsAppMessage
 from apps.channels.providers.whatsapp_web import (
     WhatsAppWebClient,
@@ -9,6 +13,7 @@ from apps.channels.providers.whatsapp_web import (
 
 _INSTALLED = False
 _ORIGINAL_SEND = None
+TRANSIENT_AUTOMATION_RETRY_SECONDS = 60
 
 
 def _push_chat_refresh(message, reason):
@@ -43,8 +48,8 @@ def send_hosted_message(*, message, defer_on_pause=True):
     if account.status != account.Status.CONNECTED:
         raise WhatsAppSendError("Hosted WhatsApp session is not running.")
 
-    payload = message.raw_payload if isinstance(message.raw_payload, dict) else {}
-    if payload.get("shvya_ai"):
+    raw_payload = message.raw_payload if isinstance(message.raw_payload, dict) else {}
+    if raw_payload.get("shvya_ai"):
         from services.channels.hosted_automation_service import hosted_ai_block_reason
 
         reason = hosted_ai_block_reason(account=account, lead=message.lead) if message.lead_id else "lead_missing"
@@ -68,13 +73,13 @@ def send_hosted_message(*, message, defer_on_pause=True):
     media_url = None
     filename = None
     if message.message_type != WhatsAppMessage.MessageType.TEXT:
-        payload = message.media_payload or {}
-        if payload.get("source") != "url" or not payload.get("url"):
+        media_payload = message.media_payload or {}
+        if media_payload.get("source") != "url" or not media_payload.get("url"):
             raise WhatsAppSendError(
                 "Hosted WhatsApp media requires a URL-backed media source."
             )
-        media_url = payload["url"]
-        filename = payload.get("filename")
+        media_url = media_payload["url"]
+        filename = media_payload.get("filename")
 
     try:
         response = WhatsAppWebClient().send_message(
@@ -90,6 +95,21 @@ def send_hosted_message(*, message, defer_on_pause=True):
         message.error = str(exc)
         message.save(update_fields=["status", "error", "updated_at"])
         _push_chat_refresh(message, "failed")
+
+        # A temporary gateway/network outage must not permanently pause a
+        # Hosted Auto Follow-up just because the step has zero user retries.
+        # The existing HostedAutomationPaused path reschedules the same
+        # execution/state after a short delay. Keep AI jobs on their existing
+        # delivery semantics because they retain a specific generated message.
+        if (
+            defer_on_pause
+            and raw_payload.get("shvya_auto_followup")
+            and (exc.status_code is None or exc.status_code >= 500)
+        ):
+            raise HostedAutomationPaused(
+                timezone.now() + timedelta(seconds=TRANSIENT_AUTOMATION_RETRY_SECONDS)
+            ) from exc
+
         raise WhatsAppSendError(str(exc)) from exc
 
     raw_id = response.get("messageId")
