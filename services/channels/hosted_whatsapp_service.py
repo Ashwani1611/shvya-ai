@@ -40,7 +40,24 @@ def _default_settings_for_account(account):
     defaults = deepcopy(DEFAULT_SESSION_SETTINGS)
     # Preserve the pre-settings behaviour for existing Meta API numbers while
     # Hosted linked-device sessions remain opt-in for automatic replies.
-    defaults["ai_auto_reply"] = account.connection_type == WhatsAppAccount.ConnectionType.API
+    if account.connection_type == WhatsAppAccount.ConnectionType.API:
+        defaults["ai_auto_reply"] = True
+        # Before pipeline gears existed, API follow-up business hours and
+        # conversation delay lived in AutoFollowupSettings. Use those values as
+        # the initial defaults until this specific API number is saved through
+        # its gear, so the migration does not silently reschedule live leads.
+        from apps.followups.models import AutoFollowupSettings
+
+        legacy = AutoFollowupSettings.objects.filter(
+            organization_id=account.organization_id
+        ).first()
+        if legacy:
+            defaults["business_hours_start"] = legacy.business_hours_start.strftime("%H:%M")
+            defaults["business_hours_end"] = legacy.business_hours_end.strftime("%H:%M")
+            defaults["active_conversation_delay_value"] = max(
+                1, legacy.conversation_delay_value
+            )
+            defaults["active_conversation_delay_unit"] = legacy.conversation_delay_unit
     return defaults
 
 
