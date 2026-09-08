@@ -5,6 +5,9 @@
 {% block header %}WhatsApp — Connected Numbers{% endblock %}
 
 {% block content %}
+<style>
+.account-settings-modal{display:none;position:fixed;inset:0;z-index:80;background:rgba(17,24,39,.48);align-items:center;justify-content:center;padding:18px}.account-settings-modal.is-open{display:flex}.account-settings-dialog{width:min(760px,96vw);max-height:90vh;overflow:auto;background:#fff;border-radius:14px;box-shadow:0 20px 55px rgba(15,23,42,.24)}.automation-toggle{appearance:none;width:46px;height:26px;border-radius:999px;background:#e5e7eb;position:relative;transition:.2s;cursor:pointer}.automation-toggle:after{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:white;box-shadow:0 1px 3px rgba(0,0,0,.25);transition:.2s}.automation-toggle:checked{background:#16a34a}.automation-toggle:checked:after{transform:translateX(20px)}.setting-row{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:18px;border:1px solid #d1d5db;border-radius:10px}
+</style>
 <div class="mx-auto max-w-6xl">
     <div class="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div>
@@ -100,7 +103,7 @@
                         <td class="px-5 py-4">
                             <div class="flex items-center justify-end gap-2">
                                 {% if can_manage %}
-                                <button type="button" class="account-settings-button flex h-9 w-9 items-center justify-center rounded-lg text-gray-400 transition hover:bg-blue-50 hover:text-blue-600" title="Lead automation settings" data-account-id="{{ account.id }}" data-url="{% url 'whatsapp-account-automation-settings' account.id %}" data-label="{{ account.display_phone_number|default:account.business_name|escape }}">
+                                <button type="button" class="account-settings-button flex h-9 w-9 items-center justify-center rounded-lg text-gray-400 transition hover:bg-blue-50 hover:text-blue-600" title="Pipeline automation settings" data-account-id="{{ account.id }}" data-url="{% url 'whatsapp-account-automation-settings' account.id %}" data-label="{{ account.display_phone_number|default:account.business_name|escape }}">
                                     <i class="ti ti-settings"></i>
                                 </button>
                                 {% endif %}
@@ -145,53 +148,124 @@
     </div>
 </div>
 
-<div id="account-settings-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-gray-900/40 p-4">
-  <form id="account-settings-form" class="w-full max-w-lg rounded-xl bg-white shadow-xl">
-    {% csrf_token %}
-    <div class="flex items-center justify-between border-b px-5 py-4"><div><h3 class="font-semibold">Lead Automation Settings</h3><p id="account-settings-label" class="text-xs text-gray-500"></p></div><button type="button" data-close-settings class="h-8 w-8"><i class="ti ti-x"></i></button></div>
-    <div class="space-y-4 p-5">
-      <label class="flex items-center justify-between"><span><b class="text-sm">AI Auto-Reply</b><small class="block text-gray-500">Controls AI engagement for the linked pipeline</small></span><input type="checkbox" name="ai_auto_reply" class="h-5 w-5"></label>
-      <label class="flex items-center justify-between"><span><b class="text-sm">Auto Lead Creation</b><small class="block text-gray-500">Create leads from new inbound contacts</small></span><input type="checkbox" name="auto_lead_creation" class="h-5 w-5"></label>
-      <label class="flex items-center justify-between"><span><b class="text-sm">Auto Follow-up</b></span><input type="checkbox" name="auto_follow_up" class="h-5 w-5"></label>
-      <label class="flex items-center justify-between"><span><b class="text-sm">Bump-up Messages</b><small class="block text-gray-500">Re-engage after one hour without a reply</small></span><input type="checkbox" name="bump_up_messages" class="h-5 w-5"></label>
-      <label class="block text-sm font-medium">Number of bump-ups<input type="number" min="1" max="10" name="bump_up_count" class="mt-1 w-full rounded-lg border px-3 py-2"></label>
-      <p id="account-settings-error" class="hidden text-sm text-red-600"></p>
-    </div>
-    <div class="flex justify-end gap-2 border-t bg-gray-50 px-5 py-3"><button type="button" data-close-settings class="rounded-lg border px-4 py-2 text-sm">Cancel</button><button class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white">Save</button></div>
-  </form>
+<div id="account-settings-modal" class="account-settings-modal" aria-hidden="true">
+    <form id="account-settings-form" class="account-settings-dialog">
+        {% csrf_token %}
+        <div class="flex items-center justify-between border-b border-gray-200 px-5 py-4">
+            <div>
+                <h3 class="font-bold text-gray-900">Automation Settings</h3>
+                <p id="account-settings-label" class="mt-0.5 text-xs text-gray-500"></p>
+            </div>
+            <button type="button" data-close-settings class="flex h-8 w-8 items-center justify-center rounded-md text-gray-500 hover:bg-gray-100"><i class="ti ti-x"></i></button>
+        </div>
+        <div class="space-y-4 p-5">
+            <h4 class="font-semibold text-blue-700">Lead Automation Settings</h4>
+            <div class="setting-row">
+                <div><p class="font-semibold text-gray-900">AI Auto-Reply</p><p class="mt-1 text-xs text-gray-500">Controls AI engagement for this linked pipeline. This is the same pipeline AI control shown in Knowledge Base AI Setup.</p></div>
+                <input class="automation-toggle" type="checkbox" name="ai_auto_reply">
+            </div>
+            <div class="setting-row">
+                <div><p class="font-semibold text-gray-900">Auto Lead Creation</p><p class="mt-1 text-xs text-gray-500">Create leads from new inbound contacts on this linked number.</p></div>
+                <input class="automation-toggle" type="checkbox" name="auto_lead_creation">
+            </div>
+            <div class="setting-row">
+                <div><p class="font-semibold text-gray-900">Bump-Up Messages</p><p class="mt-1 text-xs text-gray-500">Re-engage leads when the configured automation needs another touch.</p></div>
+                <input class="automation-toggle" type="checkbox" name="bump_up_messages">
+            </div>
+            <div class="setting-row">
+                <div><p class="font-semibold text-gray-900">Number of Bump-Up Messages</p><p class="mt-1 text-xs text-gray-500">Maximum bump-up messages for this linked pipeline.</p></div>
+                <select name="bump_up_count" class="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm">
+                    {% for value in "123456789" %}<option value="{{ value }}">{{ value }}</option>{% endfor %}<option value="10">10</option>
+                </select>
+            </div>
+
+            <h4 class="pt-2 font-semibold text-blue-700">Auto Follow-up Settings</h4>
+            <div class="setting-row">
+                <div><p class="font-semibold text-gray-900">Auto Follow-up</p><p class="mt-1 text-xs text-gray-500">Global Auto Follow-up control for this pipeline only. Other pipelines are not changed.</p></div>
+                <input class="automation-toggle" type="checkbox" name="auto_follow_up">
+            </div>
+            <div class="setting-row">
+                <div><p class="font-semibold text-gray-900">Business Hours</p><p class="mt-1 text-xs text-gray-500">Automatic follow-ups for this pipeline are scheduled inside this window.</p></div>
+                <div class="flex items-center gap-2"><input type="time" name="business_hours_start" class="rounded-lg border border-gray-300 px-3 py-2 text-sm"><span class="text-xs text-gray-400">to</span><input type="time" name="business_hours_end" class="rounded-lg border border-gray-300 px-3 py-2 text-sm"></div>
+            </div>
+            <div class="setting-row">
+                <div><p class="font-semibold text-gray-900">Active Conversation Delay</p><p class="mt-1 text-xs text-gray-500">Delay sequence messages after a lead or agent sends a message.</p></div>
+                <div class="flex items-center gap-2"><input type="number" min="1" max="168" name="active_conversation_delay_value" class="w-20 rounded-lg border border-gray-300 px-3 py-2 text-sm"><select name="active_conversation_delay_unit" class="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"><option value="minutes">Minutes</option><option value="hours">Hours</option><option value="days">Days</option></select></div>
+            </div>
+            <p id="account-settings-error" class="hidden rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600"></p>
+        </div>
+        <div class="flex justify-end gap-2 border-t border-gray-200 bg-gray-50 px-5 py-4">
+            <button type="button" data-close-settings class="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">Cancel</button>
+            <button type="submit" class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">Save Changes</button>
+        </div>
+    </form>
 </div>
 
 <script>
 (function () {
     const settingsModal = document.getElementById('account-settings-modal');
     const settingsForm = document.getElementById('account-settings-form');
+    const settingsError = document.getElementById('account-settings-error');
     let settingsUrl = '';
-    const boolKeys = ['ai_auto_reply','auto_lead_creation','auto_follow_up','bump_up_messages'];
+    const boolKeys = ['ai_auto_reply','auto_lead_creation','bump_up_messages','auto_follow_up'];
+    const valueKeys = ['bump_up_count','business_hours_start','business_hours_end','active_conversation_delay_value','active_conversation_delay_unit'];
+
+    function closeSettings() {
+        settingsModal.classList.remove('is-open');
+        settingsModal.setAttribute('aria-hidden', 'true');
+        settingsError.classList.add('hidden');
+        settingsError.textContent = '';
+    }
+
     document.querySelectorAll('.account-settings-button').forEach(button => button.addEventListener('click', async () => {
         settingsUrl = button.dataset.url;
-        const response = await fetch(settingsUrl);
-        const data = await response.json();
-        if (!response.ok) return window.shvyaToast?.(data.error || 'Could not load settings.', 'error');
-        document.getElementById('account-settings-label').textContent = `${button.dataset.label}${data.pipeline ? ' · ' + data.pipeline : ''}`;
-        boolKeys.forEach(key => settingsForm.elements[key].checked = !!data.settings[key]);
-        settingsForm.elements.bump_up_count.value = data.settings.bump_up_count;
-        settingsModal.classList.remove('hidden'); settingsModal.classList.add('flex');
+        settingsError.classList.add('hidden');
+        settingsError.textContent = '';
+        try {
+            const response = await fetch(settingsUrl, {headers: {'X-Requested-With': 'XMLHttpRequest'}});
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.error || 'Could not load settings.');
+            document.getElementById('account-settings-label').textContent = `${button.dataset.label}${data.pipeline ? ' · ' + data.pipeline : ' · No linked pipeline'}`;
+            boolKeys.forEach(key => settingsForm.elements[key].checked = !!data.settings[key]);
+            valueKeys.forEach(key => { if (settingsForm.elements[key]) settingsForm.elements[key].value = data.settings[key] ?? ''; });
+            settingsModal.classList.add('is-open');
+            settingsModal.setAttribute('aria-hidden', 'false');
+        } catch (error) {
+            window.shvyaToast?.(error.message || 'Could not load settings.', 'error');
+        }
     }));
-    document.querySelectorAll('[data-close-settings]').forEach(button => button.addEventListener('click', () => { settingsModal.classList.add('hidden'); settingsModal.classList.remove('flex'); }));
+
+    document.querySelectorAll('[data-close-settings]').forEach(button => button.addEventListener('click', closeSettings));
+    settingsModal.addEventListener('click', event => { if (event.target === settingsModal) closeSettings(); });
+
     settingsForm.addEventListener('submit', async event => {
         event.preventDefault();
-        const payload = {bump_up_count: settingsForm.elements.bump_up_count.value};
+        settingsError.classList.add('hidden');
+        const payload = {};
         boolKeys.forEach(key => payload[key] = settingsForm.elements[key].checked);
-        const response = await fetch(settingsUrl, {method:'POST', headers:{'Content-Type':'application/json','X-CSRFToken':settingsForm.elements.csrfmiddlewaretoken.value}, body:JSON.stringify(payload)});
-        const data = await response.json();
-        if (!response.ok) { const error = document.getElementById('account-settings-error'); error.textContent=data.error; error.classList.remove('hidden'); return; }
-        settingsModal.classList.add('hidden'); settingsModal.classList.remove('flex'); window.shvyaToast?.('Automation settings saved.', 'success');
+        valueKeys.forEach(key => payload[key] = settingsForm.elements[key].value);
+        try {
+            const response = await fetch(settingsUrl, {
+                method: 'POST',
+                headers: {'Content-Type':'application/json','X-CSRFToken':settingsForm.elements.csrfmiddlewaretoken.value,'X-Requested-With':'XMLHttpRequest'},
+                body: JSON.stringify(payload),
+            });
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.error || 'Could not save settings.');
+            closeSettings();
+            window.shvyaToast?.('Pipeline automation settings saved.', 'success');
+        } catch (error) {
+            settingsError.textContent = error.message || 'Could not save settings.';
+            settingsError.classList.remove('hidden');
+        }
     });
+
     const requestedSettings = new URLSearchParams(window.location.search).get('settings');
     if (requestedSettings) {
         const button = document.querySelector(`.account-settings-button[data-account-id="${requestedSettings}"]`);
         if (button) setTimeout(() => button.click(), 0);
     }
+
     const table = document.querySelector('#connected-accounts-card .overflow-x-auto');
     const emptyState = document.getElementById('no-connected-accounts');
 
@@ -241,4 +315,3 @@
 })();
 </script>
 {% endblock %}
-
