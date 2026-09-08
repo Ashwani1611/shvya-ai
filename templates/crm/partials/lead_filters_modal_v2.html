@@ -1,0 +1,127 @@
+<div class="fixed inset-0 z-[120] flex items-center justify-center bg-black/40 p-4">
+    <div class="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+        <div class="flex items-center justify-between border-b border-gray-100 px-5 py-4">
+            <div>
+                <h2 class="text-lg font-semibold text-gray-900">Filters</h2>
+                <p class="mt-0.5 text-xs text-gray-500">Use one or more CRM fields. Text filters match words anywhere in the value.</p>
+            </div>
+            <button type="button" onclick="document.getElementById('modal-root').innerHTML=''" class="flex h-8 w-8 items-center justify-center rounded-full text-gray-400 hover:bg-gray-100 hover:text-gray-700">
+                <i class="ti ti-x"></i>
+            </button>
+        </div>
+
+        <form
+            method="get"
+            action="{{ filter_action_url }}"
+            {% if surface == 'whatsapp' %}
+                data-whatsapp-filter-form="true"
+            {% else %}
+                hx-get="{{ filter_action_url }}"
+                hx-target="{{ filter_target }}"
+                hx-swap="{{ filter_swap }}"
+                hx-on::after-request="{% if surface == 'crm' %}document.getElementById('modal-root').innerHTML='';{% endif %}"
+            {% endif %}
+            class="flex min-h-0 flex-1 flex-col"
+        >
+            {% for key, value in preserve_params %}
+            <input type="hidden" name="{{ key }}" value="{{ value }}">
+            {% endfor %}
+
+            <div class="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+                <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <label class="block">
+                        <span class="mb-1 block text-xs font-semibold text-gray-600">Name</span>
+                        <input name="filter_name" value="{{ request.GET.filter_name|default:'' }}" placeholder="Search name" class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100">
+                    </label>
+                    <label class="block">
+                        <span class="mb-1 block text-xs font-semibold text-gray-600">Phone</span>
+                        <input name="filter_phone" value="{{ request.GET.filter_phone|default:'' }}" placeholder="Search phone" class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100">
+                    </label>
+                    <label class="block">
+                        <span class="mb-1 block text-xs font-semibold text-gray-600">Email</span>
+                        <input name="filter_email" value="{{ request.GET.filter_email|default:'' }}" placeholder="Search email" class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100">
+                    </label>
+                    <label class="block">
+                        <span class="mb-1 block text-xs font-semibold text-gray-600">Notes</span>
+                        <input name="filter_notes" value="{{ request.GET.filter_notes|default:'' }}" placeholder="Match any word in notes" class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100">
+                    </label>
+
+                    <label class="block">
+                        <span class="mb-1 block text-xs font-semibold text-gray-600">Stage</span>
+                        <select name="filter_stage" class="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100">
+                            <option value="">All stages</option>
+                            {% for stage in stages %}
+                            <option value="{{ stage.id }}" {% if selected_filter_stage == stage.id|stringformat:'s' %}selected{% endif %}>{{ stage.pipeline.name }} · {{ stage.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                    <label class="block">
+                        <span class="mb-1 block text-xs font-semibold text-gray-600">Pipeline</span>
+                        <select name="filter_pipeline" class="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100">
+                            <option value="">Current pipeline</option>
+                            <option value="all" {% if selected_filter_pipeline == 'all' %}selected{% endif %}>All</option>
+                            {% for pipeline in pipelines %}
+                            <option value="{{ pipeline.id }}" {% if selected_filter_pipeline == pipeline.id|stringformat:'s' %}selected{% endif %}>{{ pipeline.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                </div>
+
+                {% if attribute_definitions %}
+                <div class="mt-6 border-t border-gray-100 pt-5">
+                    <div class="mb-3">
+                        <p class="text-sm font-semibold text-gray-900">Attributes</p>
+                        <p class="text-xs text-gray-500">All custom attributes created for this organization are available here.</p>
+                    </div>
+                    <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                        {% for attribute in attribute_definitions %}
+                        <label class="block">
+                            <span class="mb-1 block text-xs font-semibold text-gray-600">{{ attribute.name }}</span>
+                            <input name="attr_{{ attribute.key }}" value="{{ attribute.current_filter_value }}" placeholder="Search {{ attribute.name }} value" class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100">
+                        </label>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endif %}
+
+                <div class="mt-6 border-t border-gray-100 pt-5">
+                    <p class="mb-3 text-sm font-semibold text-gray-900">Dates and time in pipeline</p>
+                    <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                        <label class="block">
+                            <span class="mb-1 block text-xs font-semibold text-gray-600">Created from</span>
+                            <input type="date" name="filter_created_after" value="{{ request.GET.filter_created_after|default:'' }}" class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm">
+                        </label>
+                        <label class="block">
+                            <span class="mb-1 block text-xs font-semibold text-gray-600">Created to</span>
+                            <input type="date" name="filter_created_before" value="{{ request.GET.filter_created_before|default:'' }}" class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm">
+                        </label>
+                        <label class="block">
+                            <span class="mb-1 block text-xs font-semibold text-gray-600">Reminder Date</span>
+                            <input type="date" name="filter_reminder_date" value="{{ request.GET.filter_reminder_date|default:'' }}" class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm">
+                        </label>
+                        <label class="block">
+                            <span class="mb-1 block text-xs font-semibold text-gray-600">AI Qualified Date</span>
+                            <input type="date" name="filter_ai_qualified_date" value="{{ request.GET.filter_ai_qualified_date|default:'' }}" class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm">
+                        </label>
+                        <label class="block">
+                            <span class="mb-1 block text-xs font-semibold text-gray-600">Days in Stage</span>
+                            <input type="number" min="0" name="filter_days_in_stage" value="{{ request.GET.filter_days_in_stage|default:'' }}" placeholder="At least N days" class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm">
+                        </label>
+                        <label class="block">
+                            <span class="mb-1 block text-xs font-semibold text-gray-600">Days in Pipeline</span>
+                            <input type="number" min="0" name="filter_days_in_pipeline" value="{{ request.GET.filter_days_in_pipeline|default:'' }}" placeholder="At least N days" class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm">
+                        </label>
+                    </div>
+                </div>
+            </div>
+
+            <div class="flex items-center justify-between border-t border-gray-100 bg-gray-50/70 px-5 py-4">
+                <button type="reset" class="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50">Clear fields</button>
+                <div class="flex gap-2">
+                    <button type="button" onclick="document.getElementById('modal-root').innerHTML=''" class="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">Cancel</button>
+                    <button type="submit" class="rounded-lg bg-blue-600 px-5 py-2 text-sm font-semibold text-white hover:bg-blue-700">Apply Filters</button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
