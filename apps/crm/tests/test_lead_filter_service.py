@@ -27,7 +27,7 @@ class LeadFilterServiceTests(TestCase):
         self.pipeline_a = Pipeline.objects.create(organization=self.org, name="Sales")
         self.pipeline_b = Pipeline.objects.create(organization=self.org, name="Renewals")
         self.stage_a = Stage.objects.create(pipeline=self.pipeline_a, name="New")
-        self.stage_b = Stage.objects.create(pipeline=self.pipeline_b, name="Qualified")
+        self.stage_b = Stage.objects.get(pipeline=self.pipeline_b, name="Qualified")
         self.lead_a = Lead.objects.create(
             organization=self.org,
             pipeline=self.pipeline_a,
