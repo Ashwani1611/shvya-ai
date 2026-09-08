@@ -47,7 +47,6 @@ from .providers.whatsapp_web import WhatsAppWebClient, WhatsAppWebGatewayError
 
 
 SYNC_THROTTLE_SECONDS = 180
-HIDDEN_HOSTED_CHAT_SUFFIXES = ("@broadcast",)
 
 
 def _organization(request):
@@ -86,11 +85,7 @@ def _is_hidden_hosted_chat_value(value):
     raw = str(value or "").strip().lower()
     if not raw:
         return False
-    return bool(
-        raw == "status@broadcast"
-        or raw.endswith(HIDDEN_HOSTED_CHAT_SUFFIXES)
-        or "@newsletter" in raw
-    )
+    return bool(raw == "status@broadcast" or "@newsletter" in raw)
 
 
 def _gateway_payload_is_hidden(payload):
@@ -120,7 +115,7 @@ def _message_is_hidden(message):
 
 
 def _apply_inbox_policy(snapshot, requested_chat=""):
-    """Hide system/broadcast rows and never auto-open a conversation."""
+    """Hide WhatsApp system rows and never auto-open a conversation."""
     visible = []
     for row in snapshot.get("conversations") or []:
         values = [
