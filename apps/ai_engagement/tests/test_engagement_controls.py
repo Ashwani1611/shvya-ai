@@ -11,7 +11,7 @@ from apps.ai_engagement.services.qualification_state import (
     state_for_lead,
 )
 from apps.channels.models import WhatsAppAccount, WhatsAppMessage
-from apps.crm.models import Lead, Pipeline, Stage
+from apps.crm.models import Lead, Pipeline
 from apps.organizations.models import Organization
 
 
@@ -24,18 +24,8 @@ class AIEngagementControlTests(TestCase):
             country_code="+91",
             phone_number="9876543210",
         )
-        self.new_lead = Stage.objects.create(
-            pipeline=self.pipeline,
-            name="New Lead",
-            display_order=1,
-            ai_on=True,
-        )
-        self.qualified = Stage.objects.create(
-            pipeline=self.pipeline,
-            name="Qualified",
-            display_order=2,
-            ai_on=True,
-        )
+        self.new_lead = self.pipeline.stages.get(name="New leads")
+        self.qualified = self.pipeline.stages.get(name="Qualified")
         self.lead = Lead.objects.create(
             organization=self.organization,
             pipeline=self.pipeline,
@@ -152,7 +142,7 @@ class AIEngagementControlTests(TestCase):
         self.new_lead.is_active = False
         self.new_lead.save(update_fields=["name", "is_active", "updated_at"])
         self.new_lead.refresh_from_db()
-        self.assertEqual(self.new_lead.name, "New Lead")
+        self.assertEqual(self.new_lead.name, "New leads")
         self.assertTrue(self.new_lead.is_active)
 
         self.qualified.name = "Won"
@@ -161,3 +151,47 @@ class AIEngagementControlTests(TestCase):
         self.qualified.refresh_from_db()
         self.assertEqual(self.qualified.name, "Qualified")
         self.assertTrue(self.qualified.is_active)
+
+    def test_disabled_lead_releases_hosted_sequence_priority(self):
+        from apps.hosted_automation.models import HostedAutomationJob
+        from services.channels.hosted_automation_service import enqueue_ai_engagement, has_pending_ai
+        self.account.connection_type = "hosted"
+        self.account.save()
+        message = self._inbound()
+        # The webhook already created the inbound row; use the persisted source.
+        message = self.lead.whatsapp_messages.get(external_id="wamid-inbound")
+        job = enqueue_ai_engagement(account=self.account, lead=self.lead, source_message=message)
+        self.lead.ai_enabled = False
+        self.lead.save(update_fields=["ai_enabled"])
+        self.assertFalse(has_pending_ai(account=self.account))
+        job.refresh_from_db()
+        self.assertEqual(job.status, HostedAutomationJob.Status.SKIPPED)
+        self.assertEqual(job.result["reason"], "lead_ai_disabled")
+
+    def test_resumed_hosted_reply_is_cancelled_before_delivery(self):
+        from unittest.mock import patch
+        from django.utils import timezone
+        from apps.hosted_automation.models import HostedAutomationJob
+        from apps.hosted_automation.tasks import process_hosted_ai_engagement_job_task
+        self.account.connection_type = "hosted"
+        self.account.save()
+        self._inbound()
+        inbound = self.lead.whatsapp_messages.get(external_id="wamid-inbound")
+        outbound = WhatsAppMessage.objects.create(organization=self.organization, account=self.account, lead=self.lead, direction="outbound", status="queued", body="Paused reply", raw_payload={"shvya_ai": {"source_inbound_message_id": str(inbound.pk)}})
+        job = HostedAutomationJob.objects.create(organization=self.organization, account=self.account, lead=self.lead, source_message=inbound, available_at=timezone.now(), result={"message_id": str(outbound.pk)})
+        self.new_lead.ai_on = False
+        self.new_lead.save(update_fields=["ai_on"])
+        with patch("services.channels.hosted_whatsapp_transport.send_hosted_message") as send:
+            result = process_hosted_ai_engagement_job_task.run(str(job.pk))
+        self.assertEqual(result["reason"], "stage_ai_disabled")
+        send.assert_not_called()
+        outbound.refresh_from_db()
+        self.assertEqual(outbound.status, "failed")
+
+    def test_context_has_qualification_state_without_changing_custom_attributes(self):
+        from apps.ai_engagement.services.context import AIContextBuilder
+        from apps.ai_engagement.services.qualification_state import QUALIFICATION_STATE_KEY
+        context = AIContextBuilder()._build_lead_context(lead=self.lead)
+        self.assertEqual(context["attributes"][QUALIFICATION_STATE_KEY]["engagement_mode"], MODE_QUALIFICATION)
+        self.lead.refresh_from_db()
+        self.assertNotIn(QUALIFICATION_STATE_KEY, self.lead.attributes)

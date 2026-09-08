@@ -112,8 +112,7 @@ class BulkLeadTests(TestCase):
         target = Pipeline.objects.create(organization=self.organization, name="Sales")
         response = self.post("update", move=True, target_pipeline=str(target.pk), target_stage=str(self.stage.pk))
         self.assertEqual(response.status_code, 400)
-        self.next_stage.is_active = False
-        self.next_stage.save()
+        self.next_stage = self.pipeline.stages.create(name="Inactive destination", display_order=99, is_active=False)
         response = self.post("update", move=True, target_pipeline=str(self.pipeline.pk), target_stage=str(self.next_stage.pk))
         self.assertEqual(response.status_code, 400)
 
@@ -236,3 +235,51 @@ class BulkLeadTests(TestCase):
         self.assertEqual(self.client.get(reverse("crm-leads-bulk")).status_code, 405)
         self.client.cookies.clear()
         self.assertEqual(self.post("export").status_code, 302)
+
+    def test_country_code_sequences_are_listed_and_assignable(self):
+        sequence = self.sequence()
+        self.pipeline.country_code = "+91"
+        self.pipeline.phone_number = "9999999999"
+        self.pipeline.save(update_fields=["country_code", "phone_number"])
+        options = self.post("options").json()
+        self.assertEqual(options["sequences"], [{"id": str(sequence.pk), "name": sequence.name}])
+        response = self.post("update", sequence_action="assign", sequence=str(sequence.pk))
+        self.assertEqual(response.status_code, 200, response.content)
+
+    def test_destination_has_its_own_sequence_options(self):
+        sequence = self.sequence()
+        target = Pipeline.objects.create(organization=self.organization, name="Target", country_code="+91", phone_number="9999999999")
+        self.pipeline.phone_number = "+918888888888"
+        self.pipeline.save(update_fields=["phone_number"])
+        options = self.post("options").json()
+        self.assertEqual(options["sequences"], [])
+        destination = next(p for p in options["pipelines"] if p["id"] == str(target.pk))
+        self.assertEqual(destination["sequences"][0]["id"], str(sequence.pk))
+        response = self.post("update", move=True, target_pipeline=str(target.pk), target_stage=str(target.stages.first().pk), sequence_action="assign", sequence=str(sequence.pk))
+        self.assertEqual(response.status_code, 200, response.content)
+
+    def test_lead_control_offers_replacement_clear_and_sequence_link(self):
+        sequence = self.sequence()
+        lead = self.leads[0]
+        assign_sequence(lead=lead, sequence=sequence, actor=self.user)
+        response = self.client.get(reverse("followups-lead-control", args=[lead.pk]))
+        self.assertContains(response, 'name="sequence_id"')
+        self.assertContains(response, "Change sequence")
+        self.assertContains(response, "Clear sequence")
+        self.assertContains(response, reverse("followups-sequence-edit", args=[sequence.pk]))
+        cleared = self.client.post(reverse("followups-lead-clear", args=[lead.pk]), follow=True)
+        self.assertContains(cleared, "No sequence assigned")
+
+    def test_hosted_sequence_uses_connected_destination_sender(self):
+        sequence = self.sequence()
+        sequence.whatsapp_account.connection_type = "hosted"
+        sequence.whatsapp_account.is_active = False
+        sequence.whatsapp_account.status = "disconnected"
+        sequence.whatsapp_account.save()
+        WhatsAppAccount.objects.create(organization=self.organization, connection_type="hosted", status="connected", is_active=True, phone_number_id="hosted-current", display_phone_number="+918888888888")
+        self.pipeline.phone_number = "8888888888"
+        self.pipeline.country_code = "+91"
+        self.pipeline.save()
+        self.assertEqual(self.post("options").json()["sequences"][0]["id"], str(sequence.pk))
+        response = self.post("update", sequence_action="assign", sequence=str(sequence.pk))
+        self.assertEqual(response.status_code, 200, response.content)

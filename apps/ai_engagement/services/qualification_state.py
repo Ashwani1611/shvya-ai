@@ -22,7 +22,8 @@ QUALIFIED_STAGE = "qualified"
 
 
 def normalize_stage_name(value) -> str:
-    return str(value or "").strip().casefold()
+    name = str(value or "").strip().casefold()
+    return NEW_LEAD_STAGE if name == "new leads" else name
 
 
 def _qualified_stage(lead):

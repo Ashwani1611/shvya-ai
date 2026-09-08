@@ -22,7 +22,6 @@ from apps.ai_engagement.services.qualification_state import (
     ensure_state,
     mark_in_progress,
     state_after_stage_change,
-    state_for_lead,
 )
 from apps.channels.models import WhatsAppMessage
 from apps.crm.models import Lead
@@ -81,12 +80,6 @@ def persist_qualification_state_for_lead(sender, instance, created, **kwargs):
     """Persist state even when the caller saved the stage with update_fields."""
 
     attributes = getattr(instance, "_shvya_qualification_attributes", None)
-
-    if attributes is None and created:
-        attributes = attributes_with_state(
-            instance,
-            state_for_lead(instance),
-        )
 
     if attributes is None or attributes == (instance.attributes or {}):
         return

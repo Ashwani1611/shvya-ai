@@ -402,11 +402,41 @@ def _latest_hosted_inbound(*, job):
     )
 
 
+def hosted_ai_block_reason(*, account, lead):
+    """Re-evaluate live switches and sender mapping, including resumed jobs."""
+    from apps.ai_engagement.services.ai_permissions import AIPermissionService
+    from apps.crm.models import Lead
+    from services.channels.hosted_whatsapp_service import get_session_settings
+    from services.followup_service import resolve_linked_whatsapp_account
+
+    lead = Lead.objects.select_related("organization", "pipeline", "stage").get(pk=lead.pk)
+    decision = AIPermissionService().evaluate(organization=lead.organization, lead=lead)
+    if not decision.allowed:
+        return decision.reason
+    linked = resolve_linked_whatsapp_account(lead=lead, connection_type=HOSTED_CONNECTION_TYPE)
+    if not linked or linked.pk != account.pk:
+        return "pipeline_whatsapp_account_mismatch"
+    if not get_session_settings(account=account).get("ai_auto_reply"):
+        return "ai_auto_reply_disabled"
+    return ""
+
+
 def has_pending_ai(*, account):
-    return HostedAutomationJob.objects.filter(
+    pending = False
+    jobs = HostedAutomationJob.objects.filter(
         account=account,
         status__in=[HostedAutomationJob.Status.QUEUED, HostedAutomationJob.Status.PROCESSING],
-    ).exists()
+    ).select_related("lead")
+    for job in jobs:
+        reason = hosted_ai_block_reason(account=account, lead=job.lead)
+        if reason:
+            HostedAutomationJob.objects.filter(pk=job.pk, status=job.status).update(
+                status=HostedAutomationJob.Status.SKIPPED,
+                completed_at=timezone.now(), result={**(job.result or {}), "reason": reason},
+            )
+        else:
+            pending = True
+    return pending
 
 
 def _next_ai_time(*, account):
@@ -455,13 +485,11 @@ def dispatch_one_hosted_ai_job():
                     job.result = {"reason": "superseded_by_newer_lead_message"}
                     job.save(update_fields=["status", "completed_at", "result", "updated_at"])
                     continue
-                from services.channels.hosted_whatsapp_service import get_session_settings
-
-                session_settings = get_session_settings(account=job.account)
-                if not session_settings.get("ai_auto_reply"):
+                reason = hosted_ai_block_reason(account=job.account, lead=job.lead)
+                if reason:
                     job.status = HostedAutomationJob.Status.SKIPPED
                     job.completed_at = now
-                    job.result = {"reason": "ai_auto_reply_disabled"}
+                    job.result = {**(job.result or {}), "reason": reason}
                     job.save(update_fields=["status", "completed_at", "result", "updated_at"])
                     continue
                 pause_until = automation_pause_until(account=job.account)

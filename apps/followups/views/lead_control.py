@@ -3,8 +3,8 @@ from django.views.decorators.http import require_GET
 
 from apps.crm.decorators import crm_login_required
 from apps.crm.models import Lead
-from apps.followups.models import FollowupExecution, FollowupSequence, LeadSequenceState
-from services.followup_service import resolve_linked_whatsapp_account
+from apps.followups.models import FollowupExecution, LeadSequenceState
+from services.followup_service import available_sequences_for_lead
 
 
 @crm_login_required
@@ -17,23 +17,7 @@ def lead_followup_control(request, lead_id):
         organization=user.organization,
     )
 
-    candidates = FollowupSequence.objects.filter(
-        organization=user.organization,
-        is_active=True,
-        whatsapp_account__is_active=True,
-    ).select_related("whatsapp_account").order_by("name")
-
-    sequences = []
-    for sequence in candidates:
-        linked = resolve_linked_whatsapp_account(
-            lead=lead,
-            connection_type=sequence.whatsapp_account.connection_type,
-        )
-        if linked and (
-            sequence.whatsapp_account.connection_type == "hosted"
-            or linked.id == sequence.whatsapp_account_id
-        ):
-            sequences.append(sequence)
+    sequences = available_sequences_for_lead(lead=lead)
 
     current_state = (
         LeadSequenceState.objects.filter(

@@ -609,8 +609,13 @@ def _digits(value):
 
 def resolve_linked_whatsapp_account(*, lead, connection_type):
     """Return the connected sender whose number is linked to the lead pipeline."""
+    from services.channels.hosted_whatsapp_service import normalize_whatsapp_number
+
     pipeline_number = getattr(lead.pipeline, "phone_number", "") if lead.pipeline_id else ""
-    pipeline_digits = _digits(pipeline_number)
+    pipeline_number_normalized = normalize_whatsapp_number(
+        country_code=getattr(lead.pipeline, "country_code", "") if lead.pipeline_id else "",
+        phone_number=pipeline_number,
+    )
     if not pipeline_number:
         return None
     accounts = WhatsAppAccount.objects.filter(
@@ -622,9 +627,27 @@ def resolve_linked_whatsapp_account(*, lead, connection_type):
     for account in accounts:
         if pipeline_number == account.phone_number_id:
             return account
-        if pipeline_digits and pipeline_digits == _digits(account.display_phone_number):
+        if pipeline_number_normalized and pipeline_number_normalized == normalize_whatsapp_number(
+            phone_number=account.display_phone_number,
+        ):
             return account
     return None
+
+
+def available_sequences_for_lead(*, lead):
+    """Use the assignment rules for every sequence picker."""
+    candidates = FollowupSequence.objects.filter(
+        organization=lead.organization, is_active=True,
+        whatsapp_account__organization=lead.organization,
+    ).select_related("whatsapp_account").order_by("name")
+    sequences = []
+    for sequence in candidates:
+        try:
+            _validate_lead_sender(lead, sequence)
+        except FollowupError:
+            continue
+        sequences.append(sequence)
+    return sequences
 
 
 def _validate_lead_sender(lead, sequence):

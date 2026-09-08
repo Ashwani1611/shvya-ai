@@ -7,7 +7,7 @@ from .pipeline import Pipeline
 
 class Stage(models.Model):
 
-    PROTECTED_STAGE_NAMES = frozenset({"new lead", "qualified"})
+    PROTECTED_STAGE_NAMES = frozenset({"new lead", "new leads", "qualified"})
 
     id = models.UUIDField(
         primary_key=True,

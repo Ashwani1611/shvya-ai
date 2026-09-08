@@ -9,6 +9,7 @@ from apps.hosted_automation.models import HostedAutomationJob
 from services.channels.hosted_automation_service import (
     HostedAutomationPaused,
     automation_pause_until,
+    hosted_ai_block_reason,
 )
 
 
@@ -110,6 +111,15 @@ def process_hosted_ai_engagement_job_task(self, job_id):
         job.result = {**(job.result or {}), "reason": "superseded_by_newer_lead_message"}
         job.save(update_fields=["status", "completed_at", "result", "updated_at"])
         return {"status": "skipped", "reason": "superseded_by_newer_lead_message"}
+
+    reason = hosted_ai_block_reason(account=job.account, lead=job.lead)
+    if reason:
+        _cancel_generated_message(job)
+        job.status = HostedAutomationJob.Status.SKIPPED
+        job.completed_at = timezone.now()
+        job.result = {**(job.result or {}), "reason": reason}
+        job.save(update_fields=["status", "completed_at", "result", "updated_at"])
+        return {"status": "skipped", "reason": reason}
 
     pause_until = automation_pause_until(account=job.account)
     if pause_until:
