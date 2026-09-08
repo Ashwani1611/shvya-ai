@@ -1,11 +1,14 @@
 import uuid
 
+from django.core.exceptions import ValidationError
 from django.db import models
 
 from .pipeline import Pipeline
 
 
 class Stage(models.Model):
+
+    PROTECTED_STAGE_NAMES = frozenset({"new lead", "qualified"})
 
     id = models.UUIDField(
         primary_key=True,
@@ -90,6 +93,31 @@ class Stage(models.Model):
                 name="uniq_pipeline_display_order",
             ),
         ]
+
+    @staticmethod
+    def _normalized_name(value):
+        return str(value or "").strip().casefold()
+
+    @property
+    def is_name_locked(self):
+        return self._normalized_name(self.name) in self.PROTECTED_STAGE_NAMES
+
+    def save(self, *args, **kwargs):
+        if self.pk:
+            original_name = (
+                Stage.objects.filter(pk=self.pk)
+                .values_list("name", flat=True)
+                .first()
+            )
+            if (
+                original_name
+                and self._normalized_name(original_name) in self.PROTECTED_STAGE_NAMES
+                and self._normalized_name(self.name) != self._normalized_name(original_name)
+            ):
+                raise ValidationError(
+                    {"name": f"{original_name} is a system stage and cannot be renamed."}
+                )
+        return super().save(*args, **kwargs)
 
     def __str__(self):
         return f"{self.pipeline.name} → {self.name}"
