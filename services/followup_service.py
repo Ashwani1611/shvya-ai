@@ -79,7 +79,15 @@ def update_auto_followup_settings(
     return config
 
 
-def create_sequence(*, organization, created_by, name, description, whatsapp_account):
+def create_sequence(
+    *,
+    organization,
+    created_by,
+    name,
+    description,
+    whatsapp_account=None,
+    provider="api",
+):
     name = (name or "").strip()
     description = (description or "").strip()
     if not name:
@@ -88,10 +96,26 @@ def create_sequence(*, organization, created_by, name, description, whatsapp_acc
         raise FollowupError("Sequence name must be 255 characters or fewer.")
     if len(description) > 300:
         raise FollowupError("Description must be 300 characters or fewer.")
-    if whatsapp_account.organization_id != organization.id:
-        raise FollowupError("Selected WhatsApp API number does not belong to this organization.")
-    if whatsapp_account.status != WhatsAppAccount.Status.CONNECTED or not whatsapp_account.is_active:
-        raise FollowupError("Select an active connected WhatsApp API number.")
+    if provider not in {"api", "hosted"}:
+        raise FollowupError("Choose Use WhatsApp API or Use WhatsApp.")
+    if provider == "api":
+        if not whatsapp_account or whatsapp_account.organization_id != organization.id:
+            raise FollowupError("Choose a WhatsApp API number for this sequence.")
+        if whatsapp_account.connection_type != WhatsAppAccount.ConnectionType.API:
+            raise FollowupError("Choose a WhatsApp API number, not a Hosted Account number.")
+        if whatsapp_account.status != WhatsAppAccount.Status.CONNECTED or not whatsapp_account.is_active:
+            raise FollowupError("Select an active connected WhatsApp API number.")
+    else:
+        whatsapp_account = WhatsAppAccount.objects.filter(
+            organization=organization,
+            connection_type=WhatsAppAccount.ConnectionType.coexisted,
+            status=WhatsAppAccount.Status.CONNECTED,
+            is_active=True,
+        ).order_by("business_name", "display_phone_number").first()
+        if not whatsapp_account:
+            raise FollowupError(
+                "Connect at least one Hosted WhatsApp number before creating a WhatsApp sequence."
+            )
     if FollowupSequence.objects.filter(organization=organization, name__iexact=name).exists():
         raise FollowupError("A sequence with this name already exists.")
     return FollowupSequence.objects.create(
@@ -583,25 +607,67 @@ def _digits(value):
     return re.sub(r"\D", "", value or "")
 
 
+def resolve_linked_whatsapp_account(*, lead, connection_type):
+    """Return the connected sender whose number is linked to the lead pipeline."""
+    pipeline_number = getattr(lead.pipeline, "phone_number", "") if lead.pipeline_id else ""
+    pipeline_digits = _digits(pipeline_number)
+    if not pipeline_number:
+        return None
+    accounts = WhatsAppAccount.objects.filter(
+        organization=lead.organization,
+        connection_type=connection_type,
+        status=WhatsAppAccount.Status.CONNECTED,
+        is_active=True,
+    )
+    for account in accounts:
+        if pipeline_number == account.phone_number_id:
+            return account
+        if pipeline_digits and pipeline_digits == _digits(account.display_phone_number):
+            return account
+    return None
+
+
 def _validate_lead_sender(lead, sequence):
     account = sequence.whatsapp_account
     if account.organization_id != lead.organization_id:
         raise FollowupError("The sequence WhatsApp sender belongs to another organization.")
-    if account.status != WhatsAppAccount.Status.CONNECTED or not account.is_active:
-        raise FollowupError("The sequence WhatsApp API number is not currently connected.")
+    is_hosted_sequence = account.connection_type == WhatsAppAccount.ConnectionType.coexisted
+    expected_type = (
+        WhatsAppAccount.ConnectionType.coexisted
+        if is_hosted_sequence
+        else WhatsAppAccount.ConnectionType.API
+    )
+    linked_account = resolve_linked_whatsapp_account(lead=lead, connection_type=expected_type)
+    if linked_account:
+        if is_hosted_sequence or linked_account.id == account.id:
+            return linked_account
+        raise FollowupError(
+            "This pipeline is linked to a different WhatsApp API number. "
+            "Choose a sequence created for the pipeline's linked WhatsApp API number."
+        )
 
     pipeline_number = getattr(lead.pipeline, "phone_number", "") if lead.pipeline_id else ""
-    if pipeline_number:
-        pipeline_digits = _digits(pipeline_number)
-        account_digits = _digits(account.display_phone_number)
-        # phone_number_id is a Meta object ID, not a phone number, so compare
-        # against it only when the pipeline value exactly matches that ID.
-        id_match = pipeline_number == account.phone_number_id
-        phone_match = bool(pipeline_digits and account_digits and pipeline_digits == account_digits)
-        if not phone_match and not id_match:
-            raise FollowupError(
-                "This lead's pipeline is mapped to a different WhatsApp API number."
-            )
+    other_type = (
+        WhatsAppAccount.ConnectionType.API
+        if is_hosted_sequence
+        else WhatsAppAccount.ConnectionType.coexisted
+    )
+    other_account = resolve_linked_whatsapp_account(lead=lead, connection_type=other_type)
+    if other_account:
+        expected_label = "WhatsApp" if is_hosted_sequence else "WhatsApp API"
+        actual_label = "WhatsApp API" if is_hosted_sequence else "WhatsApp"
+        raise FollowupError(
+            f"This pipeline's linked number uses {actual_label}. "
+            f"Choose a {expected_label} sequence that matches the linked number."
+        )
+    if not pipeline_number:
+        raise FollowupError(
+            "This lead's pipeline has no linked WhatsApp number. Link a connected number to the pipeline first."
+        )
+    raise FollowupError(
+        "This pipeline's linked WhatsApp number is not connected. "
+        "Connect that number, or update the pipeline to use a connected number."
+    )
 
 
 @transaction.atomic
