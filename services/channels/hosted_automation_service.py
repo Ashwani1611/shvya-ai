@@ -497,14 +497,21 @@ def _delay_from_session_settings(settings):
 def register_hosted_lead_reply(*, account, lead, at=None):
     """Apply the Hosted Account conversation-delay setting to follow-ups."""
     at = at or timezone.now()
-    state = (
-        LeadSequenceState.objects.select_for_update()
-        .filter(
-            lead=lead,
-            sequence__whatsapp_account=account,
-            status__in=[LeadSequenceState.Status.ACTIVE, LeadSequenceState.Status.PAUSED],
-        )
-        .first()
+    from services.followup_service import resolve_linked_whatsapp_account
+
+    states = LeadSequenceState.objects.select_for_update().filter(
+        lead=lead,
+        sequence__whatsapp_account__connection_type=HOSTED_CONNECTION_TYPE,
+        status__in=[LeadSequenceState.Status.ACTIVE, LeadSequenceState.Status.PAUSED],
+    ).select_related("sequence__whatsapp_account")
+    state = next(
+        (
+            candidate for candidate in states
+            if resolve_linked_whatsapp_account(
+                lead=lead, connection_type=HOSTED_CONNECTION_TYPE
+            ) == account
+        ),
+        None,
     )
     if not state:
         return None
@@ -524,14 +531,21 @@ def register_hosted_lead_reply(*, account, lead, at=None):
 @transaction.atomic
 def register_hosted_manual_outbound(*, account, lead, at=None):
     at = at or timezone.now()
-    state = (
-        LeadSequenceState.objects.select_for_update()
-        .filter(
-            lead=lead,
-            sequence__whatsapp_account=account,
-            status__in=[LeadSequenceState.Status.ACTIVE, LeadSequenceState.Status.PAUSED],
-        )
-        .first()
+    from services.followup_service import resolve_linked_whatsapp_account
+
+    states = LeadSequenceState.objects.select_for_update().filter(
+        lead=lead,
+        sequence__whatsapp_account__connection_type=HOSTED_CONNECTION_TYPE,
+        status__in=[LeadSequenceState.Status.ACTIVE, LeadSequenceState.Status.PAUSED],
+    ).select_related("sequence__whatsapp_account")
+    state = next(
+        (
+            candidate for candidate in states
+            if resolve_linked_whatsapp_account(
+                lead=lead, connection_type=HOSTED_CONNECTION_TYPE
+            ) == account
+        ),
+        None,
     )
     if not state:
         return None
@@ -637,8 +651,16 @@ def process_hosted_due_state(state_id):
     )
     if not state or state.status != LeadSequenceState.Status.ACTIVE:
         return False
-    account = state.sequence.whatsapp_account
-    if account.connection_type != HOSTED_CONNECTION_TYPE:
+    if state.sequence.whatsapp_account.connection_type != HOSTED_CONNECTION_TYPE:
+        return False
+    from services.followup_service import resolve_linked_whatsapp_account
+
+    account = resolve_linked_whatsapp_account(
+        lead=state.lead,
+        connection_type=HOSTED_CONNECTION_TYPE,
+    )
+    if not account:
+        _defer_state(state, timezone.now() + timedelta(minutes=5))
         return False
     if not state.lead_auto_followup_enabled or not state.sequence.is_active:
         return False
@@ -888,16 +910,24 @@ def hosted_queue_items(*, account):
             }
         )
 
-    states = (
+    from services.followup_service import resolve_linked_whatsapp_account
+
+    candidates = (
         LeadSequenceState.objects.filter(
-            sequence__whatsapp_account=account,
+            sequence__whatsapp_account__connection_type=HOSTED_CONNECTION_TYPE,
             status=LeadSequenceState.Status.ACTIVE,
             lead_auto_followup_enabled=True,
             next_step__isnull=False,
         )
-        .select_related("lead", "next_step", "sequence")
-        .order_by("upcoming_send_at", "assigned_at")[:100]
+        .select_related("lead", "lead__pipeline", "next_step", "sequence")
+        .order_by("upcoming_send_at", "assigned_at")[:300]
     )
+    states = [
+        state for state in candidates
+        if resolve_linked_whatsapp_account(
+            lead=state.lead, connection_type=HOSTED_CONNECTION_TYPE
+        ) == account
+    ][:100]
     for state in states:
         step = state.next_step
         body = step.title or "Follow-up"
