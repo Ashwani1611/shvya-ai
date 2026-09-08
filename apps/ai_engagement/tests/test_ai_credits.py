@@ -19,6 +19,10 @@ from apps.ai_engagement.services.credits import (
     AICreditService,
     AICreditUnavailableError,
 )
+from apps.ai_engagement.services.embeddings import (
+    EmbeddingError,
+    EmbeddingService,
+)
 from apps.organizations.models import Organization
 
 
@@ -270,3 +274,79 @@ class OpenAIProviderCreditGuardTests(TestCase):
             ).count(),
             1,
         )
+
+
+@patch.dict(
+    os.environ,
+    {
+        "AI_CREDIT_MODEL_RATES_JSON": "",
+        "AI_CREDIT_RESERVED_OUTPUT_TOKENS": "1000",
+    },
+)
+@override_settings(
+    OPENAI_API_KEY="test-key",
+    OPENAI_EMBEDDING_MODEL="text-embedding-3-small",
+)
+class EmbeddingCreditGuardTests(TestCase):
+    def setUp(self):
+        self.organization = Organization.objects.create(
+            name="Embedding Credit Guard Organization",
+        )
+        self.service = EmbeddingService(api_key="test-key")
+        self.client = Mock()
+        self.service._client = self.client
+        self.client.embeddings.create.return_value = SimpleNamespace(
+            data=[
+                SimpleNamespace(
+                    index=0,
+                    embedding=[0.01] * EmbeddingService.DEFAULT_DIMENSIONS,
+                )
+            ],
+            usage=SimpleNamespace(prompt_tokens=240),
+        )
+
+    def test_zero_credit_organization_never_calls_embedding_provider(self):
+        AICreditService.ensure_wallet(self.organization)
+
+        with self.assertRaises(EmbeddingError):
+            self.service.embed_text(
+                "What is the course fee?",
+                organization_id=self.organization.id,
+                feature="knowledge_retrieval",
+            )
+
+        self.client.embeddings.create.assert_not_called()
+        wallet = AICreditService.ensure_wallet(self.organization)
+        self.assertEqual(wallet.balance, 0)
+        self.assertEqual(wallet.reserved_credits, 0)
+
+    def test_funded_embedding_call_is_settled_to_same_wallet(self):
+        AICreditService.add_manual_credits(
+            organization=self.organization,
+            amount=10,
+            reason="Manual embedding test allocation",
+        )
+
+        vector = self.service.embed_text(
+            "What is the course fee?",
+            organization_id=self.organization.id,
+            feature="knowledge_retrieval",
+            reference_id="lead-embedding-test",
+        )
+
+        self.assertEqual(len(vector), EmbeddingService.DEFAULT_DIMENSIONS)
+        self.client.embeddings.create.assert_called_once()
+
+        wallet = AICreditService.ensure_wallet(self.organization)
+        wallet.refresh_from_db()
+        self.assertEqual(wallet.balance, 9)
+        self.assertEqual(wallet.reserved_credits, 0)
+        self.assertEqual(wallet.lifetime_credits_used, 1)
+
+        usage = wallet.transactions.get(
+            transaction_type=AICreditTransaction.TransactionType.AI_USAGE,
+        )
+        self.assertEqual(usage.amount, -1)
+        self.assertEqual(usage.feature, "knowledge_retrieval")
+        self.assertEqual(usage.input_tokens, 240)
+        self.assertEqual(usage.output_tokens, 0)
