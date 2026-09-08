@@ -348,6 +348,8 @@ class AIContextBuilder:
         Build normalized Lead context.
         """
 
+        from apps.ai_engagement.services.qualification_state import state_for_lead
+
         return {
             "id": str(
                 lead.id
@@ -357,6 +359,7 @@ class AIContextBuilder:
             "email": lead.email,
             "notes": lead.notes,
             "attributes": lead.attributes,
+            "qualification": state_for_lead(lead),
             "lead_source": lead.lead_source,
             "stage_entered_at": (
                 lead.stage_entered_at.isoformat()
@@ -505,6 +508,7 @@ class AIContextBuilder:
                 "value": value,
             }
             for name, value in raw_attributes.items()
+            if name != "_shvya_ai_qualification"
         ]
 
     # ============================================================

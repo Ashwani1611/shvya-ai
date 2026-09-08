@@ -98,6 +98,14 @@
         if (pipeline?.id === selection.pipeline) el('stage').value = selection.source_stage;
     }
 
+    function fillSequences() {
+        const pipeline = options?.pipelines.find(item => item.id === el('pipeline').value);
+        const sequences = el('move').checked ? (pipeline?.sequences || []) : (options?.sequences || []);
+        const selected = el('sequence').value;
+        fillSelect(el('sequence'), sequences, sequences.length ? 'Choose a sequence' : 'No matching active sequences available');
+        if (sequences.some(item => item.id === selected)) el('sequence').value = selected;
+    }
+
     async function openDialog(button) {
         const current = root(), panel = activePanel();
         const ids = boxes(panel).filter(input => input.checked).map(input => input.value);
@@ -135,7 +143,7 @@
             fillSelect(el('pipeline'), result.pipelines, 'Choose a pipeline');
             el('pipeline').value = selection.pipeline;
             fillStages();
-            fillSelect(el('sequence'), result.sequences, result.sequences.length ? 'Choose a sequence' : 'No connected sequences available');
+            fillSequences();
             el('move').disabled = !rights.move;
             el('change-sequence').disabled = !rights.edit;
             el('field-count').textContent = `(${result.fields.length} attributes)`;
@@ -187,6 +195,7 @@
     dialog.addEventListener('close', () => { generation++; trigger?.focus(); });
     form.addEventListener('change', event => {
         if (event.target === el('pipeline')) fillStages();
+        if (event.target === el('pipeline') || event.target === el('move')) fillSequences();
         showError(''); syncForm();
     });
     form.addEventListener('submit', async event => {

@@ -18,3 +18,41 @@
         AI {% if stage.ai_on %}On{% else %}Off{% endif %}
     </button>
 </form>
+
+{% if stage.is_system_locked %}
+<span
+    class="inline-flex h-9 shrink-0 items-center gap-1 rounded-full bg-slate-100 px-2.5 text-xs font-semibold text-slate-600"
+    title="{{ stage.name }} is a required SHVYA system stage. Its name cannot be changed or deleted."
+    aria-label="{{ stage.name }} is locked"
+>
+    <i class="ti ti-lock"></i>
+    Locked
+</span>
+<script>
+(function () {
+    const script = document.currentScript;
+    const row = script && script.parentElement;
+    if (!row) return;
+
+    const nameInput = row.querySelector('input[name="name"]');
+    if (nameInput) {
+        nameInput.readOnly = true;
+        nameInput.setAttribute('aria-readonly', 'true');
+        nameInput.title = '{{ stage.name|escapejs }} is a required SHVYA system stage and cannot be renamed.';
+        nameInput.classList.add('bg-slate-50', 'text-slate-500', 'cursor-not-allowed');
+    }
+
+    const renameButton = row.querySelector('button[title="Save stage name"]');
+    if (renameButton) {
+        renameButton.disabled = true;
+        renameButton.hidden = true;
+    }
+
+    const deleteButton = row.querySelector('button[title="Delete stage"]');
+    if (deleteButton) {
+        deleteButton.disabled = true;
+        deleteButton.hidden = true;
+    }
+})();
+</script>
+{% endif %}

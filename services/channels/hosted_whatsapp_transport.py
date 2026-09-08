@@ -43,6 +43,17 @@ def send_hosted_message(*, message, defer_on_pause=True):
     if account.status != account.Status.CONNECTED:
         raise WhatsAppSendError("Hosted WhatsApp session is not running.")
 
+    payload = message.raw_payload if isinstance(message.raw_payload, dict) else {}
+    if payload.get("shvya_ai"):
+        from services.channels.hosted_automation_service import hosted_ai_block_reason
+
+        reason = hosted_ai_block_reason(account=account, lead=message.lead) if message.lead_id else "lead_missing"
+        if reason:
+            message.status = WhatsAppMessage.Status.FAILED
+            message.error = f"AI send cancelled: {reason}"
+            message.save(update_fields=["status", "error", "updated_at"])
+            raise WhatsAppSendError(message.error)
+
     if message_is_automation(message):
         paused_until = automation_pause_until(account=account)
         if paused_until:

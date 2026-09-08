@@ -456,16 +456,36 @@ def _persist_gateway_message(*, account, payload, historical=False):
 
     if (
         lead
+        and pipeline
+        and lead.pipeline_id == pipeline.id
         and not is_outbound
         and not historical
         and settings["ai_auto_reply"]
     ):
-        lead_id = str(lead.id)
-
         def queue_ai_reply():
-            from apps.ai_engagement.tasks import generate_ai_engagement_response
+            from apps.ai_engagement.services.ai_permissions import AIPermissionService
+            from services.channels.hosted_automation_service import enqueue_ai_engagement
 
-            generate_ai_engagement_response.delay(lead_id)
+            current_lead = (
+                Lead.objects.select_related("organization", "pipeline", "stage")
+                .filter(id=lead.id, organization=account.organization)
+                .first()
+            )
+            if not current_lead or current_lead.pipeline_id != pipeline.id:
+                return
+
+            permission = AIPermissionService().evaluate(
+                organization=account.organization,
+                lead=current_lead,
+            )
+            if not permission.allowed:
+                return
+
+            enqueue_ai_engagement(
+                account=account,
+                lead=current_lead,
+                source_message=message,
+            )
 
         transaction.on_commit(queue_ai_reply)
 
