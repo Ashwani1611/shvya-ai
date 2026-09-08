@@ -74,6 +74,7 @@
 
                                 <div class="flex items-center justify-end">
 
+                                    {% if can_manage %}
                                     <a
                                         href="{% url 'crm-team-member-automation-settings' member.id %}"
                                         class="flex h-8 w-8 items-center justify-center rounded-full text-gray-400 transition hover:bg-gray-100 hover:text-blue-600"
@@ -81,6 +82,7 @@
                                     >
                                         <i class="ti ti-settings"></i>
                                     </a>
+                                    {% endif %}
 
                                 </div>
 
