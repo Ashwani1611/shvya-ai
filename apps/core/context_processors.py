@@ -1,3 +1,6 @@
+AI_CREDIT_ALERT_THRESHOLD = 500
+
+
 NAV_ITEMS = [
     {
         "label": "CRM",
@@ -209,6 +212,42 @@ def _pending_reminder_count(request):
     ).count()
 
 
+def _ai_credit_context(request):
+    """Expose the organization's actually spendable AI-credit balance.
+
+    The header must reflect the same availability rule used by AI providers:
+    reserved credits are not spendable, so the displayed value is
+    ``balance - reserved_credits``. Organizations without a wallet are shown as
+    zero because SHVYA's manual AI-credit system starts every organization at 0.
+    """
+    user = getattr(request, "crm_user", None)
+    organization_id = getattr(user, "organization_id", None)
+
+    if not organization_id:
+        return {
+            "ai_credit_balance": None,
+            "ai_credit_is_low": False,
+            "ai_credit_alert_threshold": AI_CREDIT_ALERT_THRESHOLD,
+        }
+
+    from apps.ai_engagement.models import AICreditWallet
+
+    wallet = (
+        AICreditWallet.objects
+        .filter(organization_id=organization_id)
+        .only("balance", "reserved_credits")
+        .first()
+    )
+
+    available = wallet.available_credits if wallet is not None else 0
+
+    return {
+        "ai_credit_balance": available,
+        "ai_credit_is_low": available <= AI_CREDIT_ALERT_THRESHOLD,
+        "ai_credit_alert_threshold": AI_CREDIT_ALERT_THRESHOLD,
+    }
+
+
 def sidebar_nav(request):
     """Build shared sidebar navigation with connection-aware WhatsApp items."""
     nav_items = []
@@ -258,8 +297,10 @@ def sidebar_nav(request):
 
         nav_items.append(entry)
 
-    return {
+    context = {
         "nav_items": nav_items,
         "has_whatsapp_connection": has_whatsapp_connection,
         "pending_reminder_count": _pending_reminder_count(request),
     }
+    context.update(_ai_credit_context(request))
+    return context
