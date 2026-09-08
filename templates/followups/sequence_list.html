@@ -11,13 +11,12 @@
             <button class="inline-flex h-11 items-center gap-2 rounded-lg border border-blue-500 bg-white px-4 text-sm font-semibold text-blue-700 hover:bg-blue-50"><i class="ti ti-search"></i> Search</button>
         </form>
         <div class="flex shrink-0 flex-wrap items-center gap-2">
-            <button type="button" hx-get="{% url 'followups-settings-modal' %}" hx-target="#modal-root" hx-swap="innerHTML" class="inline-flex h-11 items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-medium text-gray-700 hover:border-blue-300 hover:text-blue-600"><i class="ti ti-settings"></i> Global Settings</button>
             {% if is_followup_admin %}<a href="{% url 'followups-sequence-create' %}" class="inline-flex h-11 items-center gap-2 rounded-lg bg-[#0067b9] px-4 text-sm font-semibold text-white hover:bg-[#005a9f]"><i class="ti ti-plus"></i> New Sequence</a>{% endif %}
         </div>
     </div>
 
     <div class="rounded-xl border border-orange-300 bg-orange-50/50 px-5 py-4 text-sm text-gray-800">
-        <div class="flex gap-3"><i class="ti ti-alert-circle-filled mt-0.5 text-lg text-orange-500"></i><div><p class="font-semibold">Stay on track</p><ul class="mt-1 list-disc space-y-1 pl-5 text-gray-700"><li><strong>WhatsApp API</strong> sequences use Meta Cloud API approved templates.</li><li><strong>WhatsApp</strong> sequences use Hosted Account free-form messages with Hosted pacing, duplicate protection, AI priority, and Account Health.</li><li>Automatic sends respect business hours, lead-level controls, and active-conversation delays.</li></ul></div></div>
+        <div class="flex gap-3"><i class="ti ti-alert-circle-filled mt-0.5 text-lg text-orange-500"></i><div><p class="font-semibold">Stay on track</p><ul class="mt-1 list-disc space-y-1 pl-5 text-gray-700"><li><strong>WhatsApp API</strong> sequences use Meta Cloud API approved templates.</li><li><strong>WhatsApp</strong> sequences use Hosted Account free-form messages with Hosted pacing, duplicate protection, AI priority, and Account Health.</li><li>Pipeline automation settings are managed from the gear icon beside the WhatsApp API or Hosted Account number linked to that pipeline.</li><li>Automatic sends respect that pipeline's business hours, lead-level controls, and active-conversation delays.</li></ul></div></div>
     </div>
 
     {% if sequences %}
