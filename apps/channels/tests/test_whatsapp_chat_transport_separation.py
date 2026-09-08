@@ -168,7 +168,8 @@ class WhatsAppChatTransportSeparationTests(TestCase):
         self.assertTrue(message.media_payload["storage_path"])
         delay.assert_called_once_with(str(message.id))
 
-    def test_hosted_chat_page_exposes_attachment_picker(self):
+    @patch("apps.channels.hosted_chat_ui._request_history_refresh", return_value=False)
+    def test_hosted_chat_page_exposes_attachment_picker(self, _refresh):
         lead = self.make_lead("Hosted UI Lead", "+919666666666")
         self.make_message(account=self.hosted_account, lead=lead, body="Hosted chat")
 

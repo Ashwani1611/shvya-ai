@@ -296,7 +296,7 @@ class HostedChatRealtimeTests(TestCase):
         self.assertEqual(len(payload["conversations"]), 1)
         self.assertEqual(payload["conversations"][0]["name"], "Searchable Person")
 
-    @patch("apps.channels.hosted_chat_ui.send_whatsapp_message_task.delay")
+    @patch("apps.channels.hosted_chat_ui.send_hosted_whatsapp_message_task.delay")
     def test_lid_chat_can_be_queued_without_treating_lid_as_phone(self, delay):
         response = self.client.post(
             reverse(

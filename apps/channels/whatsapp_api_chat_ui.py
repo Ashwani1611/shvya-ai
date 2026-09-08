@@ -19,6 +19,8 @@ from services.channels.whatsapp_api_chat_service import (
     mark_api_conversation_read,
     resolve_api_account_for_lead,
 )
+from services.channels.whatsapp_error_service import message_failure_details
+from services.channels.whatsapp_failure_patch import _failure_block
 
 from .models import WhatsAppAccount, WhatsAppTemplate
 from .whatsapp_chat_failure_ui import _inject_chat_ui
@@ -127,6 +129,11 @@ def whatsapp_chat_detail_view(request, lead_id):
     if not chat_messages.exists():
         messages.error(request, "No WhatsApp API conversation exists for this lead.")
         return redirect("whatsapp-chats")
+
+    chat_messages = list(chat_messages)
+    for message in chat_messages:
+        if message.status == message.Status.FAILED:
+            message.error = _failure_block(message_failure_details(message))
 
     mark_api_conversation_read(organization=user.organization, lead=lead)
 

@@ -36,10 +36,10 @@ from services.channels.hosted_whatsapp_service import (
     queue_hosted_text_message,
 )
 
+from .hosted_send_tasks import send_hosted_whatsapp_message_task
 from .hosted_tasks import sync_hosted_history_task
 from .models import WhatsAppAccount, WhatsAppMessage
 from .providers.whatsapp_web import WhatsAppWebClient, WhatsAppWebGatewayError
-from .tasks import send_whatsapp_message_task
 
 
 SYNC_THROTTLE_SECONDS = 180
@@ -275,7 +275,7 @@ def hosted_session_chat_send_view(request, account_id):
     except HostedWhatsAppValidationError as exc:
         return JsonResponse({"ok": False, "error": str(exc)}, status=400)
 
-    send_whatsapp_message_task.delay(str(message.id))
+    send_hosted_whatsapp_message_task.delay(str(message.id))
     queue_hosted_chat_refresh(
         account_id=account.id,
         reason="queued",
