@@ -1,7 +1,7 @@
-from django.conf import settings
 from django.shortcuts import render
 from django.views.decorators.http import require_GET
 
+from apps.accounts.models import User
 from apps.crm.decorators import crm_login_required
 
 from .models import WhatsAppAccount
@@ -23,7 +23,6 @@ def whatsapp_account_list_view(request):
         "channels/whatsapp_account_list.html",
         {
             "accounts": accounts,
-            "meta_app_id": settings.META_APP_ID,
-            "meta_config_id": settings.META_CONFIG_ID,
+            "can_manage": user.role == User.Role.ADMIN,
         },
     )
