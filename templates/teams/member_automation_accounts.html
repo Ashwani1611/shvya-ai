@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+
+{% block title %}SHVYA AI — Select Pipeline Settings{% endblock %}
+{% block header %}Lead Automation Settings{% endblock %}
+
+{% block content %}
+<div class="mx-auto max-w-2xl">
+  <a href="{% url 'crm-teams' %}" class="inline-flex items-center gap-2 text-sm text-blue-600 hover:text-blue-700"><i class="ti ti-arrow-left"></i> Back to Teams</a>
+  <h2 class="mt-5 text-xl font-bold text-gray-900">Choose {{ member.name|default:member.email }}'s pipeline number</h2>
+  <p class="mt-1 text-sm text-gray-500">Each number opens its own automation settings. The account type is verified against the number linked to this team member's active pipeline.</p>
+  <div class="mt-6 space-y-3">
+    {% for row in account_rows %}
+    <a href="{{ row.settings_url }}" class="flex items-center justify-between rounded-xl border border-gray-200 bg-white px-5 py-4 shadow-sm transition hover:border-blue-300 hover:bg-blue-50/30">
+      <span><span class="block font-semibold text-gray-900">{{ row.account.display_phone_number|default:row.account.phone_number_id }}</span><span class="mt-1 block text-xs text-gray-500">{% if row.is_hosted %}Hosted Account{% else %}WhatsApp API{% endif %}</span></span>
+      <span class="inline-flex items-center gap-2 text-sm font-semibold text-blue-600">Open settings <i class="ti ti-chevron-right"></i></span>
+    </a>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}
+

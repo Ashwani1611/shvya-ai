@@ -1,6 +1,5 @@
 from django.urls import path
 
-from apps.core.coming_soon import coming_soon
 from apps.teams.views.web import (
     team_create_view,
     team_delete_view,
@@ -10,19 +9,18 @@ from apps.teams.views.web import (
     team_member_add_view,
     team_member_remove_view,
     team_member_role_view,
+    team_member_automation_settings_view,
 )
 
 urlpatterns = [
 
     path("", team_list_view, name="crm-teams"),
 
-    # ---------------------------------------------------------
-    # Per-agent automation settings (gear icon on each row).
-    # Not built yet -- placeholder until the settings model and
-    # the automation engine behind it exist.
-    # ---------------------------------------------------------
-
-    path("settings/", coming_soon, {"feature": "team-member-settings"}, name="crm-team-settings"),
+    path(
+        "members/<uuid:user_id>/automation-settings/",
+        team_member_automation_settings_view,
+        name="crm-team-member-automation-settings",
+    ),
 
     # ---------------------------------------------------------
     # Team-grouping CRUD (Team / TeamMembership). Kept working
@@ -40,3 +38,4 @@ urlpatterns = [
     path("groups/<uuid:team_id>/members/<uuid:user_id>/role/", team_member_role_view, name="crm-team-member-role"),
 
 ]
+

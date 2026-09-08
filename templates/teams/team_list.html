@@ -75,7 +75,7 @@
                                 <div class="flex items-center justify-end">
 
                                     <a
-                                        href="{% url 'whatsapp-accounts' %}?owner={{ member.id }}"
+                                        href="{% url 'crm-team-member-automation-settings' member.id %}"
                                         class="flex h-8 w-8 items-center justify-center rounded-full text-gray-400 transition hover:bg-gray-100 hover:text-blue-600"
                                         title="Lead automation settings"
                                     >
@@ -129,3 +129,4 @@
 
 
 {% endblock %}
+

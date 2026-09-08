@@ -100,7 +100,7 @@
                         <td class="px-5 py-4">
                             <div class="flex items-center justify-end gap-2">
                                 {% if can_manage %}
-                                <button type="button" class="account-settings-button flex h-9 w-9 items-center justify-center rounded-lg text-gray-400 transition hover:bg-blue-50 hover:text-blue-600" title="Lead automation settings" data-url="{% url 'whatsapp-account-automation-settings' account.id %}" data-label="{{ account.display_phone_number|default:account.business_name|escape }}">
+                                <button type="button" class="account-settings-button flex h-9 w-9 items-center justify-center rounded-lg text-gray-400 transition hover:bg-blue-50 hover:text-blue-600" title="Lead automation settings" data-account-id="{{ account.id }}" data-url="{% url 'whatsapp-account-automation-settings' account.id %}" data-label="{{ account.display_phone_number|default:account.business_name|escape }}">
                                     <i class="ti ti-settings"></i>
                                 </button>
                                 {% endif %}
@@ -187,6 +187,11 @@
         if (!response.ok) { const error = document.getElementById('account-settings-error'); error.textContent=data.error; error.classList.remove('hidden'); return; }
         settingsModal.classList.add('hidden'); settingsModal.classList.remove('flex'); window.shvyaToast?.('Automation settings saved.', 'success');
     });
+    const requestedSettings = new URLSearchParams(window.location.search).get('settings');
+    if (requestedSettings) {
+        const button = document.querySelector(`.account-settings-button[data-account-id="${requestedSettings}"]`);
+        if (button) setTimeout(() => button.click(), 0);
+    }
     const table = document.querySelector('#connected-accounts-card .overflow-x-auto');
     const emptyState = document.getElementById('no-connected-accounts');
 
@@ -236,3 +241,4 @@
 })();
 </script>
 {% endblock %}
+
