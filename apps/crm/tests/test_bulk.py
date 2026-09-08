@@ -25,6 +25,8 @@ class BulkLeadTests(TestCase):
             organization=self.organization, role=User.Role.ADMIN,
         )
         self.pipeline = self.organization.pipelines.get(name="Leads")
+        self.pipeline.phone_number = "+919999999999"
+        self.pipeline.save(update_fields=["phone_number"])
         self.stage = self.pipeline.stages.order_by("display_order").first()
         self.next_stage = self.pipeline.stages.order_by("display_order")[1]
         self.leads = [Lead.objects.create(
