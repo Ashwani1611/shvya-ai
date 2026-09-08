@@ -1,4 +1,3 @@
-from django.core.exceptions import ValidationError
 from django.test import TestCase
 
 from apps.ai_engagement.services.ai_permissions import AIPermissionService
@@ -71,14 +70,12 @@ class AIEngagementControlTests(TestCase):
     def test_new_lead_starts_in_application_controlled_qualification_mode(self):
         self.lead.refresh_from_db()
         state = state_for_lead(self.lead)
-
         self.assertEqual(state["qualification_status"], STATUS_NOT_STARTED)
         self.assertEqual(state["engagement_mode"], MODE_QUALIFICATION)
         self.assertEqual(state["qualified_stage_id"], str(self.qualified.id))
 
     def test_ai_qualification_reply_marks_state_in_progress(self):
         self._inbound()
-
         WhatsAppMessage.objects.create(
             organization=self.organization,
             account=self.account,
@@ -90,7 +87,6 @@ class AIEngagementControlTests(TestCase):
             status=WhatsAppMessage.Status.QUEUED,
             raw_payload={"shvya_ai": {"source_inbound_message_id": "source"}},
         )
-
         self.lead.refresh_from_db()
         state = state_for_lead(self.lead)
         self.assertEqual(state["qualification_status"], STATUS_IN_PROGRESS)
@@ -101,7 +97,6 @@ class AIEngagementControlTests(TestCase):
         self.lead.stage = self.qualified
         self.lead.save(update_fields=["stage", "updated_at"])
         self.lead.refresh_from_db()
-
         state = state_for_lead(self.lead)
         self.assertEqual(state["qualification_status"], STATUS_COMPLETED)
         self.assertEqual(state["qualification_result"], RESULT_QUALIFIED)
@@ -112,7 +107,6 @@ class AIEngagementControlTests(TestCase):
         self.lead.save(update_fields=["stage", "updated_at"])
         self.lead.refresh_from_db()
         state = state_for_lead(self.lead)
-
         self.assertEqual(state["qualification_status"], STATUS_COMPLETED)
         self.assertEqual(state["qualification_result"], RESULT_QUALIFIED)
         self.assertEqual(state["engagement_mode"], MODE_CONVERSATION)
@@ -138,7 +132,6 @@ class AIEngagementControlTests(TestCase):
         self._inbound()
         self.new_lead.ai_on = False
         self.new_lead.save(update_fields=["ai_on", "updated_at"])
-
         message = WhatsAppMessage.objects.create(
             organization=self.organization,
             account=self.account,
@@ -151,15 +144,20 @@ class AIEngagementControlTests(TestCase):
             raw_payload={"shvya_ai": {"source_inbound_message_id": "source"}},
         )
         message.refresh_from_db()
-
         self.assertEqual(message.status, WhatsAppMessage.Status.FAILED)
         self.assertIn("stage_ai_disabled", message.error)
 
-    def test_system_stage_names_cannot_be_renamed(self):
+    def test_system_stages_remain_canonically_named_and_active(self):
         self.new_lead.name = "Incoming"
-        with self.assertRaises(ValidationError):
-            self.new_lead.save()
+        self.new_lead.is_active = False
+        self.new_lead.save(update_fields=["name", "is_active", "updated_at"])
+        self.new_lead.refresh_from_db()
+        self.assertEqual(self.new_lead.name, "New Lead")
+        self.assertTrue(self.new_lead.is_active)
 
         self.qualified.name = "Won"
-        with self.assertRaises(ValidationError):
-            self.qualified.save()
+        self.qualified.is_active = False
+        self.qualified.save(update_fields=["name", "is_active", "updated_at"])
+        self.qualified.refresh_from_db()
+        self.assertEqual(self.qualified.name, "Qualified")
+        self.assertTrue(self.qualified.is_active)
