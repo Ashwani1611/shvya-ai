@@ -87,7 +87,10 @@ class AICreditReservation(models.Model):
     class Meta:
         ordering = ["-created_at"]
         indexes = [
-            models.Index(fields=["organization", "status", "created_at"]),
+            models.Index(
+                fields=["organization", "status", "created_at"],
+                name="ai_engageme_organiz_4489d8_idx",
+            ),
         ]
 
 
@@ -132,8 +135,14 @@ class AICreditTransaction(models.Model):
     class Meta:
         ordering = ["-created_at", "-id"]
         indexes = [
-            models.Index(fields=["organization", "created_at"]),
-            models.Index(fields=["organization", "transaction_type", "created_at"]),
+            models.Index(
+                fields=["organization", "created_at"],
+                name="ai_engageme_organiz_08a8ae_idx",
+            ),
+            models.Index(
+                fields=["organization", "transaction_type", "created_at"],
+                name="ai_engageme_organiz_8cb254_idx",
+            ),
         ]
 
     def __str__(self) -> str:
