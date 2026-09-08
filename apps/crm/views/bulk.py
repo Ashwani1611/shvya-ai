@@ -20,7 +20,12 @@ from apps.crm.models import AttributeDefinition, Lead, PipelinePermission, Stage
 from apps.followups.models import FollowupSequence
 from services.crm.lead_transition import LeadTransitionError, move_lead_to_stage
 from services.crm_activity_service import record_pipeline_changed
-from services.followup_service import FollowupError, assign_sequence, clear_sequence
+from services.followup_service import (
+    FollowupError,
+    assign_sequence,
+    clear_sequence,
+    resolve_linked_whatsapp_account,
+)
 
 from .api import get_user_pipelines
 
@@ -95,11 +100,23 @@ def _options(user, pipeline, leads):
             "stages": [{"id": str(stage.pk), "name": stage.name}
                        for stage in target.stages.all() if stage.is_active],
         })
-    sequences = FollowupSequence.objects.filter(
+    candidates = FollowupSequence.objects.filter(
         organization=user.organization, is_active=True,
         whatsapp_account__organization=user.organization,
         whatsapp_account__is_active=True, whatsapp_account__status="connected",
-    ).order_by("name")
+    ).select_related("whatsapp_account").order_by("name")
+    representative = leads[0] if leads else None
+    sequences = []
+    for sequence in candidates:
+        linked = resolve_linked_whatsapp_account(
+            lead=representative,
+            connection_type=sequence.whatsapp_account.connection_type,
+        ) if representative else None
+        if linked and (
+            sequence.whatsapp_account.connection_type == "hosted"
+            or linked.id == sequence.whatsapp_account_id
+        ):
+            sequences.append(sequence)
     return JsonResponse({
         "count": len(leads), "permissions": bulk_permissions(user, pipeline),
         "pipelines": pipelines,
