@@ -107,6 +107,9 @@ class SuperadminWorkspaceControlsTests(TestCase):
         self.assertTrue(self.user.check_password("old-password-123"))
 
     def test_whatsapp_activity_uses_one_effective_channel_per_pipeline(self):
+        # Organizations receive a default pipeline on creation. Remove that
+        # unrelated fixture so this test exercises exactly one linked pipeline.
+        Pipeline.objects.filter(organization=self.organization).delete()
         Pipeline.objects.create(
             organization=self.organization,
             name="Sales",
@@ -136,6 +139,7 @@ class SuperadminWorkspaceControlsTests(TestCase):
         self.assertNotIn("API + Hosted", state["channel_label"])
 
     def test_whatsapp_activity_keeps_distinct_pipeline_channels_separate(self):
+        Pipeline.objects.filter(organization=self.organization).delete()
         Pipeline.objects.create(
             organization=self.organization,
             name="Ash",
