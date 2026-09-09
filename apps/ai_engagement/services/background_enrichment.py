@@ -11,6 +11,7 @@ from apps.crm.models import Lead
 
 DEFAULT_MESSAGE_INTERVAL = 6
 DEFAULT_CHAR_INTERVAL = 2400
+DEFAULT_IDLE_FLUSH_SECONDS = 300
 SCHEDULE_LOCK_SECONDS = 20
 
 
@@ -28,6 +29,15 @@ def _char_interval() -> int:
     except (TypeError, ValueError):
         value = DEFAULT_CHAR_INTERVAL
     return min(max(value, 800), 12000)
+
+
+def _idle_flush_seconds() -> int:
+    """Delay slow enrichment until the conversation has actually gone idle."""
+    try:
+        value = int(os.getenv("AI_ENRICHMENT_IDLE_FLUSH_SECONDS", DEFAULT_IDLE_FLUSH_SECONDS))
+    except (TypeError, ValueError):
+        value = DEFAULT_IDLE_FLUSH_SECONDS
+    return min(max(value, 60), 1800)
 
 
 def _new_message_stats(*, lead) -> tuple[int, int]:
@@ -87,7 +97,7 @@ def enrichment_due(*, lead) -> bool:
 
 
 def queue_background_enrichment(*, lead_id, force=False) -> dict:
-    """Queue slow internal AI work without blocking a WhatsApp reply."""
+    """Queue slow internal AI work without blocking or starving WhatsApp replies."""
     lead = (
         Lead.objects.select_related("organization")
         .filter(id=lead_id)
@@ -96,15 +106,24 @@ def queue_background_enrichment(*, lead_id, force=False) -> dict:
     if lead is None:
         return {"status": "skipped", "reason": "lead_not_found"}
 
+    count, _chars = _new_message_stats(lead=lead)
+    if force and count <= 0:
+        return {"status": "skipped", "reason": "no_new_messages"}
+
     if not force and not enrichment_due(lead=lead):
         from apps.ai_engagement.tasks import flush_background_enrichment
 
-        # A final short answer must eventually reach the summary and notes even
-        # if the customer never sends another message. Coalesce bursts once.
+        # Keep summaries eventual, but do not spend summary/qualification calls
+        # in the middle of an active customer conversation. One idle flush is
+        # coalesced per lead and runs after the real-time chat has settled.
+        delay = _idle_flush_seconds()
         key = f"shvya:ai:enrichment:flush:{lead.id}"
-        if cache.add(key, "1", timeout=20):
+        if cache.add(key, "1", timeout=delay + 5):
             try:
-                flush_background_enrichment.apply_async(args=[str(lead.id)], countdown=20)
+                flush_background_enrichment.apply_async(
+                    args=[str(lead.id)],
+                    countdown=delay,
+                )
             except Exception:
                 cache.delete(key)
                 raise
