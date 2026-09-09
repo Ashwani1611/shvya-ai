@@ -4,6 +4,8 @@ import uuid
 
 from django.db import models
 
+from apps.ai_engagement.coins import credits_to_coins
+
 
 class AICreditWallet(models.Model):
     """Organization-scoped SHVYA AI credit wallet.
@@ -11,6 +13,9 @@ class AICreditWallet(models.Model):
     AI credits are intentionally separate from Organization.credits_*.
     New wallets start at zero and are funded only by an explicit manual
     Superadmin action.
+
+    Credits remain the accounting source of truth. User-facing wallet screens
+    expose AI coins at a fixed conversion of 30 credits = 1 coin.
     """
 
     organization = models.OneToOneField(
@@ -37,6 +42,26 @@ class AICreditWallet(models.Model):
         return max(int(self.balance) - int(self.reserved_credits), 0)
 
     @property
+    def available_coins(self):
+        return credits_to_coins(self.available_credits)
+
+    @property
+    def reserved_coins(self):
+        return credits_to_coins(self.reserved_credits)
+
+    @property
+    def lifetime_coins_added(self):
+        return credits_to_coins(self.lifetime_credits_added)
+
+    @property
+    def lifetime_coins_used(self):
+        return credits_to_coins(self.lifetime_credits_used)
+
+    @property
+    def low_coin_threshold(self):
+        return credits_to_coins(self.low_credit_threshold)
+
+    @property
     def is_low(self) -> bool:
         return 0 < self.available_credits <= int(self.low_credit_threshold)
 
@@ -45,7 +70,7 @@ class AICreditWallet(models.Model):
         return not self.is_blocked and self.available_credits > 0
 
     def __str__(self) -> str:
-        return f"{self.organization.name}: {self.available_credits} AI credits"
+        return f"{self.organization.name}: {self.available_coins} AI coins"
 
 
 class AICreditReservation(models.Model):
