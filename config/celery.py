@@ -15,6 +15,15 @@ app.config_from_object(
 
 app.autodiscover_tasks()
 
+# Customer-facing WhatsApp API AI replies must not wait behind conversation
+# summaries, ingestion, follow-ups, or other long-running default-queue work.
+# A dedicated worker consumes this queue in production.
+app.conf.task_routes = {
+    "ai.generate_ai_engagement_response": {
+        "queue": "ai_realtime",
+    },
+}
+
 # Central Beat schedule for recurring background work. Hosted WhatsApp
 # automation is intentionally evaluated every 10 seconds. The dispatcher
 # processes one prioritized lane at a time and the service layer provides
