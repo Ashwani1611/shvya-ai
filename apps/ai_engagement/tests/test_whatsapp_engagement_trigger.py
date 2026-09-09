@@ -83,7 +83,7 @@ class WhatsAppEngagementTriggerTests(TestCase):
         )
         engagement_apply_async.assert_called_once_with(
             args=[str(self.lead.id)],
-            countdown=5,
+            countdown=0,
         )
 
     @patch(
