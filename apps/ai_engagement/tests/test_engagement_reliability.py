@@ -114,7 +114,7 @@ class ContextAndEnrichmentTests(TestCase):
         with patch("apps.ai_engagement.services.background_enrichment.enrichment_due", return_value=False):
             queue_background_enrichment(lead_id=self.lead.id)
             queue_background_enrichment(lead_id=self.lead.id)
-        flush.assert_called_once_with(args=[str(self.lead.id)], countdown=20)
+        flush.assert_called_once_with(args=[str(self.lead.id)], countdown=300)
 
     @patch("apps.ai_engagement.tasks.generate_lead_qualification.apply_async")
     @patch("apps.ai_engagement.tasks.generate_internal_conversation_summary.delay")
@@ -123,6 +123,10 @@ class ContextAndEnrichmentTests(TestCase):
         from apps.ai_engagement.tasks import flush_background_enrichment
         OrgInfo.objects.update_or_create(organization=self.org,
                                         defaults={"qualification_requirements": "Which city?"})
-        flush_background_enrichment(str(self.lead.id))
+        with patch(
+            "apps.ai_engagement.services.background_enrichment._new_message_stats",
+            return_value=(1, 20),
+        ):
+            flush_background_enrichment(str(self.lead.id))
         summary.assert_called_once_with(str(self.lead.id))
         qualification.assert_called_once_with(args=[str(self.lead.id)], countdown=10)
