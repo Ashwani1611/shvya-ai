@@ -4,7 +4,8 @@ from unittest.mock import patch
 from django.test import SimpleTestCase
 
 from apps.ai_engagement.graph.evidence import check_grounding, select_chunks
-from apps.ai_engagement.services.engagement import EngagementError
+from apps.ai_engagement.services.ai_provider import AIProviderPermanentError
+from apps.ai_engagement.services.engagement import EngagementDecision
 from apps.ai_engagement.services.summary_limits import compact, merge_summary
 
 
@@ -28,16 +29,53 @@ class EvidencePipelineTests(SimpleTestCase):
         self.assertEqual(merge_summary("Budget: 50k", "Budget: 50k"), "Budget: 50k")
         self.assertEqual(merge_summary("Budget: 50k", ""), "Budget: 50k")
 
-    def test_grounding_gate_fails_closed(self):
-        state = {"decision": SimpleNamespace(should_engage=True, model="test", message="It costs $1",
-                                             next_requirement_id=None),
-                 "context": SimpleNamespace(organization={}, knowledge=[]),
-                 "organization": SimpleNamespace(id="org"), "lead": SimpleNamespace(id="lead")}
-        with patch("apps.ai_engagement.graph.evidence.OpenAIProvider") as provider:
-            for verdict in ['{"approved":false}', 'bad json', '{"approved":"true"}']:
-                provider.return_value.generate_text.return_value.text = verdict
-                with self.assertRaises(EngagementError):
-                    check_grounding(state)
-            provider.return_value.generate_text.return_value.text = '{"approved":true}'
-            self.assertTrue(check_grounding(state)["grounding_approved"])
+    def _state(self, *, reason_code="ANSWER_ORG_QUESTION"):
+        decision = EngagementDecision(
+            should_engage=True,
+            message="It costs $1",
+            file_document_id=None,
+            crm_actions=[],
+            reason=reason_code,
+            reason_code=reason_code,
+            model="test",
+        )
+        return {
+            "decision": decision,
+            "context": SimpleNamespace(organization={}, knowledge=[], conversation={"messages": []}),
+            "organization": SimpleNamespace(id="org"),
+            "lead": SimpleNamespace(id="lead"),
+        }
 
+    def test_grounding_skips_secondary_model_for_non_org_fact_turns(self):
+        state = self._state(reason_code="QUALIFICATION_NEXT")
+        with patch("apps.ai_engagement.graph.evidence.OpenAIProvider") as provider:
+            result = check_grounding(state)
+        provider.assert_not_called()
+        self.assertTrue(result["grounding_approved"])
+        self.assertNotIn("decision", result)
+
+    def test_grounding_rejection_returns_safe_reply_instead_of_silence(self):
+        state = self._state()
+        with patch("apps.ai_engagement.graph.evidence.OpenAIProvider") as provider:
+            provider.return_value.generate_text.return_value.text = '{"approved":false,"reason":"unsupported"}'
+            result = check_grounding(state)
+        self.assertFalse(result["grounding_approved"])
+        self.assertEqual(result["decision"].reason_code, "UNKNOWN_INFORMATION")
+        self.assertTrue(result["decision"].should_engage)
+        self.assertIn("verified information", result["decision"].message)
+
+    def test_grounding_provider_failure_returns_safe_reply(self):
+        state = self._state()
+        with patch("apps.ai_engagement.graph.evidence.OpenAIProvider") as provider:
+            provider.return_value.generate_text.side_effect = AIProviderPermanentError("credits unavailable")
+            result = check_grounding(state)
+        self.assertFalse(result["grounding_approved"])
+        self.assertEqual(result["decision"].reason_code, "UNKNOWN_INFORMATION")
+
+    def test_grounding_approval_keeps_original_decision(self):
+        state = self._state()
+        with patch("apps.ai_engagement.graph.evidence.OpenAIProvider") as provider:
+            provider.return_value.generate_text.return_value.text = '{"approved":true,"reason":"supported"}'
+            result = check_grounding(state)
+        self.assertTrue(result["grounding_approved"])
+        self.assertNotIn("decision", result)
