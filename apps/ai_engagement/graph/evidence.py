@@ -1,8 +1,9 @@
-"""Bounded retrieval and an independent, fail-closed grounding gate."""
+"""Bounded retrieval and a selective, fail-safe grounding gate."""
 import json
 import math
+from dataclasses import replace
 
-from apps.ai_engagement.services.ai_provider import OpenAIProvider
+from apps.ai_engagement.services.ai_provider import AIProviderError, OpenAIProvider
 
 
 def select_chunks(chunks, *, threshold, limit, max_chars=12000):
@@ -44,12 +45,43 @@ Return JSON {"approved": true/false, "reason": "brief reason code"}.
 """.strip()
 
 
-def check_grounding(state):
-    from apps.ai_engagement.services.engagement import EngagementError
+SAFE_UNKNOWN_REPLY = (
+    "I don't have enough verified information to answer that confidently. "
+    "I can have the team confirm it for you."
+)
 
+
+def _safe_unknown_decision(decision):
+    """Keep the conversation alive without forwarding an ungrounded claim."""
+    return replace(
+        decision,
+        should_engage=True,
+        message=SAFE_UNKNOWN_REPLY,
+        file_document_id=None,
+        next_requirement_id=None,
+        reason="UNKNOWN_INFORMATION",
+        reason_code="UNKNOWN_INFORMATION",
+    )
+
+
+def check_grounding(state):
+    """Ground organization-fact answers without adding an LLM call to every turn.
+
+    Qualification questions, acknowledgements and normal conversational turns are
+    already constrained by the generation prompt and Python policy validation, so
+    an independent model call there only adds latency, credit usage and another
+    failure point. Organization-fact answers retain the independent gate. If that
+    secondary validator is unavailable or rejects a claim, send a safe uncertainty
+    reply instead of permanently silencing the customer conversation.
+    """
     decision = state["decision"]
     if not decision.should_engage or decision.model == "deterministic":
         return {"grounding_approved": True}
+
+    reason_code = str(getattr(decision, "reason_code", "") or "").strip().upper()
+    if reason_code != "ANSWER_ORG_QUESTION":
+        return {"grounding_approved": True}
+
     context = state["context"]
     payload = {
         "reply": decision.message,
@@ -65,23 +97,38 @@ def check_grounding(state):
         "qualification_question_id": decision.next_requirement_id,
         "requirements": state.get("requirements", []),
     }
-    result = OpenAIProvider().generate_text(
-        instructions=GROUNDING_INSTRUCTIONS,
-        input_text=json.dumps(payload, ensure_ascii=False),
-        metadata={"organization_id": str(state["organization"].id),
-                  "lead_id": str(state["lead"].id), "purpose": "engagement"},
-        response_schema={"name": "engagement_grounding", "strict": True, "schema": {
-            "type": "object", "properties": {
-                "approved": {"type": "boolean"}, "reason": {"type": "string"}},
-            "required": ["approved", "reason"], "additionalProperties": False,
-        }},
-    )
+
+    try:
+        result = OpenAIProvider().generate_text(
+            instructions=GROUNDING_INSTRUCTIONS,
+            input_text=json.dumps(payload, ensure_ascii=False),
+            metadata={
+                "organization_id": str(state["organization"].id),
+                "lead_id": str(state["lead"].id),
+                "purpose": "engagement",
+                "phase": "grounding",
+            },
+            response_schema={"name": "engagement_grounding", "strict": True, "schema": {
+                "type": "object", "properties": {
+                    "approved": {"type": "boolean"}, "reason": {"type": "string"}},
+                "required": ["approved", "reason"], "additionalProperties": False,
+            }},
+        )
+    except AIProviderError:
+        return {
+            "decision": _safe_unknown_decision(decision),
+            "grounding_approved": False,
+        }
+
     try:
         verdict = json.loads(result.text)
         approved = isinstance(verdict, dict) and verdict.get("approved") is True
     except (TypeError, ValueError):
         approved = False
-    if not approved:
-        raise EngagementError("Grounding validation rejected the customer reply.")
-    return {"grounding_approved": True}
 
+    if not approved:
+        return {
+            "decision": _safe_unknown_decision(decision),
+            "grounding_approved": False,
+        }
+    return {"grounding_approved": True}
