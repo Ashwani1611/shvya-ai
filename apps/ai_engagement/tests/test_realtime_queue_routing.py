@@ -16,7 +16,7 @@ class RealtimeAIQueueRoutingTests(SimpleTestCase):
             "ai_realtime",
         )
 
-    def test_hosted_ai_wake_and_processing_use_dedicated_queue(self):
+    def test_hosted_ai_wake_processing_and_recovery_use_dedicated_queue(self):
         self.assertEqual(
             app.conf.task_routes["hosted.dispatch_due_ai"]["queue"],
             "hosted_ai",
@@ -26,4 +26,16 @@ class RealtimeAIQueueRoutingTests(SimpleTestCase):
                 "apps.hosted_automation.tasks.process_hosted_ai_engagement_job_task"
             ]["queue"],
             "hosted_ai",
+        )
+        self.assertEqual(
+            app.conf.beat_schedule[
+                "dispatch-hosted-ai-recovery-every-10-seconds"
+            ]["task"],
+            "hosted.dispatch_due_ai",
+        )
+        self.assertEqual(
+            app.conf.beat_schedule[
+                "dispatch-hosted-ai-recovery-every-10-seconds"
+            ]["schedule"],
+            10.0,
         )
