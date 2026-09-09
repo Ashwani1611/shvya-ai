@@ -532,3 +532,62 @@ def reset_state(lead) -> dict:
         else MODE_CONVERSATION
     )
     return _persist_state(lead, state)
+
+
+def project_answer_updates(*, state, requirements, updates, messages):
+    """Validate semantic answers against supplied inbound evidence, without writes."""
+    result = deepcopy(state)
+    allowed = {str(item["id"]) for item in requirements}
+    sources = {str(m.get("id")): str(m.get("body") or "")
+               for m in messages if m.get("direction") == "inbound"}
+    if not isinstance(updates, list) or len(updates) > len(allowed):
+        raise ValueError("Invalid qualification updates.")
+    seen = set()
+    for update in updates:
+        if not isinstance(update, dict) or set(update) != {
+            "requirement_id", "value", "source_message_id", "evidence",
+        }:
+            raise ValueError("Invalid qualification answer schema.")
+        requirement_id = update["requirement_id"]
+        source_id = update["source_message_id"]
+        evidence = update["evidence"]
+        value = update["value"]
+        if (not isinstance(requirement_id, str) or requirement_id not in allowed
+                or requirement_id in seen or not isinstance(source_id, str)
+                or not isinstance(evidence, str) or not evidence.strip()
+                or evidence not in sources.get(source_id, "")
+                or not isinstance(value, (str, int, float, bool))
+                or (isinstance(value, str) and not value.strip())):
+            raise ValueError("Qualification answer lacks valid inbound evidence.")
+        seen.add(requirement_id)
+        result["requirement_states"][requirement_id] = {
+            "status": REQUIREMENT_ANSWERED, "value": value,
+            "source_message_id": source_id, "confidence": "supported",
+            "updated_at": timezone.now().isoformat(),
+        }
+    result["missing_requirement_ids"] = _missing_ids(requirements, result["requirement_states"])
+    result["all_requirements_answered"] = bool(requirements) and not result["missing_requirement_ids"]
+    return result
+
+
+def persist_answer_updates(*, lead, updates):
+    """Called under the finalization lead lock, after conversation freshness checks."""
+    if not updates:
+        return
+    from apps.ai_engagement.models import OrgInfo
+    from apps.ai_engagement.services.organization_profile import compile_qualification_requirements
+
+    org_info = OrgInfo.objects.filter(organization_id=lead.organization_id).first()
+    requirements = compile_qualification_requirements(
+        org_info.qualification_requirements if org_info else "",
+    )["requirements"]
+    messages = list(lead.whatsapp_messages.filter(
+        organization_id=lead.organization_id,
+        id__in=[item["source_message_id"] for item in updates],
+        direction="inbound",
+    ).values("id", "body", "direction"))
+    state = project_answer_updates(
+        state=state_for_lead(lead, requirements=requirements),
+        requirements=requirements, updates=updates, messages=messages,
+    )
+    _persist_state(lead, state)
