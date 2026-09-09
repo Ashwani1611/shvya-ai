@@ -15,19 +15,24 @@ from apps.followups.models import FollowupExecution, FollowupSequence
 register = template.Library()
 
 
+ZERO_COINS = credits_to_coins(0)
 DEFAULT_METRICS = {
     "ai_messages": 0,
     "ai_qualifications": 0,
     "ai_bumpups": 0,
     "afs_sent": 0,
-    # Raw credit aliases are kept for backwards compatibility. Superadmin UI
-    # uses the coin fields below (30 credits = 1 coin).
-    "credits_used": 0,
-    "credits_remaining": 0,
-    "credits_total": 0,
-    "coins_used": credits_to_coins(0),
-    "coins_remaining": credits_to_coins(0),
-    "coins_total": credits_to_coins(0),
+    # These historic template keys are now coin-facing so older Superadmin
+    # templates automatically display the new unit. Exact raw values stay
+    # available under *_raw_credits for audit/debugging.
+    "credits_used": ZERO_COINS,
+    "credits_remaining": ZERO_COINS,
+    "credits_total": ZERO_COINS,
+    "coins_used": ZERO_COINS,
+    "coins_remaining": ZERO_COINS,
+    "coins_total": ZERO_COINS,
+    "used_raw_credits": 0,
+    "remaining_raw_credits": 0,
+    "total_raw_credits": 0,
     "kb_setup": False,
     "sequences": 0,
 }
@@ -37,7 +42,7 @@ def build_organization_metrics(organizations):
     """Return real Superadmin usage metrics keyed by organization id.
 
     Provider accounting stays in exact AI credits. Superadmin summary metrics are
-    also exposed as AI coins so operators see the billing-facing 30:1 unit.
+    exposed in AI coins at the billing-facing 30:1 conversion.
     """
 
     organizations = list(organizations)
@@ -67,12 +72,19 @@ def build_organization_metrics(organizations):
         )
         credits_total = int(row["lifetime_credits_added"] or 0)
 
-        item["credits_used"] = credits_used
-        item["credits_remaining"] = credits_remaining
-        item["credits_total"] = credits_total
-        item["coins_used"] = credits_to_coins(credits_used)
-        item["coins_remaining"] = credits_to_coins(credits_remaining)
-        item["coins_total"] = credits_to_coins(credits_total)
+        coins_used = credits_to_coins(credits_used)
+        coins_remaining = credits_to_coins(credits_remaining)
+        coins_total = credits_to_coins(credits_total)
+
+        item["credits_used"] = coins_used
+        item["credits_remaining"] = coins_remaining
+        item["credits_total"] = coins_total
+        item["coins_used"] = coins_used
+        item["coins_remaining"] = coins_remaining
+        item["coins_total"] = coins_total
+        item["used_raw_credits"] = credits_used
+        item["remaining_raw_credits"] = credits_remaining
+        item["total_raw_credits"] = credits_total
 
     usage_rows = (
         AICreditTransaction.objects.filter(
