@@ -68,9 +68,9 @@ def _build_pipeline_channel_items(organization, accounts):
             if account.is_active and account.status == WhatsAppAccount.Status.CONNECTED
         ]
 
-        # A small compatibility fallback for older records where Meta's display
-        # phone number was not persisted. It is safe only when the organization has
-        # exactly one pipeline and one connected WhatsApp account.
+        # Compatibility fallback for older records where Meta's display number was
+        # not persisted. It is only safe when there is exactly one pipeline and one
+        # connected WhatsApp account, so it cannot incorrectly cross-link pipelines.
         if not matching_accounts and len(pipelines) == 1 and len(active_accounts) == 1:
             matching_accounts = [active_accounts[0]]
             active_matches = [active_accounts[0]]
@@ -113,6 +113,14 @@ def _build_pipeline_channel_items(organization, accounts):
     return items
 
 
+def _pipeline_channel_summary(channel_items):
+    parts = []
+    for item in channel_items:
+        status = "active" if item["active"] else "inactive"
+        parts.append(f"{item['pipeline']} — {item['label']} {status}")
+    return " • ".join(parts)
+
+
 @register.simple_tag
 def organization_workspace_state(organization):
     """Return compact UI state for an organization's Superadmin workspace."""
@@ -122,23 +130,13 @@ def organization_workspace_state(organization):
     channel_items = _build_pipeline_channel_items(organization, accounts)
     active_items = [item for item in channel_items if item["active"]]
 
-    if active_items:
-        if len(active_items) == 1:
-            item = active_items[0]
-            channel_label = f"{item['label']} active"
-            channel_detail = " · ".join(
-                value for value in [item["pipeline"], item["phone"]] if value
-            )
-        else:
-            channel_label = f"{len(active_items)} pipelines connected"
-            channel_detail = "Each pipeline uses one linked WhatsApp channel"
-        channel_active = True
-        inactive_since = None
-    elif channel_items:
-        channel_label = "Inactive"
-        channel_detail = "No pipeline-linked WhatsApp channel is currently connected"
-        channel_active = False
-        inactive_since = accounts[0].updated_at if accounts else None
+    if channel_items:
+        channel_label = _pipeline_channel_summary(channel_items)
+        channel_active = bool(active_items)
+        channel_detail = "One linked WhatsApp channel per pipeline"
+        inactive_since = None if channel_active else (
+            accounts[0].updated_at if accounts else None
+        )
     else:
         active_accounts = [
             account
