@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import re
 from copy import deepcopy
-from types import SimpleNamespace
 from typing import Any
 
 from django.core.cache import cache
@@ -165,6 +164,37 @@ def _empty_profile(organization_name: str) -> dict[str, Any]:
     }
 
 
+def _profile_from_values(
+    *,
+    organization_name: str,
+    about: str,
+    bot_languages: str,
+    qualification_requirements: str,
+    engagement_instructions: str,
+) -> dict[str, Any]:
+    return {
+        "version": PROFILE_VERSION,
+        "identity": {
+            "name": organization_name,
+            "about": str(about or "").strip(),
+        },
+        "communication": {
+            "languages": _languages(bot_languages),
+            "custom_instructions": str(engagement_instructions or "").strip(),
+        },
+        "qualification": compile_qualification_requirements(
+            qualification_requirements
+        ),
+        "knowledge_policy": {
+            "source": "rag_only",
+            "unknown_fact": "human_confirmation",
+        },
+        "instruction_precedence": _empty_profile(organization_name)[
+            "instruction_precedence"
+        ],
+    }
+
+
 def compile_org_ai_profile(*, organization_name: str, org_info) -> dict[str, Any]:
     """Compile existing OrgInfo fields into a deterministic runtime profile."""
     if org_info is None:
@@ -179,45 +209,24 @@ def compile_org_ai_profile(*, organization_name: str, org_info) -> dict[str, Any
     if isinstance(cached, dict):
         return deepcopy(cached)
 
-    profile = {
-        "version": PROFILE_VERSION,
-        "identity": {
-            "name": organization_name,
-            "about": str(getattr(org_info, "about", "") or "").strip(),
-        },
-        "communication": {
-            "languages": _languages(getattr(org_info, "bot_languages", "")),
-            "custom_instructions": str(
-                getattr(org_info, "engagement_instructions", "") or ""
-            ).strip(),
-        },
-        "qualification": compile_qualification_requirements(
-            getattr(org_info, "qualification_requirements", "")
-        ),
-        "knowledge_policy": {
-            "source": "rag_only",
-            "unknown_fact": "human_confirmation",
-        },
-        "instruction_precedence": _empty_profile(organization_name)[
-            "instruction_precedence"
-        ],
-    }
+    profile = _profile_from_values(
+        organization_name=organization_name,
+        about=getattr(org_info, "about", ""),
+        bot_languages=getattr(org_info, "bot_languages", ""),
+        qualification_requirements=getattr(org_info, "qualification_requirements", ""),
+        engagement_instructions=getattr(org_info, "engagement_instructions", ""),
+    )
     cache.set(cache_key, profile, PROFILE_CACHE_SECONDS)
     return deepcopy(profile)
 
 
 def compile_org_ai_profile_from_context(organization_context: dict[str, Any]) -> dict[str, Any]:
-    """Compile the same profile from AIContext's legacy OrgInfo fields."""
+    """Compile from AIContext without cross-organization cache reuse."""
     context = organization_context if isinstance(organization_context, dict) else {}
-    proxy = SimpleNamespace(
-        pk=None,
-        updated_at=None,
-        about=context.get("about", ""),
-        bot_languages=context.get("bot_languages", ""),
-        qualification_requirements=context.get("qualification_requirements", ""),
-        engagement_instructions=context.get("engagement_instructions", ""),
-    )
-    return compile_org_ai_profile(
+    return _profile_from_values(
         organization_name=str(context.get("name") or ""),
-        org_info=proxy,
+        about=str(context.get("about") or ""),
+        bot_languages=str(context.get("bot_languages") or ""),
+        qualification_requirements=str(context.get("qualification_requirements") or ""),
+        engagement_instructions=str(context.get("engagement_instructions") or ""),
     )
