@@ -35,7 +35,7 @@ app.conf.task_routes = {
 }
 
 # Central Beat schedule for recurring background work. Each Hosted AI job
-# self-schedules a due-time wake-up, and the dedicated 10-second recovery scan
+# self-schedules a due-time wake-up, and the dedicated 5-second recovery scan
 # catches jobs created before deployment or any wake-up that was missed.
 app.conf.beat_schedule = {
     "dispatch-smart-triggers-every-10-seconds": {
@@ -51,9 +51,9 @@ app.conf.beat_schedule = {
         "task": "apps.followups.tasks.dispatch_auto_followups_task",
         "schedule": 10.0,
     },
-    "dispatch-hosted-ai-recovery-every-10-seconds": {
+    "dispatch-hosted-ai-recovery-every-5-seconds": {
         "task": "hosted.dispatch_due_ai",
-        "schedule": 10.0,
+        "schedule": 5.0,
     },
     "dispatch-ai-bump-ups-every-minute": {
         "task": "ai.dispatch_bump_ups",
