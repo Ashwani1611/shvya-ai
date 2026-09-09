@@ -3,16 +3,18 @@ from __future__ import annotations
 import json
 import os
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from django.utils import timezone
+from django.core.cache import cache
 
 from apps.ai_engagement.prompts.engagement import (
     CUSTOMER_ENGAGEMENT_INSTRUCTIONS,
 )
 from apps.ai_engagement.services.ai_provider import (
     AIProviderError,
+    AIProviderTransientError,
     AITextResult,
     OpenAIProvider,
 )
@@ -41,6 +43,7 @@ from apps.ai_engagement.services.qualification_state import (
     apply_unambiguous_reply,
     next_requirement,
     state_for_lead,
+    project_answer_updates,
 )
 
 
@@ -69,6 +72,7 @@ ENGAGEMENT_RESPONSE_SCHEMA = {
             "message": {"type": "string"},
             "file_document_id": {"anyOf": [{"type": "integer"}, {"type": "null"}]},
             "crm_actions": {"type": "array", "items": {"type": "object"}},
+            "qualification_updates": {"type": "array", "items": {"type": "object"}},
             "next_requirement_id": {"anyOf": [{"type": "string"}, {"type": "null"}]},
             "reason_code": {"type": "string", "enum": sorted(REASON_CODES)},
         },
@@ -77,6 +81,7 @@ ENGAGEMENT_RESPONSE_SCHEMA = {
             "message",
             "file_document_id",
             "crm_actions",
+            "qualification_updates",
             "next_requirement_id",
             "reason_code",
         ],
@@ -97,6 +102,7 @@ class EngagementDecision:
     model: str
     next_requirement_id: str | None = None
     reason_code: str = ""
+    qualification_updates: list[dict[str, Any]] = field(default_factory=list)
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -110,6 +116,7 @@ class EngagementDecision:
             "reason_code": self.reason_code or self.reason,
             "next_requirement_id": self.next_requirement_id,
             "model": self.model,
+            "qualification_updates": self.qualification_updates,
         }
 
 
@@ -244,6 +251,10 @@ class EngagementService:
             qualification_state = direct["state"]
             direct_next = direct.get("next_requirement")
             if (
+                not profile.get("communication", {}).get("custom_instructions")
+                and not profile.get("communication", {}).get("languages")
+                and not (context.pipeline or {}).get("attribute_definitions")
+                and
                 direct.get("changed")
                 and direct.get("answer_status") == REQUIREMENT_ANSWERED
                 and qualification_state.get("engagement_mode") == MODE_QUALIFICATION
@@ -283,6 +294,7 @@ class EngagementService:
 
         source_message_id = self._latest_inbound_message_id(context=context)
         claim = None
+        result_key = f"shvya:ai:decision:{organization.id}:{lead.id}:{source_message_id}"
         if source_message_id:
             try:
                 claim = EngagementGenerationLock(
@@ -290,15 +302,12 @@ class EngagementService:
                     source_message_id=source_message_id,
                 )
                 if not claim.acquire():
-                    return EngagementDecision(
-                        should_engage=False,
-                        message="",
-                        file_document_id=None,
-                        crm_actions=[],
-                        reason="NO_ACTION",
-                        reason_code="NO_ACTION",
-                        model="",
-                    )
+                    saved = cache.get(result_key)
+                    if isinstance(saved, dict):
+                        return EngagementDecision(**saved)
+                    # Another worker is generating, or died before caching its
+                    # result. Retry; never turn contention into permanent silence.
+                    raise AIProviderTransientError("Engagement generation is already in progress.")
             except EngagementLockError:
                 claim = None
 
@@ -344,6 +353,17 @@ class EngagementService:
                     original_error=first_error,
                 )
 
+            # Understand free-form answers in the same call as the reply. Only
+            # source-backed answers can advance the application-selected question.
+            try:
+                projected = project_answer_updates(
+                    state=qualification_state, requirements=requirements,
+                    updates=decision.qualification_updates,
+                    messages=(context.conversation or {}).get("messages", []),
+                )
+            except ValueError as exc:
+                raise EngagementError(str(exc)) from exc
+            next_item = next_requirement(requirements, projected["requirement_states"])
             # The model cannot choose an arbitrary qualification requirement.
             if decision.next_requirement_id:
                 allowed_next_id = str(next_item.get("id")) if next_item else ""
@@ -352,6 +372,8 @@ class EngagementService:
                         "AI selected a qualification requirement other than NEXT_REQUIREMENT."
                     )
 
+            if source_message_id:
+                cache.set(result_key, decision.as_dict(), timeout=180)
             success = True
             return decision
         finally:
@@ -382,7 +404,7 @@ class EngagementService:
         repair_instructions = """
 Repair a malformed SHVYA engagement JSON result.
 Return ONLY one valid JSON object with exactly these keys:
-should_engage, message, file_document_id, crm_actions, next_requirement_id,
+should_engage, message, file_document_id, crm_actions, qualification_updates, next_requirement_id,
 reason_code.
 Allowed reason_code values: ANSWER_ORG_QUESTION, QUALIFICATION_NEXT,
 QUALIFICATION_CLARIFY, NORMAL_CONVERSATION, HUMAN_HANDOFF, OPT_OUT,
@@ -615,7 +637,7 @@ new actions, explanations, markdown, or chain-of-thought.
         ):
             raise EngagementError("file_document_id must be a positive integer or null.")
 
-        if schema_version == "v2":
+        if schema_version in {"v2", "v3"}:
             reason_code = str(payload["reason_code"] or "").strip().upper()
             if reason_code not in REASON_CODES:
                 raise EngagementError("reason_code is not allowed.")
@@ -648,6 +670,7 @@ new actions, explanations, markdown, or chain-of-thought.
             reason_code=reason_code,
             next_requirement_id=next_requirement_id,
             model=result.model,
+            qualification_updates=payload.get("qualification_updates", []),
         )
 
     def _parse_json(self, raw_text: str) -> dict[str, Any]:
@@ -679,6 +702,8 @@ new actions, explanations, markdown, or chain-of-thought.
             "reason_code",
         }
         keys = set(payload.keys())
+        if keys == current | {"qualification_updates"}:
+            return "v3"
         if keys == current:
             return "v2"
         if keys == legacy:
