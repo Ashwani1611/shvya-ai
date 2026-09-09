@@ -116,7 +116,36 @@ def send_whatsapp_message_task(self, message_id):
                 }
 
             # ------------------------------------------------
-            # SEND TO META
+            # HOSTED AI TRANSPORT ISOLATION
+            # ------------------------------------------------
+            # Hosted AI creates the same durable WhatsAppMessage row, but its
+            # delivery is owned by HostedAutomationJob. Suppress only the AI
+            # finalizer's canonical sender call. Hosted agent/manual messages
+            # must keep flowing through the provider-aware canonical task.
+
+            payload = (
+                message.raw_payload
+                if isinstance(message.raw_payload, dict)
+                else {}
+            )
+            if (
+                message.account.connection_type == "hosted"
+                and payload.get("shvya_ai")
+            ):
+                logger.info(
+                    "send_whatsapp_message_task: "
+                    "message %s is Hosted AI; leaving delivery to "
+                    "Hosted automation",
+                    message_id,
+                )
+                return {
+                    "status": "skipped",
+                    "reason": "hosted_ai_transport_managed_separately",
+                    "message_id": str(message_id),
+                }
+
+            # ------------------------------------------------
+            # SEND TO META / PROVIDER-AWARE HOSTED TRANSPORT
             # ------------------------------------------------
 
             send_outbound_message(

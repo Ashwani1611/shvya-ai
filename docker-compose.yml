@@ -163,6 +163,80 @@ services:
       - info
 
 
+  ai_realtime_worker:
+    build: .
+    restart: unless-stopped
+
+    # Customer-facing WhatsApp API AI replies get their own Celery lane so
+    # summaries, knowledge ingestion, follow-ups, and other background tasks
+    # cannot create head-of-line delays for engagement.
+    env_file:
+      - .env
+
+    environment:
+      DB_HOST: db
+      REDIS_URL: redis://redis:6379/0
+
+    volumes:
+      - media_volume:/app/media
+
+    depends_on:
+      db:
+        condition: service_healthy
+
+      redis:
+        condition: service_healthy
+
+    command:
+      - celery
+      - -A
+      - config
+      - worker
+      - -l
+      - info
+      - -Q
+      - ai_realtime
+      - --concurrency=2
+      - --prefetch-multiplier=1
+
+
+  hosted_ai_worker:
+    build: .
+    restart: unless-stopped
+
+    # Hosted Account AI keeps its durable delayed DB queue, but due-time wakes
+    # and actual AI processing run independently of the general worker so a
+    # background backlog cannot leave queued Hosted engagement stranded.
+    env_file:
+      - .env
+
+    environment:
+      DB_HOST: db
+      REDIS_URL: redis://redis:6379/0
+
+    volumes:
+      - media_volume:/app/media
+
+    depends_on:
+      db:
+        condition: service_healthy
+
+      redis:
+        condition: service_healthy
+
+    command:
+      - celery
+      - -A
+      - config
+      - worker
+      - -l
+      - info
+      - -Q
+      - hosted_ai
+      - --concurrency=1
+      - --prefetch-multiplier=1
+
+
   beat:
     build: .
     restart: unless-stopped

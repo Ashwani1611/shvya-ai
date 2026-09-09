@@ -15,10 +15,28 @@ app.config_from_object(
 
 app.autodiscover_tasks()
 
-# Central Beat schedule for recurring background work. Hosted WhatsApp
-# automation is intentionally evaluated every 10 seconds. The dispatcher
-# processes one prioritized lane at a time and the service layer provides
-# durable account/lead throttling so queued work cannot fan out in a burst.
+# Customer-facing WhatsApp AI must not wait behind conversation summaries,
+# ingestion, follow-ups, or other long-running default-queue work. Meta API
+# engagement and its final single-message delivery share the realtime lane;
+# Hosted Account AI keeps its own isolated production lane.
+app.conf.task_routes = {
+    "ai.generate_ai_engagement_response": {
+        "queue": "ai_realtime",
+    },
+    "apps.channels.tasks.send_whatsapp_message_task": {
+        "queue": "ai_realtime",
+    },
+    "hosted.dispatch_due_ai": {
+        "queue": "hosted_ai",
+    },
+    "apps.hosted_automation.tasks.process_hosted_ai_engagement_job_task": {
+        "queue": "hosted_ai",
+    },
+}
+
+# Central Beat schedule for recurring background work. Each Hosted AI job
+# self-schedules a due-time wake-up, and the dedicated 10-second recovery scan
+# catches jobs created before deployment or any wake-up that was missed.
 app.conf.beat_schedule = {
     "dispatch-smart-triggers-every-10-seconds": {
         "task": "apps.triggers.tasks.dispatch_smart_triggers",
@@ -31,6 +49,10 @@ app.conf.beat_schedule = {
     },
     "dispatch-auto-followups-every-10-seconds": {
         "task": "apps.followups.tasks.dispatch_auto_followups_task",
+        "schedule": 10.0,
+    },
+    "dispatch-hosted-ai-recovery-every-10-seconds": {
+        "task": "hosted.dispatch_due_ai",
         "schedule": 10.0,
     },
     "dispatch-ai-bump-ups-every-minute": {
