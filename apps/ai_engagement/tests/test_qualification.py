@@ -1,6 +1,10 @@
 from __future__ import annotations
 
 from unittest.mock import patch
+import json
+from datetime import timedelta
+from apps.ai_engagement.services.qualification import QualificationError
+from apps.ai_engagement.services.internal_summary import InternalSummaryService
 
 from django.test import TestCase
 
@@ -161,408 +165,59 @@ class QualificationServiceTests(TestCase):
             )
         )
 
-    # ========================================================
-    # CONTEXT
-    # ========================================================
-
-    def test_provider_input_includes_qualification_requirements(
-        self,
-    ):
-        """
-        Organization qualification requirements must be included
-        in the provider input.
-        """
-
-        lead = self.create_lead(
-            "+919876543240"
-        )
-
-        self.create_message(
-            lead=lead,
-            external_id="qualification-input-001",
-            body=(
-                "I want Security+ and prefer "
-                "weekend batches."
-            ),
-        )
-
+    def setup_answer(self):
+        OrgInfo.objects.filter(organization=self.organization).update(qualification_requirements="Which course?")
+        lead = self.create_lead("+919876543240")
+        self.create_message(lead=lead, external_id="question", body="Which course?", direction="outbound")
+        answer = self.create_message(lead=lead, external_id="answer", body="Security+")
         service = QualificationService()
+        source = json.loads(service.build_provider_input(organization=self.organization, lead=lead))
+        evidence = {"answers": [{"requirement_id": source["requirements"][0]["id"],
+                     "message_id": str(answer.id), "question_quote": "Which course?", "quote": "Security+"}]}
+        return lead, service, evidence
+
+    @patch("apps.ai_engagement.services.qualification.OpenAIProvider")
+    def test_only_evidenced_answers_are_saved_and_deduplicated(self, provider):
+        lead, service, evidence = self.setup_answer()
+        provider.return_value.generate_text.return_value = AITextResult(text=json.dumps(evidence), model="test")
+        note = service.generate_and_append(organization=self.organization, lead=lead)
+        self.assertIn("Security+", note.note)
+        self.assertLessEqual(len(note.note), 500)
+        self.assertIsNone(service.generate_and_append(organization=self.organization, lead=lead))
+
+    @patch("apps.ai_engagement.services.qualification.OpenAIProvider")
+    def test_invented_answer_is_rejected(self, provider):
+        lead, service, evidence = self.setup_answer()
+        evidence["answers"][0]["quote"] = "Unlimited budget"
+        provider.return_value.generate_text.return_value = AITextResult(text=json.dumps(evidence), model="test")
+        with self.assertRaises(QualificationError):
+            service.generate_and_append(organization=self.organization, lead=lead)
+        self.assertIsNone(service.get_current_ai_note(lead=lead))
+
+    def test_input_excludes_old_chats_and_unrelated_summary(self):
+        lead, service, _ = self.setup_answer()
+        self.create_conversation_summary(lead=lead, summary="Invented old qualification")
+        old = self.create_message(lead=lead, external_id="old", body="Old chat must not leak")
+        WhatsAppMessage.objects.filter(pk=old.pk).update(created_at=lead.created_at - timedelta(days=1))
+        payload = service.build_provider_input(organization=self.organization, lead=lead)
+        self.assertNotIn("Invented old qualification", payload)
+        self.assertNotIn("Old chat must not leak", payload)
+        self.assertIn("Security+", payload)
+
+    def test_note_updates_stay_bounded(self):
+        lead, service, _ = self.setup_answer()
+        note = service.append_summary(lead=lead, summary="a" * 600, model="test")
+        self.assertLessEqual(len(note.note), 500)
+        for index in range(10):
+            note = service.append_summary(lead=lead, summary=f"Update {index} " + "b" * 200, model="test")
+            self.assertLessEqual(len(note.note), 500)
+        self.assertIn("Update 9", note.note)
+
+    def test_lead_creation_message_is_included_even_with_earlier_event_time(self):
+        lead, _, _ = self.setup_answer()
+        trigger = self.create_message(lead=lead, external_id="trigger", body="Create my lead")
+        WhatsAppMessage.objects.filter(pk=trigger.pk).update(
+            created_at=lead.created_at - timedelta(seconds=1), raw_payload={"leadCreationMessage": True})
+        messages = InternalSummaryService().get_messages(organization=self.organization, lead=lead)
+        self.assertIn(trigger.id, [m.id for m in messages])
 
-        provider_input = (
-            service.build_provider_input(
-                organization=self.organization,
-                lead=lead,
-            )
-        )
-
-        self.assertIn(
-            "preferred course",
-            provider_input,
-        )
-
-        self.assertIn(
-            "preferred batch timing",
-            provider_input,
-        )
-
-        self.assertIn(
-            "I want Security+",
-            provider_input,
-        )
-
-    # ========================================================
-    # CONVERSATION SUMMARY REFERENCE
-    # ========================================================
-
-    def test_provider_input_includes_conversation_summary(
-        self,
-    ):
-        """
-        The current Conversation Summary must be supplied to
-        Qualification AI as supporting context.
-        """
-
-        lead = self.create_lead(
-            "+919876543241"
-        )
-
-        self.create_message(
-            lead=lead,
-            external_id="qualification-summary-001",
-            body=(
-                "I manage around 20 leads a day and "
-                "need help automating WhatsApp follow-up."
-            ),
-        )
-
-        self.create_conversation_summary(
-            lead=lead,
-            summary=(
-                "Lead manages approximately 20 leads daily "
-                "and is interested in WhatsApp follow-up "
-                "automation."
-            ),
-        )
-
-        service = QualificationService()
-
-        provider_input = (
-            service.build_provider_input(
-                organization=self.organization,
-                lead=lead,
-            )
-        )
-
-        self.assertIn(
-            "CURRENT CONVERSATION SUMMARY",
-            provider_input,
-        )
-
-        self.assertIn(
-            "Lead manages approximately 20 leads daily",
-            provider_input,
-        )
-
-        self.assertIn(
-            "ACTUAL CONVERSATION",
-            provider_input,
-        )
-
-        self.assertIn(
-            "I manage around 20 leads a day",
-            provider_input,
-        )
-
-    # ========================================================
-    # INITIAL SYSTEM NOTE
-    # ========================================================
-
-    @patch(
-        "apps.ai_engagement.services.qualification."
-        "OpenAIProvider"
-    )
-    def test_generate_and_append_creates_initial_system_note(
-        self,
-        mocked_provider,
-    ):
-        """
-        The first qualification result creates one cumulative
-        AI system note.
-        """
-
-        lead = self.create_lead(
-            "+919876543242"
-        )
-
-        self.create_message(
-            lead=lead,
-            external_id="qualification-note-001",
-            body=(
-                "I am interested in Security+ "
-                "and need a weekend batch."
-            ),
-        )
-
-        mocked_provider.return_value.generate_text.return_value = (
-            AITextResult(
-                text=(
-                    "Lead is interested in Security+ and "
-                    "prefers a weekend batch. Main training "
-                    "goal is not yet fully confirmed."
-                ),
-                model="gpt-4.1-nano",
-            )
-        )
-
-        service = QualificationService()
-
-        note = service.generate_and_append(
-            organization=self.organization,
-            lead=lead,
-        )
-
-        self.assertIsNotNone(
-            note
-        )
-
-        note.refresh_from_db()
-
-        self.assertEqual(
-            note.note_type,
-            "system",
-        )
-
-        self.assertIn(
-            "<AI Qualification Summary - ",
-            note.note,
-        )
-
-        self.assertIn(
-            "Lead is interested in Security+",
-            note.note,
-        )
-
-        self.assertNotIn(
-            "***** Updated Summary",
-            note.note,
-        )
-
-        mocked_provider.return_value.generate_text.assert_called_once()
-
-    # ========================================================
-    # IDENTICAL RESULT
-    # ========================================================
-
-    @patch(
-        "apps.ai_engagement.services.qualification."
-        "OpenAIProvider"
-    )
-    def test_identical_summary_is_not_appended_again(
-        self,
-        mocked_provider,
-    ):
-        """
-        An identical qualification result must not create a
-        duplicate Updated Summary entry.
-        """
-
-        lead = self.create_lead(
-            "+919876543243"
-        )
-
-        self.create_message(
-            lead=lead,
-            external_id="qualification-note-002",
-            body=(
-                "I want Security+ on weekends."
-            ),
-        )
-
-        qualification_text = (
-            "Lead is interested in Security+ and "
-            "prefers a weekend batch."
-        )
-
-        mocked_provider.return_value.generate_text.return_value = (
-            AITextResult(
-                text=qualification_text,
-                model="gpt-4.1-nano",
-            )
-        )
-
-        service = QualificationService()
-
-        first_note = (
-            service.generate_and_append(
-                organization=self.organization,
-                lead=lead,
-            )
-        )
-
-        second_note = (
-            service.generate_and_append(
-                organization=self.organization,
-                lead=lead,
-            )
-        )
-
-        self.assertIsNotNone(
-            first_note
-        )
-
-        self.assertIsNone(
-            second_note
-        )
-
-        first_note.refresh_from_db()
-
-        self.assertEqual(
-            first_note.note.count(
-                "***** Updated Summary"
-            ),
-            0,
-        )
-
-        self.assertEqual(
-            first_note.note.count(
-                qualification_text
-            ),
-            1,
-        )
-
-        self.assertEqual(
-            mocked_provider.return_value.generate_text.call_count,
-            2,
-        )
-
-    # ========================================================
-    # CHANGED RESULT
-    # ========================================================
-
-    @patch(
-        "apps.ai_engagement.services.qualification."
-        "OpenAIProvider"
-    )
-    def test_changed_summary_appends_updated_summary(
-        self,
-        mocked_provider,
-    ):
-        """
-        A materially different qualification result must be
-        appended to the existing AI system note.
-        """
-
-        lead = self.create_lead(
-            "+919876543244"
-        )
-
-        self.create_message(
-            lead=lead,
-            external_id="qualification-note-003",
-            body=(
-                "I am considering Security+."
-            ),
-        )
-
-        first_summary = (
-            "Lead is considering Security+."
-        )
-
-        mocked_provider.return_value.generate_text.return_value = (
-            AITextResult(
-                text=first_summary,
-                model="gpt-4.1-nano",
-            )
-        )
-
-        service = QualificationService()
-
-        note = service.generate_and_append(
-            organization=self.organization,
-            lead=lead,
-        )
-
-        self.assertIsNotNone(
-            note
-        )
-
-        second_summary = (
-            "Lead has confirmed Security+ as the "
-            "preferred course and wants a weekend batch."
-        )
-
-        mocked_provider.return_value.generate_text.return_value = (
-            AITextResult(
-                text=second_summary,
-                model="gpt-4.1-nano",
-            )
-        )
-
-        updated_note = (
-            service.generate_and_append(
-                organization=self.organization,
-                lead=lead,
-            )
-        )
-
-        self.assertIsNotNone(
-            updated_note
-        )
-
-        updated_note.refresh_from_db()
-
-        self.assertEqual(
-            updated_note.note.count(
-                "***** Updated Summary"
-            ),
-            1,
-        )
-
-        self.assertIn(
-            first_summary,
-            updated_note.note,
-        )
-
-        self.assertIn(
-            second_summary,
-            updated_note.note,
-        )
-
-    # ========================================================
-    # LATEST SUMMARY EXTRACTION
-    # ========================================================
-
-    def test_extract_latest_summary_from_history(
-        self,
-    ):
-        """
-        The service should correctly identify the most recent
-        qualification result from cumulative note history.
-        """
-
-        service = QualificationService()
-
-        note_text = (
-            "<AI Qualification Summary - "
-            "01 Sep 2026, 11:30 AM>\n"
-            "Lead is considering Security+.\n\n"
-            "***** Updated Summary 01/09 11:45 *****\n\n"
-            "Lead confirmed Security+ and wants weekends.\n\n"
-            "***** Updated Summary 01/09 12:05 *****\n\n"
-            "Lead confirmed Security+ and requested a "
-            "weekend batch."
-        )
-
-        latest = (
-            service._extract_latest_summary(
-                note_text
-            )
-        )
-
-        self.assertEqual(
-            latest,
-            (
-                "Lead confirmed Security+ and requested a "
-                "weekend batch."
-            ),
-        )

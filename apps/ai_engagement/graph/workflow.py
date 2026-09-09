@@ -8,6 +8,7 @@ from typing import Literal
 
 from langgraph.graph import END, START, StateGraph
 
+from apps.ai_engagement.graph.evidence import check_grounding, select_chunks
 from apps.ai_engagement.graph.policy_actions import build_controlled_actions
 from apps.ai_engagement.graph.runtime_policy import get_runtime_policy
 from apps.ai_engagement.graph.state import EngagementGraphState
@@ -169,7 +170,9 @@ def _route_turn(state: EngagementGraphState) -> dict:
         }
 
     if state.get("caller_supplied_context"):
-        return {"route": "generate"}
+        context = state["context"]
+        return {"route": "generate", "context": replace(context, knowledge=select_chunks(
+            context.knowledge, threshold=_min_rag_similarity(), limit=state["service"].KNOWLEDGE_LIMIT))}
 
     requested = str(state.get("requested_knowledge_query") or "").strip()
     service = state["service"]
@@ -208,12 +211,8 @@ def _retrieve_knowledge(state: EngagementGraphState) -> dict:
 
     before = len(context.knowledge or [])
     threshold = _min_rag_similarity()
-    filtered = [
-        chunk
-        for chunk in (context.knowledge or [])
-        if float(chunk.get("similarity") or -1.0) >= threshold
-    ]
-    context = replace(context, knowledge=filtered)
+    filtered = select_chunks(context.knowledge, threshold=threshold, limit=service.KNOWLEDGE_LIMIT)
+    context = replace(state["context"], knowledge=filtered)
 
     # AI-Guided File Sharing reuses the exact RAG pass instead of spending a
     # second embedding/model call. Only authorized files represented by the
@@ -349,6 +348,7 @@ def build_engagement_graph():
     builder.add_node("generate", _generate)
     builder.add_node("direct", _use_direct_decision)
     builder.add_node("validate", _validate_decision)
+    builder.add_node("grounding", check_grounding)
 
     builder.add_edge(START, "prepare")
     builder.add_edge("prepare", "deterministic_extract")
@@ -365,7 +365,8 @@ def build_engagement_graph():
     builder.add_edge("retrieve_knowledge", "generate")
     builder.add_edge("generate", "validate")
     builder.add_edge("direct", "validate")
-    builder.add_edge("validate", END)
+    builder.add_edge("validate", "grounding")
+    builder.add_edge("grounding", END)
     return builder.compile()
 
 
@@ -392,3 +393,4 @@ def run_engagement_graph(
         }
     )
     return final["decision"]
+

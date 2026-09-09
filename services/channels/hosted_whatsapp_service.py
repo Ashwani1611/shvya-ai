@@ -445,6 +445,7 @@ def _persist_gateway_message(*, account, payload, historical=False):
     to_number = peer if is_outbound else account_number
 
     lead = None
+    _created = False
     if not is_group and peer:
         lead = Lead.objects.filter(
             organization=account.organization,
@@ -508,6 +509,7 @@ def _persist_gateway_message(*, account, payload, historical=False):
             **payload,
             "isHistory": bool(historical),
             "ignoredExistingChat": ignored_existing_chat,
+            "leadCreationMessage": bool(_created),
         },
         "is_read": True if is_outbound or historical else False,
     }
@@ -704,3 +706,4 @@ def queued_messages(*, account):
         direction=WhatsAppMessage.Direction.OUTBOUND,
         status=WhatsAppMessage.Status.QUEUED,
     ).select_related("lead").order_by("created_at")
+

@@ -36,3 +36,6 @@ class EngagementGraphState(TypedDict, total=False):
     direct_decision: Any
     decision: Any
     validation_errors: list[str]
+
+    grounding_approved: bool
+
