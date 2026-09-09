@@ -11,3 +11,8 @@ from apps.superadmin.ai_credit_views import (
     ai_credit_overview_view,
     organization_ai_credit_view,
 )
+from apps.superadmin.workspace_views import (
+    organization_notes_update_view,
+    organization_tags_update_view,
+    organization_user_reset_password_view,
+)
