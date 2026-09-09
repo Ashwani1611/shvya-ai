@@ -1,152 +1,129 @@
+{% load static %}
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
-
     <meta charset="UTF-8">
-
-    <meta
-        name="viewport"
-        content="width=device-width, initial-scale=1.0"
-    >
-
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#0b1020">
     <title>SHVYA Superadmin Login</title>
 
     <script src="https://cdn.tailwindcss.com"></script>
-
+    <link rel="stylesheet" href="{% static 'superadmin/superadmin.css' %}">
 </head>
 
-
-<body class="min-h-screen bg-gray-100 flex items-center justify-center">
-
-
-    <div class="w-full max-w-md px-6">
-
-
-        <div class="bg-white border border-gray-200 rounded-xl shadow-sm p-8">
-
-
-            <!-- Header -->
-
-            <div class="text-center mb-8">
-
-                <div
-                    class="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-indigo-600 text-white font-bold text-lg"
-                >
-                    S
+<body class="sa-login-body">
+    <main class="sa-login-shell">
+        <section class="sa-login-brand-panel" aria-label="SHVYA AI Superadmin">
+            <div class="sa-login-brand">
+                <div class="sa-brand-mark" aria-hidden="true">S</div>
+                <div>
+                    <div class="text-sm font-bold tracking-tight">SHVYA AI</div>
+                    <div class="mt-0.5 text-[10px] text-gray-400">Superadmin Console</div>
                 </div>
-
-                <h1 class="text-2xl font-semibold text-gray-900">
-                    SHVYA Superadmin
-                </h1>
-
-                <p class="mt-2 text-sm text-gray-500">
-                    Sign in to access the Superadmin Console
-                </p>
-
             </div>
 
-
-            <!-- Error -->
-
-            {% if error %}
-
-                <div
-                    class="mb-5 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
-                >
-                    {{ error }}
+            <div class="sa-login-copy">
+                <div class="sa-login-eyebrow">
+                    <span class="sa-live-dot" aria-hidden="true"></span>
+                    Operations workspace
                 </div>
-
-            {% endif %}
-
-
-            <!-- Login Form -->
-
-            <form
-                method="post"
-                action=""
-                class="space-y-5"
-            >
-
-                {% csrf_token %}
-
-
-                <!-- Email -->
-
-                <div>
-
-                    <label
-                        for="email"
-                        class="block text-sm font-medium text-gray-700 mb-1"
-                    >
-                        Email
-                    </label>
-
-                    <input
-                        id="email"
-                        name="username"
-                        type="email"
-                        autocomplete="username"
-                        required
-                        autofocus
-                        class="w-full rounded-md border border-gray-300 px-3 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-                        placeholder="Enter Superadmin email"
-                    >
-
-                </div>
-
-
-                <!-- Password -->
-
-                <div>
-
-                    <label
-                        for="password"
-                        class="block text-sm font-medium text-gray-700 mb-1"
-                    >
-                        Password
-                    </label>
-
-                    <input
-                        id="password"
-                        name="password"
-                        type="password"
-                        autocomplete="current-password"
-                        required
-                        class="w-full rounded-md border border-gray-300 px-3 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-                        placeholder="Enter password"
-                    >
-
-                </div>
-
-
-                <!-- Submit -->
-
-                <button
-                    type="submit"
-                    class="w-full rounded-md bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
-                >
-                    Sign In
-                </button>
-
-            </form>
-
-
-            <div class="mt-6 text-center">
-
-                <p class="text-xs text-gray-400">
-                    SHVYA Superadmin Console
+                <h1 class="sa-login-heading">Run your client operations from one focused console.</h1>
+                <p class="sa-login-description">
+                    Manage organizations, review AI credit health, and handle workspace administration through a dedicated secure Superadmin experience.
                 </p>
 
+                <div class="sa-login-features" aria-label="Console features">
+                    <span class="sa-login-feature">Organization management</span>
+                    <span class="sa-login-feature">AI credit controls</span>
+                    <span class="sa-login-feature">Workspace operations</span>
+                </div>
             </div>
 
+            <div class="sa-login-footnote">SHVYA AI · Authorized administrators only</div>
+        </section>
 
-        </div>
+        <section class="sa-login-form-panel">
+            <div class="sa-login-card">
+                <div class="mb-7">
+                    <div class="mb-5 grid h-11 w-11 place-items-center rounded-xl border border-indigo-100 bg-indigo-50 text-indigo-600 lg:hidden">
+                        <span class="text-sm font-extrabold">S</span>
+                    </div>
+                    <h2 class="sa-login-title">Welcome back</h2>
+                    <p class="sa-login-subtitle">Sign in with your Superadmin credentials to continue.</p>
+                </div>
 
+                {% if form.non_field_errors %}
+                    <div class="sa-alert sa-alert--error mb-5" role="alert">
+                        <div>
+                            {% for error in form.non_field_errors %}
+                                <div>{{ error }}</div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                {% elif error %}
+                    <div class="sa-alert sa-alert--error mb-5" role="alert">{{ error }}</div>
+                {% endif %}
 
-    </div>
+                <form method="post" action="" class="space-y-5">
+                    {% csrf_token %}
+                    {% if next %}
+                        <input type="hidden" name="next" value="{{ next }}">
+                    {% endif %}
 
+                    <div>
+                        <label for="email" class="mb-1.5 block">Email address</label>
+                        <input
+                            id="email"
+                            name="username"
+                            type="email"
+                            autocomplete="username"
+                            required
+                            autofocus
+                            value="{{ form.username.value|default:'' }}"
+                            class="sa-login-input"
+                            placeholder="admin@company.com"
+                        >
+                        {% if form.username.errors %}
+                            {% for field_error in form.username.errors %}
+                                <p class="mt-1.5 text-[10px] text-red-600">{{ field_error }}</p>
+                            {% endfor %}
+                        {% endif %}
+                    </div>
 
+                    <div>
+                        <div class="mb-1.5 flex items-center justify-between gap-3">
+                            <label for="password">Password</label>
+                            <span class="text-[10px] text-gray-400">Superadmin only</span>
+                        </div>
+                        <input
+                            id="password"
+                            name="password"
+                            type="password"
+                            autocomplete="current-password"
+                            required
+                            class="sa-login-input"
+                            placeholder="Enter your password"
+                        >
+                        {% if form.password.errors %}
+                            {% for field_error in form.password.errors %}
+                                <p class="mt-1.5 text-[10px] text-red-600">{{ field_error }}</p>
+                            {% endfor %}
+                        {% endif %}
+                    </div>
+
+                    <button type="submit" class="sa-login-submit">
+                        Sign in to console
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                            <path d="M5 12h14m-5-5 5 5-5 5" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                    </button>
+                </form>
+
+                <div class="mt-6 border-t border-gray-100 pt-5 text-center text-[10px] leading-5 text-gray-400">
+                    Access is restricted to authorized SHVYA AI Superadmin users.
+                </div>
+            </div>
+        </section>
+    </main>
 </body>
-
 </html>
