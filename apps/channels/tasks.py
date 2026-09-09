@@ -116,6 +116,27 @@ def send_whatsapp_message_task(self, message_id):
                 }
 
             # ------------------------------------------------
+            # HOSTED TRANSPORT ISOLATION
+            # ------------------------------------------------
+            # Hosted AI creates the same durable WhatsAppMessage row, but
+            # delivery is owned by the Hosted automation job/gateway. The
+            # shared AI finalizer also schedules this task, so fail closed
+            # here instead of racing the Hosted sender through Meta.
+
+            if message.account.connection_type == "hosted":
+                logger.info(
+                    "send_whatsapp_message_task: "
+                    "message %s belongs to Hosted Account; "
+                    "leaving delivery to Hosted automation",
+                    message_id,
+                )
+                return {
+                    "status": "skipped",
+                    "reason": "hosted_transport_managed_separately",
+                    "message_id": str(message_id),
+                }
+
+            # ------------------------------------------------
             # SEND TO META
             # ------------------------------------------------
 
@@ -424,6 +445,8 @@ def send_bulk_campaign_task(
         )
     )(
         finalize_bulk_campaign_task.s(
-            str(campaign.id)
+            str(
+                campaign.id
+            )
         )
     )
