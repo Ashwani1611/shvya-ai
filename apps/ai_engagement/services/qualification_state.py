@@ -93,7 +93,8 @@ def _qualified_stage(lead):
 
 
 def _raw_state(lead) -> dict:
-    attributes = lead.attributes if isinstance(lead.attributes, dict) else {}
+    raw_attributes = getattr(lead, "attributes", {})
+    attributes = raw_attributes if isinstance(raw_attributes, dict) else {}
     state = attributes.get(QUALIFICATION_STATE_KEY)
     if not isinstance(state, dict):
         state = {}
@@ -201,7 +202,9 @@ def state_for_lead(lead, requirements=None) -> dict:
     state = _raw_state(lead)
     status = _status(state.get("qualification_status"))
     result = _result(state.get("qualification_result"))
-    stage_name = normalize_stage_name(getattr(getattr(lead, "stage", None), "name", ""))
+    stage_name = normalize_stage_name(
+        getattr(getattr(lead, "stage", None), "name", "")
+    )
     qualified_stage = _qualified_stage(lead)
     requirement_states = _normalized_requirement_states(state, requirements)
     missing = _missing_ids(requirements, requirement_states)
@@ -243,7 +246,8 @@ def state_for_lead(lead, requirements=None) -> dict:
 
 
 def attributes_with_state(lead, state: dict) -> dict:
-    attributes = deepcopy(lead.attributes) if isinstance(lead.attributes, dict) else {}
+    raw_attributes = getattr(lead, "attributes", {})
+    attributes = deepcopy(raw_attributes) if isinstance(raw_attributes, dict) else {}
     attributes[QUALIFICATION_STATE_KEY] = deepcopy(state)
     return attributes
 
@@ -259,7 +263,9 @@ def ensure_state(lead, requirements=None) -> dict:
     """Persist normalized state when it is missing or stale."""
     state = state_for_lead(lead, requirements=requirements)
     attributes = attributes_with_state(lead, state)
-    if attributes != (lead.attributes or {}):
+    raw_attributes = getattr(lead, "attributes", {})
+    current_attributes = raw_attributes if isinstance(raw_attributes, dict) else {}
+    if attributes != current_attributes:
         lead.__class__.objects.filter(pk=lead.pk).update(attributes=attributes)
         lead.attributes = attributes
     return state
@@ -293,7 +299,9 @@ def state_after_stage_change(*, lead, old_stage_name: str, new_stage_name: str) 
 def mark_in_progress(lead) -> dict:
     """Mark the first customer-facing qualification exchange as started."""
     state = state_for_lead(lead)
-    stage_name = normalize_stage_name(getattr(getattr(lead, "stage", None), "name", ""))
+    stage_name = normalize_stage_name(
+        getattr(getattr(lead, "stage", None), "name", "")
+    )
 
     if (
         stage_name == NEW_LEAD_STAGE
@@ -306,12 +314,17 @@ def mark_in_progress(lead) -> dict:
     return state
 
 
-def record_last_asked_requirement(lead, requirement_id: str | None) -> dict:
+def record_last_asked_requirement(
+    lead,
+    requirement_id: str | None,
+    *,
+    requirements=None,
+) -> dict:
     """Record which qualification requirement the queued SHVYA reply asked."""
     requirement_id = str(requirement_id or "").strip()
     if not requirement_id:
-        return state_for_lead(lead)
-    state = state_for_lead(lead)
+        return state_for_lead(lead, requirements=requirements)
+    state = state_for_lead(lead, requirements=requirements)
     state["last_asked_requirement_id"] = requirement_id
     if state["qualification_status"] == STATUS_NOT_STARTED:
         state["qualification_status"] = STATUS_IN_PROGRESS
@@ -320,17 +333,50 @@ def record_last_asked_requirement(lead, requirement_id: str | None) -> dict:
 
 def _is_boolean_question(question: str) -> bool:
     normalized = " ".join(str(question or "").strip().casefold().split())
-    return normalized.startswith(_BOOLEAN_QUESTION_PREFIXES) or " whether " in f" {normalized} "
+    return normalized.startswith(_BOOLEAN_QUESTION_PREFIXES) or " whether " in (
+        f" {normalized} "
+    )
+
+
+def _question_has_any(question: str, terms: tuple[str, ...]) -> bool:
+    normalized = " ".join(str(question or "").strip().casefold().split())
+    return any(term in normalized for term in terms)
+
+
+def _looks_like_numeric_value(text: str) -> bool:
+    normalized = str(text or "").strip().casefold()
+    return bool(
+        re.search(r"\d", normalized)
+        and re.fullmatch(
+            r"[\s₹$€£+\-.,:/a-z0-9]*(?:crore|cr|lakh|lac|k|m|million|thousand|years?|months?|days?|weeks?)?[\s₹$€£+\-.,:/a-z0-9]*",
+            normalized,
+        )
+    )
+
+
+def _looks_like_timeline_value(text: str) -> bool:
+    normalized = " ".join(str(text or "").strip().casefold().split())
+    if re.search(r"\b\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?\b", normalized):
+        return True
+    return bool(
+        re.search(
+            r"\b(?:today|tomorrow|tonight|this week|next week|this month|next month|immediately|asap|soon|within\s+\d+\s+(?:day|days|week|weeks|month|months)|\d+\s+(?:day|days|week|weeks|month|months))\b",
+            normalized,
+        )
+    )
 
 
 def _classify_direct_reply(*, text: str, question: str) -> tuple[str, object, str] | None:
-    normalized = " ".join(str(text or "").strip().casefold().split())
+    """Classify only values whose type is unambiguous from the asked question."""
+    raw_text = str(text or "").strip()
+    normalized = " ".join(raw_text.casefold().split())
     if not normalized or len(normalized) > 80 or "?" in normalized:
         return None
     if normalized in _ACK_ONLY:
         return None
     if normalized in _UNCLEAR_ONLY:
-        return (REQUIREMENT_UNCLEAR, str(text or "").strip(), "high")
+        return (REQUIREMENT_UNCLEAR, raw_text, "high")
+
     if normalized in _YES | _NO:
         if not _is_boolean_question(question):
             return None
@@ -340,14 +386,51 @@ def _classify_direct_reply(*, text: str, question: str) -> tuple[str, object, st
             "high",
         )
 
-    # Short explicit values such as "2 crore", "Gurgaon", "next month" or
-    # "3BHK" are safe to bind to the immediately preceding requirement. Long
-    # prose and multi-intent turns continue through the LLM path.
-    if len(normalized.split()) <= 8 and not re.search(
-        r"\b(?:price|pricing|cost|fee|policy|refund|explain|tell me|what|why|how|which)\b",
-        normalized,
+    if _question_has_any(
+        question,
+        (
+            "budget",
+            "price range",
+            "amount",
+            "how much",
+            "age",
+            "quantity",
+            "how many",
+            "count",
+        ),
+    ) and _looks_like_numeric_value(raw_text):
+        return (REQUIREMENT_ANSWERED, raw_text, "high")
+
+    if _question_has_any(
+        question,
+        (
+            "timeline",
+            "when",
+            "date",
+            "time frame",
+            "timeframe",
+            "how soon",
+            "purchase by",
+            "start by",
+        ),
+    ) and _looks_like_timeline_value(raw_text):
+        return (REQUIREMENT_ANSWERED, raw_text, "high")
+
+    if _question_has_any(question, ("email", "e-mail")) and re.fullmatch(
+        r"[^\s@]+@[^\s@]+\.[^\s@]+", raw_text
     ):
-        return (REQUIREMENT_ANSWERED, str(text or "").strip(), "high")
+        return (REQUIREMENT_ANSWERED, raw_text, "high")
+
+    if _question_has_any(
+        question,
+        ("phone", "mobile", "contact number", "whatsapp number"),
+    ):
+        digits = re.sub(r"\D", "", raw_text)
+        if 7 <= len(digits) <= 15:
+            return (REQUIREMENT_ANSWERED, raw_text, "high")
+
+    # Free-form values such as a city, product choice or occupation remain on
+    # the LLM path because matching them safely requires semantic understanding.
     return None
 
 
@@ -381,8 +464,15 @@ def apply_unambiguous_reply(
         return {"changed": False, "state": state, "answer_status": None}
 
     current = state["requirement_states"].get(last_id, _requirement_state({}))
-    if current.get("status") in {REQUIREMENT_ANSWERED, REQUIREMENT_NOT_APPLICABLE}:
-        return {"changed": False, "state": state, "answer_status": current.get("status")}
+    if current.get("status") in {
+        REQUIREMENT_ANSWERED,
+        REQUIREMENT_NOT_APPLICABLE,
+    }:
+        return {
+            "changed": False,
+            "state": state,
+            "answer_status": current.get("status"),
+        }
 
     classified = _classify_direct_reply(
         text=text,
@@ -433,7 +523,9 @@ def reset_state(lead) -> dict:
             "last_asked_requirement_id": None,
         }
     )
-    stage_name = normalize_stage_name(getattr(getattr(lead, "stage", None), "name", ""))
+    stage_name = normalize_stage_name(
+        getattr(getattr(lead, "stage", None), "name", "")
+    )
     state["engagement_mode"] = (
         MODE_QUALIFICATION
         if stage_name == NEW_LEAD_STAGE
