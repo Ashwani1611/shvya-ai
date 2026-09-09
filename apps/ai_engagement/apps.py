@@ -22,6 +22,16 @@ class AiEngagementConfig(AppConfig):
 
         install_fixed_prompt_overrides()
 
+        # LangGraph is the turn-level orchestration authority. It keeps the
+        # existing EngagementService/Celery/WhatsApp contracts stable while
+        # segmenting context, deterministic extraction, routing, RAG,
+        # generation and validation into explicit nodes.
+        from apps.ai_engagement.services.langgraph_orchestration import (
+            install_langgraph_orchestration,
+        )
+
+        install_langgraph_orchestration()
+
         # Preserve existing channel entry points while installing deterministic
         # orchestration policy: short debounce, no generic positive-keyword
         # stage movement, throttled enrichment, and consistent Hosted/Meta AI
