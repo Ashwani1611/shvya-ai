@@ -9,10 +9,10 @@ _INSTALLED = False
 def install_fixed_prompt_overrides() -> None:
     """Attach version-controlled prompt behavior to existing services.
 
-    The service classes keep their public APIs, so existing tasks/views/tests do
-    not need a framework migration. The conversation summary gains the uploaded
-    prompt's rolling-summary contract while remaining backward compatible with
-    legacy plain-prose provider outputs.
+    Existing public service contracts remain stable while internal prompts and
+    compact runtime payloads evolve. Organization values stay available at the
+    legacy payload keys, and the structured AI profile carries only the derived
+    machine-readable pieces so we do not pay twice for the same long free text.
     """
     global _INSTALLED
     if _INSTALLED:
@@ -22,6 +22,7 @@ def install_fixed_prompt_overrides() -> None:
         INTERNAL_CONVERSATION_SUMMARY_INSTRUCTIONS,
         QUALIFICATION_SUMMARY_INSTRUCTIONS,
     )
+    from apps.ai_engagement.services.engagement import EngagementService
     from apps.ai_engagement.services.internal_summary import InternalSummaryService
     from apps.ai_engagement.services.qualification import QualificationService
 
@@ -35,6 +36,7 @@ def install_fixed_prompt_overrides() -> None:
 
     original_build_input = InternalSummaryService.build_provider_input
     original_generate = InternalSummaryService.generate_summary
+    original_engagement_build_input = EngagementService._build_input
 
     def rolling_build_provider_input(self, *, organization, lead, messages):
         base = original_build_input(
@@ -72,11 +74,49 @@ def install_fixed_prompt_overrides() -> None:
                 normalized = payload["summary"].strip()
                 if normalized:
                     text = normalized
-        # Enforce the hard ceiling even if a provider ignores the prompt.
         text = text[:700].strip()
         return text, model
 
+    def organization_compatible_engagement_input(self, *, context, **kwargs):
+        raw = original_engagement_build_input(
+            self,
+            context=context,
+            **kwargs,
+        )
+        payload = json.loads(raw)
+        organization = payload.get("organization")
+        source = context.organization if isinstance(context.organization, dict) else {}
+        if isinstance(organization, dict):
+            for key in (
+                "about",
+                "bot_languages",
+                "qualification_requirements",
+                "engagement_instructions",
+                "bump_up_enabled",
+                "bump_up_count",
+            ):
+                organization[key] = source.get(key)
+
+            # The same free text is now present at the long-standing top-level
+            # keys. Keep only derived/structured values in ai_profile to avoid
+            # duplicating those tokens in every OpenAI request.
+            profile = organization.get("ai_profile")
+            if isinstance(profile, dict):
+                identity = profile.get("identity")
+                if isinstance(identity, dict):
+                    identity.pop("about", None)
+                communication = profile.get("communication")
+                if isinstance(communication, dict):
+                    communication.pop("custom_instructions", None)
+                    communication.pop("languages", None)
+                qualification = profile.get("qualification")
+                if isinstance(qualification, dict):
+                    qualification.pop("raw", None)
+
+        return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+
     InternalSummaryService.build_provider_input = rolling_build_provider_input
     InternalSummaryService.generate_summary = json_aware_generate_summary
+    EngagementService._build_input = organization_compatible_engagement_input
 
     _INSTALLED = True
