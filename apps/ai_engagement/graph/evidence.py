@@ -54,6 +54,11 @@ def check_grounding(state):
     payload = {
         "reply": decision.message,
         "latest_inbound": state.get("latest_text", ""),
+        "inbound_evidence": [
+            {"id": message.get("id"), "body": str(message.get("body") or "")[:1000]}
+            for message in (getattr(context, "conversation", {}) or {}).get("messages", [])[-24:]
+            if isinstance(message, dict) and message.get("direction") == "inbound"
+        ],
         "runtime_policy": state.get("runtime_policy", {}),
         "organization_facts": (context.organization or {}).get("about", ""),
         "knowledge": context.knowledge or [],

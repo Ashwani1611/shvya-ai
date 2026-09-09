@@ -221,3 +221,18 @@ class QualificationServiceTests(TestCase):
         messages = InternalSummaryService().get_messages(organization=self.organization, lead=lead)
         self.assertIn(trigger.id, [m.id for m in messages])
 
+    @patch("apps.ai_engagement.services.internal_summary.OpenAIProvider")
+    def test_rolling_summary_uses_only_new_messages_and_caps_addition(self, provider):
+        lead, _, _ = self.setup_answer()
+        service = InternalSummaryService()
+        provider.return_value.generate_text.return_value = AITextResult(text='{"summary":"Course: Security+."}', model="test")
+        first = service.generate_and_publish(organization=self.organization, lead=lead)
+        self.create_message(lead=lead, external_id="new-answer", body="Weekend classes please")
+        provider.return_value.generate_text.return_value = AITextResult(text=json.dumps({"summary": "x" * 300}), model="test")
+        second = service.generate_and_publish(organization=self.organization, lead=lead)
+        self.assertLessEqual(len(second.summary), 500)
+        self.assertEqual(len(second.summary) - len(first.summary) - 1, 150)
+        payload = provider.return_value.generate_text.call_args.kwargs["input_text"]
+        self.assertNotIn("Which course?", payload)
+        self.assertIn("Weekend classes please", payload)
+

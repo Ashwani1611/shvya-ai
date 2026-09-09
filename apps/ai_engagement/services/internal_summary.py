@@ -7,6 +7,7 @@ from apps.ai_engagement.services.summary_limits import compact
 from apps.ai_engagement.models import InternalConversationSummary
 from apps.ai_engagement.services.ai_provider import (
     AIProviderError,
+    AIProviderTransientError,
     OpenAIProvider,
 )
 from apps.ai_engagement.services.context import (
@@ -123,7 +124,7 @@ Write a concise internal CRM summary in clear prose.
                 lead=lead,
             )
             .filter(Q(created_at__gte=lead.created_at) | Q(raw_payload__leadCreationMessage=True))
-            .exclude(raw_payload__isHistory=True)
+            .filter(Q(raw_payload__isHistory__isnull=True) | Q(raw_payload__isHistory=False))
             .order_by(
                 "-created_at",
                 "-id",
@@ -503,6 +504,8 @@ Write a concise internal CRM summary in clear prose.
                 },
             )
 
+        except AIProviderTransientError:
+            raise
         except AIProviderError as exc:
 
             raise InternalSummaryError(
@@ -744,7 +747,7 @@ Write a concise internal CRM summary in clear prose.
                 prepared["source_last_message_at"]
             ),
             model_name=model_name,
-            generated_by="shvya_ai",
+            generated_by="shvya_ai_scoped_v1",
             created_by=created_by,
         )
 

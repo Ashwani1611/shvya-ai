@@ -42,6 +42,8 @@ def install_fixed_prompt_overrides() -> None:
 
     def rolling_build_provider_input(self, *, organization, lead, messages):
         current = self.get_current_summary(organization=organization, lead=lead)
+        if current and current.generated_by != "shvya_ai_scoped_v1":
+            current = None  # Older summaries may contain pre-lead chat history.
         existing = compact(current.summary) if current else ""
         if current and current.source_last_message_at:
             messages = [m for m in messages if
@@ -67,6 +69,8 @@ def install_fixed_prompt_overrides() -> None:
             except (ValueError, TypeError, KeyError) as exc:
                 raise InternalSummaryError("Invalid summary JSON; nothing published.") from exc
         current = self.get_current_summary(organization=organization, lead=lead)
+        if current and current.generated_by != "shvya_ai_scoped_v1":
+            current = None
         return merge_summary(current.summary if current else "", text), model
 
     def organization_compatible_engagement_input(self, *, context, **kwargs):

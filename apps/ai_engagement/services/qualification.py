@@ -2,11 +2,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import json
+import re
 
 from apps.ai_engagement.services.summary_limits import compact, merge_summary
 
 from django.db import transaction
-from django.utils import timezone
 
 from apps.ai_engagement.services.ai_provider import (
     AIProviderError,
@@ -314,6 +314,13 @@ Do not write a conversation transcript.
                     or not isinstance(question, str) or not question.strip()
                     or question not in ordered[index - 1]["body"]):
                     raise ValueError("Qualification answer lacks its preceding question")
+                normalize_question = lambda value: re.sub(r"\W+", " ", str(value).casefold()).strip()
+                configured_question = normalize_question(requirement.get("question", ""))
+                tracked = (source.get("qualification_state", {}).get("requirement_states", {})
+                           .get(requirement_id, {}))
+                if not (configured_question and configured_question in normalize_question(question)):
+                    if str(tracked.get("source_message_id") or "") != message["id"]:
+                        raise ValueError("Question is not bound to the configured requirement")
                 if requirement_id not in seen:
                     rendered.append(f"{requirement.get('label') or requirement['question']}: {quote.strip()}")
                     seen.add(requirement_id)
@@ -584,22 +591,13 @@ Do not write a conversation transcript.
 
             return None
 
-        now = timezone.localtime(
-            timezone.now()
-        )
-
         # ----------------------------------------------------
         # INITIAL AI QUALIFICATION NOTE
         # ----------------------------------------------------
 
         if existing_note is None:
 
-            initial_header = (
-                f"<{self.QUALIFICATION_HEADER}"
-                f" - "
-                f"{now.strftime('%d %b %Y, %I:%M %p')}"
-                ">"
-            )
+            initial_header = f"<{self.QUALIFICATION_HEADER} - Evidence>"
 
             note_text = (
                 initial_header
@@ -618,15 +616,19 @@ Do not write a conversation transcript.
         # UPDATED AI QUALIFICATION NOTE
         # ----------------------------------------------------
 
-        header = f"<{self.QUALIFICATION_HEADER}>"
-        previous = self._extract_latest_summary(existing_note.note)
+        header = f"<{self.QUALIFICATION_HEADER} - Evidence>"
+        previous = (self._extract_latest_summary(existing_note.note)
+                    if existing_note.note.startswith(header) else "")
         additions = "; ".join(part for part in summary.split("; ")
                               if part.casefold() not in previous.casefold())
         if not additions:
             return None
-        existing_note.note = header + "\n" + merge_summary(
+        updated_text = header + "\n" + merge_summary(
             previous, additions, limit=500 - len(header) - 1,
         )
+        if updated_text == existing_note.note:
+            return None
+        existing_note.note = updated_text
 
         existing_note.save(
             update_fields=[
