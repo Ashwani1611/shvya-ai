@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 from dataclasses import dataclass
 from typing import Any
@@ -31,10 +32,57 @@ from apps.ai_engagement.services.engagement_lock import (
     EngagementGenerationLock,
     EngagementLockError,
 )
+from apps.ai_engagement.services.organization_profile import (
+    compile_org_ai_profile_from_context,
+)
+from apps.ai_engagement.services.qualification_state import (
+    MODE_QUALIFICATION,
+    REQUIREMENT_ANSWERED,
+    apply_unambiguous_reply,
+    next_requirement,
+    state_for_lead,
+)
 
 
 class EngagementError(Exception):
     """Raised when AI Engagement cannot safely produce a decision."""
+
+
+REASON_CODES = {
+    "ANSWER_ORG_QUESTION",
+    "QUALIFICATION_NEXT",
+    "QUALIFICATION_CLARIFY",
+    "NORMAL_CONVERSATION",
+    "HUMAN_HANDOFF",
+    "OPT_OUT",
+    "UNKNOWN_INFORMATION",
+    "NO_ACTION",
+}
+
+ENGAGEMENT_RESPONSE_SCHEMA = {
+    "name": "shvya_engagement_decision",
+    "strict": False,
+    "schema": {
+        "type": "object",
+        "properties": {
+            "should_engage": {"type": "boolean"},
+            "message": {"type": "string"},
+            "file_document_id": {"anyOf": [{"type": "integer"}, {"type": "null"}]},
+            "crm_actions": {"type": "array", "items": {"type": "object"}},
+            "next_requirement_id": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+            "reason_code": {"type": "string", "enum": sorted(REASON_CODES)},
+        },
+        "required": [
+            "should_engage",
+            "message",
+            "file_document_id",
+            "crm_actions",
+            "next_requirement_id",
+            "reason_code",
+        ],
+        "additionalProperties": False,
+    },
+}
 
 
 @dataclass(frozen=True)
@@ -47,6 +95,8 @@ class EngagementDecision:
     crm_actions: list[dict[str, Any]]
     reason: str
     model: str
+    next_requirement_id: str | None = None
+    reason_code: str = ""
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -54,19 +104,23 @@ class EngagementDecision:
             "message": self.message,
             "file_document_id": self.file_document_id,
             "crm_actions": self.crm_actions,
+            # Keep reason for backwards-compatible audit/UI callers while new
+            # orchestration uses the bounded reason_code enum.
             "reason": self.reason,
+            "reason_code": self.reason_code or self.reason,
+            "next_requirement_id": self.next_requirement_id,
             "model": self.model,
         }
 
 
 class EngagementService:
-    """One-call customer engagement orchestration.
+    """Precise one-call customer engagement orchestration.
 
-    Python owns permissions, persisted qualification state, CRM validation,
-    stage transitions, idempotency and sending. The model receives a compact
-    context and performs only the language work that benefits from an LLM:
-    understand the turn, notice supported lead facts, choose the next
-    conversational step, generate the reply, and propose allowed CRM actions.
+    Python owns permissions, qualification state, deterministic next-requirement
+    selection, CRM validation, stage transitions, idempotency and sending. The
+    model handles only language understanding/generation that benefits from an
+    LLM. Obvious replies to an explicitly authored previous qualification
+    question can use a zero-LLM path.
     """
 
     ENGAGEMENT_TASK_INSTRUCTIONS = CUSTOMER_ENGAGEMENT_INSTRUCTIONS
@@ -76,6 +130,7 @@ class EngagementService:
     MESSAGE_LIMIT = 12
     KNOWLEDGE_LIMIT = 3
     NOTE_LIMIT = 5
+    DEFAULT_RECENT_CONVERSATION_CHARS = 6000
 
     _SIMPLE_ACKS = {
         "yes",
@@ -171,9 +226,44 @@ class EngagementService:
             context=context,
         )
 
+        profile = compile_org_ai_profile_from_context(context.organization or {})
+        requirements = profile.get("qualification", {}).get("requirements", [])
+        qualification_state = state_for_lead(lead, requirements=requirements)
+
+        # Conservative zero-LLM extraction: only bind an obvious short reply to
+        # the exact requirement the application recorded as last asked.
+        if not caller_supplied_context and requirements:
+            latest_text = self._latest_inbound_text(context=context)
+            latest_id = self._latest_inbound_message_id(context=context)
+            direct = apply_unambiguous_reply(
+                lead=lead,
+                requirements=requirements,
+                text=latest_text,
+                source_message_id=latest_id,
+            )
+            qualification_state = direct["state"]
+            direct_next = direct.get("next_requirement")
+            if (
+                direct.get("changed")
+                and direct.get("answer_status") == REQUIREMENT_ANSWERED
+                and qualification_state.get("engagement_mode") == MODE_QUALIFICATION
+                and isinstance(direct_next, dict)
+                and direct_next.get("can_direct_ask")
+                and str(direct_next.get("question") or "").strip()
+            ):
+                return EngagementDecision(
+                    should_engage=True,
+                    message=str(direct_next["question"]).strip(),
+                    file_document_id=None,
+                    crm_actions=[],
+                    reason="QUALIFICATION_NEXT",
+                    reason_code="QUALIFICATION_NEXT",
+                    next_requirement_id=str(direct_next.get("id") or "") or None,
+                    model="deterministic",
+                )
+
         # RAG is conditional. Short qualification answers and acknowledgements
-        # should not consume an embedding call. Explicit knowledge_query always
-        # wins when a caller deliberately asks for retrieval.
+        # should not consume an embedding call.
         if not caller_supplied_context:
             query = (knowledge_query or "").strip()
             if not query and self._should_retrieve_knowledge(context=context):
@@ -187,13 +277,16 @@ class EngagementService:
                     knowledge_limit=self.KNOWLEDGE_LIMIT,
                     note_limit=self.NOTE_LIMIT,
                 )
+                profile = compile_org_ai_profile_from_context(context.organization or {})
+                requirements = profile.get("qualification", {}).get("requirements", [])
+                qualification_state = state_for_lead(lead, requirements=requirements)
 
         source_message_id = self._latest_inbound_message_id(context=context)
         claim = None
         if source_message_id:
             try:
                 claim = EngagementGenerationLock(
-                    lead_id=lead.id,
+                    lead_id=getattr(lead, "id", "unknown"),
                     source_message_id=source_message_id,
                 )
                 if not claim.acquire():
@@ -202,22 +295,31 @@ class EngagementService:
                         message="",
                         file_document_id=None,
                         crm_actions=[],
-                        reason="duplicate_generation_in_progress",
+                        reason="NO_ACTION",
+                        reason_code="NO_ACTION",
                         model="",
                     )
             except EngagementLockError:
-                # Redis lock failure must not make customer engagement fail.
-                # Existing DB-level duplicate/freshness checks still fail safe.
                 claim = None
 
-        instructions = self._build_instructions(context=context)
-        input_text = self._build_input(context=context)
+        next_item = next_requirement(
+            requirements,
+            qualification_state.get("requirement_states", {}),
+        )
+        instructions = self._build_instructions(context=context, profile=profile)
+        input_text = self._build_input(
+            context=context,
+            profile=profile,
+            qualification_state=qualification_state,
+            next_item=next_item,
+        )
         provider = self.provider or OpenAIProvider()
         success = False
 
         try:
             try:
-                result = provider.generate_text(
+                result = self._generate_provider_text(
+                    provider=provider,
                     instructions=instructions,
                     input_text=input_text,
                     metadata={
@@ -226,6 +328,7 @@ class EngagementService:
                         "task": "engagement",
                         "phase": "primary",
                     },
+                    response_schema=ENGAGEMENT_RESPONSE_SCHEMA,
                 )
             except AIProviderError as exc:
                 raise EngagementError("AI engagement generation failed.") from exc
@@ -233,8 +336,6 @@ class EngagementService:
             try:
                 decision = self._normalize_result(result=result)
             except EngagementError as first_error:
-                # One bounded schema-repair call is cheaper and safer than
-                # blindly retrying the full customer request three times.
                 decision = self._repair_result_once(
                     provider=provider,
                     organization=organization,
@@ -243,6 +344,14 @@ class EngagementService:
                     original_error=first_error,
                 )
 
+            # The model cannot choose an arbitrary qualification requirement.
+            if decision.next_requirement_id:
+                allowed_next_id = str(next_item.get("id")) if next_item else ""
+                if decision.next_requirement_id != allowed_next_id:
+                    raise EngagementError(
+                        "AI selected a qualification requirement other than NEXT_REQUIREMENT."
+                    )
+
             success = True
             return decision
         finally:
@@ -250,9 +359,16 @@ class EngagementService:
                 try:
                     claim.finish(success=success)
                 except EngagementLockError:
-                    # Do not hide a successfully generated customer decision or
-                    # replace the original provider/validation error.
                     pass
+
+    def _generate_provider_text(self, *, provider, response_schema=None, **kwargs):
+        """Use provider schema support while preserving injected legacy fakes."""
+        try:
+            return provider.generate_text(response_schema=response_schema, **kwargs)
+        except TypeError as exc:
+            if "response_schema" not in str(exc):
+                raise
+            return provider.generate_text(**kwargs)
 
     def _repair_result_once(
         self,
@@ -266,10 +382,13 @@ class EngagementService:
         repair_instructions = """
 Repair a malformed SHVYA engagement JSON result.
 Return ONLY one valid JSON object with exactly these keys:
-should_engage, message, file_document_id, crm_actions, reason.
-Preserve the original intended customer response and supported actions. Do not
-add facts, new actions, explanations, markdown, or chain-of-thought.
-If should_engage is false, message must be empty.
+should_engage, message, file_document_id, crm_actions, next_requirement_id,
+reason_code.
+Allowed reason_code values: ANSWER_ORG_QUESTION, QUALIFICATION_NEXT,
+QUALIFICATION_CLARIFY, NORMAL_CONVERSATION, HUMAN_HANDOFF, OPT_OUT,
+UNKNOWN_INFORMATION, NO_ACTION.
+Preserve only the original intended supported response/actions. Do not add facts,
+new actions, explanations, markdown, or chain-of-thought.
 """.strip()
         repair_input = json.dumps(
             {
@@ -279,7 +398,8 @@ If should_engage is false, message must be empty.
             ensure_ascii=False,
         )
         try:
-            repaired = provider.generate_text(
+            repaired = self._generate_provider_text(
+                provider=provider,
                 instructions=repair_instructions,
                 input_text=repair_input,
                 metadata={
@@ -288,11 +408,11 @@ If should_engage is false, message must be empty.
                     "task": "engagement",
                     "phase": "schema_repair",
                 },
+                response_schema=ENGAGEMENT_RESPONSE_SCHEMA,
             )
         except AIProviderError as exc:
             raise EngagementError("AI engagement schema repair failed.") from exc
 
-        # No recursive repair. One malformed repair is a hard validation error.
         return self._normalize_result(result=repaired)
 
     def _latest_inbound_message_id(self, *, context: AIContext) -> str:
@@ -332,8 +452,6 @@ If should_engage is false, message must be empty.
         if normalized in self._SIMPLE_ACKS:
             return False
 
-        # Numbers, dates, phone-like values and short option answers are common
-        # qualification replies and do not need RAG.
         compact = re.sub(r"[\s,₹$€£+\-./:]", "", normalized)
         if len(normalized) <= 40 and compact and compact.isdigit():
             return False
@@ -345,12 +463,8 @@ If should_engage is false, message must be empty.
         words = set(re.findall(r"[a-z0-9]+", normalized))
         if words & self._KNOWLEDGE_TERMS:
             return True
-
-        # A genuine question may require organization knowledge. Keep very
-        # short scheduling/confirmation turns out of RAG where possible.
         if "?" in text and len(normalized) > 20:
             return True
-
         return False
 
     def _build_knowledge_query(self, *, context: AIContext) -> str:
@@ -365,17 +479,16 @@ If should_engage is false, message must be empty.
             body = str(message.get("body") or "").strip()
             if not body:
                 continue
-            speaker = (
-                "Lead" if message.get("direction") == "inbound" else "SHVYA"
-            )
+            speaker = "Lead" if message.get("direction") == "inbound" else "SHVYA"
             recent_messages.append(f"{speaker}: {body}")
 
-        return "\n".join(recent_messages).strip()[:2500]
+        return "\n".join(recent_messages).strip()[:1800]
 
-    def _build_instructions(self, *, context: AIContext) -> str:
+    def _build_instructions(self, *, context: AIContext, profile=None) -> str:
         organization_context = context.organization or {}
+        profile = profile or compile_org_ai_profile_from_context(organization_context)
         organization_instructions = str(
-            organization_context.get("engagement_instructions", "") or ""
+            profile.get("communication", {}).get("custom_instructions", "") or ""
         ).strip()
         organization_section = organization_instructions or (
             "No additional organization-specific engagement instructions were supplied."
@@ -392,37 +505,94 @@ If should_engage is false, message must be empty.
             f"{self.ENGAGEMENT_TASK_INSTRUCTIONS.strip()}"
         )
 
-    def _build_input(self, *, context: AIContext) -> str:
+    def _recent_conversation_char_budget(self) -> int:
+        try:
+            configured = int(
+                os.getenv(
+                    "AI_ENGAGEMENT_CONTEXT_MAX_CHARS",
+                    self.DEFAULT_RECENT_CONVERSATION_CHARS,
+                )
+            )
+        except (TypeError, ValueError):
+            configured = self.DEFAULT_RECENT_CONVERSATION_CHARS
+        return min(max(configured, 2000), 12000)
+
+    def _compact_conversation(self, conversation: dict[str, Any]) -> dict[str, Any]:
+        messages = conversation.get("messages", []) if isinstance(conversation, dict) else []
+        if not isinstance(messages, list):
+            messages = []
+        budget = self._recent_conversation_char_budget()
+        chosen: list[dict[str, Any]] = []
+        used = 0
+        for message in reversed(messages):
+            if not isinstance(message, dict):
+                continue
+            body = str(message.get("body") or "").strip()
+            if not body:
+                continue
+            cost = len(body) + 80
+            if chosen and used + cost > budget:
+                break
+            if not chosen and cost > budget:
+                clipped = dict(message)
+                clipped["body"] = body[-max(budget - 80, 500):]
+                chosen.append(clipped)
+                break
+            chosen.append(message)
+            used += cost
+        chosen.reverse()
+        return {
+            "message_count": len(chosen),
+            "messages": chosen,
+            "truncated": len(chosen) < len(messages),
+        }
+
+    def _build_input(
+        self,
+        *,
+        context: AIContext,
+        profile=None,
+        qualification_state=None,
+        next_item=None,
+    ) -> str:
         data = context.as_dict()
+        profile = profile or compile_org_ai_profile_from_context(data["organization"] or {})
         lead_data = dict(data["lead"] or {})
-        # The normalized `attributes` list below is the source supplied to the
-        # model. Avoid sending the same Lead.attributes JSON twice.
         lead_data.pop("attributes", None)
+        if qualification_state is not None:
+            lead_data["qualification"] = qualification_state
+
+        organization_data = data["organization"] or {}
+        organization_payload = {
+            "id": organization_data.get("id"),
+            "name": organization_data.get("name"),
+            "ai_profile": profile,
+        }
 
         payload = {
             "current_time": timezone.now().isoformat(),
-            "organization": data["organization"],
+            "organization": organization_payload,
             "lead": lead_data,
             "pipeline": data["pipeline"],
             "stage": data["stage"],
             "contacts": data["contacts"],
             "attributes": data["attributes"],
             "conversation_summary": data["conversation_summary"],
-            "recent_conversation": data["conversation"],
+            "recent_conversation": self._compact_conversation(data["conversation"] or {}),
             "qualification_notes": data["qualification_notes"],
+            "next_requirement": next_item,
             "knowledge": data["knowledge"],
         }
-        return json.dumps(payload, ensure_ascii=False)
+        return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
 
     def _normalize_result(self, *, result: AITextResult) -> EngagementDecision:
         payload = self._parse_json(result.text)
-        self._validate_top_level_schema(payload)
+        schema_version = self._validate_top_level_schema(payload)
 
         should_engage = payload["should_engage"]
         message = payload["message"]
         file_document_id = payload["file_document_id"]
         crm_actions = payload["crm_actions"]
-        reason = payload["reason"]
 
         if not isinstance(should_engage, bool):
             raise EngagementError("should_engage must be a boolean.")
@@ -445,9 +615,24 @@ If should_engage is false, message must be empty.
         ):
             raise EngagementError("file_document_id must be a positive integer or null.")
 
-        if not isinstance(reason, str):
-            raise EngagementError("reason must be a string.")
-        reason = reason.strip()[:500]
+        if schema_version == "v2":
+            reason_code = str(payload["reason_code"] or "").strip().upper()
+            if reason_code not in REASON_CODES:
+                raise EngagementError("reason_code is not allowed.")
+            next_requirement_id = payload["next_requirement_id"]
+            if next_requirement_id is not None:
+                if not isinstance(next_requirement_id, str):
+                    raise EngagementError("next_requirement_id must be a string or null.")
+                next_requirement_id = next_requirement_id.strip() or None
+            reason = reason_code
+        else:
+            # Backward-compatible parsing for existing tests/playground callers.
+            legacy_reason = payload["reason"]
+            if not isinstance(legacy_reason, str):
+                raise EngagementError("reason must be a string.")
+            reason = legacy_reason.strip()[:200]
+            reason_code = "NORMAL_CONVERSATION"
+            next_requirement_id = None
 
         try:
             normalized_actions = validate_crm_actions(crm_actions)
@@ -460,6 +645,8 @@ If should_engage is false, message must be empty.
             file_document_id=file_document_id,
             crm_actions=normalized_actions,
             reason=reason,
+            reason_code=reason_code,
+            next_requirement_id=next_requirement_id,
             model=result.model,
         )
 
@@ -475,16 +662,28 @@ If should_engage is false, message must be empty.
             raise EngagementError("AI response must be a JSON object.")
         return payload
 
-    def _validate_top_level_schema(self, payload: dict[str, Any]) -> None:
-        expected = {
+    def _validate_top_level_schema(self, payload: dict[str, Any]) -> str:
+        legacy = {
             "should_engage",
             "message",
             "file_document_id",
             "crm_actions",
             "reason",
         }
-        if set(payload.keys()) != expected:
-            raise EngagementError("AI response contains an invalid schema.")
+        current = {
+            "should_engage",
+            "message",
+            "file_document_id",
+            "crm_actions",
+            "next_requirement_id",
+            "reason_code",
+        }
+        keys = set(payload.keys())
+        if keys == current:
+            return "v2"
+        if keys == legacy:
+            return "legacy"
+        raise EngagementError("AI response contains an invalid schema.")
 
     def _validate_crm_actions(self, actions: list[Any]) -> None:
         try:
