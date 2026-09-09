@@ -45,8 +45,14 @@ def build_context() -> AIContext:
     )
 
 
+def normalize_whitespace(value: str) -> str:
+    """Make prompt assertions independent of intentional source wrapping."""
+
+    return " ".join(value.split())
+
+
 def test_base_instructions_make_all_organization_information_authoritative():
-    instructions = SHVYABaseInstructions.get()
+    instructions = normalize_whitespace(SHVYABaseInstructions.get())
 
     assert "MANDATORY ORGANIZATION INFORMATION ALIGNMENT" in instructions
     assert "organization.about" in instructions
@@ -79,6 +85,7 @@ def test_engagement_input_carries_every_organization_information_value():
 def test_engagement_system_prompt_enforces_org_rules_before_task_instructions():
     context = build_context()
     instructions = EngagementService()._build_instructions(context=context)
+    normalized = normalize_whitespace(instructions)
 
     alignment_marker = "MANDATORY ORGANIZATION INFORMATION ALIGNMENT"
     task_marker = "SHVYA AI ENGAGEMENT TASK"
@@ -86,6 +93,6 @@ def test_engagement_system_prompt_enforces_org_rules_before_task_instructions():
     assert alignment_marker in instructions
     assert context.organization["engagement_instructions"] in instructions
     assert instructions.index(alignment_marker) < instructions.index(task_marker)
-    assert "MUST use a configured language" in instructions
-    assert "conversation is primary evidence" in instructions
-    assert "It does NOT make the lead authoritative" in instructions
+    assert "MUST use a configured language" in normalized
+    assert "conversation is primary evidence" in normalized
+    assert "It does NOT make the lead authoritative" in normalized
