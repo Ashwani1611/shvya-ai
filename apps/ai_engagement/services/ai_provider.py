@@ -74,8 +74,8 @@ class OpenAIProvider:
     }
 
     TASK_MAX_OUTPUT_TOKENS = {
-        "engagement": 300,
-        "playground": 350,
+        "engagement": 700,
+        "playground": 700,
         "qualification": 500,
         "internal_summary": 300,
         "lead_briefing": 350,
