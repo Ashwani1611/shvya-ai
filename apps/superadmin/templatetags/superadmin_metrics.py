@@ -3,6 +3,7 @@ from __future__ import annotations
 from django import template
 from django.db.models import Count, Q
 
+from apps.ai_engagement.coins import credits_to_coins
 from apps.ai_engagement.models import (
     AICreditTransaction,
     AICreditWallet,
@@ -19,9 +20,14 @@ DEFAULT_METRICS = {
     "ai_qualifications": 0,
     "ai_bumpups": 0,
     "afs_sent": 0,
+    # Raw credit aliases are kept for backwards compatibility. Superadmin UI
+    # uses the coin fields below (30 credits = 1 coin).
     "credits_used": 0,
     "credits_remaining": 0,
     "credits_total": 0,
+    "coins_used": credits_to_coins(0),
+    "coins_remaining": credits_to_coins(0),
+    "coins_total": credits_to_coins(0),
     "kb_setup": False,
     "sequences": 0,
 }
@@ -30,9 +36,8 @@ DEFAULT_METRICS = {
 def build_organization_metrics(organizations):
     """Return real Superadmin usage metrics keyed by organization id.
 
-    AI counters come from the settled AI-credit ledger so they stay aligned
-    with the same provider usage that consumes AI credits. Auto Follow-up and
-    sequence counters come from their persisted execution/configuration data.
+    Provider accounting stays in exact AI credits. Superadmin summary metrics are
+    also exposed as AI coins so operators see the billing-facing 30:1 unit.
     """
 
     organizations = list(organizations)
@@ -55,12 +60,19 @@ def build_organization_metrics(organizations):
         "lifetime_credits_used",
     ):
         item = metrics[str(row["organization_id"])]
-        item["credits_used"] = int(row["lifetime_credits_used"] or 0)
-        item["credits_remaining"] = max(
+        credits_used = int(row["lifetime_credits_used"] or 0)
+        credits_remaining = max(
             int(row["balance"] or 0) - int(row["reserved_credits"] or 0),
             0,
         )
-        item["credits_total"] = int(row["lifetime_credits_added"] or 0)
+        credits_total = int(row["lifetime_credits_added"] or 0)
+
+        item["credits_used"] = credits_used
+        item["credits_remaining"] = credits_remaining
+        item["credits_total"] = credits_total
+        item["coins_used"] = credits_to_coins(credits_used)
+        item["coins_remaining"] = credits_to_coins(credits_remaining)
+        item["coins_total"] = credits_to_coins(credits_total)
 
     usage_rows = (
         AICreditTransaction.objects.filter(
