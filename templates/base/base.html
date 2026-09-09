@@ -140,7 +140,7 @@
         display: block;
     }
 
-    /* Organization AI-credit balance in the shared dashboard topbar. */
+    /* Organization AI-coin balance in the shared dashboard topbar. */
     .ai-credit-badge {
         display: inline-flex;
         align-items: center;
@@ -168,6 +168,15 @@
         font-variant-numeric: tabular-nums;
     }
 
+    .ai-credit-badge .ai-credit-total {
+        padding-left: .4rem;
+        border-left: 1px solid currentColor;
+        opacity: .7;
+        font-size: .7rem;
+        font-weight: 700;
+        font-variant-numeric: tabular-nums;
+    }
+
     .ai-credit-badge--low {
         border-color: #fecaca;
         background: #fef2f2;
@@ -187,7 +196,8 @@
     }
 
     @media (max-width: 1280px) {
-        .ai-credit-badge .ai-credit-label {
+        .ai-credit-badge .ai-credit-label,
+        .ai-credit-badge .ai-credit-total {
             display: none;
         }
     }
@@ -213,7 +223,7 @@
 <script>
 (function () {
     function initAICreditBadge() {
-        var rawBalance = "{{ ai_credit_balance|default_if_none:''|escapejs }}";
+        var rawBalance = "{{ ai_coin_balance|default_if_none:''|escapejs }}";
         if (rawBalance === '') return;
 
         var topbar = document.querySelector('header');
@@ -224,21 +234,32 @@
 
         var balance = Number(rawBalance);
         if (!Number.isFinite(balance)) balance = 0;
+        var total = Number("{{ ai_coin_total|default:0|escapejs }}");
+        if (!Number.isFinite(total)) total = 0;
 
-        var isLow = "{{ ai_credit_is_low|yesno:'1,0' }}" === '1';
-        var threshold = "{{ ai_credit_alert_threshold|default:500|escapejs }}";
+        var formatCoins = function (value) {
+            return value.toLocaleString(undefined, {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+            });
+        };
+
+        var isLow = "{{ ai_coin_is_low|yesno:'1,0' }}" === '1';
+        var threshold = "{{ ai_coin_alert_threshold|default:'16.67'|escapejs }}";
         var badge = document.createElement('div');
         badge.dataset.aiCreditBadge = '1';
         badge.className = 'ai-credit-badge' + (isLow ? ' ai-credit-badge--low' : '');
         badge.setAttribute(
             'title',
-            isLow
-                ? 'Low AI credits (' + threshold + ' or below). Add credits to keep AI Engagement available.'
-                : 'Available AI credits for your organization.'
+            (isLow
+                ? 'Low AI coins (' + threshold + ' or below). Add coins to keep AI Engagement available. '
+                : 'Available AI coins for your organization. ') +
+            '30 internal AI credits = 1 coin. Total funded: ' + formatCoins(total) + ' coins.'
         );
         badge.setAttribute(
             'aria-label',
-            'AI credits: ' + balance.toLocaleString() + ' available' + (isLow ? '. Low credit alert.' : '.')
+            'AI coins: ' + formatCoins(balance) + ' available, ' + formatCoins(total) +
+            ' total funded' + (isLow ? '. Low coin alert.' : '.')
         );
         if (isLow) {
             badge.setAttribute('role', 'status');
@@ -251,15 +272,20 @@
 
         var label = document.createElement('span');
         label.className = 'ai-credit-label';
-        label.textContent = 'AI Credits';
+        label.textContent = 'AI Coins';
 
         var value = document.createElement('span');
         value.className = 'ai-credit-value';
-        value.textContent = balance.toLocaleString();
+        value.textContent = formatCoins(balance);
+
+        var totalValue = document.createElement('span');
+        totalValue.className = 'ai-credit-total';
+        totalValue.textContent = 'Total ' + formatCoins(total);
 
         badge.appendChild(icon);
         badge.appendChild(label);
         badge.appendChild(value);
+        badge.appendChild(totalValue);
         actions.insertBefore(badge, actions.firstChild);
     }
 
