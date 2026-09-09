@@ -57,16 +57,15 @@ class WhatsAppEngagementTriggerTests(TestCase):
         )
 
     @patch(
-        "apps.ai_engagement.tasks.generate_ai_engagement_response.delay"
+        "apps.ai_engagement.tasks.generate_ai_engagement_response.apply_async"
     )
     @patch(
-        "apps.ai_engagement.tasks."
-        "generate_internal_conversation_summary.delay"
+        "apps.ai_engagement.background_signals.queue_background_enrichment"
     )
     def test_inbound_message_queues_engagement_after_commit(
         self,
-        summary_delay,
-        engagement_delay,
+        background_enrichment,
+        engagement_apply_async,
     ):
         with self.captureOnCommitCallbacks(execute=True):
             handle_inbound_message(
@@ -79,20 +78,24 @@ class WhatsAppEngagementTriggerTests(TestCase):
                 raw_payload={"test": True},
             )
 
-        summary_delay.assert_called_once_with(str(self.lead.id))
-        engagement_delay.assert_called_once_with(str(self.lead.id))
+        background_enrichment.assert_called_once_with(
+            lead_id=str(self.lead.id)
+        )
+        engagement_apply_async.assert_called_once_with(
+            args=[str(self.lead.id)],
+            countdown=5,
+        )
 
     @patch(
-        "apps.ai_engagement.tasks.generate_ai_engagement_response.delay"
+        "apps.ai_engagement.tasks.generate_ai_engagement_response.apply_async"
     )
     @patch(
-        "apps.ai_engagement.tasks."
-        "generate_internal_conversation_summary.delay"
+        "apps.ai_engagement.background_signals.queue_background_enrichment"
     )
     def test_duplicate_inbound_external_id_does_not_queue_again(
         self,
-        summary_delay,
-        engagement_delay,
+        background_enrichment,
+        engagement_apply_async,
     ):
         kwargs = {
             "organization": self.organization,
@@ -116,15 +119,20 @@ class WhatsAppEngagementTriggerTests(TestCase):
             ).count(),
             1,
         )
-        summary_delay.assert_called_once_with(str(self.lead.id))
-        engagement_delay.assert_called_once_with(str(self.lead.id))
+        background_enrichment.assert_called_once_with(
+            lead_id=str(self.lead.id)
+        )
+        engagement_apply_async.assert_called_once_with(
+            args=[str(self.lead.id)],
+            countdown=5,
+        )
 
     @patch(
-        "apps.ai_engagement.tasks.generate_ai_engagement_response.delay"
+        "apps.ai_engagement.tasks.generate_ai_engagement_response.apply_async"
     )
     def test_outbound_message_does_not_queue_engagement(
         self,
-        engagement_delay,
+        engagement_apply_async,
     ):
         with self.captureOnCommitCallbacks(execute=True):
             WhatsAppMessage.objects.create(
@@ -138,14 +146,14 @@ class WhatsAppEngagementTriggerTests(TestCase):
                 status=WhatsAppMessage.Status.QUEUED,
             )
 
-        engagement_delay.assert_not_called()
+        engagement_apply_async.assert_not_called()
 
     @patch(
-        "apps.ai_engagement.tasks.generate_ai_engagement_response.delay"
+        "apps.ai_engagement.tasks.generate_ai_engagement_response.apply_async"
     )
     def test_unattached_inbound_message_does_not_queue_engagement(
         self,
-        engagement_delay,
+        engagement_apply_async,
     ):
         with self.captureOnCommitCallbacks(execute=True):
             WhatsAppMessage.objects.create(
@@ -162,4 +170,4 @@ class WhatsAppEngagementTriggerTests(TestCase):
                 is_read=False,
             )
 
-        engagement_delay.assert_not_called()
+        engagement_apply_async.assert_not_called()
