@@ -27,13 +27,7 @@ def queue_internal_ai_enrichment(sender, instance, created, **kwargs):
 
 @receiver(post_save, sender=WhatsAppMessage)
 def remember_ai_qualification_question(sender, instance, created, **kwargs):
-    """Persist the exact application-selected requirement after AI queues it.
-
-    The outbound AI audit metadata stores the bounded reason code. When a
-    customer-facing response is a qualification-next turn, recompute the same
-    deterministic NEXT_REQUIREMENT from the organization profile and record it
-    as LAST_ASKED_REQUIREMENT_ID. No model call is needed.
-    """
+    """Persist the exact application-selected requirement after AI queues it."""
     if not instance.lead_id:
         return
     if instance.direction != WhatsAppMessage.Direction.OUTBOUND:
@@ -70,4 +64,8 @@ def remember_ai_qualification_question(sender, instance, created, **kwargs):
         return
     requirement_id = str(selected.get("id") or "").strip()
     if requirement_id:
-        record_last_asked_requirement(lead, requirement_id)
+        record_last_asked_requirement(
+            lead,
+            requirement_id,
+            requirements=requirements,
+        )
