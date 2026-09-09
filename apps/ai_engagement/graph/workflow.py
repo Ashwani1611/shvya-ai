@@ -191,8 +191,9 @@ def _route_after_classification(state: EngagementGraphState) -> Literal["direct"
 
 def _retrieve_knowledge(state: EngagementGraphState) -> dict:
     service = state["service"]
+    organization = state["organization"]
     context = service.context_builder.build(
-        organization=state["organization"],
+        organization=organization,
         lead=state["lead"],
         knowledge_query=state.get("retrieval_query") or None,
         message_limit=service.MESSAGE_LIMIT,
@@ -200,7 +201,7 @@ def _retrieve_knowledge(state: EngagementGraphState) -> dict:
         note_limit=service.NOTE_LIMIT,
     )
     service._validate_context_scope(
-        organization=state["organization"],
+        organization=organization,
         lead=state["lead"],
         context=context,
     )
@@ -212,17 +213,33 @@ def _retrieve_knowledge(state: EngagementGraphState) -> dict:
         for chunk in (context.knowledge or [])
         if float(chunk.get("similarity") or -1.0) >= threshold
     ]
+    context = replace(context, knowledge=filtered)
+
+    # AI-Guided File Sharing reuses the exact RAG pass instead of spending a
+    # second embedding/model call. Only authorized files represented by the
+    # retained knowledge chunks become candidates, including each authored
+    # share_instruction.
+    from apps.ai_engagement.services.file_sharing import FileSharingService
+
+    file_candidates = FileSharingService().build_file_candidates(
+        organization=organization,
+        context=context,
+    )
 
     org_context = dict(context.organization or {})
     org_context["_runtime_policy"] = state.get("runtime_policy") or {}
-    context = replace(context, organization=org_context, knowledge=filtered)
+    if file_candidates:
+        org_context["_file_candidates"] = file_candidates[: service.KNOWLEDGE_LIMIT]
+    context = replace(context, organization=org_context)
 
     logger.info(
-        "ai_engagement_rag organization=%s lead=%s before=%s after=%s threshold=%.3f",
-        getattr(state["organization"], "id", ""),
+        "ai_engagement_rag organization=%s lead=%s before=%s after=%s "
+        "file_candidates=%s threshold=%.3f",
+        getattr(organization, "id", ""),
         getattr(state["lead"], "id", ""),
         before,
         len(filtered),
+        len(file_candidates),
         threshold,
     )
     return {
@@ -250,8 +267,28 @@ def _use_direct_decision(state: EngagementGraphState) -> dict:
     return {"decision": state.get("direct_decision")}
 
 
+def _validated_file_document_id(*, decision, context) -> int | None:
+    selected = getattr(decision, "file_document_id", None)
+    if selected is None:
+        return None
+    try:
+        selected_id = int(selected)
+    except (TypeError, ValueError):
+        return None
+    organization_context = context.organization if isinstance(context.organization, dict) else {}
+    candidates = organization_context.get("_file_candidates")
+    if not isinstance(candidates, list):
+        return None
+    allowed = {
+        int(item["document_id"])
+        for item in candidates
+        if isinstance(item, dict) and item.get("document_id") is not None
+    }
+    return selected_id if selected_id in allowed else None
+
+
 def _validate_decision(state: EngagementGraphState) -> dict:
-    """Validate language output, then let Python own CRM action planning."""
+    """Validate language output, then let Python own CRM/action authorization."""
 
     decision = state.get("decision")
     if decision is None:
@@ -277,11 +314,19 @@ def _validate_decision(state: EngagementGraphState) -> dict:
         qualification_state=state.get("qualification_state") or {},
         requirements=state.get("requirements") or [],
     )
-    decision = replace(decision, crm_actions=controlled_actions)
+    validated_file_id = _validated_file_document_id(
+        decision=decision,
+        context=state["context"],
+    )
+    decision = replace(
+        decision,
+        crm_actions=controlled_actions,
+        file_document_id=validated_file_id,
+    )
 
     logger.info(
         "ai_engagement_graph organization=%s lead=%s route=%s model=%s "
-        "rag=%s/%s qualification=%s crm_actions=%s",
+        "rag=%s/%s qualification=%s crm_actions=%s file=%s",
         getattr(state["organization"], "id", ""),
         getattr(state["lead"], "id", ""),
         state.get("route") or "generate",
@@ -290,6 +335,7 @@ def _validate_decision(state: EngagementGraphState) -> dict:
         state.get("rag_chunks_before_filter", 0),
         (policy_result.get("evaluation") or {}).get("outcome"),
         len(controlled_actions),
+        validated_file_id,
     )
     return {"decision": decision, "validation_errors": errors}
 
