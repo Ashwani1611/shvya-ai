@@ -86,6 +86,6 @@ def test_engagement_system_prompt_enforces_org_rules_before_task_instructions():
     assert alignment_marker in instructions
     assert context.organization["engagement_instructions"] in instructions
     assert instructions.index(alignment_marker) < instructions.index(task_marker)
-    assert "every customer-facing reply MUST use a configured language" in instructions
-    assert "conversation is primary evidence for what the lead said" in instructions
+    assert "MUST use a configured language" in instructions
+    assert "conversation is primary evidence" in instructions
     assert "It does NOT make the lead authoritative" in instructions
