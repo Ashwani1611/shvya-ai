@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from copy import deepcopy
 
 from django.utils import timezone
@@ -17,8 +18,59 @@ RESULT_NOT_QUALIFIED = "not_qualified"
 MODE_QUALIFICATION = "qualification"
 MODE_CONVERSATION = "conversation"
 
+REQUIREMENT_UNKNOWN = "unknown"
+REQUIREMENT_ANSWERED = "answered"
+REQUIREMENT_UNCLEAR = "unclear"
+REQUIREMENT_NOT_APPLICABLE = "not_applicable"
+REQUIREMENT_STATUSES = {
+    REQUIREMENT_UNKNOWN,
+    REQUIREMENT_ANSWERED,
+    REQUIREMENT_UNCLEAR,
+    REQUIREMENT_NOT_APPLICABLE,
+}
+
 NEW_LEAD_STAGE = "new lead"
 QUALIFIED_STAGE = "qualified"
+
+
+_ACK_ONLY = {
+    "ok",
+    "okay",
+    "thanks",
+    "thank you",
+    "great",
+    "fine",
+    "sure",
+    "done",
+    "correct",
+    "right",
+}
+_UNCLEAR_ONLY = {
+    "maybe",
+    "not sure",
+    "unsure",
+    "i don't know",
+    "i dont know",
+    "don't know",
+    "dont know",
+}
+_YES = {"yes", "y", "yeah", "yep", "yes please", "correct"}
+_NO = {"no", "n", "nope", "not yet"}
+_BOOLEAN_QUESTION_PREFIXES = (
+    "is ",
+    "are ",
+    "do ",
+    "does ",
+    "did ",
+    "have ",
+    "has ",
+    "can ",
+    "could ",
+    "would ",
+    "will ",
+    "was ",
+    "were ",
+)
 
 
 def normalize_stage_name(value) -> str:
@@ -66,13 +118,94 @@ def _result(value) -> str:
     return ""
 
 
-def state_for_lead(lead) -> dict:
-    """Return the normalized, application-controlled qualification state."""
+def _requirement_state(value) -> dict:
+    raw = value if isinstance(value, dict) else {}
+    status = str(raw.get("status") or REQUIREMENT_UNKNOWN).strip().casefold()
+    if status not in REQUIREMENT_STATUSES:
+        status = REQUIREMENT_UNKNOWN
+    return {
+        "status": status,
+        "value": raw.get("value"),
+        "confidence": str(raw.get("confidence") or "").strip(),
+        "source_message_id": (
+            str(raw.get("source_message_id"))
+            if raw.get("source_message_id") is not None
+            else None
+        ),
+        "updated_at": raw.get("updated_at"),
+    }
+
+
+def _normalized_requirement_states(state: dict, requirements=None) -> dict:
+    raw_states = state.get("requirement_states")
+    if not isinstance(raw_states, dict):
+        raw_states = {}
+
+    normalized = {
+        str(requirement_id): _requirement_state(value)
+        for requirement_id, value in raw_states.items()
+        if str(requirement_id).strip()
+    }
+
+    for requirement in requirements or []:
+        requirement_id = str(requirement.get("id") or "").strip()
+        if requirement_id and requirement_id not in normalized:
+            normalized[requirement_id] = _requirement_state({})
+    return normalized
+
+
+def _required_ids(requirements) -> list[str]:
+    return [
+        str(requirement.get("id") or "").strip()
+        for requirement in requirements or []
+        if requirement.get("required", True)
+        and str(requirement.get("id") or "").strip()
+    ]
+
+
+def _missing_ids(requirements, requirement_states) -> list[str]:
+    missing: list[str] = []
+    for requirement_id in _required_ids(requirements):
+        status = requirement_states.get(requirement_id, {}).get(
+            "status", REQUIREMENT_UNKNOWN
+        )
+        if status in {REQUIREMENT_UNKNOWN, REQUIREMENT_UNCLEAR}:
+            missing.append(requirement_id)
+    return missing
+
+
+def next_requirement(requirements, requirement_states) -> dict | None:
+    ordered = sorted(
+        [r for r in requirements or [] if str(r.get("id") or "").strip()],
+        key=lambda item: (int(item.get("priority") or 999999), str(item.get("id"))),
+    )
+    for requirement in ordered:
+        if not requirement.get("required", True):
+            continue
+        state = requirement_states.get(str(requirement.get("id")), {})
+        if state.get("status", REQUIREMENT_UNKNOWN) in {
+            REQUIREMENT_UNKNOWN,
+            REQUIREMENT_UNCLEAR,
+        }:
+            return deepcopy(requirement)
+    return None
+
+
+def state_for_lead(lead, requirements=None) -> dict:
+    """Return normalized application-controlled qualification state.
+
+    The state remains embedded in Lead.attributes for backwards compatibility,
+    but now tracks each organization-defined requirement independently so the
+    application can choose the next requirement without another model call.
+    """
     state = _raw_state(lead)
     status = _status(state.get("qualification_status"))
     result = _result(state.get("qualification_result"))
     stage_name = normalize_stage_name(getattr(getattr(lead, "stage", None), "name", ""))
     qualified_stage = _qualified_stage(lead)
+    requirement_states = _normalized_requirement_states(state, requirements)
+    missing = _missing_ids(requirements, requirement_states)
+    next_item = next_requirement(requirements, requirement_states)
 
     engagement_mode = (
         MODE_QUALIFICATION
@@ -85,6 +218,17 @@ def state_for_lead(lead) -> dict:
         "qualification_result": result,
         "qualification_completed_at": state.get("qualification_completed_at"),
         "engagement_mode": engagement_mode,
+        "requirement_states": requirement_states,
+        "missing_requirement_ids": missing,
+        "all_requirements_answered": bool(requirements) and not missing,
+        "next_requirement_id": (
+            str(next_item.get("id")) if next_item is not None else None
+        ),
+        "last_asked_requirement_id": (
+            str(state.get("last_asked_requirement_id"))
+            if state.get("last_asked_requirement_id")
+            else None
+        ),
         "qualified_stage_id": (
             str(qualified_stage.id)
             if qualified_stage is not None
@@ -104,9 +248,16 @@ def attributes_with_state(lead, state: dict) -> dict:
     return attributes
 
 
-def ensure_state(lead) -> dict:
-    """Persist the normalized state when it is missing or stale."""
-    state = state_for_lead(lead)
+def _persist_state(lead, state: dict) -> dict:
+    attributes = attributes_with_state(lead, state)
+    lead.__class__.objects.filter(pk=lead.pk).update(attributes=attributes)
+    lead.attributes = attributes
+    return state
+
+
+def ensure_state(lead, requirements=None) -> dict:
+    """Persist normalized state when it is missing or stale."""
+    state = state_for_lead(lead, requirements=requirements)
     attributes = attributes_with_state(lead, state)
     if attributes != (lead.attributes or {}):
         lead.__class__.objects.filter(pk=lead.pk).update(attributes=attributes)
@@ -115,13 +266,7 @@ def ensure_state(lead) -> dict:
 
 
 def state_after_stage_change(*, lead, old_stage_name: str, new_stage_name: str) -> dict:
-    """
-    Return the durable qualification state after a CRM stage transition.
-
-    Leaving New Lead completes that qualification journey. Moving to Qualified
-    records a qualified result. A completed qualification is never restarted by
-    moving the lead between stages; only ``reset_state`` can reset it.
-    """
+    """Return durable qualification state after a CRM stage transition."""
     state = state_for_lead(lead)
     old_name = normalize_stage_name(old_stage_name)
     new_name = normalize_stage_name(new_stage_name)
@@ -156,11 +301,121 @@ def mark_in_progress(lead) -> dict:
     ):
         state["qualification_status"] = STATUS_IN_PROGRESS
         state["engagement_mode"] = MODE_QUALIFICATION
-        attributes = attributes_with_state(lead, state)
-        lead.__class__.objects.filter(pk=lead.pk).update(attributes=attributes)
-        lead.attributes = attributes
+        _persist_state(lead, state)
 
     return state
+
+
+def record_last_asked_requirement(lead, requirement_id: str | None) -> dict:
+    """Record which qualification requirement the queued SHVYA reply asked."""
+    requirement_id = str(requirement_id or "").strip()
+    if not requirement_id:
+        return state_for_lead(lead)
+    state = state_for_lead(lead)
+    state["last_asked_requirement_id"] = requirement_id
+    if state["qualification_status"] == STATUS_NOT_STARTED:
+        state["qualification_status"] = STATUS_IN_PROGRESS
+    return _persist_state(lead, state)
+
+
+def _is_boolean_question(question: str) -> bool:
+    normalized = " ".join(str(question or "").strip().casefold().split())
+    return normalized.startswith(_BOOLEAN_QUESTION_PREFIXES) or " whether " in f" {normalized} "
+
+
+def _classify_direct_reply(*, text: str, question: str) -> tuple[str, object, str] | None:
+    normalized = " ".join(str(text or "").strip().casefold().split())
+    if not normalized or len(normalized) > 80 or "?" in normalized:
+        return None
+    if normalized in _ACK_ONLY:
+        return None
+    if normalized in _UNCLEAR_ONLY:
+        return (REQUIREMENT_UNCLEAR, str(text or "").strip(), "high")
+    if normalized in _YES | _NO:
+        if not _is_boolean_question(question):
+            return None
+        return (
+            REQUIREMENT_ANSWERED,
+            normalized in _YES,
+            "high",
+        )
+
+    # Short explicit values such as "2 crore", "Gurgaon", "next month" or
+    # "3BHK" are safe to bind to the immediately preceding requirement. Long
+    # prose and multi-intent turns continue through the LLM path.
+    if len(normalized.split()) <= 8 and not re.search(
+        r"\b(?:price|pricing|cost|fee|policy|refund|explain|tell me|what|why|how|which)\b",
+        normalized,
+    ):
+        return (REQUIREMENT_ANSWERED, str(text or "").strip(), "high")
+    return None
+
+
+def apply_unambiguous_reply(
+    *,
+    lead,
+    requirements,
+    text: str,
+    source_message_id: str | None,
+) -> dict:
+    """Persist an obvious answer to the last asked qualification requirement.
+
+    This zero-LLM path is intentionally conservative. It never guesses which
+    requirement a reply belongs to and never handles multi-intent/question
+    messages. Ambiguous turns stay on the normal engagement model path.
+    """
+    state = state_for_lead(lead, requirements=requirements)
+    last_id = str(state.get("last_asked_requirement_id") or "").strip()
+    if not last_id:
+        return {"changed": False, "state": state, "answer_status": None}
+
+    requirement = next(
+        (
+            item
+            for item in requirements or []
+            if str(item.get("id") or "") == last_id
+        ),
+        None,
+    )
+    if requirement is None:
+        return {"changed": False, "state": state, "answer_status": None}
+
+    current = state["requirement_states"].get(last_id, _requirement_state({}))
+    if current.get("status") in {REQUIREMENT_ANSWERED, REQUIREMENT_NOT_APPLICABLE}:
+        return {"changed": False, "state": state, "answer_status": current.get("status")}
+
+    classified = _classify_direct_reply(
+        text=text,
+        question=str(requirement.get("question") or requirement.get("label") or ""),
+    )
+    if classified is None:
+        return {"changed": False, "state": state, "answer_status": None}
+
+    answer_status, value, confidence = classified
+    state["requirement_states"][last_id] = {
+        "status": answer_status,
+        "value": value,
+        "confidence": confidence,
+        "source_message_id": str(source_message_id) if source_message_id else None,
+        "updated_at": timezone.now().isoformat(),
+    }
+    if state["qualification_status"] == STATUS_NOT_STARTED:
+        state["qualification_status"] = STATUS_IN_PROGRESS
+
+    missing = _missing_ids(requirements, state["requirement_states"])
+    next_item = next_requirement(requirements, state["requirement_states"])
+    state["missing_requirement_ids"] = missing
+    state["all_requirements_answered"] = bool(requirements) and not missing
+    state["next_requirement_id"] = (
+        str(next_item.get("id")) if next_item is not None else None
+    )
+    _persist_state(lead, state)
+    return {
+        "changed": True,
+        "state": state,
+        "answer_status": answer_status,
+        "next_requirement": next_item,
+    }
 
 
 def reset_state(lead) -> dict:
@@ -171,6 +426,11 @@ def reset_state(lead) -> dict:
             "qualification_status": STATUS_NOT_STARTED,
             "qualification_result": "",
             "qualification_completed_at": None,
+            "requirement_states": {},
+            "missing_requirement_ids": [],
+            "all_requirements_answered": False,
+            "next_requirement_id": None,
+            "last_asked_requirement_id": None,
         }
     )
     stage_name = normalize_stage_name(getattr(getattr(lead, "stage", None), "name", ""))
@@ -179,7 +439,4 @@ def reset_state(lead) -> dict:
         if stage_name == NEW_LEAD_STAGE
         else MODE_CONVERSATION
     )
-    attributes = attributes_with_state(lead, state)
-    lead.__class__.objects.filter(pk=lead.pk).update(attributes=attributes)
-    lead.attributes = attributes
-    return state
+    return _persist_state(lead, state)
