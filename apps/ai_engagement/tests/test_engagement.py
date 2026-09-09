@@ -173,7 +173,7 @@ class EngagementServiceTests(TestCase):
         self.assertIn(self.org_info.engagement_instructions, instructions)
         self.assertIn(self.org_info.qualification_requirements, input_text)
 
-    def test_accepts_attribute_update_request(self):
+    def test_unverified_attribute_update_is_not_authorized(self):
         provider = self.mock_provider(
             """
             {
@@ -196,9 +196,9 @@ class EngagementServiceTests(TestCase):
             organization=self.organization,
             lead=self.lead,
         )
-        self.assertEqual(decision.crm_actions[0]["type"], "attribute_updates")
+        self.assertEqual(decision.crm_actions, [])
 
-    def test_accepts_stage_shift_request(self):
+    def test_model_selected_stage_shift_is_not_authorized(self):
         target_stage = (
             Stage.objects.filter(
                 pipeline=self.pipeline,
@@ -247,13 +247,9 @@ class EngagementServiceTests(TestCase):
             organization=self.organization,
             lead=self.lead,
         )
-        self.assertEqual(decision.crm_actions[0]["type"], "pipeline_transition")
-        self.assertEqual(
-            decision.crm_actions[0]["stage_shift"]["stage_id"],
-            str(target_stage.id),
-        )
+        self.assertEqual(decision.crm_actions, [])
 
-    def test_accepts_add_note_request(self):
+    def test_model_selected_add_note_is_not_authorized(self):
         provider = self.mock_provider(
             """
             {
@@ -269,9 +265,9 @@ class EngagementServiceTests(TestCase):
             organization=self.organization,
             lead=self.lead,
         )
-        self.assertEqual(decision.crm_actions[0]["type"], "add_note")
+        self.assertEqual(decision.crm_actions, [])
 
-    def test_accepts_create_reminder_request(self):
+    def test_unverified_reminder_is_not_authorized(self):
         provider = self.mock_provider(
             """
             {
@@ -294,9 +290,9 @@ class EngagementServiceTests(TestCase):
             organization=self.organization,
             lead=self.lead,
         )
-        self.assertEqual(decision.crm_actions[0]["type"], "create_reminder")
+        self.assertEqual(decision.crm_actions, [])
 
-    def test_accepts_contact_update_request(self):
+    def test_unverified_contact_update_is_not_authorized(self):
         provider = self.mock_provider(
             """
             {
@@ -323,9 +319,9 @@ class EngagementServiceTests(TestCase):
             organization=self.organization,
             lead=self.lead,
         )
-        self.assertEqual(decision.crm_actions[0]["type"], "contact_updates")
+        self.assertEqual(decision.crm_actions, [])
 
-    def test_accepts_file_document_id(self):
+    def test_unlisted_file_document_id_is_not_authorized(self):
         provider = self.mock_provider(
             """
             {
@@ -341,7 +337,7 @@ class EngagementServiceTests(TestCase):
             organization=self.organization,
             lead=self.lead,
         )
-        self.assertEqual(decision.file_document_id, 42)
+        self.assertIsNone(decision.file_document_id)
 
     def test_rejects_extra_top_level_field(self):
         provider = self.mock_provider(
