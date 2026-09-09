@@ -15,19 +15,25 @@ app.config_from_object(
 
 app.autodiscover_tasks()
 
-# Customer-facing WhatsApp API AI replies must not wait behind conversation
-# summaries, ingestion, follow-ups, or other long-running default-queue work.
-# A dedicated worker consumes this queue in production.
+# Customer-facing WhatsApp AI must not wait behind conversation summaries,
+# ingestion, follow-ups, or other long-running default-queue work. Meta API
+# engagement and Hosted Account AI each get an isolated production lane.
 app.conf.task_routes = {
     "ai.generate_ai_engagement_response": {
         "queue": "ai_realtime",
     },
+    "hosted.dispatch_due_ai": {
+        "queue": "hosted_ai",
+    },
+    "apps.hosted_automation.tasks.process_hosted_ai_engagement_job_task": {
+        "queue": "hosted_ai",
+    },
 }
 
 # Central Beat schedule for recurring background work. Hosted WhatsApp
-# automation is intentionally evaluated every 10 seconds. The dispatcher
-# processes one prioritized lane at a time and the service layer provides
-# durable account/lead throttling so queued work cannot fan out in a burst.
+# automation is intentionally evaluated every 10 seconds as a recovery scan.
+# Each Hosted AI job also self-schedules a due-time wake-up, so Beat is no
+# longer the only mechanism that can move a queued AI job into processing.
 app.conf.beat_schedule = {
     "dispatch-smart-triggers-every-10-seconds": {
         "task": "apps.triggers.tasks.dispatch_smart_triggers",
