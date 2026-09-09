@@ -34,6 +34,33 @@
         const main = document.querySelector(".sa-content");
         if (!main) return;
 
+        const isCoinWorkspace = window.location.pathname.indexOf("ai-credits") !== -1;
+
+        // Sidebar and topbar live outside .sa-content and should use the new unit
+        // on every Superadmin page.
+        document.querySelectorAll(".sa-nav-text, .sa-page-location").forEach(function (element) {
+            element.textContent = replaceCoinTerms(element.textContent);
+        });
+        document.querySelectorAll(".sa-nav-link[title]").forEach(function (element) {
+            element.title = replaceCoinTerms(element.title);
+        });
+
+        if (!isCoinWorkspace) {
+            // Organization summary pages only need the explicit wallet metric labels
+            // changed. Avoid rewriting free-form organization notes or user content.
+            const exactLabels = {
+                "Credits Used": "Coins Used",
+                "Credits Remaining": "Coins Remaining",
+                "Credits Total": "Coins Total",
+                "AI Credits": "AI Coins",
+            };
+            main.querySelectorAll("th, .sa-stat-label, label, h2, h3").forEach(function (element) {
+                const replacement = exactLabels[textOf(element)];
+                if (replacement) element.textContent = replacement;
+            });
+            return;
+        }
+
         document.title = replaceCoinTerms(document.title);
 
         const walker = document.createTreeWalker(
@@ -56,7 +83,7 @@
             node.nodeValue = replaceCoinTerms(node.nodeValue);
         });
 
-        document.querySelectorAll("[title], [aria-label], [placeholder], [onsubmit]").forEach(function (element) {
+        main.querySelectorAll("[title], [aria-label], [placeholder], [onsubmit]").forEach(function (element) {
             if (element.closest("#history")) return;
             ["title", "aria-label", "placeholder", "onsubmit"].forEach(function (attribute) {
                 if (!element.hasAttribute(attribute)) return;
@@ -64,28 +91,21 @@
             });
         });
 
-        // Sidebar and topbar live outside .sa-content.
-        document.querySelectorAll(".sa-nav-text, .sa-page-location").forEach(function (element) {
-            element.textContent = replaceCoinTerms(element.textContent);
+        document.querySelectorAll('input[name="amount"]').forEach(function (input) {
+            input.placeholder = "e.g. 100";
         });
 
-        if (window.location.pathname.indexOf("ai-credits") !== -1) {
-            document.querySelectorAll('input[name="amount"]').forEach(function (input) {
-                input.placeholder = "e.g. 100";
-            });
-
-            const history = document.getElementById("history");
-            if (history) {
-                const description = history.querySelector("h2 + p");
-                if (description) {
-                    description.textContent = "Latest 100 balance changes. Change and balance values below are exact internal AI credits (30 credits = 1 coin).";
-                }
-                history.querySelectorAll("th").forEach(function (header) {
-                    const label = textOf(header);
-                    if (label === "Change") header.textContent = "Change (credits)";
-                    if (label === "Balance after") header.textContent = "Balance after (credits)";
-                });
+        const history = document.getElementById("history");
+        if (history) {
+            const description = history.querySelector("h2 + p");
+            if (description) {
+                description.textContent = "Latest 100 balance changes. Change and balance values below are exact internal AI credits (30 credits = 1 coin).";
             }
+            history.querySelectorAll("th").forEach(function (header) {
+                const label = textOf(header);
+                if (label === "Change") header.textContent = "Change (credits)";
+                if (label === "Balance after") header.textContent = "Balance after (credits)";
+            });
         }
     }
 
