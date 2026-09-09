@@ -4,6 +4,7 @@ from django.urls import reverse
 
 from apps.accounts.models import User
 from apps.accounts.session_utils import set_authenticated_user
+from apps.ai_engagement.models import AICreditWallet
 from apps.channels.models import WhatsAppAccount
 from apps.crm.models.pipeline import Pipeline
 from apps.organizations.models import Organization, OrganizationTag
@@ -105,6 +106,27 @@ class SuperadminWorkspaceControlsTests(TestCase):
         self.assertIn(str(self.user.id), response["Location"])
         self.user.refresh_from_db()
         self.assertTrue(self.user.check_password("old-password-123"))
+
+    def test_organization_detail_exposes_real_ai_coin_wallet_metrics(self):
+        AICreditWallet.objects.create(
+            organization=self.organization,
+            balance=750,
+            reserved_credits=30,
+            lifetime_credits_added=900,
+            lifetime_credits_used=180,
+        )
+
+        response = self.client.get(
+            reverse(
+                "superadmin-organization-detail",
+                kwargs={"organization_id": self.organization.id},
+            )
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'data-ai-coins-used="6.00"')
+        self.assertContains(response, 'data-ai-coins-remaining="24.00"')
+        self.assertContains(response, 'data-ai-coins-total="30.00"')
 
     def test_whatsapp_activity_uses_one_effective_channel_per_pipeline(self):
         # Organizations receive a default pipeline on creation. Remove that

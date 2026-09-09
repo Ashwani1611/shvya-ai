@@ -17,6 +17,151 @@
         return null;
     }
 
+    function replaceCoinTerms(value) {
+        return String(value || "")
+            .replace(/AI Credits/g, "AI Coins")
+            .replace(/AI Credit/g, "AI Coin")
+            .replace(/AI credits/g, "AI coins")
+            .replace(/AI credit/g, "AI coin")
+            .replace(/AI-credit/g, "AI-coin")
+            .replace(/Credits/g, "Coins")
+            .replace(/credits/g, "coins")
+            .replace(/Credit/g, "Coin")
+            .replace(/credit/g, "coin");
+    }
+
+    function configureCoinInputs() {
+        if (window.location.pathname.indexOf("ai-credits") === -1) return;
+
+        document.querySelectorAll('input[name="amount"]').forEach(function (input) {
+            input.step = "0.01";
+            input.min = "0.04";
+            input.placeholder = "e.g. 100";
+        });
+
+        const thresholdInput = document.querySelector('input[name="threshold"]');
+        if (thresholdInput) {
+            thresholdInput.step = "0.01";
+            thresholdInput.min = "0";
+        }
+    }
+
+    function applyCoinTerminology() {
+        const main = document.querySelector(".sa-content");
+        if (!main) return;
+
+        const isCoinWorkspace = window.location.pathname.indexOf("ai-credits") !== -1;
+
+        // Sidebar and topbar live outside .sa-content and should use the new unit
+        // on every Superadmin page.
+        document.querySelectorAll(".sa-nav-text, .sa-page-location").forEach(function (element) {
+            element.textContent = replaceCoinTerms(element.textContent);
+        });
+        document.querySelectorAll(".sa-nav-link[title]").forEach(function (element) {
+            element.title = replaceCoinTerms(element.title);
+        });
+
+        if (!isCoinWorkspace) {
+            // Organization summary pages only need the explicit wallet metric labels
+            // changed. Avoid rewriting free-form organization notes or user content.
+            const exactLabels = {
+                "Credits Used": "Coins Used",
+                "Credits Remaining": "Coins Remaining",
+                "Credits Total": "Coins Total",
+                "AI Credits": "AI Coins",
+            };
+            main.querySelectorAll("th, .sa-stat-label, label, h2, h3, .text-xs.text-gray-400").forEach(function (element) {
+                const replacement = exactLabels[textOf(element)];
+                if (replacement) element.textContent = replacement;
+            });
+            return;
+        }
+
+        document.title = replaceCoinTerms(document.title);
+
+        const walker = document.createTreeWalker(
+            main,
+            NodeFilter.SHOW_TEXT,
+            {
+                acceptNode: function (node) {
+                    const parent = node.parentElement;
+                    if (!parent || parent.closest("#history")) {
+                        return NodeFilter.FILTER_REJECT;
+                    }
+                    return NodeFilter.FILTER_ACCEPT;
+                },
+            }
+        );
+
+        const nodes = [];
+        while (walker.nextNode()) nodes.push(walker.currentNode);
+        nodes.forEach(function (node) {
+            node.nodeValue = replaceCoinTerms(node.nodeValue);
+        });
+
+        main.querySelectorAll("[title], [aria-label], [placeholder], [onsubmit]").forEach(function (element) {
+            if (element.closest("#history")) return;
+            ["title", "aria-label", "placeholder", "onsubmit"].forEach(function (attribute) {
+                if (!element.hasAttribute(attribute)) return;
+                element.setAttribute(attribute, replaceCoinTerms(element.getAttribute(attribute)));
+            });
+        });
+
+        const history = document.getElementById("history");
+        if (history) {
+            const description = history.querySelector("h2 + p");
+            if (description) {
+                description.textContent = "Latest 100 balance changes. Change and balance values below are exact internal AI credits (30 credits = 1 coin).";
+            }
+            history.querySelectorAll("th").forEach(function (header) {
+                const label = textOf(header);
+                if (label === "Change") header.textContent = "Change (credits)";
+                if (label === "Balance after") header.textContent = "Balance after (credits)";
+            });
+        }
+    }
+
+    function syncOrganizationCoinCards() {
+        const data = document.getElementById("sa-org-workspace-data");
+        const card = findCardByHeading("Organization Information");
+        if (!data || !card) return;
+
+        const values = {
+            "Credits Used": data.dataset.aiCoinsUsed,
+            "Coins Used": data.dataset.aiCoinsUsed,
+            "Credits Remaining": data.dataset.aiCoinsRemaining,
+            "Coins Remaining": data.dataset.aiCoinsRemaining,
+            "Credits Total": data.dataset.aiCoinsTotal,
+            "Coins Total": data.dataset.aiCoinsTotal,
+        };
+        const normalizedLabels = {
+            "Credits Used": "Coins Used",
+            "Coins Used": "Coins Used",
+            "Credits Remaining": "Coins Remaining",
+            "Coins Remaining": "Coins Remaining",
+            "Credits Total": "Coins Total",
+            "Coins Total": "Coins Total",
+        };
+
+        card.querySelectorAll("div").forEach(function (label) {
+            const current = textOf(label);
+            if (!Object.prototype.hasOwnProperty.call(values, current)) return;
+
+            const container = label.parentElement;
+            if (!container) return;
+            const children = Array.from(container.children);
+            const valueElement = children.find(function (child) {
+                return child !== label && child.classList.contains("mt-1");
+            });
+
+            label.textContent = normalizedLabels[current];
+            if (valueElement && values[current] !== undefined) {
+                valueElement.textContent = values[current] || "0.00";
+                valueElement.title = "AI coin wallet value · 30 internal credits = 1 coin";
+            }
+        });
+    }
+
     function injectLayoutFixes() {
         const style = document.createElement("style");
         style.id = "sa-org-detail-layout-fixes";
@@ -120,9 +265,6 @@
             body.hidden = true;
         }
 
-        // The first V2 pass put this card into the right workspace column. Move it
-        // back below the compact workspace so the short left column does not leave
-        // a large empty vertical area before Users and Pipelines.
         const workspace = document.getElementById("workspace");
         if (workspace && accountCard.closest(".sa-org-workspace-grid") === workspace) {
             workspace.insertAdjacentElement("afterend", accountCard);
@@ -274,6 +416,10 @@
     }
 
     document.addEventListener("DOMContentLoaded", function () {
+        applyCoinTerminology();
+        configureCoinInputs();
+        syncOrganizationCoinCards();
+
         if (!document.getElementById("sa-org-workspace-data")) return;
         injectLayoutFixes();
         makeAccountCardActuallyCollapsible();

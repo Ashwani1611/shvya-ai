@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from django.test import TestCase
 
 from apps.ai_engagement.models import (
@@ -35,7 +37,7 @@ class SuperadminOrganizationMetricsTests(TestCase):
             metadata={"task": task},
         )
 
-    def test_builds_real_ai_credit_and_usage_metrics(self):
+    def test_builds_real_ai_coin_and_usage_metrics(self):
         self._usage(feature="engagement", task="engagement")
         self._usage(feature="engagement", task="bump_up")
         self._usage(feature="qualification", task="lead_qualification_summary")
@@ -66,13 +68,18 @@ class SuperadminOrganizationMetricsTests(TestCase):
         self.assertEqual(metrics["ai_qualifications"], 1)
         self.assertEqual(metrics["ai_bumpups"], 1)
         self.assertEqual(metrics["afs_sent"], 0)
+        # Exact-credit aliases stay backwards compatible.
         self.assertEqual(metrics["credits_used"], 20)
         self.assertEqual(metrics["credits_remaining"], 75)
         self.assertEqual(metrics["credits_total"], 100)
+        # Superadmin UI consumes the new coin-facing fields.
+        self.assertEqual(metrics["coins_used"], Decimal("0.67"))
+        self.assertEqual(metrics["coins_remaining"], Decimal("2.50"))
+        self.assertEqual(metrics["coins_total"], Decimal("3.33"))
         self.assertTrue(metrics["kb_setup"])
         self.assertEqual(metrics["sequences"], 1)
 
-    def test_organization_without_wallet_returns_zero_credit_metrics(self):
+    def test_organization_without_wallet_returns_zero_coin_metrics(self):
         organization = Organization.objects.create(name="No Wallet Org")
 
         metrics = build_organization_metrics([organization])[str(organization.id)]
@@ -80,5 +87,8 @@ class SuperadminOrganizationMetricsTests(TestCase):
         self.assertEqual(metrics["credits_used"], 0)
         self.assertEqual(metrics["credits_remaining"], 0)
         self.assertEqual(metrics["credits_total"], 0)
+        self.assertEqual(metrics["coins_used"], Decimal("0.00"))
+        self.assertEqual(metrics["coins_remaining"], Decimal("0.00"))
+        self.assertEqual(metrics["coins_total"], Decimal("0.00"))
         self.assertEqual(metrics["ai_messages"], 0)
         self.assertFalse(metrics["kb_setup"])

@@ -1,5 +1,6 @@
 {% load static %}
 {% load workspace_tags %}
+{% load superadmin_metrics %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -19,6 +20,7 @@
 <body class="sa-body">
     {% if organization and request.resolver_match.url_name == 'superadmin-organization-detail' %}
         {% organization_workspace_state organization as sa_workspace %}
+        {% organization_metric organization as sa_coin_metrics %}
         <div
             id="sa-org-workspace-data"
             hidden
@@ -31,6 +33,9 @@
             data-channel-since="{% if sa_workspace.inactive_since %}{{ sa_workspace.inactive_since|date:'jS M Y, g:ia' }}{% endif %}"
             data-channel-active-count="{{ sa_workspace.active_count }}"
             data-channel-total-count="{{ sa_workspace.total_count }}"
+            data-ai-coins-used="{{ sa_coin_metrics.coins_used }}"
+            data-ai-coins-remaining="{{ sa_coin_metrics.coins_remaining }}"
+            data-ai-coins-total="{{ sa_coin_metrics.coins_total }}"
         ></div>
     {% endif %}
 
@@ -78,13 +83,13 @@
 
                 <a
                     href="{% url 'superadmin-ai-credit-overview' %}"
-                    title="AI Credits"
+                    title="AI Coins"
                     class="sa-nav-link {% if request.resolver_match.url_name == 'superadmin-ai-credit-overview' or request.resolver_match.url_name == 'superadmin-organization-ai-credits' %}is-active{% endif %}"
                 >
                     <svg class="sa-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
                         <path d="M12 3.75 14.15 9l5.6.45-4.28 3.63 1.31 5.42L12 15.6 7.22 18.5l1.31-5.42-4.28-3.63L9.85 9 12 3.75Z" stroke-linejoin="round"/>
                     </svg>
-                    <span class="sa-nav-text">AI Credits</span>
+                    <span class="sa-nav-text">AI Coins</span>
                 </a>
             </nav>
 
@@ -156,9 +161,9 @@
                         <div class="sa-page-kicker">SHVYA AI · Superadmin</div>
                         <div class="sa-page-location">
                             {% if request.resolver_match.url_name == 'superadmin-ai-credit-overview' %}
-                                AI Credits
+                                AI Coins
                             {% elif request.resolver_match.url_name == 'superadmin-organization-ai-credits' %}
-                                Manage AI Credits
+                                Manage AI Coins
                             {% elif request.resolver_match.url_name == 'superadmin-organization-create' %}
                                 Add Organization
                             {% elif request.resolver_match.url_name == 'superadmin-organization-update' %}

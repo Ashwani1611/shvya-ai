@@ -1,3 +1,6 @@
+from apps.ai_engagement.coins import credits_to_coins
+
+
 AI_CREDIT_ALERT_THRESHOLD = 500
 
 
@@ -213,21 +216,20 @@ def _pending_reminder_count(request):
 
 
 def _ai_credit_context(request):
-    """Expose the organization's actually spendable AI-credit balance.
-
-    The header must reflect the same availability rule used by AI providers:
-    reserved credits are not spendable, so the displayed value is
-    ``balance - reserved_credits``. Organizations without a wallet are shown as
-    zero because SHVYA's manual AI-credit system starts every organization at 0.
-    """
+    """Expose exact credits plus the 30:1 user-facing AI coin wallet context."""
     user = getattr(request, "crm_user", None)
     organization_id = getattr(user, "organization_id", None)
+    coin_alert_threshold = credits_to_coins(AI_CREDIT_ALERT_THRESHOLD)
 
     if not organization_id:
         return {
             "ai_credit_balance": None,
             "ai_credit_is_low": False,
             "ai_credit_alert_threshold": AI_CREDIT_ALERT_THRESHOLD,
+            "ai_coin_balance": None,
+            "ai_coin_total": None,
+            "ai_coin_is_low": False,
+            "ai_coin_alert_threshold": coin_alert_threshold,
         }
 
     from apps.ai_engagement.models import AICreditWallet
@@ -235,16 +237,28 @@ def _ai_credit_context(request):
     wallet = (
         AICreditWallet.objects
         .filter(organization_id=organization_id)
-        .only("balance", "reserved_credits")
+        .only(
+            "balance",
+            "reserved_credits",
+            "lifetime_credits_added",
+        )
         .first()
     )
 
     available = wallet.available_credits if wallet is not None else 0
+    total_funded = int(wallet.lifetime_credits_added) if wallet is not None else 0
+    is_low = available <= AI_CREDIT_ALERT_THRESHOLD
 
     return {
+        # Raw credit aliases remain for any older templates/integrations.
         "ai_credit_balance": available,
-        "ai_credit_is_low": available <= AI_CREDIT_ALERT_THRESHOLD,
+        "ai_credit_is_low": is_low,
         "ai_credit_alert_threshold": AI_CREDIT_ALERT_THRESHOLD,
+        # Dashboard UI uses coins.
+        "ai_coin_balance": credits_to_coins(available),
+        "ai_coin_total": credits_to_coins(total_funded),
+        "ai_coin_is_low": is_low,
+        "ai_coin_alert_threshold": coin_alert_threshold,
     }
 
 

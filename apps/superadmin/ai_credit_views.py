@@ -9,6 +9,12 @@ from django.utils import timezone
 from django.utils.dateparse import parse_date
 from django.views.decorators.http import require_http_methods
 
+from apps.ai_engagement.coins import (
+    AI_CREDITS_PER_COIN,
+    coins_to_credits,
+    credits_to_coins,
+    format_coins,
+)
 from apps.ai_engagement.models import (
     AICreditTransaction,
     AICreditWallet,
@@ -58,7 +64,6 @@ def _resolve_usage_date_filter(request):
     start_date = parse_date(raw_from) if raw_from else None
     end_date = parse_date(raw_to) if raw_to else None
 
-    # Explicit dates always take precedence over a quick preset.
     if raw_from or raw_to:
         preset = "custom"
     elif preset == "today":
@@ -117,7 +122,7 @@ def _filter_transactions_for_dates(queryset, date_filter):
 
 
 def _build_usage_report(transactions):
-    """Build signed credit totals and action-level AI usage for one date range."""
+    """Build coin summaries while preserving exact credit-ledger totals."""
 
     credits_added = transactions.filter(
         transaction_type=AICreditTransaction.TransactionType.MANUAL_CREDIT,
@@ -148,11 +153,11 @@ def _build_usage_report(transactions):
                 "feature": row["feature"] or "other",
                 "label": _feature_label(row["feature"]),
                 "amount": amount,
-                "signed_display": f"{amount:+,}",
+                "signed_display": format_coins(amount, signed=True),
+                "credits_signed_display": f"{amount:+,}",
             }
         )
 
-    # Highest-consuming AI action first, regardless of the underlying feature key.
     usage_rows.sort(key=lambda row: abs(row["amount"]), reverse=True)
 
     credits_added = int(credits_added)
@@ -162,14 +167,42 @@ def _build_usage_report(transactions):
 
     return {
         "credits_added": max(credits_added, 0),
-        "credits_added_display": f"{max(credits_added, 0):,}",
         "manual_deducted": max(-manual_debits, 0),
-        "manual_deducted_display": f"{max(-manual_debits, 0):,}",
         "ai_used": max(-ai_usage_total, 0),
-        "ai_used_display": f"{max(-ai_usage_total, 0):,}",
         "net_change": net_change,
-        "net_change_display": f"{net_change:+,}",
+        "credits_added_display": format_coins(max(credits_added, 0)),
+        "manual_deducted_display": format_coins(max(-manual_debits, 0)),
+        "ai_used_display": format_coins(max(-ai_usage_total, 0)),
+        "net_change_display": format_coins(net_change, signed=True),
+        "credits_added_credits_display": f"{max(credits_added, 0):,}",
+        "manual_deducted_credits_display": f"{max(-manual_debits, 0):,}",
+        "ai_used_credits_display": f"{max(-ai_usage_total, 0):,}",
+        "net_change_credits_display": f"{net_change:+,}",
         "usage_rows": usage_rows,
+    }
+
+
+def _coin_wallet_context(wallet: AICreditWallet) -> dict:
+    """Expose the same wallet health state with values expressed in AI coins."""
+
+    return {
+        "available_credits": credits_to_coins(wallet.available_credits),
+        "reserved_credits": credits_to_coins(wallet.reserved_credits),
+        "lifetime_credits_added": credits_to_coins(wallet.lifetime_credits_added),
+        "lifetime_credits_used": credits_to_coins(wallet.lifetime_credits_used),
+        "low_credit_threshold": credits_to_coins(wallet.low_credit_threshold),
+        "is_blocked": wallet.is_blocked,
+        "is_low": wallet.is_low,
+    }
+
+
+def _coin_reservation_context(reservation) -> dict:
+    return {
+        "created_at": reservation.created_at,
+        "feature": reservation.feature,
+        "model": reservation.model,
+        "reserved_credits": credits_to_coins(reservation.reserved_credits),
+        "reference_id": reservation.reference_id,
     }
 
 
@@ -199,8 +232,6 @@ def ai_credit_overview_view(request):
         if organization_id not in existing_ids
     ]
     if missing:
-        # Creating an empty wallet is not a credit allocation. New and existing
-        # organizations still remain at zero until Superadmin manually funds it.
         AICreditWallet.objects.bulk_create(missing, ignore_conflicts=True)
 
     organizations = (
@@ -215,6 +246,7 @@ def ai_credit_overview_view(request):
         {
             "organizations": organizations,
             "search": search,
+            "credits_per_coin": AI_CREDITS_PER_COIN,
         },
     )
 
@@ -222,7 +254,7 @@ def ai_credit_overview_view(request):
 @superuser_required
 @require_http_methods(["GET", "POST"])
 def organization_ai_credit_view(request, organization_id):
-    """Manually manage one organization's AI wallet and audit ledger."""
+    """Manage one organization's AI wallet in coins; audit usage in credits."""
 
     organization = get_object_or_404(Organization, pk=organization_id)
     wallet = AICreditService.ensure_wallet(organization)
@@ -231,31 +263,43 @@ def organization_ai_credit_view(request, organization_id):
         action = (request.POST.get("action") or "").strip()
         try:
             if action == "add":
-                amount = int(request.POST.get("amount") or 0)
+                credits = coins_to_credits(request.POST.get("amount"))
+                if credits <= 0:
+                    raise ValueError("AI coin amount must fund at least one credit.")
+                coins = credits_to_coins(credits)
                 reason = request.POST.get("reason") or ""
                 AICreditService.add_manual_credits(
                     organization=organization,
-                    amount=amount,
+                    amount=credits,
                     reason=reason,
                     actor=request.user,
                 )
                 messages.success(
                     request,
-                    f"Added {amount:,} AI credits to {organization.name}.",
+                    f"Added {coins:,.2f} AI coins to {organization.name} "
+                    f"({credits:,} internal credits).",
                 )
 
             elif action == "deduct":
-                amount = int(request.POST.get("amount") or 0)
+                credits = coins_to_credits(request.POST.get("amount"))
+                if credits <= 0:
+                    raise ValueError("AI coin amount must deduct at least one credit.")
+                coins = credits_to_coins(credits)
+                if credits > wallet.available_credits:
+                    raise AICreditError(
+                        "Cannot deduct more than the organization's available AI coins."
+                    )
                 reason = request.POST.get("reason") or ""
                 AICreditService.deduct_manual_credits(
                     organization=organization,
-                    amount=amount,
+                    amount=credits,
                     reason=reason,
                     actor=request.user,
                 )
                 messages.success(
                     request,
-                    f"Deducted {amount:,} AI credits from {organization.name}.",
+                    f"Deducted {coins:,.2f} AI coins from {organization.name} "
+                    f"({credits:,} internal credits).",
                 )
 
             elif action == "block":
@@ -274,21 +318,22 @@ def organization_ai_credit_view(request, organization_id):
                 )
 
             elif action == "threshold":
-                threshold = int(request.POST.get("threshold") or 0)
+                threshold_credits = coins_to_credits(request.POST.get("threshold"))
+                threshold_coins = credits_to_coins(threshold_credits)
                 AICreditService.set_low_credit_threshold(
                     organization=organization,
-                    threshold=threshold,
+                    threshold=threshold_credits,
                 )
                 messages.success(
                     request,
-                    f"Low-credit threshold updated to {threshold:,} credits.",
+                    f"Low-balance threshold updated to {threshold_coins:,.2f} AI coins.",
                 )
 
             else:
-                raise AICreditError("Unknown AI credit action.")
+                raise AICreditError("Unknown AI coin action.")
 
         except (TypeError, ValueError):
-            messages.error(request, "Enter a valid whole-number AI credit amount.")
+            messages.error(request, "Enter a valid AI coin amount.")
         except AICreditError as exc:
             messages.error(request, str(exc))
 
@@ -318,21 +363,25 @@ def organization_ai_credit_view(request, organization_id):
     usage_report = _build_usage_report(filtered_transactions)
 
     transactions = filtered_transactions[:100]
-    active_reservations = wallet.reservations.filter(
-        status="active",
-    ).order_by("-created_at")[:25]
+    active_reservations = [
+        _coin_reservation_context(reservation)
+        for reservation in wallet.reservations.filter(
+            status="active",
+        ).order_by("-created_at")[:25]
+    ]
 
     return render(
         request,
         "superadmin/ai_credit_detail.html",
         {
             "organization": organization,
-            "wallet": wallet,
+            "wallet": _coin_wallet_context(wallet),
             "transactions": transactions,
             "active_reservations": active_reservations,
-            "used_today": max(-int(today_total), 0),
-            "used_this_month": max(-int(month_total), 0),
+            "used_today": credits_to_coins(max(-int(today_total), 0)),
+            "used_this_month": credits_to_coins(max(-int(month_total), 0)),
             "date_filter": date_filter,
             "usage_report": usage_report,
+            "credits_per_coin": AI_CREDITS_PER_COIN,
         },
     )
