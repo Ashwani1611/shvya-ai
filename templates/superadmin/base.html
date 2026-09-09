@@ -1,28 +1,65 @@
 {% load static %}
+{% load workspace_tags %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="theme-color" content="#0b1020">
+    <meta name="theme-color" content="#071126">
 
     <title>{% block title %}SHVYA AI - Super Admin{% endblock %}</title>
 
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="{% static 'superadmin/superadmin.css' %}">
+    <link rel="stylesheet" href="{% static 'superadmin/superadmin-v2.css' %}">
 
     {% block extra_head %}{% endblock %}
 </head>
 
 <body class="sa-body">
+    {% if organization and request.resolver_match.url_name == 'superadmin-organization-detail' %}
+        {% organization_workspace_state organization as sa_workspace %}
+        <div
+            id="sa-org-workspace-data"
+            hidden
+            data-notes-url="{% url 'superadmin-organization-notes-update' organization_id=organization.id %}"
+            data-tags-url="{% url 'superadmin-organization-tags-update' organization_id=organization.id %}"
+            data-note-updated="{% if sa_workspace.note_updated_at %}{{ sa_workspace.note_updated_at|date:'jS M Y, g:ia' }}{% endif %}"
+            data-channel-active="{{ sa_workspace.channel_active|yesno:'true,false' }}"
+            data-channel-label="{{ sa_workspace.channel_label }}"
+            data-channel-detail="{{ sa_workspace.channel_detail }}"
+            data-channel-since="{% if sa_workspace.inactive_since %}{{ sa_workspace.inactive_since|date:'jS M Y, g:ia' }}{% endif %}"
+            data-channel-active-count="{{ sa_workspace.active_count }}"
+            data-channel-total-count="{{ sa_workspace.total_count }}"
+        ></div>
+    {% endif %}
+
     <div class="sa-shell">
         <aside id="superadmin-sidebar" class="sa-sidebar" aria-label="Superadmin navigation">
             <div class="sa-brand">
-                <div class="sa-brand-mark" aria-hidden="true">S</div>
-                <div class="min-w-0">
-                    <div class="sa-brand-title">SHVYA AI</div>
-                    <div class="sa-brand-subtitle">Superadmin Console</div>
-                </div>
+                <a href="{% url 'superadmin-org-list' %}" class="sa-brand-home" aria-label="SHVYA AI Superadmin home">
+                    <span class="sa-brand-logo-shell" aria-hidden="true">
+                        <img src="{% static 'images/shvya-logo.svg' %}" alt="" class="sa-brand-logo">
+                    </span>
+                    <span class="sa-brand-copy min-w-0">
+                        <span class="sa-brand-title">SHVYA AI</span>
+                        <span class="sa-brand-subtitle">Superadmin Console</span>
+                    </span>
+                </a>
+
+                <button
+                    id="superadmin-collapse-button"
+                    type="button"
+                    class="sa-collapse-button"
+                    aria-label="Collapse navigation"
+                    aria-controls="superadmin-sidebar"
+                    aria-expanded="true"
+                    title="Collapse sidebar"
+                >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true">
+                        <path d="m14 7-5 5 5 5" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                </button>
             </div>
 
             <nav class="sa-nav">
@@ -30,22 +67,24 @@
 
                 <a
                     href="{% url 'superadmin-org-list' %}"
+                    title="Organizations"
                     class="sa-nav-link {% if request.resolver_match.url_name == 'superadmin-org-list' or request.resolver_match.url_name == 'superadmin-organization-detail' or request.resolver_match.url_name == 'superadmin-organization-create' or request.resolver_match.url_name == 'superadmin-organization-update' or request.resolver_match.url_name == 'superadmin-organization-user-edit' or request.resolver_match.url_name == 'superadmin-organization-pipeline-add' or request.resolver_match.url_name == 'superadmin-organization-pipeline-edit' or request.resolver_match.url_name == 'superadmin-organization-hosted-ignore-list' %}is-active{% endif %}"
                 >
                     <svg class="sa-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
                         <path d="M4 20h16M6.5 20V7.5L12 4l5.5 3.5V20M9 10h1.5m3 0H15M9 13.5h1.5m3 0H15M10 20v-3h4v3" stroke-linecap="round" stroke-linejoin="round"/>
                     </svg>
-                    <span>Organizations</span>
+                    <span class="sa-nav-text">Organizations</span>
                 </a>
 
                 <a
                     href="{% url 'superadmin-ai-credit-overview' %}"
+                    title="AI Credits"
                     class="sa-nav-link {% if request.resolver_match.url_name == 'superadmin-ai-credit-overview' or request.resolver_match.url_name == 'superadmin-organization-ai-credits' %}is-active{% endif %}"
                 >
                     <svg class="sa-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
                         <path d="M12 3.75 14.15 9l5.6.45-4.28 3.63 1.31 5.42L12 15.6 7.22 18.5l1.31-5.42-4.28-3.63L9.85 9 12 3.75Z" stroke-linejoin="round"/>
                     </svg>
-                    <span>AI Credits</span>
+                    <span class="sa-nav-text">AI Credits</span>
                 </a>
             </nav>
 
@@ -56,13 +95,13 @@
                     <a
                         href="{% url 'superadmin-organization-hosted-ignore-list' organization_id=organization.id %}"
                         class="sa-context-action"
-                        title="View, download or reset existing Hosted WhatsApp chats that are blocked from auto lead creation"
+                        title="Existing Hosted WhatsApp chat ignore list"
                     >
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
                             <path d="M12 3.5 19 6v5.3c0 4.35-2.8 7.55-7 9.2-4.2-1.65-7-4.85-7-9.2V6l7-2.5Z" stroke-linejoin="round"/>
                             <path d="m9.5 12 1.65 1.65L14.8 10" stroke-linecap="round" stroke-linejoin="round"/>
                         </svg>
-                        Existing chat ignore list
+                        <span class="sa-context-text">Existing chat ignore list</span>
                     </a>
 
                     <form
@@ -71,23 +110,23 @@
                         onsubmit="return confirm('Sync all currently existing direct chats from every connected Hosted Account? A successful sync replaces the current ignore-list snapshot.');"
                     >
                         {% csrf_token %}
-                        <button type="submit" class="sa-context-action">
+                        <button type="submit" class="sa-context-action" title="Sync existing chats">
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
                                 <path d="M20 7v5h-5M4 17v-5h5" stroke-linecap="round" stroke-linejoin="round"/>
                                 <path d="M6.1 8.5A7 7 0 0 1 18.5 7L20 12M4 12l1.5 5a7 7 0 0 0 12.4-1.5" stroke-linecap="round" stroke-linejoin="round"/>
                             </svg>
-                            Sync existing chats
+                            <span class="sa-context-text">Sync existing chats</span>
                         </button>
                     </form>
                 </div>
             {% endif %}
 
             <div class="sa-sidebar-footer">
-                <div class="sa-user-card">
+                <div class="sa-user-card" title="{{ request.user.get_full_name|default:request.user.email }}">
                     <div class="sa-avatar" aria-hidden="true">
                         {{ request.user.get_full_name|default:request.user.email|slice:":1"|upper }}
                     </div>
-                    <div class="min-w-0">
+                    <div class="sa-user-copy min-w-0">
                         <div class="sa-user-name">{{ request.user.get_full_name|default:request.user.email }}</div>
                         <div class="sa-user-role">Superadmin access</div>
                     </div>
@@ -114,7 +153,7 @@
                     </button>
 
                     <div class="min-w-0">
-                        <div class="sa-page-kicker">Superadmin</div>
+                        <div class="sa-page-kicker">SHVYA AI · Superadmin</div>
                         <div class="sa-page-location">
                             {% if request.resolver_match.url_name == 'superadmin-ai-credit-overview' %}
                                 AI Credits
@@ -197,6 +236,7 @@
         })();
     </script>
 
+    <script src="{% static 'superadmin/superadmin-v2.js' %}" defer></script>
     {% block extra_scripts %}{% endblock %}
 </body>
 </html>
