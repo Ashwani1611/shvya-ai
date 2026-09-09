@@ -1,6 +1,6 @@
 {% extends "superadmin/base.html" %}
 
-{% block title %}AI Credits - SHVYA Super Admin{% endblock %}
+{% block title %}AI Coins - SHVYA Super Admin{% endblock %}
 
 {% block content %}
 <div class="sa-page-header">
@@ -8,9 +8,9 @@
         <div class="mb-2 inline-flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-indigo-600">
             AI operations
         </div>
-        <h1 class="sa-page-title">AI Credits</h1>
+        <h1 class="sa-page-title">AI Coins</h1>
         <p class="sa-page-description">
-            Review organization credit balances and open a workspace to fund, block, or inspect AI usage. Credits are managed manually by Superadmin.
+            Review organization coin balances and open a workspace to fund, block, or inspect AI usage. <strong>1 AI coin = {{ credits_per_coin }} internal AI credits.</strong>
         </p>
     </div>
 
@@ -29,18 +29,18 @@
         <div class="sa-stat-note">Organizations in the current search view</div>
     </div>
     <div class="sa-stat-card">
-        <div class="sa-stat-label">Credit control</div>
+        <div class="sa-stat-label">Coin control</div>
         <div class="sa-stat-value text-[20px]">Manual</div>
-        <div class="sa-stat-note">No automatic plan allocation is applied</div>
+        <div class="sa-stat-note">Superadmin adds whole AI coins directly</div>
     </div>
     <div class="sa-stat-card">
-        <div class="sa-stat-label">Funding model</div>
-        <div class="sa-stat-value text-[20px]">Per organization</div>
-        <div class="sa-stat-note">Open a row below to manage its wallet</div>
+        <div class="sa-stat-label">Conversion</div>
+        <div class="sa-stat-value text-[20px]">{{ credits_per_coin }} : 1</div>
+        <div class="sa-stat-note">Internal credits per AI coin</div>
     </div>
 </div>
 
-<form method="get" class="sa-panel sa-filter-panel" aria-label="AI credit search">
+<form method="get" class="sa-panel sa-filter-panel" aria-label="AI coin search">
     <div class="sa-search-row">
         <div class="sa-search-wrap">
             <svg class="sa-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
@@ -53,7 +53,7 @@
                 value="{{ search }}"
                 placeholder="Search organization or user email"
                 class="sa-search-input"
-                aria-label="Search AI credit organizations"
+                aria-label="Search AI coin organizations"
             >
         </div>
         <button type="submit" class="sa-primary-button">Search</button>
@@ -63,23 +63,24 @@
     </div>
 </form>
 
-<section class="sa-panel sa-table-panel" aria-labelledby="credit-table-title">
+<section class="sa-panel sa-table-panel" aria-labelledby="coin-table-title">
     <div class="sa-table-header">
         <div>
-            <div id="credit-table-title" class="sa-table-title">Organization wallets</div>
-            <div class="sa-table-subtitle">Available, reserved, and lifetime AI credit usage</div>
+            <div id="coin-table-title" class="sa-table-title">Organization coin wallets</div>
+            <div class="sa-table-subtitle">Available, reserved, lifetime funded and lifetime AI coin usage</div>
         </div>
         <div class="sa-badge sa-badge--primary">{{ organizations|length }} wallet{{ organizations|length|pluralize }}</div>
     </div>
 
     <div class="sa-table-scroll">
-        <table class="sa-data-table" style="min-width: 860px;">
+        <table class="sa-data-table" style="min-width: 940px;">
             <thead>
                 <tr>
                     <th>Organization</th>
-                    <th>Available</th>
-                    <th>Reserved</th>
-                    <th>Lifetime used</th>
+                    <th>Coins available</th>
+                    <th>Coins reserved</th>
+                    <th>Coins used</th>
+                    <th>Coins total</th>
                     <th>Status</th>
                     <th class="text-right">Manage</th>
                 </tr>
@@ -99,18 +100,19 @@
                         </td>
                         <td>
                             <span class="sa-metric-value {% if wallet.available_credits == 0 %}text-red-600{% elif wallet.is_low %}text-amber-600{% endif %}">
-                                {{ wallet.available_credits|default:0 }}
+                                {{ wallet.available_coins|default:"0.00" }}
                             </span>
                         </td>
-                        <td><span class="sa-metric-value text-gray-600">{{ wallet.reserved_credits|default:0 }}</span></td>
-                        <td><span class="sa-metric-value text-gray-600">{{ wallet.lifetime_credits_used|default:0 }}</span></td>
+                        <td><span class="sa-metric-value text-gray-600">{{ wallet.reserved_coins|default:"0.00" }}</span></td>
+                        <td><span class="sa-metric-value text-gray-600">{{ wallet.lifetime_coins_used|default:"0.00" }}</span></td>
+                        <td><span class="sa-metric-value text-gray-600">{{ wallet.lifetime_coins_added|default:"0.00" }}</span></td>
                         <td>
                             {% if wallet.is_blocked %}
                                 <span class="sa-badge sa-badge--danger">Blocked</span>
                             {% elif wallet.available_credits == 0 %}
-                                <span class="sa-badge sa-badge--danger">No credits</span>
+                                <span class="sa-badge sa-badge--danger">No coins</span>
                             {% elif wallet.is_low %}
-                                <span class="sa-badge sa-badge--warning">Low credits</span>
+                                <span class="sa-badge sa-badge--warning">Low coins</span>
                             {% else %}
                                 <span class="sa-badge sa-badge--success">
                                     <span class="sa-status-dot sa-status-dot--success" aria-hidden="true"></span>
@@ -120,7 +122,7 @@
                         </td>
                         <td class="text-right">
                             <a href="{% url 'superadmin-organization-ai-credits' organization_id=organization.id %}" class="inline-flex items-center gap-1 text-[11px] font-semibold text-indigo-600 hover:text-indigo-800">
-                                Manage credits
+                                Manage coins
                                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                                     <path d="m9 6 6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/>
                                 </svg>
@@ -130,7 +132,7 @@
                     {% endwith %}
                 {% empty %}
                     <tr>
-                        <td colspan="6" class="sa-empty-state">
+                        <td colspan="7" class="sa-empty-state">
                             <div class="sa-empty-icon" aria-hidden="true">
                                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
                                     <path d="M12 4v16M7.5 7.5h6.75a2.25 2.25 0 0 1 0 4.5h-4.5a2.25 2.25 0 0 0 0 4.5H16.5" stroke-linecap="round"/>
