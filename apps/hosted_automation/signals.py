@@ -1,3 +1,5 @@
+from datetime import timedelta
+
 from celery import shared_task
 from django.db import transaction
 from django.db.models.signals import post_save
@@ -6,6 +8,13 @@ from django.utils import timezone
 
 from apps.channels.models import WhatsAppMessage
 from apps.hosted_automation.models import HostedAutomationJob
+
+
+# The customer-facing target is a reply within roughly 60 seconds. Starting
+# generation at 60 seconds makes that impossible because model generation and
+# Hosted gateway delivery still have to happen afterwards. Reserve 15 seconds
+# for those steps and let Beat remain only a recovery scanner.
+HOSTED_AI_PROCESSING_BUDGET_SECONDS = 15
 
 
 @shared_task(name="hosted.dispatch_due_ai")
@@ -24,11 +33,11 @@ def dispatch_due_hosted_ai():
 def hosted_automation_job_wakeup(sender, instance, created, update_fields=None, **kwargs):
     """Self-schedule queued Hosted AI instead of relying only on Celery Beat.
 
-    Beat remains the recovery scanner and priority coordinator, while this
-    one-shot wake-up makes each queued AI job executable at ``available_at``
-    even if the periodic dispatcher is delayed. The dispatcher still performs
-    the lock, live permission checks, supersession checks, and AI-before-
-    sequence claim, so this cannot bypass queue safeguards.
+    Beat remains the recovery scanner and priority coordinator. New jobs are
+    pulled forward by a small processing budget so AI generation and Hosted
+    delivery can normally complete by the 60-second customer-facing target.
+    The dispatcher still performs the lock, live permission checks,
+    supersession checks, health checks, and AI-before-sequence claim.
     """
     if instance.status != HostedAutomationJob.Status.QUEUED:
         return
@@ -37,6 +46,19 @@ def hosted_automation_job_wakeup(sender, instance, created, update_fields=None, 
     # an Account Health pause. Other queued-field saves must not fan out tasks.
     if not created and update_fields is not None and "available_at" not in update_fields:
         return
+
+    if created:
+        accelerated_at = instance.available_at - timedelta(
+            seconds=HOSTED_AI_PROCESSING_BUDGET_SECONDS
+        )
+        # Persist the accelerated due time without firing post_save again.
+        # Health-pause requeues are deliberately not accelerated.
+        if accelerated_at < instance.available_at:
+            HostedAutomationJob.objects.filter(
+                pk=instance.pk,
+                status=HostedAutomationJob.Status.QUEUED,
+            ).update(available_at=accelerated_at)
+            instance.available_at = accelerated_at
 
     delay_seconds = max(
         0.0,
