@@ -114,13 +114,14 @@ def compile_runtime_policy(*, organization, profile: dict[str, Any]) -> dict[str
             item["pass_condition"] = condition
         criteria.append(item)
 
+    authored_engagement = str(communication.get("custom_instructions") or "").strip()
     source = {
         "version": POLICY_VERSION,
         "organization_id": str(getattr(organization, "id", "")),
         "about": _compact((profile.get("identity") or {}).get("about")),
         "languages": communication.get("languages") or [],
-        "engagement_instructions": _compact(communication.get("custom_instructions")),
-        "qualification_raw": _compact(qualification.get("raw")),
+        "engagement_instructions": authored_engagement,
+        "qualification_raw": str(qualification.get("raw") or "").strip(),
         "criteria": criteria,
     }
     source_hash = hashlib.sha256(
@@ -136,7 +137,7 @@ def compile_runtime_policy(*, organization, profile: dict[str, Any]) -> dict[str
             "languages": list(source["languages"]),
         },
         "engagement": {
-            "rules": _split_rules(source["engagement_instructions"]),
+            "rules": _split_rules(authored_engagement),
             "answer_lead_question_first": True,
             "max_qualification_questions_per_turn": 1,
             "never_invent_org_facts": True,
