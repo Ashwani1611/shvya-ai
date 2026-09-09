@@ -1,5 +1,6 @@
 {% load static %}
 {% load workspace_tags %}
+{% load superadmin_metrics %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -19,6 +20,7 @@
 <body class="sa-body">
     {% if organization and request.resolver_match.url_name == 'superadmin-organization-detail' %}
         {% organization_workspace_state organization as sa_workspace %}
+        {% organization_metric organization as sa_coin_metrics %}
         <div
             id="sa-org-workspace-data"
             hidden
@@ -31,6 +33,9 @@
             data-channel-since="{% if sa_workspace.inactive_since %}{{ sa_workspace.inactive_since|date:'jS M Y, g:ia' }}{% endif %}"
             data-channel-active-count="{{ sa_workspace.active_count }}"
             data-channel-total-count="{{ sa_workspace.total_count }}"
+            data-ai-coins-used="{{ sa_coin_metrics.coins_used }}"
+            data-ai-coins-remaining="{{ sa_coin_metrics.coins_remaining }}"
+            data-ai-coins-total="{{ sa_coin_metrics.coins_total }}"
         ></div>
     {% endif %}
 
