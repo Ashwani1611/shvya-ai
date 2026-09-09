@@ -1,9 +1,16 @@
 from rest_framework import status
+from rest_framework.authentication import (
+    BaseAuthentication,
+    SessionAuthentication,
+)
 from rest_framework.permissions import (
     IsAuthenticated,
 )
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework_simplejwt.authentication import (
+    JWTAuthentication,
+)
 
 from apps.ai_engagement.serializers.playground import (
     PlaygroundRequestSerializer,
@@ -13,6 +20,37 @@ from apps.ai_engagement.services.playground import (
     PlaygroundError,
     PlaygroundService,
 )
+from apps.crm.authentication import (
+    get_crm_authenticated_user,
+)
+
+
+class CRMPlaygroundSessionAuthentication(
+    BaseAuthentication
+):
+    """
+    Authenticate the dedicated SHVYA CRM dashboard session.
+
+    The dashboard intentionally uses ``shvya_crm_sessionid`` instead of
+    Django's default ``sessionid`` cookie. The playground endpoint lives
+    under ``/api/``, so normal dashboard middleware does not attach that
+    CRM identity to the API request. Resolve the dedicated CRM session
+    explicitly here while still enforcing CSRF for cookie authentication.
+    """
+
+    def authenticate(self, request):
+        user = get_crm_authenticated_user(
+            request._request
+        )
+
+        if user is None or not user.is_active:
+            return None
+
+        SessionAuthentication().enforce_csrf(
+            request
+        )
+
+        return user, None
 
 
 class PlaygroundAPIView(APIView):
@@ -23,6 +61,10 @@ class PlaygroundAPIView(APIView):
 
     The client cannot select another organization.
 
+    Authenticated CRM dashboard users (including organization admins and
+    agents) may use the playground through their dedicated CRM session.
+    JWT authentication remains supported for API clients.
+
     This endpoint:
         - does not resolve a Lead
         - does not mutate CRM
@@ -30,6 +72,11 @@ class PlaygroundAPIView(APIView):
         - does not send WhatsApp
         - does not call Meta
     """
+
+    authentication_classes = [
+        CRMPlaygroundSessionAuthentication,
+        JWTAuthentication,
+    ]
 
     permission_classes = [
         IsAuthenticated,
