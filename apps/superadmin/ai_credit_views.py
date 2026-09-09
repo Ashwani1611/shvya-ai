@@ -166,17 +166,14 @@ def _build_usage_report(transactions):
     net_change = int(net_change)
 
     return {
-        # Raw fields remain available for audit/tests and exact provider accounting.
         "credits_added": max(credits_added, 0),
         "manual_deducted": max(-manual_debits, 0),
         "ai_used": max(-ai_usage_total, 0),
         "net_change": net_change,
-        # Existing display keys intentionally become the Superadmin coin view.
         "credits_added_display": format_coins(max(credits_added, 0)),
         "manual_deducted_display": format_coins(max(-manual_debits, 0)),
         "ai_used_display": format_coins(max(-ai_usage_total, 0)),
         "net_change_display": format_coins(net_change, signed=True),
-        # Explicit exact-credit displays are used only where audit detail is wanted.
         "credits_added_credits_display": f"{max(credits_added, 0):,}",
         "manual_deducted_credits_display": f"{max(-manual_debits, 0):,}",
         "ai_used_credits_display": f"{max(-ai_usage_total, 0):,}",
@@ -266,8 +263,10 @@ def organization_ai_credit_view(request, organization_id):
         action = (request.POST.get("action") or "").strip()
         try:
             if action == "add":
-                coins = int(request.POST.get("amount") or 0)
-                credits = coins_to_credits(coins)
+                credits = coins_to_credits(request.POST.get("amount"))
+                if credits <= 0:
+                    raise ValueError("AI coin amount must fund at least one credit.")
+                coins = credits_to_coins(credits)
                 reason = request.POST.get("reason") or ""
                 AICreditService.add_manual_credits(
                     organization=organization,
@@ -277,13 +276,15 @@ def organization_ai_credit_view(request, organization_id):
                 )
                 messages.success(
                     request,
-                    f"Added {coins:,} AI coins to {organization.name} "
+                    f"Added {coins:,.2f} AI coins to {organization.name} "
                     f"({credits:,} internal credits).",
                 )
 
             elif action == "deduct":
-                coins = int(request.POST.get("amount") or 0)
-                credits = coins_to_credits(coins)
+                credits = coins_to_credits(request.POST.get("amount"))
+                if credits <= 0:
+                    raise ValueError("AI coin amount must deduct at least one credit.")
+                coins = credits_to_coins(credits)
                 if credits > wallet.available_credits:
                     raise AICreditError(
                         "Cannot deduct more than the organization's available AI coins."
@@ -297,7 +298,7 @@ def organization_ai_credit_view(request, organization_id):
                 )
                 messages.success(
                     request,
-                    f"Deducted {coins:,} AI coins from {organization.name} "
+                    f"Deducted {coins:,.2f} AI coins from {organization.name} "
                     f"({credits:,} internal credits).",
                 )
 
@@ -317,22 +318,22 @@ def organization_ai_credit_view(request, organization_id):
                 )
 
             elif action == "threshold":
-                threshold_coins = int(request.POST.get("threshold") or 0)
-                threshold_credits = coins_to_credits(threshold_coins)
+                threshold_credits = coins_to_credits(request.POST.get("threshold"))
+                threshold_coins = credits_to_coins(threshold_credits)
                 AICreditService.set_low_credit_threshold(
                     organization=organization,
                     threshold=threshold_credits,
                 )
                 messages.success(
                     request,
-                    f"Low-balance threshold updated to {threshold_coins:,} AI coins.",
+                    f"Low-balance threshold updated to {threshold_coins:,.2f} AI coins.",
                 )
 
             else:
                 raise AICreditError("Unknown AI coin action.")
 
         except (TypeError, ValueError):
-            messages.error(request, "Enter a valid whole-number AI coin amount.")
+            messages.error(request, "Enter a valid AI coin amount.")
         except AICreditError as exc:
             messages.error(request, str(exc))
 
