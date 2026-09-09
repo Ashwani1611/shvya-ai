@@ -1,181 +1,228 @@
 {% extends "superadmin/base.html" %}
 {% load superadmin_metrics %}
 
-{% block content %}
+{% block title %}Organizations - SHVYA Super Admin{% endblock %}
 
-<div class="mb-4 flex items-center justify-between">
-    <h1 class="text-lg font-semibold">Organizations</h1>
-    <a
-        href="{% url 'superadmin-organization-create' %}"
-        class="inline-flex items-center px-4 py-2 bg-indigo-600 text-white rounded-md text-sm font-medium hover:bg-indigo-700 transition"
-    >
-        + Add Client
+{% block content %}
+<div class="sa-page-header">
+    <div>
+        <div class="mb-2 inline-flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-indigo-600">
+            Client operations
+        </div>
+        <h1 class="sa-page-title">Organizations</h1>
+        <p class="sa-page-description">
+            Manage client workspaces, monitor platform adoption, review AI usage, and open any organization from one place.
+        </p>
+    </div>
+
+    <a href="{% url 'superadmin-organization-create' %}" class="sa-primary-button">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <path d="M12 5v14M5 12h14" stroke-linecap="round"/>
+        </svg>
+        Add organization
     </a>
 </div>
 
-<form
-    method="get"
-    class="bg-white border rounded-md p-4 mb-4 flex flex-wrap items-center gap-4"
->
-    <input
-        type="text"
-        name="search"
-        value="{{ search }}"
-        placeholder="Search by organization name, email, or phone"
-        class="border rounded-md px-3 py-2 text-sm flex-1 min-w-[280px]"
-    >
+<div class="sa-stat-grid">
+    <div class="sa-stat-card">
+        <div class="sa-stat-label">Visible organizations</div>
+        <div class="sa-stat-value">{{ orgs|length }}</div>
+        <div class="sa-stat-note">Matches the filters currently applied</div>
+    </div>
+    <div class="sa-stat-card">
+        <div class="sa-stat-label">Available plans</div>
+        <div class="sa-stat-value">{{ packages|length }}</div>
+        <div class="sa-stat-note">Subscription packages configured</div>
+    </div>
+    <div class="sa-stat-card">
+        <div class="sa-stat-label">Organization tags</div>
+        <div class="sa-stat-value">{{ all_tags|length }}</div>
+        <div class="sa-stat-note">Labels available for client grouping</div>
+    </div>
+</div>
 
-    <label class="flex items-center gap-1 text-xs">
-        <input
-            type="checkbox"
-            name="no_leads_created"
-            value="1"
-            {% if request.GET.no_leads_created %}checked{% endif %}
-        >
-        No Leads Created
-    </label>
-
-    <label class="flex items-center gap-1 text-xs">
-        <input
-            type="checkbox"
-            name="installment_client"
-            value="1"
-            {% if request.GET.installment_client %}checked{% endif %}
-        >
-        Installment Client
-    </label>
-
-    <label
-        class="flex items-center gap-1 text-xs text-gray-400"
-        title="No usage filter configured yet"
-    >
-        <input type="checkbox" disabled>
-        Low AF Usage
-    </label>
-
-    <label
-        class="flex items-center gap-1 text-xs text-gray-400"
-        title="No usage filter configured yet"
-    >
-        <input type="checkbox" disabled>
-        Low AI Usage
-    </label>
-
-    <select name="plan" class="border rounded-md px-3 py-2 text-sm">
-        <option value="">All Plans</option>
-        {% for value, label in packages %}
-            <option
-                value="{{ value }}"
-                {% if request.GET.plan == value %}selected{% endif %}
+<form method="get" class="sa-panel sa-filter-panel" aria-label="Organization filters">
+    <div class="sa-search-row">
+        <div class="sa-search-wrap">
+            <svg class="sa-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                <circle cx="11" cy="11" r="6.5"/>
+                <path d="m16 16 4 4" stroke-linecap="round"/>
+            </svg>
+            <input
+                type="search"
+                name="search"
+                value="{{ search }}"
+                placeholder="Search organization, email, or phone"
+                class="sa-search-input"
+                aria-label="Search organizations"
             >
-                {{ label }}
-            </option>
-        {% endfor %}
-    </select>
+        </div>
 
-    <select name="tag" class="border rounded-md px-3 py-2 text-sm">
-        <option value="">All Tags</option>
-        {% for tag in all_tags %}
-            <option
-                value="{{ tag.id }}"
-                {% if request.GET.tag == tag.id|stringformat:"s" %}selected{% endif %}
+        <button type="submit" class="sa-primary-button">
+            Apply filters
+        </button>
+
+        {% if request.GET %}
+            <a href="{% url 'superadmin-org-list' %}" class="sa-secondary-button">
+                Clear
+            </a>
+        {% endif %}
+    </div>
+
+    <div class="sa-filter-row">
+        <label class="sa-filter-check">
+            <input
+                type="checkbox"
+                name="no_leads_created"
+                value="1"
+                {% if request.GET.no_leads_created %}checked{% endif %}
             >
-                {{ tag.name }}
-            </option>
-        {% endfor %}
-    </select>
+            No leads created
+        </label>
 
-    <button
-        type="submit"
-        class="px-4 py-2 border rounded-md text-sm hover:bg-gray-50"
-    >
-        Apply
-    </button>
+        <label class="sa-filter-check">
+            <input
+                type="checkbox"
+                name="installment_client"
+                value="1"
+                {% if request.GET.installment_client %}checked{% endif %}
+            >
+            Installment client
+        </label>
+
+        <label class="sa-filter-check is-disabled" title="No usage filter configured yet">
+            <input type="checkbox" disabled>
+            Low AF usage
+        </label>
+
+        <label class="sa-filter-check is-disabled" title="No usage filter configured yet">
+            <input type="checkbox" disabled>
+            Low AI usage
+        </label>
+
+        <select name="plan" class="sa-filter-select" aria-label="Filter by plan">
+            <option value="">All plans</option>
+            {% for value, label in packages %}
+                <option value="{{ value }}" {% if request.GET.plan == value %}selected{% endif %}>
+                    {{ label }}
+                </option>
+            {% endfor %}
+        </select>
+
+        <select name="tag" class="sa-filter-select" aria-label="Filter by tag">
+            <option value="">All tags</option>
+            {% for tag in all_tags %}
+                <option value="{{ tag.id }}" {% if request.GET.tag == tag.id|stringformat:"s" %}selected{% endif %}>
+                    {{ tag.name }}
+                </option>
+            {% endfor %}
+        </select>
+    </div>
 </form>
 
 {% organization_metrics orgs as org_metrics %}
 
-<div class="bg-white border rounded-md overflow-x-auto">
-    <table class="w-full text-sm">
-        <thead class="bg-gray-50 text-gray-500 text-xs uppercase">
-            <tr>
-                <th class="px-3 py-2 text-left">Organization</th>
-                <th class="px-3 py-2 text-left">Created At</th>
-                <th class="px-3 py-2 text-left">Subscription</th>
-                <th class="px-3 py-2 text-left">Leads</th>
-                <th class="px-3 py-2 text-left">AI Msgs</th>
-                <th class="px-3 py-2 text-left">AI Qualifications</th>
-                <th class="px-3 py-2 text-left">AI Bumpups</th>
-                <th class="px-3 py-2 text-left">AFS Sent</th>
-                <th class="px-3 py-2 text-left">Credits Used</th>
-                <th class="px-3 py-2 text-left">KB Setup</th>
-                <th class="px-3 py-2 text-left">Sequences</th>
-            </tr>
-        </thead>
+<section class="sa-panel sa-table-panel" aria-labelledby="organization-table-title">
+    <div class="sa-table-header">
+        <div>
+            <div id="organization-table-title" class="sa-table-title">Client portfolio</div>
+            <div class="sa-table-subtitle">Usage and setup health across the organizations in your current view</div>
+        </div>
+        <div class="sa-badge sa-badge--primary">{{ orgs|length }} result{{ orgs|length|pluralize }}</div>
+    </div>
 
-        <tbody>
-            {% for org in orgs %}
-                {% with metrics=org_metrics|dict_get:org.id %}
-                <tr class="border-t hover:bg-gray-50">
-                    <td class="px-3 py-3 align-top">
-                        <a
-                            href="{% url 'superadmin-organization-detail' organization_id=org.id %}"
-                            class="text-indigo-600 font-medium hover:underline"
-                        >
-                            {{ org.name }}
-                        </a>
-                        <div class="text-xs text-gray-400">
-                            Pipelines: {{ org.pipeline_count }}
-                        </div>
-                        <div class="flex flex-wrap gap-1 mt-1">
-                            {% for tag in org.tags.all %}
-                                <span class="text-[10px] border rounded px-1 py-0.5">
-                                    {{ tag.name }}
-                                </span>
-                            {% endfor %}
-                            <span class="text-[10px] border rounded px-1 py-0.5">
-                                {{ org.get_package_display }}
-                            </span>
-                        </div>
-                    </td>
-
-                    <td class="px-3 py-3 align-top text-xs">
-                        {{ org.created_at|date:"M d" }}
-                    </td>
-
-                    <td class="px-3 py-3 align-top text-xs">
-                        Start: {{ org.day_of_sale|date:"M d"|default:"—" }}
-                        <br>
-                        Next: {{ org.next_payment_at|date:"M d"|default:"—" }}
-                    </td>
-
-                    <td class="px-3 py-3 align-top">{{ org.lead_count }}</td>
-                    <td class="px-3 py-3 align-top">{{ metrics.ai_messages }}</td>
-                    <td class="px-3 py-3 align-top">{{ metrics.ai_qualifications }}</td>
-                    <td class="px-3 py-3 align-top">{{ metrics.ai_bumpups }}</td>
-                    <td class="px-3 py-3 align-top">{{ metrics.afs_sent }}</td>
-                    <td class="px-3 py-3 align-top">{{ metrics.credits_used }}</td>
-
-                    <td class="px-3 py-3 align-top text-center">
-                        {% if metrics.kb_setup %}
-                            <span class="text-green-600" title="Active knowledge source configured">✓</span>
-                        {% else %}
-                            <span class="text-red-500" title="No active knowledge source">✕</span>
-                        {% endif %}
-                    </td>
-
-                    <td class="px-3 py-3 align-top">{{ metrics.sequences }}</td>
-                </tr>
-                {% endwith %}
-            {% empty %}
+    <div class="sa-table-scroll">
+        <table class="sa-data-table">
+            <thead>
                 <tr>
-                    <td colspan="11" class="px-3 py-6 text-center text-gray-400">
-                        No organizations found.
-                    </td>
+                    <th>Organization</th>
+                    <th>Created</th>
+                    <th>Subscription</th>
+                    <th>Leads</th>
+                    <th>AI Msgs</th>
+                    <th>AI Qualifications</th>
+                    <th>AI Bumpups</th>
+                    <th>AFS Sent</th>
+                    <th>Credits Used</th>
+                    <th>KB Setup</th>
+                    <th>Sequences</th>
                 </tr>
-            {% endfor %}
-        </tbody>
-    </table>
-</div>
+            </thead>
 
+            <tbody>
+                {% for org in orgs %}
+                    {% with metrics=org_metrics|dict_get:org.id %}
+                    <tr>
+                        <td>
+                            <div class="sa-org-cell">
+                                <div class="sa-org-avatar" aria-hidden="true">{{ org.name|slice:":1"|upper }}</div>
+                                <div class="min-w-0">
+                                    <a href="{% url 'superadmin-organization-detail' organization_id=org.id %}" class="sa-org-link">
+                                        {{ org.name }}
+                                    </a>
+                                    <div class="sa-org-meta">{{ org.pipeline_count }} pipeline{{ org.pipeline_count|pluralize }}</div>
+                                    <div class="mt-1.5 flex max-w-[230px] flex-wrap gap-1">
+                                        <span class="sa-badge sa-badge--primary">{{ org.get_package_display }}</span>
+                                        {% for tag in org.tags.all %}
+                                            <span class="sa-badge">{{ tag.name }}</span>
+                                        {% endfor %}
+                                    </div>
+                                </div>
+                            </div>
+                        </td>
+
+                        <td>
+                            <div class="sa-metric-value">{{ org.created_at|date:"M d, Y" }}</div>
+                        </td>
+
+                        <td>
+                            <div class="text-[11px] font-semibold text-gray-700">
+                                {{ org.day_of_sale|date:"M d, Y"|default:"Not set" }}
+                            </div>
+                            <div class="mt-1 text-[10px] text-gray-400">
+                                Next: {{ org.next_payment_at|date:"M d, Y"|default:"Not set" }}
+                            </div>
+                        </td>
+
+                        <td><span class="sa-metric-value">{{ org.lead_count }}</span></td>
+                        <td><span class="sa-metric-value">{{ metrics.ai_messages }}</span></td>
+                        <td><span class="sa-metric-value">{{ metrics.ai_qualifications }}</span></td>
+                        <td><span class="sa-metric-value">{{ metrics.ai_bumpups }}</span></td>
+                        <td><span class="sa-metric-value">{{ metrics.afs_sent }}</span></td>
+                        <td><span class="sa-metric-value">{{ metrics.credits_used }}</span></td>
+
+                        <td>
+                            {% if metrics.kb_setup %}
+                                <span class="sa-badge sa-badge--success">
+                                    <span class="sa-status-dot sa-status-dot--success" aria-hidden="true"></span>
+                                    Ready
+                                </span>
+                            {% else %}
+                                <span class="sa-badge sa-badge--danger">
+                                    <span class="sa-status-dot sa-status-dot--danger" aria-hidden="true"></span>
+                                    Missing
+                                </span>
+                            {% endif %}
+                        </td>
+
+                        <td><span class="sa-metric-value">{{ metrics.sequences }}</span></td>
+                    </tr>
+                    {% endwith %}
+                {% empty %}
+                    <tr>
+                        <td colspan="11" class="sa-empty-state">
+                            <div class="sa-empty-icon" aria-hidden="true">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                                    <path d="M4 20h16M6.5 20V7.5L12 4l5.5 3.5V20" stroke-linecap="round" stroke-linejoin="round"/>
+                                </svg>
+                            </div>
+                            <div class="font-semibold text-gray-600">No organizations found</div>
+                            <div class="mt-1 text-[11px]">Try clearing or changing the current filters.</div>
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
 {% endblock %}
