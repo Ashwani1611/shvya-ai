@@ -1,96 +1,202 @@
+{% load static %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#0b1020">
 
     <title>{% block title %}SHVYA AI - Super Admin{% endblock %}</title>
 
     <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="{% static 'superadmin/superadmin.css' %}">
 
     {% block extra_head %}{% endblock %}
 </head>
 
-<body class="bg-gray-50 text-gray-900">
-
-    <!-- Super Admin Top Header -->
-    <header class="min-h-12 bg-white border-b flex flex-wrap items-center justify-between gap-3 px-5 py-2">
-
-        <div class="flex flex-wrap items-center gap-4">
-            <div class="font-semibold text-sm">
-                SHVYA AI
+<body class="sa-body">
+    <div class="sa-shell">
+        <aside id="superadmin-sidebar" class="sa-sidebar" aria-label="Superadmin navigation">
+            <div class="sa-brand">
+                <div class="sa-brand-mark" aria-hidden="true">S</div>
+                <div class="min-w-0">
+                    <div class="sa-brand-title">SHVYA AI</div>
+                    <div class="sa-brand-subtitle">Superadmin Console</div>
+                </div>
             </div>
 
-            <nav class="flex items-center gap-1 text-xs">
+            <nav class="sa-nav">
+                <div class="sa-nav-label">Workspace</div>
+
                 <a
                     href="{% url 'superadmin-org-list' %}"
-                    class="rounded-md px-3 py-1.5 {% if request.resolver_match.url_name == 'superadmin-org-list' or request.resolver_match.url_name == 'superadmin-organization-detail' %}bg-gray-900 text-white{% else %}text-gray-600 hover:bg-gray-100 hover:text-gray-900{% endif %}"
+                    class="sa-nav-link {% if request.resolver_match.url_name == 'superadmin-org-list' or request.resolver_match.url_name == 'superadmin-organization-detail' or request.resolver_match.url_name == 'superadmin-organization-create' or request.resolver_match.url_name == 'superadmin-organization-update' or request.resolver_match.url_name == 'superadmin-organization-user-edit' or request.resolver_match.url_name == 'superadmin-organization-pipeline-add' or request.resolver_match.url_name == 'superadmin-organization-pipeline-edit' or request.resolver_match.url_name == 'superadmin-organization-hosted-ignore-list' %}is-active{% endif %}"
                 >
-                    Organizations
+                    <svg class="sa-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                        <path d="M4 20h16M6.5 20V7.5L12 4l5.5 3.5V20M9 10h1.5m3 0H15M9 13.5h1.5m3 0H15M10 20v-3h4v3" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                    <span>Organizations</span>
                 </a>
+
                 <a
                     href="{% url 'superadmin-ai-credit-overview' %}"
-                    class="rounded-md px-3 py-1.5 {% if request.resolver_match.url_name == 'superadmin-ai-credit-overview' or request.resolver_match.url_name == 'superadmin-organization-ai-credits' %}bg-indigo-600 text-white{% else %}text-gray-600 hover:bg-indigo-50 hover:text-indigo-700{% endif %}"
+                    class="sa-nav-link {% if request.resolver_match.url_name == 'superadmin-ai-credit-overview' or request.resolver_match.url_name == 'superadmin-organization-ai-credits' %}is-active{% endif %}"
                 >
-                    AI Credits
+                    <svg class="sa-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                        <path d="M12 3.75 14.15 9l5.6.45-4.28 3.63 1.31 5.42L12 15.6 7.22 18.5l1.31-5.42-4.28-3.63L9.85 9 12 3.75Z" stroke-linejoin="round"/>
+                    </svg>
+                    <span>AI Credits</span>
                 </a>
             </nav>
-        </div>
 
-        <div class="flex flex-wrap items-center gap-2">
             {% if organization and request.resolver_match.url_name == 'superadmin-organization-detail' %}
-                <a
-                    href="{% url 'superadmin-organization-hosted-ignore-list' organization_id=organization.id %}"
-                    class="inline-flex items-center gap-2 px-3 py-1.5 text-xs border border-indigo-200 rounded-md text-indigo-700 bg-indigo-50 hover:bg-indigo-100"
-                    title="View, download or reset existing Hosted WhatsApp chats that are blocked from auto lead creation"
-                >
-                    <span aria-hidden="true">🛡️</span>
-                    Existing Chat Ignore List
-                </a>
+                <div class="sa-context-tools">
+                    <div class="sa-context-tools-title">Organization tools</div>
 
-                <form
-                    method="post"
-                    action="{% url 'superadmin-organization-hosted-ignore-sync' organization_id=organization.id %}"
-                    class="inline"
-                    onsubmit="return confirm('Sync all currently existing direct chats from every connected Hosted Account? A successful sync replaces the current ignore-list snapshot.');"
-                >
-                    {% csrf_token %}
-                    <button
-                        type="submit"
-                        class="inline-flex items-center gap-2 px-3 py-1.5 text-xs rounded-md bg-indigo-600 text-white hover:bg-indigo-700"
+                    <a
+                        href="{% url 'superadmin-organization-hosted-ignore-list' organization_id=organization.id %}"
+                        class="sa-context-action"
+                        title="View, download or reset existing Hosted WhatsApp chats that are blocked from auto lead creation"
                     >
-                        ↻ Sync all existing chats
-                    </button>
-                </form>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                            <path d="M12 3.5 19 6v5.3c0 4.35-2.8 7.55-7 9.2-4.2-1.65-7-4.85-7-9.2V6l7-2.5Z" stroke-linejoin="round"/>
+                            <path d="m9.5 12 1.65 1.65L14.8 10" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                        Existing chat ignore list
+                    </a>
+
+                    <form
+                        method="post"
+                        action="{% url 'superadmin-organization-hosted-ignore-sync' organization_id=organization.id %}"
+                        onsubmit="return confirm('Sync all currently existing direct chats from every connected Hosted Account? A successful sync replaces the current ignore-list snapshot.');"
+                    >
+                        {% csrf_token %}
+                        <button type="submit" class="sa-context-action">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                                <path d="M20 7v5h-5M4 17v-5h5" stroke-linecap="round" stroke-linejoin="round"/>
+                                <path d="M6.1 8.5A7 7 0 0 1 18.5 7L20 12M4 12l1.5 5a7 7 0 0 0 12.4-1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                            Sync existing chats
+                        </button>
+                    </form>
+                </div>
             {% endif %}
 
-            <div class="text-sm">
-                Welcome, {{ request.user.get_full_name|default:request.user.email }}
-            </div>
-        </div>
-
-    </header>
-
-
-    <!-- Super Admin Content -->
-    <main class="p-5">
-
-        {% if messages %}
-            <div class="mb-5 space-y-2">
-                {% for message in messages %}
-                    <div
-                        class="rounded-md border px-4 py-3 text-sm {% if 'error' in message.tags %}border-red-200 bg-red-50 text-red-700{% elif 'success' in message.tags %}border-green-200 bg-green-50 text-green-700{% elif 'warning' in message.tags %}border-amber-200 bg-amber-50 text-amber-800{% else %}border-blue-200 bg-blue-50 text-blue-700{% endif %}"
-                    >
-                        {{ message }}
+            <div class="sa-sidebar-footer">
+                <div class="sa-user-card">
+                    <div class="sa-avatar" aria-hidden="true">
+                        {{ request.user.get_full_name|default:request.user.email|slice:":1"|upper }}
                     </div>
-                {% endfor %}
+                    <div class="min-w-0">
+                        <div class="sa-user-name">{{ request.user.get_full_name|default:request.user.email }}</div>
+                        <div class="sa-user-role">Superadmin access</div>
+                    </div>
+                </div>
             </div>
-        {% endif %}
+        </aside>
 
-        {% block content %}
-        {% endblock %}
+        <div id="superadmin-overlay" class="sa-mobile-overlay" aria-hidden="true"></div>
 
-    </main>
+        <div class="sa-main">
+            <header class="sa-topbar">
+                <div class="sa-topbar-left">
+                    <button
+                        id="superadmin-menu-button"
+                        type="button"
+                        class="sa-mobile-menu"
+                        aria-label="Open navigation"
+                        aria-controls="superadmin-sidebar"
+                        aria-expanded="false"
+                    >
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                            <path d="M4 7h16M4 12h16M4 17h16" stroke-linecap="round"/>
+                        </svg>
+                    </button>
 
+                    <div class="min-w-0">
+                        <div class="sa-page-kicker">Superadmin</div>
+                        <div class="sa-page-location">
+                            {% if request.resolver_match.url_name == 'superadmin-ai-credit-overview' %}
+                                AI Credits
+                            {% elif request.resolver_match.url_name == 'superadmin-organization-ai-credits' %}
+                                Manage AI Credits
+                            {% elif request.resolver_match.url_name == 'superadmin-organization-create' %}
+                                Add Organization
+                            {% elif request.resolver_match.url_name == 'superadmin-organization-update' %}
+                                Edit Organization
+                            {% elif request.resolver_match.url_name == 'superadmin-organization-detail' and organization %}
+                                {{ organization.name }}
+                            {% elif request.resolver_match.url_name == 'superadmin-organization-hosted-ignore-list' and organization %}
+                                {{ organization.name }} · Hosted Ignore List
+                            {% else %}
+                                Organization Management
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+
+                <div class="sa-topbar-right">
+                    <div class="sa-live-pill" title="Superadmin console is available">
+                        <span class="sa-live-dot" aria-hidden="true"></span>
+                        Console online
+                    </div>
+                    <div class="hidden sm:block text-right">
+                        <div class="text-[11px] font-semibold text-gray-700">{{ request.user.get_full_name|default:request.user.email }}</div>
+                        <div class="mt-0.5 text-[9px] text-gray-400">Administrator</div>
+                    </div>
+                </div>
+            </header>
+
+            <main class="sa-content">
+                {% if messages %}
+                    <div class="mb-5 space-y-2" aria-live="polite">
+                        {% for message in messages %}
+                            <div class="sa-alert {% if 'error' in message.tags %}sa-alert--error{% elif 'success' in message.tags %}sa-alert--success{% elif 'warning' in message.tags %}sa-alert--warning{% else %}sa-alert--info{% endif %}">
+                                {{ message }}
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+
+                {% block content %}{% endblock %}
+            </main>
+        </div>
+    </div>
+
+    <script>
+        (function () {
+            const sidebar = document.getElementById('superadmin-sidebar');
+            const overlay = document.getElementById('superadmin-overlay');
+            const menuButton = document.getElementById('superadmin-menu-button');
+
+            if (!sidebar || !overlay || !menuButton) return;
+
+            function setOpen(open) {
+                sidebar.classList.toggle('is-open', open);
+                overlay.classList.toggle('is-open', open);
+                menuButton.setAttribute('aria-expanded', open ? 'true' : 'false');
+                overlay.setAttribute('aria-hidden', open ? 'false' : 'true');
+                document.body.style.overflow = open ? 'hidden' : '';
+            }
+
+            menuButton.addEventListener('click', function () {
+                setOpen(!sidebar.classList.contains('is-open'));
+            });
+
+            overlay.addEventListener('click', function () {
+                setOpen(false);
+            });
+
+            document.addEventListener('keydown', function (event) {
+                if (event.key === 'Escape') setOpen(false);
+            });
+
+            window.addEventListener('resize', function () {
+                if (window.innerWidth > 900) setOpen(false);
+            });
+        })();
+    </script>
+
+    {% block extra_scripts %}{% endblock %}
 </body>
 </html>

@@ -3,85 +3,146 @@
 {% block title %}AI Credits - SHVYA Super Admin{% endblock %}
 
 {% block content %}
-<div class="max-w-7xl mx-auto space-y-5">
-    <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-            <h1 class="text-xl font-semibold">Organization AI Credits</h1>
-            <p class="mt-1 text-sm text-gray-500">
-                AI credits are funded manually by Superadmin. New organizations start at 0 credits; no plan or monthly allocation is applied automatically.
-            </p>
+<div class="sa-page-header">
+    <div>
+        <div class="mb-2 inline-flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-indigo-600">
+            AI operations
         </div>
-        <a href="{% url 'superadmin-org-list' %}" class="inline-flex items-center justify-center rounded-md border px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
-            Organizations
-        </a>
+        <h1 class="sa-page-title">AI Credits</h1>
+        <p class="sa-page-description">
+            Review organization credit balances and open a workspace to fund, block, or inspect AI usage. Credits are managed manually by Superadmin.
+        </p>
     </div>
 
-    <form method="get" class="rounded-lg border bg-white p-4">
-        <div class="flex flex-col gap-3 sm:flex-row">
+    <a href="{% url 'superadmin-org-list' %}" class="sa-secondary-button">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true">
+            <path d="m14 7-5 5 5 5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        Organizations
+    </a>
+</div>
+
+<div class="sa-stat-grid">
+    <div class="sa-stat-card">
+        <div class="sa-stat-label">Visible organizations</div>
+        <div class="sa-stat-value">{{ organizations|length }}</div>
+        <div class="sa-stat-note">Organizations in the current search view</div>
+    </div>
+    <div class="sa-stat-card">
+        <div class="sa-stat-label">Credit control</div>
+        <div class="sa-stat-value text-[20px]">Manual</div>
+        <div class="sa-stat-note">No automatic plan allocation is applied</div>
+    </div>
+    <div class="sa-stat-card">
+        <div class="sa-stat-label">Funding model</div>
+        <div class="sa-stat-value text-[20px]">Per organization</div>
+        <div class="sa-stat-note">Open a row below to manage its wallet</div>
+    </div>
+</div>
+
+<form method="get" class="sa-panel sa-filter-panel" aria-label="AI credit search">
+    <div class="sa-search-row">
+        <div class="sa-search-wrap">
+            <svg class="sa-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                <circle cx="11" cy="11" r="6.5"/>
+                <path d="m16 16 4 4" stroke-linecap="round"/>
+            </svg>
             <input
                 type="search"
                 name="search"
                 value="{{ search }}"
                 placeholder="Search organization or user email"
-                class="min-w-0 flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                class="sa-search-input"
+                aria-label="Search AI credit organizations"
             >
-            <button type="submit" class="rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800">Search</button>
-            {% if search %}
-                <a href="{% url 'superadmin-ai-credit-overview' %}" class="rounded-md border px-4 py-2 text-center text-sm text-gray-700 hover:bg-gray-50">Clear</a>
-            {% endif %}
         </div>
-    </form>
-
-    <div class="overflow-hidden rounded-lg border bg-white">
-        <div class="overflow-x-auto">
-            <table class="min-w-full divide-y divide-gray-200 text-sm">
-                <thead class="bg-gray-50 text-left text-xs font-medium uppercase tracking-wide text-gray-500">
-                    <tr>
-                        <th class="px-4 py-3">Organization</th>
-                        <th class="px-4 py-3">Available</th>
-                        <th class="px-4 py-3">Reserved</th>
-                        <th class="px-4 py-3">Lifetime used</th>
-                        <th class="px-4 py-3">Status</th>
-                        <th class="px-4 py-3 text-right">Manage</th>
-                    </tr>
-                </thead>
-                <tbody class="divide-y divide-gray-100">
-                    {% for organization in organizations %}
-                        {% with wallet=organization.ai_credit_wallet %}
-                        <tr class="hover:bg-gray-50">
-                            <td class="px-4 py-3">
-                                <div class="font-medium text-gray-900">{{ organization.name }}</div>
-                                <div class="mt-0.5 text-xs text-gray-400">{{ organization.id }}</div>
-                            </td>
-                            <td class="px-4 py-3 font-semibold {% if wallet.available_credits == 0 %}text-red-600{% elif wallet.is_low %}text-amber-600{% else %}text-gray-900{% endif %}">
-                                {{ wallet.available_credits|default:0 }}
-                            </td>
-                            <td class="px-4 py-3 text-gray-600">{{ wallet.reserved_credits|default:0 }}</td>
-                            <td class="px-4 py-3 text-gray-600">{{ wallet.lifetime_credits_used|default:0 }}</td>
-                            <td class="px-4 py-3">
-                                {% if wallet.is_blocked %}
-                                    <span class="rounded-full bg-red-100 px-2.5 py-1 text-xs font-medium text-red-700">Blocked</span>
-                                {% elif wallet.available_credits == 0 %}
-                                    <span class="rounded-full bg-red-100 px-2.5 py-1 text-xs font-medium text-red-700">No credits</span>
-                                {% elif wallet.is_low %}
-                                    <span class="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-700">Low credits</span>
-                                {% else %}
-                                    <span class="rounded-full bg-green-100 px-2.5 py-1 text-xs font-medium text-green-700">AI available</span>
-                                {% endif %}
-                            </td>
-                            <td class="px-4 py-3 text-right">
-                                <a href="{% url 'superadmin-organization-ai-credits' organization_id=organization.id %}" class="font-medium text-indigo-600 hover:text-indigo-800">Manage credits</a>
-                            </td>
-                        </tr>
-                        {% endwith %}
-                    {% empty %}
-                        <tr>
-                            <td colspan="6" class="px-4 py-10 text-center text-sm text-gray-500">No organizations found.</td>
-                        </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
+        <button type="submit" class="sa-primary-button">Search</button>
+        {% if search %}
+            <a href="{% url 'superadmin-ai-credit-overview' %}" class="sa-secondary-button">Clear</a>
+        {% endif %}
     </div>
-</div>
+</form>
+
+<section class="sa-panel sa-table-panel" aria-labelledby="credit-table-title">
+    <div class="sa-table-header">
+        <div>
+            <div id="credit-table-title" class="sa-table-title">Organization wallets</div>
+            <div class="sa-table-subtitle">Available, reserved, and lifetime AI credit usage</div>
+        </div>
+        <div class="sa-badge sa-badge--primary">{{ organizations|length }} wallet{{ organizations|length|pluralize }}</div>
+    </div>
+
+    <div class="sa-table-scroll">
+        <table class="sa-data-table" style="min-width: 860px;">
+            <thead>
+                <tr>
+                    <th>Organization</th>
+                    <th>Available</th>
+                    <th>Reserved</th>
+                    <th>Lifetime used</th>
+                    <th>Status</th>
+                    <th class="text-right">Manage</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for organization in organizations %}
+                    {% with wallet=organization.ai_credit_wallet %}
+                    <tr>
+                        <td>
+                            <div class="sa-org-cell">
+                                <div class="sa-org-avatar" aria-hidden="true">{{ organization.name|slice:":1"|upper }}</div>
+                                <div class="min-w-0">
+                                    <div class="font-semibold text-gray-900">{{ organization.name }}</div>
+                                    <div class="sa-org-meta">{{ organization.id }}</div>
+                                </div>
+                            </div>
+                        </td>
+                        <td>
+                            <span class="sa-metric-value {% if wallet.available_credits == 0 %}text-red-600{% elif wallet.is_low %}text-amber-600{% endif %}">
+                                {{ wallet.available_credits|default:0 }}
+                            </span>
+                        </td>
+                        <td><span class="sa-metric-value text-gray-600">{{ wallet.reserved_credits|default:0 }}</span></td>
+                        <td><span class="sa-metric-value text-gray-600">{{ wallet.lifetime_credits_used|default:0 }}</span></td>
+                        <td>
+                            {% if wallet.is_blocked %}
+                                <span class="sa-badge sa-badge--danger">Blocked</span>
+                            {% elif wallet.available_credits == 0 %}
+                                <span class="sa-badge sa-badge--danger">No credits</span>
+                            {% elif wallet.is_low %}
+                                <span class="sa-badge sa-badge--warning">Low credits</span>
+                            {% else %}
+                                <span class="sa-badge sa-badge--success">
+                                    <span class="sa-status-dot sa-status-dot--success" aria-hidden="true"></span>
+                                    AI available
+                                </span>
+                            {% endif %}
+                        </td>
+                        <td class="text-right">
+                            <a href="{% url 'superadmin-organization-ai-credits' organization_id=organization.id %}" class="inline-flex items-center gap-1 text-[11px] font-semibold text-indigo-600 hover:text-indigo-800">
+                                Manage credits
+                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                                    <path d="m9 6 6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/>
+                                </svg>
+                            </a>
+                        </td>
+                    </tr>
+                    {% endwith %}
+                {% empty %}
+                    <tr>
+                        <td colspan="6" class="sa-empty-state">
+                            <div class="sa-empty-icon" aria-hidden="true">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                                    <path d="M12 4v16M7.5 7.5h6.75a2.25 2.25 0 0 1 0 4.5h-4.5a2.25 2.25 0 0 0 0 4.5H16.5" stroke-linecap="round"/>
+                                </svg>
+                            </div>
+                            <div class="font-semibold text-gray-600">No organizations found</div>
+                            <div class="mt-1 text-[11px]">Try a different organization name or user email.</div>
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
 {% endblock %}
