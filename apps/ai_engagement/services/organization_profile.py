@@ -18,6 +18,25 @@ def _clean_requirement_line(value: str) -> str:
     return re.sub(r"\s+", " ", text)
 
 
+def _split_compact_list(text: str) -> list[str] | None:
+    """Split simple authored lists such as 'Identify budget, timeline and city'."""
+    normalized = text.strip()
+    match = re.match(
+        r"^(?:identify|collect|capture|ask\s+for|qualify\s+(?:on|using|based\s+on))\s+(.+)$",
+        normalized,
+        flags=re.IGNORECASE,
+    )
+    if not match:
+        return None
+    body = match.group(1).strip().rstrip(".")
+    body = re.sub(r",?\s+and\s+", ",", body, flags=re.IGNORECASE)
+    values = [_clean_requirement_line(value) for value in body.split(",")]
+    values = [value for value in values if value]
+    if 2 <= len(values) <= 10:
+        return values
+    return None
+
+
 def _split_requirement_text(raw: str) -> list[str]:
     text = str(raw or "").strip()
     if not text:
@@ -26,6 +45,10 @@ def _split_requirement_text(raw: str) -> list[str]:
     parts = re.split(r"[\n;]+", text)
     if len(parts) == 1 and text.count("?") > 1:
         parts = re.split(r"(?<=\?)\s+", text)
+    elif len(parts) == 1 and "?" not in text:
+        compact = _split_compact_list(text)
+        if compact:
+            parts = compact
 
     cleaned: list[str] = []
     for part in parts:
@@ -184,11 +207,7 @@ def compile_org_ai_profile(*, organization_name: str, org_info) -> dict[str, Any
 
 
 def compile_org_ai_profile_from_context(organization_context: dict[str, Any]) -> dict[str, Any]:
-    """Compile the same profile from AIContext's legacy OrgInfo fields.
-
-    This keeps the existing context/UI contract intact while allowing the
-    engagement orchestrator to consume a precise structured profile.
-    """
+    """Compile the same profile from AIContext's legacy OrgInfo fields."""
     context = organization_context if isinstance(organization_context, dict) else {}
     proxy = SimpleNamespace(
         pk=None,
