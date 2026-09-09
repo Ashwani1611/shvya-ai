@@ -30,6 +30,22 @@
             .replace(/credit/g, "coin");
     }
 
+    function configureCoinInputs() {
+        if (window.location.pathname.indexOf("ai-credits") === -1) return;
+
+        document.querySelectorAll('input[name="amount"]').forEach(function (input) {
+            input.step = "0.01";
+            input.min = "0.04";
+            input.placeholder = "e.g. 100";
+        });
+
+        const thresholdInput = document.querySelector('input[name="threshold"]');
+        if (thresholdInput) {
+            thresholdInput.step = "0.01";
+            thresholdInput.min = "0";
+        }
+    }
+
     function applyCoinTerminology() {
         const main = document.querySelector(".sa-content");
         if (!main) return;
@@ -54,7 +70,7 @@
                 "Credits Total": "Coins Total",
                 "AI Credits": "AI Coins",
             };
-            main.querySelectorAll("th, .sa-stat-label, label, h2, h3").forEach(function (element) {
+            main.querySelectorAll("th, .sa-stat-label, label, h2, h3, .text-xs.text-gray-400").forEach(function (element) {
                 const replacement = exactLabels[textOf(element)];
                 if (replacement) element.textContent = replacement;
             });
@@ -91,10 +107,6 @@
             });
         });
 
-        document.querySelectorAll('input[name="amount"]').forEach(function (input) {
-            input.placeholder = "e.g. 100";
-        });
-
         const history = document.getElementById("history");
         if (history) {
             const description = history.querySelector("h2 + p");
@@ -107,6 +119,47 @@
                 if (label === "Balance after") header.textContent = "Balance after (credits)";
             });
         }
+    }
+
+    function syncOrganizationCoinCards() {
+        const data = document.getElementById("sa-org-workspace-data");
+        const card = findCardByHeading("Organization Information");
+        if (!data || !card) return;
+
+        const values = {
+            "Credits Used": data.dataset.aiCoinsUsed,
+            "Coins Used": data.dataset.aiCoinsUsed,
+            "Credits Remaining": data.dataset.aiCoinsRemaining,
+            "Coins Remaining": data.dataset.aiCoinsRemaining,
+            "Credits Total": data.dataset.aiCoinsTotal,
+            "Coins Total": data.dataset.aiCoinsTotal,
+        };
+        const normalizedLabels = {
+            "Credits Used": "Coins Used",
+            "Coins Used": "Coins Used",
+            "Credits Remaining": "Coins Remaining",
+            "Coins Remaining": "Coins Remaining",
+            "Credits Total": "Coins Total",
+            "Coins Total": "Coins Total",
+        };
+
+        card.querySelectorAll("div").forEach(function (label) {
+            const current = textOf(label);
+            if (!Object.prototype.hasOwnProperty.call(values, current)) return;
+
+            const container = label.parentElement;
+            if (!container) return;
+            const children = Array.from(container.children);
+            const valueElement = children.find(function (child) {
+                return child !== label && child.classList.contains("mt-1");
+            });
+
+            label.textContent = normalizedLabels[current];
+            if (valueElement && values[current] !== undefined) {
+                valueElement.textContent = values[current] || "0.00";
+                valueElement.title = "AI coin wallet value · 30 internal credits = 1 coin";
+            }
+        });
     }
 
     function injectLayoutFixes() {
@@ -364,6 +417,8 @@
 
     document.addEventListener("DOMContentLoaded", function () {
         applyCoinTerminology();
+        configureCoinInputs();
+        syncOrganizationCoinCards();
 
         if (!document.getElementById("sa-org-workspace-data")) return;
         injectLayoutFixes();
