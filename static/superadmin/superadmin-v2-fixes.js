@@ -17,6 +17,78 @@
         return null;
     }
 
+    function replaceCoinTerms(value) {
+        return String(value || "")
+            .replace(/AI Credits/g, "AI Coins")
+            .replace(/AI Credit/g, "AI Coin")
+            .replace(/AI credits/g, "AI coins")
+            .replace(/AI credit/g, "AI coin")
+            .replace(/AI-credit/g, "AI-coin")
+            .replace(/Credits/g, "Coins")
+            .replace(/credits/g, "coins")
+            .replace(/Credit/g, "Coin")
+            .replace(/credit/g, "coin");
+    }
+
+    function applyCoinTerminology() {
+        const main = document.querySelector(".sa-content");
+        if (!main) return;
+
+        document.title = replaceCoinTerms(document.title);
+
+        const walker = document.createTreeWalker(
+            main,
+            NodeFilter.SHOW_TEXT,
+            {
+                acceptNode: function (node) {
+                    const parent = node.parentElement;
+                    if (!parent || parent.closest("#history")) {
+                        return NodeFilter.FILTER_REJECT;
+                    }
+                    return NodeFilter.FILTER_ACCEPT;
+                },
+            }
+        );
+
+        const nodes = [];
+        while (walker.nextNode()) nodes.push(walker.currentNode);
+        nodes.forEach(function (node) {
+            node.nodeValue = replaceCoinTerms(node.nodeValue);
+        });
+
+        document.querySelectorAll("[title], [aria-label], [placeholder], [onsubmit]").forEach(function (element) {
+            if (element.closest("#history")) return;
+            ["title", "aria-label", "placeholder", "onsubmit"].forEach(function (attribute) {
+                if (!element.hasAttribute(attribute)) return;
+                element.setAttribute(attribute, replaceCoinTerms(element.getAttribute(attribute)));
+            });
+        });
+
+        // Sidebar and topbar live outside .sa-content.
+        document.querySelectorAll(".sa-nav-text, .sa-page-location").forEach(function (element) {
+            element.textContent = replaceCoinTerms(element.textContent);
+        });
+
+        if (window.location.pathname.indexOf("ai-credits") !== -1) {
+            document.querySelectorAll('input[name="amount"]').forEach(function (input) {
+                input.placeholder = "e.g. 100";
+            });
+
+            const history = document.getElementById("history");
+            if (history) {
+                const description = history.querySelector("h2 + p");
+                if (description) {
+                    description.textContent = "Latest 100 balance changes. Change and balance values below are exact internal AI credits (30 credits = 1 coin).";
+                }
+                history.querySelectorAll("th").forEach(function (header) {
+                    const label = textOf(header);
+                    if (label === "Change") header.textContent = "Change (credits)";
+                    if (label === "Balance after") header.textContent = "Balance after (credits)";
+                });
+            }
+        }
+    }
+
     function injectLayoutFixes() {
         const style = document.createElement("style");
         style.id = "sa-org-detail-layout-fixes";
@@ -120,9 +192,6 @@
             body.hidden = true;
         }
 
-        // The first V2 pass put this card into the right workspace column. Move it
-        // back below the compact workspace so the short left column does not leave
-        // a large empty vertical area before Users and Pipelines.
         const workspace = document.getElementById("workspace");
         if (workspace && accountCard.closest(".sa-org-workspace-grid") === workspace) {
             workspace.insertAdjacentElement("afterend", accountCard);
@@ -274,6 +343,8 @@
     }
 
     document.addEventListener("DOMContentLoaded", function () {
+        applyCoinTerminology();
+
         if (!document.getElementById("sa-org-workspace-data")) return;
         injectLayoutFixes();
         makeAccountCardActuallyCollapsible();
