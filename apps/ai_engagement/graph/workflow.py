@@ -8,6 +8,7 @@ from typing import Literal
 
 from langgraph.graph import END, START, StateGraph
 
+from apps.ai_engagement.graph.policy_actions import build_controlled_actions
 from apps.ai_engagement.graph.runtime_policy import get_runtime_policy
 from apps.ai_engagement.graph.state import EngagementGraphState
 from apps.ai_engagement.services.organization_profile import (
@@ -76,8 +77,6 @@ def _prepare(state: EngagementGraphState) -> dict:
     profile = compile_org_ai_profile_from_context(context.organization or {})
     policy = get_runtime_policy(organization=organization, profile=profile)
 
-    # Attach the compact policy to this immutable runtime context. Existing
-    # context consumers remain unchanged because it is an additive key.
     org_context = dict(context.organization or {})
     org_context["_runtime_policy"] = policy
     context = replace(context, organization=org_context)
@@ -99,17 +98,11 @@ def _prepare(state: EngagementGraphState) -> dict:
 
 
 def _deterministic_extract(state: EngagementGraphState) -> dict:
-    """Handle only high-confidence, zero-credit qualification answers.
-
-    Free-form interpretation stays with the model. This node only binds an
-    obvious short answer to the exact requirement the application recorded as
-    last asked, preserving the evidence controls already present in SHVYA.
-    """
+    """Handle only high-confidence, zero-credit qualification answers."""
 
     if state.get("caller_supplied_context"):
         return {}
 
-    service = state["service"]
     lead = state["lead"]
     requirements = state.get("requirements") or []
     if not requirements:
@@ -241,9 +234,8 @@ def _retrieve_knowledge(state: EngagementGraphState) -> dict:
 
 
 def _generate(state: EngagementGraphState) -> dict:
-    # Delegate language generation to the existing service with a prebuilt
-    # context. This intentionally disables the legacy service's own RAG/direct
-    # routing so LangGraph is the single orchestration authority for the turn.
+    # The legacy service now receives a prebuilt context, so its old RAG/direct
+    # routing is bypassed and LangGraph is the single orchestration authority.
     decision = state["legacy_engage"](
         state["service"],
         organization=state["organization"],
@@ -259,12 +251,7 @@ def _use_direct_decision(state: EngagementGraphState) -> dict:
 
 
 def _validate_decision(state: EngagementGraphState) -> dict:
-    """Apply deterministic post-generation safety checks.
-
-    Detailed CRM schemas, evidence validation and organization scoping remain in
-    the existing service/executor. This node adds graph-level invariants and
-    keeps future policy checks out of the language-generation node.
-    """
+    """Validate language output, then let Python own CRM action planning."""
 
     decision = state.get("decision")
     if decision is None:
@@ -278,19 +265,33 @@ def _validate_decision(state: EngagementGraphState) -> dict:
     ).strip():
         errors.append("empty_customer_message")
 
-    allowed_next = (state.get("qualification_state") or {}).get("next_requirement_id")
-    selected_next = getattr(decision, "next_requirement_id", None)
-    # The legacy service already validates model-proposed next_requirement after
-    # projecting evidence-backed updates. Keep this diagnostic non-destructive,
-    # because a valid update in the current turn can legitimately change NEXT.
-    if selected_next and selected_next == allowed_next:
-        pass
-
     if errors:
         from apps.ai_engagement.services.engagement import EngagementError
 
         raise EngagementError("; ".join(errors))
-    return {"validation_errors": errors}
+
+    controlled_actions, policy_result = build_controlled_actions(
+        decision=decision,
+        context=state["context"],
+        runtime_policy=state.get("runtime_policy") or {},
+        qualification_state=state.get("qualification_state") or {},
+        requirements=state.get("requirements") or [],
+    )
+    decision = replace(decision, crm_actions=controlled_actions)
+
+    logger.info(
+        "ai_engagement_graph organization=%s lead=%s route=%s model=%s "
+        "rag=%s/%s qualification=%s crm_actions=%s",
+        getattr(state["organization"], "id", ""),
+        getattr(state["lead"], "id", ""),
+        state.get("route") or "generate",
+        getattr(decision, "model", ""),
+        state.get("rag_chunks_after_filter", 0),
+        state.get("rag_chunks_before_filter", 0),
+        (policy_result.get("evaluation") or {}).get("outcome"),
+        len(controlled_actions),
+    )
+    return {"decision": decision, "validation_errors": errors}
 
 
 def build_engagement_graph():
