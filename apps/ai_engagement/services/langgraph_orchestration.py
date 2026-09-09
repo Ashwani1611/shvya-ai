@@ -86,45 +86,19 @@ def install_langgraph_orchestration() -> None:
     def policy_aware_input(self, *, context, **kwargs):
         raw = current_build_input(self, context=context, **kwargs)
         payload = json.loads(raw)
-        runtime_policy = (
-            context.organization.get("_runtime_policy")
-            if isinstance(context.organization, dict)
-            else None
+        organization_context = (
+            context.organization if isinstance(context.organization, dict) else {}
         )
+        runtime_policy = organization_context.get("_runtime_policy")
         if isinstance(runtime_policy, dict):
             payload["runtime_policy"] = runtime_policy
 
-        # Reuse the RAG pass already performed by the graph. This adds no model
-        # call and no embedding call. Only organization-owned, active, completed
-        # files represented by retrieved knowledge can be exposed as candidates.
-        if context.knowledge:
-            from apps.ai_engagement.services.file_sharing import FileSharingService
-
-            organization_id = (
-                context.organization.get("id")
-                if isinstance(context.organization, dict)
-                else None
-            )
-            lead_organization = getattr(
-                getattr(context, "_lead_instance", None),
-                "organization",
-                None,
-            )
-            # AIContext does not retain ORM models by design. Resolve the org only
-            # when candidate construction is actually needed.
-            organization = lead_organization
-            if organization is None and organization_id:
-                from apps.organizations.models import Organization
-
-                organization = Organization.objects.filter(id=organization_id).first()
-
-            if organization is not None:
-                candidates = FileSharingService().build_file_candidates(
-                    organization=organization,
-                    context=context,
-                )
-                if candidates:
-                    payload["file_candidates"] = candidates[: self.KNOWLEDGE_LIMIT]
+        # Candidate construction happens in the RAG node where the ORM-scoped
+        # organization is already available. The prompt sees only that bounded
+        # allow-list, avoiding a second embedding/model decision path.
+        file_candidates = organization_context.get("_file_candidates")
+        if isinstance(file_candidates, list) and file_candidates:
+            payload["file_candidates"] = file_candidates[: self.KNOWLEDGE_LIMIT]
 
         return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
 
