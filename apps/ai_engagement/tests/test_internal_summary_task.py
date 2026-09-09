@@ -73,7 +73,7 @@ class InternalConversationSummaryTaskTests(TestCase):
         phone: str,
         name: str = "Summary Test Lead",
     ):
-        return Lead.objects.create(
+        lead = Lead.objects.create(
             organization=self.organization,
             pipeline=self.pipeline,
             stage=self.stage,
@@ -81,6 +81,10 @@ class InternalConversationSummaryTaskTests(TestCase):
             phone=phone,
             lead_source="whatsapp_api",
         )
+        # These fixtures include messages five minutes ago, after lead creation.
+        Lead.objects.filter(pk=lead.pk).update(created_at=timezone.now() - timedelta(minutes=10))
+        lead.refresh_from_db()
+        return lead
 
     def create_message(
         self,
@@ -240,7 +244,7 @@ class InternalConversationSummaryTaskTests(TestCase):
 
         self.assertEqual(
             summary.generated_by,
-            "shvya_ai",
+            "shvya_ai_scoped_v1",
         )
 
         self.assertEqual(

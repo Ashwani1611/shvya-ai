@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 
+from apps.ai_engagement.services.summary_limits import compact, merge_summary
+
 
 _INSTALLED = False
 
@@ -39,43 +41,37 @@ def install_fixed_prompt_overrides() -> None:
     original_engagement_build_input = EngagementService._build_input
 
     def rolling_build_provider_input(self, *, organization, lead, messages):
-        base = original_build_input(
-            self,
-            organization=organization,
-            lead=lead,
-            messages=messages,
-        )
-        current = self.get_current_summary(
-            organization=organization,
-            lead=lead,
-        )
-        existing = (current.summary or "").strip() if current else ""
-        return (
-            "EXISTING CONVERSATION SUMMARY\n"
-            f"{existing or 'Empty'}\n\n"
-            "RECENT CONTEXT TO MERGE\n"
-            f"{base}"
-        )
+        current = self.get_current_summary(organization=organization, lead=lead)
+        if current and current.generated_by != "shvya_ai_scoped_v1":
+            current = None  # Older summaries may contain pre-lead chat history.
+        existing = compact(current.summary) if current else ""
+        if current and current.source_last_message_at:
+            messages = [m for m in messages if
+                (m.created_at, str(m.id)) >
+                (current.source_last_message_at, str(current.source_last_message_id or ""))]
+        base = original_build_input(self, organization=organization, lead=lead, messages=messages)
+        return (f"EXISTING CONVERSATION SUMMARY\n{existing or 'Empty'}\n"
+                f"OUTPUT LIMIT: {150 if existing else 500} characters. "
+                "Return only NEW useful facts as summary; empty summary if none.\n" + base)
 
     def json_aware_generate_summary(self, *, organization, lead, messages):
         summary, model = original_generate(
-            self,
-            organization=organization,
-            lead=lead,
-            messages=messages,
+            self, organization=organization, lead=lead, messages=messages,
         )
-        text = (summary or "").strip()
+        from apps.ai_engagement.services.internal_summary import InternalSummaryError
+        text = summary.strip()
         if text.startswith("{"):
             try:
                 payload = json.loads(text)
-            except (TypeError, ValueError, json.JSONDecodeError):
-                payload = None
-            if isinstance(payload, dict) and isinstance(payload.get("summary"), str):
-                normalized = payload["summary"].strip()
-                if normalized:
-                    text = normalized
-        text = text[:700].strip()
-        return text, model
+                text = payload["summary"]
+                if not isinstance(text, str):
+                    raise ValueError("summary must be text")
+            except (ValueError, TypeError, KeyError) as exc:
+                raise InternalSummaryError("Invalid summary JSON; nothing published.") from exc
+        current = self.get_current_summary(organization=organization, lead=lead)
+        if current and current.generated_by != "shvya_ai_scoped_v1":
+            current = None
+        return merge_summary(current.summary if current else "", text), model
 
     def organization_compatible_engagement_input(self, *, context, **kwargs):
         raw = original_engagement_build_input(
@@ -120,3 +116,4 @@ def install_fixed_prompt_overrides() -> None:
     EngagementService._build_input = organization_compatible_engagement_input
 
     _INSTALLED = True
+

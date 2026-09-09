@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
+import re
+
+from apps.ai_engagement.services.summary_limits import compact, merge_summary
 
 from django.db import transaction
-from django.utils import timezone
 
 from apps.ai_engagement.services.ai_provider import (
     AIProviderError,
@@ -203,261 +206,21 @@ Do not write a conversation transcript.
         the source of truth.
         """
 
-        context = self.build_ai_context(
-            organization=organization,
-            lead=lead,
-        )
-
-        context_data = context.as_dict()
-
-        organization_data = (
-            context_data["organization"]
-        )
-
-        lead_data = (
-            context_data["lead"]
-        )
-
-        pipeline_data = (
-            context_data["pipeline"]
-        )
-
-        stage_data = (
-            context_data["stage"]
-        )
-
-        conversation_data = (
-            context_data["conversation"]
-        )
-
-        conversation_summary = (
-            context_data.get(
-                "conversation_summary"
-            )
-        )
-
-        qualification_notes = (
-            context_data["qualification_notes"]
-        )
-
-        lines = [
-            "SHVYA AI QUALIFICATION INPUT",
-            "",
-            "EVIDENCE PRIORITY",
-            (
-                "The actual conversation is the primary source "
-                "of truth. The current conversation summary is "
-                "supporting context only."
-            ),
-            "",
-            "ORGANIZATION",
-            (
-                f"Name: "
-                f"{organization_data.get('name', '')}"
-            ),
-            (
-                f"About: "
-                f"{organization_data.get('about', '')}"
-            ),
-            (
-                "Qualification Requirements: "
-                f"{organization_data.get('qualification_requirements', '')}"
-            ),
-            "",
-            "LEAD",
-            (
-                f"Name: "
-                f"{lead_data.get('name', '')}"
-            ),
-            (
-                f"Phone: "
-                f"{lead_data.get('phone', '')}"
-            ),
-            (
-                f"Email: "
-                f"{lead_data.get('email', '')}"
-            ),
-            (
-                f"Lead Source: "
-                f"{lead_data.get('lead_source', '')}"
-            ),
-            (
-                f"Notes: "
-                f"{lead_data.get('notes', '')}"
-            ),
-            (
-                f"Attributes: "
-                f"{lead_data.get('attributes', {})}"
-            ),
-            "",
-            "PIPELINE",
-            (
-                f"Name: "
-                f"{pipeline_data.get('name', '')}"
-            ),
-            (
-                "Description: "
-                f"{pipeline_data.get('description', '')}"
-            ),
-            "",
-            "STAGE",
-            (
-                f"Name: "
-                f"{stage_data.get('name', '')}"
-            ),
-            (
-                "Description: "
-                f"{stage_data.get('description', '')}"
-            ),
-            "",
-            "CURRENT CONVERSATION SUMMARY",
-        ]
-
-        # ----------------------------------------------------
-        # CURRENT CONVERSATION SUMMARY
-        # ----------------------------------------------------
-
-        if conversation_summary:
-
-            summary_text = (
-                conversation_summary.get(
-                    "summary"
-                )
-                or ""
-            ).strip()
-
-            if summary_text:
-
-                lines.extend(
-                    [
-                        (
-                            "Generated: "
-                            f"{conversation_summary.get('generated_at', '')}"
-                        ),
-                        (
-                            "Message Count Covered: "
-                            f"{conversation_summary.get('source_message_count', 0)}"
-                        ),
-                        (
-                            "Model: "
-                            f"{conversation_summary.get('model_name', '')}"
-                        ),
-                        (
-                            "Summary: "
-                            f"{summary_text}"
-                        ),
-                    ]
-                )
-
-            else:
-
-                lines.append(
-                    "No current conversation summary is available."
-                )
-
-        else:
-
-            lines.append(
-                "No current conversation summary is available."
-            )
-
-        # ----------------------------------------------------
-        # ACTUAL CONVERSATION
-        # ----------------------------------------------------
-
-        lines.extend(
-            [
-                "",
-                "ACTUAL CONVERSATION",
-                (
-                    f"Message count: "
-                    f"{conversation_data.get('message_count', 0)}"
-                ),
-                "",
-            ]
-        )
-
-        conversation_messages = (
-            conversation_data.get(
-                "messages",
-                [],
-            )
-        )
-
-        for message in conversation_messages:
-
-            timestamp = (
-                message.get("created_at")
-                or ""
-            )
-
-            direction = (
-                message.get("direction")
-                or ""
-            )
-
-            speaker = (
-                "Lead"
-                if direction == "inbound"
-                else "SHVYA"
-            )
-
-            body = (
-                message.get("body")
-                or ""
-            ).strip()
-
-            if body:
-
-                lines.append(
-                    f"[{timestamp}] {speaker}: {body}"
-                )
-
-        # ----------------------------------------------------
-        # EXISTING QUALIFICATION HISTORY
-        # ----------------------------------------------------
-
-        lines.extend(
-            [
-                "",
-                "EXISTING QUALIFICATION HISTORY",
-            ]
-        )
-
-        qualification_history_found = False
-
-        for note in qualification_notes:
-
-            note_text = (
-                note.get("note")
-                or ""
-            ).strip()
-
-            note_type = (
-                note.get("note_type")
-                or ""
-            )
-
-            if (
-                note_text
-                and note_type == "system"
-            ):
-
-                qualification_history_found = True
-
-                lines.append(
-                    note_text
-                )
-
-        if not qualification_history_found:
-
-            lines.append(
-                "No previous AI qualification history."
-            )
-
-        return "\n".join(
-            lines
-        ).strip()
+        from apps.ai_engagement.services.internal_summary import InternalSummaryService
+        from apps.ai_engagement.services.organization_profile import compile_org_ai_profile_from_context
+        from apps.ai_engagement.services.qualification_state import state_for_lead
+        messages = InternalSummaryService().get_messages(organization=organization, lead=lead)
+        profile = compile_org_ai_profile_from_context({
+            "qualification_requirements": AIContextBuilder()._build_organization_context(
+                organization=organization).get("qualification_requirements", ""),
+        })
+        requirements = profile.get("qualification", {}).get("requirements", [])
+        return json.dumps({
+            "requirements": requirements,
+            "qualification_state": state_for_lead(lead, requirements=requirements),
+            "messages": [{"id": str(m.id), "direction": m.direction, "body": m.body or ""}
+                         for m in messages],
+        }, ensure_ascii=False)
 
     # ========================================================
     # AI GENERATION
@@ -525,20 +288,46 @@ Do not write a conversation transcript.
                 f"{exc}"
             ) from exc
 
-        summary = (
-            result.text or ""
-        ).strip()
-
-        if not summary:
-
-            raise QualificationError(
-                "AI provider returned an empty qualification summary."
-            )
-
-        return QualificationResult(
-            summary=summary,
-            model=result.model,
-        )
+        try:
+            source = json.loads(provider_input)
+            payload = json.loads(result.text)
+            requirements = {str(r["id"]): r for r in source["requirements"]}
+            messages = {m["id"]: m for m in source["messages"]}
+            facts = payload["answers"]
+            if not isinstance(facts, list):
+                raise ValueError("answers must be a list")
+            rendered = []
+            seen = set()
+            for fact in facts:
+                requirement_id = str(fact["requirement_id"])
+                requirement = requirements[requirement_id]
+                message = messages[str(fact["message_id"])]
+                quote = fact["quote"]
+                if (not isinstance(quote, str) or not quote.strip()
+                    or message["direction"] != "inbound" or quote not in message["body"]):
+                    raise ValueError("Qualification answer lacks inbound evidence")
+                # Short answers need the actual preceding question, not a model's guess.
+                ordered = source["messages"]
+                index = ordered.index(message)
+                question = fact["question_quote"]
+                if (index == 0 or ordered[index - 1]["direction"] != "outbound"
+                    or not isinstance(question, str) or not question.strip()
+                    or question not in ordered[index - 1]["body"]):
+                    raise ValueError("Qualification answer lacks its preceding question")
+                normalize_question = lambda value: re.sub(r"\W+", " ", str(value).casefold()).strip()
+                configured_question = normalize_question(requirement.get("question", ""))
+                tracked = (source.get("qualification_state", {}).get("requirement_states", {})
+                           .get(requirement_id, {}))
+                if not (configured_question and configured_question in normalize_question(question)):
+                    if str(tracked.get("source_message_id") or "") != message["id"]:
+                        raise ValueError("Question is not bound to the configured requirement")
+                if requirement_id not in seen:
+                    rendered.append(f"{requirement.get('label') or requirement['question']}: {quote.strip()}")
+                    seen.add(requirement_id)
+            summary = compact("; ".join(rendered))
+        except (ValueError, TypeError, KeyError, AttributeError) as exc:
+            raise QualificationError("Invalid qualification evidence; no note saved.") from exc
+        return QualificationResult(summary=summary, model=result.model)
 
     # ========================================================
     # CURRENT AI QUALIFICATION NOTE
@@ -775,6 +564,7 @@ Do not write a conversation transcript.
                 "Qualification summary cannot be empty."
             )
 
+        Lead.objects.select_for_update().get(pk=lead.pk)
         existing_note = (
             LeadNote.objects
             .select_for_update()
@@ -801,27 +591,18 @@ Do not write a conversation transcript.
 
             return None
 
-        now = timezone.localtime(
-            timezone.now()
-        )
-
         # ----------------------------------------------------
         # INITIAL AI QUALIFICATION NOTE
         # ----------------------------------------------------
 
         if existing_note is None:
 
-            initial_header = (
-                f"<{self.QUALIFICATION_HEADER}"
-                f" - "
-                f"{now.strftime('%d %b %Y, %I:%M %p')}"
-                ">"
-            )
+            initial_header = f"<{self.QUALIFICATION_HEADER} - Evidence>"
 
             note_text = (
                 initial_header
                 + "\n"
-                + summary
+                + compact(summary, 500 - len(initial_header) - 1)
             )
 
             return LeadNote.objects.create(
@@ -835,18 +616,19 @@ Do not write a conversation transcript.
         # UPDATED AI QUALIFICATION NOTE
         # ----------------------------------------------------
 
-        update_header = (
-            "***** Updated Summary "
-            f"{now.strftime('%d/%m %H:%M')} *****"
+        header = f"<{self.QUALIFICATION_HEADER} - Evidence>"
+        previous = (self._extract_latest_summary(existing_note.note)
+                    if existing_note.note.startswith(header) else "")
+        additions = "; ".join(part for part in summary.split("; ")
+                              if part.casefold() not in previous.casefold())
+        if not additions:
+            return None
+        updated_text = header + "\n" + merge_summary(
+            previous, additions, limit=500 - len(header) - 1,
         )
-
-        existing_note.note = (
-            existing_note.note.rstrip()
-            + "\n\n"
-            + update_header
-            + "\n\n"
-            + summary
-        )
+        if updated_text == existing_note.note:
+            return None
+        existing_note.note = updated_text
 
         existing_note.save(
             update_fields=[
@@ -904,6 +686,9 @@ Do not write a conversation transcript.
             organization=organization,
             lead=lead,
         )
+
+        if not result.summary:
+            return None
 
         return self.append_summary(
             lead=lead,
