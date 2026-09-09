@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
 
 AI_CREDITS_PER_COIN = 30
 COIN_DISPLAY_QUANTUM = Decimal("0.01")
+CREDIT_QUANTUM = Decimal("1")
 
 
 def credits_to_coins(credits: int | None) -> Decimal:
@@ -28,14 +29,26 @@ def format_coins(credits: int | None, *, signed: bool = False) -> str:
     return f"{value:,.2f}"
 
 
-def coins_to_credits(coins: int | str | None) -> int:
-    """Convert a whole-number Superadmin coin amount to internal credits."""
+def coins_to_credits(coins: int | float | str | Decimal | None) -> int:
+    """Convert a Superadmin coin amount to the nearest internal whole credit.
+
+    Fractional coins are accepted because live provider usage can leave a wallet
+    between whole-coin boundaries. Credits themselves stay indivisible and are
+    always written to the ledger as integers.
+    """
 
     try:
-        amount = int(coins or 0)
-    except (TypeError, ValueError) as exc:
-        raise ValueError("Enter a valid whole-number AI coin amount.") from exc
+        amount = Decimal(str(coins or 0))
+    except (InvalidOperation, TypeError, ValueError) as exc:
+        raise ValueError("Enter a valid AI coin amount.") from exc
 
+    if not amount.is_finite():
+        raise ValueError("Enter a valid AI coin amount.")
     if amount < 0:
         raise ValueError("AI coin amount cannot be negative.")
-    return amount * AI_CREDITS_PER_COIN
+
+    credits = (amount * Decimal(AI_CREDITS_PER_COIN)).quantize(
+        CREDIT_QUANTUM,
+        rounding=ROUND_HALF_UP,
+    )
+    return int(credits)
