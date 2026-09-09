@@ -405,6 +405,18 @@ class AIContextBuilder:
             "country_code": pipeline.country_code,
             "phone_number": pipeline.phone_number,
             "is_active": pipeline.is_active,
+            "available_stages": [
+                {"id": str(stage.id), "name": stage.name,
+                 "description": stage.description, "config": stage.config}
+                for stage in pipeline.stages.filter(
+                    pipeline__organization_id=lead.organization_id, is_active=True,
+                ).order_by("display_order", "name")
+            ],
+            "attribute_definitions": list(
+                lead.organization.crm_attribute_definitions.values(
+                    "key", "name", "field_type", "description", "options",
+                )
+            ),
         }
 
     # ============================================================
