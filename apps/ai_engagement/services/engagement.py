@@ -3,8 +3,10 @@ from __future__ import annotations
 import json
 import os
 import re
+import logging
 from dataclasses import dataclass, field
 from typing import Any
+from redis.exceptions import RedisError
 
 from django.utils import timezone
 from django.core.cache import cache
@@ -372,9 +374,14 @@ class EngagementService:
                         "AI selected a qualification requirement other than NEXT_REQUIREMENT."
                     )
 
-            if source_message_id:
-                cache.set(result_key, decision.as_dict(), timeout=180)
             success = True
+            if source_message_id:
+                try:
+                    cache.set(result_key, decision.as_dict(), timeout=180)
+                except RedisError:
+                    # A cache outage must not discard a valid customer reply.
+                    success = False
+                    logging.getLogger(__name__).exception("Unable to cache AI decision")
             return decision
         finally:
             if claim is not None:
