@@ -29,13 +29,13 @@ class RealtimeAIQueueRoutingTests(SimpleTestCase):
         )
         self.assertEqual(
             app.conf.beat_schedule[
-                "dispatch-hosted-ai-recovery-every-10-seconds"
+                "dispatch-hosted-ai-recovery-every-5-seconds"
             ]["task"],
             "hosted.dispatch_due_ai",
         )
         self.assertEqual(
             app.conf.beat_schedule[
-                "dispatch-hosted-ai-recovery-every-10-seconds"
+                "dispatch-hosted-ai-recovery-every-5-seconds"
             ]["schedule"],
-            10.0,
+            5.0,
         )
