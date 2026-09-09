@@ -89,6 +89,25 @@ class ContextAndEnrichmentTests(TestCase):
         self.assertEqual(data["attribute_definitions"][0]["key"], "city")
         self.assertIn(str(self.stage.id), [stage["id"] for stage in data["available_stages"]])
 
+    def test_recording_next_question_preserves_just_written_crm_attributes(self):
+        from apps.ai_engagement.models import OrgInfo
+        from apps.ai_engagement.background_signals import remember_ai_qualification_question
+        from apps.crm.models import Lead
+        OrgInfo.objects.update_or_create(organization=self.org,
+                                        defaults={"qualification_requirements": "Which city?"})
+        # The outbound message still holds the pre-CRM-action Lead instance.
+        Lead.objects.filter(pk=self.lead.pk).update(attributes={"city": "Delhi"})
+        instance = SimpleNamespace(
+            lead=self.lead, lead_id=self.lead.pk, organization=self.org,
+            direction="outbound", raw_payload={"shvya_ai": {
+                "reason": "ANSWER_ORG_QUESTION", "next_requirement_id": "which_city",
+            }},
+        )
+        remember_ai_qualification_question(None, instance, created=False)
+        self.lead.refresh_from_db()
+        self.assertEqual(self.lead.attributes["city"], "Delhi")
+        self.assertEqual(self.lead.attributes["_shvya_ai_qualification"]["last_asked_requirement_id"], "which_city")
+
     @patch("apps.ai_engagement.tasks.flush_background_enrichment.apply_async")
     def test_short_conversation_has_one_eventual_refresh(self, flush):
         from apps.ai_engagement.services.background_enrichment import queue_background_enrichment
