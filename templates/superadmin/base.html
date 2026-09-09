@@ -78,13 +78,13 @@
 
                 <a
                     href="{% url 'superadmin-ai-credit-overview' %}"
-                    title="AI Credits"
+                    title="AI Coins"
                     class="sa-nav-link {% if request.resolver_match.url_name == 'superadmin-ai-credit-overview' or request.resolver_match.url_name == 'superadmin-organization-ai-credits' %}is-active{% endif %}"
                 >
                     <svg class="sa-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
                         <path d="M12 3.75 14.15 9l5.6.45-4.28 3.63 1.31 5.42L12 15.6 7.22 18.5l1.31-5.42-4.28-3.63L9.85 9 12 3.75Z" stroke-linejoin="round"/>
                     </svg>
-                    <span class="sa-nav-text">AI Credits</span>
+                    <span class="sa-nav-text">AI Coins</span>
                 </a>
             </nav>
 
@@ -156,9 +156,9 @@
                         <div class="sa-page-kicker">SHVYA AI · Superadmin</div>
                         <div class="sa-page-location">
                             {% if request.resolver_match.url_name == 'superadmin-ai-credit-overview' %}
-                                AI Credits
+                                AI Coins
                             {% elif request.resolver_match.url_name == 'superadmin-organization-ai-credits' %}
-                                Manage AI Credits
+                                Manage AI Coins
                             {% elif request.resolver_match.url_name == 'superadmin-organization-create' %}
                                 Add Organization
                             {% elif request.resolver_match.url_name == 'superadmin-organization-update' %}
