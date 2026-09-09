@@ -271,6 +271,40 @@
         }
     }
 
+    function moveAccountControlsNextToStatus() {
+        const controlsCard = findCardByHeading("Account Controls");
+        const pageHeader = document.querySelector(".sa-content > .mb-6.flex.items-center.justify-between");
+        if (!controlsCard || !pageHeader) return;
+
+        const statusBadge = Array.from(pageHeader.children).find(function (element) {
+            const label = textOf(element);
+            return element.tagName === "SPAN" && (label === "Active" || label === "Disabled");
+        });
+        const actions = controlsCard.querySelector(".p-5.flex.flex-wrap.gap-2");
+        if (!statusBadge || !actions) return;
+
+        pageHeader.classList.add("flex-wrap", "gap-4");
+
+        const rightGroup = document.createElement("div");
+        rightGroup.className = "ml-auto flex max-w-full flex-wrap items-center justify-end gap-3";
+
+        const controls = document.createElement("div");
+        controls.className = "flex max-w-full flex-wrap items-center justify-end gap-2";
+
+        const label = document.createElement("span");
+        label.className = "text-[10px] font-semibold uppercase tracking-[0.12em] text-gray-400";
+        label.textContent = "Account Controls";
+
+        actions.className = "flex max-w-full flex-wrap items-center gap-2";
+        controls.appendChild(label);
+        controls.appendChild(actions);
+
+        rightGroup.appendChild(controls);
+        rightGroup.appendChild(statusBadge);
+        pageHeader.appendChild(rightGroup);
+        controlsCard.remove();
+    }
+
     function stackManagementCards() {
         const usersCard = findCardByHeading("Organization Users");
         const pipelinesCard = findCardByHeading("Pipeline Settings");
@@ -423,6 +457,7 @@
         if (!document.getElementById("sa-org-workspace-data")) return;
         injectLayoutFixes();
         makeAccountCardActuallyCollapsible();
+        moveAccountControlsNextToStatus();
         stackManagementCards();
         fixWhatsAppActivity();
     });
