@@ -34,7 +34,7 @@ class HostedAITransportIsolationTests(TestCase):
 
     @patch("services.channels.whatsapp_service.send_outbound_message")
     def test_meta_sender_leaves_hosted_ai_message_queued(self, meta_send):
-        message = self._message_for(WhatsAppAccount.ConnectionType.HOSTED)
+        message = self._message_for(WhatsAppAccount.ConnectionType.coexisted)
 
         result = send_whatsapp_message_task.run(str(message.id))
 
