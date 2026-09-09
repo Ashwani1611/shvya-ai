@@ -74,7 +74,7 @@ jobs:
             docker compose config --quiet
 
             echo "Building updated application containers..."
-            docker compose build web ws worker beat whatsapp-web-gateway
+            docker compose build web ws worker ai_realtime_worker beat whatsapp-web-gateway
 
             echo "Ensuring database and Redis are healthy..."
             docker compose up -d --wait db redis
@@ -86,13 +86,21 @@ jobs:
             docker compose run --rm web python manage.py collectstatic --noinput
 
             echo "Updating application services..."
-            docker compose up -d --no-deps web ws worker beat
+            docker compose up -d --no-deps web ws worker ai_realtime_worker beat
 
             echo "Waiting for Django/Gunicorn to become healthy..."
             if ! docker compose up -d --wait --no-deps web; then
               echo "Web service did not become healthy."
               docker compose ps
               docker compose logs --tail=150 web
+              exit 1
+            fi
+
+            echo "Verifying realtime AI worker is running..."
+            if ! docker compose ps --status running ai_realtime_worker | grep -q ai_realtime_worker; then
+              echo "Realtime AI worker is not running."
+              docker compose ps
+              docker compose logs --tail=150 ai_realtime_worker
               exit 1
             fi
 
