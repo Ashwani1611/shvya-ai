@@ -17,9 +17,13 @@ app.autodiscover_tasks()
 
 # Customer-facing WhatsApp AI must not wait behind conversation summaries,
 # ingestion, follow-ups, or other long-running default-queue work. Meta API
-# engagement and Hosted Account AI each get an isolated production lane.
+# engagement and its final single-message delivery share the realtime lane;
+# Hosted Account AI keeps its own isolated production lane.
 app.conf.task_routes = {
     "ai.generate_ai_engagement_response": {
+        "queue": "ai_realtime",
+    },
+    "apps.channels.tasks.send_whatsapp_message_task": {
         "queue": "ai_realtime",
     },
     "hosted.dispatch_due_ai": {
