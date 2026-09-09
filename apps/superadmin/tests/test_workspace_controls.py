@@ -4,7 +4,10 @@ from django.urls import reverse
 
 from apps.accounts.models import User
 from apps.accounts.session_utils import set_authenticated_user
+from apps.channels.models import WhatsAppAccount
+from apps.crm.models.pipeline import Pipeline
 from apps.organizations.models import Organization, OrganizationTag
+from apps.superadmin.templatetags.workspace_tags import organization_workspace_state
 
 
 class SuperadminWorkspaceControlsTests(TestCase):
@@ -102,3 +105,72 @@ class SuperadminWorkspaceControlsTests(TestCase):
         self.assertIn(str(self.user.id), response["Location"])
         self.user.refresh_from_db()
         self.assertTrue(self.user.check_password("old-password-123"))
+
+    def test_whatsapp_activity_uses_one_effective_channel_per_pipeline(self):
+        # Organizations receive a default pipeline on creation. Remove that
+        # unrelated fixture so this test exercises exactly one linked pipeline.
+        Pipeline.objects.filter(organization=self.organization).delete()
+        Pipeline.objects.create(
+            organization=self.organization,
+            name="Sales",
+            country_code="+91",
+            phone_number="9876543210",
+        )
+        WhatsAppAccount.objects.create(
+            organization=self.organization,
+            connection_type=WhatsAppAccount.ConnectionType.API,
+            display_phone_number="+91 98765 43210",
+            status=WhatsAppAccount.Status.CONNECTED,
+            is_active=True,
+        )
+        WhatsAppAccount.objects.create(
+            organization=self.organization,
+            connection_type=WhatsAppAccount.ConnectionType.coexisted,
+            display_phone_number="+91 98765 43210",
+            status=WhatsAppAccount.Status.CONNECTED,
+            is_active=True,
+        )
+
+        state = organization_workspace_state(self.organization)
+
+        self.assertEqual(state["active_count"], 1)
+        self.assertEqual(state["total_count"], 1)
+        self.assertEqual(state["channel_label"], "Sales — Hosted active")
+        self.assertNotIn("API + Hosted", state["channel_label"])
+
+    def test_whatsapp_activity_keeps_distinct_pipeline_channels_separate(self):
+        Pipeline.objects.filter(organization=self.organization).delete()
+        Pipeline.objects.create(
+            organization=self.organization,
+            name="Ash",
+            country_code="+91",
+            phone_number="8360156287",
+        )
+        Pipeline.objects.create(
+            organization=self.organization,
+            name="Leads",
+            country_code="+1",
+            phone_number="5556734850",
+        )
+        WhatsAppAccount.objects.create(
+            organization=self.organization,
+            connection_type=WhatsAppAccount.ConnectionType.coexisted,
+            display_phone_number="+91 8360156287",
+            status=WhatsAppAccount.Status.CONNECTED,
+            is_active=True,
+        )
+        WhatsAppAccount.objects.create(
+            organization=self.organization,
+            connection_type=WhatsAppAccount.ConnectionType.API,
+            display_phone_number="+1 5556734850",
+            status=WhatsAppAccount.Status.CONNECTED,
+            is_active=True,
+        )
+
+        state = organization_workspace_state(self.organization)
+
+        self.assertEqual(state["active_count"], 2)
+        self.assertEqual(state["total_count"], 2)
+        self.assertIn("Ash — Hosted active", state["channel_label"])
+        self.assertIn("Leads — WhatsApp API active", state["channel_label"])
+        self.assertNotIn("API + Hosted", state["channel_label"])
