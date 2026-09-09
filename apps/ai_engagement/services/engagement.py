@@ -1,9 +1,15 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from typing import Any
 
+from django.utils import timezone
+
+from apps.ai_engagement.prompts.engagement import (
+    CUSTOMER_ENGAGEMENT_INSTRUCTIONS,
+)
 from apps.ai_engagement.services.ai_provider import (
     AIProviderError,
     AITextResult,
@@ -16,24 +22,24 @@ from apps.ai_engagement.services.context import (
     AIContext,
     AIContextBuilder,
 )
+from apps.ai_engagement.services.crm_actions import (
+    ALLOWED_ACTION_TYPES,
+    CRMActionSchemaError,
+    validate_crm_actions,
+)
+from apps.ai_engagement.services.engagement_lock import (
+    EngagementGenerationLock,
+    EngagementLockError,
+)
 
 
 class EngagementError(Exception):
-    """
-    Raised when AI Engagement cannot safely produce a decision.
-    """
+    """Raised when AI Engagement cannot safely produce a decision."""
 
 
 @dataclass(frozen=True)
 class EngagementDecision:
-    """
-    Normalized result of one AI engagement decision.
-
-    This object contains AI requests only.
-
-    CRM actions are NOT executed here.
-    WhatsApp messages are NOT sent here.
-    """
+    """Normalized AI proposal. Side effects are executed elsewhere."""
 
     should_engage: bool
     message: str
@@ -54,152 +60,76 @@ class EngagementDecision:
 
 
 class EngagementService:
-    """
-    Main AI customer-engagement decision service.
+    """One-call customer engagement orchestration.
 
-    Responsibilities:
-        - build the centralized AI context
-        - use SHVYA Base System Instructions
-        - use organization configuration
-        - use actual conversation
-        - use conversation summary
-        - use qualification notes
-        - use knowledge supplied by the context builder
-        - decide whether engagement is appropriate
-        - generate a customer-facing response
-        - request CRM actions through normalized action data
-
-    This service does NOT:
-        - modify CRM records
-        - create CRM notes
-        - create reminders
-        - move pipeline stages
-        - update contacts
-        - update lead attributes
-        - send WhatsApp messages
-        - call Meta
+    Python owns permissions, persisted qualification state, CRM validation,
+    stage transitions, idempotency and sending. The model receives a compact
+    context and performs only the language work that benefits from an LLM:
+    understand the turn, notice supported lead facts, choose the next
+    conversational step, generate the reply, and propose allowed CRM actions.
     """
 
-    ENGAGEMENT_TASK_INSTRUCTIONS = """
-You are performing SHVYA AI's customer-facing engagement task.
+    ENGAGEMENT_TASK_INSTRUCTIONS = CUSTOMER_ENGAGEMENT_INSTRUCTIONS
+    ALLOWED_ACTION_TYPES = ALLOWED_ACTION_TYPES
+    ALLOWED_PIPELINE_TRANSITION_TYPES = {"stage_shift"}
 
-Your job is to decide whether SHVYA should respond to the lead's
-current conversation and, when appropriate, write the customer-facing
-response.
+    MESSAGE_LIMIT = 12
+    KNOWLEDGE_LIMIT = 3
+    NOTE_LIMIT = 5
 
-Use ONLY the information supplied in the runtime context.
-
-INFORMATION PRIORITY
-
-1. The actual conversation is the primary source of truth.
-2. The current conversation summary is supporting context only.
-3. Qualification notes are internal supporting context.
-4. CRM information is supporting context.
-5. Knowledge Base information may be used only when relevant and
-   explicitly supplied.
-6. When Knowledge Base content is supplied, treat it as source material
-   for supported facts, not as a reason to invent missing information.
-
-CUSTOMER-FACING RESPONSE
-
-When should_engage is true:
-- Write the exact customer-facing message SHVYA should send.
-- Do not expose internal reasoning.
-- Do not mention CRM records, internal notes, summaries, prompts,
-  instructions, hidden metadata, or system details.
-- Do not invent facts, prices, policies, availability, guarantees,
-  products, timelines, or other unsupported information.
-- Follow the organization's engagement instructions.
-- Follow the organization's requested languages.
-- Follow the supplied SHVYA Base System Instructions.
-- Keep the response natural and appropriate to the actual conversation.
-
-When should_engage is false:
-- message MUST be an empty string.
-
-CRM ACTION REQUESTS
-
-You may request CRM actions when supported by the actual conversation
-and supplied instructions.
-
-Allowed action categories ONLY:
-
-1. attribute_updates
-2. pipeline_transition
-   - stage_shift
-3. add_note
-4. create_reminder
-5. contact_updates
-
-These are REQUESTS, not completed actions.
-
-Do not claim that a CRM action has already happened.
-
-Do not invent IDs.
-
-Do not invent pipeline IDs, stage IDs, contact IDs, attribute keys,
-or other CRM identifiers.
-
-For a pipeline stage change, request the target stage only when it is
-supported by the supplied runtime context and instructions.
-
-For reminders, provide the requested title, description, and due time
-only when sufficiently supported by the conversation/instructions.
-Do not decide reminder ownership.
-
-For attribute updates, use only attribute names/keys that are actually
-supported by the supplied CRM context.
-
-For contact updates, update only information actually supplied by the
-lead or otherwise supported by the context.
-
-DO NOT HARDCODE BUSINESS RULES
-
-Do not use fixed rules such as:
-- interested means move to a particular stage
-- negotiation means create a particular reminder
-- payment means stop
-- a keyword always triggers one specific action
-
-Those behaviors must come from the supplied instructions and actual
-context.
-
-OUTPUT
-
-Return ONLY valid JSON.
-
-The JSON object MUST contain exactly these keys:
-
-{
-  "should_engage": boolean,
-  "message": string,
-  "file_document_id": integer or null,
-  "crm_actions": array,
-  "reason": string
-}
-
-Rules:
-- should_engage must be true or false.
-- If should_engage is false, message must be "".
-- If should_engage is true, message must be a non-empty customer-facing
-  response.
-- file_document_id must be an integer or null.
-- crm_actions must be an array.
-- reason must be a concise internal explanation.
-- Never put internal reasoning into message.
-- Never include extra top-level keys.
-"""
-
-    ALLOWED_ACTION_TYPES = {
-        "attribute_updates",
-        "pipeline_transition",
-        "add_note",
-        "create_reminder",
-        "contact_updates",
+    _SIMPLE_ACKS = {
+        "yes",
+        "yeah",
+        "yep",
+        "no",
+        "nope",
+        "ok",
+        "okay",
+        "sure",
+        "done",
+        "correct",
+        "right",
+        "maybe",
+        "not sure",
+        "interested",
+        "thanks",
+        "thank you",
     }
 
-    ALLOWED_PIPELINE_TRANSITION_TYPES = {
-        "stage_shift",
+    _KNOWLEDGE_TERMS = {
+        "price",
+        "pricing",
+        "cost",
+        "fee",
+        "fees",
+        "plan",
+        "plans",
+        "package",
+        "packages",
+        "service",
+        "services",
+        "feature",
+        "features",
+        "include",
+        "included",
+        "policy",
+        "refund",
+        "guarantee",
+        "location",
+        "address",
+        "course",
+        "courses",
+        "product",
+        "products",
+        "availability",
+        "available",
+        "recommend",
+        "suggest",
+        "difference",
+        "brochure",
+        "website",
+        "offer",
+        "offers",
     }
 
     def __init__(
@@ -209,14 +139,7 @@ Rules:
         context_builder: AIContextBuilder | None = None,
     ) -> None:
         self.provider = provider
-        self.context_builder = (
-            context_builder
-            or AIContextBuilder()
-        )
-
-    # ============================================================
-    # PUBLIC API
-    # ============================================================
+        self.context_builder = context_builder or AIContextBuilder()
 
     def engage(
         self,
@@ -226,53 +149,21 @@ Rules:
         knowledge_query: str | None = None,
         context: AIContext | None = None,
     ) -> EngagementDecision:
-        """
-        Produce one normalized AI engagement decision.
-        """
-
         if organization is None:
-            raise EngagementError(
-                "Organization is required."
-            )
-
+            raise EngagementError("Organization is required.")
         if lead is None:
-            raise EngagementError(
-                "Lead is required."
-            )
+            raise EngagementError("Lead is required.")
 
+        caller_supplied_context = context is not None
         if context is None:
             context = self.context_builder.build(
                 organization=organization,
                 lead=lead,
-                knowledge_query=knowledge_query,
+                knowledge_query=None,
+                message_limit=self.MESSAGE_LIMIT,
+                knowledge_limit=self.KNOWLEDGE_LIMIT,
+                note_limit=self.NOTE_LIMIT,
             )
-
-            # ----------------------------------------------------
-            # PHASE 12 — KNOWLEDGE-AWARE ENGAGEMENT
-            #
-            # When the caller did not provide an explicit knowledge
-            # query, derive one from the most recent conversation.
-            #
-            # The query generation is deterministic so we do not
-            # introduce a second LLM call before the engagement
-            # decision.
-            # ----------------------------------------------------
-
-            if knowledge_query is None:
-                derived_knowledge_query = (
-                    self._build_knowledge_query(
-                        context=context,
-                    )
-                )
-
-                if derived_knowledge_query:
-                    context = self.context_builder.build(
-                        organization=organization,
-                        lead=lead,
-                        knowledge_query=(
-                            derived_knowledge_query
-                        ),
-                    )
 
         self._validate_context_scope(
             organization=organization,
@@ -280,167 +171,217 @@ Rules:
             context=context,
         )
 
-        instructions = self._build_instructions(
-            context=context,
-        )
+        # RAG is conditional. Short qualification answers and acknowledgements
+        # should not consume an embedding call. Explicit knowledge_query always
+        # wins when a caller deliberately asks for retrieval.
+        if not caller_supplied_context:
+            query = (knowledge_query or "").strip()
+            if not query and self._should_retrieve_knowledge(context=context):
+                query = self._build_knowledge_query(context=context)
+            if query:
+                context = self.context_builder.build(
+                    organization=organization,
+                    lead=lead,
+                    knowledge_query=query,
+                    message_limit=self.MESSAGE_LIMIT,
+                    knowledge_limit=self.KNOWLEDGE_LIMIT,
+                    note_limit=self.NOTE_LIMIT,
+                )
 
-        input_text = self._build_input(
-            context=context,
-        )
+        source_message_id = self._latest_inbound_message_id(context=context)
+        claim = None
+        if source_message_id:
+            try:
+                claim = EngagementGenerationLock(
+                    lead_id=lead.id,
+                    source_message_id=source_message_id,
+                )
+                if not claim.acquire():
+                    return EngagementDecision(
+                        should_engage=False,
+                        message="",
+                        file_document_id=None,
+                        crm_actions=[],
+                        reason="duplicate_generation_in_progress",
+                        model="",
+                    )
+            except EngagementLockError:
+                # Redis lock failure must not make customer engagement fail.
+                # Existing DB-level duplicate/freshness checks still fail safe.
+                claim = None
 
-        provider = (
-            self.provider
-            or OpenAIProvider()
-        )
+        instructions = self._build_instructions(context=context)
+        input_text = self._build_input(context=context)
+        provider = self.provider or OpenAIProvider()
+        success = False
 
         try:
-            result = provider.generate_text(
-                instructions=instructions,
-                input_text=input_text,
+            try:
+                result = provider.generate_text(
+                    instructions=instructions,
+                    input_text=input_text,
+                    metadata={
+                        "organization_id": str(organization.id),
+                        "lead_id": str(lead.id),
+                        "task": "engagement",
+                        "phase": "primary",
+                    },
+                )
+            except AIProviderError as exc:
+                raise EngagementError("AI engagement generation failed.") from exc
+
+            try:
+                decision = self._normalize_result(result=result)
+            except EngagementError as first_error:
+                # One bounded schema-repair call is cheaper and safer than
+                # blindly retrying the full customer request three times.
+                decision = self._repair_result_once(
+                    provider=provider,
+                    organization=organization,
+                    lead=lead,
+                    result=result,
+                    original_error=first_error,
+                )
+
+            success = True
+            return decision
+        finally:
+            if claim is not None:
+                try:
+                    claim.finish(success=success)
+                except EngagementLockError:
+                    # Do not hide a successfully generated customer decision or
+                    # replace the original provider/validation error.
+                    pass
+
+    def _repair_result_once(
+        self,
+        *,
+        provider,
+        organization,
+        lead,
+        result: AITextResult,
+        original_error: EngagementError,
+    ) -> EngagementDecision:
+        repair_instructions = """
+Repair a malformed SHVYA engagement JSON result.
+Return ONLY one valid JSON object with exactly these keys:
+should_engage, message, file_document_id, crm_actions, reason.
+Preserve the original intended customer response and supported actions. Do not
+add facts, new actions, explanations, markdown, or chain-of-thought.
+If should_engage is false, message must be empty.
+""".strip()
+        repair_input = json.dumps(
+            {
+                "validation_error": str(original_error),
+                "malformed_output": result.text,
+            },
+            ensure_ascii=False,
+        )
+        try:
+            repaired = provider.generate_text(
+                instructions=repair_instructions,
+                input_text=repair_input,
                 metadata={
-                    "organization_id": str(
-                        organization.id
-                    ),
-                    "lead_id": str(
-                        lead.id
-                    ),
+                    "organization_id": str(organization.id),
+                    "lead_id": str(lead.id),
                     "task": "engagement",
+                    "phase": "schema_repair",
                 },
             )
         except AIProviderError as exc:
-            raise EngagementError(
-                "AI engagement generation failed."
-            ) from exc
+            raise EngagementError("AI engagement schema repair failed.") from exc
 
-        return self._normalize_result(
-            result=result,
-        )
+        # No recursive repair. One malformed repair is a hard validation error.
+        return self._normalize_result(result=repaired)
 
-    # ============================================================
-    # PHASE 12 — KNOWLEDGE RETRIEVAL QUERY
-    # ============================================================
+    def _latest_inbound_message_id(self, *, context: AIContext) -> str:
+        messages = (context.conversation or {}).get("messages", [])
+        if not isinstance(messages, list):
+            return ""
+        for message in reversed(messages):
+            if not isinstance(message, dict):
+                continue
+            if message.get("direction") != "inbound":
+                continue
+            value = str(message.get("id") or "").strip()
+            if value:
+                return value
+        return ""
 
-    def _build_knowledge_query(
-        self,
-        *,
-        context: AIContext,
-    ) -> str:
-        """
-        Build a retrieval query from the most recent conversation.
+    def _latest_inbound_text(self, *, context: AIContext) -> str:
+        messages = (context.conversation or {}).get("messages", [])
+        if not isinstance(messages, list):
+            return ""
+        for message in reversed(messages):
+            if not isinstance(message, dict):
+                continue
+            if message.get("direction") != "inbound":
+                continue
+            body = str(message.get("body") or "").strip()
+            if body:
+                return body
+        return ""
 
-        The retrieval query is intentionally deterministic.
+    def _should_retrieve_knowledge(self, *, context: AIContext) -> bool:
+        text = self._latest_inbound_text(context=context)
+        if not text:
+            return False
 
-        The latest lead message is the strongest signal, with a small
-        amount of nearby conversation included for continuity.
+        normalized = " ".join(text.casefold().split())
+        if normalized in self._SIMPLE_ACKS:
+            return False
 
-        This keeps knowledge retrieval to the existing:
-            AIContextBuilder
-                -> EmbeddingService
-                -> KnowledgeRetrievalService
-
-        pipeline without adding a second generative AI call.
-        """
-
-        conversation = (
-            context.conversation
-            or {}
-        )
-
-        messages = conversation.get(
-            "messages",
-            [],
-        )
-
-        if not isinstance(
-            messages,
-            list,
+        # Numbers, dates, phone-like values and short option answers are common
+        # qualification replies and do not need RAG.
+        compact = re.sub(r"[\s,₹$€£+\-./:]", "", normalized)
+        if len(normalized) <= 40 and compact and compact.isdigit():
+            return False
+        if len(normalized) <= 24 and re.fullmatch(
+            r"(?:option\s*)?[a-z0-9]{1,8}", normalized
         ):
+            return False
+
+        words = set(re.findall(r"[a-z0-9]+", normalized))
+        if words & self._KNOWLEDGE_TERMS:
+            return True
+
+        # A genuine question may require organization knowledge. Keep very
+        # short scheduling/confirmation turns out of RAG where possible.
+        if "?" in text and len(normalized) > 20:
+            return True
+
+        return False
+
+    def _build_knowledge_query(self, *, context: AIContext) -> str:
+        messages = (context.conversation or {}).get("messages", [])
+        if not isinstance(messages, list):
             return ""
 
         recent_messages: list[str] = []
-
         for message in messages[-4:]:
-            if not isinstance(
-                message,
-                dict,
-            ):
+            if not isinstance(message, dict):
                 continue
-
-            body = (
-                message.get("body")
-                or ""
-            ).strip()
-
+            body = str(message.get("body") or "").strip()
             if not body:
                 continue
-
             speaker = (
-                "Lead"
-                if message.get(
-                    "direction"
-                ) == "inbound"
-                else "SHVYA"
+                "Lead" if message.get("direction") == "inbound" else "SHVYA"
             )
+            recent_messages.append(f"{speaker}: {body}")
 
-            recent_messages.append(
-                f"{speaker}: {body}"
-            )
+        return "\n".join(recent_messages).strip()[:2500]
 
-        if not recent_messages:
-            return ""
-
-        query = "\n".join(
-            recent_messages
+    def _build_instructions(self, *, context: AIContext) -> str:
+        organization_context = context.organization or {}
+        organization_instructions = str(
+            organization_context.get("engagement_instructions", "") or ""
         ).strip()
-
-        return query[:4000]
-
-    # ============================================================
-    # INSTRUCTIONS
-    # ============================================================
-
-    def _build_instructions(
-        self,
-        *,
-        context: AIContext,
-    ) -> str:
-        """
-        Compose the SHVYA instruction hierarchy for engagement.
-
-        Order:
-            1. SHVYA Base System Instructions
-            2. Organization Engagement Instructions
-            3. Engagement Task Instructions
-        """
-
-        base_instructions = (
-            SHVYABaseInstructions.get()
+        organization_section = organization_instructions or (
+            "No additional organization-specific engagement instructions were supplied."
         )
-
-        organization_context = (
-            context.organization
-            or {}
-        )
-
-        organization_instructions = (
-            organization_context.get(
-                "engagement_instructions",
-                "",
-            )
-            or ""
-        ).strip()
-
-        organization_section = (
-            organization_instructions
-            if organization_instructions
-            else (
-                "No additional organization-specific "
-                "engagement instructions were supplied."
-            )
-        )
-
         return (
-            f"{base_instructions}\n\n"
+            f"{SHVYABaseInstructions.get()}\n\n"
             "============================================================\n"
             "ORGANIZATION ENGAGEMENT INSTRUCTIONS\n"
             "============================================================\n"
@@ -451,564 +392,105 @@ Rules:
             f"{self.ENGAGEMENT_TASK_INSTRUCTIONS.strip()}"
         )
 
-    # ============================================================
-    # INPUT
-    # ============================================================
+    def _build_input(self, *, context: AIContext) -> str:
+        data = context.as_dict()
+        lead_data = dict(data["lead"] or {})
+        # The normalized `attributes` list below is the source supplied to the
+        # model. Avoid sending the same Lead.attributes JSON twice.
+        lead_data.pop("attributes", None)
 
-    def _build_input(
-        self,
-        *,
-        context: AIContext,
-    ) -> str:
-        """
-        Convert the centralized AI context into the provider input.
+        payload = {
+            "current_time": timezone.now().isoformat(),
+            "organization": data["organization"],
+            "lead": lead_data,
+            "pipeline": data["pipeline"],
+            "stage": data["stage"],
+            "contacts": data["contacts"],
+            "attributes": data["attributes"],
+            "conversation_summary": data["conversation_summary"],
+            "recent_conversation": data["conversation"],
+            "qualification_notes": data["qualification_notes"],
+            "knowledge": data["knowledge"],
+        }
+        return json.dumps(payload, ensure_ascii=False)
 
-        Knowledge returned by the existing context builder is passed
-        directly into the engagement model.
-        """
+    def _normalize_result(self, *, result: AITextResult) -> EngagementDecision:
+        payload = self._parse_json(result.text)
+        self._validate_top_level_schema(payload)
 
-        context_data = (
-            context.as_dict()
-        )
+        should_engage = payload["should_engage"]
+        message = payload["message"]
+        file_document_id = payload["file_document_id"]
+        crm_actions = payload["crm_actions"]
+        reason = payload["reason"]
 
-        return json.dumps(
-            {
-                "organization": context_data[
-                    "organization"
-                ],
-                "lead": context_data[
-                    "lead"
-                ],
-                "pipeline": context_data[
-                    "pipeline"
-                ],
-                "stage": context_data[
-                    "stage"
-                ],
-                "contacts": context_data[
-                    "contacts"
-                ],
-                "attributes": context_data[
-                    "attributes"
-                ],
-                "conversation": context_data[
-                    "conversation"
-                ],
-                "conversation_summary": (
-                    context_data[
-                        "conversation_summary"
-                    ]
-                ),
-                "qualification_notes": (
-                    context_data[
-                        "qualification_notes"
-                    ]
-                ),
-                "knowledge": context_data[
-                    "knowledge"
-                ],
-            },
-            ensure_ascii=False,
-        )
-
-    # ============================================================
-    # RESULT NORMALIZATION
-    # ============================================================
-
-    def _normalize_result(
-        self,
-        *,
-        result: AITextResult,
-    ) -> EngagementDecision:
-        payload = self._parse_json(
-            result.text
-        )
-
-        self._validate_top_level_schema(
-            payload
-        )
-
-        should_engage = payload[
-            "should_engage"
-        ]
-
-        message = payload[
-            "message"
-        ]
-
-        file_document_id = payload[
-            "file_document_id"
-        ]
-
-        crm_actions = payload[
-            "crm_actions"
-        ]
-
-        reason = payload[
-            "reason"
-        ]
-
-        if not isinstance(
-            should_engage,
-            bool,
-        ):
-            raise EngagementError(
-                "should_engage must be a boolean."
-            )
-
-        if not isinstance(
-            message,
-            str,
-        ):
-            raise EngagementError(
-                "message must be a string."
-            )
-
+        if not isinstance(should_engage, bool):
+            raise EngagementError("should_engage must be a boolean.")
+        if not isinstance(message, str):
+            raise EngagementError("message must be a string.")
         message = message.strip()
-
-        if (
-            should_engage
-            and not message
-        ):
+        if should_engage and not message:
             raise EngagementError(
-                "message must not be empty when "
-                "should_engage is true."
+                "message must not be empty when should_engage is true."
             )
-
-        if (
-            not should_engage
-            and message
-        ):
+        if not should_engage and message:
             raise EngagementError(
-                "message must be empty when "
-                "should_engage is false."
+                "message must be empty when should_engage is false."
             )
 
-        if (
-            file_document_id is not None
-            and (
-                isinstance(
-                    file_document_id,
-                    bool,
-                )
-                or not isinstance(
-                    file_document_id,
-                    int,
-                )
-            )
+        if file_document_id is not None and (
+            isinstance(file_document_id, bool)
+            or not isinstance(file_document_id, int)
+            or file_document_id <= 0
         ):
-            raise EngagementError(
-                "file_document_id must be an integer or null."
-            )
+            raise EngagementError("file_document_id must be a positive integer or null.")
 
-        if not isinstance(
-            crm_actions,
-            list,
-        ):
-            raise EngagementError(
-                "crm_actions must be an array."
-            )
+        if not isinstance(reason, str):
+            raise EngagementError("reason must be a string.")
+        reason = reason.strip()[:500]
 
-        if not isinstance(
-            reason,
-            str,
-        ):
-            raise EngagementError(
-                "reason must be a string."
-            )
-
-        reason = reason.strip()
-
-        self._validate_crm_actions(
-            crm_actions
-        )
+        try:
+            normalized_actions = validate_crm_actions(crm_actions)
+        except CRMActionSchemaError as exc:
+            raise EngagementError(f"Invalid CRM actions: {exc}") from exc
 
         return EngagementDecision(
             should_engage=should_engage,
             message=message,
             file_document_id=file_document_id,
-            crm_actions=crm_actions,
+            crm_actions=normalized_actions,
             reason=reason,
             model=result.model,
         )
 
-    # ============================================================
-    # JSON
-    # ============================================================
-
-    def _parse_json(
-        self,
-        raw_text: str,
-    ) -> dict[str, Any]:
-        text = (
-            raw_text or ""
-        ).strip()
-
+    def _parse_json(self, raw_text: str) -> dict[str, Any]:
+        text = str(raw_text or "").strip()
         if not text:
-            raise EngagementError(
-                "AI returned an empty response."
-            )
-
+            raise EngagementError("AI returned an empty response.")
         try:
-            payload = json.loads(
-                text
-            )
+            payload = json.loads(text)
         except json.JSONDecodeError as exc:
-            raise EngagementError(
-                "AI returned invalid JSON."
-            ) from exc
-
-        if not isinstance(
-            payload,
-            dict,
-        ):
-            raise EngagementError(
-                "AI response must be a JSON object."
-            )
-
+            raise EngagementError("AI returned invalid JSON.") from exc
+        if not isinstance(payload, dict):
+            raise EngagementError("AI response must be a JSON object.")
         return payload
 
-    def _validate_top_level_schema(
-        self,
-        payload: dict[str, Any],
-    ) -> None:
-        expected_keys = {
+    def _validate_top_level_schema(self, payload: dict[str, Any]) -> None:
+        expected = {
             "should_engage",
             "message",
             "file_document_id",
             "crm_actions",
             "reason",
         }
+        if set(payload.keys()) != expected:
+            raise EngagementError("AI response contains an invalid schema.")
 
-        actual_keys = set(
-            payload.keys()
-        )
-
-        if actual_keys != expected_keys:
-            raise EngagementError(
-                "AI response contains an invalid schema."
-            )
-
-    # ============================================================
-    # CRM ACTION VALIDATION
-    # ============================================================
-
-    def _validate_crm_actions(
-        self,
-        actions: list[Any],
-    ) -> None:
-        for action in actions:
-            if not isinstance(
-                action,
-                dict,
-            ):
-                raise EngagementError(
-                    "Each CRM action must be an object."
-                )
-
-            action_type = action.get(
-                "type"
-            )
-
-            if action_type not in (
-                self.ALLOWED_ACTION_TYPES
-            ):
-                raise EngagementError(
-                    f"Unsupported CRM action type: "
-                    f"{action_type!r}"
-                )
-
-            if action_type == "attribute_updates":
-                self._validate_attribute_updates(
-                    action
-                )
-
-            elif action_type == "pipeline_transition":
-                self._validate_pipeline_transition(
-                    action
-                )
-
-            elif action_type == "add_note":
-                self._validate_add_note(
-                    action
-                )
-
-            elif action_type == "create_reminder":
-                self._validate_create_reminder(
-                    action
-                )
-
-            elif action_type == "contact_updates":
-                self._validate_contact_updates(
-                    action
-                )
-
-    def _validate_attribute_updates(
-        self,
-        action: dict[str, Any],
-    ) -> None:
-        expected = {
-            "type",
-            "updates",
-        }
-
-        if set(
-            action.keys()
-        ) != expected:
-            raise EngagementError(
-                "Invalid attribute_updates schema."
-            )
-
-        updates = action[
-            "updates"
-        ]
-
-        if not isinstance(
-            updates,
-            list,
-        ):
-            raise EngagementError(
-                "attribute_updates.updates must be an array."
-            )
-
-        for update in updates:
-            if not isinstance(
-                update,
-                dict,
-            ):
-                raise EngagementError(
-                    "Each attribute update must be an object."
-                )
-
-            if set(
-                update.keys()
-            ) != {
-                "key",
-                "value",
-            }:
-                raise EngagementError(
-                    "Invalid attribute update schema."
-                )
-
-            if not isinstance(
-                update["key"],
-                str,
-            ):
-                raise EngagementError(
-                    "Attribute update key must be a string."
-                )
-
-    def _validate_pipeline_transition(
-        self,
-        action: dict[str, Any],
-    ) -> None:
-        expected = {
-            "type",
-            "stage_shift",
-        }
-
-        if set(
-            action.keys()
-        ) != expected:
-            raise EngagementError(
-                "Invalid pipeline_transition schema."
-            )
-
-        stage_shift = action[
-            "stage_shift"
-        ]
-
-        if not isinstance(
-            stage_shift,
-            dict,
-        ):
-            raise EngagementError(
-                "stage_shift must be an object."
-            )
-
-        if set(
-            stage_shift.keys()
-        ) != {
-            "stage_id",
-        }:
-            raise EngagementError(
-                "Invalid stage_shift schema."
-            )
-
-        stage_id = stage_shift[
-            "stage_id"
-        ]
-
-        if not isinstance(
-            stage_id,
-            str,
-        ):
-            raise EngagementError(
-                "stage_shift.stage_id must be a string."
-            )
-
-    def _validate_add_note(
-        self,
-        action: dict[str, Any],
-    ) -> None:
-        expected = {
-            "type",
-            "note",
-        }
-
-        if set(
-            action.keys()
-        ) != expected:
-            raise EngagementError(
-                "Invalid add_note schema."
-            )
-
-        if not isinstance(
-            action["note"],
-            str,
-        ):
-            raise EngagementError(
-                "add_note.note must be a string."
-            )
-
-        if not action[
-            "note"
-        ].strip():
-            raise EngagementError(
-                "add_note.note cannot be empty."
-            )
-
-    def _validate_create_reminder(
-        self,
-        action: dict[str, Any],
-    ) -> None:
-        expected = {
-            "type",
-            "title",
-            "description",
-            "due_at",
-        }
-
-        if set(
-            action.keys()
-        ) != expected:
-            raise EngagementError(
-                "Invalid create_reminder schema."
-            )
-
-        if not isinstance(
-            action["title"],
-            str,
-        ):
-            raise EngagementError(
-                "create_reminder.title must be a string."
-            )
-
-        if not action[
-            "title"
-        ].strip():
-            raise EngagementError(
-                "create_reminder.title cannot be empty."
-            )
-
-        if not isinstance(
-            action["description"],
-            str,
-        ):
-            raise EngagementError(
-                "create_reminder.description must be a string."
-            )
-
-        if not isinstance(
-            action["due_at"],
-            str,
-        ):
-            raise EngagementError(
-                "create_reminder.due_at must be a string."
-            )
-
-        if not action[
-            "due_at"
-        ].strip():
-            raise EngagementError(
-                "create_reminder.due_at cannot be empty."
-            )
-
-    def _validate_contact_updates(
-        self,
-        action: dict[str, Any],
-    ) -> None:
-        expected = {
-            "type",
-            "updates",
-        }
-
-        if set(
-            action.keys()
-        ) != expected:
-            raise EngagementError(
-                "Invalid contact_updates schema."
-            )
-
-        updates = action[
-            "updates"
-        ]
-
-        if not isinstance(
-            updates,
-            list,
-        ):
-            raise EngagementError(
-                "contact_updates.updates must be an array."
-            )
-
-        for update in updates:
-            if not isinstance(
-                update,
-                dict,
-            ):
-                raise EngagementError(
-                    "Each contact update must be an object."
-                )
-
-            if set(
-                update.keys()
-            ) != {
-                "contact_id",
-                "channel",
-                "handle",
-            }:
-                raise EngagementError(
-                    "Invalid contact update schema."
-                )
-
-            if not isinstance(
-                update["contact_id"],
-                str,
-            ):
-                raise EngagementError(
-                    "contact_id must be a string."
-                )
-
-            if not isinstance(
-                update["channel"],
-                str,
-            ):
-                raise EngagementError(
-                    "channel must be a string."
-                )
-
-            if not isinstance(
-                update["handle"],
-                str,
-            ):
-                raise EngagementError(
-                    "handle must be a string."
-                )
-
-    # ============================================================
-    # CONTEXT VALIDATION
-    # ============================================================
+    def _validate_crm_actions(self, actions: list[Any]) -> None:
+        try:
+            validate_crm_actions(actions)
+        except CRMActionSchemaError as exc:
+            raise EngagementError(str(exc)) from exc
 
     def _validate_context_scope(
         self,
@@ -1017,30 +499,9 @@ Rules:
         lead,
         context: AIContext,
     ) -> None:
-        context_lead = (
-            context.lead
-            or {}
-        )
-
-        context_organization = (
-            context.organization
-            or {}
-        )
-
-        if str(
-            context_lead.get("id")
-        ) != str(
-            lead.id
-        ):
-            raise EngagementError(
-                "AI context does not match the supplied lead."
-            )
-
-        if str(
-            context_organization.get("id")
-        ) != str(
-            organization.id
-        ):
-            raise EngagementError(
-                "AI context does not match the supplied organization."
-            )
+        organization_id = str((context.organization or {}).get("id") or "")
+        lead_id = str((context.lead or {}).get("id") or "")
+        if organization_id != str(organization.id):
+            raise EngagementError("AI context organization does not match request.")
+        if lead_id != str(lead.id):
+            raise EngagementError("AI context lead does not match request.")

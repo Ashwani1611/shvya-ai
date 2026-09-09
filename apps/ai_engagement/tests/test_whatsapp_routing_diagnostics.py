@@ -69,9 +69,9 @@ class WhatsAppRoutingDiagnosticsTests(TestCase):
             self.pipeline,
         )
 
-    @patch("apps.ai_engagement.tasks.generate_internal_conversation_summary.delay")
-    @patch("apps.ai_engagement.tasks.generate_ai_engagement_response.delay")
-    def test_meta_resource_id_cannot_misroute_new_lead(self, engage, summary):
+    @patch("apps.ai_engagement.background_signals.queue_background_enrichment")
+    @patch("apps.ai_engagement.tasks.generate_ai_engagement_response.apply_async")
+    def test_meta_resource_id_cannot_misroute_new_lead(self, engage, enrichment):
         with self.captureOnCommitCallbacks(execute=True):
             message = handle_inbound_message(
                 organization=self.org,
@@ -89,7 +89,11 @@ class WhatsAppRoutingDiagnosticsTests(TestCase):
             .evaluate(organization=self.org, lead=message.lead)
             .allowed
         )
-        engage.assert_called_once_with(str(message.lead_id))
+        enrichment.assert_called_once_with(lead_id=str(message.lead_id))
+        engage.assert_called_once_with(
+            args=[str(message.lead_id)],
+            countdown=5,
+        )
 
     def test_number_match_is_organization_scoped(self):
         other = Organization.objects.create(name="Other")

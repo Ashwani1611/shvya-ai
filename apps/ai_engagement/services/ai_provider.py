@@ -23,79 +23,63 @@ from apps.ai_engagement.services.credits import (
 
 
 class AIProviderError(Exception):
-    """
-    Base exception for AI provider failures.
-    """
+    """Base exception for AI provider failures."""
 
     retryable = False
 
 
 class AIProviderConfigurationError(AIProviderError):
-    """
-    Local configuration error.
-
-    These failures should not be retried automatically.
-    """
+    """Local configuration error. Do not retry automatically."""
 
     retryable = False
 
 
 class AIProviderPermanentError(AIProviderError):
-    """
-    Provider rejected the request permanently.
-
-    Examples:
-        - invalid authentication
-        - invalid request
-        - permission/model access problems
-        - organization AI credits are unavailable
-    """
+    """Provider rejected the request permanently. Do not retry."""
 
     retryable = False
 
 
 class AIProviderTransientError(AIProviderError):
-    """
-    Temporary provider/network failure.
-
-    These failures are safe for Celery retry handling.
-    """
+    """Temporary provider/network failure safe for Celery retry."""
 
     retryable = True
 
 
 @dataclass(frozen=True)
 class AITextResult:
-    """
-    Normalized text response returned by an AI provider.
-    """
-
     text: str
     model: str
 
 
 class OpenAIProvider:
-    """
-    OpenAI provider adapter for SHVYA AI.
+    """Central direct-OpenAI provider adapter for SHVYA AI.
 
-    Business services should depend on this adapter rather than
-    importing the OpenAI SDK directly.
-
-    Organization-scoped calls are metered by AICreditService before the
-    provider request. A zero/blocked wallet fails before OpenAI is called.
-
-    A caller may explicitly pin ``model`` when constructing the provider.
-    Otherwise SHVYA resolves task-specific model environment settings and
-    falls back to ``OPENAI_AI_MODEL`` for backward compatibility.
+    The OpenAI SDK's own automatic retries are disabled so SHVYA has exactly one
+    retry owner: the Celery task layer, capped at three attempts. Calls are also
+    bounded by timeout and task-specific output limits to keep WhatsApp latency
+    and AI-credit use predictable.
     """
 
     DEFAULT_MODEL = "gpt-4.1-nano"
+    DEFAULT_TIMEOUT_SECONDS = 20.0
 
     TASK_MODEL_ENV = {
         "engagement": "OPENAI_ENGAGEMENT_MODEL",
         "playground": "OPENAI_ENGAGEMENT_MODEL",
         "qualification": "OPENAI_QUALIFICATION_MODEL",
         "internal_summary": "OPENAI_SUMMARY_MODEL",
+        "lead_briefing": "OPENAI_QUALIFICATION_MODEL",
+        "bump_up": "OPENAI_ENGAGEMENT_MODEL",
+    }
+
+    TASK_MAX_OUTPUT_TOKENS = {
+        "engagement": 450,
+        "playground": 450,
+        "qualification": 550,
+        "internal_summary": 350,
+        "lead_briefing": 400,
+        "bump_up": 250,
     }
 
     def __init__(
@@ -104,56 +88,56 @@ class OpenAIProvider:
         client: OpenAI | None = None,
         model: str | None = None,
     ) -> None:
-
-        api_key = getattr(
-            settings,
-            "OPENAI_API_KEY",
-            "",
-        )
-
+        api_key = getattr(settings, "OPENAI_API_KEY", "")
         if not api_key:
-            raise AIProviderConfigurationError(
-                "OPENAI_API_KEY is not configured."
-            )
+            raise AIProviderConfigurationError("OPENAI_API_KEY is not configured.")
 
-        self.client = (
-            client
-            or OpenAI(
-                api_key=api_key,
+        try:
+            timeout_seconds = float(
+                os.getenv("OPENAI_TIMEOUT_SECONDS", self.DEFAULT_TIMEOUT_SECONDS)
             )
+        except (TypeError, ValueError):
+            timeout_seconds = self.DEFAULT_TIMEOUT_SECONDS
+        timeout_seconds = min(max(timeout_seconds, 5.0), 60.0)
+
+        self.client = client or OpenAI(
+            api_key=api_key,
+            max_retries=0,
+            timeout=timeout_seconds,
         )
-
         self._explicit_model = bool((model or "").strip())
         self.model = (
             model
-            or getattr(
-                settings,
-                "OPENAI_AI_MODEL",
-                self.DEFAULT_MODEL,
-            )
+            or getattr(settings, "OPENAI_AI_MODEL", self.DEFAULT_MODEL)
             or self.DEFAULT_MODEL
         ).strip()
 
-    def _model_for_metadata(
-        self,
-        metadata: dict[str, str] | None,
-    ) -> str:
-        """Resolve a task-specific model while preserving explicit overrides."""
+    def _feature(self, metadata: dict[str, str] | None) -> str:
+        return AICreditService.feature_from_metadata(metadata)
+
+    def _model_for_metadata(self, metadata: dict[str, str] | None) -> str:
         if self._explicit_model:
             return self.model
-
-        feature = AICreditService.feature_from_metadata(metadata)
+        feature = self._feature(metadata)
         env_name = self.TASK_MODEL_ENV.get(feature)
         if not env_name:
             return self.model
-
         configured = (
             os.getenv(env_name, "")
             or getattr(settings, env_name, "")
             or ""
         ).strip()
-
         return configured or self.model
+
+    def _max_output_tokens(self, metadata: dict[str, str] | None) -> int:
+        feature = self._feature(metadata)
+        default = self.TASK_MAX_OUTPUT_TOKENS.get(feature, 600)
+        env_name = f"OPENAI_{feature.upper()}_MAX_OUTPUT_TOKENS"
+        try:
+            configured = int(os.getenv(env_name, default))
+        except (TypeError, ValueError):
+            configured = default
+        return min(max(configured, 100), 2000)
 
     def _release_credit_reservation(self, reservation) -> None:
         if reservation is None:
@@ -161,8 +145,6 @@ class OpenAIProvider:
         try:
             AICreditService.release(reservation)
         except AICreditError:
-            # Do not hide the original provider error. The still-active
-            # reservation remains visible to Superadmin for investigation.
             pass
 
     def generate_text(
@@ -172,46 +154,25 @@ class OpenAIProvider:
         input_text: str,
         metadata: dict[str, str] | None = None,
     ) -> AITextResult:
-        """
-        Generate text using the OpenAI Responses API.
-
-        Production SHVYA callers provide organization_id in metadata. Those
-        calls reserve credits before the network request and settle from the
-        provider's reported input/output token usage.
-        """
-
-        instructions = (
-            instructions or ""
-        ).strip()
-
-        input_text = (
-            input_text or ""
-        ).strip()
-
+        instructions = (instructions or "").strip()
+        input_text = (input_text or "").strip()
         if not instructions:
-            raise AIProviderConfigurationError(
-                "AI instructions cannot be empty."
-            )
-
+            raise AIProviderConfigurationError("AI instructions cannot be empty.")
         if not input_text:
-            raise AIProviderConfigurationError(
-                "AI input cannot be empty."
-            )
+            raise AIProviderConfigurationError("AI input cannot be empty.")
 
         request_model = self._model_for_metadata(metadata)
-
         request_kwargs: dict[str, Any] = {
             "model": request_model,
             "instructions": instructions,
             "input": input_text,
+            "max_output_tokens": self._max_output_tokens(metadata),
         }
-
         if metadata:
             request_kwargs["metadata"] = metadata
 
         reservation = None
         organization_id = (metadata or {}).get("organization_id")
-
         if organization_id:
             try:
                 reservation = AICreditService.reserve_text(
@@ -219,7 +180,7 @@ class OpenAIProvider:
                     model=request_model,
                     instructions=instructions,
                     input_text=input_text,
-                    feature=AICreditService.feature_from_metadata(metadata),
+                    feature=self._feature(metadata),
                     reference_id=AICreditService.reference_from_metadata(metadata),
                 )
             except AICreditUnavailableError as exc:
@@ -230,65 +191,37 @@ class OpenAIProvider:
                 ) from exc
 
         try:
-
-            response = (
-                self.client.responses.create(
-                    **request_kwargs,
-                )
-            )
-
+            response = self.client.responses.create(**request_kwargs)
         except RateLimitError as exc:
             self._release_credit_reservation(reservation)
-            raise AIProviderTransientError(
-                f"OpenAI rate limit: {exc}"
-            ) from exc
-
+            raise AIProviderTransientError(f"OpenAI rate limit: {exc}") from exc
         except APIConnectionError as exc:
             self._release_credit_reservation(reservation)
             raise AIProviderTransientError(
                 f"OpenAI connection failure: {exc}"
             ) from exc
-
         except AuthenticationError as exc:
             self._release_credit_reservation(reservation)
             raise AIProviderPermanentError(
                 f"OpenAI authentication failed: {exc}"
             ) from exc
-
         except PermissionDeniedError as exc:
             self._release_credit_reservation(reservation)
-            raise AIProviderPermanentError(
-                f"OpenAI permission denied: {exc}"
-            ) from exc
-
+            raise AIProviderPermanentError(f"OpenAI permission denied: {exc}") from exc
         except BadRequestError as exc:
             self._release_credit_reservation(reservation)
             raise AIProviderPermanentError(
                 f"OpenAI rejected the request: {exc}"
             ) from exc
-
         except APIStatusError as exc:
             self._release_credit_reservation(reservation)
-            status_code = getattr(
-                exc,
-                "status_code",
-                None,
-            )
-
+            status_code = getattr(exc, "status_code", None)
             if status_code is not None and status_code >= 500:
-                raise AIProviderTransientError(
-                    f"OpenAI server error: {exc}"
-                ) from exc
-
-            raise AIProviderPermanentError(
-                f"OpenAI API error: {exc}"
-            ) from exc
-
+                raise AIProviderTransientError(f"OpenAI server error: {exc}") from exc
+            raise AIProviderPermanentError(f"OpenAI API error: {exc}") from exc
         except Exception as exc:
             self._release_credit_reservation(reservation)
-            raise AIProviderTransientError(
-                f"Unexpected OpenAI failure: {exc}"
-            ) from exc
+            raise AIProviderTransientError(f"Unexpected OpenAI failure: {exc}") from exc
 
         if reservation is not None:
             input_tokens, output_tokens = AICreditService.extract_usage(response)
@@ -310,28 +243,11 @@ class OpenAIProvider:
                     f"OpenAI completed but AI-credit settlement failed: {exc}"
                 ) from exc
 
-        output_text = (
-            getattr(
-                response,
-                "output_text",
-                "",
-            )
-            or ""
-        ).strip()
-
+        output_text = (getattr(response, "output_text", "") or "").strip()
         if not output_text:
-            raise AIProviderPermanentError(
-                "OpenAI returned an empty response."
-            )
+            raise AIProviderPermanentError("OpenAI returned an empty response.")
 
         return AITextResult(
             text=output_text,
-            model=(
-                getattr(
-                    response,
-                    "model",
-                    None,
-                )
-                or request_model
-            ),
+            model=getattr(response, "model", None) or request_model,
         )
