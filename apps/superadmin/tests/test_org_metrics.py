@@ -68,13 +68,14 @@ class SuperadminOrganizationMetricsTests(TestCase):
         self.assertEqual(metrics["ai_qualifications"], 1)
         self.assertEqual(metrics["ai_bumpups"], 1)
         self.assertEqual(metrics["afs_sent"], 0)
-        self.assertEqual(metrics["credits_used"], Decimal("0.67"))
-        self.assertEqual(metrics["credits_remaining"], Decimal("2.50"))
-        self.assertEqual(metrics["credits_total"], Decimal("3.33"))
+        # Exact-credit aliases stay backwards compatible.
+        self.assertEqual(metrics["credits_used"], 20)
+        self.assertEqual(metrics["credits_remaining"], 75)
+        self.assertEqual(metrics["credits_total"], 100)
+        # Superadmin UI consumes the new coin-facing fields.
         self.assertEqual(metrics["coins_used"], Decimal("0.67"))
-        self.assertEqual(metrics["used_raw_credits"], 20)
-        self.assertEqual(metrics["remaining_raw_credits"], 75)
-        self.assertEqual(metrics["total_raw_credits"], 100)
+        self.assertEqual(metrics["coins_remaining"], Decimal("2.50"))
+        self.assertEqual(metrics["coins_total"], Decimal("3.33"))
         self.assertTrue(metrics["kb_setup"])
         self.assertEqual(metrics["sequences"], 1)
 
@@ -83,8 +84,11 @@ class SuperadminOrganizationMetricsTests(TestCase):
 
         metrics = build_organization_metrics([organization])[str(organization.id)]
 
-        self.assertEqual(metrics["credits_used"], Decimal("0.00"))
-        self.assertEqual(metrics["credits_remaining"], Decimal("0.00"))
-        self.assertEqual(metrics["credits_total"], Decimal("0.00"))
+        self.assertEqual(metrics["credits_used"], 0)
+        self.assertEqual(metrics["credits_remaining"], 0)
+        self.assertEqual(metrics["credits_total"], 0)
+        self.assertEqual(metrics["coins_used"], Decimal("0.00"))
+        self.assertEqual(metrics["coins_remaining"], Decimal("0.00"))
+        self.assertEqual(metrics["coins_total"], Decimal("0.00"))
         self.assertEqual(metrics["ai_messages"], 0)
         self.assertFalse(metrics["kb_setup"])
