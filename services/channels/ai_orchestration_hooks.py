@@ -20,7 +20,8 @@ def _debounce_seconds() -> int:
         value = int(os.getenv("AI_ENGAGEMENT_DEBOUNCE_SECONDS", "5"))
     except (TypeError, ValueError):
         value = 5
-    return min(max(value, 1), 30)
+    # Leave time for generation and delivery inside the hosted 30-second target.
+    return min(max(value, 0), 5)
 
 
 def _normalized_text(value: str) -> str:
@@ -69,7 +70,7 @@ def install_ai_orchestration_hooks() -> None:
 
         return generate_ai_engagement_response.apply_async(
             args=[str(lead_id)],
-            countdown=_debounce_seconds(),
+            countdown=0,
         )
 
     def background_summary_is_signal_owned(*, lead_id):
