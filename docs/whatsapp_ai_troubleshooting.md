@@ -18,9 +18,13 @@ Required for both transports:
 - The worker must have the working OpenAI key and the same DB/Redis configuration
   as web. Redis and the Celery worker must be running.
 
-Hosted WhatsApp also requires the gateway and Celery Beat. Its durable AI job
-becomes due around 60 seconds after the latest inbound message and is dispatched
-by the follow-up scheduler every 10 seconds. Account Health can defer delivery.
+API engagement is queued immediately after the inbound transaction commits on
+the dedicated `ai_realtime` queue, with no artificial countdown. Hosted WhatsApp
+also requires the gateway and Celery Beat. Hosted debounce is capped at five
+seconds (the existing processing-budget wakeup can start it sooner), and a
+dedicated recovery scan runs every five seconds on `hosted_ai`. The normal hosted
+delivery target is 30 seconds. Provider/network latency, queue capacity and
+Account Health pauses can exceed that target; verify actual delivery timestamps.
 New contacts require auto lead creation, a mapped pipeline with an active stage,
 and eligibility under the existing-chat ignore rules. Existing leads can receive
 AI replies without enabling auto lead creation. Historical sync does not trigger AI.
@@ -31,7 +35,7 @@ Inspect one affected lead on the VPS (IDs are available in CRM URLs):
 docker compose exec -T web python manage.py diagnose_whatsapp_ai --organization-id ORG_UUID --lead-id LEAD_UUID
 docker compose ps
 docker compose exec -T worker celery -A config inspect ping
-docker compose logs --since=10m worker beat
+docker compose logs --since=10m ai_realtime_worker hosted_ai_worker worker beat
 ```
 
 The diagnostic is read-only and does not call OpenAI or WhatsApp. It reports
@@ -45,3 +49,12 @@ After deploying the fix, send a new message from a test contact. Verify it appea
 as inbound, is attached to the intended lead/pipeline, and is followed by an
 outbound message whose delivery status advances. Do this once for each transport;
 allow the hosted delay. No live customer messages are sent by the automated tests.
+
+Internal summaries and qualification notes run separately from customer replies.
+Short conversations schedule a coalesced refresh after 20 seconds so they do not
+remain empty waiting for six messages. CRM extraction uses the engagement call,
+with organization attribute definitions and available pipeline stages supplied
+explicitly. Free-form qualification answers retain their inbound evidence and
+are persisted only after the worker checks conversation freshness. Repeated
+generation tasks reuse a cached decision rather than purchasing the same reply
+again; the outbound transaction still owns duplicate-send protection.

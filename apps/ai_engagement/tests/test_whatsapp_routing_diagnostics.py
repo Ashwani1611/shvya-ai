@@ -92,7 +92,7 @@ class WhatsAppRoutingDiagnosticsTests(TestCase):
         enrichment.assert_called_once_with(lead_id=str(message.lead_id))
         engage.assert_called_once_with(
             args=[str(message.lead_id)],
-            countdown=5,
+            countdown=0,
         )
 
     def test_number_match_is_organization_scoped(self):

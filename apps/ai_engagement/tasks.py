@@ -28,6 +28,19 @@ from apps.ai_engagement.services.summary_lock import (
 logger = logging.getLogger(__name__)
 
 
+def _persist_engagement_answers(lead, decision):
+    from apps.ai_engagement.services.qualification_state import persist_answer_updates
+
+    persist_answer_updates(lead=lead, updates=getattr(decision, "qualification_updates", []))
+
+
+@shared_task(name="ai.flush_background_enrichment")
+def flush_background_enrichment(lead_id):
+    from apps.ai_engagement.services.background_enrichment import queue_background_enrichment
+
+    return queue_background_enrichment(lead_id=lead_id, force=True)
+
+
 @shared_task(name="ai.dispatch_bump_ups")
 def dispatch_bump_ups():
     """Queue at most one AI-written bump per lead after each silent hour."""
@@ -1282,6 +1295,7 @@ def _execute_ai_engagement_response(
                         ),
                     }
 
+                _persist_engagement_answers(lead, decision)
                 crm_result = (
                     CRMActionExecutor().execute(
                         organization=organization,
@@ -1479,6 +1493,7 @@ def _execute_ai_engagement_response(
             # CRM ACTIONS
             # ------------------------------------------------
 
+            _persist_engagement_answers(lead, decision)
             crm_result = (
                 CRMActionExecutor().execute(
                     organization=organization,
@@ -1571,6 +1586,7 @@ def _execute_ai_engagement_response(
                     ),
                     "model": decision.model,
                     "reason": decision.reason,
+                    "next_requirement_id": decision.next_requirement_id,
                 }
             }
 

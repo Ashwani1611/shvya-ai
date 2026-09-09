@@ -21,7 +21,8 @@ def queue_internal_ai_enrichment(sender, instance, created, **kwargs):
     transaction.on_commit(
         lambda lead_id=lead_id: queue_background_enrichment(
             lead_id=lead_id,
-        )
+        ),
+        robust=True,
     )
 
 
@@ -36,7 +37,8 @@ def remember_ai_qualification_question(sender, instance, created, **kwargs):
     ai_meta = payload.get("shvya_ai")
     if not isinstance(ai_meta, dict):
         return
-    if str(ai_meta.get("reason") or "").strip().upper() != "QUALIFICATION_NEXT":
+    if (not ai_meta.get("next_requirement_id")
+            and str(ai_meta.get("reason") or "").strip().upper() != "QUALIFICATION_NEXT"):
         return
 
     from apps.ai_engagement.models import OrgInfo
@@ -49,7 +51,12 @@ def remember_ai_qualification_question(sender, instance, created, **kwargs):
         state_for_lead,
     )
 
-    lead = instance.lead
+    # CRM actions may have updated a separately locked Lead instance immediately
+    # before this message was queued. Never write back the message's stale cache.
+    from apps.crm.models import Lead
+    lead = Lead.objects.select_related("pipeline", "stage").get(
+        pk=instance.lead_id, organization=instance.organization,
+    )
     org_info = OrgInfo.objects.filter(organization=instance.organization).first()
     profile = compile_org_ai_profile(
         organization_name=instance.organization.name,
@@ -62,7 +69,9 @@ def remember_ai_qualification_question(sender, instance, created, **kwargs):
     selected = next_requirement(requirements, state.get("requirement_states", {}))
     if selected is None:
         return
-    requirement_id = str(selected.get("id") or "").strip()
+    requirement_id = str(ai_meta.get("next_requirement_id") or selected.get("id") or "").strip()
+    if requirement_id not in {str(item.get("id")) for item in requirements}:
+        return
     if requirement_id:
         record_last_asked_requirement(
             lead,

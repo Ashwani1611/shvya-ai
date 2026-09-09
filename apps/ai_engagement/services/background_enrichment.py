@@ -86,7 +86,7 @@ def enrichment_due(*, lead) -> bool:
     return chars >= 180 or average_chars >= 30
 
 
-def queue_background_enrichment(*, lead_id) -> dict:
+def queue_background_enrichment(*, lead_id, force=False) -> dict:
     """Queue slow internal AI work without blocking a WhatsApp reply."""
     lead = (
         Lead.objects.select_related("organization")
@@ -96,11 +96,25 @@ def queue_background_enrichment(*, lead_id) -> dict:
     if lead is None:
         return {"status": "skipped", "reason": "lead_not_found"}
 
-    if not enrichment_due(lead=lead):
-        return {"status": "skipped", "reason": "interval_not_reached"}
+    if not force and not enrichment_due(lead=lead):
+        from apps.ai_engagement.tasks import flush_background_enrichment
+
+        # A final short answer must eventually reach the summary and notes even
+        # if the customer never sends another message. Coalesce bursts once.
+        key = f"shvya:ai:enrichment:flush:{lead.id}"
+        if cache.add(key, "1", timeout=20):
+            try:
+                flush_background_enrichment.apply_async(args=[str(lead.id)], countdown=20)
+            except Exception:
+                cache.delete(key)
+                raise
+        return {"status": "queued", "reason": "deferred_flush"}
 
     lock_key = f"shvya:ai:enrichment:schedule:{lead.id}"
     if not cache.add(lock_key, "1", timeout=SCHEDULE_LOCK_SECONDS):
+        if force:
+            from apps.ai_engagement.tasks import flush_background_enrichment
+            flush_background_enrichment.apply_async(args=[str(lead.id)], countdown=20)
         return {"status": "skipped", "reason": "already_scheduled"}
 
     from apps.ai_engagement.tasks import (
@@ -108,7 +122,11 @@ def queue_background_enrichment(*, lead_id) -> dict:
         generate_lead_qualification,
     )
 
-    generate_internal_conversation_summary.delay(str(lead.id))
+    try:
+        generate_internal_conversation_summary.delay(str(lead.id))
+    except Exception:
+        cache.delete(lock_key)
+        raise
 
     org_info = OrgInfo.objects.filter(organization=lead.organization).first()
     qualification_queued = bool(

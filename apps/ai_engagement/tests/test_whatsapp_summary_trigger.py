@@ -96,7 +96,7 @@ class WhatsAppSummaryTriggerTests(TestCase):
         )
         self.mocked_ai_engagement_apply_async.assert_called_once_with(
             args=[str(message.lead_id)],
-            countdown=5,
+            countdown=0,
         )
 
     @patch(
@@ -145,7 +145,7 @@ class WhatsAppSummaryTriggerTests(TestCase):
         )
         self.mocked_ai_engagement_apply_async.assert_called_once_with(
             args=[str(first_message.lead_id)],
-            countdown=5,
+            countdown=0,
         )
 
     @patch(
@@ -176,5 +176,5 @@ class WhatsAppSummaryTriggerTests(TestCase):
         )
         self.mocked_ai_engagement_apply_async.assert_called_once_with(
             args=[str(message.lead_id)],
-            countdown=5,
+            countdown=0,
         )
