@@ -34,10 +34,9 @@ app.conf.task_routes = {
     },
 }
 
-# Central Beat schedule for recurring background work. Hosted WhatsApp
-# automation is intentionally evaluated every 10 seconds as a recovery scan.
-# Each Hosted AI job also self-schedules a due-time wake-up, so Beat is no
-# longer the only mechanism that can move a queued AI job into processing.
+# Central Beat schedule for recurring background work. Each Hosted AI job
+# self-schedules a due-time wake-up, and the dedicated 10-second recovery scan
+# catches jobs created before deployment or any wake-up that was missed.
 app.conf.beat_schedule = {
     "dispatch-smart-triggers-every-10-seconds": {
         "task": "apps.triggers.tasks.dispatch_smart_triggers",
@@ -50,6 +49,10 @@ app.conf.beat_schedule = {
     },
     "dispatch-auto-followups-every-10-seconds": {
         "task": "apps.followups.tasks.dispatch_auto_followups_task",
+        "schedule": 10.0,
+    },
+    "dispatch-hosted-ai-recovery-every-10-seconds": {
+        "task": "hosted.dispatch_due_ai",
         "schedule": 10.0,
     },
     "dispatch-ai-bump-ups-every-minute": {
