@@ -112,6 +112,9 @@ def queue_background_enrichment(*, lead_id, force=False) -> dict:
 
     lock_key = f"shvya:ai:enrichment:schedule:{lead.id}"
     if not cache.add(lock_key, "1", timeout=SCHEDULE_LOCK_SECONDS):
+        if force:
+            from apps.ai_engagement.tasks import flush_background_enrichment
+            flush_background_enrichment.apply_async(args=[str(lead.id)], countdown=20)
         return {"status": "skipped", "reason": "already_scheduled"}
 
     from apps.ai_engagement.tasks import (
