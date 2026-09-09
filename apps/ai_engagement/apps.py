@@ -13,31 +13,19 @@ class AiEngagementConfig(AppConfig):
         # customer-response path for both Meta API and Hosted WhatsApp.
         from . import background_signals  # noqa: F401
 
-        # Fixed prompts are version controlled with the backend. Organization
-        # personalization remains in OrgInfo and Knowledge Base content remains
-        # in RAG rather than being copied into system prompts.
-        from apps.ai_engagement.prompts import (
-            INTERNAL_CONVERSATION_SUMMARY_INSTRUCTIONS,
-            QUALIFICATION_SUMMARY_INSTRUCTIONS,
-        )
-        from apps.ai_engagement.services.internal_summary import (
-            InternalSummaryService,
-        )
-        from apps.ai_engagement.services.qualification import (
-            QualificationService,
+        # Fixed task prompts are version controlled with the backend. OrgInfo
+        # remains the organization-specific configuration source and Knowledge
+        # Base content remains in RAG.
+        from apps.ai_engagement.services.prompt_overrides import (
+            install_fixed_prompt_overrides,
         )
 
-        InternalSummaryService.SUMMARY_INSTRUCTIONS = (
-            INTERNAL_CONVERSATION_SUMMARY_INSTRUCTIONS
-        )
-        QualificationService.QUALIFICATION_INSTRUCTIONS = (
-            QUALIFICATION_SUMMARY_INSTRUCTIONS
-        )
+        install_fixed_prompt_overrides()
 
-        # Preserve existing channel service entry points while installing the
-        # deterministic orchestration policy: short debounce, no generic
-        # positive-keyword stage movement, throttled internal enrichment, and
-        # consistent Hosted/Meta AI timing.
+        # Preserve existing channel entry points while installing deterministic
+        # orchestration policy: short debounce, no generic positive-keyword
+        # stage movement, throttled enrichment, and consistent Hosted/Meta AI
+        # timing.
         from services.channels.ai_orchestration_hooks import (
             install_ai_orchestration_hooks,
         )
