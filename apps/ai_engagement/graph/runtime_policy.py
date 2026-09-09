@@ -6,9 +6,11 @@ import re
 from copy import deepcopy
 from typing import Any
 
+from django.core.cache import cache
+
 
 POLICY_VERSION = 2
-SETTINGS_KEY = "_shvya_ai"
+POLICY_CACHE_SECONDS = 3600
 MAX_ENGAGEMENT_RULES = 30
 MAX_RULE_CHARS = 320
 
@@ -50,7 +52,7 @@ def _number(value: str) -> float | None:
 
 
 def _condition_for_requirement(requirement: dict[str, Any]) -> dict[str, Any] | None:
-    """Compile common authored threshold language without an extra model call.
+    """Compile common authored threshold language without another model call.
 
     The compiler is deliberately conservative. If it cannot prove a condition
     from the authored text it returns None and the criterion remains an
@@ -152,32 +154,21 @@ def compile_runtime_policy(*, organization, profile: dict[str, Any]) -> dict[str
     }
 
 
-def get_runtime_policy(*, organization, profile: dict[str, Any], persist: bool = True) -> dict[str, Any]:
-    """Return a versioned policy and persist it inside Organization.settings.
+def get_runtime_policy(*, organization, profile: dict[str, Any]) -> dict[str, Any]:
+    """Return the compact compiled policy from a source-hash keyed cache.
 
-    OrgInfo remains the editable source of truth. The settings copy is an
-    internal compiled artifact keyed by a hash, so it can be reused by later
-    workers without interpreting the raw instructions again.
+    OrgInfo remains the only editable source of truth. Runtime engagement never
+    rewrites Organization.settings, avoiding stale JSON writes from workers.
+    Recompilation is deterministic and local, so a cache miss costs no AI call.
     """
 
     compiled = compile_runtime_policy(organization=organization, profile=profile)
-    settings = getattr(organization, "settings", None)
-    settings = deepcopy(settings) if isinstance(settings, dict) else {}
-    namespace = settings.get(SETTINGS_KEY)
-    namespace = namespace if isinstance(namespace, dict) else {}
-    cached = namespace.get("compiled_policy")
-    if (
-        isinstance(cached, dict)
-        and cached.get("version") == POLICY_VERSION
-        and cached.get("source_hash") == compiled.get("source_hash")
-    ):
+    cache_key = (
+        f"shvya:ai:runtime-policy:{getattr(organization, 'id', 'unknown')}:"
+        f"v{POLICY_VERSION}:{compiled['source_hash']}"
+    )
+    cached = cache.get(cache_key)
+    if isinstance(cached, dict):
         return deepcopy(cached)
-
-    if persist and getattr(organization, "pk", None):
-        namespace = dict(namespace)
-        namespace["compiled_policy"] = compiled
-        settings[SETTINGS_KEY] = namespace
-        organization.__class__.objects.filter(pk=organization.pk).update(settings=settings)
-        organization.settings = settings
-
+    cache.set(cache_key, compiled, POLICY_CACHE_SECONDS)
     return deepcopy(compiled)
