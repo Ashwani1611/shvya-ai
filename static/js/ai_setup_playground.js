@@ -205,13 +205,64 @@
         }
     }
 
+    function firstErrorText(value) {
+        if (typeof value === "string") {
+            return value.trim();
+        }
+
+        if (Array.isArray(value)) {
+            for (const item of value) {
+                const text = firstErrorText(item);
+
+                if (text) {
+                    return text;
+                }
+            }
+
+            return "";
+        }
+
+        if (value && typeof value === "object") {
+            const preferredKeys = [
+                "detail",
+                "message",
+                "non_field_errors",
+                "error",
+            ];
+
+            for (const key of preferredKeys) {
+                const text = firstErrorText(value[key]);
+
+                if (text) {
+                    return text;
+                }
+            }
+
+            for (const nestedValue of Object.values(value)) {
+                const text = firstErrorText(nestedValue);
+
+                if (text) {
+                    return text;
+                }
+            }
+        }
+
+        return "";
+    }
+
     async function getErrorMessage(response) {
         try {
             const payload = await response.json();
+            const detailText = firstErrorText(payload.detail);
+            const messageText = firstErrorText(payload.message);
+            const errorText = typeof payload.error === "string"
+                ? payload.error.trim()
+                : "";
+
             return (
-                payload.error ||
-                payload.detail ||
-                payload.message ||
+                detailText ||
+                messageText ||
+                errorText ||
                 "Unable to generate a playground response."
             );
         } catch (error) {
@@ -278,7 +329,9 @@
             }
 
             const payload = await response.json();
-            const responseText = String(payload.response || "").trim();
+            const responseText = typeof payload.response === "string"
+                ? payload.response.trim()
+                : "";
             const assistantText = responseText ||
                 "AI is configured not to respond to this message.";
 
