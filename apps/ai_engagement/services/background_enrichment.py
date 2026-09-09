@@ -10,6 +10,7 @@ from apps.crm.models import Lead
 
 
 DEFAULT_MESSAGE_INTERVAL = 6
+DEFAULT_CHAR_INTERVAL = 2400
 SCHEDULE_LOCK_SECONDS = 20
 
 
@@ -21,7 +22,15 @@ def _message_interval() -> int:
     return min(max(value, 2), 50)
 
 
-def _messages_since_summary(*, lead) -> int:
+def _char_interval() -> int:
+    try:
+        value = int(os.getenv("AI_ENRICHMENT_CHAR_INTERVAL", DEFAULT_CHAR_INTERVAL))
+    except (TypeError, ValueError):
+        value = DEFAULT_CHAR_INTERVAL
+    return min(max(value, 800), 12000)
+
+
+def _new_message_stats(*, lead) -> tuple[int, int]:
     current = (
         InternalConversationSummary.objects.filter(
             organization=lead.organization,
@@ -36,27 +45,49 @@ def _messages_since_summary(*, lead) -> int:
         organization=lead.organization,
         lead=lead,
     )
-    if current is None:
-        return messages.count()
+    if current is not None:
+        if current.source_last_message_at is not None:
+            messages = messages.filter(created_at__gt=current.source_last_message_at)
+        elif current.source_message_count:
+            # Legacy summaries may not have source_last_message_at. Message-count
+            # compatibility is retained; char-based triggering starts fresh once
+            # the next summary stores a timestamp.
+            total_count = messages.count()
+            count = max(total_count - int(current.source_message_count or 0), 0)
+            recent = messages.order_by("-created_at", "-id")[:count]
+            chars = sum(len(str(body or "")) for body in recent.values_list("body", flat=True))
+            return count, chars
 
-    if current.source_last_message_at is not None:
-        return messages.filter(created_at__gt=current.source_last_message_at).count()
+    bodies = list(messages.values_list("body", flat=True))
+    return len(bodies), sum(len(str(body or "")) for body in bodies)
 
-    return max(messages.count() - int(current.source_message_count or 0), 0)
+
+def _messages_since_summary(*, lead) -> int:
+    # Public compatibility helper used by older tests/callers.
+    return _new_message_stats(lead=lead)[0]
 
 
 def enrichment_due(*, lead) -> bool:
-    """Return whether enough new conversation exists for background AI work."""
-    return _messages_since_summary(lead=lead) >= _message_interval()
+    """Trigger only when enough new semantic payload exists.
+
+    Either several short WhatsApp turns or a smaller number of long substantive
+    messages can refresh the rolling summary. This avoids spending a summary
+    model call on six trivial acknowledgements while preventing long turns from
+    overflowing the recent-context window.
+    """
+    count, chars = _new_message_stats(lead=lead)
+    if chars >= _char_interval():
+        return True
+    if count < _message_interval():
+        return False
+
+    # Six tiny acknowledgements generally do not justify a summary call.
+    average_chars = chars / max(count, 1)
+    return chars >= 180 or average_chars >= 30
 
 
 def queue_background_enrichment(*, lead_id) -> dict:
-    """Queue slow internal AI work without blocking a WhatsApp reply.
-
-    Conversation summary and qualification summary run only after a bounded
-    number of new messages, rather than on every inbound message. Lead briefing
-    remains on-demand so it does not consume credits on every conversation.
-    """
+    """Queue slow internal AI work without blocking a WhatsApp reply."""
     lead = (
         Lead.objects.select_related("organization")
         .filter(id=lead_id)
@@ -84,9 +115,6 @@ def queue_background_enrichment(*, lead_id) -> dict:
         org_info and (org_info.qualification_requirements or "").strip()
     )
     if qualification_queued:
-        # Qualification uses actual conversation as primary truth. A small
-        # delay lets the rolling summary usually publish first without putting
-        # either operation on the customer-response critical path.
         generate_lead_qualification.apply_async(
             args=[str(lead.id)],
             countdown=10,
