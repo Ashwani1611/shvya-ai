@@ -56,9 +56,9 @@ class OpenAIProvider:
     """Central direct-OpenAI provider adapter for SHVYA AI.
 
     The OpenAI SDK's own automatic retries are disabled so SHVYA has exactly one
-    retry owner: the Celery task layer, capped at three attempts. Calls are also
-    bounded by timeout and task-specific output limits to keep WhatsApp latency
-    and AI-credit use predictable.
+    retry owner: the Celery task layer, capped at three attempts. Calls are
+    bounded by timeout and task-specific output limits. Callers may optionally
+    supply a Responses API JSON schema to reduce malformed output/repair calls.
     """
 
     DEFAULT_MODEL = "gpt-4.1-nano"
@@ -74,12 +74,12 @@ class OpenAIProvider:
     }
 
     TASK_MAX_OUTPUT_TOKENS = {
-        "engagement": 450,
-        "playground": 450,
-        "qualification": 550,
-        "internal_summary": 350,
-        "lead_briefing": 400,
-        "bump_up": 250,
+        "engagement": 300,
+        "playground": 350,
+        "qualification": 500,
+        "internal_summary": 300,
+        "lead_briefing": 350,
+        "bump_up": 200,
     }
 
     def __init__(
@@ -147,12 +147,31 @@ class OpenAIProvider:
         except AICreditError:
             pass
 
+    def _structured_text_config(self, response_schema: dict[str, Any] | None):
+        if not response_schema:
+            return None
+        name = str(response_schema.get("name") or "").strip()
+        schema = response_schema.get("schema")
+        if not name or not isinstance(schema, dict):
+            raise AIProviderConfigurationError(
+                "response_schema requires a name and JSON schema object."
+            )
+        return {
+            "format": {
+                "type": "json_schema",
+                "name": name[:64],
+                "schema": schema,
+                "strict": bool(response_schema.get("strict", False)),
+            }
+        }
+
     def generate_text(
         self,
         *,
         instructions: str,
         input_text: str,
         metadata: dict[str, str] | None = None,
+        response_schema: dict[str, Any] | None = None,
     ) -> AITextResult:
         instructions = (instructions or "").strip()
         input_text = (input_text or "").strip()
@@ -170,6 +189,9 @@ class OpenAIProvider:
         }
         if metadata:
             request_kwargs["metadata"] = metadata
+        text_config = self._structured_text_config(response_schema)
+        if text_config is not None:
+            request_kwargs["text"] = text_config
 
         reservation = None
         organization_id = (metadata or {}).get("organization_id")
