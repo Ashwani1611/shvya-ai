@@ -21,7 +21,8 @@ def queue_internal_ai_enrichment(sender, instance, created, **kwargs):
     transaction.on_commit(
         lambda lead_id=lead_id: queue_background_enrichment(
             lead_id=lead_id,
-        )
+        ),
+        robust=True,
     )
 
 
@@ -62,7 +63,9 @@ def remember_ai_qualification_question(sender, instance, created, **kwargs):
     selected = next_requirement(requirements, state.get("requirement_states", {}))
     if selected is None:
         return
-    requirement_id = str(selected.get("id") or "").strip()
+    requirement_id = str(ai_meta.get("next_requirement_id") or selected.get("id") or "").strip()
+    if requirement_id not in {str(item.get("id")) for item in requirements}:
+        return
     if requirement_id:
         record_last_asked_requirement(
             lead,
