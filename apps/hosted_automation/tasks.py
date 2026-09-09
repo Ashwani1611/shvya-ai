@@ -1,10 +1,11 @@
 import logging
+from contextlib import contextmanager
 
 from celery import shared_task
 from django.db import transaction
 from django.utils import timezone
 
-from apps.channels.models import WhatsAppMessage
+from apps.channels.models import WhatsAppAccount, WhatsAppMessage
 from apps.hosted_automation.models import HostedAutomationJob
 from services.channels.hosted_automation_service import (
     HostedAutomationPaused,
@@ -67,7 +68,6 @@ def _send_generated_ai_message(job):
         }
 
     from services.channels.hosted_whatsapp_transport import send_hosted_message
-
     from services.channels.whatsapp_service import WhatsAppSendError
 
     try:
@@ -77,6 +77,103 @@ def _send_generated_ai_message(job):
     return {"status": "sent", "message_id": str(message.id)}
 
 
+@contextmanager
+def _hosted_ai_execution_scope(job):
+    """Keep the shared AI engine pinned to this Hosted conversation.
+
+    The canonical AI engine is intentionally lead-centric. A lead can however
+    have WhatsApp history on more than one connected number, so resolving the
+    latest message/account without the Hosted job's account can switch the
+    execution to another conversation and make the Hosted job silently skip or
+    create its outbound message under the wrong account.
+
+    Hosted AI workers run in dedicated Celery worker processes. Temporarily
+    scope the shared helpers inside that worker process, then restore them in a
+    finally block so every execution stays bound to the durable job's account.
+    """
+    from apps.ai_engagement import tasks as ai_tasks
+    from apps.ai_engagement.services.context import AIContextBuilder
+    from services.channels import whatsapp_service
+
+    original_latest = ai_tasks._latest_whatsapp_message
+    original_existing = ai_tasks._has_existing_ai_response
+    original_resolver = whatsapp_service.resolve_account_for_lead
+    original_get_messages = AIContextBuilder._get_messages
+
+    def hosted_latest(*, lead):
+        return (
+            lead.whatsapp_messages.filter(
+                organization=job.organization,
+                account_id=job.account_id,
+            )
+            .order_by("-created_at", "-id")
+            .first()
+        )
+
+    def hosted_existing(*, lead, inbound_message, body):
+        if inbound_message is None:
+            return False
+        source_id = str(inbound_message.id)
+        outbound = WhatsAppMessage.objects.filter(
+            organization=job.organization,
+            account_id=job.account_id,
+            lead=lead,
+            direction=WhatsAppMessage.Direction.OUTBOUND,
+        )
+        if outbound.filter(
+            raw_payload__shvya_ai__source_inbound_message_id=source_id,
+        ).exists():
+            return True
+        if not body:
+            return False
+        return outbound.filter(
+            body=body,
+            created_at__gte=inbound_message.created_at,
+        ).exists()
+
+    def hosted_resolver(*, organization, lead):
+        if organization.pk != job.organization_id or lead.pk != job.lead_id:
+            return None
+        return WhatsAppAccount.objects.filter(
+            pk=job.account_id,
+            organization=organization,
+            connection_type="hosted",
+            is_active=True,
+            status=WhatsAppAccount.Status.CONNECTED,
+        ).first()
+
+    def hosted_get_messages(builder, *, organization, lead, limit):
+        if organization.pk != job.organization_id or lead.pk != job.lead_id:
+            return original_get_messages(
+                builder,
+                organization=organization,
+                lead=lead,
+                limit=limit,
+            )
+        messages = list(
+            WhatsAppMessage.objects.filter(
+                organization=organization,
+                account_id=job.account_id,
+                lead=lead,
+            )
+            .order_by("-created_at", "-id")[:limit]
+        )
+        messages.reverse()
+        return messages
+
+    ai_tasks._latest_whatsapp_message = hosted_latest
+    ai_tasks._has_existing_ai_response = hosted_existing
+    whatsapp_service.resolve_account_for_lead = hosted_resolver
+    AIContextBuilder._get_messages = hosted_get_messages
+    try:
+        yield
+    finally:
+        AIContextBuilder._get_messages = original_get_messages
+        whatsapp_service.resolve_account_for_lead = original_resolver
+        ai_tasks._has_existing_ai_response = original_existing
+        ai_tasks._latest_whatsapp_message = original_latest
+
+
 @shared_task(
     bind=True,
     max_retries=3,
@@ -84,7 +181,7 @@ def _send_generated_ai_message(job):
     name="apps.hosted_automation.tasks.process_hosted_ai_engagement_job_task",
 )
 def process_hosted_ai_engagement_job_task(self, job_id):
-    """Execute the durable ~60-second Hosted Account AI job."""
+    """Execute one durable Hosted Account AI job."""
     try:
         job = (
             HostedAutomationJob.objects.select_related(
@@ -153,7 +250,8 @@ def process_hosted_ai_engagement_job_task(self, job_id):
     from apps.ai_engagement.tasks import _execute_ai_engagement_response
 
     try:
-        result = _execute_ai_engagement_response(task=self, lead_id=str(job.lead_id))
+        with _hosted_ai_execution_scope(job):
+            result = _execute_ai_engagement_response(task=self, lead_id=str(job.lead_id))
     except Exception as exc:
         from celery.exceptions import Retry
 
