@@ -192,6 +192,14 @@ class OpenAIProvider:
         text_config = self._structured_text_config(response_schema)
         if text_config is not None:
             request_kwargs["text"] = text_config
+            # Older deployments configured 300 tokens for a short chat reply.
+            # Engagement now includes evidence and CRM actions in that same JSON
+            # envelope; truncation must not strand the conversation at extraction.
+            if (response_schema or {}).get("name") == "shvya_engagement_decision":
+                minimum = 1400 if (metadata or {}).get("phase") == "schema_repair" else 700
+                request_kwargs["max_output_tokens"] = max(
+                    request_kwargs["max_output_tokens"], minimum,
+                )
 
         reservation = None
         organization_id = (metadata or {}).get("organization_id")
