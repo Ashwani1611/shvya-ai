@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import os
 from dataclasses import dataclass
 from typing import Any
@@ -147,6 +148,128 @@ class OpenAIProvider:
         except AICreditError:
             pass
 
+    def _strict_engagement_schema(self, schema: dict[str, Any]) -> dict[str, Any]:
+        """Make the engagement contract enforceable by Structured Outputs.
+
+        The engagement service validates exact CRM and qualification action
+        shapes after generation. Keep the provider schema aligned with those
+        validators so malformed model output cannot strand playground, API, or
+        hosted-account engagement before the transport layer is reached.
+        """
+        hardened = copy.deepcopy(schema)
+        properties = hardened.get("properties")
+        if not isinstance(properties, dict):
+            raise AIProviderConfigurationError(
+                "engagement response schema requires object properties."
+            )
+
+        scalar_value = {
+            "anyOf": [
+                {"type": ["string", "number", "boolean", "null"]},
+                {
+                    "type": "array",
+                    "items": {"type": ["string", "number", "boolean", "null"]},
+                },
+            ]
+        }
+        update_item = {
+            "type": "object",
+            "properties": {
+                "key": {"type": "string"},
+                "value": scalar_value,
+            },
+            "required": ["key", "value"],
+            "additionalProperties": False,
+        }
+        contact_item = {
+            "type": "object",
+            "properties": {
+                "contact_id": {"type": "string"},
+                "channel": {"type": "string"},
+                "handle": {"type": "string"},
+            },
+            "required": ["contact_id", "channel", "handle"],
+            "additionalProperties": False,
+        }
+        action_schemas = [
+            {
+                "type": "object",
+                "properties": {
+                    "type": {"type": "string", "enum": ["attribute_updates"]},
+                    "updates": {"type": "array", "items": update_item},
+                },
+                "required": ["type", "updates"],
+                "additionalProperties": False,
+            },
+            {
+                "type": "object",
+                "properties": {
+                    "type": {"type": "string", "enum": ["pipeline_transition"]},
+                    "stage_shift": {
+                        "type": "object",
+                        "properties": {"stage_id": {"type": "string"}},
+                        "required": ["stage_id"],
+                        "additionalProperties": False,
+                    },
+                },
+                "required": ["type", "stage_shift"],
+                "additionalProperties": False,
+            },
+            {
+                "type": "object",
+                "properties": {
+                    "type": {"type": "string", "enum": ["add_note"]},
+                    "note": {"type": "string"},
+                },
+                "required": ["type", "note"],
+                "additionalProperties": False,
+            },
+            {
+                "type": "object",
+                "properties": {
+                    "type": {"type": "string", "enum": ["create_reminder"]},
+                    "title": {"type": "string"},
+                    "description": {"type": "string"},
+                    "due_at": {"type": "string"},
+                },
+                "required": ["type", "title", "description", "due_at"],
+                "additionalProperties": False,
+            },
+            {
+                "type": "object",
+                "properties": {
+                    "type": {"type": "string", "enum": ["contact_updates"]},
+                    "updates": {"type": "array", "items": contact_item},
+                },
+                "required": ["type", "updates"],
+                "additionalProperties": False,
+            },
+        ]
+        properties["crm_actions"] = {
+            "type": "array",
+            "items": {"anyOf": action_schemas},
+        }
+        properties["qualification_updates"] = {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "requirement_id": {"type": "string"},
+                    "value": scalar_value,
+                    "source_message_id": {"type": "string"},
+                    "evidence": {"type": "string"},
+                },
+                "required": [
+                    "requirement_id",
+                    "value",
+                    "source_message_id",
+                    "evidence",
+                ],
+                "additionalProperties": False,
+            },
+        }
+        return hardened
+
     def _structured_text_config(self, response_schema: dict[str, Any] | None):
         if not response_schema:
             return None
@@ -156,12 +279,18 @@ class OpenAIProvider:
             raise AIProviderConfigurationError(
                 "response_schema requires a name and JSON schema object."
             )
+
+        strict = bool(response_schema.get("strict", False))
+        if name == "shvya_engagement_decision":
+            schema = self._strict_engagement_schema(schema)
+            strict = True
+
         return {
             "format": {
                 "type": "json_schema",
                 "name": name[:64],
                 "schema": schema,
-                "strict": bool(response_schema.get("strict", False)),
+                "strict": strict,
             }
         }
 
