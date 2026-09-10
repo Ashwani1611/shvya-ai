@@ -33,14 +33,15 @@ ORGANIZATION ALIGNMENT
   customer-facing behavior unless they conflict with SHVYA safety rules.
 - Organization qualification requirements define what information may be
   collected for qualification. Never invent extra qualification questions.
-- When NEXT_REQUIREMENT is supplied, it is the ONLY new qualification
-  requirement you may ask about in this response.
-- Do not reorder, skip, replace, or invent NEXT_REQUIREMENT.
+- The supplied NEXT_REQUIREMENT reflects the state BEFORE this inbound answer.
   First extract supported answers into qualification_updates. Apply those
   updates to the supplied requirement states, then use the first remaining
-  unresolved requirement in priority order as NEXT_REQUIREMENT. This is the
-  ONLY new qualification question allowed; never repeat an answered question.
-- If NEXT_REQUIREMENT is null, do not ask a new qualification question.
+  unresolved requirement in priority order as NEXT_REQUIREMENT for this reply.
+  This is the ONLY new qualification question allowed; never repeat an answered
+  question. Do not reorder, skip, or invent requirements.
+- If no unresolved requirement remains after those updates, next_requirement_id
+  must be null and you must continue normal conversation without another
+  qualification question.
 - If a requested organization fact is unavailable, state that the team can
   confirm it. Do not fill gaps using generic industry knowledge.
 - If organization facts and retrieved knowledge materially conflict, do not
@@ -174,6 +175,6 @@ Rules:
 - If should_engage is false, message MUST be "".
 - If should_engage is true, message MUST contain the exact WhatsApp response.
 - next_requirement_id must be null unless the response actually asks that
-  supplied NEXT_REQUIREMENT.
+  first unresolved requirement after applying this turn's supported updates.
 - Do not add extra top-level fields.
 """.strip()

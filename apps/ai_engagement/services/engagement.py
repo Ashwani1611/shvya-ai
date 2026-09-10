@@ -324,10 +324,12 @@ class EngagementService:
             qualification_state=qualification_state,
             next_item=next_item,
         )
-        provider = self.provider or OpenAIProvider()
         success = False
 
         try:
+            # Provider configuration can fail too; always release this turn's
+            # claim when initialization or generation fails.
+            provider = self.provider or OpenAIProvider()
             try:
                 result = self._generate_provider_text(
                     provider=provider,
@@ -346,6 +348,10 @@ class EngagementService:
 
             try:
                 decision = self._normalize_result(result=result)
+                self._validate_qualification_decision(
+                    decision=decision, context=context, requirements=requirements,
+                    qualification_state=qualification_state,
+                )
             except EngagementError as first_error:
                 decision = self._repair_result_once(
                     provider=provider,
@@ -353,26 +359,13 @@ class EngagementService:
                     lead=lead,
                     result=result,
                     original_error=first_error,
+                    instructions=instructions,
+                    input_text=input_text,
                 )
-
-            # Understand free-form answers in the same call as the reply. Only
-            # source-backed answers can advance the application-selected question.
-            try:
-                projected = project_answer_updates(
-                    state=qualification_state, requirements=requirements,
-                    updates=decision.qualification_updates,
-                    messages=(context.conversation or {}).get("messages", []),
+                self._validate_qualification_decision(
+                    decision=decision, context=context, requirements=requirements,
+                    qualification_state=qualification_state,
                 )
-            except ValueError as exc:
-                raise EngagementError(str(exc)) from exc
-            next_item = next_requirement(requirements, projected["requirement_states"])
-            # The model cannot choose an arbitrary qualification requirement.
-            if decision.next_requirement_id:
-                allowed_next_id = str(next_item.get("id")) if next_item else ""
-                if decision.next_requirement_id != allowed_next_id:
-                    raise EngagementError(
-                        "AI selected a qualification requirement other than NEXT_REQUIREMENT."
-                    )
 
             success = True
             if source_message_id:
@@ -389,6 +382,26 @@ class EngagementService:
                     claim.finish(success=success)
                 except EngagementLockError:
                     pass
+
+    def _validate_qualification_decision(
+        self, *, decision, context, requirements, qualification_state,
+    ):
+        """Validate both primary and repaired output before caching or writes."""
+        try:
+            projected = project_answer_updates(
+                state=qualification_state, requirements=requirements,
+                updates=decision.qualification_updates,
+                messages=(context.conversation or {}).get("messages", []),
+            )
+        except ValueError as exc:
+            raise EngagementError(str(exc)) from exc
+        next_item = next_requirement(requirements, projected["requirement_states"])
+        if decision.next_requirement_id:
+            allowed_next_id = str(next_item.get("id")) if next_item else ""
+            if decision.next_requirement_id != allowed_next_id:
+                raise EngagementError(
+                    "AI selected a qualification requirement other than NEXT_REQUIREMENT."
+                )
 
     def _generate_provider_text(self, *, provider, response_schema=None, **kwargs):
         """Use provider schema support while preserving injected legacy fakes."""
@@ -407,6 +420,8 @@ class EngagementService:
         lead,
         result: AITextResult,
         original_error: EngagementError,
+        instructions: str,
+        input_text: str,
     ) -> EngagementDecision:
         repair_instructions = """
 Repair a malformed SHVYA engagement JSON result.
@@ -416,20 +431,24 @@ reason_code.
 Allowed reason_code values: ANSWER_ORG_QUESTION, QUALIFICATION_NEXT,
 QUALIFICATION_CLARIFY, NORMAL_CONVERSATION, HUMAN_HANDOFF, OPT_OUT,
 UNKNOWN_INFORMATION, NO_ACTION.
-Preserve only the original intended supported response/actions. Do not add facts,
-new actions, explanations, markdown, or chain-of-thought.
+Use the original turn context to correct the reported validation error, including
+qualification evidence and the next question. Drop unsupported answer updates.
+Recompute the first unresolved requirement after supported updates and rewrite
+the question to match it. Never invent evidence, identifiers or business facts.
+Do not add explanations, markdown, or chain-of-thought.
 """.strip()
         repair_input = json.dumps(
             {
                 "validation_error": str(original_error),
                 "malformed_output": result.text,
+                "original_turn": json.loads(input_text),
             },
             ensure_ascii=False,
         )
         try:
             repaired = self._generate_provider_text(
                 provider=provider,
-                instructions=repair_instructions,
+                instructions=f"{instructions}\n\n{repair_instructions}",
                 input_text=repair_input,
                 metadata={
                     "organization_id": str(organization.id),

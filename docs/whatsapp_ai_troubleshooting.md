@@ -29,6 +29,19 @@ New contacts require auto lead creation, a mapped pipeline with an active stage,
 and eligibility under the existing-chat ignore rules. Existing leads can receive
 AI replies without enabling auto lead creation. Historical sync does not trigger AI.
 
+Structured replies include qualification evidence and CRM actions as well as
+the visible WhatsApp text. Older `.env` files set
+`OPENAI_ENGAGEMENT_MAX_OUTPUT_TOKENS=300`, which can truncate this JSON envelope
+as a conversation progresses. Structured engagement now enforces a minimum of
+700 tokens, with 1400 for its single repair attempt, so existing deployments
+benefit without editing `.env`. Other response schemas retain their own limits.
+The prompt distinguishes the requirement before the inbound answer from the
+next unresolved requirement after evidence extraction. Malformed JSON, invalid
+evidence and an incorrect next-question ID all receive the same one bounded
+repair using the original turn context; repaired output is fully revalidated.
+Provider initialization failures release the turn's generation claim. Invalid
+repairs still fail closed and never persist unsupported answers.
+
 Inspect one affected lead on the VPS (IDs are available in CRM URLs):
 
 ```sh
