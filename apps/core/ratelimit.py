@@ -15,22 +15,38 @@ from django.core.cache import cache
 from django.http import HttpResponse
 
 
+_TRUSTED_PROXY_NETWORKS = tuple(
+    ipaddress.ip_network(network)
+    for network in (
+        "127.0.0.0/8",
+        "10.0.0.0/8",
+        "172.16.0.0/12",
+        "192.168.0.0/16",
+        "::1/128",
+        "fc00::/7",
+    )
+)
+
+
 def _is_trusted_proxy_address(value):
     """
-    The production reverse proxy reaches Django over Docker/private networking.
-    Only accept forwarding headers from loopback/private/link-local peers so a
-    client that reaches Django directly cannot choose its own rate-limit key.
+    Return True only for the loopback/private networks used by our reverse
+    proxy and Docker networking.
+
+    Do not rely on ``ipaddress.is_private`` here: Python intentionally treats
+    some reserved/non-global ranges as private too, which would broaden the
+    set of peers allowed to supply forwarding headers.
     """
     try:
         address = ipaddress.ip_address(str(value or "").strip())
     except ValueError:
         return False
 
-    return address.is_loopback or address.is_private or address.is_link_local
+    return any(address in network for network in _TRUSTED_PROXY_NETWORKS)
 
 
 def _client_ip(request):
-    remote_addr = request.META.get("REMOTE_ADDR", "unknown")
+    remote_addr = str(request.META.get("REMOTE_ADDR", "unknown") or "unknown").strip()
 
     if _is_trusted_proxy_address(remote_addr):
         # Nginx is configured to overwrite these headers with $remote_addr,
@@ -41,7 +57,9 @@ def _client_ip(request):
 
         forwarded = request.META.get("HTTP_X_FORWARDED_FOR", "")
         if forwarded:
-            return forwarded.split(",")[0].strip()
+            candidate = forwarded.split(",", 1)[0].strip()
+            if candidate:
+                return candidate
 
     return remote_addr
 
