@@ -194,6 +194,7 @@ var signupData = {
 };
 var sdkLoaded = false;
 var incompleteTimer = null;
+var submitTimer = null;
 
 function getCookie(name) {
     var match = document.cookie.match('(^|;)\\s*' + name + '\\s*=\\s*([^;]+)');
@@ -214,6 +215,7 @@ function newAttemptId() {
 
 function resetSignupState() {
     if (incompleteTimer) window.clearTimeout(incompleteTimer);
+    if (submitTimer) window.clearTimeout(submitTimer);
     signupData = {
         attempt_id: newAttemptId(),
         code: null,
@@ -269,49 +271,34 @@ function trackAttempt(stage, extra) {
         credentials: 'same-origin',
         body: formData
     }).catch(function () {
-        // Do not interrupt Meta's popup for telemetry failure. The final
-        // callback also get-or-creates the same attempt id server-side.
+        // Telemetry must never interrupt Meta's authorization flow.
     });
 }
 
-function missingSignupParts() {
-    var missing = [];
-    if (!signupData.code) missing.push('OAuth authorization code');
-    if (!signupData.waba_id) missing.push('WABA ID');
-    if (!signupData.phone_number_id) missing.push('Phone Number ID');
-    return missing;
-}
-
-function scheduleIncompleteCheck() {
+function scheduleIncompleteCheck(delay) {
     if (incompleteTimer) window.clearTimeout(incompleteTimer);
     incompleteTimer = window.setTimeout(function () {
-        if (signupData.submitting) return;
-        var missing = missingSignupParts();
-        if (!missing.length) {
-            maybeFinishSignup();
-            return;
-        }
-
-        var message = 'Meta did not return the authorization/session data SHVYA needs: ' + missing.join(', ') + '. If Meta says the app needs a supported permission, the Facebook Login for Business configuration used by Connect API must be a WhatsApp Embedded Signup v4 configuration with whatsapp_business_management and whatsapp_business_messaging selected.';
+        if (signupData.submitting || signupData.code) return;
+        var message = 'Meta closed the signup flow without returning an OAuth authorization code. Please try Connect API again. If Meta itself shows “This app needs at least one supported permission”, verify that the production Facebook Login for Business Configuration ID is the WhatsApp Embedded Signup configuration.';
         trackAttempt('incomplete', {error_message: message});
         setSignupButton('Connect WhatsApp Business API', false);
         showSignupError(message);
-    }, 12000);
+    }, delay || 60000);
 }
 
 function maybeFinishSignup() {
-    if (signupData.submitting) return;
-    if (missingSignupParts().length) return;
+    if (signupData.submitting || !signupData.code) return;
 
     signupData.submitting = true;
     if (incompleteTimer) window.clearTimeout(incompleteTimer);
+    if (submitTimer) window.clearTimeout(submitTimer);
     setSignupButton('Connecting…', true);
 
     var formData = new FormData();
     formData.append('attempt_id', signupData.attempt_id || '');
     formData.append('code', signupData.code);
-    formData.append('waba_id', signupData.waba_id);
-    formData.append('phone_number_id', signupData.phone_number_id);
+    formData.append('waba_id', signupData.waba_id || '');
+    formData.append('phone_number_id', signupData.phone_number_id || '');
 
     fetch('{% url "whatsapp-embedded-signup-callback" %}', {
         method: 'POST',
@@ -344,6 +331,21 @@ function maybeFinishSignup() {
     });
 }
 
+function scheduleSignupSubmit() {
+    if (!signupData.code || signupData.submitting) return;
+    if (incompleteTimer) window.clearTimeout(incompleteTimer);
+    if (submitTimer) window.clearTimeout(submitTimer);
+
+    // Give Meta's companion FINISH postMessage a short chance to provide the
+    // exact WABA/phone selection. The backend can recover missing IDs from the
+    // exchanged business token, so FINISH is no longer a hard dependency.
+    if (signupData.waba_id && signupData.phone_number_id) {
+        maybeFinishSignup();
+        return;
+    }
+    submitTimer = window.setTimeout(maybeFinishSignup, 900);
+}
+
 function isTrustedMetaOrigin(origin) {
     return origin === 'https://www.facebook.com' || origin === 'https://web.facebook.com';
 }
@@ -362,16 +364,17 @@ window.addEventListener('message', function (event) {
         signupData.waba_id = data.data.waba_id || signupData.waba_id;
         signupData.phone_number_id = data.data.phone_number_id || signupData.phone_number_id;
         trackAttempt('meta_finish');
-        maybeFinishSignup();
-        scheduleIncompleteCheck();
+        scheduleSignupSubmit();
     } else if (data.event === 'CANCEL') {
         if (incompleteTimer) window.clearTimeout(incompleteTimer);
-        var cancelMessage = 'WhatsApp connection was cancelled before SHVYA received all required credentials.';
+        if (submitTimer) window.clearTimeout(submitTimer);
+        var cancelMessage = 'WhatsApp connection was cancelled before authorization completed.';
         trackAttempt('cancelled', {error_message: cancelMessage});
         setSignupButton('Connect WhatsApp Business API', false);
         showSignupError(cancelMessage);
     } else if (data.event === 'ERROR') {
         if (incompleteTimer) window.clearTimeout(incompleteTimer);
+        if (submitTimer) window.clearTimeout(submitTimer);
         var metaMessage = (data.data && data.data.error_message) || 'Meta reported an error during WhatsApp signup.';
         var metaCode = (data.data && (data.data.error_id || data.data.error_code)) || '';
         trackAttempt('meta_error', {error_message: metaMessage, meta_error_code: metaCode});
@@ -386,9 +389,7 @@ window.fbAsyncInit = function () {
         autoLogAppEvents: true,
         cookie: true,
         xfbml: false,
-        version: 'v21.0',
-        // Facebook Login for Business Embedded Signup must use the OAuth flow,
-        // not the optional Facebook Login one-tap/FedCM path.
+        version: 'v25.0',
         fedCM: false
     });
     sdkLoaded = true;
@@ -421,32 +422,31 @@ document.getElementById('embedded-signup-btn').addEventListener('click', functio
         return;
     }
 
+    scheduleIncompleteCheck(60000);
+
     // Keep FB.login synchronous with the click so the browser preserves the
-    // user gesture. Embedded Signup v4 gets products/assets/permissions from
-    // the Facebook Login for Business configuration identified by config_id.
+    // user gesture. Products/assets/permissions come from the Login for
+    // Business configuration identified by config_id.
     FB.login(function (response) {
         signupData.login_callback_seen = true;
 
         if (response && response.authResponse && response.authResponse.code) {
             signupData.code = response.authResponse.code;
             trackAttempt('oauth_code_received');
-            maybeFinishSignup();
-            scheduleIncompleteCheck();
+            scheduleSignupSubmit();
             return;
         }
 
-        // Meta FINISH and the FB.login callback can arrive in either order. Do
-        // not show a false popup error immediately; give the companion event a
-        // short window to arrive and then report the actual missing values.
+        // A callback without a code means Meta has closed the authorization
+        // dialog. Give any final postMessage a small grace period, then show the
+        // real OAuth failure rather than blaming WABA/phone session metadata.
         trackAttempt('oauth_code_missing');
-        scheduleIncompleteCheck();
+        scheduleIncompleteCheck(3500);
     }, {
         config_id: '{{ meta_config_id }}',
         auth_type: 'rerequest',
         response_type: 'code',
         override_default_response_type: true,
-        // v4 configuration controls permissions/products. Do not send the
-        // legacy sessionInfoVersion=3 or an empty featureType override.
         extras: {setup: {}}
     });
 });

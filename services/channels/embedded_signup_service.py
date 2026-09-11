@@ -1,11 +1,12 @@
 """Resilient Meta embedded-signup completion for WhatsApp accounts.
 
-The account connection itself and the WABA webhook subscription are separate
-steps. A webhook subscription failure must not make a successfully-authorized
-WhatsApp number disappear from Connected Numbers.
+The browser handoff and the Meta Graph authorization are deliberately treated
+as separate signals. Meta can return the OAuth code before (or without) the
+WA_EMBEDDED_SIGNUP FINISH postMessage, so SHVYA can recover missing WABA and
+phone IDs from the exchanged business token instead of failing the connection.
 
-The optional ``attempt`` object records safe lifecycle diagnostics. Authorization
-codes and raw access-token values are deliberately never stored or logged.
+Authorization codes and raw access-token values are deliberately never stored
+or logged.
 """
 
 import json
@@ -17,9 +18,15 @@ from django.utils import timezone
 
 from apps.channels.models import WhatsAppAccount
 from apps.channels.providers import whatsapp as whatsapp_provider
+from apps.channels.providers import whatsapp_embedded as embedded_provider
 from apps.channels.providers.whatsapp import WhatsAppAPIError
 
 logger = logging.getLogger(__name__)
+
+_REQUIRED_WHATSAPP_SCOPES = {
+    "whatsapp_business_management",
+    "whatsapp_business_messaging",
+}
 
 
 class EmbeddedSignupError(Exception):
@@ -58,15 +65,174 @@ def _update_attempt(attempt, **changes):
     attempt.save()
 
 
+def _unique_ids(values):
+    seen = set()
+    result = []
+    for value in values:
+        value = str(value or "").strip()
+        if value and value not in seen:
+            seen.add(value)
+            result.append(value)
+    return result
+
+
+def _debug_token_waba_ids(debug_data):
+    target_ids = []
+    for item in debug_data.get("granular_scopes") or []:
+        if not isinstance(item, dict):
+            continue
+        if item.get("scope") not in _REQUIRED_WHATSAPP_SCOPES:
+            continue
+        target_ids.extend(item.get("target_ids") or [])
+    return _unique_ids(target_ids)
+
+
+def _debug_token_scopes(debug_data):
+    scopes = set(debug_data.get("scopes") or [])
+    for item in debug_data.get("granular_scopes") or []:
+        if isinstance(item, dict) and item.get("scope"):
+            scopes.add(item["scope"])
+    return scopes
+
+
+def _provider_error(exc, *, stage="asset_discovery"):
+    error_code, reason = _meta_error_details(exc)
+    return EmbeddedSignupError(
+        reason,
+        stage=stage,
+        meta_error_code=error_code,
+    )
+
+
+def _phone_ids_for_waba(*, waba_id, access_token):
+    try:
+        phones = embedded_provider.list_waba_phone_numbers(
+            waba_id=waba_id,
+            access_token=access_token,
+        )
+    except WhatsAppAPIError as exc:
+        raise _provider_error(exc) from exc
+    return _unique_ids(item.get("id") for item in phones if isinstance(item, dict))
+
+
+def _resolve_signup_assets(*, access_token, waba_id="", phone_number_id=""):
+    """Recover missing Embedded Signup asset IDs from the authorized token.
+
+    The normal browser FINISH event still supplies both IDs. This recovery path
+    exists for Meta/browser handoff races where OAuth succeeds but the FINISH
+    postMessage is delayed or absent.
+    """
+    waba_id = str(waba_id or "").strip()
+    phone_number_id = str(phone_number_id or "").strip()
+    if waba_id and phone_number_id:
+        return waba_id, phone_number_id
+
+    candidate_wabas = [waba_id] if waba_id else []
+
+    if not waba_id:
+        try:
+            debug_data = embedded_provider.debug_access_token(
+                app_id=settings.META_APP_ID,
+                app_secret=settings.META_APP_SECRET,
+                access_token=access_token,
+            )
+        except WhatsAppAPIError as exc:
+            raise _provider_error(exc) from exc
+
+        granted_scopes = _debug_token_scopes(debug_data)
+        missing_scopes = _REQUIRED_WHATSAPP_SCOPES - granted_scopes
+        if missing_scopes:
+            raise EmbeddedSignupError(
+                "Meta authorized Facebook Login for Business, but the returned "
+                "business token is missing required WhatsApp permissions: "
+                + ", ".join(sorted(missing_scopes))
+                + ". Verify that the production Configuration ID used by Connect API "
+                "is the WhatsApp Embedded Signup configuration and grants both "
+                "WhatsApp permissions.",
+                stage="asset_discovery",
+            )
+
+        candidate_wabas = _debug_token_waba_ids(debug_data)
+        if not candidate_wabas and debug_data.get("user_id"):
+            try:
+                assigned = embedded_provider.list_assigned_wabas(
+                    user_id=debug_data["user_id"],
+                    access_token=access_token,
+                )
+            except WhatsAppAPIError as exc:
+                raise _provider_error(exc) from exc
+            candidate_wabas = _unique_ids(
+                item.get("id") for item in assigned if isinstance(item, dict)
+            )
+
+        if not candidate_wabas:
+            raise EmbeddedSignupError(
+                "Meta returned an OAuth token with the required WhatsApp permissions, "
+                "but no WhatsApp Business Account was visible to that token. Please "
+                "complete Embedded Signup again and select a WhatsApp Business Account.",
+                stage="asset_discovery",
+            )
+
+    if phone_number_id:
+        if len(candidate_wabas) == 1:
+            return candidate_wabas[0], phone_number_id
+
+        matching_wabas = []
+        for candidate in candidate_wabas:
+            if phone_number_id in _phone_ids_for_waba(
+                waba_id=candidate,
+                access_token=access_token,
+            ):
+                matching_wabas.append(candidate)
+
+        if len(matching_wabas) == 1:
+            return matching_wabas[0], phone_number_id
+        if not matching_wabas:
+            raise EmbeddedSignupError(
+                "Meta returned the selected Phone Number ID, but SHVYA could not match "
+                "it to a WhatsApp Business Account visible to the authorized token.",
+                stage="asset_discovery",
+            )
+        raise EmbeddedSignupError(
+            "Meta returned an ambiguous WhatsApp Business Account selection. Please "
+            "run Connect API again and select the intended account.",
+            stage="asset_discovery",
+        )
+
+    discovered_pairs = []
+    for candidate in candidate_wabas:
+        for phone_id in _phone_ids_for_waba(
+            waba_id=candidate,
+            access_token=access_token,
+        ):
+            discovered_pairs.append((candidate, phone_id))
+
+    if len(discovered_pairs) == 1:
+        return discovered_pairs[0]
+    if not discovered_pairs:
+        raise EmbeddedSignupError(
+            "Meta authorized the WhatsApp Business Account, but no phone number was "
+            "visible to the returned token. Finish adding/verifying a phone number in "
+            "Meta Embedded Signup and try again.",
+            stage="asset_discovery",
+        )
+    raise EmbeddedSignupError(
+        "Meta did not identify which phone number was selected and the authorized "
+        "account contains multiple phone numbers. Please run Connect API again and "
+        "select the intended phone number.",
+        stage="asset_discovery",
+    )
+
+
 def complete_embedded_signup(
     *,
     organization,
     code,
-    waba_id,
-    phone_number_id,
+    waba_id="",
+    phone_number_id="",
     attempt=None,
 ):
-    """Authorize Meta, persist the number, then try webhook subscription."""
+    """Authorize Meta, resolve assets, persist the number, then subscribe webhooks."""
     if not settings.META_APP_ID or not settings.META_APP_SECRET:
         raise EmbeddedSignupError(
             "Embedded signup is not configured on this server yet.",
@@ -99,6 +265,25 @@ def complete_embedded_signup(
         token_received=True,
         meta_error_code="",
         error_message="",
+    )
+
+    waba_id, phone_number_id = _resolve_signup_assets(
+        access_token=access_token,
+        waba_id=waba_id,
+        phone_number_id=phone_number_id,
+    )
+    logger.info(
+        "Embedded signup assets resolved: org=%s attempt=%s waba_id=%s phone_number_id=%s",
+        organization.id,
+        getattr(attempt, "id", None),
+        waba_id,
+        phone_number_id,
+    )
+    _update_attempt(
+        attempt,
+        stage="asset_discovery",
+        waba_id=waba_id,
+        phone_number_id=phone_number_id,
     )
 
     try:
@@ -181,10 +366,6 @@ def complete_embedded_signup(
                     ]
                 )
 
-            # Legacy production data can contain more than one row for the same
-            # number. Keep exactly one canonical active row so selectors, sends,
-            # sidebar state and Connected Numbers never disagree about which
-            # credential should be used.
             WhatsAppAccount.objects.filter(
                 organization=organization,
                 phone_number_id=phone_number_id,
