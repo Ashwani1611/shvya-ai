@@ -1,0 +1,702 @@
+/* SHVYA AI — Apple-inspired workspace design system.
+   Scoped to the requested non-CRM dashboard surfaces only. */
+
+:root {
+    --sw-bg: #f5f5f7;
+    --sw-surface: rgba(255, 255, 255, 0.92);
+    --sw-surface-solid: #ffffff;
+    --sw-surface-soft: #f8f8fa;
+    --sw-text: #1d1d1f;
+    --sw-muted: #6e6e73;
+    --sw-faint: #86868b;
+    --sw-line: rgba(15, 23, 42, 0.075);
+    --sw-line-strong: rgba(15, 23, 42, 0.13);
+    --sw-blue: #0071e3;
+    --sw-blue-hover: #0077ed;
+    --sw-blue-soft: rgba(0, 113, 227, 0.08);
+    --sw-green: #16843d;
+    --sw-orange: #c2410c;
+    --sw-radius-lg: 24px;
+    --sw-radius-md: 18px;
+    --sw-radius-sm: 13px;
+    --sw-shadow: 0 18px 48px rgba(15, 23, 42, 0.055);
+    --sw-shadow-soft: 0 7px 24px rgba(15, 23, 42, 0.045);
+}
+
+html.shvya-apple-workspace-v3 body {
+    background: var(--sw-bg) !important;
+    color: var(--sw-text) !important;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", Inter, system-ui, sans-serif;
+}
+
+html.shvya-apple-workspace-v3 #app-sidebar + div > main {
+    background:
+        radial-gradient(circle at 68% -10%, rgba(0, 113, 227, 0.045), transparent 35%),
+        var(--sw-bg) !important;
+    padding: 28px 30px 54px !important;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(110, 110, 115, 0.28) transparent;
+}
+
+html.shvya-apple-workspace-v3 #app-sidebar + div > main::-webkit-scrollbar,
+html.shvya-apple-workspace-v3 *::-webkit-scrollbar {
+    width: 5px;
+    height: 5px;
+}
+
+html.shvya-apple-workspace-v3 #app-sidebar + div > main::-webkit-scrollbar-track,
+html.shvya-apple-workspace-v3 *::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+html.shvya-apple-workspace-v3 #app-sidebar + div > main::-webkit-scrollbar-thumb,
+html.shvya-apple-workspace-v3 *::-webkit-scrollbar-thumb {
+    border-radius: 999px;
+    background: rgba(110, 110, 115, 0.25);
+}
+
+html.shvya-apple-workspace-v3 #app-sidebar + div > main::-webkit-scrollbar-thumb:hover,
+html.shvya-apple-workspace-v3 *::-webkit-scrollbar-thumb:hover {
+    background: rgba(110, 110, 115, 0.4);
+}
+
+/* Floating shell header: lighter and quieter than the CRM toolbar. */
+html.shvya-apple-workspace-v3 #app-sidebar + div > header {
+    min-height: 58px !important;
+    margin: 10px 14px 0 !important;
+    padding: 8px 12px 8px 18px !important;
+    border: 1px solid rgba(15, 23, 42, 0.055) !important;
+    border-radius: 20px !important;
+    background: rgba(245, 245, 247, 0.82) !important;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8) !important;
+    backdrop-filter: blur(24px) saturate(145%);
+    -webkit-backdrop-filter: blur(24px) saturate(145%);
+}
+
+html.shvya-apple-workspace-v3 #app-sidebar + div > header > h1 {
+    color: var(--sw-text) !important;
+    font-size: 15px !important;
+    font-weight: 650 !important;
+    letter-spacing: -0.015em !important;
+}
+
+/* Page hero injected by the shared workspace script. */
+html.shvya-apple-workspace-v3 .shvya-page-hero {
+    width: min(100%, 1600px);
+    margin: 0 auto 24px;
+    padding: 8px 2px 2px;
+}
+
+html.shvya-apple-workspace-v3 .shvya-page-hero__eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    margin-bottom: 8px;
+    color: var(--sw-blue);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .09em;
+    text-transform: uppercase;
+}
+
+html.shvya-apple-workspace-v3 .shvya-page-hero__eyebrow::before {
+    content: "";
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--sw-blue);
+    box-shadow: 0 0 0 5px rgba(0, 113, 227, 0.08);
+}
+
+html.shvya-apple-workspace-v3 .shvya-page-hero h1 {
+    margin: 0;
+    color: var(--sw-text);
+    font-size: clamp(29px, 3vw, 38px);
+    line-height: 1.06;
+    font-weight: 720;
+    letter-spacing: -0.045em;
+}
+
+html.shvya-apple-workspace-v3 .shvya-page-hero p {
+    max-width: 700px;
+    margin: 8px 0 0;
+    color: var(--sw-muted);
+    font-size: 14px;
+    line-height: 1.55;
+    letter-spacing: -0.005em;
+}
+
+html.shvya-apple-workspace-v3 .shvya-legacy-page-heading {
+    display: none !important;
+}
+
+/* Shared surfaces */
+html.shvya-apple-workspace-v3 main [class*="bg-white"][class*="border"],
+html.shvya-apple-workspace-v3 main [class*="rounded-xl"][class*="bg-white"],
+html.shvya-apple-workspace-v3 main [class*="rounded-2xl"][class*="bg-white"] {
+    border-color: var(--sw-line) !important;
+    background: var(--sw-surface) !important;
+    box-shadow: var(--sw-shadow-soft) !important;
+}
+
+html.shvya-apple-workspace-v3 main [class*="rounded-xl"],
+html.shvya-apple-workspace-v3 main [class*="rounded-2xl"] {
+    border-radius: var(--sw-radius-md) !important;
+}
+
+html.shvya-apple-workspace-v3 main h1,
+html.shvya-apple-workspace-v3 main h2,
+html.shvya-apple-workspace-v3 main h3,
+html.shvya-apple-workspace-v3 main h4 {
+    color: var(--sw-text) !important;
+    letter-spacing: -0.022em;
+}
+
+html.shvya-apple-workspace-v3 main p,
+html.shvya-apple-workspace-v3 main .text-gray-500,
+html.shvya-apple-workspace-v3 main .text-slate-500,
+html.shvya-apple-workspace-v3 main .text-gray-600,
+html.shvya-apple-workspace-v3 main .text-slate-600 {
+    color: var(--sw-muted) !important;
+}
+
+/* Apple-like controls */
+html.shvya-apple-workspace-v3 main input:not([type="checkbox"]):not([type="radio"]),
+html.shvya-apple-workspace-v3 main select,
+html.shvya-apple-workspace-v3 main textarea,
+html.shvya-apple-workspace-v3 [role="dialog"] input:not([type="checkbox"]):not([type="radio"]),
+html.shvya-apple-workspace-v3 [role="dialog"] select,
+html.shvya-apple-workspace-v3 [role="dialog"] textarea,
+html.shvya-apple-workspace-v3 dialog input:not([type="checkbox"]):not([type="radio"]),
+html.shvya-apple-workspace-v3 dialog select,
+html.shvya-apple-workspace-v3 dialog textarea {
+    min-height: 42px !important;
+    border: 1px solid var(--sw-line-strong) !important;
+    border-radius: 12px !important;
+    background: rgba(255, 255, 255, 0.94) !important;
+    color: var(--sw-text) !important;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72) !important;
+    outline: none !important;
+    transition: border-color 150ms ease, box-shadow 150ms ease, background 150ms ease !important;
+}
+
+html.shvya-apple-workspace-v3 main input:focus,
+html.shvya-apple-workspace-v3 main select:focus,
+html.shvya-apple-workspace-v3 main textarea:focus,
+html.shvya-apple-workspace-v3 [role="dialog"] input:focus,
+html.shvya-apple-workspace-v3 [role="dialog"] select:focus,
+html.shvya-apple-workspace-v3 [role="dialog"] textarea:focus,
+html.shvya-apple-workspace-v3 dialog input:focus,
+html.shvya-apple-workspace-v3 dialog select:focus,
+html.shvya-apple-workspace-v3 dialog textarea:focus {
+    border-color: rgba(0, 113, 227, 0.62) !important;
+    box-shadow: 0 0 0 4px var(--sw-blue-soft) !important;
+}
+
+html.shvya-apple-workspace-v3 main textarea,
+html.shvya-apple-workspace-v3 [role="dialog"] textarea,
+html.shvya-apple-workspace-v3 dialog textarea {
+    padding-top: 11px !important;
+    line-height: 1.5 !important;
+}
+
+html.shvya-apple-workspace-v3 main button,
+html.shvya-apple-workspace-v3 main a[class*="rounded"],
+html.shvya-apple-workspace-v3 [role="dialog"] button,
+html.shvya-apple-workspace-v3 dialog button {
+    transition: transform 140ms ease, background-color 140ms ease, border-color 140ms ease, color 140ms ease, box-shadow 140ms ease !important;
+}
+
+html.shvya-apple-workspace-v3 main button:hover,
+html.shvya-apple-workspace-v3 main a[class*="rounded"]:hover,
+html.shvya-apple-workspace-v3 [role="dialog"] button:hover,
+html.shvya-apple-workspace-v3 dialog button:hover {
+    transform: translateY(-1px);
+}
+
+html.shvya-apple-workspace-v3 main .bg-blue-600,
+html.shvya-apple-workspace-v3 main .bg-blue-700,
+html.shvya-apple-workspace-v3 main .bg-\[\#0067b9\],
+html.shvya-apple-workspace-v3 main .bg-\[\#005ea8\],
+html.shvya-apple-workspace-v3 main button[class*="bg-blue"],
+html.shvya-apple-workspace-v3 [role="dialog"] .bg-blue-600,
+html.shvya-apple-workspace-v3 dialog .bg-blue-600 {
+    border-color: var(--sw-blue) !important;
+    background: var(--sw-blue) !important;
+    color: #fff !important;
+    box-shadow: none !important;
+}
+
+html.shvya-apple-workspace-v3 main .bg-blue-600:hover,
+html.shvya-apple-workspace-v3 main .bg-blue-700:hover,
+html.shvya-apple-workspace-v3 main .bg-\[\#0067b9\]:hover,
+html.shvya-apple-workspace-v3 main button[class*="bg-blue"]:hover,
+html.shvya-apple-workspace-v3 [role="dialog"] .bg-blue-600:hover,
+html.shvya-apple-workspace-v3 dialog .bg-blue-600:hover {
+    background: var(--sw-blue-hover) !important;
+}
+
+/* Shared modal language: blurred backdrop + calm glass sheet. */
+html.shvya-apple-workspace-v3 #modal-root > .fixed.inset-0,
+html.shvya-apple-workspace-v3 main > .fixed.inset-0,
+html.shvya-apple-workspace-v3 [role="dialog"].fixed.inset-0,
+html.shvya-apple-workspace-v3 .shvya-workspace-modal-backdrop {
+    background: rgba(20, 20, 22, 0.28) !important;
+    backdrop-filter: blur(22px) saturate(120%) !important;
+    -webkit-backdrop-filter: blur(22px) saturate(120%) !important;
+}
+
+html.shvya-apple-workspace-v3 #modal-root > .fixed.inset-0 > div,
+html.shvya-apple-workspace-v3 [role="dialog"].fixed.inset-0 > div,
+html.shvya-apple-workspace-v3 .shvya-workspace-modal-panel {
+    border: 1px solid rgba(255, 255, 255, 0.7) !important;
+    border-radius: 24px !important;
+    background: rgba(255, 255, 255, 0.94) !important;
+    box-shadow: 0 32px 100px rgba(0, 0, 0, 0.18) !important;
+    backdrop-filter: blur(30px) saturate(150%);
+    -webkit-backdrop-filter: blur(30px) saturate(150%);
+}
+
+html.shvya-apple-workspace-v3 dialog {
+    border: 1px solid rgba(255, 255, 255, .72) !important;
+    border-radius: 22px !important;
+    background: rgba(255, 255, 255, .96) !important;
+    color: var(--sw-text) !important;
+    box-shadow: 0 30px 90px rgba(0, 0, 0, .2) !important;
+}
+
+html.shvya-apple-workspace-v3 dialog::backdrop {
+    background: rgba(20, 20, 22, .28);
+    backdrop-filter: blur(22px);
+    -webkit-backdrop-filter: blur(22px);
+}
+
+html.shvya-apple-workspace-v3 [role="dialog"] h2,
+html.shvya-apple-workspace-v3 [role="dialog"] h3,
+html.shvya-apple-workspace-v3 dialog h2,
+html.shvya-apple-workspace-v3 dialog h3 {
+    color: var(--sw-text) !important;
+    font-weight: 700 !important;
+    letter-spacing: -0.025em !important;
+}
+
+/* SALES DESK */
+html.shvya-page-sales-desk #copilot-app {
+    max-width: 1600px !important;
+    gap: 18px !important;
+}
+
+html.shvya-page-sales-desk #copilot-app > div:first-child {
+    border: 0 !important;
+    border-radius: 22px !important;
+    background: linear-gradient(135deg, rgba(255,255,255,.96), rgba(248,248,250,.92)) !important;
+    padding: 20px 22px !important;
+    box-shadow: var(--sw-shadow) !important;
+}
+
+html.shvya-page-sales-desk #copilot-app > div:first-child h2 {
+    font-size: 18px !important;
+    font-weight: 700 !important;
+}
+
+html.shvya-page-sales-desk .copilot-card {
+    border: 1px solid var(--sw-line) !important;
+    border-radius: 17px !important;
+    background: #fff !important;
+    box-shadow: 0 4px 16px rgba(15, 23, 42, .035) !important;
+}
+
+html.shvya-page-sales-desk .copilot-card:hover {
+    border-color: rgba(0, 113, 227, .18) !important;
+    box-shadow: 0 12px 28px rgba(15, 23, 42, .065) !important;
+    transform: translateY(-2px) !important;
+}
+
+html.shvya-page-sales-desk #copilot-sections > section {
+    border: 1px solid var(--sw-line) !important;
+    border-radius: 20px !important;
+    background: rgba(255,255,255,.88) !important;
+    box-shadow: var(--sw-shadow-soft) !important;
+}
+
+html.shvya-page-sales-desk #copilot-settings-modal,
+html.shvya-page-sales-desk [id*="copilot-"][class*="fixed"][class*="inset-0"] {
+    background: rgba(20,20,22,.28) !important;
+    backdrop-filter: blur(22px) saturate(120%) !important;
+    -webkit-backdrop-filter: blur(22px) saturate(120%) !important;
+}
+
+html.shvya-page-sales-desk #copilot-settings-modal > div {
+    border: 1px solid rgba(255,255,255,.72) !important;
+    border-radius: 24px !important;
+    background: rgba(255,255,255,.96) !important;
+    box-shadow: 0 30px 90px rgba(0,0,0,.18) !important;
+}
+
+/* INSIGHTS */
+html.shvya-page-insights main > form {
+    max-width: 1600px;
+    margin-left: auto;
+    margin-right: auto;
+    padding: 14px;
+    border: 1px solid var(--sw-line);
+    border-radius: 18px;
+    background: rgba(255,255,255,.8);
+    box-shadow: var(--sw-shadow-soft);
+    backdrop-filter: blur(18px);
+}
+
+html.shvya-page-insights main > div[class*="rounded-xl"] {
+    max-width: 1600px;
+    margin-left: auto;
+    margin-right: auto;
+    border: 0 !important;
+    border-radius: 24px !important;
+    padding: 24px !important;
+    background: rgba(255,255,255,.92) !important;
+    box-shadow: var(--sw-shadow) !important;
+}
+
+html.shvya-page-insights canvas {
+    filter: saturate(.86) contrast(.98);
+}
+
+html.shvya-page-insights #analytics-settings-modal-slot .fixed {
+    background: rgba(20,20,22,.28) !important;
+    backdrop-filter: blur(22px) !important;
+    -webkit-backdrop-filter: blur(22px) !important;
+}
+
+/* CADENCE */
+html.shvya-page-cadence main > div[class*="max-w"],
+html.shvya-page-cadence main > form,
+html.shvya-page-cadence main > section {
+    width: min(100%, 1600px);
+    margin-left: auto !important;
+    margin-right: auto !important;
+}
+
+html.shvya-page-cadence main a.group[class*="min-h"] {
+    border: 1px solid var(--sw-line) !important;
+    border-radius: 20px !important;
+    background: rgba(255,255,255,.94) !important;
+    box-shadow: 0 8px 26px rgba(15,23,42,.045) !important;
+}
+
+html.shvya-page-cadence main a.group[class*="min-h"]:hover {
+    border-color: rgba(0,113,227,.2) !important;
+    box-shadow: 0 18px 40px rgba(15,23,42,.075) !important;
+    transform: translateY(-3px) !important;
+}
+
+html.shvya-page-cadence main a.group h3 {
+    color: var(--sw-text) !important;
+    font-size: 17px !important;
+}
+
+html.shvya-page-cadence main [class*="border-orange-300"] {
+    border-color: rgba(196, 110, 20, .14) !important;
+    border-radius: 18px !important;
+    background: rgba(255, 248, 240, .78) !important;
+    box-shadow: none !important;
+}
+
+html.shvya-page-cadence #modal-root .fixed.inset-0,
+html.shvya-page-cadence [id*="modal"][class*="fixed"][class*="inset-0"] {
+    background: rgba(20,20,22,.28) !important;
+    backdrop-filter: blur(22px) !important;
+    -webkit-backdrop-filter: blur(22px) !important;
+}
+
+/* PLAYBOOKS / AI BRAIN */
+html.shvya-page-playbooks #ai-setup-page,
+html.shvya-page-playbooks main > div[class*="max-w"] {
+    max-width: 1680px !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+}
+
+html.shvya-page-playbooks #ai-setup-page [class*="bg-white"][class*="border"] {
+    border-color: var(--sw-line) !important;
+    border-radius: 20px !important;
+    background: rgba(255,255,255,.92) !important;
+    box-shadow: var(--sw-shadow-soft) !important;
+}
+
+html.shvya-page-playbooks #ai-setup-page textarea,
+html.shvya-page-playbooks #ai-setup-page input:not([type="checkbox"]):not([type="radio"]),
+html.shvya-page-playbooks #ai-setup-page select {
+    background: #fbfbfd !important;
+}
+
+html.shvya-page-playbooks .shvya-ai-sandbox-card {
+    position: sticky !important;
+    top: 14px !important;
+    align-self: flex-start !important;
+    max-height: calc(100vh - 28px) !important;
+    overflow: hidden !important;
+    border: 1px solid rgba(0,113,227,.1) !important;
+    border-radius: 24px !important;
+    background: rgba(255,255,255,.96) !important;
+    box-shadow: 0 22px 60px rgba(15,23,42,.09) !important;
+    z-index: 12;
+}
+
+html.shvya-page-playbooks .shvya-ai-sandbox-card #playground-messages {
+    max-height: calc(100vh - 270px) !important;
+    overflow-y: auto !important;
+    overscroll-behavior: contain;
+}
+
+html.shvya-page-playbooks .shvya-ai-sandbox-title {
+    font-size: 18px !important;
+    font-weight: 720 !important;
+    letter-spacing: -0.025em !important;
+}
+
+html.shvya-page-playbooks .shvya-ai-sandbox-description {
+    max-width: 420px;
+    color: var(--sw-muted) !important;
+    font-size: 12.5px !important;
+    line-height: 1.45 !important;
+}
+
+html.shvya-page-playbooks .shvya-faq-item,
+html.shvya-page-playbooks [data-faq-item] {
+    border: 1px solid var(--sw-line) !important;
+    border-radius: 17px !important;
+    background: rgba(255,255,255,.94) !important;
+    box-shadow: 0 5px 18px rgba(15,23,42,.035) !important;
+}
+
+/* WORKFLOWS — override the module's older standalone stylesheet. */
+html.shvya-page-workflows #smart-triggers {
+    --blue: #0071e3 !important;
+    --ink: #1d1d1f !important;
+    --muted: #6e6e73 !important;
+    max-width: 1600px !important;
+    margin: 0 auto !important;
+    color: var(--sw-text) !important;
+}
+
+html.shvya-page-workflows #smart-triggers .st-heading {
+    margin-bottom: 20px !important;
+    padding: 22px 24px !important;
+    border: 1px solid var(--sw-line) !important;
+    border-radius: 24px !important;
+    background: rgba(255,255,255,.92) !important;
+    box-shadow: var(--sw-shadow) !important;
+}
+
+html.shvya-page-workflows #smart-triggers .st-heading h1 {
+    color: var(--sw-text) !important;
+    font-size: 27px !important;
+    letter-spacing: -.035em !important;
+}
+
+html.shvya-page-workflows #smart-triggers .st-eyebrow {
+    color: var(--sw-blue) !important;
+    letter-spacing: .08em !important;
+}
+
+html.shvya-page-workflows #smart-triggers .st-panel,
+html.shvya-page-workflows #smart-triggers .st-stats > div,
+html.shvya-page-workflows #smart-triggers .st-summary {
+    border: 1px solid var(--sw-line) !important;
+    border-radius: 19px !important;
+    background: rgba(255,255,255,.92) !important;
+    box-shadow: var(--sw-shadow-soft) !important;
+}
+
+html.shvya-page-workflows #smart-triggers .st-primary {
+    border: 1px solid var(--sw-blue) !important;
+    border-radius: 999px !important;
+    background: var(--sw-blue) !important;
+    color: white !important;
+    box-shadow: none !important;
+}
+
+html.shvya-page-workflows #smart-triggers input,
+html.shvya-page-workflows #smart-triggers select,
+html.shvya-page-workflows #smart-triggers textarea {
+    border-radius: 12px !important;
+    border-color: var(--sw-line-strong) !important;
+    background: #fbfbfd !important;
+}
+
+html.shvya-page-workflows #smart-triggers dialog {
+    border-radius: 22px !important;
+    background: rgba(255,255,255,.97) !important;
+    box-shadow: 0 32px 90px rgba(0,0,0,.19) !important;
+}
+
+/* WHATSAPP requested surfaces */
+html.shvya-page-whatsapp main > div[class*="max-w"],
+html.shvya-page-whatsapp main > section,
+html.shvya-page-whatsapp main > form {
+    margin-left: auto;
+    margin-right: auto;
+}
+
+html.shvya-page-whatsapp main [class*="rounded-2xl"][class*="border"],
+html.shvya-page-whatsapp main [class*="rounded-xl"][class*="border"] {
+    border-color: var(--sw-line) !important;
+    background: rgba(255,255,255,.92) !important;
+    box-shadow: var(--sw-shadow-soft) !important;
+}
+
+html.shvya-page-whatsapp main [class*="bg-green-50"],
+html.shvya-page-whatsapp main [class*="bg-emerald-50"] {
+    background: rgba(22,132,61,.065) !important;
+}
+
+html.shvya-page-whatsapp #modal-root .fixed.inset-0,
+html.shvya-page-whatsapp [role="dialog"].fixed.inset-0 {
+    background: rgba(20,20,22,.28) !important;
+    backdrop-filter: blur(22px) !important;
+    -webkit-backdrop-filter: blur(22px) !important;
+}
+
+/* CONNECT HUB */
+html.shvya-page-connect-hub main > div[class*="max-w"] {
+    max-width: 1600px !important;
+}
+
+html.shvya-page-connect-hub [data-connect-group] > div:first-child > div:last-child {
+    background: rgba(15,23,42,.07) !important;
+}
+
+html.shvya-page-connect-hub [data-connect-group] > div:first-child > div:first-child {
+    color: var(--sw-text) !important;
+}
+
+html.shvya-page-connect-hub [data-integration-card] {
+    border: 1px solid transparent !important;
+    border-radius: 22px !important;
+    background: rgba(255,255,255,.52) !important;
+    padding: 5px !important;
+}
+
+html.shvya-page-connect-hub [data-integration-card] > div {
+    min-height: 126px !important;
+    border: 1px solid var(--sw-line) !important;
+    border-radius: 18px !important;
+    background: rgba(255,255,255,.94) !important;
+    box-shadow: 0 7px 22px rgba(15,23,42,.04) !important;
+}
+
+html.shvya-page-connect-hub [data-integration-card]:hover {
+    background: rgba(0,113,227,.055) !important;
+    transform: translateY(-3px) !important;
+}
+
+html.shvya-page-connect-hub [data-integration-card]:hover > div {
+    border-color: rgba(0,113,227,.16) !important;
+    box-shadow: 0 17px 40px rgba(15,23,42,.075) !important;
+}
+
+/* TEAMS */
+html.shvya-page-teams main > div[class*="max-w"] {
+    max-width: 1500px !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+}
+
+html.shvya-page-teams main table {
+    overflow: hidden;
+    border-collapse: separate !important;
+    border-spacing: 0 !important;
+    border: 1px solid var(--sw-line) !important;
+    border-radius: 18px !important;
+    background: rgba(255,255,255,.94) !important;
+    box-shadow: var(--sw-shadow-soft) !important;
+}
+
+html.shvya-page-teams main thead {
+    background: #f8f8fa !important;
+}
+
+html.shvya-page-teams main th {
+    color: var(--sw-muted) !important;
+    font-size: 11px !important;
+    font-weight: 700 !important;
+    letter-spacing: .055em !important;
+    text-transform: uppercase;
+}
+
+html.shvya-page-teams main td,
+html.shvya-page-teams main th {
+    border-color: var(--sw-line) !important;
+}
+
+html.shvya-page-teams main tbody tr:hover {
+    background: rgba(0,113,227,.035) !important;
+}
+
+/* Gentle entrance only; respects reduced motion below. */
+@keyframes shvyaWorkspaceRise {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+html.shvya-apple-workspace-v3 .shvya-page-hero,
+html.shvya-apple-workspace-v3 main > *:not(script):not(style) {
+    animation: shvyaWorkspaceRise 260ms cubic-bezier(.2,.75,.25,1) both;
+}
+
+@media (max-width: 1100px) {
+    html.shvya-apple-workspace-v3 #app-sidebar + div > main {
+        padding: 22px 18px 42px !important;
+    }
+
+    html.shvya-page-playbooks .shvya-ai-sandbox-card {
+        position: relative !important;
+        top: auto !important;
+        max-height: none !important;
+    }
+
+    html.shvya-page-playbooks .shvya-ai-sandbox-card #playground-messages {
+        max-height: 520px !important;
+    }
+}
+
+@media (max-width: 700px) {
+    html.shvya-apple-workspace-v3 #app-sidebar + div > main {
+        padding: 18px 12px 34px !important;
+    }
+
+    html.shvya-apple-workspace-v3 .shvya-page-hero {
+        margin-bottom: 18px;
+        padding-left: 4px;
+        padding-right: 4px;
+    }
+
+    html.shvya-apple-workspace-v3 .shvya-page-hero h1 {
+        font-size: 29px;
+    }
+
+    html.shvya-apple-workspace-v3 .shvya-page-hero p {
+        font-size: 13px;
+    }
+
+    html.shvya-apple-workspace-v3 #app-sidebar + div > header {
+        margin: 8px 8px 0 !important;
+        border-radius: 17px !important;
+    }
+
+    html.shvya-page-insights main > div[class*="rounded-xl"] {
+        padding: 18px !important;
+        border-radius: 20px !important;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    html.shvya-apple-workspace-v3 *,
+    html.shvya-apple-workspace-v3 *::before,
+    html.shvya-apple-workspace-v3 *::after {
+        animation-duration: .01ms !important;
+        animation-iteration-count: 1 !important;
+        scroll-behavior: auto !important;
+        transition-duration: .01ms !important;
+    }
+}

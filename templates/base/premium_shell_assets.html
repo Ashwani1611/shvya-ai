@@ -13,6 +13,30 @@
     } catch (error) {
         // Storage restrictions must never block the dashboard shell.
     }
+
+    // Apply requested workspace page classes before first paint so the premium
+    // styling never flashes back to the legacy surface while JS is loading.
+    var path = window.location.pathname || '';
+    var pageClass = '';
+    if (path.indexOf('/dashboard/sales-desk/') === 0) pageClass = 'sales-desk';
+    else if (path.indexOf('/dashboard/insights/') === 0) pageClass = 'insights';
+    else if (path.indexOf('/dashboard/cadence/') === 0) pageClass = 'cadence';
+    else if (path.indexOf('/dashboard/playbooks/') === 0) pageClass = 'playbooks';
+    else if (path.indexOf('/dashboard/workflows/') === 0) pageClass = 'workflows';
+    else if (
+        path.indexOf('/dashboard/whatsapp/accounts/') === 0 ||
+        path.indexOf('/dashboard/whatsapp/templates/') === 0 ||
+        (
+            path.indexOf('/dashboard/whatsapp/connect/') === 0 &&
+            path.split('/').indexOf('hosted') !== -1
+        )
+    ) pageClass = 'whatsapp';
+    else if (path.indexOf('/dashboard/connect-hub/') === 0) pageClass = 'connect-hub';
+    else if (path.indexOf('/dashboard/teams/') === 0) pageClass = 'teams';
+
+    if (pageClass) {
+        root.classList.add('shvya-apple-workspace-v3', 'shvya-page-' + pageClass);
+    }
 })();
 </script>
 
@@ -26,22 +50,43 @@
 <link rel="stylesheet" href="{% static 'css/shvya_premium_shell_alignment_fix.css' %}">
 <link rel="stylesheet" href="{% static 'css/shvya_apple_crm_v2.css' %}">
 <link rel="stylesheet" href="{% static 'css/shvya_apple_crm_v2_detail.css' %}">
+<link rel="stylesheet" href="{% static 'css/shvya_apple_workspace_v3.css' %}">
 <meta name="shvya-logo-url" content="{% static 'images/shvya-sidebar-logo.svg' %}">
 <meta name="shvya-profile-url" content="{{ sidebar_profile_href|default:'' }}">
 <meta name="shvya-user-name" content="{{ request.crm_user.name|default:'Account' }}">
 {{ sidebar_nav_sections|json_script:"shvya-sidebar-sections" }}
 {{ sidebar_utility_items|json_script:"shvya-sidebar-utilities" }}
 
-{# Settings remains reachable from the profile page, but is intentionally not a sidebar row. #}
+{# Normalize premium-shell navigation data before the sidebar JS renders it. #}
 <script>
 (function () {
-    var node = document.getElementById('shvya-sidebar-utilities');
-    if (!node) return;
+    var utilityNode = document.getElementById('shvya-sidebar-utilities');
+    if (utilityNode) {
+        try {
+            var utilities = JSON.parse(utilityNode.textContent || '[]');
+            utilityNode.textContent = JSON.stringify(utilities.filter(function (item) {
+                return item && item.label !== 'Settings';
+            }));
+        } catch (error) {
+            // Leave the server payload untouched if it cannot be parsed.
+        }
+    }
+
+    var sectionsNode = document.getElementById('shvya-sidebar-sections');
+    if (!sectionsNode) return;
     try {
-        var utilities = JSON.parse(node.textContent || '[]');
-        node.textContent = JSON.stringify(utilities.filter(function (item) {
-            return item && item.label !== 'Settings';
-        }));
+        var sections = JSON.parse(sectionsNode.textContent || '[]');
+        sections.forEach(function (section) {
+            (section.items || []).forEach(function (item) {
+                (item.children || []).forEach(function (child) {
+                    if (child && child.label === 'AI Setup') {
+                        child.label = 'AI Brain';
+                        child.sidebar_label = 'AI Brain';
+                    }
+                });
+            });
+        });
+        sectionsNode.textContent = JSON.stringify(sections);
     } catch (error) {
         // Leave the server payload untouched if it cannot be parsed.
     }
@@ -51,3 +96,5 @@
 <script src="{% static 'js/shvya_premium_sidebar.js' %}" defer></script>
 <script src="{% static 'js/shvya_premium_sidebar_mobile.js' %}" defer></script>
 <script src="{% static 'js/shvya_apple_crm_v2.js' %}" defer></script>
+<script src="{% static 'js/shvya_apple_workspace_v3.js' %}" defer></script>
+<script src="{% static 'js/shvya_apple_workspace_v3_labels.js' %}" defer></script>
