@@ -16,7 +16,7 @@ def build_context() -> AIContext:
             "about": "Acme Academy provides cybersecurity training.",
             "bot_languages": "Hindi, English",
             "qualification_requirements": (
-                "Confirm course interest, budget, and joining timeline."
+                "Which course are you interested in?\nWhat is your budget?"
             ),
             "engagement_instructions": (
                 "Be concise and always end with one clear next step."
@@ -32,6 +32,11 @@ def build_context() -> AIContext:
                 "qualification_status": "in_progress",
                 "qualification_result": "",
                 "qualified_stage_id": "stage-qualified",
+                "current_requirement_id": "which_course_are_you_interested_in",
+                "last_asked_requirement_id": "which_course_are_you_interested_in",
+                "answered_requirement_ids": [],
+                "qualification_answers": {},
+                "processed_message_ids": [],
             },
         },
         pipeline={},
@@ -46,12 +51,10 @@ def build_context() -> AIContext:
 
 
 def normalize_whitespace(value: str) -> str:
-    """Make prompt assertions independent of intentional source wrapping."""
-
     return " ".join(value.split())
 
 
-def test_base_instructions_make_all_organization_information_authoritative():
+def test_base_instructions_make_backend_state_authoritative_for_qualification():
     instructions = normalize_whitespace(SHVYABaseInstructions.get())
 
     assert "MANDATORY ORGANIZATION INFORMATION ALIGNMENT" in instructions
@@ -63,26 +66,28 @@ def test_base_instructions_make_all_organization_information_authoritative():
     assert "Unknown, unanswered, assumed, or merely implied criteria" in instructions
     assert "Never request a transition to the Qualified stage" in instructions
     assert "mandatory on EVERY customer-facing turn" in instructions
+    assert "backend's current requirement" in instructions
+    assert "do NOT use" in instructions
 
 
-def test_engagement_input_carries_every_organization_information_value():
+def test_engagement_input_keeps_org_facts_but_hides_full_questionnaire():
     context = build_context()
     payload = json.loads(EngagementService()._build_input(context=context))
     organization = payload["organization"]
 
     assert organization["about"] == context.organization["about"]
     assert organization["bot_languages"] == context.organization["bot_languages"]
-    assert (
-        organization["qualification_requirements"]
-        == context.organization["qualification_requirements"]
-    )
-    assert (
-        organization["engagement_instructions"]
-        == context.organization["engagement_instructions"]
-    )
+    assert organization["engagement_instructions"] == context.organization["engagement_instructions"]
+    assert "qualification_requirements" not in organization
+
+    profile_qualification = organization["ai_profile"]["qualification"]
+    assert "requirements" not in profile_qualification
+    turn = payload["qualification_turn"]
+    assert turn["current_requirement"]["id"] == "which_course_are_you_interested_in"
+    assert "answered_requirement_ids" in turn
 
 
-def test_engagement_system_prompt_enforces_org_rules_before_task_instructions():
+def test_engagement_system_prompt_prioritizes_backend_state_before_org_sequence_text():
     context = build_context()
     instructions = EngagementService()._build_instructions(context=context)
     normalized = normalize_whitespace(instructions)
@@ -96,3 +101,4 @@ def test_engagement_system_prompt_enforces_org_rules_before_task_instructions():
     assert "MUST use a configured language" in normalized
     assert "conversation is primary evidence" in normalized
     assert "It does NOT make the lead authoritative" in normalized
+    assert "backend qualification state" in normalized.casefold()
