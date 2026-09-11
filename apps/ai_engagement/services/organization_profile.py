@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import re
 from copy import deepcopy
 from typing import Any
@@ -8,8 +10,16 @@ from django.core.cache import cache
 from django.utils.text import slugify
 
 
-PROFILE_VERSION = 1
+PROFILE_VERSION = 2
 PROFILE_CACHE_SECONDS = 300
+
+_OPTION_LINE_RE = re.compile(
+    r"^\s*(?:[-*•]\s*)?(?P<key>[A-Za-z]|\d{1,2})\s*[\)\].:\-]\s+(?P<value>.+?)\s*$"
+)
+_INLINE_OPTION_RE = re.compile(
+    r"(?<!\w)(?P<key>[A-Za-z]|\d{1,2})\s*[\)\].:\-]\s+"
+)
+_EXPLICIT_ID_RE = re.compile(r"^\s*\[id\s*:\s*(?P<id>[A-Za-z0-9_-]+)\]\s*", re.IGNORECASE)
 
 
 def _clean_requirement_line(value: str) -> str:
@@ -36,25 +46,101 @@ def _split_compact_list(text: str) -> list[str] | None:
     return None
 
 
-def _split_requirement_text(raw: str) -> list[str]:
+def _normalize_option_key(value: str) -> str:
+    text = str(value or "").strip()
+    return text.upper() if text.isalpha() else text
+
+
+def _looks_like_question(value: str) -> bool:
+    text = _clean_requirement_line(value)
+    return bool(text) and (
+        text.endswith("?")
+        or bool(re.match(r"^(?:what|which|where|who|how|is|are|do|does|did|have|has|can|could|would|will|select|choose|share|tell)\b", text, re.IGNORECASE))
+    )
+
+
+def _extract_inline_options(value: str) -> tuple[str, list[dict[str, str]]] | None:
+    text = str(value or "").strip()
+    matches = list(_INLINE_OPTION_RE.finditer(text))
+    if len(matches) < 2:
+        return None
+    prefix = text[: matches[0].start()].strip(" :-")
+    options: list[dict[str, str]] = []
+    for index, match in enumerate(matches):
+        start = match.end()
+        end = matches[index + 1].start() if index + 1 < len(matches) else len(text)
+        option_value = text[start:end].strip(" ,;|/")
+        if option_value:
+            options.append({
+                "key": _normalize_option_key(match.group("key")),
+                "value": re.sub(r"\s+", " ", option_value).strip(),
+            })
+    if len(options) < 2:
+        return None
+    return prefix, options
+
+
+def _append_unique_option(block: dict[str, Any], key: str, value: str) -> None:
+    normalized_key = _normalize_option_key(key)
+    normalized_value = re.sub(r"\s+", " ", str(value or "")).strip()
+    if not normalized_value:
+        return
+    markers = {
+        (_normalize_option_key(item.get("key", "")), str(item.get("value", "")).casefold())
+        for item in block["options"]
+    }
+    marker = (normalized_key, normalized_value.casefold())
+    if marker not in markers:
+        block["options"].append({"key": normalized_key, "value": normalized_value})
+
+
+def _requirement_blocks(raw: str) -> list[dict[str, Any]]:
     text = str(raw or "").strip()
     if not text:
         return []
 
-    parts = re.split(r"[\n;]+", text)
-    if len(parts) == 1 and text.count("?") > 1:
-        parts = re.split(r"(?<=\?)\s+", text)
-    elif len(parts) == 1 and "?" not in text:
+    compact = None
+    if "\n" not in text and ";" not in text and "?" not in text:
         compact = _split_compact_list(text)
-        if compact:
-            parts = compact
+    if compact:
+        return [{"text": item, "options": []} for item in compact]
 
-    cleaned: list[str] = []
-    for part in parts:
-        item = _clean_requirement_line(part)
-        if item:
-            cleaned.append(item)
-    return cleaned
+    blocks: list[dict[str, Any]] = []
+    current: dict[str, Any] | None = None
+    for raw_part in re.split(r"[\n;]+", text):
+        original = str(raw_part or "").strip()
+        if not original:
+            continue
+
+        inline = _extract_inline_options(original)
+        if inline is not None:
+            prefix, options = inline
+            if prefix:
+                current = {"text": _clean_requirement_line(prefix), "options": []}
+                for option in options:
+                    _append_unique_option(current, option["key"], option["value"])
+                blocks.append(current)
+            elif current is not None:
+                for option in options:
+                    _append_unique_option(current, option["key"], option["value"])
+            continue
+
+        option_match = _OPTION_LINE_RE.match(original)
+        if option_match is not None and current is not None:
+            option_value = re.sub(r"\s+", " ", option_match.group("value")).strip()
+            if not option_value.endswith("?") and (current["options"] or _looks_like_question(current["text"])):
+                _append_unique_option(current, option_match.group("key"), option_value)
+                continue
+
+        current = {"text": _clean_requirement_line(original), "options": []}
+        if current["text"]:
+            blocks.append(current)
+    return blocks
+
+
+def _split_requirement_text(raw: str) -> list[str]:
+    """Legacy helper retained for callers/tests; option-aware compilation uses blocks."""
+    return [block["text"] for block in _requirement_blocks(raw) if block.get("text")]
 
 
 def _qualification_mode(raw: str) -> str:
@@ -91,6 +177,7 @@ def _is_policy_line(value: str) -> bool:
 
 
 def _stable_requirement_id(text: str, used: set[str]) -> str:
+    """Legacy wording-based id retained as a compatibility alias."""
     base = slugify(text)[:48].replace("-", "_") or "requirement"
     candidate = base
     suffix = 2
@@ -101,36 +188,105 @@ def _stable_requirement_id(text: str, used: set[str]) -> str:
     return candidate
 
 
+def _explicit_requirement_id(text: str) -> tuple[str | None, str]:
+    match = _EXPLICIT_ID_RE.match(text)
+    if not match:
+        return None, text
+    explicit = slugify(match.group("id")).replace("-", "_")[:64] or None
+    return explicit, text[match.end():].strip()
+
+
+def _flow_version(mode: str, requirements: list[dict[str, Any]]) -> str:
+    payload = {
+        "mode": mode,
+        "requirements": [
+            {
+                "stable_id": item["stable_id"],
+                "text": item["question"],
+                "required": item["required"],
+                "options": item.get("options", []),
+            }
+            for item in requirements
+        ],
+    }
+    raw = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
+
+
 def _question_for_requirement(text: str) -> tuple[str, bool]:
     cleaned = text.strip()
-    if cleaned.endswith("?"):
-        return cleaned, True
-    return cleaned, False
+    return cleaned, bool(cleaned)
 
 
 def compile_qualification_requirements(raw: str) -> dict[str, Any]:
+    """Compile free-text AI Setup into a deterministic, versioned flow.
+
+    `id` remains the legacy authored-text slug for API/test compatibility.
+    `stable_id` is the persisted identity and is independent of wording. Existing
+    organizations may optionally author `[id: budget]` before a requirement; when
+    omitted, stable ids are positional (`qualification_1`, ...). In-progress leads
+    additionally pin a flow snapshot in qualification_state so wording/config edits
+    cannot silently restart a live questionnaire.
+    """
     mode = _qualification_mode(raw)
-    used: set[str] = set()
+    used_legacy: set[str] = set()
+    used_stable: set[str] = set()
     requirements: list[dict[str, Any]] = []
 
-    for item in _split_requirement_text(raw):
-        if _is_policy_line(item):
+    for block in _requirement_blocks(raw):
+        authored = re.sub(r"\s+", " ", str(block.get("text") or "")).strip()
+        if not authored or _is_policy_line(authored):
             continue
-        question, can_direct_ask = _question_for_requirement(item)
-        required = "optional" not in item.casefold()
-        requirements.append(
+
+        explicit_id, text = _explicit_requirement_id(authored)
+        if not text:
+            continue
+        legacy_id = _stable_requirement_id(text, used_legacy)
+        stable_base = explicit_id or f"qualification_{len(requirements) + 1}"
+        stable_id = stable_base
+        suffix = 2
+        while stable_id in used_stable:
+            stable_id = f"{stable_base}_{suffix}"
+            suffix += 1
+        used_stable.add(stable_id)
+
+        options = [
             {
-                "id": _stable_requirement_id(item, used),
-                "label": item.rstrip("?. "),
-                "question": question,
-                "required": required,
-                "priority": len(requirements) + 1,
-                "can_direct_ask": can_direct_ask,
+                "key": _normalize_option_key(item.get("key", "")),
+                "value": re.sub(r"\s+", " ", str(item.get("value") or "")).strip(),
             }
-        )
+            for item in block.get("options") or []
+            if str(item.get("value") or "").strip()
+        ]
+        question, can_direct_ask = _question_for_requirement(text)
+        if options:
+            question = f"{question}\n" + "\n".join(
+                f"{item['key']}. {item['value']}" for item in options
+            )
+
+        required = "optional" not in text.casefold()
+        if mode == "all_required":
+            required = True
+
+        requirements.append({
+            "id": legacy_id,
+            "stable_id": stable_id,
+            "legacy_ids": [legacy_id],
+            "label": text.rstrip("?. "),
+            "question": question,
+            "required": required,
+            "priority": len(requirements) + 1,
+            "can_direct_ask": can_direct_ask or bool(options),
+            "options": options,
+        })
+
+    version = _flow_version(mode, requirements) if requirements else ""
+    for requirement in requirements:
+        requirement["flow_version"] = version
 
     return {
         "mode": mode,
+        "flow_version": version,
         "requirements": requirements,
         "raw": str(raw or "").strip(),
     }
@@ -146,13 +302,19 @@ def _empty_profile(organization_name: str) -> dict[str, Any]:
         "version": PROFILE_VERSION,
         "identity": {"name": organization_name, "about": ""},
         "communication": {"languages": [], "custom_instructions": ""},
-        "qualification": {"mode": "configured", "requirements": [], "raw": ""},
+        "qualification": {
+            "mode": "configured",
+            "flow_version": "",
+            "requirements": [],
+            "raw": "",
+        },
         "knowledge_policy": {
             "source": "rag_only",
             "unknown_fact": "human_confirmation",
         },
         "instruction_precedence": [
             "platform_rules",
+            "backend_qualification_state",
             "organization_policy",
             "pipeline_stage_rules",
             "current_crm_state",
@@ -182,16 +344,12 @@ def _profile_from_values(
             "languages": _languages(bot_languages),
             "custom_instructions": str(engagement_instructions or "").strip(),
         },
-        "qualification": compile_qualification_requirements(
-            qualification_requirements
-        ),
+        "qualification": compile_qualification_requirements(qualification_requirements),
         "knowledge_policy": {
             "source": "rag_only",
             "unknown_fact": "human_confirmation",
         },
-        "instruction_precedence": _empty_profile(organization_name)[
-            "instruction_precedence"
-        ],
+        "instruction_precedence": _empty_profile(organization_name)["instruction_precedence"],
     }
 
 
