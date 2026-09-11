@@ -22,6 +22,16 @@ class AiEngagementConfig(AppConfig):
 
         install_fixed_prompt_overrides()
 
+        # Compile machine-evaluable conditional qualification rules and install
+        # eligibility/NOT_APPLICABLE, conversation-mode, state-recovery and
+        # atomic/idempotent state guards before graph/policy modules bind their
+        # qualification helpers.
+        from apps.ai_engagement.services.conditional_qualification_runtime import (
+            install_conditional_qualification_runtime,
+        )
+
+        install_conditional_qualification_runtime()
+
         # Keep AI Setup authoring flexible while compiling it into deterministic
         # runtime behavior: option-aware qualification answers, majority-mode
         # evaluation, described-stage transitions, anti-repeat validation, and
