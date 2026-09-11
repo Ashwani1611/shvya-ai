@@ -21,7 +21,7 @@ def test_success_toasts_are_allowlisted_to_major_changes():
 
 def test_ai_sandbox_requests_never_show_global_toasts():
     assert 'function isAiSandboxUrl(input)' in TOAST_ASSET
-    assert '/\\/playground(?:\\/|$)/' in TOAST_ASSET
+    assert r'/\/playground(?:\/|$)/' in TOAST_ASSET
     assert "if (isAiSandboxUrl(options.sourceUrl || options.url || '')) return null;" in TOAST_ASSET
 
 
