@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from types import SimpleNamespace
 from typing import Any
 
+from django.core.cache import cache
+
 from apps.ai_engagement.services.ai_provider import AIProviderError, OpenAIProvider
 from apps.ai_engagement.services.context import AIContext
 from apps.ai_engagement.services.embeddings import EmbeddingError, EmbeddingService
@@ -48,6 +50,7 @@ class PlaygroundService:
     MAX_HISTORY_MESSAGES = 40
     MAX_MESSAGE_LENGTH = 4000
     MAX_KNOWLEDGE = 5
+    SESSION_TTL_SECONDS = 24 * 60 * 60
 
     def __init__(
         self,
@@ -80,7 +83,16 @@ class PlaygroundService:
             raise PlaygroundError("session_id is required.")
 
         message = self._normalize_message(message)
-        conversation = self._normalize_history(history=history, current_message=message)
+        stored_history = self._load_history(
+            organization=organization,
+            session_id=session_id,
+        )
+        source_history = stored_history if stored_history is not None else self._normalize_role_history(history)
+        conversation = self._normalize_history(
+            history=source_history,
+            current_message=message,
+            session_id=session_id,
+        )
         org_info = self.org_info_service.get_or_create(organization=organization)
         knowledge = self._retrieve_knowledge(organization=organization, query=message)
 
@@ -136,30 +148,115 @@ class PlaygroundService:
             )
             try:
                 decision = self.engagement_service._normalize_result(result=result)
-                self.engagement_service._validate_engagement_policy(decision=decision, context=context)
+                self.engagement_service._validate_engagement_policy(
+                    decision=decision,
+                    context=context,
+                )
             except EngagementError as exc:
                 decision = self.engagement_service._repair_result_once(
-                    provider=provider, organization=organization,
+                    provider=provider,
+                    organization=organization,
                     lead=SimpleNamespace(id=f"playground:{session_id}"),
-                    result=result, original_error=exc,
-                    instructions=instructions, input_text=input_text,
-                    metadata={"organization_id": str(organization.id),
-                              "session_id": session_id, "task": "playground"},
+                    result=result,
+                    original_error=exc,
+                    instructions=instructions,
+                    input_text=input_text,
+                    metadata={
+                        "organization_id": str(organization.id),
+                        "session_id": session_id,
+                        "task": "playground",
+                    },
                 )
-                self.engagement_service._validate_engagement_policy(decision=decision, context=context)
+                self.engagement_service._validate_engagement_policy(
+                    decision=decision,
+                    context=context,
+                )
         except AIProviderError as exc:
             raise PlaygroundError("AI Playground generation failed.") from exc
         except EngagementError as exc:
             raise PlaygroundError(str(exc)) from exc
 
+        response_text = decision.message if decision.should_engage else ""
+        updated_history = list(source_history)
+        updated_history.extend(
+            [
+                {"role": "user", "content": message},
+                {"role": "assistant", "content": response_text},
+            ]
+        )
+        self._save_history(
+            organization=organization,
+            session_id=session_id,
+            history=updated_history,
+        )
+
         return PlaygroundResult(
             session_id=session_id,
             message=message,
-            response=decision.message if decision.should_engage else "",
+            response=response_text,
             should_engage=decision.should_engage,
             knowledge=knowledge,
             model=decision.model,
         )
+
+    def reset(self, *, organization, session_id: str) -> None:
+        if organization is None:
+            raise PlaygroundError("Organization is required.")
+        session_id = str(session_id or "").strip()
+        if not session_id:
+            raise PlaygroundError("session_id is required.")
+        cache.delete(self._session_cache_key(organization=organization, session_id=session_id))
+
+    def _session_cache_key(self, *, organization, session_id: str) -> str:
+        return f"shvya:ai:playground-session:{organization.id}:{session_id}"
+
+    def _load_history(self, *, organization, session_id: str) -> list[dict[str, str]] | None:
+        payload = cache.get(
+            self._session_cache_key(
+                organization=organization,
+                session_id=session_id,
+            )
+        )
+        if not isinstance(payload, dict) or "history" not in payload:
+            return None
+        return self._normalize_role_history(payload.get("history"))
+
+    def _save_history(
+        self,
+        *,
+        organization,
+        session_id: str,
+        history: list[dict[str, Any]],
+    ) -> None:
+        normalized = self._normalize_role_history(history)[-self.MAX_HISTORY_MESSAGES :]
+        cache.set(
+            self._session_cache_key(
+                organization=organization,
+                session_id=session_id,
+            ),
+            {"history": normalized},
+            timeout=self.SESSION_TTL_SECONDS,
+        )
+
+    def _normalize_role_history(
+        self,
+        history: list[dict[str, Any]] | None,
+    ) -> list[dict[str, str]]:
+        normalized: list[dict[str, str]] = []
+        for item in (history or [])[-self.MAX_HISTORY_MESSAGES :]:
+            if not isinstance(item, dict):
+                continue
+            role = str(item.get("role") or "").strip().lower()
+            body = str(item.get("content") or item.get("message") or "").strip()
+            if role not in {"user", "assistant"} or not body:
+                continue
+            normalized.append(
+                {
+                    "role": role,
+                    "content": body[: self.MAX_MESSAGE_LENGTH],
+                }
+            )
+        return normalized
 
     def _normalize_message(self, message: str) -> str:
         message = (message or "").strip()
@@ -172,29 +269,27 @@ class PlaygroundService:
         *,
         history: list[dict[str, Any]] | None,
         current_message: str,
+        session_id: str,
     ) -> list[dict[str, Any]]:
         normalized: list[dict[str, Any]] = []
-        for item in (history or [])[-self.MAX_HISTORY_MESSAGES :]:
-            if not isinstance(item, dict):
-                continue
-            role = str(item.get("role") or "").strip().lower()
-            body = str(item.get("content") or item.get("message") or "").strip()
-            if role not in {"user", "assistant"} or not body:
-                continue
+        role_history = self._normalize_role_history(history)
+        for index, item in enumerate(role_history):
+            role = item["role"]
+            body = item["content"]
             normalized.append(
                 {
-                    "id": str(item.get("id") or ""),
+                    "id": f"playground:{session_id}:{index + 1}",
                     "direction": "inbound" if role == "user" else "outbound",
                     "speaker": "lead" if role == "user" else "shvya",
-                    "body": body[: self.MAX_MESSAGE_LENGTH],
+                    "body": body,
                     "status": "playground",
-                    "created_at": item.get("created_at"),
+                    "created_at": None,
                 }
             )
 
         normalized.append(
             {
-                "id": "",
+                "id": f"playground:{session_id}:{len(normalized) + 1}",
                 "direction": "inbound",
                 "speaker": "lead",
                 "body": current_message,

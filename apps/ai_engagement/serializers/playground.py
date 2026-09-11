@@ -34,6 +34,15 @@ class PlaygroundRequestSerializer(
         return value
 
 
+class PlaygroundResetSerializer(
+    serializers.Serializer
+):
+    session_id = serializers.CharField(
+        max_length=100,
+        trim_whitespace=True,
+    )
+
+
 class PlaygroundResponseSerializer(
     serializers.Serializer
 ):

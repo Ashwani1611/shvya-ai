@@ -14,6 +14,7 @@ from rest_framework_simplejwt.authentication import (
 
 from apps.ai_engagement.serializers.playground import (
     PlaygroundRequestSerializer,
+    PlaygroundResetSerializer,
     PlaygroundResponseSerializer,
 )
 from apps.ai_engagement.services.playground import (
@@ -54,24 +55,7 @@ class CRMPlaygroundSessionAuthentication(
 
 
 class PlaygroundAPIView(APIView):
-    """
-    Organization-scoped Chat Playground.
-
-    The organization always comes from the authenticated user.
-
-    The client cannot select another organization.
-
-    Authenticated CRM dashboard users (including organization admins and
-    agents) may use the playground through their dedicated CRM session.
-    JWT authentication remains supported for API clients.
-
-    This endpoint:
-        - does not resolve a Lead
-        - does not mutate CRM
-        - does not create LeadNotes
-        - does not send WhatsApp
-        - does not call Meta
-    """
+    """Organization-scoped Chat Playground with an explicit reset contract."""
 
     authentication_classes = [
         CRMPlaygroundSessionAuthentication,
@@ -82,19 +66,11 @@ class PlaygroundAPIView(APIView):
         IsAuthenticated,
     ]
 
-    def post(
-        self,
-        request,
-        *args,
-        **kwargs,
-    ):
-        user = request.user
+    def _organization(self, request):
+        return getattr(request.user, "organization", None)
 
-        organization = getattr(
-            user,
-            "organization",
-            None,
-        )
+    def post(self, request, *args, **kwargs):
+        organization = self._organization(request)
 
         if organization is None:
             return Response(
@@ -107,52 +83,60 @@ class PlaygroundAPIView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        serializer = PlaygroundRequestSerializer(
-            data=request.data,
-        )
-
-        serializer.is_valid(
-            raise_exception=True
-        )
+        serializer = PlaygroundRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
 
         try:
-            result = (
-                PlaygroundService().run(
-                    organization=organization,
-                    session_id=(
-                        serializer.validated_data[
-                            "session_id"
-                        ]
-                    ),
-                    message=(
-                        serializer.validated_data[
-                            "message"
-                        ]
-                    ),
-                    history=(
-                        serializer.validated_data.get(
-                            "history",
-                            [],
-                        )
-                    ),
-                )
+            result = PlaygroundService().run(
+                organization=organization,
+                session_id=serializer.validated_data["session_id"],
+                message=serializer.validated_data["message"],
+                history=serializer.validated_data.get("history", []),
             )
-
         except PlaygroundError as exc:
             return Response(
+                {"error": str(exc)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        response_serializer = PlaygroundResponseSerializer(result.as_dict())
+        return Response(
+            response_serializer.data,
+            status=status.HTTP_200_OK,
+        )
+
+    def delete(self, request, *args, **kwargs):
+        organization = self._organization(request)
+        if organization is None:
+            return Response(
                 {
-                    "error": str(exc),
+                    "error": (
+                        "Authenticated user is not associated "
+                        "with an organization."
+                    )
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        response_serializer = (
-            PlaygroundResponseSerializer(
-                result.as_dict()
+        serializer = PlaygroundResetSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        session_id = serializer.validated_data["session_id"]
+
+        try:
+            PlaygroundService().reset(
+                organization=organization,
+                session_id=session_id,
             )
-        )
+        except PlaygroundError as exc:
+            return Response(
+                {"error": str(exc)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         return Response(
-            response_serializer.data,
+            {
+                "session_id": session_id,
+                "reset": True,
+            },
             status=status.HTTP_200_OK,
         )
