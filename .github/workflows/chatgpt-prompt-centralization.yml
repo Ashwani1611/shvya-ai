@@ -1,0 +1,146 @@
+name: Apply prompt centralization
+
+on:
+  push:
+    branches:
+      - chatgpt/prompt-centralization
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: chatgpt/prompt-centralization
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Centralize prompt definitions
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(text: str, old: str, new: str, *, label: str) -> str:
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{label}: expected exactly one match, found {count}")
+              return text.replace(old, new, 1)
+
+          # 1) Make the scheduled bump-up task consume the canonical prompt module.
+          path = Path("apps/ai_engagement/tasks.py")
+          text = path.read_text()
+          text = replace_once(
+              text,
+              "from django.utils import timezone\n\n",
+              "from django.utils import timezone\n\nfrom apps.ai_engagement.prompts import BUMP_UP_MESSAGE_INSTRUCTIONS\n",
+              label="tasks import",
+          )
+          old_bump = '''            instructions = service._build_instructions(context=context) + """\n\nThis is a scheduled bump-up. The lead has not replied for at least one hour.\nWrite one brief, natural reminder based on the previous conversation. Do not\nrepeat the last message verbatim, invent urgency, or mention automation. Set\nshould_engage=true unless the conversation indicates opt-out or a reminder\nwould be inappropriate. Do not request CRM actions or a file attachment.\n"""\n'''
+          new_bump = '''            instructions = (\n                service._build_instructions(context=context)\n                + "\\n\\n"\n                + BUMP_UP_MESSAGE_INSTRUCTIONS\n            )\n'''
+          text = replace_once(text, old_bump, new_bump, label="tasks bump-up prompt")
+          path.write_text(text)
+
+          # 2) Keep the canonical bump-up text identical to the previously active task text.
+          Path("apps/ai_engagement/prompts/bump_up.py").write_text(
+              '''"""Fixed scheduled re-engagement message instructions."""\n\nBUMP_UP_MESSAGE_INSTRUCTIONS = r"""This is a scheduled bump-up. The lead has not replied for at least one hour.\nWrite one brief, natural reminder based on the previous conversation. Do not\nrepeat the last message verbatim, invent urgency, or mention automation. Set\nshould_engage=true unless the conversation indicates opt-out or a reminder\nwould be inappropriate. Do not request CRM actions or a file attachment.\n"""\n'''
+          )
+
+          # 3) Internal summary service imports its canonical prompt directly.
+          path = Path("apps/ai_engagement/services/internal_summary.py")
+          text = path.read_text()
+          text = replace_once(
+              text,
+              "from django.db.models import Q\n",
+              "from django.db.models import Q\n\nfrom apps.ai_engagement.prompts import INTERNAL_CONVERSATION_SUMMARY_INSTRUCTIONS\n",
+              label="internal summary prompt import",
+          )
+          text = replace_once(
+              text,
+              "    DEFAULT_MESSAGE_LIMIT = 100\n",
+              "    DEFAULT_MESSAGE_LIMIT = 24\n",
+              label="internal summary default limit",
+          )
+          start = text.index('    SUMMARY_INSTRUCTIONS = """')
+          end_marker = "    # ============================================================\n    # PUBLIC API"
+          end = text.index(end_marker, start)
+          text = (
+              text[:start]
+              + "    SUMMARY_INSTRUCTIONS = INTERNAL_CONVERSATION_SUMMARY_INSTRUCTIONS\n\n"
+              + text[end:]
+          )
+          path.write_text(text)
+
+          # 4) Qualification service imports its canonical prompt directly.
+          path = Path("apps/ai_engagement/services/qualification.py")
+          text = path.read_text()
+          text = replace_once(
+              text,
+              "import re\n\n",
+              "import re\n\nfrom apps.ai_engagement.prompts import QUALIFICATION_SUMMARY_INSTRUCTIONS\n",
+              label="qualification prompt import",
+          )
+          start = text.index('    QUALIFICATION_INSTRUCTIONS = """')
+          end_marker = "    # ========================================================\n    # AI CONTEXT"
+          end = text.index(end_marker, start)
+          text = (
+              text[:start]
+              + "    QUALIFICATION_INSTRUCTIONS = QUALIFICATION_SUMMARY_INSTRUCTIONS\n\n"
+              + text[end:]
+          )
+          path.write_text(text)
+
+          # 5) Keep only runtime compatibility wrappers in prompt_overrides.py.
+          path = Path("apps/ai_engagement/services/prompt_overrides.py")
+          text = path.read_text()
+          text = replace_once(
+              text,
+              '''    from apps.ai_engagement.prompts import (\n        INTERNAL_CONVERSATION_SUMMARY_INSTRUCTIONS,\n        QUALIFICATION_SUMMARY_INSTRUCTIONS,\n    )\n''',
+              "",
+              label="prompt override prompt imports",
+          )
+          text = replace_once(
+              text,
+              '''    InternalSummaryService.SUMMARY_INSTRUCTIONS = (\n        INTERNAL_CONVERSATION_SUMMARY_INSTRUCTIONS\n    )\n    InternalSummaryService.DEFAULT_MESSAGE_LIMIT = 24\n    QualificationService.QUALIFICATION_INSTRUCTIONS = (\n        QUALIFICATION_SUMMARY_INSTRUCTIONS\n    )\n\n''',
+              "",
+              label="prompt override prompt assignments",
+          )
+          text = text.replace(
+              '    """Attach version-controlled prompt behavior to existing services.\n\n',
+              '    """Attach runtime compatibility wrappers to existing services.\n\n',
+              1,
+          )
+          path.write_text(text)
+
+          # 6) Regression tests: service prompt aliases and bump-up source are centralized.
+          Path("apps/ai_engagement/tests/test_prompt_centralization.py").write_text(
+              '''from pathlib import Path\n\nfrom apps.ai_engagement.prompts import (\n    BUMP_UP_MESSAGE_INSTRUCTIONS,\n    INTERNAL_CONVERSATION_SUMMARY_INSTRUCTIONS,\n    QUALIFICATION_SUMMARY_INSTRUCTIONS,\n)\nfrom apps.ai_engagement.services.internal_summary import InternalSummaryService\nfrom apps.ai_engagement.services.qualification import QualificationService\n\n\ndef test_internal_summary_service_uses_canonical_prompt():\n    assert (\n        InternalSummaryService.SUMMARY_INSTRUCTIONS\n        == INTERNAL_CONVERSATION_SUMMARY_INSTRUCTIONS\n    )\n    assert InternalSummaryService.DEFAULT_MESSAGE_LIMIT == 24\n\n\ndef test_qualification_service_uses_canonical_prompt():\n    assert (\n        QualificationService.QUALIFICATION_INSTRUCTIONS\n        == QUALIFICATION_SUMMARY_INSTRUCTIONS\n    )\n\n\ndef test_bump_up_task_uses_canonical_prompt_module():\n    source = (Path(__file__).resolve().parents[1] / "tasks.py").read_text()\n    dispatch_source = source.split(\n        '@shared_task(name="ai.dispatch_bump_ups")', 1\n    )[1].split(\n        "# ============================================================\\n# INTERNAL CONVERSATION SUMMARY",\n        1,\n    )[0]\n\n    assert "BUMP_UP_MESSAGE_INSTRUCTIONS" in dispatch_source\n    assert (\n        "This is a scheduled bump-up. The lead has not replied for at least one hour."\n        not in dispatch_source\n    )\n    assert BUMP_UP_MESSAGE_INSTRUCTIONS.startswith(\n        "This is a scheduled bump-up. The lead has not replied for at least one hour."\n    )\n'''
+          )
+          PY
+
+      - name: Compile changed AI modules
+        run: python -m compileall -q apps/ai_engagement
+
+      - name: Commit centralized prompts and remove temporary workflow
+        shell: bash
+        run: |
+          rm .github/workflows/chatgpt-prompt-centralization.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/ai_engagement/tasks.py \
+                  apps/ai_engagement/prompts/bump_up.py \
+                  apps/ai_engagement/services/internal_summary.py \
+                  apps/ai_engagement/services/qualification.py \
+                  apps/ai_engagement/services/prompt_overrides.py \
+                  apps/ai_engagement/tests/test_prompt_centralization.py \
+                  .github/workflows/chatgpt-prompt-centralization.yml
+          git commit -m "Centralize AI prompt definitions"
+          git push origin HEAD:chatgpt/prompt-centralization
