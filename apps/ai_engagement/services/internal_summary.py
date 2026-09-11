@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from django.db import transaction
 from django.db.models import Q
+
+from apps.ai_engagement.prompts import INTERNAL_CONVERSATION_SUMMARY_INSTRUCTIONS
 from apps.ai_engagement.services.summary_limits import compact
 
 from apps.ai_engagement.models import InternalConversationSummary
@@ -51,38 +53,11 @@ class InternalSummaryService:
     and persistence.
     """
 
-    DEFAULT_MESSAGE_LIMIT = 100
+    DEFAULT_MESSAGE_LIMIT = 24
 
     MAX_MESSAGE_LIMIT = 500
 
-    SUMMARY_INSTRUCTIONS = """
-You are SHVYA AI's internal conversation summarizer.
-
-Your task is to summarize the actual conversation between SHVYA
-and the lead for internal CRM users.
-
-The summary must be factual and based only on the supplied context.
-
-Include, when supported by the conversation:
-- the lead's intent or interests
-- important questions asked
-- requirements or preferences
-- objections, concerns, or blockers
-- commitments already made
-- agreed or suggested next steps
-- unresolved questions or missing information
-
-Do not:
-- invent facts
-- infer unsupported personal information
-- make a qualification decision
-- assign a qualification status
-- modify CRM data
-- recommend an action unless it is clearly grounded in the conversation
-- write a customer-facing reply
-
-Write a concise internal CRM summary in clear prose.
-"""
+    SUMMARY_INSTRUCTIONS = INTERNAL_CONVERSATION_SUMMARY_INSTRUCTIONS
 
     # ============================================================
     # PUBLIC API

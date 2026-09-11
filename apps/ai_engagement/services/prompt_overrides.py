@@ -9,7 +9,7 @@ _INSTALLED = False
 
 
 def install_fixed_prompt_overrides() -> None:
-    """Attach version-controlled prompt behavior to existing services.
+    """Attach runtime compatibility wrappers to existing services.
 
     Existing public service contracts remain stable while internal prompts and
     compact runtime payloads evolve. Organization values stay available at the
@@ -20,21 +20,9 @@ def install_fixed_prompt_overrides() -> None:
     if _INSTALLED:
         return
 
-    from apps.ai_engagement.prompts import (
-        INTERNAL_CONVERSATION_SUMMARY_INSTRUCTIONS,
-        QUALIFICATION_SUMMARY_INSTRUCTIONS,
-    )
     from apps.ai_engagement.services.engagement import EngagementService
     from apps.ai_engagement.services.internal_summary import InternalSummaryService
     from apps.ai_engagement.services.qualification import QualificationService
-
-    InternalSummaryService.SUMMARY_INSTRUCTIONS = (
-        INTERNAL_CONVERSATION_SUMMARY_INSTRUCTIONS
-    )
-    InternalSummaryService.DEFAULT_MESSAGE_LIMIT = 24
-    QualificationService.QUALIFICATION_INSTRUCTIONS = (
-        QUALIFICATION_SUMMARY_INSTRUCTIONS
-    )
 
     original_build_input = InternalSummaryService.build_provider_input
     original_generate = InternalSummaryService.generate_summary
