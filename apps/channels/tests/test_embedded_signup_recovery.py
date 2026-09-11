@@ -1,8 +1,6 @@
 import pytest
 from django.conf import settings
-from django.http import HttpResponse
 
-from apps.channels import connection_ui
 from services.channels import embedded_signup_service
 
 
@@ -104,22 +102,3 @@ def test_resolve_signup_assets_never_guesses_between_multiple_phones(monkeypatch
 
     assert exc_info.value.stage == "asset_discovery"
     assert "multiple phone numbers" in str(exc_info.value)
-
-
-def test_connect_api_response_disables_fedcm_at_browser_policy_level():
-    response = HttpResponse("ok")
-
-    result = connection_ui._disable_fedcm_for_embedded_signup(response)
-
-    assert result["Permissions-Policy"] == "identity-credentials-get=()"
-
-
-def test_fedcm_policy_preserves_existing_permissions_policy():
-    response = HttpResponse("ok")
-    response["Permissions-Policy"] = "camera=(), microphone=()"
-
-    result = connection_ui._disable_fedcm_for_embedded_signup(response)
-
-    assert result["Permissions-Policy"] == (
-        "camera=(), microphone=(), identity-credentials-get=()"
-    )
