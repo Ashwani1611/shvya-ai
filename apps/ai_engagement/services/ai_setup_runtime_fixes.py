@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import re
 from typing import Any
 
@@ -10,6 +11,11 @@ _FILE_KNOWLEDGE_TERMS = {
     "brochure", "catalog", "catalogue", "pdf", "file", "document", "deck",
     "presentation", "menu", "prospectus", "portfolio", "flyer", "leaflet",
     "datasheet", "sheet", "price", "pricing", "pricelist", "rates",
+}
+
+_INTERRUPT_TERMS = {
+    "booked a call", "book a call", "schedule a call", "call me", "call back",
+    "speak with", "talk to", "human", "agent", "support", "demo booked",
 }
 
 _ADDITIONAL_ENGAGEMENT_INSTRUCTIONS = r"""
@@ -88,7 +94,6 @@ def _enhanced_controlled_actions(original_builder):
             requirements=requirements,
         )
 
-        # Deterministic Qualified movement always wins over a model proposal.
         if any(item.get("type") == "pipeline_transition" for item in controlled):
             return controlled, result
 
@@ -149,6 +154,16 @@ def _normalize_question_for_repeat_check(value: str) -> str:
     return re.sub(r"[^a-z0-9]+", " ", first_line.casefold()).strip()
 
 
+def _message_contains_question(message: str, requirement: dict | None) -> bool:
+    if not requirement:
+        return False
+    needle = _normalize_question_for_repeat_check(
+        str(requirement.get("question") or requirement.get("label") or "")
+    )
+    haystack = re.sub(r"[^a-z0-9]+", " ", str(message or "").casefold()).strip()
+    return bool(needle and needle in haystack)
+
+
 def _enhanced_qualification_validator(original_validator, engagement_module):
     def validate(self, *, decision, context, requirements, qualification_state):
         original_validator(
@@ -192,40 +207,118 @@ def _enhanced_qualification_validator(original_validator, engagement_module):
                     "Qualification response must ask only the backend-selected next requirement."
                 )
 
-        last_id = str(qualification_state.get("last_asked_requirement_id") or "").strip()
         latest_id = self._latest_inbound_message_id(context=context)
+        latest_text = self._latest_inbound_text(context=context)
+        message = str(getattr(decision, "message", "") or "").strip()
+        last_id = str(qualification_state.get("last_asked_requirement_id") or "").strip()
         last_state = (projected.get("requirement_states") or {}).get(last_id, {})
         answered_this_turn = bool(
             last_id
             and last_state.get("status") == REQUIREMENT_ANSWERED
             and str(last_state.get("source_message_id") or "") == str(latest_id or "")
         )
-        if not answered_this_turn:
-            return
-
-        message = str(getattr(decision, "message", "") or "").strip()
-        last_requirement = next(
-            (item for item in requirements or [] if str(item.get("id") or "") == last_id),
-            None,
-        )
-        if last_requirement:
-            repeated = _normalize_question_for_repeat_check(
-                str(last_requirement.get("question") or last_requirement.get("label") or "")
+        if answered_this_turn:
+            last_requirement = next(
+                (item for item in requirements or [] if str(item.get("id") or "") == last_id),
+                None,
             )
-            normalized_message = re.sub(r"[^a-z0-9]+", " ", message.casefold()).strip()
-            if repeated and repeated in normalized_message:
+            if _message_contains_question(message, last_requirement):
                 raise engagement_module.EngagementError(
                     "Do not repeat a qualification question that the lead just answered."
                 )
 
+        active_id = str(qualification_state.get("current_requirement_id") or last_id or "").strip()
+        active_requirement = next(
+            (item for item in requirements or [] if str(item.get("id") or "") == active_id),
+            None,
+        )
+        update_ids = {
+            str(item.get("requirement_id") or "")
+            for item in (getattr(decision, "qualification_updates", []) or [])
+            if isinstance(item, dict)
+        }
+        interrupt = "?" in str(latest_text or "") or any(
+            term in _clean_spaces(latest_text).casefold() for term in _INTERRUPT_TERMS
+        )
+        if (
+            interrupt
+            and active_id
+            and active_id not in update_ids
+            and _message_contains_question(message, active_requirement)
+        ):
+            raise engagement_module.EngagementError(
+                "Answer the lead's interruption without repeating the still-pending qualification question in the same response."
+            )
+
         if projected.get("qualification_status") == "completed":
-            latest_text = self._latest_inbound_text(context=context)
             if "?" not in str(latest_text or "") and "?" in message:
                 raise engagement_module.EngagementError(
                     "The final qualification answer is complete. Send an acknowledgment instead of another question."
                 )
 
     return validate
+
+
+def _backend_authoritative_repair(engagement_module):
+    def repair(
+        self,
+        *,
+        provider,
+        organization,
+        lead,
+        result,
+        original_error,
+        instructions,
+        input_text,
+        metadata=None,
+    ):
+        repair_instructions = """
+Repair a malformed SHVYA engagement JSON result.
+Return ONLY one valid JSON object with exactly these keys:
+should_engage, silence_rule, message, file_document_id, crm_actions,
+qualification_updates, next_requirement_id, reason_code.
+Use the original_turn qualification_turn as the only qualification sequencing
+authority. Do NOT reconstruct or recompute the questionnaire from conversation,
+organization text, engagement instructions, or history. Do NOT move backward.
+If the current inbound was already processed by backend state, do not emit its
+qualification update again. Present only the backend-supplied current/following
+requirement allowed for this turn. If qualification is complete, acknowledge it
+without another qualification question. For an informational/call interruption
+that did not answer the active requirement, answer the interruption and leave
+next_requirement_id null rather than repeating the pending question.
+Drop unsupported evidence/actions. Never invent evidence, identifiers, business
+facts, stage ids, or file ids. Do not add explanations or chain-of-thought.
+""".strip()
+        repair_input = json.dumps(
+            {
+                "validation_error": str(original_error),
+                "malformed_output": result.text,
+                "original_turn": json.loads(input_text),
+            },
+            ensure_ascii=False,
+        )
+        try:
+            repaired = self._generate_provider_text(
+                provider=provider,
+                instructions=f"{instructions}\n\n{repair_instructions}",
+                input_text=repair_input,
+                metadata={
+                    **(metadata or {
+                        "organization_id": str(organization.id),
+                        "lead_id": str(lead.id),
+                        "task": "engagement",
+                    }),
+                    "phase": "schema_repair",
+                },
+                response_schema=engagement_module.ENGAGEMENT_RESPONSE_SCHEMA,
+            )
+        except engagement_module.AIProviderError as exc:
+            raise engagement_module.EngagementError(
+                "AI engagement schema repair failed."
+            ) from exc
+        return self._normalize_result(result=repaired)
+
+    return repair
 
 
 def install_ai_setup_runtime_fixes() -> None:
@@ -251,6 +344,7 @@ def install_ai_setup_runtime_fixes() -> None:
         original_validator,
         engagement_module,
     )
+    EngagementService._repair_result_once = _backend_authoritative_repair(engagement_module)
 
     if _ADDITIONAL_ENGAGEMENT_INSTRUCTIONS not in EngagementService.ENGAGEMENT_TASK_INSTRUCTIONS:
         EngagementService.ENGAGEMENT_TASK_INSTRUCTIONS = (
