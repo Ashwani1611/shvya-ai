@@ -1,0 +1,169 @@
+/* Mobile companion for the premium dashboard shell.
+   Loaded after the desktop shell so mobile behavior can deliberately
+   override a persisted compact-sidebar preference without mutating it. */
+
+.shvya-mobile-sidebar-trigger,
+.shvya-mobile-sidebar-backdrop {
+    display: none;
+}
+
+@media (max-width: 900px) {
+    .shvya-mobile-sidebar-trigger {
+        position: fixed;
+        top: 12px;
+        left: 12px;
+        z-index: 90;
+        width: 38px;
+        height: 38px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid rgba(15, 23, 42, 0.08);
+        border-radius: 12px;
+        background: rgba(255, 255, 255, 0.92);
+        color: #3f4651;
+        box-shadow: 0 5px 18px rgba(15, 23, 42, 0.08);
+        backdrop-filter: blur(18px);
+        -webkit-backdrop-filter: blur(18px);
+        cursor: pointer;
+        opacity: 1;
+        transform: translateZ(0);
+        transition:
+            opacity 140ms ease,
+            background-color 140ms ease,
+            color 140ms ease;
+    }
+
+    .shvya-mobile-sidebar-trigger .ti {
+        font-size: 20px;
+    }
+
+    .shvya-mobile-sidebar-trigger:hover,
+    .shvya-mobile-sidebar-trigger:focus-visible {
+        background: #fff;
+        color: #1769ff;
+        outline: none;
+    }
+
+    html.shvya-mobile-sidebar-open .shvya-mobile-sidebar-trigger {
+        opacity: 0;
+        pointer-events: none;
+    }
+
+    .shvya-mobile-sidebar-backdrop {
+        position: fixed;
+        inset: 0;
+        z-index: 70;
+        display: block;
+        border: 0;
+        padding: 0;
+        background: rgba(17, 24, 39, 0.24);
+        backdrop-filter: blur(5px);
+        -webkit-backdrop-filter: blur(5px);
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 180ms ease;
+    }
+
+    html.shvya-mobile-sidebar-open .shvya-mobile-sidebar-backdrop {
+        opacity: 1;
+        pointer-events: auto;
+    }
+
+    #app-sidebar + div > header {
+        min-height: 62px;
+        padding-left: 62px !important;
+    }
+
+    /* Some feature pages had their own one-off mobile nav control.
+       The global shell now owns this consistently. */
+    #st-mobile-nav {
+        display: none !important;
+    }
+
+    /* A desktop compact preference should never turn the mobile drawer
+       into a 72px icon rail. Preserve the preference for desktop, but
+       render a full-width drawer while the viewport is compact. */
+    html.shvya-sidebar-pref-collapsed #app-sidebar,
+    #app-sidebar.sidebar-collapsed {
+        width: min(17.5rem, calc(100vw - 24px)) !important;
+        flex-basis: auto !important;
+    }
+
+    #app-sidebar.sidebar-collapsed .shvya-sidebar-shell {
+        padding-left: 12px;
+        padding-right: 12px;
+    }
+
+    #app-sidebar.sidebar-collapsed .shvya-sidebar-brand {
+        justify-content: flex-start;
+        padding: 0 4px;
+    }
+
+    #app-sidebar.sidebar-collapsed .shvya-brand-mark {
+        display: block;
+    }
+
+    #app-sidebar.sidebar-collapsed .shvya-brand-name,
+    #app-sidebar.sidebar-collapsed .shvya-search-copy,
+    #app-sidebar.sidebar-collapsed .shvya-shortcut,
+    #app-sidebar.sidebar-collapsed .shvya-nav-copy,
+    #app-sidebar.sidebar-collapsed .shvya-nav-chevron,
+    #app-sidebar.sidebar-collapsed .shvya-profile-name,
+    #app-sidebar.sidebar-collapsed .shvya-profile-more {
+        opacity: 1;
+        pointer-events: auto;
+        transform: none;
+    }
+
+    #app-sidebar.sidebar-collapsed .shvya-section-title {
+        height: 22px;
+        padding: 0 11px;
+        opacity: 1;
+    }
+
+    #app-sidebar.sidebar-collapsed .shvya-section-title:empty {
+        height: 2px;
+        padding: 0;
+    }
+
+    #app-sidebar.sidebar-collapsed .shvya-nav-section + .shvya-nav-section {
+        margin-top: 14px;
+    }
+
+    #app-sidebar.sidebar-collapsed .shvya-search-trigger {
+        width: 100%;
+        margin-left: 0;
+        margin-right: 0;
+        justify-content: flex-start;
+        padding-left: 12px;
+        padding-right: 12px;
+    }
+
+    #app-sidebar.sidebar-collapsed .shvya-nav-row,
+    #app-sidebar.sidebar-collapsed .shvya-profile-card {
+        justify-content: flex-start;
+    }
+
+    #app-sidebar.sidebar-collapsed .shvya-nav-row {
+        padding-left: 11px;
+        padding-right: 11px;
+    }
+
+    #app-sidebar.sidebar-collapsed .shvya-profile-card {
+        padding-left: 8px;
+        padding-right: 8px;
+    }
+
+    #app-sidebar.sidebar-collapsed .shvya-nav-group.is-open > .shvya-nav-children-grid {
+        grid-template-rows: 1fr;
+        opacity: 1;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .shvya-mobile-sidebar-trigger,
+    .shvya-mobile-sidebar-backdrop {
+        transition-duration: 0.01ms !important;
+    }
+}
