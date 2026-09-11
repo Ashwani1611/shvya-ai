@@ -26,7 +26,10 @@
     else if (
         path.indexOf('/dashboard/whatsapp/accounts/') === 0 ||
         path.indexOf('/dashboard/whatsapp/templates/') === 0 ||
-        path.indexOf('/dashboard/whatsapp/connect/hosted/') === 0
+        (
+            path.indexOf('/dashboard/whatsapp/connect/') === 0 &&
+            path.split('/').indexOf('hosted') !== -1
+        )
     ) pageClass = 'whatsapp';
     else if (path.indexOf('/dashboard/connect-hub/') === 0) pageClass = 'connect-hub';
     else if (path.indexOf('/dashboard/teams/') === 0) pageClass = 'teams';
