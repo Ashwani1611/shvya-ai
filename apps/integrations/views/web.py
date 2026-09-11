@@ -90,6 +90,26 @@ CONNECT_HUB_GROUPS = [
         ],
     },
     {
+        "label": "Calls",
+        "icon": "ti-phone",
+        "items": [
+            {
+                "slug": "call-scheduler",
+                "name": "Call Scheduler",
+                "icon": "ti-calendar-event",
+                "url_name": "crm-call-scheduler",
+                "description": "Schedule calls from one place inside Connect Hub.",
+            },
+            {
+                "slug": "call-tracker",
+                "name": "Call Tracker",
+                "icon": "ti-phone-check",
+                "url_name": "crm-call-tracker",
+                "description": "Track call activity and outcomes from Connect Hub.",
+            },
+        ],
+    },
+    {
         "label": "Payments",
         "icon": "ti-credit-card",
         "items": [
