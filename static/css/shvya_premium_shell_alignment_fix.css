@@ -1,0 +1,11 @@
+@media (min-width: 901px) {
+    #app-sidebar.sidebar-collapsed .shvya-brand-name,
+    #app-sidebar.sidebar-collapsed .shvya-search-copy,
+    #app-sidebar.sidebar-collapsed .shvya-shortcut,
+    #app-sidebar.sidebar-collapsed .shvya-nav-copy,
+    #app-sidebar.sidebar-collapsed .shvya-nav-chevron,
+    #app-sidebar.sidebar-collapsed .shvya-profile-name,
+    #app-sidebar.sidebar-collapsed .shvya-profile-more {
+        display: none !important;
+    }
+}

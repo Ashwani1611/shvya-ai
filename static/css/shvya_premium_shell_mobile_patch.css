@@ -1,0 +1,117 @@
+@media (max-width: 900px) {
+    html.shvya-sidebar-pref-collapsed #app-sidebar,
+    #app-sidebar.sidebar-collapsed {
+        width: min(17.5rem, calc(100vw - 24px)) !important;
+        flex-basis: auto !important;
+    }
+
+    #app-sidebar.sidebar-collapsed .shvya-sidebar-shell {
+        padding-left: 12px !important;
+        padding-right: 12px !important;
+    }
+
+    #app-sidebar.sidebar-collapsed .shvya-sidebar-brand {
+        position: relative;
+        height: 44px;
+        justify-content: flex-start !important;
+        gap: 10px;
+        padding: 0 4px !important;
+    }
+
+    #app-sidebar.sidebar-collapsed .shvya-brand-mark {
+        width: 36px !important;
+        height: 36px !important;
+        min-width: 36px !important;
+        border-radius: 12px !important;
+    }
+
+    #app-sidebar.sidebar-collapsed .shvya-sidebar-toggle {
+        position: static;
+        width: 30px;
+        height: 30px;
+        min-width: 30px;
+        margin-left: auto;
+    }
+
+    #app-sidebar.sidebar-collapsed .shvya-sidebar-toggle .ti {
+        font-size: 16px;
+    }
+
+    #app-sidebar.sidebar-collapsed .shvya-search-trigger {
+        width: 100% !important;
+        height: 42px !important;
+        min-width: 0;
+        margin: 10px 0 12px !important;
+        padding: 0 12px !important;
+        display: flex !important;
+        place-items: initial;
+        gap: 9px !important;
+        justify-content: flex-start !important;
+    }
+
+    #app-sidebar.sidebar-collapsed .shvya-search-trigger > .ti {
+        width: 18px !important;
+        min-width: 18px !important;
+        height: auto;
+        display: inline-block;
+        font-size: 18px;
+    }
+
+    #app-sidebar.sidebar-collapsed .shvya-sidebar-scroll {
+        padding-left: 1px !important;
+        padding-right: 1px !important;
+        scrollbar-gutter: stable !important;
+        scrollbar-width: thin;
+    }
+
+    #app-sidebar.sidebar-collapsed .shvya-sidebar-scroll::-webkit-scrollbar {
+        display: initial;
+        width: 6px;
+    }
+
+    #app-sidebar.sidebar-collapsed .shvya-nav-stack {
+        align-items: stretch;
+    }
+
+    #app-sidebar.sidebar-collapsed .shvya-nav-row {
+        width: 100% !important;
+        min-width: 0;
+        max-width: none;
+        height: var(--shvya-row-height) !important;
+        min-height: var(--shvya-row-height) !important;
+        margin-left: 0 !important;
+        margin-right: 0 !important;
+        padding-left: 11px !important;
+        padding-right: 11px !important;
+        gap: 10px !important;
+        justify-content: flex-start !important;
+    }
+
+    #app-sidebar.sidebar-collapsed .shvya-nav-icon {
+        width: 20px !important;
+        min-width: 20px !important;
+        height: 20px !important;
+        font-size: 19px !important;
+    }
+
+    #app-sidebar.sidebar-collapsed .shvya-nav-row.is-active::before {
+        left: 4px;
+        top: 10px;
+        height: 20px;
+    }
+
+    #app-sidebar.sidebar-collapsed .shvya-profile-card {
+        width: 100% !important;
+        min-width: 0;
+        height: 48px !important;
+        margin: 8px 0 0 !important;
+        padding: 0 8px !important;
+        justify-content: flex-start !important;
+    }
+
+    #app-sidebar.sidebar-collapsed .shvya-profile-avatar {
+        width: 31px;
+        height: 31px;
+        min-width: 31px;
+    }
+}

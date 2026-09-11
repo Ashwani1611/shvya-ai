@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="SHVYA AI">
+  <defs>
+    <radialGradient id="bg" cx="52%" cy="47%" r="70%">
+      <stop offset="0" stop-color="#88c9ff"/>
+      <stop offset="0.52" stop-color="#5ca4ef"/>
+      <stop offset="1" stop-color="#3f7fc8"/>
+    </radialGradient>
+    <linearGradient id="stroke" x1="26" y1="34" x2="228" y2="220" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#dffcff"/>
+      <stop offset="0.28" stop-color="#65f4ff"/>
+      <stop offset="0.60" stop-color="#ecfbff"/>
+      <stop offset="0.84" stop-color="#f7b9ff"/>
+      <stop offset="1" stop-color="#d598ff"/>
+    </linearGradient>
+    <filter id="glow" x="-70%" y="-70%" width="240%" height="240%">
+      <feGaussianBlur stdDeviation="9" result="b1"/>
+      <feMerge>
+        <feMergeNode in="b1"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <filter id="soft" x="-80%" y="-80%" width="260%" height="260%">
+      <feGaussianBlur stdDeviation="18"/>
+    </filter>
+    <clipPath id="clip">
+      <rect width="256" height="256" rx="58"/>
+    </clipPath>
+  </defs>
+  <g clip-path="url(#clip)">
+    <rect width="256" height="256" fill="url(#bg)"/>
+    <circle cx="128" cy="122" r="103" fill="none" stroke="#a8f8ff" stroke-opacity="0.18" stroke-width="3" filter="url(#soft)"/>
+    <circle cx="128" cy="118" r="72" fill="#ffffff" opacity="0.22" filter="url(#soft)"/>
+    <g fill="none" stroke="url(#stroke)" stroke-linecap="round" stroke-linejoin="round" filter="url(#glow)">
+      <path d="M75 142C45 119 34 91 44 67C54 42 81 29 104 39C116 44 124 53 130 64" stroke-width="18"/>
+      <path d="M130 64C142 46 159 37 178 39C204 42 220 65 216 89C213 110 197 127 179 143" stroke-width="18"/>
+      <path d="M130 64L118 178" stroke-width="18"/>
+      <path d="M54 201C92 229 163 233 207 204" stroke-width="17"/>
+    </g>
+    <g fill="none" stroke="#ffffff" stroke-opacity="0.76" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M75 142C45 119 34 91 44 67C54 42 81 29 104 39C116 44 124 53 130 64" stroke-width="3.2"/>
+      <path d="M130 64C142 46 159 37 178 39C204 42 220 65 216 89C213 110 197 127 179 143" stroke-width="3.2"/>
+      <path d="M130 64L118 178" stroke-width="3.2"/>
+      <path d="M54 201C92 229 163 233 207 204" stroke-width="3"/>
+    </g>
+    <circle cx="126" cy="82" r="14" fill="#fff" opacity="0.22" filter="url(#soft)"/>
+  </g>
+</svg>
