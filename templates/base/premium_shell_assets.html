@@ -1,0 +1,48 @@
+{% load static %}
+<link rel="icon" type="image/svg+xml" href="{% static 'images/shvya-logo.svg' %}">
+<link rel="shortcut icon" href="{% static 'images/shvya-logo.svg' %}">
+
+<script>
+(function () {
+    var root = document.documentElement;
+    root.classList.add('shvya-premium-shell', 'shvya-shell-enhancing');
+    try {
+        if (window.localStorage.getItem('shvya-sidebar-collapsed') === '1') {
+            root.classList.add('shvya-sidebar-pref-collapsed');
+        }
+    } catch (error) {
+        // Storage restrictions must never block the dashboard shell.
+    }
+})();
+</script>
+
+{# Legacy dashboard helpers load first; premium assets below own the visible shell. #}
+{% include "base/base.html" %}
+
+<link rel="stylesheet" href="{% static 'css/shvya_premium_sidebar.css' %}">
+<link rel="stylesheet" href="{% static 'css/shvya_premium_sidebar_mobile.css' %}">
+<link rel="stylesheet" href="{% static 'css/shvya_premium_shell_patch.css' %}">
+<meta name="shvya-logo-url" content="{% static 'images/shvya-sidebar-logo.svg' %}">
+<meta name="shvya-profile-url" content="{{ sidebar_profile_href|default:'' }}">
+<meta name="shvya-user-name" content="{{ request.crm_user.name|default:'Account' }}">
+{{ sidebar_nav_sections|json_script:"shvya-sidebar-sections" }}
+{{ sidebar_utility_items|json_script:"shvya-sidebar-utilities" }}
+
+{# Settings remains reachable from the profile page, but is intentionally not a sidebar row. #}
+<script>
+(function () {
+    var node = document.getElementById('shvya-sidebar-utilities');
+    if (!node) return;
+    try {
+        var utilities = JSON.parse(node.textContent || '[]');
+        node.textContent = JSON.stringify(utilities.filter(function (item) {
+            return item && item.label !== 'Settings';
+        }));
+    } catch (error) {
+        // Leave the server payload untouched if it cannot be parsed.
+    }
+})();
+</script>
+
+<script src="{% static 'js/shvya_premium_sidebar.js' %}" defer></script>
+<script src="{% static 'js/shvya_premium_sidebar_mobile.js' %}" defer></script>
