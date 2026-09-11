@@ -167,24 +167,6 @@ def _add_meta_resource_hints(response):
     return response
 
 
-def _disable_fedcm_for_embedded_signup(response):
-    """Force the browser to use Meta's classic OAuth path on this page.
-
-    Chrome can currently attempt FedCM for Facebook Login for Business even
-    when the JS SDK has not opted into it. Meta's FedCM continuation may request
-    only the OpenID scope, which Facebook Login for Business rejects with
-    "This app needs at least one supported permission" before Embedded Signup
-    can return an authorization code. A document Permissions-Policy is a
-    browser-enforced stop for that FedCM path while leaving normal OAuth intact.
-    """
-    directive = "identity-credentials-get=()"
-    current = (response.get("Permissions-Policy", "") or "").strip()
-    if "identity-credentials-get" in current:
-        return response
-    response["Permissions-Policy"] = f"{current}, {directive}" if current else directive
-    return response
-
-
 @crm_login_required
 def whatsapp_connect_api_view(request):
     """Show onboarding or process the independent manual-token path."""
@@ -275,7 +257,6 @@ def whatsapp_connect_api_view(request):
 
     if request.method == "GET" and response.status_code == 200:
         response = _add_meta_resource_hints(response)
-        response = _disable_fedcm_for_embedded_signup(response)
 
     return response
 
