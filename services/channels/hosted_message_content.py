@@ -46,7 +46,8 @@ _MEDIA_TYPE_MAP = {
 
 
 def _payload(message):
-    return message.raw_payload if isinstance(message.raw_payload, dict) else {}
+    payload = getattr(message, "raw_payload", None)
+    return payload if isinstance(payload, dict) else {}
 
 
 def _clean(value):
@@ -113,18 +114,20 @@ def display_body_for_message(message):
 
     Text messages keep their authored copy. Media keeps a real caption, but
     raw encoded/file transport content is suppressed so the media card itself
-    remains the primary UI.
+    remains the primary UI. Legacy rows that are still typed as ``text`` are
+    also protected when their raw WhatsApp type identifies media.
     """
     body = _clean(getattr(message, "body", ""))
     if not body:
         return ""
 
     message_type = _clean(getattr(message, "message_type", "")).lower()
-    if (
-        message_type
-        and message_type != WhatsAppMessage.MessageType.TEXT
-        and looks_like_transport_payload(body)
-    ):
+    raw_type = raw_message_type(_payload(message))
+    is_media = (
+        message_type != WhatsAppMessage.MessageType.TEXT
+        or raw_type in _MEDIA_TYPE_MAP
+    )
+    if is_media and looks_like_transport_payload(body):
         return ""
     return body
 
@@ -227,7 +230,12 @@ def decorate_hosted_chat_snapshot(snapshot):
     """Sanitize one read-model snapshot without persisting display changes."""
     for message in snapshot.get("thread") or []:
         safe_body = display_body_for_message(message)
-        if message.message_type != WhatsAppMessage.MessageType.TEXT:
+        raw_type = raw_message_type(_payload(message))
+        is_media = (
+            message.message_type != WhatsAppMessage.MessageType.TEXT
+            or raw_type in _MEDIA_TYPE_MAP
+        )
+        if is_media:
             # In-memory only. The authenticated media URL/card carries the
             # attachment; a real caption stays visible, encoded bytes do not.
             message.body = safe_body
