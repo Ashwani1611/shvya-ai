@@ -24,6 +24,9 @@
 })();
 </script>
 
+{# Keep legacy dashboard helpers first; the premium shell deliberately overrides their sidebar styling. #}
+{% include "base/base.html" %}
+
 <link rel="stylesheet" href="{% static 'css/shvya_premium_sidebar.css' %}">
 <meta name="shvya-logo-url" content="{% static 'images/shvya-logo.svg' %}">
 <meta name="shvya-profile-url" content="{{ sidebar_profile_href|default:'' }}">
@@ -34,5 +37,4 @@
 
 <script src="{% static 'js/ai_setup_knowledge_delete.js' %}" defer></script>
 <script src="{% static 'js/ai_setup_playground.js' %}" defer></script>
-{% include "base/base.html" %}
 {% endblock %}
