@@ -48,6 +48,20 @@ def debug_access_token(*, app_id, app_secret, access_token):
     return payload.get("data") or {}
 
 
+def list_assigned_wabas(*, user_id, access_token):
+    """Return WhatsApp Business Accounts assigned to the token's business user."""
+    payload = _get_json(
+        f"{GRAPH_API_BASE}/{user_id}/assigned_whatsapp_business_accounts",
+        params={
+            "fields": "id,name",
+            "limit": 100,
+            "access_token": access_token,
+        },
+        error_label="assigned WhatsApp Business Account lookup",
+    )
+    return payload.get("data") or []
+
+
 def list_waba_phone_numbers(*, waba_id, access_token):
     """Return phone numbers visible to the token for one WABA."""
     payload = _get_json(
