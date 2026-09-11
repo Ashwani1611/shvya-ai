@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <meta name="theme-color" content="#140033">
+    <meta name="theme-color" content="#8ec7f7">
     <meta name="description" content="Sign in to SHVYA AI — AI-powered sales engagement, follow-ups, and CRM.">
     <title>SHVYA AI — Login</title>
     <link rel="icon" type="image/svg+xml" href="{% static 'images/shvya-logo.svg' %}">
@@ -126,15 +126,27 @@
                         src="{% static 'images/shvya-login-glow.svg' %}"
                         alt="SHVYA AI"
                         class="story-logo"
-                        width="142"
-                        height="142"
+                        width="176"
+                        height="176"
                         decoding="async"
                     >
                 </div>
                 <p class="story-wordmark">SHVYA AI</p>
             </div>
 
-            <h2 class="story-title" id="story-title">Turn More Leads Into Customers</h2>
+            <h2
+                class="story-title"
+                id="story-title"
+                aria-label="Turn More Leads Into Customers"
+                data-typing-text="Turn More Leads Into Customers"
+            >
+                <span class="story-title-ghost" aria-hidden="true">Turn More Leads Into Customers</span>
+                <span class="story-title-live" aria-hidden="true">
+                    <span class="story-title-text" id="story-title-text"></span>
+                    <span class="typing-cursor" id="typing-cursor"></span>
+                </span>
+            </h2>
+
             <p class="story-description">
                 AI-powered engagement and follow-ups that help your team close more deals.
             </p>
@@ -183,22 +195,61 @@
     var passwordInput = document.getElementById("password");
     var toggle = document.getElementById("password-toggle");
 
-    if (!passwordInput || !toggle) {
+    if (passwordInput && toggle) {
+        var eyeOpen = toggle.querySelector(".eye-open");
+        var eyeClosed = toggle.querySelector(".eye-closed");
+
+        toggle.addEventListener("click", function () {
+            var isVisible = passwordInput.type === "text";
+            passwordInput.type = isVisible ? "password" : "text";
+            toggle.setAttribute("aria-label", isVisible ? "Show password" : "Hide password");
+            toggle.setAttribute("aria-pressed", String(!isVisible));
+            eyeOpen.hidden = !isVisible;
+            eyeClosed.hidden = isVisible;
+            passwordInput.focus({ preventScroll: true });
+        });
+    }
+
+    var title = document.getElementById("story-title");
+    var typedText = document.getElementById("story-title-text");
+    var cursor = document.getElementById("typing-cursor");
+
+    if (!title || !typedText) {
         return;
     }
 
-    var eyeOpen = toggle.querySelector(".eye-open");
-    var eyeClosed = toggle.querySelector(".eye-closed");
+    var fullText = title.getAttribute("data-typing-text") || "Turn More Leads Into Customers";
+    var reduceMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-    toggle.addEventListener("click", function () {
-        var isVisible = passwordInput.type === "text";
-        passwordInput.type = isVisible ? "password" : "text";
-        toggle.setAttribute("aria-label", isVisible ? "Show password" : "Hide password");
-        toggle.setAttribute("aria-pressed", String(!isVisible));
-        eyeOpen.hidden = !isVisible;
-        eyeClosed.hidden = isVisible;
-        passwordInput.focus({ preventScroll: true });
-    });
+    if (reduceMotion) {
+        typedText.textContent = fullText;
+        if (cursor) {
+            cursor.hidden = true;
+        }
+        return;
+    }
+
+    typedText.textContent = "";
+    var index = 0;
+    var speed = 58;
+
+    function typeNextCharacter() {
+        if (index >= fullText.length) {
+            if (cursor) {
+                window.setTimeout(function () {
+                    cursor.style.opacity = "0";
+                    cursor.style.animation = "none";
+                }, 1050);
+            }
+            return;
+        }
+
+        typedText.textContent += fullText.charAt(index);
+        index += 1;
+        window.setTimeout(typeNextCharacter, speed);
+    }
+
+    window.setTimeout(typeNextCharacter, 320);
 }());
 </script>
 </body>
