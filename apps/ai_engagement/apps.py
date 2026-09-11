@@ -13,6 +13,16 @@ class AiEngagementConfig(AppConfig):
         # customer-response path for both Meta API and Hosted WhatsApp.
         from . import background_signals  # noqa: F401
 
+        # Compile machine-evaluable conditional qualification rules and install
+        # eligibility/NOT_APPLICABLE, conversation-mode, state-recovery and
+        # atomic/idempotent state guards before EngagementService, graph and
+        # prompt wrappers bind qualification helpers at module import time.
+        from apps.ai_engagement.services.conditional_qualification_runtime import (
+            install_conditional_qualification_runtime,
+        )
+
+        install_conditional_qualification_runtime()
+
         # Fixed task prompts are version controlled with the backend. OrgInfo
         # remains the organization-specific configuration source and Knowledge
         # Base content remains in RAG.
@@ -21,16 +31,6 @@ class AiEngagementConfig(AppConfig):
         )
 
         install_fixed_prompt_overrides()
-
-        # Compile machine-evaluable conditional qualification rules and install
-        # eligibility/NOT_APPLICABLE, conversation-mode, state-recovery and
-        # atomic/idempotent state guards before graph/policy modules bind their
-        # qualification helpers.
-        from apps.ai_engagement.services.conditional_qualification_runtime import (
-            install_conditional_qualification_runtime,
-        )
-
-        install_conditional_qualification_runtime()
 
         # Keep AI Setup authoring flexible while compiling it into deterministic
         # runtime behavior: option-aware qualification answers, majority-mode
