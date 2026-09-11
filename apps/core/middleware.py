@@ -9,45 +9,142 @@ TOAST_ASSET = r'''
     right: 1rem;
     z-index: 99999;
     display: flex;
-    width: min(26rem, calc(100vw - 2rem));
+    width: min(25rem, calc(100vw - 2rem));
     flex-direction: column;
-    gap: .75rem;
+    gap: .625rem;
     pointer-events: none;
   }
   .shvya-toast {
     pointer-events: auto;
-    display: flex;
-    align-items: flex-start;
+    position: relative;
+    display: grid;
+    grid-template-columns: 2rem minmax(0, 1fr) 1.75rem;
+    align-items: start;
     gap: .75rem;
-    border: 1px solid #e5e7eb;
-    border-left-width: 4px;
-    border-radius: .75rem;
-    background: #fff;
-    padding: .875rem 1rem;
-    box-shadow: 0 16px 40px rgba(15, 23, 42, .14);
-    color: #1f2937;
+    overflow: hidden;
+    border: 1px solid rgba(0, 0, 0, .08);
+    border-radius: 1.125rem;
+    background: rgba(250, 250, 252, .88);
+    -webkit-backdrop-filter: saturate(180%) blur(24px);
+    backdrop-filter: saturate(180%) blur(24px);
+    padding: .875rem .875rem .875rem .9rem;
+    box-shadow:
+      0 18px 48px rgba(0, 0, 0, .14),
+      0 4px 14px rgba(0, 0, 0, .06),
+      inset 0 1px 0 rgba(255, 255, 255, .72);
+    color: #1d1d1f;
     opacity: 0;
-    transform: translateX(18px);
-    transition: opacity .18s ease, transform .18s ease;
+    transform: translateY(-8px) scale(.975);
+    transform-origin: top right;
+    transition:
+      opacity .24s cubic-bezier(.22, 1, .36, 1),
+      transform .28s cubic-bezier(.22, 1, .36, 1);
   }
-  .shvya-toast.is-visible { opacity: 1; transform: translateX(0); }
-  .shvya-toast.is-leaving { opacity: 0; transform: translateX(18px); }
-  .shvya-toast__icon { flex: 0 0 auto; font-size: 1.25rem; line-height: 1.25rem; }
-  .shvya-toast__body { min-width: 0; flex: 1; }
-  .shvya-toast__title { font-size: .875rem; font-weight: 700; line-height: 1.25rem; }
-  .shvya-toast__message { margin-top: .125rem; font-size: .8125rem; line-height: 1.25rem; color: #4b5563; overflow-wrap: anywhere; }
-  .shvya-toast__close { flex: 0 0 auto; border: 0; background: transparent; color: #9ca3af; cursor: pointer; padding: 0; font-size: 1.125rem; line-height: 1.25rem; }
-  .shvya-toast__close:hover { color: #374151; }
-  .shvya-toast--success { border-left-color: #16a34a; }
-  .shvya-toast--success .shvya-toast__icon, .shvya-toast--success .shvya-toast__title { color: #15803d; }
-  .shvya-toast--error { border-left-color: #dc2626; }
-  .shvya-toast--error .shvya-toast__icon, .shvya-toast--error .shvya-toast__title { color: #b91c1c; }
-  .shvya-toast--warning { border-left-color: #d97706; }
-  .shvya-toast--warning .shvya-toast__icon, .shvya-toast--warning .shvya-toast__title { color: #b45309; }
-  .shvya-toast--info { border-left-color: #2563eb; }
-  .shvya-toast--info .shvya-toast__icon, .shvya-toast--info .shvya-toast__title { color: #1d4ed8; }
+  .shvya-toast::before {
+    content: "";
+    position: absolute;
+    inset: 0 0 auto 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, .92), transparent);
+    pointer-events: none;
+  }
+  .shvya-toast.is-visible {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  .shvya-toast.is-leaving {
+    opacity: 0;
+    transform: translateY(-6px) scale(.985);
+  }
+  .shvya-toast__icon {
+    display: inline-flex;
+    width: 2rem;
+    height: 2rem;
+    align-items: center;
+    justify-content: center;
+    border-radius: 999px;
+    font-size: .9rem;
+    font-weight: 700;
+    line-height: 1;
+    letter-spacing: -.02em;
+  }
+  .shvya-toast__body {
+    min-width: 0;
+    padding-top: .05rem;
+  }
+  .shvya-toast__title {
+    font-size: .875rem;
+    font-weight: 650;
+    line-height: 1.25rem;
+    letter-spacing: -.01em;
+    color: #1d1d1f;
+  }
+  .shvya-toast__message {
+    margin-top: .125rem;
+    font-size: .8125rem;
+    line-height: 1.25rem;
+    letter-spacing: -.003em;
+    color: #6e6e73;
+    overflow-wrap: anywhere;
+  }
+  .shvya-toast__close {
+    display: inline-flex;
+    width: 1.75rem;
+    height: 1.75rem;
+    align-items: center;
+    justify-content: center;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    color: #86868b;
+    cursor: pointer;
+    padding: 0;
+    font-size: 1rem;
+    line-height: 1;
+    transition: background-color .16s ease, color .16s ease, transform .16s ease;
+  }
+  .shvya-toast__close:hover {
+    background: rgba(0, 0, 0, .055);
+    color: #1d1d1f;
+  }
+  .shvya-toast__close:active { transform: scale(.94); }
+  .shvya-toast__close:focus-visible {
+    outline: 2px solid #0071e3;
+    outline-offset: 2px;
+  }
+  .shvya-toast--success .shvya-toast__icon {
+    color: #1f7a35;
+    background: rgba(52, 199, 89, .13);
+  }
+  .shvya-toast--error .shvya-toast__icon {
+    color: #d70015;
+    background: rgba(255, 59, 48, .12);
+  }
+  .shvya-toast--warning .shvya-toast__icon {
+    color: #a05a00;
+    background: rgba(255, 159, 10, .15);
+  }
+  .shvya-toast--info .shvya-toast__icon {
+    color: #0066cc;
+    background: rgba(0, 113, 227, .11);
+  }
   @media (max-width: 640px) {
-    #shvya-toast-root { top: .75rem; right: .75rem; left: .75rem; width: auto; }
+    #shvya-toast-root {
+      top: .75rem;
+      right: .75rem;
+      left: .75rem;
+      width: auto;
+    }
+    .shvya-toast {
+      border-radius: 1rem;
+      padding: .825rem;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .shvya-toast,
+    .shvya-toast__close {
+      transition: none;
+    }
   }
 </style>
 <script id="shvya-toast-script">
@@ -55,7 +152,7 @@ TOAST_ASSET = r'''
   if (window.__shvyaToastReady) return;
   window.__shvyaToastReady = true;
 
-  var TITLES = {success: 'Success', error: 'Something went wrong', warning: 'Attention', info: 'Update'};
+  var TITLES = {success: 'Updated', error: 'Couldn’t complete', warning: 'Attention', info: 'Updated'};
   var ICONS = {success: '✓', error: '!', warning: '!', info: 'i'};
   var MUTATING = {POST: true, PUT: true, PATCH: true, DELETE: true};
   var recent = Object.create(null);
@@ -79,11 +176,106 @@ TOAST_ASSET = r'''
     return ['success', 'error', 'warning', 'info'].indexOf(type) >= 0 ? type : 'info';
   }
 
+  function requestPath(input) {
+    var raw = '';
+    if (typeof input === 'string') raw = input;
+    else if (input && typeof input.url === 'string') raw = input.url;
+    else if (input && typeof input.path === 'string') raw = input.path;
+    if (!raw) return '';
+    try { return new URL(raw, window.location.href).pathname.toLowerCase(); }
+    catch (error) { return String(raw).split('?')[0].toLowerCase(); }
+  }
+
+  function isSandboxRequest(input) {
+    return requestPath(input).indexOf('/api/v1/ai-engagement/playground/') !== -1;
+  }
+
+  function isAiBrainPage() {
+    var path = String(window.location.pathname || '').toLowerCase();
+    return path.indexOf('/dashboard/knowledge-base/ai-setup/') !== -1 ||
+      path.indexOf('/dashboard/playbooks/') !== -1 ||
+      path.indexOf('/dashboard/ai-brain/') !== -1;
+  }
+
+  function isMajorChangeMessage(message) {
+    var text = String(message || '').trim().toLowerCase();
+    if (!text) return false;
+
+    if (/(settings?|configuration)/.test(text) &&
+        /(saved|updated|changed|enabled|disabled|turned on|turned off)/.test(text)) return true;
+
+    if (/\battributes?\b/.test(text) &&
+        /(created|added|updated|changed|saved|deleted|removed)/.test(text)) return true;
+
+    if (/\bnotes?\b/.test(text) &&
+        /(added|updated|changed|saved|deleted|removed)/.test(text)) return true;
+
+    if (/\bsequence\b/.test(text) &&
+        /(created|deleted|removed)/.test(text)) return true;
+
+    if (/(follow[- ]?ups?|added to (?:the )?sequence)/.test(text) &&
+        /(added|created)/.test(text)) return true;
+
+    if (/(call log|call logged)/.test(text) &&
+        /(added|created|logged|removed|deleted)/.test(text)) return true;
+
+    if (/\breminders?\b/.test(text) &&
+        /(added|created|removed|deleted)/.test(text)) return true;
+
+    if (/(workflows?|smart triggers?)/.test(text) &&
+        /(added|created|removed|deleted)/.test(text)) return true;
+
+    if (isAiBrainPage()) {
+      if (/\bprompt\b/.test(text) && /(added|created|saved|updated)/.test(text)) return true;
+      if (/\babout\b/.test(text) && /(added|saved|updated|changed)/.test(text)) return true;
+      if (/\bfile\b/.test(text) && /(added|uploaded)/.test(text)) return true;
+      if (/\bai settings\b/.test(text) && /(saved|updated)/.test(text)) return true;
+    }
+
+    return false;
+  }
+
+  function isMajorMutation(method, input) {
+    method = String(method || '').toUpperCase();
+    if (!MUTATING[method]) return false;
+
+    var path = requestPath(input);
+    if (!path || isSandboxRequest(path)) return false;
+
+    if (path.indexOf('/settings/') !== -1) return true;
+    if (path.indexOf('/dashboard/attributes/') !== -1) return true;
+    if (/\/dashboard\/leads\/[^/]+\/attributes\/edit\/save\/?$/.test(path)) return true;
+    if (/\/dashboard\/leads\/[^/]+\/note\/save\/?$/.test(path)) return true;
+    if (/\/dashboard\/leads\/[^/]+\/call\/save\/?$/.test(path)) return true;
+    if (/\/dashboard\/leads\/[^/]+\/reminder\/save\/?$/.test(path)) return true;
+    if (/\/dashboard\/reminders\/[^/]+\/delete\/?$/.test(path)) return true;
+
+    if (path.indexOf('/dashboard/cadence/sequences/') === 0) {
+      if (/\/new\/save\/?$/.test(path)) return true;
+      if (/\/delete\/?$/.test(path)) return true;
+      if (/\/(templates|whatsapp|email|reminder)\/add\/?$/.test(path)) return true;
+    }
+
+    if (path.indexOf('/dashboard/workflows/rules/') === 0) {
+      if (method === 'POST' && /\/dashboard\/workflows\/rules\/?$/.test(path)) return true;
+      if (method === 'DELETE') return true;
+    }
+
+    return false;
+  }
+
+  function shouldRenderToast(message, type, options) {
+    options = options || {};
+    if (options.force === true) return true;
+    if (type === 'error' || type === 'warning') return true;
+    return isMajorChangeMessage(message);
+  }
+
   function removeToast(node) {
     if (!node || node.dataset.closing === '1') return;
     node.dataset.closing = '1';
     node.classList.add('is-leaving');
-    setTimeout(function () { if (node.parentNode) node.parentNode.removeChild(node); }, 190);
+    setTimeout(function () { if (node.parentNode) node.parentNode.removeChild(node); }, 290);
   }
 
   window.shvyaToast = function (message, type, options) {
@@ -91,11 +283,11 @@ TOAST_ASSET = r'''
     options = options || {};
     type = normaliseType(type);
     message = String(message).trim();
-    if (!message) return null;
+    if (!message || !shouldRenderToast(message, type, options)) return null;
 
     var dedupeKey = type + '|' + message;
     var now = Date.now();
-    if (recent[dedupeKey] && now - recent[dedupeKey] < 900) return null;
+    if (recent[dedupeKey] && now - recent[dedupeKey] < 1200) return null;
     recent[dedupeKey] = now;
 
     var toast = document.createElement('div');
@@ -104,6 +296,7 @@ TOAST_ASSET = r'''
 
     var icon = document.createElement('div');
     icon.className = 'shvya-toast__icon';
+    icon.setAttribute('aria-hidden', 'true');
     icon.textContent = ICONS[type];
 
     var body = document.createElement('div');
@@ -130,7 +323,7 @@ TOAST_ASSET = r'''
     root().appendChild(toast);
     requestAnimationFrame(function () { toast.classList.add('is-visible'); });
 
-    var duration = Number(options.duration || (type === 'error' ? 6000 : 4000));
+    var duration = Number(options.duration || (type === 'error' ? 6000 : 4200));
     if (duration > 0) setTimeout(function () { removeToast(toast); }, duration);
     return toast;
   };
@@ -142,7 +335,7 @@ TOAST_ASSET = r'''
 
   function convertDjangoMessages() {
     document.querySelectorAll('main > .mb-4.space-y-2').forEach(function (container) {
-      var converted = false;
+      var recognized = false;
       Array.from(container.children).forEach(function (node) {
         if (!node.classList.contains('text-sm')) return;
         var type = null;
@@ -151,10 +344,10 @@ TOAST_ASSET = r'''
         else if (node.classList.contains('bg-yellow-50') || node.classList.contains('bg-amber-50')) type = 'warning';
         else if (node.classList.contains('bg-gray-50') || node.classList.contains('bg-blue-50')) type = 'info';
         if (!type) return;
-        converted = true;
+        recognized = true;
         window.shvyaToast(node.textContent, type);
       });
-      if (converted) container.remove();
+      if (recognized) container.remove();
     });
   }
 
@@ -169,21 +362,40 @@ TOAST_ASSET = r'''
   }
 
   document.addEventListener('htmx:responseError', function (event) {
-    var xhr = event.detail && event.detail.xhr;
+    var detail = event.detail || {};
+    var xhr = detail.xhr;
+    var requestConfig = detail.requestConfig || {};
+    if (isSandboxRequest(requestConfig.path || '')) return;
     window.shvyaToast(friendlyError(xhr ? xhr.status : 0), 'error');
   });
-  document.addEventListener('htmx:sendError', function () {
+  document.addEventListener('htmx:sendError', function (event) {
+    var detail = event.detail || {};
+    var requestConfig = detail.requestConfig || {};
+    if (isSandboxRequest(requestConfig.path || '')) return;
     window.shvyaToast('Network error. Please check your connection and try again.', 'error');
   });
-  document.addEventListener('htmx:timeout', function () {
+  document.addEventListener('htmx:timeout', function (event) {
+    var detail = event.detail || {};
+    var requestConfig = detail.requestConfig || {};
+    if (isSandboxRequest(requestConfig.path || '')) return;
     window.shvyaToast('The request took too long. Please try again.', 'warning');
   });
   document.addEventListener('htmx:afterRequest', function (event) {
     var detail = event.detail || {};
     var xhr = detail.xhr;
-    var verb = String((detail.requestConfig && detail.requestConfig.verb) || '').toUpperCase();
-    if (xhr && xhr.status < 400 && MUTATING[verb] && xhr.getResponseHeader('X-SHVYA-Toast') !== 'off') {
-      window.shvyaToast(xhr.getResponseHeader('X-SHVYA-Toast') || 'Changes saved successfully.', 'success');
+    var requestConfig = detail.requestConfig || {};
+    var verb = String(requestConfig.verb || '').toUpperCase();
+    var path = requestConfig.path || '';
+    if (!xhr || xhr.status >= 400 || !MUTATING[verb] || isSandboxRequest(path)) return;
+
+    var header = xhr.getResponseHeader('X-SHVYA-Toast');
+    if (header === 'off') return;
+    if (header) {
+      window.shvyaToast(header, 'success', {force: true});
+      return;
+    }
+    if (isMajorMutation(verb, path)) {
+      window.shvyaToast('Changes saved successfully.', 'success', {force: true});
     }
   });
 
@@ -192,14 +404,26 @@ TOAST_ASSET = r'''
     window.fetch = function (input, init) {
       init = init || {};
       var method = String(init.method || (input && input.method) || 'GET').toUpperCase();
+      var sandboxRequest = isSandboxRequest(input);
       return nativeFetch.apply(this, arguments).then(function (response) {
-        if (MUTATING[method] && response.headers.get('X-SHVYA-Toast') !== 'off') {
-          if (response.ok) window.shvyaToast(response.headers.get('X-SHVYA-Toast') || 'Changes saved successfully.', 'success');
-          else window.shvyaToast(friendlyError(response.status), 'error');
+        if (sandboxRequest || !MUTATING[method]) return response;
+
+        var header = response.headers.get('X-SHVYA-Toast');
+        if (header === 'off') return response;
+
+        if (response.ok) {
+          if (header) window.shvyaToast(header, 'success', {force: true});
+          else if (isMajorMutation(method, input)) {
+            window.shvyaToast('Changes saved successfully.', 'success', {force: true});
+          }
+        } else {
+          window.shvyaToast(friendlyError(response.status), 'error');
         }
         return response;
       }).catch(function (error) {
-        if (MUTATING[method]) window.shvyaToast('Network error. Please check your connection and try again.', 'error');
+        if (!sandboxRequest && MUTATING[method]) {
+          window.shvyaToast('Network error. Please check your connection and try again.', 'error');
+        }
         throw error;
       });
     };
