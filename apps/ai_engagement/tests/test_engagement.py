@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from unittest.mock import Mock
 
 from django.test import TestCase
@@ -158,6 +159,7 @@ class EngagementServiceTests(TestCase):
         call = provider.generate_text.call_args
         instructions = call.kwargs["instructions"]
         input_text = call.kwargs["input_text"]
+        payload = json.loads(input_text)
         self.assertIn("SHVYA", instructions)
         self.assertIn("customer-facing", instructions.lower())
         self.assertIn(self.org_info.engagement_instructions, instructions)
@@ -168,7 +170,10 @@ class EngagementServiceTests(TestCase):
         self.assertIn(self.organization.name, input_text)
         self.assertIn(self.lead.name, input_text)
         self.assertIn(self.org_info.engagement_instructions, instructions)
-        self.assertIn(self.org_info.qualification_requirements, input_text)
+        self.assertNotIn(self.org_info.qualification_requirements, input_text)
+        self.assertNotIn("requirements", payload["organization"]["ai_profile"]["qualification"])
+        self.assertIn("qualification_turn", payload)
+        self.assertIsNotNone(payload["qualification_turn"]["current_requirement"])
 
     def test_unverified_attribute_update_is_not_authorized(self):
         provider = self.mock_provider(
