@@ -117,6 +117,7 @@ def dispatch_bump_ups():
                 metadata={"organization_id": str(lead.organization_id), "lead_id": str(lead.id), "task": "bump_up"},
             )
             decision = service._normalize_result(result=result)
+            service._validate_engagement_policy(decision=decision, context=context)
         except Exception:
             logger.exception("Unable to generate bump-up for lead %s", lead.id)
             continue

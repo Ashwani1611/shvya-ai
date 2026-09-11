@@ -28,36 +28,6 @@ def _normalized_text(value: str) -> str:
     return " ".join(str(value or "").strip().casefold().split())
 
 
-OPT_OUT_PHRASES = {
-    "stop",
-    "unsubscribe",
-    "opt out",
-    "opt-out",
-    "remove me",
-    "do not message me",
-    "don't message me",
-    "dont message me",
-    "stop messaging me",
-    "no more messages",
-}
-
-
-def _is_explicit_opt_out(body: str) -> bool:
-    text = _normalized_text(body)
-    if text in OPT_OUT_PHRASES:
-        return True
-    return any(
-        phrase in text
-        for phrase in (
-            "please stop messaging",
-            "please do not message",
-            "please don't message",
-            "do not contact me",
-            "don't contact me",
-        )
-    )
-
-
 def install_ai_orchestration_hooks() -> None:
     global _INSTALLED
     if _INSTALLED:
@@ -82,17 +52,6 @@ def install_ai_orchestration_hooks() -> None:
         """Never advance a CRM stage from a generic yes/interested keyword."""
         text = _normalized_text(body)
         if not text:
-            return
-
-        if _is_explicit_opt_out(text):
-            notes = lead.notes or ""
-            marker = "[WhatsApp] Lead opted out of AI engagement."
-            lead.ai_enabled = False
-            if marker not in notes:
-                lead.notes = f"{notes}\n{marker}".strip()
-                lead.save(update_fields=["ai_enabled", "notes", "updated_at"])
-            else:
-                lead.save(update_fields=["ai_enabled", "updated_at"])
             return
 
         # A normal negative answer may be a qualification answer (for example

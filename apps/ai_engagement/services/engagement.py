@@ -62,6 +62,7 @@ REASON_CODES = {
     "OPT_OUT",
     "UNKNOWN_INFORMATION",
     "NO_ACTION",
+    "ORG_INSTRUCTION",
 }
 
 ENGAGEMENT_RESPONSE_SCHEMA = {
@@ -71,6 +72,15 @@ ENGAGEMENT_RESPONSE_SCHEMA = {
         "type": "object",
         "properties": {
             "should_engage": {"type": "boolean"},
+            "silence_rule": {"anyOf": [{"type": "null"}, {
+                "type": "object",
+                "properties": {
+                    "field": {"type": "string", "enum": ["qualification_requirements", "engagement_instructions"]},
+                    "quote": {"type": "string"},
+                },
+                "required": ["field", "quote"],
+                "additionalProperties": False,
+            }]},
             "message": {"type": "string"},
             "file_document_id": {"anyOf": [{"type": "integer"}, {"type": "null"}]},
             "crm_actions": {"type": "array", "items": {"type": "object"}},
@@ -80,6 +90,7 @@ ENGAGEMENT_RESPONSE_SCHEMA = {
         },
         "required": [
             "should_engage",
+            "silence_rule",
             "message",
             "file_document_id",
             "crm_actions",
@@ -105,6 +116,7 @@ class EngagementDecision:
     next_requirement_id: str | None = None
     reason_code: str = ""
     qualification_updates: list[dict[str, Any]] = field(default_factory=list)
+    silence_rule: dict[str, str] | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -119,6 +131,7 @@ class EngagementDecision:
             "next_requirement_id": self.next_requirement_id,
             "model": self.model,
             "qualification_updates": self.qualification_updates,
+            "silence_rule": self.silence_rule,
         }
 
 
@@ -254,6 +267,7 @@ class EngagementService:
             direct_next = direct.get("next_requirement")
             if (
                 not profile.get("communication", {}).get("custom_instructions")
+                and not profile.get("qualification", {}).get("raw")
                 and not profile.get("communication", {}).get("languages")
                 and not (context.pipeline or {}).get("attribute_definitions")
                 and
@@ -296,7 +310,7 @@ class EngagementService:
 
         source_message_id = self._latest_inbound_message_id(context=context)
         claim = None
-        result_key = f"shvya:ai:decision:{organization.id}:{lead.id}:{source_message_id}"
+        result_key = f"shvya:ai:decision:v2:{organization.id}:{lead.id}:{source_message_id}"
         if source_message_id:
             try:
                 claim = EngagementGenerationLock(
@@ -306,7 +320,9 @@ class EngagementService:
                 if not claim.acquire():
                     saved = cache.get(result_key)
                     if isinstance(saved, dict):
-                        return EngagementDecision(**saved)
+                        cached = EngagementDecision(**saved)
+                        self._validate_engagement_policy(decision=cached, context=context)
+                        return cached
                     # Another worker is generating, or died before caching its
                     # result. Retry; never turn contention into permanent silence.
                     raise AIProviderTransientError("Engagement generation is already in progress.")
@@ -387,6 +403,7 @@ class EngagementService:
         self, *, decision, context, requirements, qualification_state,
     ):
         """Validate both primary and repaired output before caching or writes."""
+        self._validate_engagement_policy(decision=decision, context=context)
         try:
             projected = project_answer_updates(
                 state=qualification_state, requirements=requirements,
@@ -402,6 +419,28 @@ class EngagementService:
                 raise EngagementError(
                     "AI selected a qualification requirement other than NEXT_REQUIREMENT."
                 )
+
+    def _validate_engagement_policy(self, *, decision, context):
+        """Silence must be grounded in this organization's authored AI Setup."""
+        if decision.should_engage:
+            return
+        rule = decision.silence_rule
+        if isinstance(rule, dict) and set(rule) == {"field", "quote"}:
+            source_field = rule["field"]
+            quote = rule["quote"]
+            if isinstance(source_field, str) and source_field in {"qualification_requirements", "engagement_instructions"}:
+                authored = (context.organization or {}).get(source_field, "")
+                if (decision.reason_code == "ORG_INSTRUCTION"
+                        and isinstance(quote, str) and quote.strip()
+                        and isinstance(authored, str) and quote in authored):
+                    return
+        raise EngagementError(
+            "Reply to the lead. Silence requires ORG_INSTRUCTION and silence_rule "
+            "with an exact quote of the applicable no-reply instruction from the "
+            "organization's qualification_requirements or engagement_instructions. "
+            "Greetings, negative answers, completed qualification, unknown facts "
+            "and short messages do not authorize silence."
+        )
 
     def _generate_provider_text(self, *, provider, response_schema=None, **kwargs):
         """Use provider schema support while preserving injected legacy fakes."""
@@ -426,11 +465,11 @@ class EngagementService:
         repair_instructions = """
 Repair a malformed SHVYA engagement JSON result.
 Return ONLY one valid JSON object with exactly these keys:
-should_engage, message, file_document_id, crm_actions, qualification_updates, next_requirement_id,
+should_engage, silence_rule, message, file_document_id, crm_actions, qualification_updates, next_requirement_id,
 reason_code.
 Allowed reason_code values: ANSWER_ORG_QUESTION, QUALIFICATION_NEXT,
 QUALIFICATION_CLARIFY, NORMAL_CONVERSATION, HUMAN_HANDOFF, OPT_OUT,
-UNKNOWN_INFORMATION, NO_ACTION.
+UNKNOWN_INFORMATION, NO_ACTION, ORG_INSTRUCTION.
 Use the original turn context to correct the reported validation error, including
 qualification evidence and the next question. Drop unsupported answer updates.
 Recompute the first unresolved requirement after supported updates and rewrite
@@ -697,6 +736,7 @@ Do not add explanations, markdown, or chain-of-thought.
             next_requirement_id=next_requirement_id,
             model=result.model,
             qualification_updates=payload.get("qualification_updates", []),
+            silence_rule=payload.get("silence_rule"),
         )
 
     def _parse_json(self, raw_text: str) -> dict[str, Any]:
@@ -728,6 +768,8 @@ Do not add explanations, markdown, or chain-of-thought.
             "reason_code",
         }
         keys = set(payload.keys())
+        if keys == current | {"qualification_updates", "silence_rule"}:
+            return "v3"
         if keys == current | {"qualification_updates"}:
             return "v3"
         if keys == current:

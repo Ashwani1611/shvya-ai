@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from types import SimpleNamespace
 from typing import Any
 
 from apps.ai_engagement.services.ai_provider import AIProviderError, OpenAIProvider
@@ -133,7 +134,17 @@ class PlaygroundService:
                 },
                 response_schema=ENGAGEMENT_RESPONSE_SCHEMA,
             )
-            decision = self.engagement_service._normalize_result(result=result)
+            try:
+                decision = self.engagement_service._normalize_result(result=result)
+                self.engagement_service._validate_engagement_policy(decision=decision, context=context)
+            except EngagementError as exc:
+                decision = self.engagement_service._repair_result_once(
+                    provider=provider, organization=organization,
+                    lead=SimpleNamespace(id=f"playground:{session_id}"),
+                    result=result, original_error=exc,
+                    instructions=instructions, input_text=input_text,
+                )
+                self.engagement_service._validate_engagement_policy(decision=decision, context=context)
         except AIProviderError as exc:
             raise PlaygroundError("AI Playground generation failed.") from exc
         except EngagementError as exc:

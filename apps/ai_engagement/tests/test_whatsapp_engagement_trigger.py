@@ -171,3 +171,17 @@ class WhatsAppEngagementTriggerTests(TestCase):
             )
 
         engagement_apply_async.assert_not_called()
+
+    @patch("apps.ai_engagement.tasks.generate_ai_engagement_response.apply_async")
+    @patch("apps.ai_engagement.background_signals.queue_background_enrichment")
+    def test_negative_inbound_messages_keep_ai_enabled_and_queue_response(self, enrichment, enqueue):
+        for index, body in enumerate(["STOP", "no", "not interested", "hello"]):
+            with self.captureOnCommitCallbacks(execute=True):
+                handle_inbound_message(
+                    organization=self.organization, account=self.account,
+                    external_id=f"wamid-policy-{index}", from_number=self.lead.phone,
+                    to_number="919999999999", body=body, raw_payload={"test": True},
+                )
+            self.lead.refresh_from_db()
+            self.assertTrue(self.lead.ai_enabled)
+        self.assertEqual(enqueue.call_count, 4)

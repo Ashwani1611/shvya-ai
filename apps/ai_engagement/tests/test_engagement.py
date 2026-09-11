@@ -121,7 +121,7 @@ class EngagementServiceTests(TestCase):
         self.assertEqual(decision.model, "gpt-4.1-nano")
         provider.generate_text.assert_called_once()
 
-    def test_no_engagement_requires_empty_message(self):
+    def test_unjustified_silence_is_rejected(self):
         provider = self.mock_provider(
             """
             {
@@ -134,12 +134,9 @@ class EngagementServiceTests(TestCase):
             """
         )
         service = EngagementService(provider=provider)
-        decision = service.engage(
-            organization=self.organization,
-            lead=self.lead,
-        )
-        self.assertFalse(decision.should_engage)
-        self.assertEqual(decision.message, "")
+        with self.assertRaises(EngagementError):
+            service.engage(organization=self.organization, lead=self.lead)
+        self.assertEqual(provider.generate_text.call_count, 2)
 
     def test_provider_receives_context_and_instructions(self):
         provider = self.mock_provider(
