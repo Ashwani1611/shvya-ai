@@ -5,6 +5,7 @@ from apps.hosted_automation import views as hosted_automation_views
 
 from . import api_account_ui
 from . import connection_ui
+from . import embedded_oauth_ui
 from . import hosted_attachment_ui
 from . import hosted_chat_ui
 from . import hosted_send_ui
@@ -23,6 +24,8 @@ urlpatterns = [
     path("connect/api/", connection_ui.whatsapp_connect_api_view, name="whatsapp-connect-api"),
     path("connect/api/attempt-event/", connection_ui.whatsapp_connection_attempt_event_view, name="whatsapp-connection-attempt-event"),
     path("connect/api/embedded-signup/", connection_ui.whatsapp_embedded_signup_callback_view, name="whatsapp-embedded-signup-callback"),
+    path("connect/api/direct/start/", embedded_oauth_ui.whatsapp_embedded_signup_direct_start_view, name="whatsapp-embedded-signup-direct-start"),
+    path("connect/api/direct/return/", embedded_oauth_ui.whatsapp_embedded_signup_direct_return_view, name="whatsapp-embedded-signup-direct-return"),
 
     # Hosted linked-device WhatsApp sessions (whatsapp-web.js gateway).
     path("connect/hosted/", hosted_ui.whatsapp_connect_hosted_view, name="whatsapp-connect-hosted"),
