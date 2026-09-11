@@ -15,13 +15,9 @@ from apps.core.views import HomeView, PricingView
 
 
 urlpatterns = [
-    path('dashboard/smart-triggers/', include('apps.triggers.urls.web')),
+    path('dashboard/workflows/', include('apps.triggers.urls.web')),
     # =========================================================
     # Browser favicon
-    #
-    # Keep this at the root so every HTML page on the domain gets
-    # the SHVYA icon even when that page does not declare an explicit
-    # <link rel="icon"> tag.
     # =========================================================
     path(
         "favicon.ico",
@@ -102,21 +98,21 @@ urlpatterns = [
     ),
 
     # =========================================================
-    # Co-Pilot Web Dashboard
+    # Sales Desk Web Dashboard
     # =========================================================
     path(
-        "dashboard/copilot/",
+        "dashboard/sales-desk/",
         include("apps.copilot.urls.web"),
     ),
 
     # =========================================================
-    # Auto Follow-ups Web Dashboard
+    # Cadence Web Dashboard
     #
     # Keep this before the broad CRM dashboard include so the real feature
-    # owns /dashboard/auto-follow-ups/* rather than a legacy placeholder.
+    # owns /dashboard/cadence/* rather than a legacy placeholder.
     # =========================================================
     path(
-        "dashboard/auto-follow-ups/",
+        "dashboard/cadence/",
         include("apps.followups.urls.web"),
     ),
 
@@ -156,10 +152,10 @@ urlpatterns = [
     ),
 
     # =========================================================
-    # Analytics
+    # Insights
     # =========================================================
     path(
-        "dashboard/analytics/",
+        "dashboard/insights/",
         include("apps.analytics.urls.web"),
     ),
 
