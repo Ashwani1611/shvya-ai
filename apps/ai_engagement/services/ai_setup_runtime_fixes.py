@@ -250,7 +250,12 @@ def _enhanced_qualification_validator(original_validator, engagement_module):
                 "Answer the lead's interruption without repeating the still-pending qualification question in the same response."
             )
 
-        if projected.get("qualification_status") == "completed":
+        # This is a turn-level response rule, not a permanent ban on questions
+        # after qualification. Only the inbound message that actually answered
+        # the final active requirement must receive an acknowledgement-only
+        # qualification completion response. Later normal conversation may ask
+        # ordinary customer-facing questions without reopening qualification.
+        if answered_this_turn and projected.get("qualification_status") == "completed":
             if "?" not in str(latest_text or "") and "?" in message:
                 raise engagement_module.EngagementError(
                     "The final qualification answer is complete. Send an acknowledgment instead of another question."
