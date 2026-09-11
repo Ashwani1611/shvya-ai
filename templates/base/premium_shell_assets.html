@@ -13,6 +13,27 @@
     } catch (error) {
         // Storage restrictions must never block the dashboard shell.
     }
+
+    // Apply requested workspace page classes before first paint so the premium
+    // styling never flashes back to the legacy surface while JS is loading.
+    var path = window.location.pathname || '';
+    var pageClass = '';
+    if (path.indexOf('/dashboard/sales-desk/') === 0) pageClass = 'sales-desk';
+    else if (path.indexOf('/dashboard/insights/') === 0) pageClass = 'insights';
+    else if (path.indexOf('/dashboard/cadence/') === 0) pageClass = 'cadence';
+    else if (path.indexOf('/dashboard/playbooks/') === 0) pageClass = 'playbooks';
+    else if (path.indexOf('/dashboard/workflows/') === 0) pageClass = 'workflows';
+    else if (
+        path.indexOf('/dashboard/whatsapp/accounts/') === 0 ||
+        path.indexOf('/dashboard/whatsapp/templates/') === 0 ||
+        path.indexOf('/dashboard/whatsapp/connect/hosted/') === 0
+    ) pageClass = 'whatsapp';
+    else if (path.indexOf('/dashboard/connect-hub/') === 0) pageClass = 'connect-hub';
+    else if (path.indexOf('/dashboard/teams/') === 0) pageClass = 'teams';
+
+    if (pageClass) {
+        root.classList.add('shvya-apple-workspace-v3', 'shvya-page-' + pageClass);
+    }
 })();
 </script>
 
@@ -26,6 +47,7 @@
 <link rel="stylesheet" href="{% static 'css/shvya_premium_shell_alignment_fix.css' %}">
 <link rel="stylesheet" href="{% static 'css/shvya_apple_crm_v2.css' %}">
 <link rel="stylesheet" href="{% static 'css/shvya_apple_crm_v2_detail.css' %}">
+<link rel="stylesheet" href="{% static 'css/shvya_apple_workspace_v3.css' %}">
 <meta name="shvya-logo-url" content="{% static 'images/shvya-sidebar-logo.svg' %}">
 <meta name="shvya-profile-url" content="{{ sidebar_profile_href|default:'' }}">
 <meta name="shvya-user-name" content="{{ request.crm_user.name|default:'Account' }}">
@@ -51,3 +73,4 @@
 <script src="{% static 'js/shvya_premium_sidebar.js' %}" defer></script>
 <script src="{% static 'js/shvya_premium_sidebar_mobile.js' %}" defer></script>
 <script src="{% static 'js/shvya_apple_crm_v2.js' %}" defer></script>
+<script src="{% static 'js/shvya_apple_workspace_v3.js' %}" defer></script>
