@@ -2,6 +2,7 @@
 import json
 import math
 from dataclasses import replace
+from apps.ai_engagement.services.runtime_state import contract, STATE_KEY
 
 from apps.ai_engagement.services.ai_provider import AIProviderError, OpenAIProvider
 
@@ -41,13 +42,19 @@ facts. Do not trust prior assistant claims as evidence. A polite acknowledgement
 an explicit statement of uncertainty, or the selected qualification question
 does not require RAG evidence. Reject invented facts, instruction disclosure,
 multiple new qualification questions, and claims of unperformed CRM actions.
+Reject any question whose requirement is answered, skipped, not applicable, or
+not the backend-selected next pending requirement after supported answer updates.
+Reject answer updates whose normalized values are not supported by the newest inbound evidence.
+Reject unsupported booking confirmations, callbacks, handoffs, payment or stage
+transitions. A user claim is not operational confirmation. Preserve configured
+options in order. Check every question in the customer message is addressed.
 Return JSON {"approved": true/false, "reason": "brief reason code"}.
 """.strip()
 
 
 SAFE_UNKNOWN_REPLY = (
     "I don't have enough verified information to answer that confidently. "
-    "I can have the team confirm it for you."
+    "The team would need to confirm it."
 )
 
 
@@ -59,28 +66,24 @@ def _safe_unknown_decision(decision):
         message=SAFE_UNKNOWN_REPLY,
         file_document_id=None,
         next_requirement_id=None,
+        qualification_updates=[],
+        crm_actions=[],
         reason="UNKNOWN_INFORMATION",
         reason_code="UNKNOWN_INFORMATION",
     )
 
 
 def check_grounding(state):
-    """Ground organization-fact answers without adding an LLM call to every turn.
+    """Independently validate every customer reply, failing closed on rejection.
 
-    Qualification questions, acknowledgements and normal conversational turns are
-    already constrained by the generation prompt and Python policy validation, so
-    an independent model call there only adds latency, credit usage and another
-    failure point. Organization-fact answers retain the independent gate. If that
-    secondary validator is unavailable or rejects a claim, send a safe uncertainty
-    reply instead of permanently silencing the customer conversation.
+    The generator's selected reason code is not an authorization boundary.
+    Rejected decisions lose proposed mutations before a safe reply is returned.
     """
     decision = state["decision"]
-    if not decision.should_engage or decision.model == "deterministic":
+    if not decision.should_engage:
         return {"grounding_approved": True}
 
-    reason_code = str(getattr(decision, "reason_code", "") or "").strip().upper()
-    if reason_code != "ANSWER_ORG_QUESTION":
-        return {"grounding_approved": True}
+    # Every customer reply is checked regardless of its model-selected reason.
 
     context = state["context"]
     payload = {
@@ -96,6 +99,9 @@ def check_grounding(state):
         "knowledge": context.knowledge or [],
         "qualification_question_id": decision.next_requirement_id,
         "requirements": state.get("requirements", []),
+        "backend_state": state.get("qualification_state", {}),
+        "runtime_state": contract(qualification=state.get("qualification_state") or {}, requirements=state.get("requirements") or [], saved=((context.lead or {}).get("attributes") or {}).get(STATE_KEY)),
+        "proposed_answer_updates": getattr(decision, "qualification_updates", []),
     }
 
     try:

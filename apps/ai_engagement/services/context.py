@@ -520,7 +520,7 @@ class AIContextBuilder:
                 "value": value,
             }
             for name, value in raw_attributes.items()
-            if name != "_shvya_ai_qualification"
+            if not name.startswith("_shvya_ai_")
         ]
 
     # ============================================================

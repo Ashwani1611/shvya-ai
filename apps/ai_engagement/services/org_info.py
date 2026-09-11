@@ -123,6 +123,13 @@ class OrgInfoService:
                 data["qualification_requirements"] or ""
             ).strip()
 
+        if "qualification_requirements" in data:
+            from apps.ai_engagement.services.organization_profile import compile_qualification_requirements
+            try:
+                compile_qualification_requirements(org_info.qualification_requirements)
+            except (TypeError, ValueError) as exc:
+                raise OrgInfoServiceError(str(exc)) from exc
+
         if "engagement_instructions" in data:
 
             org_info.engagement_instructions = (
