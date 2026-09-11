@@ -8,19 +8,42 @@ standardize on a dedicated library later, this can be swapped
 out without changing call sites much.
 """
 
+import ipaddress
 from functools import wraps
 
 from django.core.cache import cache
 from django.http import HttpResponse
 
 
+def _is_trusted_proxy_address(value):
+    """
+    The production reverse proxy reaches Django over Docker/private networking.
+    Only accept forwarding headers from loopback/private/link-local peers so a
+    client that reaches Django directly cannot choose its own rate-limit key.
+    """
+    try:
+        address = ipaddress.ip_address(str(value or "").strip())
+    except ValueError:
+        return False
+
+    return address.is_loopback or address.is_private or address.is_link_local
+
+
 def _client_ip(request):
-    forwarded = request.META.get("HTTP_X_FORWARDED_FOR")
+    remote_addr = request.META.get("REMOTE_ADDR", "unknown")
 
-    if forwarded:
-        return forwarded.split(",")[0].strip()
+    if _is_trusted_proxy_address(remote_addr):
+        # Nginx is configured to overwrite these headers with $remote_addr,
+        # rather than append client-supplied values, before proxying to Django.
+        real_ip = request.META.get("HTTP_X_REAL_IP", "").strip()
+        if real_ip:
+            return real_ip
 
-    return request.META.get("REMOTE_ADDR", "unknown")
+        forwarded = request.META.get("HTTP_X_FORWARDED_FOR", "")
+        if forwarded:
+            return forwarded.split(",")[0].strip()
+
+    return remote_addr
 
 
 def ratelimit(key_func=None, limit=5, window=300):
