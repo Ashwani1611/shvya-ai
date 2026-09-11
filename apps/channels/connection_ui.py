@@ -2,8 +2,8 @@
 
 There are two independent ways to populate the same final WhatsAppAccount:
 
-* Meta Embedded Signup -- browser receives a code/WABA/phone id and SHVYA
-  exchanges the code server-side.
+* Meta Embedded Signup -- browser receives an OAuth code and, when available,
+  WABA/phone ids; SHVYA can recover missing asset ids server-side.
 * Manual Access Token -- an admin supplies phone id/WABA/token directly.
 
 The paths do not call each other. They intentionally converge only at the final
@@ -138,12 +138,7 @@ def _fail_attempt(attempt, *, stage, message, meta_error_code=""):
 
 
 def _add_meta_resource_hints(response):
-    """Warm Meta origins before the user clicks Connect API.
-
-    The SDK itself still loads through the page's existing async loader so we
-    do not introduce an fbAsyncInit race. Preconnect removes much of the DNS/TLS
-    setup that otherwise makes the first popup noticeably slow.
-    """
+    """Warm Meta origins before the user clicks Connect API."""
     content_type = response.get("Content-Type", "")
     if "text/html" not in content_type.lower() or getattr(response, "streaming", False):
         return response
@@ -169,6 +164,24 @@ def _add_meta_resource_hints(response):
     response.content = html.encode(response.charset or "utf-8")
     if response.has_header("Content-Length"):
         response["Content-Length"] = str(len(response.content))
+    return response
+
+
+def _disable_fedcm_for_embedded_signup(response):
+    """Force the browser to use Meta's classic OAuth path on this page.
+
+    Chrome can currently attempt FedCM for Facebook Login for Business even
+    when the JS SDK has not opted into it. Meta's FedCM continuation may request
+    only the OpenID scope, which Facebook Login for Business rejects with
+    "This app needs at least one supported permission" before Embedded Signup
+    can return an authorization code. A document Permissions-Policy is a
+    browser-enforced stop for that FedCM path while leaving normal OAuth intact.
+    """
+    directive = "identity-credentials-get=()"
+    current = (response.get("Permissions-Policy", "") or "").strip()
+    if "identity-credentials-get" in current:
+        return response
+    response["Permissions-Policy"] = f"{current}, {directive}" if current else directive
     return response
 
 
@@ -262,6 +275,7 @@ def whatsapp_connect_api_view(request):
 
     if request.method == "GET" and response.status_code == 200:
         response = _add_meta_resource_hints(response)
+        response = _disable_fedcm_for_embedded_signup(response)
 
     return response
 
@@ -405,16 +419,8 @@ def whatsapp_embedded_signup_callback_view(request):
         error_message="",
     )
 
-    missing = []
     if not code:
-        missing.append("authorization code")
-    if not waba_id:
-        missing.append("WABA ID")
-    if not phone_number_id:
-        missing.append("Phone Number ID")
-
-    if missing:
-        message = "Meta's signup did not return: " + ", ".join(missing) + ". Please reconnect and try again."
+        message = "Meta's signup did not return an OAuth authorization code. Please reconnect and try again."
         _fail_attempt(attempt, stage="callback_validation", message=message)
         response = JsonResponse({"error": message, "attempt_id": str(attempt.id)}, status=400)
         response["X-SHVYA-Toast"] = "off"
