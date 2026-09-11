@@ -1,1062 +1,205 @@
 {% load static %}
-
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
-
     <meta charset="UTF-8">
-
-    <meta
-        name="viewport"
-        content="width=device-width, initial-scale=1.0"
-    >
-
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#140033">
+    <meta name="description" content="Sign in to SHVYA AI — AI-powered sales engagement, follow-ups, and CRM.">
     <title>SHVYA AI — Login</title>
-
-    <style>
-
-        * {
-            box-sizing: border-box;
-        }
-
-        html,
-        body {
-            margin: 0;
-            padding: 0;
-            width: 100%;
-            min-height: 100%;
-            font-family:
-                Inter,
-                -apple-system,
-                BlinkMacSystemFont,
-                "Segoe UI",
-                Roboto,
-                Helvetica,
-                Arial,
-                sans-serif;
-            background: #f8fafc;
-        }
-
-        body {
-            min-height: 100vh;
-        }
-
-
-        /* =====================================================
-           MAIN LOGIN LAYOUT
-           ===================================================== */
-
-        .login-page {
-            min-height: 100vh;
-            display: flex;
-            background: #ffffff;
-        }
-
-
-        /* =====================================================
-           LEFT BRANDING PANEL
-           ===================================================== */
-
-        .login-brand-panel {
-            width: 50%;
-            min-height: 100vh;
-            position: relative;
-            overflow: hidden;
-
-            display: flex;
-            align-items: center;
-            justify-content: center;
-
-            padding: 60px;
-
-            background:
-                linear-gradient(
-                    145deg,
-                    #0f4c9a 0%,
-                    #185ca8 45%,
-                    #0d478f 100%
-                );
-
-            color: #ffffff;
-        }
-
-
-        .brand-content {
-            width: 100%;
-            max-width: 560px;
-            position: relative;
-            z-index: 2;
-        }
-
-
-        .brand-logo {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-
-            margin-bottom: 70px;
-        }
-
-
-        .brand-logo-mark {
-            width: 42px;
-            height: 42px;
-
-            border-radius: 12px;
-
-            display: flex;
-            align-items: center;
-            justify-content: center;
-
-            background: rgba(
-                255,
-                255,
-                255,
-                0.15
-            );
-
-            border: 1px solid rgba(
-                255,
-                255,
-                255,
-                0.2
-            );
-
-            font-size: 22px;
-            font-weight: 800;
-        }
-
-
-        .brand-logo-text {
-            font-size: 27px;
-            font-weight: 800;
-            letter-spacing: -0.8px;
-        }
-
-
-        .brand-logo-ai {
-            font-weight: 500;
-            opacity: 0.8;
-        }
-
-
-        .brand-title {
-            margin: 0 0 24px;
-
-            font-size: clamp(
-                36px,
-                4vw,
-                54px
-            );
-
-            line-height: 1.08;
-
-            font-weight: 800;
-
-            letter-spacing: -1.5px;
-        }
-
-
-        .brand-description {
-            margin: 0;
-
-            max-width: 500px;
-
-            font-size: 18px;
-
-            line-height: 1.7;
-
-            color: rgba(
-                255,
-                255,
-                255,
-                0.82
-            );
-        }
-
-
-        /* =====================================================
-           FEATURE CARDS
-           ===================================================== */
-
-        .brand-features {
-            margin-top: 45px;
-
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-
-            gap: 16px;
-        }
-
-
-        .feature-card {
-            padding: 20px;
-
-            border-radius: 16px;
-
-            background: rgba(
-                255,
-                255,
-                255,
-                0.10
-            );
-
-            border: 1px solid rgba(
-                255,
-                255,
-                255,
-                0.14
-            );
-
-            backdrop-filter: blur(8px);
-        }
-
-
-        .feature-icon {
-            width: 38px;
-            height: 38px;
-
-            display: flex;
-            align-items: center;
-            justify-content: center;
-
-            margin-bottom: 13px;
-
-            border-radius: 10px;
-
-            background: rgba(
-                255,
-                255,
-                255,
-                0.14
-            );
-
-            font-size: 18px;
-        }
-
-
-        .feature-title {
-            margin: 0 0 6px;
-
-            font-size: 14px;
-
-            font-weight: 700;
-        }
-
-
-        .feature-text {
-            margin: 0;
-
-            font-size: 12px;
-
-            line-height: 1.55;
-
-            color: rgba(
-                255,
-                255,
-                255,
-                0.68
-            );
-        }
-
-
-        /* =====================================================
-           DECORATIVE BACKGROUND
-           ===================================================== */
-
-        .circle {
-            position: absolute;
-
-            border-radius: 50%;
-
-            pointer-events: none;
-        }
-
-
-        .circle-one {
-            width: 420px;
-            height: 420px;
-
-            right: -190px;
-            top: -160px;
-
-            background: rgba(
-                255,
-                255,
-                255,
-                0.035
-            );
-        }
-
-
-        .circle-two {
-            width: 300px;
-            height: 300px;
-
-            left: -150px;
-            bottom: -120px;
-
-            background: rgba(
-                255,
-                255,
-                255,
-                0.035
-            );
-        }
-
-
-        .circle-three {
-            width: 100px;
-            height: 100px;
-
-            right: 16%;
-            bottom: 15%;
-
-            background: rgba(
-                255,
-                255,
-                255,
-                0.04
-            );
-        }
-
-
-        /* =====================================================
-           RIGHT LOGIN PANEL
-           ===================================================== */
-
-        .login-form-panel {
-            width: 50%;
-            min-height: 100vh;
-
-            display: flex;
-            align-items: center;
-            justify-content: center;
-
-            padding: 50px;
-
-            background:
-                radial-gradient(
-                    circle at 80% 25%,
-                    rgba(
-                        37,
-                        99,
-                        235,
-                        0.07
-                    ),
-                    transparent 25%
-                ),
-                #ffffff;
-        }
-
-
-        .login-container {
-            width: 100%;
-            max-width: 470px;
-        }
-
-
-        /* =====================================================
-           SHVYA BRAND
-           ===================================================== */
-
-        .login-brand {
-            text-align: center;
-
-            margin-bottom: 32px;
-        }
-
-
-        .login-brand-name {
-            margin: 0;
-
-            color: #125ca8;
-
-            font-size: 35px;
-
-            font-weight: 800;
-
-            letter-spacing: -1.2px;
-        }
-
-
-        .login-brand-tagline {
-            margin-top: 5px;
-
-            font-size: 11px;
-
-            color: #64748b;
-
-            letter-spacing: 0.4px;
-        }
-
-
-        /* =====================================================
-           LOGIN CARD
-           ===================================================== */
-
-        .login-card {
-            width: 100%;
-
-            padding: 38px;
-
-            background: #ffffff;
-
-            border: 1px solid #dbe2ea;
-
-            border-radius: 12px;
-
-            box-shadow:
-                0 15px 40px rgba(
-                    15,
-                    23,
-                    42,
-                    0.08
-                );
-        }
-
-
-        .login-title {
-            margin: 0 0 30px;
-
-            text-align: center;
-
-            color: #111827;
-
-            font-size: 27px;
-
-            font-weight: 700;
-        }
-
-
-        /* =====================================================
-           ERROR
-           ===================================================== */
-
-        .login-error {
-            margin-bottom: 20px;
-
-            padding: 12px 14px;
-
-            border-radius: 8px;
-
-            border: 1px solid #fecaca;
-
-            background: #fef2f2;
-
-            color: #b91c1c;
-
-            font-size: 13px;
-
-            line-height: 1.5;
-        }
-
-
-        /* =====================================================
-           FORM
-           ===================================================== */
-
-        .form-group {
-            margin-bottom: 21px;
-        }
-
-
-        .form-label {
-            display: block;
-
-            margin-bottom: 8px;
-
-            color: #111827;
-
-            font-size: 14px;
-
-            font-weight: 600;
-        }
-
-
-        .form-input {
-            width: 100%;
-
-            height: 48px;
-
-            padding: 0 14px;
-
-            border: 1px solid #cbd5e1;
-
-            border-radius: 6px;
-
-            background: #ffffff;
-
-            color: #111827;
-
-            font-size: 15px;
-
-            outline: none;
-
-            transition:
-                border-color 0.2s ease,
-                box-shadow 0.2s ease;
-        }
-
-
-        .form-input::placeholder {
-            color: #9ca3af;
-        }
-
-
-        .form-input:focus {
-            border-color: #1677d2;
-
-            box-shadow:
-                0 0 0 3px rgba(
-                    22,
-                    119,
-                    210,
-                    0.12
-                );
-        }
-
-
-        /* =====================================================
-           PASSWORD ROW
-           ===================================================== */
-
-        .password-row {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-
-            margin-bottom: 8px;
-        }
-
-
-        .password-row .form-label {
-            margin-bottom: 0;
-        }
-
-
-        .forgot-password {
-            color: #2563eb;
-
-            font-size: 13px;
-
-            font-weight: 500;
-
-            text-decoration: none;
-        }
-
-
-        .forgot-password:hover {
-            text-decoration: underline;
-        }
-
-
-        /* =====================================================
-           LOGIN BUTTON
-           ===================================================== */
-
-        .login-button {
-            width: 100%;
-
-            height: 48px;
-
-            margin-top: 7px;
-
-            border: none;
-
-            border-radius: 6px;
-
-            background:
-                linear-gradient(
-                    135deg,
-                    #1677d2,
-                    #1266b5
-                );
-
-            color: #ffffff;
-
-            font-size: 15px;
-
-            font-weight: 700;
-
-            cursor: pointer;
-
-            box-shadow:
-                0 5px 12px rgba(
-                    22,
-                    119,
-                    210,
-                    0.20
-                );
-
-            transition:
-                transform 0.15s ease,
-                box-shadow 0.15s ease;
-        }
-
-
-        .login-button:hover {
-            transform: translateY(-1px);
-
-            box-shadow:
-                0 8px 18px rgba(
-                    22,
-                    119,
-                    210,
-                    0.25
-                );
-        }
-
-
-        .login-button:active {
-            transform: translateY(0);
-        }
-
-
-        /* =====================================================
-           LOGIN FOOTER
-           ===================================================== */
-
-        .login-footer {
-            margin-top: 25px;
-
-            text-align: center;
-
-            color: #64748b;
-
-            font-size: 13px;
-
-            line-height: 1.6;
-        }
-
-
-        /* =====================================================
-           SIGNUP LINK
-           ===================================================== */
-
-        .signup-footer {
-            margin-top: 18px;
-
-            padding-top: 18px;
-
-            border-top: 1px solid #e5e7eb;
-
-            text-align: center;
-
-            color: #111827;
-
-            font-size: 14px;
-
-            line-height: 1.6;
-        }
-
-
-        .signup-link {
-            color: #2563eb;
-
-            font-weight: 500;
-
-            text-decoration: underline;
-
-            text-underline-offset: 2px;
-        }
-
-
-        .signup-link:hover {
-            color: #1d4ed8;
-        }
-
-
-        /* =====================================================
-           RESPONSIVE
-           ===================================================== */
-
-        @media (max-width: 900px) {
-
-            .login-page {
-                display: block;
-            }
-
-
-            .login-brand-panel {
-                width: 100%;
-
-                min-height: auto;
-
-                padding: 45px 30px;
-            }
-
-
-            .brand-logo {
-                margin-bottom: 45px;
-            }
-
-
-            .brand-title {
-                font-size: 38px;
-            }
-
-
-            .brand-features {
-                display: none;
-            }
-
-
-            .login-form-panel {
-                width: 100%;
-
-                min-height: auto;
-
-                padding: 50px 25px;
-            }
-
-        }
-
-
-        @media (max-width: 520px) {
-
-            .login-brand-panel {
-                padding: 35px 22px;
-            }
-
-
-            .brand-title {
-                font-size: 32px;
-            }
-
-
-            .brand-description {
-                font-size: 15px;
-            }
-
-
-            .login-form-panel {
-                padding: 35px 18px;
-            }
-
-
-            .login-card {
-                padding: 28px 22px;
-            }
-
-        }
-
-    </style>
-
+    <link rel="icon" type="image/svg+xml" href="{% static 'images/shvya-logo.svg' %}">
+    <link rel="stylesheet" href="{% static 'css/crm-login-premium.css' %}">
 </head>
-
-
 <body>
+<main class="login-shell">
+    <section class="auth-panel" aria-labelledby="login-heading">
+        <div class="auth-inner">
+            <h1 class="auth-heading" id="login-heading">Welcome to SHVYA AI</h1>
+            <p class="auth-subheading">Log into your SHVYA AI account</p>
 
-<div class="login-page">
-
-
-    <!-- =====================================================
-         LEFT BRAND PANEL
-         ===================================================== -->
-
-    <section class="login-brand-panel">
-
-        <div class="circle circle-one"></div>
-        <div class="circle circle-two"></div>
-        <div class="circle circle-three"></div>
-
-
-        <div class="brand-content">
-
-            <div class="brand-logo">
-
-                <div class="brand-logo-mark">
-                    S
+            {% if login_error %}
+                <div class="login-error" role="alert" aria-live="polite">
+                    <span>{{ login_error }}</span>
                 </div>
+            {% endif %}
 
-                <div class="brand-logo-text">
-                    SHVYA
-                    <span class="brand-logo-ai">
-                        AI
-                    </span>
-                </div>
+            <form method="POST" action="" autocomplete="on">
+                {% csrf_token %}
 
-            </div>
-
-
-            <h1 class="brand-title">
-                AI-Powered
-                Qualification
-                That Saves Time
-            </h1>
-
-
-            <p class="brand-description">
-                Automatically identify lead intent,
-                qualify prospects, and help your
-                sales team focus only on the
-                opportunities that matter.
-            </p>
-
-
-            <div class="brand-features">
-
-
-                <div class="feature-card">
-
-                    <div class="feature-icon">
-                        ✦
-                    </div>
-
-                    <h3 class="feature-title">
-                        AI Lead Qualification
-                    </h3>
-
-                    <p class="feature-text">
-                        Identify high-value prospects
-                        using intelligent qualification.
-                    </p>
-
-                </div>
-
-
-                <div class="feature-card">
-
-                    <div class="feature-icon">
-                        ✓
-                    </div>
-
-                    <h3 class="feature-title">
-                        Smarter Sales Workflow
-                    </h3>
-
-                    <p class="feature-text">
-                        Keep your sales team focused
-                        on the right leads.
-                    </p>
-
-                </div>
-
-
-                <div class="feature-card">
-
-                    <div class="feature-icon">
-                        ↗
-                    </div>
-
-                    <h3 class="feature-title">
-                        Automated Follow-up
-                    </h3>
-
-                    <p class="feature-text">
-                        Reduce manual work and never
-                        lose track of prospects.
-                    </p>
-
-                </div>
-
-
-                <div class="feature-card">
-
-                    <div class="feature-icon">
-                        ◉
-                    </div>
-
-                    <h3 class="feature-title">
-                        Centralized CRM
-                    </h3>
-
-                    <p class="feature-text">
-                        Manage leads, pipelines,
-                        notes, calls, and stages.
-                    </p>
-
-                </div>
-
-            </div>
-
-        </div>
-
-    </section>
-
-
-
-    <!-- =====================================================
-         RIGHT LOGIN PANEL
-         ===================================================== -->
-
-    <section class="login-form-panel">
-
-        <div class="login-container">
-
-
-            <!-- =================================================
-                 BRAND
-                 ================================================= -->
-
-            <div class="login-brand">
-
-                <h2 class="login-brand-name">
-                    SHVYA AI
-                </h2>
-
-                <div class="login-brand-tagline">
-                    AI-Powered CRM
-                </div>
-
-            </div>
-
-
-            <!-- =================================================
-                 LOGIN CARD
-                 ================================================= -->
-
-            <div class="login-card">
-
-                <h1 class="login-title">
-                    Login
-                </h1>
-
-
-                {% if login_error %}
-
-                    <div class="login-error">
-                        {{ login_error }}
-                    </div>
-
-                {% endif %}
-
-
-                <form
-                    method="POST"
-                    action=""
-                    autocomplete="on"
-                >
-
-                    {% csrf_token %}
-
-
-                    <!-- =========================================
-                         EMAIL
-                         ========================================= -->
-
-                    <div class="form-group">
-
-                        <label
-                            class="form-label"
-                            for="email"
-                        >
-                            Email
-                        </label>
-
+                <div class="form-group">
+                    <label class="form-label" for="email">
+                        Email Address <span class="required-mark" aria-hidden="true">*</span>
+                    </label>
+                    <div class="field-shell">
+                        <span class="field-icon" aria-hidden="true">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+                                <rect x="3.5" y="5.5" width="17" height="13" rx="2"></rect>
+                                <path d="m5.5 8 6.5 5 6.5-5"></path>
+                            </svg>
+                        </span>
                         <input
                             id="email"
                             name="email"
                             type="email"
                             class="form-input"
-                            placeholder="Enter your email"
+                            placeholder="name@company.com"
                             value="{{ email|default:'' }}"
                             autocomplete="username"
+                            inputmode="email"
                             required
                             autofocus
                         >
-
                     </div>
+                </div>
 
-
-                    <!-- =========================================
-                         PASSWORD
-                         ========================================= -->
-
-                    <div class="form-group">
-
-                        <div class="password-row">
-
-                            <label
-                                class="form-label"
-                                for="password"
-                            >
-                                Password
-                            </label>
-
-
-                            <!-- =================================
-                                 FORGOT PASSWORD
-                                 ================================= -->
-
-                            <a
-                                href="{% url 'crm-forgot-password' %}"
-                                class="forgot-password"
-                            >
-                                Forgot Password?
-                            </a>
-
-                        </div>
-
-
+                <div class="form-group">
+                    <div class="password-label-row">
+                        <label class="form-label" for="password">
+                            Password <span class="required-mark" aria-hidden="true">*</span>
+                        </label>
+                        <a href="{% url 'crm-forgot-password' %}" class="forgot-password">Forgot password?</a>
+                    </div>
+                    <div class="field-shell">
+                        <span class="field-icon" aria-hidden="true">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+                                <rect x="5" y="10" width="14" height="10" rx="2"></rect>
+                                <path d="M8.5 10V7.5a3.5 3.5 0 0 1 7 0V10"></path>
+                            </svg>
+                        </span>
                         <input
                             id="password"
                             name="password"
                             type="password"
                             class="form-input"
-                            placeholder="Password"
+                            placeholder="Enter your password"
                             autocomplete="current-password"
                             required
                         >
-
+                        <button
+                            class="password-toggle"
+                            id="password-toggle"
+                            type="button"
+                            aria-label="Show password"
+                            aria-pressed="false"
+                        >
+                            <svg class="eye-open" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <path d="M2.8 12s3.2-5 9.2-5 9.2 5 9.2 5-3.2 5-9.2 5-9.2-5-9.2-5Z"></path>
+                                <circle cx="12" cy="12" r="2.35"></circle>
+                            </svg>
+                            <svg class="eye-closed" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" hidden>
+                                <path d="M3 3 21 21"></path>
+                                <path d="M10.6 7.1A9 9 0 0 1 12 7c6 0 9.2 5 9.2 5a14.7 14.7 0 0 1-2.3 2.8"></path>
+                                <path d="M6.2 6.2C4 7.7 2.8 12 2.8 12s3.2 5 9.2 5a9.7 9.7 0 0 0 3-.45"></path>
+                            </svg>
+                        </button>
                     </div>
-
-
-                    <!-- =========================================
-                         LOGIN BUTTON
-                         ========================================= -->
-
-                    <button
-                        type="submit"
-                        class="login-button"
-                    >
-                        Login
-                    </button>
-
-
-                </form>
-
-
-                <!-- =================================================
-                     SECURITY MESSAGE
-                     ================================================= -->
-
-                <div class="login-footer">
-
-                    Secure access to your SHVYA CRM workspace.
-
                 </div>
 
+                <button type="submit" class="signin-button">
+                    <span>Sign in</span>
+                    <span class="signin-arrow" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M5 12h13"></path>
+                            <path d="m14 8 4 4-4 4"></path>
+                        </svg>
+                    </span>
+                </button>
+            </form>
 
-                <!-- =================================================
-                     SIGNUP
-                     ================================================= -->
-
-                <div class="signup-footer">
-
-                    Don't have an account?
-
-                    <a
-                        href="{% url 'crm-signup' %}"
-                        class="signup-link"
-                    >
-                        Signup
-                    </a>
-
-                </div>
-
-
+            <div class="signup-footer">
+                Don’t have an account?
+                <a href="{% url 'crm-signup' %}" class="signup-link">Create your account</a>
             </div>
-
         </div>
-
     </section>
 
+    <section class="story-panel" aria-labelledby="story-title">
+        <span class="aurora" aria-hidden="true"></span>
+        <span class="ring ring-one" aria-hidden="true"></span>
+        <span class="ring ring-two" aria-hidden="true"></span>
+        <span class="ring ring-three" aria-hidden="true"></span>
 
-</div>
+        <div class="story-inner">
+            <div class="story-brand">
+                <div class="story-logo-shell">
+                    <img
+                        src="{% static 'images/shvya-login-glow.svg' %}"
+                        alt="SHVYA AI"
+                        class="story-logo"
+                        width="142"
+                        height="142"
+                        decoding="async"
+                    >
+                </div>
+                <p class="story-wordmark">SHVYA AI</p>
+            </div>
 
+            <h2 class="story-title" id="story-title">Turn More Leads Into Customers</h2>
+            <p class="story-description">
+                AI-powered engagement and follow-ups that help your team close more deals.
+            </p>
+
+            <div class="feature-grid" aria-label="SHVYA AI capabilities">
+                <article class="feature-item">
+                    <div class="feature-head">
+                        <span class="feature-symbol" aria-hidden="true">✦</span>
+                        <span>AI Playbooks</span>
+                    </div>
+                    <p class="feature-copy">Guide AI conversations with your sales knowledge.</p>
+                </article>
+
+                <article class="feature-item">
+                    <div class="feature-head">
+                        <span class="feature-symbol" aria-hidden="true">✓</span>
+                        <span>Smart Sales Workflow</span>
+                    </div>
+                    <p class="feature-copy">Focus your team on the right leads.</p>
+                </article>
+
+                <article class="feature-item">
+                    <div class="feature-head">
+                        <span class="feature-symbol" aria-hidden="true">↗</span>
+                        <span>Cadence</span>
+                    </div>
+                    <p class="feature-copy">Automate timely, personalized follow-ups.</p>
+                </article>
+
+                <article class="feature-item">
+                    <div class="feature-head">
+                        <span class="feature-symbol" aria-hidden="true">◉</span>
+                        <span>Centralized CRM</span>
+                    </div>
+                    <p class="feature-copy">Manage leads, pipelines, and conversations in one place.</p>
+                </article>
+            </div>
+        </div>
+    </section>
+</main>
+
+<script>
+(function () {
+    "use strict";
+
+    var passwordInput = document.getElementById("password");
+    var toggle = document.getElementById("password-toggle");
+
+    if (!passwordInput || !toggle) {
+        return;
+    }
+
+    var eyeOpen = toggle.querySelector(".eye-open");
+    var eyeClosed = toggle.querySelector(".eye-closed");
+
+    toggle.addEventListener("click", function () {
+        var isVisible = passwordInput.type === "text";
+        passwordInput.type = isVisible ? "password" : "text";
+        toggle.setAttribute("aria-label", isVisible ? "Show password" : "Hide password");
+        toggle.setAttribute("aria-pressed", String(!isVisible));
+        eyeOpen.hidden = !isVisible;
+        eyeClosed.hidden = isVisible;
+        passwordInput.focus({ preventScroll: true });
+    });
+}());
+</script>
 </body>
-
 </html>
