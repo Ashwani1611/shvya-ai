@@ -1,0 +1,312 @@
+/*
+ * SHVYA CRM — premium visual layer
+ * Visual-only overrides. CRM structure, stage placement, lead-card markup,
+ * HTMX behavior, drag/drop, filters and backend logic remain unchanged.
+ */
+
+:root {
+    --crm-apple-bg: #f5f5f7;
+    --crm-apple-surface: rgba(255, 255, 255, 0.82);
+    --crm-apple-surface-solid: #ffffff;
+    --crm-apple-border: rgba(15, 23, 42, 0.075);
+    --crm-apple-border-strong: rgba(15, 23, 42, 0.12);
+    --crm-apple-text: #1d1d1f;
+    --crm-apple-muted: #6e6e73;
+    --crm-apple-blue: #0071e3;
+    --crm-apple-blue-hover: #0077ed;
+    --crm-apple-focus: rgba(0, 113, 227, 0.18);
+    --crm-apple-shadow: 0 10px 30px rgba(15, 23, 42, 0.055);
+    --crm-apple-shadow-soft: 0 4px 18px rgba(15, 23, 42, 0.045);
+}
+
+.crm-premium-page {
+    color: var(--crm-apple-text);
+    isolation: isolate;
+}
+
+/* Toolbar: same placement, upgraded visual treatment only. */
+.crm-premium-page .crm-premium-toolbar {
+    background: rgba(246, 246, 248, 0.88) !important;
+    border-color: rgba(255, 255, 255, 0.72) !important;
+    border-radius: 20px !important;
+    box-shadow:
+        inset 0 0 0 1px rgba(15, 23, 42, 0.055),
+        0 8px 26px rgba(15, 23, 42, 0.045);
+    -webkit-backdrop-filter: blur(24px) saturate(150%);
+    backdrop-filter: blur(24px) saturate(150%);
+}
+
+.crm-premium-page .crm-premium-control,
+.crm-premium-page .crm-premium-filter {
+    min-height: 40px;
+    border-color: var(--crm-apple-border) !important;
+    border-radius: 999px !important;
+    background: rgba(255, 255, 255, 0.9) !important;
+    color: #3a3a3c !important;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.025);
+    transition:
+        border-color 160ms ease,
+        background-color 160ms ease,
+        color 160ms ease,
+        box-shadow 160ms ease !important;
+}
+
+.crm-premium-page .crm-premium-control:hover,
+.crm-premium-page .crm-premium-filter:hover {
+    background: #fff !important;
+    border-color: rgba(15, 23, 42, 0.13) !important;
+    color: var(--crm-apple-text) !important;
+    box-shadow: 0 3px 10px rgba(15, 23, 42, 0.05);
+}
+
+.crm-premium-page .crm-premium-control:focus,
+.crm-premium-page .crm-premium-filter:focus-visible {
+    outline: none !important;
+    border-color: rgba(0, 113, 227, 0.45) !important;
+    box-shadow: 0 0 0 4px var(--crm-apple-focus) !important;
+}
+
+.crm-premium-page .crm-premium-search .ti-search,
+.crm-premium-page .crm-premium-toolbar .ti-chevron-down {
+    color: #8e8e93 !important;
+}
+
+/* Pipeline area retains the existing stage order and geometry. */
+.crm-premium-page #lead-table-container {
+    min-width: 0;
+}
+
+.crm-premium-page [data-bulk-root] > .flex.items-end.border-b {
+    border-color: rgba(15, 23, 42, 0.075) !important;
+}
+
+.crm-premium-page .stage-tab {
+    position: relative;
+    border-bottom-color: transparent !important;
+    color: #73737a !important;
+    border-radius: 12px 12px 0 0;
+    transition:
+        color 150ms ease,
+        background-color 150ms ease !important;
+}
+
+.crm-premium-page .stage-tab:hover {
+    color: var(--crm-apple-text) !important;
+    background: rgba(255, 255, 255, 0.55);
+    font-weight: inherit !important;
+}
+
+.crm-premium-page .stage-tab.font-medium {
+    color: var(--crm-apple-text) !important;
+    font-weight: 600 !important;
+}
+
+.crm-premium-page .stage-tab.font-medium::after {
+    content: "";
+    position: absolute;
+    left: 16px;
+    right: 16px;
+    bottom: -1px;
+    height: 2px;
+    border-radius: 999px;
+    background: var(--crm-apple-blue);
+}
+
+.crm-premium-page .stage-tab [data-stage-count] {
+    border-radius: 999px !important;
+    background: rgba(118, 118, 128, 0.10) !important;
+    color: #86868b !important;
+    transition: background-color 150ms ease, color 150ms ease !important;
+}
+
+.crm-premium-page .stage-tab.font-medium [data-stage-count] {
+    background: rgba(0, 113, 227, 0.11) !important;
+    color: var(--crm-apple-blue) !important;
+}
+
+/* Stage management stays exactly where it is, with the same controls. */
+.crm-premium-page .stage-manager-trigger {
+    border-color: var(--crm-apple-border) !important;
+    border-radius: 999px !important;
+    background: rgba(255, 255, 255, 0.88) !important;
+    color: #6e6e73 !important;
+    box-shadow: 0 2px 8px rgba(15, 23, 42, 0.035);
+    transition: background-color 150ms ease, color 150ms ease, border-color 150ms ease !important;
+}
+
+.crm-premium-page .stage-manager-trigger:hover,
+.crm-premium-page .stage-manager-trigger:focus-visible {
+    background: #fff !important;
+    border-color: rgba(0, 113, 227, 0.28) !important;
+    color: var(--crm-apple-blue) !important;
+    box-shadow: 0 0 0 4px var(--crm-apple-focus) !important;
+}
+
+.crm-premium-page .stage-manager-popover {
+    border-color: var(--crm-apple-border) !important;
+    border-radius: 18px !important;
+    background: rgba(255, 255, 255, 0.96) !important;
+    box-shadow: 0 20px 55px rgba(15, 23, 42, 0.12) !important;
+    -webkit-backdrop-filter: blur(24px) saturate(150%);
+    backdrop-filter: blur(24px) saturate(150%);
+}
+
+.crm-premium-page .stage-manager-popover input[type="text"] {
+    border-color: var(--crm-apple-border) !important;
+    border-radius: 12px !important;
+    background: #f8f8fa !important;
+}
+
+.crm-premium-page .stage-manager-popover input[type="text"]:focus {
+    background: #fff !important;
+    border-color: rgba(0, 113, 227, 0.4) !important;
+    box-shadow: 0 0 0 4px var(--crm-apple-focus) !important;
+}
+
+/* Bulk selection surfaces use the same visual system without changing behavior. */
+.crm-premium-page .crm-bulk-toolbar {
+    background: rgba(237, 245, 255, 0.92) !important;
+    border-color: rgba(0, 113, 227, 0.14) !important;
+    border-radius: 16px !important;
+    box-shadow: var(--crm-apple-shadow-soft);
+    -webkit-backdrop-filter: blur(18px);
+    backdrop-filter: blur(18px);
+}
+
+.crm-premium-page .crm-bulk-button {
+    border-color: var(--crm-apple-border) !important;
+    border-radius: 999px !important;
+    background: #fff !important;
+    color: #3a3a3c !important;
+    transition: background-color 150ms ease, color 150ms ease, border-color 150ms ease !important;
+}
+
+.crm-premium-page .crm-bulk-primary {
+    background: var(--crm-apple-blue) !important;
+    border-color: var(--crm-apple-blue) !important;
+    color: #fff !important;
+}
+
+.crm-premium-page .crm-bulk-primary:hover {
+    background: var(--crm-apple-blue-hover) !important;
+}
+
+.crm-premium-page .crm-stage-select {
+    color: var(--crm-apple-muted);
+}
+
+/* Lead cards: keep every field/action exactly as-is; only surface treatment changes. */
+body .crm-premium-page .lead-card {
+    border-color: rgba(15, 23, 42, 0.07) !important;
+    border-left: 6px solid var(--crm-apple-blue) !important;
+    border-radius: 20px !important;
+    background: rgba(255, 255, 255, 0.94) !important;
+    box-shadow:
+        0 1px 2px rgba(15, 23, 42, 0.025),
+        0 8px 24px rgba(15, 23, 42, 0.045) !important;
+    transform: none !important;
+    transition:
+        border-color 160ms ease,
+        box-shadow 160ms ease,
+        background-color 160ms ease !important;
+    will-change: auto;
+}
+
+body .crm-premium-page .lead-card:hover {
+    transform: none !important;
+    border-color: rgba(15, 23, 42, 0.10) !important;
+    border-left-color: var(--crm-apple-blue) !important;
+    background: #fff !important;
+    box-shadow:
+        0 2px 4px rgba(15, 23, 42, 0.03),
+        0 12px 32px rgba(15, 23, 42, 0.065) !important;
+}
+
+.crm-premium-page .lead-card.crm-is-selected {
+    outline: 2px solid rgba(0, 113, 227, 0.72) !important;
+    outline-offset: -2px !important;
+    box-shadow: 0 0 0 4px var(--crm-apple-focus), var(--crm-apple-shadow-soft) !important;
+}
+
+.crm-premium-page .lead-card > div:first-of-type {
+    border-bottom-color: rgba(15, 23, 42, 0.055) !important;
+}
+
+.crm-premium-page .lead-card .w-11.h-11.rounded-lg {
+    border-radius: 14px !important;
+    background: #f2f2f4 !important;
+    color: #636366 !important;
+    box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.045);
+}
+
+.crm-premium-page .lead-card h3 {
+    color: var(--crm-apple-text) !important;
+    letter-spacing: -0.01em;
+}
+
+.crm-premium-page .lead-card a[href*="whatsapp"] {
+    border-color: rgba(34, 197, 94, 0.13) !important;
+    border-radius: 999px !important;
+    background: rgba(34, 197, 94, 0.075) !important;
+}
+
+.crm-premium-page .lead-card button,
+.crm-premium-page .lead-card a {
+    transition:
+        background-color 150ms ease,
+        border-color 150ms ease,
+        color 150ms ease,
+        box-shadow 150ms ease !important;
+}
+
+.crm-premium-page .lead-card button:focus-visible,
+.crm-premium-page .lead-card a:focus-visible,
+.crm-premium-page .crm-lead-checkbox:focus-visible,
+.crm-premium-page .crm-stage-select input:focus-visible {
+    outline: 2px solid var(--crm-apple-blue) !important;
+    outline-offset: 3px !important;
+}
+
+/* Empty/loading states remain in their original positions. */
+.crm-premium-page #lead-table-container .text-gray-400 {
+    color: #8e8e93;
+}
+
+/* Dialog visual alignment; markup and actions remain untouched. */
+.crm-bulk-dialog {
+    border-color: var(--crm-apple-border) !important;
+    border-radius: 20px !important;
+    box-shadow: 0 28px 80px rgba(15, 23, 42, 0.18) !important;
+}
+
+.crm-bulk-dialog::backdrop {
+    background: rgba(29, 29, 31, 0.34) !important;
+    -webkit-backdrop-filter: blur(6px);
+    backdrop-filter: blur(6px);
+}
+
+@media (max-width: 760px) {
+    .crm-premium-page .crm-premium-toolbar {
+        border-radius: 18px !important;
+    }
+
+    .crm-premium-page .crm-premium-toolbar-row {
+        flex-wrap: wrap;
+    }
+
+    .crm-premium-page .crm-premium-search {
+        order: 3;
+        flex-basis: 100%;
+        max-width: none !important;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .crm-premium-page *,
+    .crm-bulk-dialog * {
+        scroll-behavior: auto !important;
+        transition-duration: 0.01ms !important;
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+    }
+}
