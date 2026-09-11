@@ -110,6 +110,20 @@ jobs:
               exit 1
             fi
 
+            echo "Verifying live AI task registration and queue consumers..."
+            ai_ready=0
+            for attempt in $(seq 1 5); do
+              if docker compose exec -T web python manage.py check_ai_runtime; then
+                ai_ready=1
+                break
+              fi
+              sleep 2
+            done
+            if [ "$ai_ready" -ne 1 ]; then
+              docker compose logs --tail=100 ai_realtime_worker hosted_ai_worker beat
+              exit 1
+            fi
+
             echo "Recreating WhatsApp Web gateway with the freshly built image..."
             if ! docker compose up -d --wait --no-deps --force-recreate whatsapp-web-gateway; then
               echo "WhatsApp Web gateway did not become healthy."

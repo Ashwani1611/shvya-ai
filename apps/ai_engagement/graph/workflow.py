@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import logging
 import os
-import re
 from dataclasses import replace
 from typing import Literal
 
@@ -24,16 +23,6 @@ from apps.ai_engagement.services.qualification_state import (
 
 
 logger = logging.getLogger(__name__)
-
-_OPT_OUT_PATTERNS = (
-    r"^stop$",
-    r"^unsubscribe$",
-    r"^opt\s*out$",
-    r"^do\s+not\s+(?:message|contact|text)(?:\s+me)?$",
-    r"^don't\s+(?:message|contact|text)(?:\s+me)?$",
-    r"^dont\s+(?:message|contact|text)(?:\s+me)?$",
-)
-
 
 def _min_rag_similarity() -> float:
     try:
@@ -123,6 +112,7 @@ def _deterministic_extract(state: EngagementGraphState) -> dict:
     context = state["context"]
     if (
         not profile.get("communication", {}).get("custom_instructions")
+        and not profile.get("qualification", {}).get("raw")
         and not profile.get("communication", {}).get("languages")
         and not (context.pipeline or {}).get("attribute_definitions")
         and direct.get("changed")
@@ -150,24 +140,6 @@ def _deterministic_extract(state: EngagementGraphState) -> dict:
 def _route_turn(state: EngagementGraphState) -> dict:
     if state.get("direct_decision") is not None:
         return {"route": "direct"}
-
-    latest = " ".join(str(state.get("latest_text") or "").casefold().split())
-    if latest and any(re.fullmatch(pattern, latest) for pattern in _OPT_OUT_PATTERNS):
-        from apps.ai_engagement.services.engagement import EngagementDecision
-
-        return {
-            "route": "direct",
-            "direct_decision": EngagementDecision(
-                should_engage=False,
-                message="",
-                file_document_id=None,
-                crm_actions=[],
-                reason="OPT_OUT",
-                reason_code="OPT_OUT",
-                next_requirement_id=None,
-                model="deterministic",
-            ),
-        }
 
     if state.get("caller_supplied_context"):
         context = state["context"]

@@ -333,7 +333,7 @@
                 ? payload.response.trim()
                 : "";
             const assistantText = responseText ||
-                "AI is configured not to respond to this message.";
+                "Your organization�s AI Setup instructions requested no reply for this message.";
 
             removePendingMessage();
             appendMessage("assistant", assistantText);

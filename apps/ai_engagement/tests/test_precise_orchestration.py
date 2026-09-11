@@ -10,7 +10,6 @@ from apps.ai_engagement.prompts import (
 from apps.ai_engagement.services.ai_provider import AITextResult
 from apps.ai_engagement.services.context import AIContext
 from apps.ai_engagement.services.engagement import EngagementError, EngagementService
-from services.channels.ai_orchestration_hooks import _is_explicit_opt_out
 
 
 class _SequenceProvider:
@@ -137,11 +136,3 @@ class PreciseEngagementTests(SimpleTestCase):
         self.assertIn("Never ask for information that is already present", CUSTOMER_ENGAGEMENT_INSTRUCTIONS)
         self.assertIn("Do not include chain-of-thought", CUSTOMER_ENGAGEMENT_INSTRUCTIONS)
         self.assertIn("Deduplicate facts", INTERNAL_CONVERSATION_SUMMARY_INSTRUCTIONS)
-
-
-class DeterministicOptOutTests(SimpleTestCase):
-    def test_explicit_opt_out_is_detected(self):
-        self.assertTrue(_is_explicit_opt_out("STOP"))
-        self.assertTrue(_is_explicit_opt_out("Please don't message me again"))
-        self.assertFalse(_is_explicit_opt_out("No, I have no previous experience"))
-        self.assertFalse(_is_explicit_opt_out("Yes"))

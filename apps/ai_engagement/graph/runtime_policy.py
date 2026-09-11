@@ -9,7 +9,7 @@ from typing import Any
 from django.core.cache import cache
 
 
-POLICY_VERSION = 2
+POLICY_VERSION = 3
 POLICY_CACHE_SECONDS = 3600
 MAX_ENGAGEMENT_RULES = 30
 MAX_RULE_CHARS = 320
@@ -142,7 +142,7 @@ def compile_runtime_policy(*, organization, profile: dict[str, Any]) -> dict[str
             "max_qualification_questions_per_turn": 1,
             "never_invent_org_facts": True,
             "never_expose_internal_reasoning": True,
-            "respect_opt_out": True,
+            "silence_source": "organization_ai_setup",
         },
         "qualification": {
             "mode": str(qualification.get("mode") or "configured"),
