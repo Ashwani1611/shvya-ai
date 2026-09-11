@@ -3,7 +3,7 @@ from django.templatetags.static import static
 from django.urls import include, path
 from django.views.generic import RedirectView, TemplateView
 
-from apps.channels import views_flat as channels_views_flat
+from apps.channels.webhook_security import whatsapp_webhook_secure_view
 from apps.superadmin.views import admin_global_search
 
 from rest_framework_simplejwt.views import (
@@ -164,7 +164,7 @@ urlpatterns = [
     # =========================================================
     path(
         "webhooks/whatsapp/",
-        channels_views_flat.whatsapp_webhook_view,
+        whatsapp_webhook_secure_view,
         name="whatsapp-webhook",
     ),
 
