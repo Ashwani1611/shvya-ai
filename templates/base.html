@@ -28,12 +28,14 @@
 {% include "base/base.html" %}
 
 <link rel="stylesheet" href="{% static 'css/shvya_premium_sidebar.css' %}">
+<link rel="stylesheet" href="{% static 'css/shvya_premium_sidebar_mobile.css' %}">
 <meta name="shvya-logo-url" content="{% static 'images/shvya-logo.svg' %}">
 <meta name="shvya-profile-url" content="{{ sidebar_profile_href|default:'' }}">
 <meta name="shvya-user-name" content="{{ request.crm_user.name|default:'Account' }}">
 {{ sidebar_nav_sections|json_script:"shvya-sidebar-sections" }}
 {{ sidebar_utility_items|json_script:"shvya-sidebar-utilities" }}
 <script src="{% static 'js/shvya_premium_sidebar.js' %}" defer></script>
+<script src="{% static 'js/shvya_premium_sidebar_mobile.js' %}" defer></script>
 
 <script src="{% static 'js/ai_setup_knowledge_delete.js' %}" defer></script>
 <script src="{% static 'js/ai_setup_playground.js' %}" defer></script>
