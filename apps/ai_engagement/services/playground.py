@@ -143,6 +143,8 @@ class PlaygroundService:
                     lead=SimpleNamespace(id=f"playground:{session_id}"),
                     result=result, original_error=exc,
                     instructions=instructions, input_text=input_text,
+                    metadata={"organization_id": str(organization.id),
+                              "session_id": session_id, "task": "playground"},
                 )
                 self.engagement_service._validate_engagement_policy(decision=decision, context=context)
         except AIProviderError as exc:

@@ -81,6 +81,10 @@ class PlaygroundEngagementPolicyTests(SimpleTestCase):
         result, provider = self.run_turn([self.payload(), self.payload(True)])
         self.assertTrue(result.should_engage)
         self.assertEqual(provider.generate_text.call_count, 2)
+        metadata = provider.generate_text.call_args.kwargs['metadata']
+        self.assertEqual(metadata['task'], 'playground')
+        self.assertEqual(metadata['session_id'], 'test')
+        self.assertNotIn('lead_id', metadata)
 
     def test_repeated_invalid_silence_is_error_not_configured_skip(self):
         with self.assertRaises(PlaygroundError):

@@ -461,6 +461,7 @@ class EngagementService:
         original_error: EngagementError,
         instructions: str,
         input_text: str,
+        metadata: dict[str, str] | None = None,
     ) -> EngagementDecision:
         repair_instructions = """
 Repair a malformed SHVYA engagement JSON result.
@@ -490,9 +491,11 @@ Do not add explanations, markdown, or chain-of-thought.
                 instructions=f"{instructions}\n\n{repair_instructions}",
                 input_text=repair_input,
                 metadata={
-                    "organization_id": str(organization.id),
-                    "lead_id": str(lead.id),
-                    "task": "engagement",
+                    **(metadata or {
+                        "organization_id": str(organization.id),
+                        "lead_id": str(lead.id),
+                        "task": "engagement",
+                    }),
                     "phase": "schema_repair",
                 },
                 response_schema=ENGAGEMENT_RESPONSE_SCHEMA,
