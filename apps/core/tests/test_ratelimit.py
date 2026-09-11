@@ -17,6 +17,16 @@ class RateLimitClientIPTests(SimpleTestCase):
 
         self.assertEqual(_client_ip(request), "8.8.8.8")
 
+    def test_reserved_non_proxy_peer_cannot_spoof_forwarded_ip(self):
+        request = self.factory.get(
+            "/",
+            REMOTE_ADDR="203.0.113.9",
+            HTTP_X_REAL_IP="1.2.3.4",
+            HTTP_X_FORWARDED_FOR="1.2.3.4",
+        )
+
+        self.assertEqual(_client_ip(request), "203.0.113.9")
+
     def test_private_reverse_proxy_can_supply_real_ip(self):
         request = self.factory.get(
             "/",
