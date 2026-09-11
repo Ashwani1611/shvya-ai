@@ -161,9 +161,19 @@ class MultiTurnTransportRecoveryTests(TestCase):
                     from_number=lead.phone, to_number=account.display_phone_number,
                 )
                 next_id = requirement_ids[index] if index < len(requirement_ids) else None
+                final_qualification_answer = index == len(requirement_ids)
+                response_message = (
+                    questions[index]
+                    if next_id
+                    else (
+                        "Thank you, I have all the required details."
+                        if final_qualification_answer
+                        else "How else can I help?"
+                    )
+                )
                 expected = {
                     "should_engage": True,
-                    "message": questions[index] if next_id else "How else can I help?",
+                    "message": response_message,
                     "file_document_id": None, "crm_actions": [],
                     "qualification_updates": [{
                         "requirement_id": requirement_ids[index - 1], "value": reply,
