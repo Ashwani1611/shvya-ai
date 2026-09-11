@@ -8,19 +8,60 @@ standardize on a dedicated library later, this can be swapped
 out without changing call sites much.
 """
 
+import ipaddress
 from functools import wraps
 
 from django.core.cache import cache
 from django.http import HttpResponse
 
 
+_TRUSTED_PROXY_NETWORKS = tuple(
+    ipaddress.ip_network(network)
+    for network in (
+        "127.0.0.0/8",
+        "10.0.0.0/8",
+        "172.16.0.0/12",
+        "192.168.0.0/16",
+        "::1/128",
+        "fc00::/7",
+    )
+)
+
+
+def _is_trusted_proxy_address(value):
+    """
+    Return True only for the loopback/private networks used by our reverse
+    proxy and Docker networking.
+
+    Do not rely on ``ipaddress.is_private`` here: Python intentionally treats
+    some reserved/non-global ranges as private too, which would broaden the
+    set of peers allowed to supply forwarding headers.
+    """
+    try:
+        address = ipaddress.ip_address(str(value or "").strip())
+    except ValueError:
+        return False
+
+    return any(address in network for network in _TRUSTED_PROXY_NETWORKS)
+
+
 def _client_ip(request):
-    forwarded = request.META.get("HTTP_X_FORWARDED_FOR")
+    remote_addr = str(request.META.get("REMOTE_ADDR", "unknown") or "unknown").strip()
 
-    if forwarded:
-        return forwarded.split(",")[0].strip()
+    if _is_trusted_proxy_address(remote_addr):
+        # Nginx is configured to overwrite these headers with $remote_addr,
+        # rather than append client-supplied values, before proxying to Django.
+        real_ip = request.META.get("HTTP_X_REAL_IP", "").strip()
+        if real_ip:
+            return real_ip
 
-    return request.META.get("REMOTE_ADDR", "unknown")
+        forwarded = request.META.get("HTTP_X_FORWARDED_FOR", "")
+        if forwarded:
+            candidate = forwarded.split(",", 1)[0].strip()
+            if candidate:
+                return candidate
+
+    return remote_addr
 
 
 def ratelimit(key_func=None, limit=5, window=300):
