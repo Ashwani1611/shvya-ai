@@ -4,6 +4,7 @@
 {% block extra_head %}
 {{ block.super }}
 <link rel="stylesheet" href="{% static 'crm/bulk.css' %}">
+<link rel="stylesheet" href="{% static 'crm/apple_crm.css' %}">
 <script src="{% static 'crm/bulk.js' %}" defer></script>
 {% endblock %}
 
@@ -16,7 +17,7 @@
 {% include "crm/partials/bulk_dialog.html" %}
 <div id="crm-bulk-status" class="crm-bulk-status" role="status" aria-live="polite" hidden></div>
 
-<div class="h-full flex flex-col">
+<div class="crm-premium-page h-full flex flex-col">
 
 
     <!-- ======================================================
@@ -24,14 +25,14 @@
          ====================================================== -->
 
     <div
-        class="bg-white
+        class="crm-premium-toolbar bg-white
                border border-gray-200
                rounded-xl
                p-3
                mb-4"
     >
 
-        <div class="flex items-center gap-3">
+        <div class="crm-premium-toolbar-row flex items-center gap-3">
 
 
             <!-- ==================================================
@@ -44,7 +45,7 @@
                     id="pipeline-select"
                     name="pipeline"
 
-                    class="appearance-none
+                    class="crm-premium-control crm-premium-pipeline appearance-none
                            min-w-[180px]
                            border border-gray-300
                            rounded-lg
@@ -99,7 +100,7 @@
                  SEARCH
                  ================================================== -->
 
-            <div class="relative flex-1 max-w-xl">
+            <div class="crm-premium-search relative flex-1 max-w-xl">
 
                 <i
                     class="ti ti-search
@@ -120,7 +121,7 @@
 
                     placeholder="Search leads by name, phone or email"
 
-                    class="w-full
+                    class="crm-premium-control w-full
                            border border-gray-300
                            rounded-lg
                            bg-white
@@ -152,7 +153,7 @@
             <button
                 type="button"
 
-                class="inline-flex
+                class="crm-premium-filter inline-flex
                        items-center
                        justify-center
                        gap-2
@@ -174,7 +175,7 @@
                        focus:outline-none
                        focus:ring-4
                        focus:ring-blue-100
-                "       
+                "
 
                 hx-get="{% url 'crm-lead-filters-modal' %}?pipeline={{ selected_pipeline_id }}"
 
@@ -206,7 +207,7 @@
     <div
         id="lead-table-container"
 
-        class="flex-1 min-h-0"
+        class="crm-premium-pipeline-surface flex-1 min-h-0"
 
         hx-get="{% url 'crm-lead-table-partial' %}?pipeline={{ selected_pipeline_id }}{% if request.GET.stage %}&stage={{ request.GET.stage }}{% endif %}"
 
