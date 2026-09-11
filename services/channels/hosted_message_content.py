@@ -5,6 +5,11 @@ separate problem: an older row can already exist with an empty body or generic
 ``text`` type, while a later gateway/history payload has better content/type
 metadata. Repairs are deliberately one-way: never overwrite an existing body
 and never downgrade a known media type back to text.
+
+The final display helpers are deliberately non-destructive. WhatsApp Web media
+payloads can contain data URLs, base64, large JSON fragments, or transport
+identifiers in ``body``. Those values are useful for transport/debugging but
+must never be rendered as chat copy.
 """
 
 from __future__ import annotations
@@ -67,6 +72,61 @@ def resolved_message_type(payload):
         raw_message_type(payload),
         WhatsAppMessage.MessageType.TEXT,
     )
+
+
+def looks_like_transport_payload(value):
+    """Return True for values that look like media bytes/transport metadata.
+
+    Captions and ordinary chat text are intentionally left alone. This is a
+    conservative display-only guard against long base64/data-url/JSON/token
+    strings being shown in a message bubble or conversation preview.
+    """
+    raw = _clean(value)
+    if not raw:
+        return False
+
+    lower = raw.lower()
+    if lower.startswith(("data:", "blob:")) or "base64," in lower:
+        return True
+
+    if len(raw) > 550 and raw[:1] in {"{", "["}:
+        return True
+
+    # Long, whitespace-free values are overwhelmingly transport ids, encoded
+    # media, signatures, or URLs rather than human-authored captions.
+    if len(raw) > 260 and not any(character.isspace() for character in raw):
+        return True
+
+    if len(raw) > 700:
+        sample = "".join(raw.split())[:500]
+        if sample and all(
+            character.isalnum() or character in "+/=_-"
+            for character in sample
+        ):
+            return True
+
+    return False
+
+
+def display_body_for_message(message):
+    """Return safe human-readable body text for one message.
+
+    Text messages keep their authored copy. Media keeps a real caption, but
+    raw encoded/file transport content is suppressed so the media card itself
+    remains the primary UI.
+    """
+    body = _clean(getattr(message, "body", ""))
+    if not body:
+        return ""
+
+    message_type = _clean(getattr(message, "message_type", "")).lower()
+    if (
+        message_type
+        and message_type != WhatsAppMessage.MessageType.TEXT
+        and looks_like_transport_payload(body)
+    ):
+        return ""
+    return body
 
 
 def repair_gateway_message_content(*, message, payload, historical=False):
@@ -141,8 +201,8 @@ def repair_content_after_gateway_event(*, payload):
 
 
 def display_text_for_message(message):
-    """Return non-destructive UI text for body-less Hosted messages."""
-    body = _clean(getattr(message, "body", ""))
+    """Return concise display text without exposing media transport content."""
+    body = display_body_for_message(message)
     if body:
         return body
 
@@ -164,15 +224,25 @@ def display_text_for_message(message):
 
 
 def decorate_hosted_chat_snapshot(snapshot):
-    """Add display-only placeholders to body-less text rows in one snapshot.
-
-    The model instances are changed only in memory for rendering/serialization;
-    no placeholder text is persisted to ``WhatsAppMessage.body``.
-    """
+    """Sanitize one read-model snapshot without persisting display changes."""
     for message in snapshot.get("thread") or []:
-        if _clean(message.body):
-            continue
+        safe_body = display_body_for_message(message)
         if message.message_type != WhatsAppMessage.MessageType.TEXT:
+            # In-memory only. The authenticated media URL/card carries the
+            # attachment; a real caption stays visible, encoded bytes do not.
+            message.body = safe_body
             continue
-        message.body = display_text_for_message(message)
+        if not safe_body:
+            message.body = display_text_for_message(message)
+
+    # The conversation list is built before thread decoration. Apply the same
+    # transport guard to previews so a large data URL/base64 value can never
+    # expand or pollute the inbox row.
+    for row in snapshot.get("conversations") or []:
+        preview = _clean(row.get("last_message"))
+        if looks_like_transport_payload(preview):
+            row["last_message"] = "Attachment"
+        elif len(preview) > 220:
+            row["last_message"] = f"{preview[:217]}…"
+
     return snapshot
