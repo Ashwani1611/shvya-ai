@@ -9,6 +9,7 @@ from datetime import timedelta
 
 from django.utils import timezone
 
+from apps.ai_engagement.prompts import BUMP_UP_MESSAGE_INSTRUCTIONS
 from apps.ai_engagement.services.ai_provider import (
     AIProviderTransientError,
 )
@@ -102,14 +103,11 @@ def dispatch_bump_ups():
                 lead=lead,
                 knowledge_query=recent[0].body,
             )
-            instructions = service._build_instructions(context=context) + """
-
-This is a scheduled bump-up. The lead has not replied for at least one hour.
-Write one brief, natural reminder based on the previous conversation. Do not
-repeat the last message verbatim, invent urgency, or mention automation. Set
-should_engage=true unless the conversation indicates opt-out or a reminder
-would be inappropriate. Do not request CRM actions or a file attachment.
-"""
+            instructions = (
+                service._build_instructions(context=context)
+                + "\n\n"
+                + BUMP_UP_MESSAGE_INSTRUCTIONS
+            )
             provider = service.provider or __import__(
                 "apps.ai_engagement.services.ai_provider", fromlist=["OpenAIProvider"]
             ).OpenAIProvider()
