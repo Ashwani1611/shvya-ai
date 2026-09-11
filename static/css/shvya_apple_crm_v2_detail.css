@@ -1,0 +1,102 @@
+/* Detail-level refinements loaded after the primary SHVYA CRM premium layer. */
+
+html.shvya-crm-apple-v2 .shvya-lead-detail-apple {
+    border: 1px solid rgba(15, 23, 42, 0.065) !important;
+    border-radius: 20px !important;
+    background: rgba(255, 255, 255, 0.96) !important;
+    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.04) !important;
+}
+
+html.shvya-crm-apple-v2 .shvya-lead-detail-apple .shvya-focus-section {
+    border: 1px solid rgba(15, 23, 42, 0.06) !important;
+    border-radius: 17px !important;
+    background: #f7f7f9 !important;
+    padding: 14px !important;
+}
+
+html.shvya-crm-apple-v2 .shvya-lead-detail-apple .shvya-focus-section h3 {
+    margin-bottom: 10px !important;
+    color: #1d1d1f !important;
+    font-weight: 700 !important;
+    letter-spacing: -0.01em;
+}
+
+html.shvya-crm-apple-v2 .shvya-lead-detail-apple .shvya-focus-section [class*="border-gray-200"] {
+    border-color: rgba(15, 23, 42, 0.055) !important;
+    border-radius: 13px !important;
+    background: rgba(255, 255, 255, 0.82) !important;
+}
+
+html.shvya-crm-apple-v2 .shvya-lead-detail-apple .shvya-focus-section .shvya-focus-value,
+html.shvya-crm-apple-v2 .shvya-lead-detail-apple .shvya-focus-section p[class*="text-gray-700"],
+html.shvya-crm-apple-v2 .shvya-lead-detail-apple .shvya-focus-section p[class*="text-gray-800"] {
+    color: #1d1d1f !important;
+    font-weight: 650 !important;
+    line-height: 1.5 !important;
+    text-align: left !important;
+}
+
+/* Direct selectors keep these controls premium after any HTMX card replacement. */
+html.shvya-crm-apple-v2 .lead-card button[hx-get*="edit"],
+html.shvya-crm-apple-v2 .lead-card button[hx-get*="attribute"],
+html.shvya-crm-apple-v2 .lead-card button[hx-get*="note"],
+html.shvya-crm-apple-v2 .lead-card button[hx-get*="call"],
+html.shvya-crm-apple-v2 .lead-card button[hx-get*="reminder"] {
+    min-height: 38px !important;
+    padding: 0 13px !important;
+    border: 1px solid rgba(15, 23, 42, 0.075) !important;
+    border-radius: 999px !important;
+    background: #f5f5f7 !important;
+    color: #3a3a3c !important;
+    font-size: 12.5px !important;
+    font-weight: 600 !important;
+    box-shadow: none !important;
+    transition: background-color 140ms ease, color 140ms ease, border-color 140ms ease, box-shadow 140ms ease !important;
+}
+
+html.shvya-crm-apple-v2 .lead-card button[hx-get*="edit"]:hover,
+html.shvya-crm-apple-v2 .lead-card button[hx-get*="attribute"]:hover,
+html.shvya-crm-apple-v2 .lead-card button[hx-get*="note"]:hover,
+html.shvya-crm-apple-v2 .lead-card button[hx-get*="call"]:hover,
+html.shvya-crm-apple-v2 .lead-card button[hx-get*="reminder"]:hover {
+    border-color: rgba(15, 23, 42, 0.12) !important;
+    background: #fff !important;
+    color: #1d1d1f !important;
+    box-shadow: 0 3px 10px rgba(15, 23, 42, 0.045) !important;
+    transform: none !important;
+}
+
+html.shvya-crm-apple-v2 #modal-root .shvya-modal-primary-action {
+    min-height: 40px !important;
+    padding-left: 16px !important;
+    padding-right: 16px !important;
+    border: 1px solid #0071e3 !important;
+    border-radius: 999px !important;
+    background: #0071e3 !important;
+    color: #fff !important;
+    font-weight: 600 !important;
+    box-shadow: none !important;
+}
+
+html.shvya-crm-apple-v2 #modal-root .shvya-modal-primary-action:hover {
+    border-color: #0077ed !important;
+    background: #0077ed !important;
+    color: #fff !important;
+}
+
+html.shvya-crm-apple-v2 #modal-root textarea {
+    min-height: 120px;
+    padding-top: 12px !important;
+    vertical-align: top;
+    line-height: 1.5;
+}
+
+html.shvya-crm-apple-v2 #modal-root label {
+    color: #3a3a3c !important;
+}
+
+html.shvya-crm-apple-v2 #modal-root small,
+html.shvya-crm-apple-v2 #modal-root [class*="text-gray-400"],
+html.shvya-crm-apple-v2 #modal-root [class*="text-gray-500"] {
+    color: #86868b !important;
+}

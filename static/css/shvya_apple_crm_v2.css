@@ -1,0 +1,636 @@
+/*
+ * SHVYA AI — refined premium CRM + shell treatment.
+ * Visual-only layer: no CRM routes, HTMX behaviour, stage logic, lead data,
+ * card actions, filtering or backend behaviour is changed here.
+ */
+
+:root {
+    --shvya-apple-bg: #f5f5f7;
+    --shvya-apple-panel: rgba(255, 255, 255, 0.88);
+    --shvya-apple-panel-solid: #fff;
+    --shvya-apple-subtle: #f2f2f4;
+    --shvya-apple-line: rgba(15, 23, 42, 0.075);
+    --shvya-apple-line-strong: rgba(15, 23, 42, 0.12);
+    --shvya-apple-text: #1d1d1f;
+    --shvya-apple-muted: #6e6e73;
+    --shvya-apple-blue: #0071e3;
+    --shvya-apple-blue-hover: #0077ed;
+    --shvya-apple-focus: rgba(0, 113, 227, 0.16);
+    --shvya-apple-orange: #fff2e8;
+    --shvya-apple-orange-text: #b54708;
+    --shvya-apple-shadow: 0 10px 32px rgba(15, 23, 42, 0.055);
+    --shvya-apple-shadow-soft: 0 4px 16px rgba(15, 23, 42, 0.045);
+}
+
+/* -------------------------------------------------------------------------
+   Shared dashboard header
+   ------------------------------------------------------------------------- */
+
+html.shvya-premium-shell #app-sidebar + div > header > h1.shvya-premium-welcome {
+    display: inline-flex !important;
+    min-width: 0;
+    align-items: baseline;
+    gap: 7px;
+    margin: 0;
+    color: var(--shvya-apple-text) !important;
+    font-size: 17px !important;
+    font-weight: 600 !important;
+    letter-spacing: -0.025em !important;
+}
+
+.shvya-welcome-prefix {
+    color: #6e6e73;
+    font-weight: 500;
+}
+
+.shvya-welcome-name {
+    color: #1d1d1f;
+    font-weight: 720;
+    letter-spacing: -0.03em;
+}
+
+/* Header Profile is deliberately removed by JS; keep a CSS fallback too. */
+html.shvya-premium-shell #app-sidebar + div > header a:has(.ti-user) {
+    display: none !important;
+}
+
+/* Logout remains neutral until hover, then uses a soft warm Apple-like state. */
+html.shvya-premium-shell #app-sidebar + div > header a:has(.ti-logout):hover {
+    border-color: rgba(245, 158, 11, 0.18) !important;
+    background: var(--shvya-apple-orange) !important;
+    color: var(--shvya-apple-orange-text) !important;
+    transform: none !important;
+}
+
+html.shvya-premium-shell #app-sidebar + div > header a:has(.ti-logout):hover .ti {
+    color: #c25a0a !important;
+}
+
+/* Show only the available balance — no icon, conversion help or total funded. */
+html.shvya-premium-shell .ai-credit-badge {
+    gap: 5px !important;
+    min-height: 38px !important;
+    padding: 0 13px !important;
+    border-color: rgba(15, 23, 42, 0.09) !important;
+    border-radius: 999px !important;
+    background: rgba(255, 255, 255, 0.78) !important;
+    color: #3a3a3c !important;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72) !important;
+    animation: none !important;
+}
+
+html.shvya-premium-shell .ai-credit-badge .ai-credit-icon,
+html.shvya-premium-shell .ai-credit-badge .ai-credit-total {
+    display: none !important;
+}
+
+html.shvya-premium-shell .ai-credit-badge .ai-credit-label,
+html.shvya-premium-shell .ai-credit-badge .ai-credit-value {
+    display: inline !important;
+    font-size: 12.5px !important;
+    line-height: 1 !important;
+}
+
+html.shvya-premium-shell .ai-credit-badge .ai-credit-label {
+    color: #6e6e73 !important;
+    font-weight: 600 !important;
+    text-transform: none !important;
+}
+
+html.shvya-premium-shell .ai-credit-badge .ai-credit-value {
+    color: #1d1d1f !important;
+    font-weight: 700 !important;
+    letter-spacing: -0.01em;
+    font-variant-numeric: tabular-nums;
+}
+
+html.shvya-premium-shell .ai-credit-badge--low {
+    border-color: rgba(245, 158, 11, 0.18) !important;
+    background: #fff7ed !important;
+    color: #9a4c06 !important;
+}
+
+/* Sidebar profile card: calm floating account tile, consistent with shell. */
+html.shvya-premium-shell .shvya-profile-card {
+    border: 1px solid rgba(15, 23, 42, 0.07) !important;
+    border-radius: 18px !important;
+    background: rgba(255, 255, 255, 0.76) !important;
+    box-shadow: 0 3px 14px rgba(15, 23, 42, 0.035) !important;
+    transition: background-color 150ms ease, border-color 150ms ease, box-shadow 150ms ease !important;
+}
+
+html.shvya-premium-shell .shvya-profile-card:hover {
+    border-color: rgba(15, 23, 42, 0.11) !important;
+    background: rgba(255, 255, 255, 0.98) !important;
+    box-shadow: 0 6px 20px rgba(15, 23, 42, 0.055) !important;
+    transform: none !important;
+}
+
+html.shvya-premium-shell .shvya-profile-avatar {
+    background: #1d1d1f !important;
+    color: #fff !important;
+    box-shadow: none !important;
+}
+
+html.shvya-premium-shell .shvya-profile-more {
+    color: #8e8e93 !important;
+}
+
+/* Sidebar scrollbars: intentionally narrow and unobtrusive. */
+html.shvya-premium-shell .shvya-sidebar-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(134, 134, 139, 0.28) transparent;
+}
+
+html.shvya-premium-shell .shvya-sidebar-scroll::-webkit-scrollbar {
+    width: 4px;
+}
+
+html.shvya-premium-shell .shvya-sidebar-scroll::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+html.shvya-premium-shell .shvya-sidebar-scroll::-webkit-scrollbar-thumb {
+    border-radius: 999px;
+    background: rgba(134, 134, 139, 0.28);
+}
+
+/* -------------------------------------------------------------------------
+   CRM canvas + scrollbars
+   ------------------------------------------------------------------------- */
+
+html.shvya-crm-apple-v2 body {
+    background: var(--shvya-apple-bg) !important;
+}
+
+html.shvya-crm-apple-v2 #app-sidebar + div > main {
+    background: var(--shvya-apple-bg) !important;
+}
+
+html.shvya-crm-apple-v2 #app-sidebar + div > main,
+html.shvya-crm-apple-v2 #lead-table-container,
+html.shvya-crm-apple-v2 .stage-panel,
+html.shvya-crm-apple-v2 .stage-manager-popover,
+html.shvya-crm-apple-v2 #modal-root {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(134, 134, 139, 0.30) transparent;
+}
+
+html.shvya-crm-apple-v2 #app-sidebar + div > main::-webkit-scrollbar,
+html.shvya-crm-apple-v2 #lead-table-container::-webkit-scrollbar,
+html.shvya-crm-apple-v2 .stage-panel::-webkit-scrollbar,
+html.shvya-crm-apple-v2 .stage-manager-popover::-webkit-scrollbar,
+html.shvya-crm-apple-v2 #modal-root::-webkit-scrollbar {
+    width: 5px;
+    height: 5px;
+}
+
+html.shvya-crm-apple-v2 #app-sidebar + div > main::-webkit-scrollbar-track,
+html.shvya-crm-apple-v2 #lead-table-container::-webkit-scrollbar-track,
+html.shvya-crm-apple-v2 .stage-panel::-webkit-scrollbar-track,
+html.shvya-crm-apple-v2 .stage-manager-popover::-webkit-scrollbar-track,
+html.shvya-crm-apple-v2 #modal-root::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+html.shvya-crm-apple-v2 #app-sidebar + div > main::-webkit-scrollbar-thumb,
+html.shvya-crm-apple-v2 #lead-table-container::-webkit-scrollbar-thumb,
+html.shvya-crm-apple-v2 .stage-panel::-webkit-scrollbar-thumb,
+html.shvya-crm-apple-v2 .stage-manager-popover::-webkit-scrollbar-thumb,
+html.shvya-crm-apple-v2 #modal-root::-webkit-scrollbar-thumb {
+    border-radius: 999px;
+    background: rgba(134, 134, 139, 0.30);
+}
+
+/* -------------------------------------------------------------------------
+   Pipeline toolbar and pipeline selector
+   ------------------------------------------------------------------------- */
+
+html.shvya-crm-apple-v2 .crm-premium-toolbar {
+    border: 1px solid rgba(255, 255, 255, 0.78) !important;
+    border-radius: 22px !important;
+    background: rgba(232, 232, 237, 0.72) !important;
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.72),
+        0 8px 24px rgba(15, 23, 42, 0.04) !important;
+    -webkit-backdrop-filter: blur(24px) saturate(140%);
+    backdrop-filter: blur(24px) saturate(140%);
+}
+
+html.shvya-crm-apple-v2 #pipeline-select {
+    min-height: 42px !important;
+    min-width: 190px !important;
+    padding: 0 42px 0 16px !important;
+    border: 1px solid var(--shvya-apple-line) !important;
+    border-radius: 999px !important;
+    background-color: rgba(255, 255, 255, 0.92) !important;
+    color: var(--shvya-apple-text) !important;
+    font-size: 13.5px !important;
+    font-weight: 600 !important;
+    letter-spacing: -0.01em;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.025) !important;
+    cursor: pointer;
+    transition: border-color 150ms ease, box-shadow 150ms ease, background-color 150ms ease !important;
+}
+
+html.shvya-crm-apple-v2 #pipeline-select:hover {
+    border-color: rgba(15, 23, 42, 0.14) !important;
+    background-color: #fff !important;
+}
+
+html.shvya-crm-apple-v2 #pipeline-select:focus {
+    border-color: rgba(0, 113, 227, 0.38) !important;
+    box-shadow: 0 0 0 4px var(--shvya-apple-focus) !important;
+}
+
+html.shvya-crm-apple-v2 .crm-premium-search input,
+html.shvya-crm-apple-v2 .crm-premium-filter {
+    min-height: 42px !important;
+    border-radius: 999px !important;
+}
+
+/* -------------------------------------------------------------------------
+   Stages + edit stages
+   ------------------------------------------------------------------------- */
+
+html.shvya-crm-apple-v2 .stage-tab {
+    min-height: 48px;
+    border-radius: 13px 13px 0 0 !important;
+    color: #6e6e73 !important;
+    font-size: 14px !important;
+    transition: color 140ms ease, background-color 140ms ease !important;
+}
+
+html.shvya-crm-apple-v2 .stage-tab:hover {
+    background: rgba(255, 255, 255, 0.55) !important;
+    color: #1d1d1f !important;
+}
+
+html.shvya-crm-apple-v2 .stage-tab [data-stage-count] {
+    min-width: 26px !important;
+    height: 24px !important;
+    border-radius: 999px !important;
+    font-size: 12px !important;
+}
+
+html.shvya-crm-apple-v2 .stage-manager-trigger {
+    width: 38px !important;
+    height: 38px !important;
+    border: 1px solid var(--shvya-apple-line) !important;
+    border-radius: 999px !important;
+    background: rgba(255, 255, 255, 0.88) !important;
+    color: #6e6e73 !important;
+    box-shadow: 0 2px 8px rgba(15, 23, 42, 0.035) !important;
+}
+
+html.shvya-crm-apple-v2 .stage-manager-trigger:hover,
+html.shvya-crm-apple-v2 .stage-manager-trigger:focus-visible {
+    border-color: rgba(0, 113, 227, 0.24) !important;
+    background: #fff !important;
+    color: var(--shvya-apple-blue) !important;
+    box-shadow: 0 0 0 4px var(--shvya-apple-focus) !important;
+}
+
+html.shvya-crm-apple-v2 .stage-manager-popover {
+    overflow: hidden;
+    border: 1px solid rgba(15, 23, 42, 0.07) !important;
+    border-radius: 22px !important;
+    background: rgba(255, 255, 255, 0.94) !important;
+    box-shadow: 0 24px 64px rgba(15, 23, 42, 0.13) !important;
+    -webkit-backdrop-filter: blur(28px) saturate(150%);
+    backdrop-filter: blur(28px) saturate(150%);
+}
+
+html.shvya-crm-apple-v2 .stage-manager-popover input[type="text"] {
+    height: 42px !important;
+    border: 1px solid var(--shvya-apple-line) !important;
+    border-radius: 13px !important;
+    background: #f5f5f7 !important;
+    color: #1d1d1f !important;
+}
+
+html.shvya-crm-apple-v2 .stage-manager-popover input[type="text"]:focus {
+    border-color: rgba(0, 113, 227, 0.36) !important;
+    background: #fff !important;
+    box-shadow: 0 0 0 4px var(--shvya-apple-focus) !important;
+}
+
+html.shvya-crm-apple-v2 .stage-manager-popover button[type="submit"] {
+    border-radius: 999px !important;
+}
+
+/* -------------------------------------------------------------------------
+   Lead cards — retain every control and field, change only the treatment
+   ------------------------------------------------------------------------- */
+
+html.shvya-crm-apple-v2 body .lead-card {
+    border: 1px solid rgba(15, 23, 42, 0.065) !important;
+    border-left: 5px solid var(--shvya-apple-blue) !important;
+    border-radius: 22px !important;
+    background: rgba(255, 255, 255, 0.96) !important;
+    box-shadow:
+        0 1px 2px rgba(15, 23, 42, 0.025),
+        0 8px 24px rgba(15, 23, 42, 0.045) !important;
+    transform: none !important;
+    transition: border-color 150ms ease, box-shadow 150ms ease, background-color 150ms ease !important;
+}
+
+html.shvya-crm-apple-v2 body .lead-card:hover {
+    border-color: rgba(15, 23, 42, 0.095) !important;
+    border-left-color: var(--shvya-apple-blue) !important;
+    background: #fff !important;
+    box-shadow:
+        0 2px 5px rgba(15, 23, 42, 0.025),
+        0 13px 34px rgba(15, 23, 42, 0.06) !important;
+    transform: none !important;
+}
+
+html.shvya-crm-apple-v2 .lead-card > div,
+html.shvya-crm-apple-v2 .lead-card [class*="border-b"] {
+    border-color: rgba(15, 23, 42, 0.055) !important;
+}
+
+html.shvya-crm-apple-v2 .lead-card h3 {
+    color: #1d1d1f !important;
+    letter-spacing: -0.015em;
+}
+
+/* Lead stage dropdown */
+html.shvya-crm-apple-v2 .lead-card select[name="stage"] {
+    width: 156px !important;
+    height: 40px !important;
+    padding: 0 38px 0 14px !important;
+    border: 1px solid var(--shvya-apple-line) !important;
+    border-radius: 999px !important;
+    background: #f5f5f7 !important;
+    color: #1d1d1f !important;
+    font-size: 13px !important;
+    font-weight: 600 !important;
+    box-shadow: none !important;
+    cursor: pointer;
+}
+
+html.shvya-crm-apple-v2 .lead-card select[name="stage"]:hover {
+    border-color: rgba(15, 23, 42, 0.13) !important;
+    background: #fff !important;
+}
+
+html.shvya-crm-apple-v2 .lead-card select[name="stage"]:focus {
+    border-color: rgba(0, 113, 227, 0.36) !important;
+    background: #fff !important;
+    box-shadow: 0 0 0 4px var(--shvya-apple-focus) !important;
+}
+
+/* Lead-card action buttons: Edit / Add Attribute / Add Note / Add Call / Reminder. */
+html.shvya-crm-apple-v2 .lead-card .shvya-card-action,
+html.shvya-crm-apple-v2 .lead-card .shvya-card-edit {
+    min-height: 38px !important;
+    padding: 0 13px !important;
+    border: 1px solid var(--shvya-apple-line) !important;
+    border-radius: 999px !important;
+    background: #f5f5f7 !important;
+    color: #3a3a3c !important;
+    font-size: 12.5px !important;
+    font-weight: 600 !important;
+    box-shadow: none !important;
+    transition: background-color 140ms ease, color 140ms ease, border-color 140ms ease, box-shadow 140ms ease !important;
+}
+
+html.shvya-crm-apple-v2 .lead-card .shvya-card-action:hover,
+html.shvya-crm-apple-v2 .lead-card .shvya-card-edit:hover {
+    border-color: rgba(15, 23, 42, 0.12) !important;
+    background: #fff !important;
+    color: #1d1d1f !important;
+    box-shadow: 0 3px 10px rgba(15, 23, 42, 0.045) !important;
+    transform: none !important;
+}
+
+html.shvya-crm-apple-v2 .lead-card .shvya-card-action:focus-visible,
+html.shvya-crm-apple-v2 .lead-card .shvya-card-edit:focus-visible {
+    outline: none !important;
+    border-color: rgba(0, 113, 227, 0.34) !important;
+    box-shadow: 0 0 0 4px var(--shvya-apple-focus) !important;
+}
+
+/* Existing mini-stat blocks become calm inset tiles without changing placement. */
+html.shvya-crm-apple-v2 .lead-card [class*="bg-blue-50"] {
+    border-color: rgba(0, 113, 227, 0.08) !important;
+    background: rgba(0, 113, 227, 0.045) !important;
+}
+
+/* Make Notes and Attributes visually scannable: labels quiet, values prominent. */
+html.shvya-crm-apple-v2 .lead-card .shvya-focus-section {
+    border: 1px solid rgba(15, 23, 42, 0.06);
+    border-radius: 17px;
+    background: #f7f7f9;
+    padding: 14px !important;
+}
+
+html.shvya-crm-apple-v2 .lead-card .shvya-focus-section > h3,
+html.shvya-crm-apple-v2 .lead-card .shvya-focus-section h3 {
+    color: #1d1d1f !important;
+    font-weight: 700 !important;
+    letter-spacing: -0.01em;
+}
+
+html.shvya-crm-apple-v2 .lead-card .shvya-focus-section p[class*="text-gray-400"],
+html.shvya-crm-apple-v2 .lead-card .shvya-focus-section [class*="text-gray-400"] {
+    color: #86868b !important;
+}
+
+html.shvya-crm-apple-v2 .lead-card .shvya-focus-section p[class*="text-gray-700"],
+html.shvya-crm-apple-v2 .lead-card .shvya-focus-section p[class*="text-gray-800"],
+html.shvya-crm-apple-v2 .lead-card .shvya-focus-section .shvya-focus-value {
+    color: #1d1d1f !important;
+    font-weight: 650 !important;
+    line-height: 1.5 !important;
+    text-align: left !important;
+}
+
+/* Saved note content starts at the top/left rather than feeling vertically centred. */
+html.shvya-crm-apple-v2 .lead-card .shvya-focus-section .whitespace-pre-wrap {
+    display: block;
+    min-height: 36px;
+    margin: 0 !important;
+    text-align: left !important;
+    white-space: pre-wrap;
+}
+
+/* -------------------------------------------------------------------------
+   Modal system — one treatment for every CRM modal
+   ------------------------------------------------------------------------- */
+
+html.shvya-crm-apple-v2.shvya-modal-open #app-sidebar,
+html.shvya-crm-apple-v2.shvya-modal-open #app-sidebar + div > header,
+html.shvya-crm-apple-v2.shvya-modal-open #app-sidebar + div > main {
+    filter: blur(3px) saturate(0.96);
+}
+
+html.shvya-crm-apple-v2.shvya-modal-open body {
+    overflow: hidden;
+}
+
+html.shvya-crm-apple-v2 #modal-root > [class*="fixed"][class*="inset-0"] {
+    background: rgba(29, 29, 31, 0.28) !important;
+    -webkit-backdrop-filter: blur(10px) saturate(110%);
+    backdrop-filter: blur(10px) saturate(110%);
+}
+
+/* Most CRM modal templates use a white rounded panel inside the fixed overlay. */
+html.shvya-crm-apple-v2 #modal-root [class*="bg-white"][class*="rounded"],
+html.shvya-crm-apple-v2 #modal-root .global-reminder-modal,
+html.shvya-crm-apple-v2 #modal-root .crm-filter-modal,
+html.shvya-crm-apple-v2 #modal-root .shvya-modal-surface {
+    border: 1px solid rgba(255, 255, 255, 0.78) !important;
+    border-radius: 24px !important;
+    background: rgba(250, 250, 252, 0.94) !important;
+    box-shadow: 0 28px 90px rgba(15, 23, 42, 0.19) !important;
+    -webkit-backdrop-filter: blur(30px) saturate(150%);
+    backdrop-filter: blur(30px) saturate(150%);
+}
+
+html.shvya-crm-apple-v2 #modal-root input:not([type="checkbox"]):not([type="radio"]),
+html.shvya-crm-apple-v2 #modal-root select,
+html.shvya-crm-apple-v2 #modal-root textarea {
+    border: 1px solid var(--shvya-apple-line) !important;
+    border-radius: 13px !important;
+    background: rgba(255, 255, 255, 0.92) !important;
+    color: #1d1d1f !important;
+    box-shadow: inset 0 1px 1px rgba(15, 23, 42, 0.018) !important;
+    transition: border-color 140ms ease, box-shadow 140ms ease, background-color 140ms ease !important;
+}
+
+html.shvya-crm-apple-v2 #modal-root input:not([type="checkbox"]):not([type="radio"]):focus,
+html.shvya-crm-apple-v2 #modal-root select:focus,
+html.shvya-crm-apple-v2 #modal-root textarea:focus {
+    outline: none !important;
+    border-color: rgba(0, 113, 227, 0.38) !important;
+    background: #fff !important;
+    box-shadow: 0 0 0 4px var(--shvya-apple-focus) !important;
+}
+
+html.shvya-crm-apple-v2 #modal-root button[type="submit"] {
+    border-radius: 999px !important;
+}
+
+html.shvya-crm-apple-v2 #modal-root button[type="button"],
+html.shvya-crm-apple-v2 #modal-root a[class*="rounded"] {
+    border-radius: 999px !important;
+}
+
+html.shvya-crm-apple-v2 #modal-root h2,
+html.shvya-crm-apple-v2 #modal-root h3 {
+    color: #1d1d1f !important;
+    letter-spacing: -0.02em;
+}
+
+html.shvya-crm-apple-v2 #modal-root [class*="border-gray-200"],
+html.shvya-crm-apple-v2 #modal-root [class*="border-gray-100"] {
+    border-color: rgba(15, 23, 42, 0.065) !important;
+}
+
+/* Filters + reminders: cleaner chips and filter rows. */
+html.shvya-crm-apple-v2 #modal-root .shvya-filter-chip,
+html.shvya-crm-apple-v2 #modal-root [class*="rounded-full"] {
+    border-color: rgba(15, 23, 42, 0.08) !important;
+}
+
+/* -------------------------------------------------------------------------
+   Dashboard notifications / Django messages
+   ------------------------------------------------------------------------- */
+
+html.shvya-premium-shell .shvya-dashboard-notifications {
+    position: relative;
+    z-index: 30;
+    display: grid;
+    gap: 8px;
+    margin-bottom: 14px !important;
+}
+
+html.shvya-premium-shell .shvya-dashboard-notifications > div {
+    position: relative;
+    overflow: hidden;
+    min-height: 46px;
+    padding: 12px 16px 12px 42px !important;
+    border: 1px solid rgba(15, 23, 42, 0.075) !important;
+    border-radius: 16px !important;
+    background: rgba(255, 255, 255, 0.90) !important;
+    color: #3a3a3c !important;
+    font-size: 13px !important;
+    font-weight: 550;
+    box-shadow: 0 8px 26px rgba(15, 23, 42, 0.055) !important;
+    -webkit-backdrop-filter: blur(20px) saturate(135%);
+    backdrop-filter: blur(20px) saturate(135%);
+}
+
+html.shvya-premium-shell .shvya-dashboard-notifications > div::before {
+    content: "";
+    position: absolute;
+    left: 16px;
+    top: 50%;
+    width: 10px;
+    height: 10px;
+    border-radius: 999px;
+    background: #0071e3;
+    transform: translateY(-50%);
+    box-shadow: 0 0 0 5px rgba(0, 113, 227, 0.10);
+}
+
+html.shvya-premium-shell .shvya-dashboard-notifications > div[class*="green"]::before {
+    background: #34c759;
+    box-shadow: 0 0 0 5px rgba(52, 199, 89, 0.10);
+}
+
+html.shvya-premium-shell .shvya-dashboard-notifications > div[class*="red"]::before {
+    background: #ff453a;
+    box-shadow: 0 0 0 5px rgba(255, 69, 58, 0.10);
+}
+
+/* Profile page, if opened from the sidebar account card. */
+html.shvya-profile-apple-v2 #app-sidebar + div > main > * {
+    border-color: rgba(15, 23, 42, 0.07) !important;
+}
+
+html.shvya-profile-apple-v2 #app-sidebar + div > main [class*="bg-white"][class*="rounded"] {
+    border-radius: 22px !important;
+    border-color: rgba(15, 23, 42, 0.07) !important;
+    box-shadow: 0 10px 30px rgba(15, 23, 42, 0.05) !important;
+}
+
+html.shvya-profile-apple-v2 #app-sidebar + div > main input,
+html.shvya-profile-apple-v2 #app-sidebar + div > main select,
+html.shvya-profile-apple-v2 #app-sidebar + div > main textarea {
+    border-radius: 13px !important;
+    border-color: rgba(15, 23, 42, 0.08) !important;
+    background: #f7f7f9 !important;
+}
+
+@media (max-width: 760px) {
+    html.shvya-premium-shell #app-sidebar + div > header > h1.shvya-premium-welcome {
+        gap: 4px;
+        font-size: 15px !important;
+    }
+
+    html.shvya-premium-shell .ai-credit-badge {
+        padding-left: 10px !important;
+        padding-right: 10px !important;
+    }
+
+    html.shvya-crm-apple-v2 .crm-premium-toolbar {
+        border-radius: 18px !important;
+    }
+
+    html.shvya-crm-apple-v2 #pipeline-select {
+        min-width: 160px !important;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    html.shvya-premium-shell *,
+    html.shvya-crm-apple-v2 * {
+        scroll-behavior: auto !important;
+        transition-duration: 0.01ms !important;
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+    }
+}
