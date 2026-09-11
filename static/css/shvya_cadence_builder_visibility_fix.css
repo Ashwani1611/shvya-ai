@@ -1,0 +1,72 @@
+/* Cadence Sequence Builder contrast repair.
+   Loaded after the shared Apple workspace stylesheet so outlined controls stay
+   light and readable instead of inheriting the generic solid-blue button rule. */
+
+html.shvya-page-cadence .provider-choice {
+    background: #fff !important;
+    color: var(--sw-text) !important;
+    border-color: rgba(15, 23, 42, 0.13) !important;
+    box-shadow: none !important;
+}
+
+html.shvya-page-cadence .provider-choice:hover {
+    background: rgba(0, 113, 227, 0.035) !important;
+    border-color: rgba(0, 113, 227, 0.46) !important;
+}
+
+html.shvya-page-cadence .provider-choice.border-blue-500 {
+    background: #fff !important;
+    border-color: var(--sw-blue) !important;
+    box-shadow: 0 0 0 3px rgba(0, 113, 227, 0.10) !important;
+}
+
+html.shvya-page-cadence .provider-choice .text-gray-900 {
+    color: var(--sw-text) !important;
+}
+
+html.shvya-page-cadence .provider-choice .text-gray-500,
+html.shvya-page-cadence .provider-choice p {
+    color: var(--sw-muted) !important;
+}
+
+/* The shared workspace rule intentionally styles real bg-blue buttons, but its
+   substring selector also catches Tailwind hover:bg-blue-* utilities. Cadence
+   has many outlined buttons using those hover classes, so restore their light
+   surface and readable blue label here while leaving true primary buttons alone. */
+html.shvya-page-cadence main button[class*="hover:bg-blue"]:not(.bg-blue-600):not(.bg-blue-700),
+html.shvya-page-cadence [role="dialog"] button[class*="hover:bg-blue"]:not(.bg-blue-600):not(.bg-blue-700),
+html.shvya-page-cadence dialog button[class*="hover:bg-blue"]:not(.bg-blue-600):not(.bg-blue-700) {
+    background: #fff !important;
+    color: var(--sw-blue) !important;
+    box-shadow: none !important;
+}
+
+html.shvya-page-cadence main button[class*="hover:bg-blue"]:not(.bg-blue-600):not(.bg-blue-700):hover,
+html.shvya-page-cadence [role="dialog"] button[class*="hover:bg-blue"]:not(.bg-blue-600):not(.bg-blue-700):hover,
+html.shvya-page-cadence dialog button[class*="hover:bg-blue"]:not(.bg-blue-600):not(.bg-blue-700):hover {
+    background: rgba(0, 113, 227, 0.055) !important;
+    color: var(--sw-blue) !important;
+}
+
+/* CRM placeholder chips must always expose both the human label and token. */
+html.shvya-page-cadence [data-followup-placeholder] {
+    background: #fff !important;
+    border-color: rgba(0, 113, 227, 0.28) !important;
+    color: #0067c5 !important;
+    box-shadow: none !important;
+}
+
+html.shvya-page-cadence [data-followup-placeholder]:hover {
+    background: rgba(0, 113, 227, 0.055) !important;
+    border-color: rgba(0, 113, 227, 0.55) !important;
+    color: #0058ad !important;
+}
+
+html.shvya-page-cadence [data-followup-placeholder] i,
+html.shvya-page-cadence [data-followup-placeholder] span {
+    color: inherit !important;
+}
+
+html.shvya-page-cadence [data-followup-placeholder] span {
+    opacity: 0.74 !important;
+}
