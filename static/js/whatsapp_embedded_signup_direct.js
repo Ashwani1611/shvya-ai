@@ -5,11 +5,11 @@
     var currentButton = document.getElementById('embedded-signup-btn');
     if (!currentButton || currentButton.dataset.directOauthBound === '1') return;
 
-    // The template's legacy handler calls FB.login(). In current Chromium,
-    // Meta/Facebook can route that call through FedCM even when fedCM is not
-    // enabled. Login for Business configurations are not supported by that
-    // browser path, so it can terminate before an OAuth code reaches SHVYA.
-    // Replacing the node removes that handler completely.
+    // The template's legacy handler invokes the Facebook Login JavaScript SDK.
+    // In current Chromium, Meta/Facebook can route that call through FedCM even
+    // when fedCM is not enabled. Login for Business configurations are not
+    // supported by that browser path, so it can terminate before an OAuth code
+    // reaches SHVYA. Replacing the node removes that handler completely.
     var button = currentButton.cloneNode(true);
     button.dataset.directOauthBound = '1';
     button.disabled = false;
@@ -41,9 +41,9 @@
       button.disabled = true;
       if (label) label.textContent = 'Opening Meta…';
 
-      // Use a first-party server redirect instead of FB.login(). This keeps the
-      // same Facebook Login for Business config_id flow while avoiding the
-      // browser-initiated FedCM path entirely.
+      // Use a first-party server redirect instead of the legacy JS SDK login
+      // call. This keeps the same Facebook Login for Business config_id flow
+      // while avoiding the browser-initiated FedCM path entirely.
       var startUrl = new URL('direct/start/', window.location.href);
       window.location.assign(startUrl.toString());
     });
