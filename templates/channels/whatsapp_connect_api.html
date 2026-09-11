@@ -292,11 +292,11 @@ function scheduleIncompleteCheck() {
             return;
         }
 
-        var message = 'Meta setup returned, but SHVYA did not receive: ' + missing.join(', ') + '. This is an authorization handoff issue, not necessarily a browser popup setting. Please try Connect API again.';
+        var message = 'Meta did not return the authorization/session data SHVYA needs: ' + missing.join(', ') + '. If Meta says the app needs a supported permission, the Facebook Login for Business configuration used by Connect API must be a WhatsApp Embedded Signup v4 configuration with whatsapp_business_management and whatsapp_business_messaging selected.';
         trackAttempt('incomplete', {error_message: message});
         setSignupButton('Connect WhatsApp Business API', false);
         showSignupError(message);
-    }, 7000);
+    }, 12000);
 }
 
 function maybeFinishSignup() {
@@ -344,8 +344,12 @@ function maybeFinishSignup() {
     });
 }
 
+function isTrustedMetaOrigin(origin) {
+    return origin === 'https://www.facebook.com' || origin === 'https://web.facebook.com';
+}
+
 window.addEventListener('message', function (event) {
-    if (!event.origin || (!event.origin.endsWith('facebook.com') && !event.origin.endsWith('facebook.net'))) return;
+    if (!isTrustedMetaOrigin(event.origin)) return;
 
     var data = event.data;
     if (typeof data === 'string') {
@@ -377,7 +381,16 @@ window.addEventListener('message', function (event) {
 });
 
 window.fbAsyncInit = function () {
-    FB.init({appId: '{{ meta_app_id }}', autoLogAppEvents: true, xfbml: false, version: 'v21.0'});
+    FB.init({
+        appId: '{{ meta_app_id }}',
+        autoLogAppEvents: true,
+        cookie: true,
+        xfbml: false,
+        version: 'v21.0',
+        // Facebook Login for Business Embedded Signup must use the OAuth flow,
+        // not the optional Facebook Login one-tap/FedCM path.
+        fedCM: false
+    });
     sdkLoaded = true;
     setSignupButton('Connect WhatsApp Business API', false);
 };
@@ -408,9 +421,9 @@ document.getElementById('embedded-signup-btn').addEventListener('click', functio
         return;
     }
 
-    // Do not await the attempt-tracking request before FB.login. Calling
-    // FB.login synchronously from this click preserves the browser user gesture
-    // and avoids creating a real popup-blocker problem ourselves.
+    // Keep FB.login synchronous with the click so the browser preserves the
+    // user gesture. Embedded Signup v4 gets products/assets/permissions from
+    // the Facebook Login for Business configuration identified by config_id.
     FB.login(function (response) {
         signupData.login_callback_seen = true;
 
@@ -423,15 +436,18 @@ document.getElementById('embedded-signup-btn').addEventListener('click', functio
         }
 
         // Meta FINISH and the FB.login callback can arrive in either order. Do
-        // not show a false "allow popups" error immediately; give the companion
-        // event a short window to arrive, then report exactly what is missing.
+        // not show a false popup error immediately; give the companion event a
+        // short window to arrive and then report the actual missing values.
         trackAttempt('oauth_code_missing');
         scheduleIncompleteCheck();
     }, {
         config_id: '{{ meta_config_id }}',
+        auth_type: 'rerequest',
         response_type: 'code',
         override_default_response_type: true,
-        extras: {setup: {}, featureType: '', sessionInfoVersion: '3'}
+        // v4 configuration controls permissions/products. Do not send the
+        // legacy sessionInfoVersion=3 or an empty featureType override.
+        extras: {setup: {}}
     });
 });
 </script>
