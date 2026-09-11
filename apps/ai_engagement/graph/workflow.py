@@ -228,13 +228,30 @@ def _retrieve_knowledge(state: EngagementGraphState) -> dict:
     }
 
 
+def _requirements_as_authoring_text(requirements: list[dict]) -> str:
+    """Serialize only the pinned flow so legacy compilation cannot see new edits."""
+    lines: list[str] = []
+    for requirement in requirements or []:
+        question = str(requirement.get("question") or requirement.get("label") or "").strip()
+        if question:
+            lines.append(question)
+    return "\n".join(lines)
+
+
 def _generate(state: EngagementGraphState) -> dict:
+    context = state["context"]
+    requirements = state.get("requirements") or []
+    if requirements:
+        org_context = dict(context.organization or {})
+        org_context["qualification_requirements"] = _requirements_as_authoring_text(requirements)
+        context = replace(context, organization=org_context)
+
     decision = state["legacy_engage"](
         state["service"],
         organization=state["organization"],
         lead=state["lead"],
         knowledge_query=None,
-        context=state["context"],
+        context=context,
     )
     return {"decision": decision}
 
