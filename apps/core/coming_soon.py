@@ -52,8 +52,8 @@ COMING_SOON_FEATURES = {
         "icon": "ti-repeat",
         "description": "Build multi-step follow-up sequences that run automatically.",
     },
-    "auto-follow-ups-workflows": {
-        "label": "Workflows",
+    "auto-follow-ups-touchpoints": {
+        "label": "Touchpoints",
         "icon": "ti-git-branch",
         "description": "Chain conditions and actions together into a full follow-up workflow.",
     },
