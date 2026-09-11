@@ -54,16 +54,36 @@
 {{ sidebar_nav_sections|json_script:"shvya-sidebar-sections" }}
 {{ sidebar_utility_items|json_script:"shvya-sidebar-utilities" }}
 
-{# Settings remains reachable from the profile page, but is intentionally not a sidebar row. #}
+{# Normalize premium-shell navigation data before the sidebar JS renders it. #}
 <script>
 (function () {
-    var node = document.getElementById('shvya-sidebar-utilities');
-    if (!node) return;
+    var utilityNode = document.getElementById('shvya-sidebar-utilities');
+    if (utilityNode) {
+        try {
+            var utilities = JSON.parse(utilityNode.textContent || '[]');
+            utilityNode.textContent = JSON.stringify(utilities.filter(function (item) {
+                return item && item.label !== 'Settings';
+            }));
+        } catch (error) {
+            // Leave the server payload untouched if it cannot be parsed.
+        }
+    }
+
+    var sectionsNode = document.getElementById('shvya-sidebar-sections');
+    if (!sectionsNode) return;
     try {
-        var utilities = JSON.parse(node.textContent || '[]');
-        node.textContent = JSON.stringify(utilities.filter(function (item) {
-            return item && item.label !== 'Settings';
-        }));
+        var sections = JSON.parse(sectionsNode.textContent || '[]');
+        sections.forEach(function (section) {
+            (section.items || []).forEach(function (item) {
+                (item.children || []).forEach(function (child) {
+                    if (child && child.label === 'AI Setup') {
+                        child.label = 'AI Brain';
+                        child.sidebar_label = 'AI Brain';
+                    }
+                });
+            });
+        });
+        sectionsNode.textContent = JSON.stringify(sections);
     } catch (error) {
         // Leave the server payload untouched if it cannot be parsed.
     }
