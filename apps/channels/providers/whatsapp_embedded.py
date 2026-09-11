@@ -41,8 +41,10 @@ def debug_access_token(*, app_id, app_secret, access_token):
     """Inspect the BISU token and return Meta's debug-token data object."""
     payload = _get_json(
         f"{GRAPH_API_BASE}/debug_token",
-        params={"input_token": access_token},
-        headers={"Authorization": f"Bearer {app_id}|{app_secret}"},
+        params={
+            "input_token": access_token,
+            "access_token": f"{app_id}|{app_secret}",
+        },
         error_label="token debug",
     )
     return payload.get("data") or {}
