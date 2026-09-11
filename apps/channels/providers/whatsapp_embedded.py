@@ -37,6 +37,41 @@ def _get_json(url, *, params=None, headers=None, error_label):
         ) from exc
 
 
+def exchange_code_for_access_token(
+    *,
+    app_id,
+    app_secret,
+    code,
+    redirect_uri="",
+):
+    """Exchange an Embedded Signup OAuth code for a BISU access token.
+
+    Direct Facebook Login for Business OAuth requires the token exchange to use
+    the exact same ``redirect_uri`` used by the authorization dialog. The older
+    JS-SDK path does not expose that URI, so ``redirect_uri`` remains optional
+    for backwards compatibility with already-issued JS-SDK codes.
+    """
+    params = {
+        "client_id": app_id,
+        "client_secret": app_secret,
+        "code": code,
+    }
+    if redirect_uri:
+        params["redirect_uri"] = redirect_uri
+
+    payload = _get_json(
+        f"{GRAPH_API_BASE}/oauth/access_token",
+        params=params,
+        error_label="token exchange",
+    )
+    access_token = payload.get("access_token")
+    if not access_token:
+        raise WhatsAppAPIError(
+            "Meta token exchange succeeded but returned no access_token."
+        )
+    return access_token
+
+
 def debug_access_token(*, app_id, app_secret, access_token):
     """Inspect the BISU token and return Meta's debug-token data object."""
     payload = _get_json(
