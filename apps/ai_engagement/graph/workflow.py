@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
+from copy import deepcopy
 from dataclasses import replace
 from typing import Literal
 
@@ -18,11 +19,13 @@ from apps.ai_engagement.services.qualification_state import (
     MODE_QUALIFICATION,
     REQUIREMENT_ANSWERED,
     apply_unambiguous_reply,
+    requirements_for_lead,
     state_for_lead,
 )
 
 
 logger = logging.getLogger(__name__)
+
 
 def _min_rag_similarity() -> float:
     try:
@@ -41,11 +44,9 @@ def _prepare(state: EngagementGraphState) -> dict:
 
     if organization is None:
         from apps.ai_engagement.services.engagement import EngagementError
-
         raise EngagementError("Organization is required.")
     if lead is None:
         from apps.ai_engagement.services.engagement import EngagementError
-
         raise EngagementError("Lead is required.")
 
     context = supplied_context
@@ -59,24 +60,31 @@ def _prepare(state: EngagementGraphState) -> dict:
             note_limit=service.NOTE_LIMIT,
         )
 
-    service._validate_context_scope(
-        organization=organization,
-        lead=lead,
-        context=context,
-    )
+    service._validate_context_scope(organization=organization, lead=lead, context=context)
     profile = compile_org_ai_profile_from_context(context.organization or {})
-    policy = get_runtime_policy(organization=organization, profile=profile)
+    configured_requirements = profile.get("qualification", {}).get("requirements", [])
+    requirements = requirements_for_lead(lead, configured_requirements)
+
+    # An in-progress lead is pinned to the flow snapshot that began the
+    # conversation. The deterministic evaluator must use the same version as
+    # state persistence, even if an admin edits AI Setup midway through the chat.
+    policy_profile = deepcopy(profile)
+    policy_qualification = policy_profile.setdefault("qualification", {})
+    policy_qualification["requirements"] = deepcopy(requirements)
+    if requirements:
+        policy_qualification["flow_version"] = str(
+            requirements[0].get("flow_version") or policy_qualification.get("flow_version") or ""
+        )
+    policy = get_runtime_policy(organization=organization, profile=policy_profile)
 
     org_context = dict(context.organization or {})
     org_context["_runtime_policy"] = policy
     context = replace(context, organization=org_context)
-
-    requirements = profile.get("qualification", {}).get("requirements", [])
     qualification_state = state_for_lead(lead, requirements=requirements)
 
     return {
         "context": context,
-        "profile": profile,
+        "profile": policy_profile,
         "runtime_policy": policy,
         "requirements": requirements,
         "qualification_state": qualification_state,
@@ -88,8 +96,7 @@ def _prepare(state: EngagementGraphState) -> dict:
 
 
 def _deterministic_extract(state: EngagementGraphState) -> dict:
-    """Handle only high-confidence, zero-credit qualification answers."""
-
+    """Handle high-confidence replies only against the persisted active question."""
     if state.get("caller_supplied_context"):
         return {}
 
@@ -123,7 +130,6 @@ def _deterministic_extract(state: EngagementGraphState) -> dict:
         and str(direct_next.get("question") or "").strip()
     ):
         from apps.ai_engagement.services.engagement import EngagementDecision
-
         updates["direct_decision"] = EngagementDecision(
             should_engage=True,
             message=str(direct_next["question"]).strip(),
@@ -143,8 +149,17 @@ def _route_turn(state: EngagementGraphState) -> dict:
 
     if state.get("caller_supplied_context"):
         context = state["context"]
-        return {"route": "generate", "context": replace(context, knowledge=select_chunks(
-            context.knowledge, threshold=_min_rag_similarity(), limit=state["service"].KNOWLEDGE_LIMIT))}
+        return {
+            "route": "generate",
+            "context": replace(
+                context,
+                knowledge=select_chunks(
+                    context.knowledge,
+                    threshold=_min_rag_similarity(),
+                    limit=state["service"].KNOWLEDGE_LIMIT,
+                ),
+            ),
+        }
 
     requested = str(state.get("requested_knowledge_query") or "").strip()
     service = state["service"]
@@ -175,23 +190,16 @@ def _retrieve_knowledge(state: EngagementGraphState) -> dict:
         knowledge_limit=service.KNOWLEDGE_LIMIT,
         note_limit=service.NOTE_LIMIT,
     )
-    service._validate_context_scope(
-        organization=organization,
-        lead=state["lead"],
-        context=context,
-    )
+    service._validate_context_scope(organization=organization, lead=state["lead"], context=context)
 
     before = len(context.knowledge or [])
     threshold = _min_rag_similarity()
     filtered = select_chunks(context.knowledge, threshold=threshold, limit=service.KNOWLEDGE_LIMIT)
+    # Preserve the state-authoritative organization wrapper created in prepare;
+    # rebuilding context for RAG must not reintroduce a different qualification version.
     context = replace(state["context"], knowledge=filtered)
 
-    # AI-Guided File Sharing reuses the exact RAG pass instead of spending a
-    # second embedding/model call. Only authorized files represented by the
-    # retained knowledge chunks become candidates, including each authored
-    # share_instruction.
     from apps.ai_engagement.services.file_sharing import FileSharingService
-
     file_candidates = FileSharingService().build_file_candidates(
         organization=organization,
         context=context,
@@ -204,8 +212,7 @@ def _retrieve_knowledge(state: EngagementGraphState) -> dict:
     context = replace(context, organization=org_context)
 
     logger.info(
-        "ai_engagement_rag organization=%s lead=%s before=%s after=%s "
-        "file_candidates=%s threshold=%.3f",
+        "ai_engagement_rag organization=%s lead=%s before=%s after=%s file_candidates=%s threshold=%.3f",
         getattr(organization, "id", ""),
         getattr(state["lead"], "id", ""),
         before,
@@ -222,8 +229,6 @@ def _retrieve_knowledge(state: EngagementGraphState) -> dict:
 
 
 def _generate(state: EngagementGraphState) -> dict:
-    # The legacy service now receives a prebuilt context, so its old RAG/direct
-    # routing is bypassed and LangGraph is the single orchestration authority.
     decision = state["legacy_engage"](
         state["service"],
         organization=state["organization"],
@@ -260,22 +265,16 @@ def _validated_file_document_id(*, decision, context) -> int | None:
 
 def _validate_decision(state: EngagementGraphState) -> dict:
     """Validate language output, then let Python own CRM/action authorization."""
-
     decision = state.get("decision")
     if decision is None:
         from apps.ai_engagement.services.engagement import EngagementError
-
         raise EngagementError("LangGraph engagement produced no decision.")
 
     errors: list[str] = []
-    if getattr(decision, "should_engage", False) and not str(
-        getattr(decision, "message", "") or ""
-    ).strip():
+    if getattr(decision, "should_engage", False) and not str(getattr(decision, "message", "") or "").strip():
         errors.append("empty_customer_message")
-
     if errors:
         from apps.ai_engagement.services.engagement import EngagementError
-
         raise EngagementError("; ".join(errors))
 
     controlled_actions, policy_result = build_controlled_actions(
@@ -285,19 +284,11 @@ def _validate_decision(state: EngagementGraphState) -> dict:
         qualification_state=state.get("qualification_state") or {},
         requirements=state.get("requirements") or [],
     )
-    validated_file_id = _validated_file_document_id(
-        decision=decision,
-        context=state["context"],
-    )
-    decision = replace(
-        decision,
-        crm_actions=controlled_actions,
-        file_document_id=validated_file_id,
-    )
+    validated_file_id = _validated_file_document_id(decision=decision, context=state["context"])
+    decision = replace(decision, crm_actions=controlled_actions, file_document_id=validated_file_id)
 
     logger.info(
-        "ai_engagement_graph organization=%s lead=%s route=%s model=%s "
-        "rag=%s/%s qualification=%s crm_actions=%s file=%s",
+        "ai_engagement_graph organization=%s lead=%s route=%s model=%s rag=%s/%s qualification=%s crm_actions=%s file=%s",
         getattr(state["organization"], "id", ""),
         getattr(state["lead"], "id", ""),
         state.get("route") or "generate",
@@ -328,11 +319,7 @@ def build_engagement_graph():
     builder.add_conditional_edges(
         "route_turn",
         _route_after_classification,
-        {
-            "direct": "direct",
-            "rag": "retrieve_knowledge",
-            "generate": "generate",
-        },
+        {"direct": "direct", "rag": "retrieve_knowledge", "generate": "generate"},
     )
     builder.add_edge("retrieve_knowledge", "generate")
     builder.add_edge("generate", "validate")
@@ -354,15 +341,12 @@ def run_engagement_graph(
     knowledge_query: str | None = None,
     context=None,
 ):
-    final = ENGAGEMENT_GRAPH.invoke(
-        {
-            "service": service,
-            "legacy_engage": legacy_engage,
-            "organization": organization,
-            "lead": lead,
-            "requested_knowledge_query": str(knowledge_query or ""),
-            "supplied_context": context,
-        }
-    )
+    final = ENGAGEMENT_GRAPH.invoke({
+        "service": service,
+        "legacy_engage": legacy_engage,
+        "organization": organization,
+        "lead": lead,
+        "requested_knowledge_query": str(knowledge_query or ""),
+        "supplied_context": context,
+    })
     return final["decision"]
-
