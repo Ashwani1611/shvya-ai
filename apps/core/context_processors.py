@@ -29,10 +29,10 @@ NAV_ITEMS = [
                 "path_prefix": "/dashboard/auto-follow-ups/sequences/",
             },
             {
-                "label": "Workflows",
+                "label": "Touchpoints",
                 "icon": "ti-git-branch",
-                "url_name": "crm-auto-follow-ups-workflows",
-                "path_prefix": "/dashboard/auto-follow-ups/workflows/",
+                "url_name": "crm-auto-follow-ups-touchpoints",
+                "path_prefix": "/dashboard/auto-follow-ups/touchpoints/",
             },
         ],
     },
