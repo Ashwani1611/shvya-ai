@@ -25,5 +25,5 @@ class AutoFollowupTemplateTests(SimpleTestCase):
     def test_sequence_list_uses_expected_dashboard_url(self):
         self.assertEqual(
             reverse("crm-auto-follow-ups-sequences"),
-            "/dashboard/auto-follow-ups/sequences/",
+            "/dashboard/cadence/sequences/",
         )
