@@ -1,3 +1,5 @@
+from django.urls import NoReverseMatch, reverse
+
 from apps.ai_engagement.coins import credits_to_coins
 
 
@@ -10,29 +12,37 @@ NAV_ITEMS = [
         "icon": "ti-users",
         "url_name": "crm-dashboard",
         "path_exact": "/dashboard/",
+        "section": "customers",
+        "search_keywords": ["leads", "pipeline", "customers"],
     },
     {
         "label": "Sales Desk",
         "icon": "ti-user-star",
         "url_name": "crm-copilot",
         "path_exact": "/dashboard/sales-desk/",
+        "section": "workspace",
+        "search_keywords": ["copilot", "sales", "ai sales"],
     },
     {
         "label": "Cadence",
         "icon": "ti-camera-plus",
         "path_prefix": "/dashboard/cadence/",
+        "section": "automate",
+        "search_keywords": ["follow ups", "sequences", "touchpoints"],
         "children": [
             {
                 "label": "Sequences",
                 "icon": "ti-repeat",
                 "url_name": "crm-auto-follow-ups-sequences",
                 "path_prefix": "/dashboard/cadence/sequences/",
+                "search_keywords": ["cadence", "follow ups", "automation"],
             },
             {
                 "label": "Touchpoints",
                 "icon": "ti-git-branch",
                 "url_name": "crm-auto-follow-ups-touchpoints",
                 "path_prefix": "/dashboard/cadence/touchpoints/",
+                "search_keywords": ["cadence", "workflow steps", "follow ups"],
             },
         ],
     },
@@ -40,18 +50,22 @@ NAV_ITEMS = [
         "label": "Playbooks",
         "icon": "ti-clipboard-list",
         "path_prefix": "/dashboard/playbooks/",
+        "section": "automate",
+        "search_keywords": ["knowledge base", "ai setup", "faq"],
         "children": [
             {
                 "label": "AI Setup",
                 "icon": "ti-settings",
                 "url_name": "crm-knowledge-base-ai-setup",
                 "path_prefix": "/dashboard/playbooks/ai-setup/",
+                "search_keywords": ["playbooks", "prompt", "ai instructions"],
             },
             {
                 "label": "FAQ",
                 "icon": "ti-help-circle",
                 "url_name": "crm-knowledge-base-faq",
                 "path_prefix": "/dashboard/playbooks/faq/",
+                "search_keywords": ["playbooks", "questions", "answers"],
             },
         ],
     },
@@ -60,17 +74,23 @@ NAV_ITEMS = [
         "icon": "ti-target-arrow",
         "url_name": "crm-smart-triggers",
         "path_exact": "/dashboard/workflows/",
+        "section": "automate",
+        "search_keywords": ["automation", "triggers", "rules"],
     },
     {
         "label": "Insights",
         "icon": "ti-chart-line",
         "url_name": "crm-analytics",
         "path_exact": "/dashboard/insights/",
+        "section": "customers",
+        "search_keywords": ["analytics", "reports", "metrics"],
     },
     {
         "label": "WhatsApp",
         "icon": "ti-brand-whatsapp",
         "path_prefix": "/dashboard/whatsapp/",
+        "section": "connect",
+        "search_keywords": ["messages", "chat", "broadcast", "templates"],
         "children": [
             {
                 "label": "Connect API",
@@ -92,6 +112,7 @@ NAV_ITEMS = [
                 "url_name": "whatsapp-chats",
                 "path_prefix": "/dashboard/whatsapp/chats/",
                 "requires_whatsapp_connection": True,
+                "search_keywords": ["whatsapp conversations", "messages"],
             },
             {
                 "label": "Templates",
@@ -120,6 +141,8 @@ NAV_ITEMS = [
         "label": "Instagram",
         "icon": "ti-brand-instagram",
         "path_prefix": "/dashboard/instagram/",
+        "section": "connect",
+        "search_keywords": ["instagram", "messages", "dm"],
         "children": [
             {
                 "label": "Connect Instagram",
@@ -132,6 +155,7 @@ NAV_ITEMS = [
                 "icon": "ti-message-circle",
                 "url_name": "crm-instagram-chats",
                 "path_prefix": "/dashboard/instagram/chats/",
+                "search_keywords": ["instagram conversations", "messages"],
             },
         ],
     },
@@ -140,20 +164,36 @@ NAV_ITEMS = [
         "icon": "ti-plug-connected",
         "url_name": "crm-connect-hub",
         "path_prefix": "/dashboard/connect-hub/",
+        "section": "connect",
+        "search_keywords": ["integrations", "connections", "api", "webhooks"],
     },
     {
         "label": "Teams",
         "icon": "ti-users-group",
         "url_name": "crm-teams",
         "path_exact": "/dashboard/teams/",
+        "utility": True,
+        "search_keywords": ["users", "members", "agents"],
     },
     {
         "label": "Support Portal",
+        "sidebar_label": "Help & Support",
         "icon": "ti-headset",
         "url_name": "crm-support-portal",
         "path_exact": "/dashboard/support-portal/",
+        "utility": True,
+        "search_keywords": ["support", "help", "portal"],
     },
 ]
+
+
+SECTION_ORDER = ("workspace", "customers", "automate", "connect")
+SECTION_LABELS = {
+    "workspace": "",
+    "customers": "CUSTOMERS",
+    "automate": "AUTOMATE",
+    "connect": "CONNECT",
+}
 
 
 def _resolve_active(entry, request_path):
@@ -165,6 +205,18 @@ def _resolve_active(entry, request_path):
         return request_path == path_exact
 
     return bool(path_prefix and request_path.startswith(path_prefix))
+
+
+def _resolve_href(entry):
+    """Resolve named routes once so the frontend does not hardcode dashboard URLs."""
+    url_name = entry.get("url_name")
+    if not url_name:
+        return None
+
+    try:
+        return reverse(url_name)
+    except NoReverseMatch:
+        return None
 
 
 def _has_connected_whatsapp_account(request):
@@ -255,13 +307,14 @@ def _ai_credit_context(request):
 
 
 def sidebar_nav(request):
-    """Build shared sidebar navigation with connection-aware WhatsApp items."""
+    """Build shared, section-aware sidebar navigation for the dashboard shell."""
     nav_items = []
     has_whatsapp_connection = _has_connected_whatsapp_account(request)
     has_hosted_account_access = _has_hosted_account_access(request)
 
     for item in NAV_ITEMS:
         entry = dict(item)
+        entry["href"] = _resolve_href(entry)
         children = entry.get("children")
 
         if children:
@@ -287,6 +340,7 @@ def sidebar_nav(request):
                     continue
 
                 child_entry = dict(child)
+                child_entry["href"] = _resolve_href(child_entry)
                 child_entry["is_active"] = _resolve_active(
                     child_entry,
                     request.path,
@@ -303,8 +357,46 @@ def sidebar_nav(request):
 
         nav_items.append(entry)
 
+    section_map = {
+        key: {
+            "key": key,
+            "label": SECTION_LABELS[key],
+            "items": [],
+        }
+        for key in SECTION_ORDER
+    }
+    utility_items = []
+
+    for entry in nav_items:
+        if entry.get("utility"):
+            utility_items.append(entry)
+            continue
+
+        section_key = entry.get("section", "workspace")
+        if section_key in section_map:
+            section_map[section_key]["items"].append(entry)
+
+    profile_href = _resolve_href({"url_name": "crm-profile"})
+    utility_items.append(
+        {
+            "label": "Settings",
+            "icon": "ti-settings",
+            "href": profile_href,
+            "is_active": request.path == profile_href,
+            "utility": True,
+            "search_keywords": ["settings", "profile", "account"],
+        }
+    )
+
     context = {
         "nav_items": nav_items,
+        "sidebar_nav_sections": [
+            section_map[key]
+            for key in SECTION_ORDER
+            if section_map[key]["items"]
+        ],
+        "sidebar_utility_items": utility_items,
+        "sidebar_profile_href": profile_href,
         "has_whatsapp_connection": has_whatsapp_connection,
         "pending_reminder_count": _pending_reminder_count(request),
     }
