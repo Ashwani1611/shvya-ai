@@ -22,6 +22,25 @@ class AiEngagementConfig(AppConfig):
 
         install_fixed_prompt_overrides()
 
+        # Keep AI Setup authoring flexible while compiling it into deterministic
+        # runtime behavior: option-aware qualification answers, majority-mode
+        # evaluation, described-stage transitions, anti-repeat validation, and
+        # short file/knowledge intent retrieval.
+        from apps.ai_engagement.services.ai_setup_runtime_fixes import (
+            install_ai_setup_runtime_fixes,
+        )
+
+        install_ai_setup_runtime_fixes()
+
+        # Some bounded internal/test contexts omit the current stage because no
+        # stage operation is expected. Keep the transition wrapper compatible
+        # with those callers without weakening validation in full AIContext.
+        from apps.ai_engagement.services.ai_setup_runtime_compat import (
+            install_ai_setup_runtime_compat,
+        )
+
+        install_ai_setup_runtime_compat()
+
         # LangGraph is the turn-level orchestration authority. It keeps the
         # existing EngagementService/Celery/WhatsApp contracts stable while
         # segmenting context, deterministic extraction, routing, RAG,
