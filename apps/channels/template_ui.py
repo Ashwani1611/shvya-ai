@@ -33,6 +33,7 @@ def _admin(user):
 def _accounts(user):
     return WhatsAppAccount.objects.filter(
         organization=user.organization,
+        connection_type=WhatsAppAccount.ConnectionType.API,
         status=WhatsAppAccount.Status.CONNECTED,
         is_active=True,
     ).order_by("business_name", "display_phone_number")

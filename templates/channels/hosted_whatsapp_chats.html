@@ -42,6 +42,8 @@ body.hosted-chat-page main{overflow:hidden!important;padding:0!important;backgro
 .bubble.optimistic{opacity:.78}
 .bubble-body{white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word}
 .bubble-media-label{display:flex;align-items:center;gap:6px;margin-bottom:4px;font-size:12px;font-weight:600;color:#475569}
+.bubble-image{display:block;overflow:hidden;border-radius:6px;background:#e5e7eb}
+.bubble-image img{display:block;max-width:min(420px,100%);max-height:420px;object-fit:contain}
 .bubble-placeholder{font-style:italic;color:#64748b}
 .bubble-time{display:flex;justify-content:flex-end;align-items:center;gap:4px;margin-top:4px;font-size:10px;line-height:1.1;color:#667781;white-space:nowrap}
 .bubble-status{font-size:11px;letter-spacing:-2px;color:#667781}
@@ -237,6 +239,9 @@ body.hosted-chat-page main{overflow:hidden!important;padding:0!important;backgro
   function messageContent(m){
     const rawBody=String(m.body||'');
     const body=rawBody?`<div class="bubble-body" dir="auto">${esc(rawBody)}</div>`:'';
+    if(m.message_type==='image'&&m.media_url){
+      return `<a class="bubble-image" href="${esc(m.media_url)}" target="_blank" rel="noopener"><img src="${esc(m.media_url)}" alt="Shared image" loading="lazy"></a>${body}`;
+    }
     if(m.message_type==='audio'){
       return `<div class="voice-card"><span class="voice-icon"><i class="ti ti-microphone"></i></span><div class="voice-meta"><div class="voice-title">Voice message</div><div class="voice-line"></div></div></div>${body}`;
     }

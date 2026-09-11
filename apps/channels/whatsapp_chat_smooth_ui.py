@@ -12,6 +12,9 @@ _SMOOTH_INBOX_SCRIPT = b"""
 <script data-shvya-whatsapp-smooth-ui>
 (function () {
   const FILTER_PREFIXES = ['filter_', 'attr_'];
+  let chatSocket = null;
+  let chatSocketPath = '';
+  let chatReconnect = null;
 
   function filterParams(source) {
     const output = new URLSearchParams();
@@ -23,12 +26,14 @@ _SMOOTH_INBOX_SCRIPT = b"""
     return output;
   }
 
-  function withCurrentFilters(url) {
+  function withCurrentFilters(url, preserveFilters) {
     const target = new URL(url, window.location.origin);
     const current = filterParams(new URL(window.location.href).searchParams);
-    current.forEach(function (value, key) {
-      if (!target.searchParams.has(key)) target.searchParams.set(key, value);
-    });
+    if (preserveFilters !== false) {
+      current.forEach(function (value, key) {
+        if (!target.searchParams.has(key)) target.searchParams.set(key, value);
+      });
+    }
     return target;
   }
 
@@ -60,14 +65,14 @@ _SMOOTH_INBOX_SCRIPT = b"""
     shell.style.pointerEvents = enabled ? 'none' : '';
   }
 
-  async function navigate(rawUrl, push) {
+  async function navigate(rawUrl, push, preserveFilters) {
     const shell = document.getElementById('wa-web-shell');
     if (!shell) {
       window.location.assign(rawUrl);
       return;
     }
 
-    const target = withCurrentFilters(rawUrl);
+    const target = withCurrentFilters(rawUrl, preserveFilters);
     showLoading(shell, true);
     try {
       const response = await fetch(target.toString(), {
@@ -145,7 +150,8 @@ _SMOOTH_INBOX_SCRIPT = b"""
       chip.addEventListener('click', function () {
         const url = new URL(window.location.href);
         url.searchParams.delete(key);
-        navigate(url.toString(), true);
+        // Do not re-inherit the removed filter from the current URL.
+        navigate(url.toString(), true, false);
       });
       row.appendChild(chip);
     });
@@ -196,6 +202,32 @@ _SMOOTH_INBOX_SCRIPT = b"""
         if (form) form.requestSubmit();
       });
     }
+    connectChatSocket();
+  }
+
+  function connectChatSocket() {
+    const match = window.location.pathname.match(/\/dashboard\/whatsapp\/chats\/([0-9a-f-]+)\//i);
+    const nextPath = match ? '/ws/whatsapp/' + match[1] + '/' : '/ws/whatsapp/inbox/';
+    if (chatSocket && chatSocketPath === nextPath && chatSocket.readyState <= WebSocket.OPEN) return;
+    if (chatSocket) chatSocket.close();
+    chatSocketPath = nextPath;
+    const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+    try {
+      chatSocket = new WebSocket(protocol + '://' + window.location.host + nextPath);
+      chatSocket.onmessage = function () {
+        // The server remains the source of truth for message/media rendering.
+        // Replace only the inbox shell, preserving the current filters/chat.
+        navigate(window.location.href, false, false);
+      };
+      chatSocket.onclose = function () {
+        if (chatSocketPath !== nextPath) return;
+        clearTimeout(chatReconnect);
+        chatReconnect = setTimeout(connectChatSocket, 1500);
+      };
+    } catch (_) {
+      clearTimeout(chatReconnect);
+      chatReconnect = setTimeout(connectChatSocket, 1500);
+    }
   }
 
   document.addEventListener('submit', function (event) {
@@ -226,6 +258,8 @@ _SMOOTH_INBOX_SCRIPT = b"""
     decorateShell(initial);
     bindShell(initial);
   }
+
+  connectChatSocket();
 
   window.shvyaWhatsAppNavigate = navigate;
 })();

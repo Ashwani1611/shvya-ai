@@ -437,6 +437,12 @@ def handle_inbound_message(
         )
     )
 
+    # The inbox is socket-driven; publishing must happen only after this
+    # transaction commits, otherwise a connected browser can fetch a row that
+    # is not visible yet.
+    from services.channels.realtime import queue_message_publish
+    queue_message_publish(message)
+
     # --------------------------------------------------------
     # EXISTING REPLY-INTENT LOGIC
     # --------------------------------------------------------
@@ -615,6 +621,9 @@ def handle_status_update(
             "updated_at",
         ]
     )
+
+    from services.channels.realtime import queue_status_publish
+    queue_status_publish(message)
 
     return 1
 
@@ -834,7 +843,7 @@ def queue_outbound_message(
         )
     )
 
-    return WhatsAppMessage.objects.create(
+    message = WhatsAppMessage.objects.create(
         organization=organization,
         account=account,
         lead=lead,
@@ -846,6 +855,11 @@ def queue_outbound_message(
         media_payload=normalized_media_payload,
         status=WhatsAppMessage.Status.QUEUED,
     )
+    # Show the queued outbound bubble immediately; delivery/status updates are
+    # published separately when Meta responds.
+    from services.channels.realtime import queue_message_publish
+    queue_message_publish(message)
+    return message
 
 
 def _send_outbound_media_message(
