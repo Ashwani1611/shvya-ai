@@ -1,6 +1,8 @@
 import hashlib
 import hmac
+from unittest.mock import patch
 
+from django.http import HttpResponse
 from django.test import SimpleTestCase, override_settings
 from django.urls import reverse
 
@@ -55,7 +57,9 @@ class WhatsAppWebhookSecurityTests(SimpleTestCase):
         self.assertEqual(response.status_code, 403)
 
     @override_settings(META_APP_SECRET="meta-secret")
-    def test_delivery_accepts_valid_signature(self):
+    @patch("apps.channels.webhook_security.views_flat.whatsapp_webhook_view")
+    def test_delivery_accepts_valid_signature(self, legacy_view):
+        legacy_view.return_value = HttpResponse(status=200)
         body = b"{}"
         signature = hmac.new(
             b"meta-secret",
@@ -71,3 +75,4 @@ class WhatsAppWebhookSecurityTests(SimpleTestCase):
         )
 
         self.assertEqual(response.status_code, 200)
+        legacy_view.assert_called_once()
