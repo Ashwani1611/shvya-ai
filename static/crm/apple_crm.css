@@ -93,10 +93,16 @@
 .crm-premium-page .stage-tab:hover {
     color: var(--crm-apple-text) !important;
     background: rgba(255, 255, 255, 0.55);
-    font-weight: inherit !important;
 }
 
-.crm-premium-page .stage-tab.font-medium {
+/* Prevent the existing hover font-weight utility from changing tab width. */
+.crm-premium-page .stage-tab.font-normal,
+.crm-premium-page .stage-tab.font-normal:hover {
+    font-weight: 400 !important;
+}
+
+.crm-premium-page .stage-tab.font-medium,
+.crm-premium-page .stage-tab.font-medium:hover {
     color: var(--crm-apple-text) !important;
     font-weight: 600 !important;
 }
@@ -288,16 +294,6 @@ body .crm-premium-page .lead-card:hover {
 @media (max-width: 760px) {
     .crm-premium-page .crm-premium-toolbar {
         border-radius: 18px !important;
-    }
-
-    .crm-premium-page .crm-premium-toolbar-row {
-        flex-wrap: wrap;
-    }
-
-    .crm-premium-page .crm-premium-search {
-        order: 3;
-        flex-basis: 100%;
-        max-width: none !important;
     }
 }
 
