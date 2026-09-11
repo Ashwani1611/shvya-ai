@@ -12,60 +12,60 @@ NAV_ITEMS = [
         "path_exact": "/dashboard/",
     },
     {
-        "label": "Co-Pilot",
+        "label": "Sales Desk",
         "icon": "ti-user-star",
         "url_name": "crm-copilot",
-        "path_exact": "/dashboard/copilot/",
+        "path_exact": "/dashboard/sales-desk/",
     },
     {
-        "label": "Auto Follow-ups",
+        "label": "Cadence",
         "icon": "ti-camera-plus",
-        "path_prefix": "/dashboard/auto-follow-ups/",
+        "path_prefix": "/dashboard/cadence/",
         "children": [
             {
                 "label": "Sequences",
                 "icon": "ti-repeat",
                 "url_name": "crm-auto-follow-ups-sequences",
-                "path_prefix": "/dashboard/auto-follow-ups/sequences/",
+                "path_prefix": "/dashboard/cadence/sequences/",
             },
             {
                 "label": "Touchpoints",
                 "icon": "ti-git-branch",
                 "url_name": "crm-auto-follow-ups-touchpoints",
-                "path_prefix": "/dashboard/auto-follow-ups/touchpoints/",
+                "path_prefix": "/dashboard/cadence/touchpoints/",
             },
         ],
     },
     {
-        "label": "Knowledge Base",
+        "label": "Playbooks",
         "icon": "ti-clipboard-list",
-        "path_prefix": "/dashboard/knowledge-base/",
+        "path_prefix": "/dashboard/playbooks/",
         "children": [
             {
                 "label": "AI Setup",
                 "icon": "ti-settings",
                 "url_name": "crm-knowledge-base-ai-setup",
-                "path_prefix": "/dashboard/knowledge-base/ai-setup/",
+                "path_prefix": "/dashboard/playbooks/ai-setup/",
             },
             {
                 "label": "FAQ",
                 "icon": "ti-help-circle",
                 "url_name": "crm-knowledge-base-faq",
-                "path_prefix": "/dashboard/knowledge-base/faq/",
+                "path_prefix": "/dashboard/playbooks/faq/",
             },
         ],
     },
     {
-        "label": "Smart Triggers",
+        "label": "Workflows",
         "icon": "ti-target-arrow",
         "url_name": "crm-smart-triggers",
-        "path_exact": "/dashboard/smart-triggers/",
+        "path_exact": "/dashboard/workflows/",
     },
     {
-        "label": "Analytics",
+        "label": "Insights",
         "icon": "ti-chart-line",
         "url_name": "crm-analytics",
-        "path_exact": "/dashboard/analytics/",
+        "path_exact": "/dashboard/insights/",
     },
     {
         "label": "WhatsApp",
@@ -142,22 +142,16 @@ NAV_ITEMS = [
         "path_prefix": "/dashboard/connect-hub/",
     },
     {
-        "label": "Call Scheduler",
-        "icon": "ti-phone-plus",
-        "url_name": "crm-call-scheduler",
-        "path_exact": "/dashboard/call-scheduler/",
-    },
-    {
-        "label": "Call Tracker",
-        "icon": "ti-phone-check",
-        "url_name": "crm-call-tracker",
-        "path_exact": "/dashboard/call-tracker/",
-    },
-    {
         "label": "Teams",
         "icon": "ti-users-group",
         "url_name": "crm-teams",
         "path_exact": "/dashboard/teams/",
+    },
+    {
+        "label": "Support Portal",
+        "icon": "ti-headset",
+        "url_name": "crm-support-portal",
+        "path_exact": "/dashboard/support-portal/",
     },
 ]
 
@@ -250,11 +244,9 @@ def _ai_credit_context(request):
     is_low = available <= AI_CREDIT_ALERT_THRESHOLD
 
     return {
-        # Raw credit aliases remain for any older templates/integrations.
         "ai_credit_balance": available,
         "ai_credit_is_low": is_low,
         "ai_credit_alert_threshold": AI_CREDIT_ALERT_THRESHOLD,
-        # Dashboard UI uses coins.
         "ai_coin_balance": credits_to_coins(available),
         "ai_coin_total": credits_to_coins(total_funded),
         "ai_coin_is_low": is_low,
