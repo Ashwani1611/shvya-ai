@@ -333,7 +333,7 @@
                 ? payload.response.trim()
                 : "";
             const assistantText = responseText ||
-                "Your organization�s AI Setup instructions requested no reply for this message.";
+                "Your organization’s AI Setup instructions requested no reply for this message.";
 
             removePendingMessage();
             appendMessage("assistant", assistantText);
@@ -360,25 +360,72 @@
         }
     }
 
-    function restartChat() {
+    async function restartChat() {
         const page = getPage();
         const messages = getMessages();
         const input = getInput();
 
-        history = [];
-        hasStarted = true;
-
-        if (page) {
-            page.dataset.playgroundSessionId = createSessionId();
+        if (busy) {
+            return;
         }
 
-        if (messages) {
-            messages.innerHTML = "";
+        const oldSessionId = ensureSessionId();
+        const csrfToken = getCsrfToken();
+
+        if (!oldSessionId || !csrfToken) {
+            appendMessage(
+                "assistant",
+                "Unable to verify the restart request. Refresh the page and try again.",
+                { error: true }
+            );
+            return;
         }
 
-        if (input) {
-            input.value = "";
-            input.focus();
+        setBusy(true);
+
+        try {
+            const response = await fetch(PLAYGROUND_ENDPOINT, {
+                method: "DELETE",
+                credentials: "same-origin",
+                headers: {
+                    "Content-Type": "application/json",
+                    "X-CSRFToken": csrfToken,
+                    "X-Requested-With": "XMLHttpRequest",
+                },
+                body: JSON.stringify({
+                    session_id: oldSessionId,
+                }),
+            });
+
+            if (!response.ok) {
+                throw new Error(await getErrorMessage(response));
+            }
+
+            history = [];
+            hasStarted = true;
+
+            if (page) {
+                page.dataset.playgroundSessionId = createSessionId();
+            }
+
+            if (messages) {
+                messages.innerHTML = "";
+            }
+
+            if (input) {
+                input.value = "";
+            }
+        } catch (error) {
+            appendMessage(
+                "assistant",
+                error.message || "Unable to restart the playground chat.",
+                { error: true }
+            );
+        } finally {
+            setBusy(false);
+            if (input) {
+                input.focus();
+            }
         }
     }
 
