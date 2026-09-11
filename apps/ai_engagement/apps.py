@@ -32,6 +32,15 @@ class AiEngagementConfig(AppConfig):
 
         install_ai_setup_runtime_fixes()
 
+        # Some bounded internal/test contexts omit the current stage because no
+        # stage operation is expected. Keep the transition wrapper compatible
+        # with those callers without weakening validation in full AIContext.
+        from apps.ai_engagement.services.ai_setup_runtime_compat import (
+            install_ai_setup_runtime_compat,
+        )
+
+        install_ai_setup_runtime_compat()
+
         # LangGraph is the turn-level orchestration authority. It keeps the
         # existing EngagementService/Celery/WhatsApp contracts stable while
         # segmenting context, deterministic extraction, routing, RAG,
