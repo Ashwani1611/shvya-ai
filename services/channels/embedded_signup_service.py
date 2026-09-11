@@ -231,6 +231,7 @@ def complete_embedded_signup(
     waba_id="",
     phone_number_id="",
     attempt=None,
+    redirect_uri="",
 ):
     """Authorize Meta, resolve assets, persist the number, then subscribe webhooks."""
     if not settings.META_APP_ID or not settings.META_APP_SECRET:
@@ -240,10 +241,11 @@ def complete_embedded_signup(
         )
 
     try:
-        access_token = whatsapp_provider.exchange_code_for_access_token(
+        access_token = embedded_provider.exchange_code_for_access_token(
             app_id=settings.META_APP_ID,
             app_secret=settings.META_APP_SECRET,
             code=code,
+            redirect_uri=redirect_uri,
         )
     except WhatsAppAPIError as exc:
         error_code, reason = _meta_error_details(exc)
