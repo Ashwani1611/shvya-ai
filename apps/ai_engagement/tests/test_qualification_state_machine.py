@@ -29,18 +29,33 @@ class QualificationStateMachineTests(TestCase):
             name="Sales",
             is_active=True,
         )
-        cls.new_stage = Stage.objects.create(
-            pipeline=cls.pipeline,
-            name="New Lead",
-            display_order=0,
-            is_active=True,
+        cls.new_stage = (
+            cls.pipeline.stages.filter(name__in=["New Lead", "New leads"])
+            .order_by("display_order", "name")
+            .first()
         )
-        Stage.objects.create(
-            pipeline=cls.pipeline,
-            name="Qualified",
-            display_order=1,
-            is_active=True,
-        )
+        if cls.new_stage is None:
+            used = set(cls.pipeline.stages.values_list("display_order", flat=True))
+            order = 0
+            while order in used:
+                order += 1
+            cls.new_stage = Stage.objects.create(
+                pipeline=cls.pipeline,
+                name="New Lead",
+                display_order=order,
+                is_active=True,
+            )
+        if not cls.pipeline.stages.filter(name__iexact="Qualified").exists():
+            used = set(cls.pipeline.stages.values_list("display_order", flat=True))
+            order = 0
+            while order in used:
+                order += 1
+            Stage.objects.create(
+                pipeline=cls.pipeline,
+                name="Qualified",
+                display_order=order,
+                is_active=True,
+            )
 
     def setUp(self):
         self.lead = Lead.objects.create(
@@ -266,7 +281,6 @@ class QualificationStateMachineTests(TestCase):
         self.assertIsNone(result["state"]["current_requirement_id"])
         self.assertIsNone(result["state"]["next_requirement_id"])
 
-        # A later ordinary message and attempted record call cannot reopen it.
         record_last_asked_requirement(self.lead, only["id"], requirements=requirements)
         self.lead.refresh_from_db()
         state = state_for_lead(self.lead, requirements=requirements)
