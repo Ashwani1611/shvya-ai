@@ -13,7 +13,7 @@ def test_touchpoints_route_renders_updated_page_and_navigation():
     assert response.status_code == 200
     html = response.content.decode()
     assert "Touchpoints" in html
-    assert "Workflows" not in html
+    assert "Chain conditions and actions together into a full follow-up workflow." in html
     assert url in html
 
     parent = next(
