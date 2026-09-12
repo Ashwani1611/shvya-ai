@@ -6,7 +6,7 @@ from django.views.decorators.http import require_GET
 
 from apps.channels.models import WhatsAppAccount, WhatsAppMessage
 from apps.crm.decorators import crm_login_required
-from apps.followups.models import LeadSequenceState
+from apps.followups.models import AutoFollowupSettings, LeadSequenceState
 from apps.hosted_automation.models import HostedAutomationJob, HostedFollowupStepConfig
 from apps.organizations.features import is_hosted_account_enabled
 from services.channels.hosted_automation_service import (
@@ -62,6 +62,12 @@ def hosted_session_queue_view(request, account_id):
     health_pause = automation_pause_until(account=account)
     session_settings = get_session_settings(account=account)
     account_connected = account.status == WhatsAppAccount.Status.CONNECTED
+    followup_scheduler_enabled = bool(
+        AutoFollowupSettings.objects.filter(
+            organization=account.organization,
+            enabled=True,
+        ).exists()
+    )
 
     # Durable Hosted AI jobs are the source of truth for pending AI work. Show
     # the exact inbound message that owns the job and its effective execution
@@ -145,6 +151,9 @@ def hosted_session_queue_view(request, account_id):
 
         if not session_settings.get("auto_follow_up", True):
             status_text = "Paused: Auto Follow-up disabled"
+            execute_at = None
+        elif not followup_scheduler_enabled:
+            status_text = "Paused: Follow-up scheduler disabled"
             execute_at = None
         elif state.status == LeadSequenceState.Status.PAUSED and not state.paused_until:
             status_text = "Paused"
