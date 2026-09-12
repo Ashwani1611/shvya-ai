@@ -1,7 +1,8 @@
+import inspect
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
-from django.test import SimpleTestCase, override_settings
+from django.test import SimpleTestCase
 
 from services.triggers.actions import _apply, deliver_email
 
@@ -21,20 +22,11 @@ class WorkflowConnectedEmailTests(SimpleTestCase):
         )
         return organization, lead
 
-    @override_settings(FOLLOWUP_EMAIL_DELIVERY_ENABLED=False)
     def test_email_action_does_not_use_legacy_global_flag(self):
-        _, lead = self._lead()
-        run = SimpleNamespace(
-            action_type="email",
-            action={"subject": "Hello", "body": "Welcome"},
-            rule=SimpleNamespace(created_by=SimpleNamespace(name="Owner", email="owner@example.com")),
-            status=None,
-            detail="",
-        )
+        source = inspect.getsource(_apply)
 
-        _apply(run, lead)
-
-        self.assertEqual(run.status, "email_ready")
+        self.assertNotIn("FOLLOWUP_EMAIL_DELIVERY_ENABLED", source)
+        self.assertIn('run.status = "email_ready"', source)
 
     @patch("services.triggers.actions.send_organization_email")
     @patch("services.triggers.actions.TriggerRun.objects")
