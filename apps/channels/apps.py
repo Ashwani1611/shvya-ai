@@ -15,10 +15,11 @@ class ChannelsConfig(AppConfig):
         from . import template_models  # noqa: F401
         from . import lead_source_signals  # noqa: F401
 
-        # Register hosted-session Celery tasks in both web and worker startup.
-        # The task bodies import their models/providers lazily, so importing the
-        # module here is safe during Django app initialization.
+        # Register hosted-session and lead-welcome Celery tasks in both web and
+        # worker startup. Task bodies import providers lazily, so importing these
+        # modules is safe during Django app initialization.
         from . import hosted_tasks  # noqa: F401
+        from . import welcome_tasks  # noqa: F401
 
         # Install the actual Meta template transport first. The failure layer
         # then wraps every transport, including templates, so exact Meta error
