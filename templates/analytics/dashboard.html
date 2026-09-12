@@ -85,7 +85,7 @@
             <div>
                 <div class="ins-eyebrow">Acquisition</div>
                 <h2 class="ins-card-title">Lead Growth</h2>
-                <p class="ins-card-copy">See how new leads are entering SHVYA by source across the selected date range.</p>
+                <p class="ins-card-copy">See how new leads are entering SHVYA by source across the selected date range. Hover any date to see every source and the total.</p>
             </div>
             <div class="ins-card-stat"><strong>{{ overview.total_leads }}</strong><span>Total leads</span></div>
         </div>
@@ -97,7 +97,7 @@
             <div>
                 <div class="ins-eyebrow">AI engagement</div>
                 <h2 class="ins-card-title">AI &amp; Welcome Engagement</h2>
-                <p class="ins-card-copy">Track AI replies, bump-ups and automatic welcome messages without changing the underlying message activity graph.</p>
+                <p class="ins-card-copy">Track AI replies, bump-ups, total AI messages and automatic welcome messages. Hover any date for the complete breakdown.</p>
             </div>
             <div class="ins-card-stat"><strong>{{ overview.ai_messages|add:overview.welcome_messages }}</strong><span>AI + welcome</span></div>
         </div>
@@ -109,7 +109,7 @@
             <div>
                 <div class="ins-eyebrow">Cadence</div>
                 <h2 class="ins-card-title">Email Automation Activity</h2>
-                <p class="ins-card-copy">Email sequence sends over time, broken down by automation flow.</p>
+                <p class="ins-card-copy">Email sequence sends over time, broken down by automation flow. Hover any date to see each flow and the total.</p>
             </div>
             <div class="ins-card-stat"><strong>{{ overview.email_automation_messages }}</strong><span>Emails sent</span></div>
         </div>
@@ -121,7 +121,7 @@
             <div>
                 <div class="ins-eyebrow">Cadence</div>
                 <h2 class="ins-card-title">WhatsApp Automation Activity</h2>
-                <p class="ins-card-copy">WhatsApp sequence sends over time, with each flow visible as its own series and a total activity line.</p>
+                <p class="ins-card-copy">WhatsApp sequence sends over time, with every flow visible as its own series and a total activity line. Hover any date for the complete breakdown.</p>
             </div>
             <div class="ins-card-stat"><strong>{{ overview.whatsapp_automation_messages }}</strong><span>Messages sent</span></div>
         </div>
@@ -133,7 +133,7 @@
             <div>
                 <div class="ins-eyebrow">CRM health</div>
                 <h2 class="ins-card-title">Pipeline Performance</h2>
-                <p class="ins-card-copy">Understand where leads sit across your pipelines and stages for the same global filters.</p>
+                <p class="ins-card-copy">Understand where leads sit across your pipelines and stages for the same global filters. Hover a bar or stage to see its exact value.</p>
             </div>
         </div>
         <div class="ins-pipeline-grid">
@@ -268,7 +268,8 @@
 
 <script>
 (function () {
-    const palette = ['#0071e3', '#34c759', '#ff9f0a', '#af52de', '#ff375f', '#5ac8fa', '#5856d6', '#30d158', '#ff453a', '#64d2ff'];
+    const palette = ['#38bdb8', '#ff9138', '#3b9ce8', '#9162f5', '#ff5579', '#f6b83f', '#63c76a', '#64748b', '#a855f7', '#06b6d4'];
+    const formatter = new Intl.NumberFormat('en-IN');
     const read = id => JSON.parse(document.getElementById(id).textContent || '[]');
     const labelsLeads = read('ins-leads-labels');
     const seriesLeads = read('ins-leads-series');
@@ -281,94 +282,375 @@
     const pipelines = read('ins-pipelines');
     const stages = read('ins-stages');
 
-    const common = {
-        responsive: true,
-        maintainAspectRatio: false,
-        interaction: { mode: 'index', intersect: false },
-        plugins: {
-            legend: {
-                position: 'top',
-                align: 'center',
-                labels: { color: '#6e6e73', usePointStyle: true, pointStyle: 'circle', boxWidth: 7, boxHeight: 7, padding: 16, font: { size: 11 } }
-            },
-            tooltip: { backgroundColor: 'rgba(29,29,31,.92)', padding: 11, cornerRadius: 10, titleFont: { size: 12 }, bodyFont: { size: 11 } }
-        },
-        scales: {
-            x: { grid: { display: false }, ticks: { color: '#86868b', maxRotation: 45, minRotation: 0, font: { size: 10 } }, border: { display: false } },
-            y: { beginAtZero: true, grid: { color: 'rgba(15,23,42,.055)' }, ticks: { precision: 0, color: '#86868b', font: { size: 10 } }, border: { display: false } }
+    function formatNumber(value) {
+        return formatter.format(Number(value || 0));
+    }
+
+    function rgba(hex, alpha) {
+        const clean = hex.replace('#', '');
+        const value = parseInt(clean, 16);
+        const r = (value >> 16) & 255;
+        const g = (value >> 8) & 255;
+        const b = value & 255;
+        return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+    }
+
+    function sumValues(values) {
+        return (values || []).reduce((sum, value) => sum + Number(value || 0), 0);
+    }
+
+    function datasetByLabel(datasets, label) {
+        return datasets.find(dataset => dataset.label === label);
+    }
+
+    function showSummary(canvas, text) {
+        if (!canvas || !text) return;
+        const wrap = canvas.closest('.ins-chart-wrap');
+        if (!wrap) return;
+        let summary = wrap.nextElementSibling;
+        if (!summary || !summary.classList.contains('ins-chart-summary')) {
+            summary = document.createElement('div');
+            summary.className = 'ins-chart-summary';
+            wrap.insertAdjacentElement('afterend', summary);
+        }
+        summary.textContent = text;
+    }
+
+    function showEmpty(canvas, message) {
+        if (!canvas) return;
+        canvas.hidden = true;
+        const wrap = canvas.closest('.ins-chart-wrap');
+        if (!wrap) return;
+        let empty = wrap.querySelector('.ins-chart-empty');
+        if (!empty) {
+            empty = document.createElement('div');
+            empty.className = 'ins-chart-empty';
+            wrap.appendChild(empty);
+        }
+        empty.textContent = message;
+        empty.style.display = 'flex';
+    }
+
+    function hasActivity(datasets) {
+        return datasets.some(dataset => (dataset.data || []).some(value => Number(value || 0) !== 0));
+    }
+
+    const hoverGuide = {
+        id: 'insightsHoverGuide',
+        afterDatasetsDraw(chart) {
+            const active = chart.tooltip && chart.tooltip.getActiveElements ? chart.tooltip.getActiveElements() : [];
+            if (!active.length || !chart.chartArea) return;
+            const x = active[0].element.x;
+            const { top, bottom } = chart.chartArea;
+            const ctx = chart.ctx;
+            ctx.save();
+            ctx.beginPath();
+            ctx.moveTo(x, top);
+            ctx.lineTo(x, bottom);
+            ctx.lineWidth = 1;
+            ctx.strokeStyle = 'rgba(29, 29, 31, .16)';
+            ctx.setLineDash([3, 3]);
+            ctx.stroke();
+            ctx.restore();
         }
     };
 
-    function lineDatasets(series, addTotal) {
-        const datasets = series.map((item, index) => ({
-            label: item.label,
-            data: item.values,
-            borderColor: palette[index % palette.length],
-            backgroundColor: palette[index % palette.length],
-            borderWidth: 2.2,
-            pointRadius: 2.4,
-            pointHoverRadius: 4,
-            tension: .34,
-            fill: false
-        }));
+    if (typeof Chart === 'undefined') {
+        document.querySelectorAll('.ins-chart-wrap canvas').forEach(canvas => {
+            showEmpty(canvas, 'Chart data could not be loaded. Please refresh the page.');
+        });
+        return;
+    }
+
+    Chart.register(hoverGuide);
+    Chart.defaults.font.family = '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif';
+    Chart.defaults.color = '#6e6e73';
+
+    function lineDatasets(series, { addTotal = false, totalLabel = 'Total' } = {}) {
+        const datasets = series.map((item, index) => {
+            const color = palette[index % palette.length];
+            return {
+                label: item.label,
+                data: (item.values || []).map(value => Number(value || 0)),
+                borderColor: color,
+                backgroundColor: rgba(color, .12),
+                borderWidth: 2.5,
+                pointRadius: 3,
+                pointHoverRadius: 6,
+                pointHitRadius: 18,
+                pointBackgroundColor: '#ffffff',
+                pointBorderColor: color,
+                pointBorderWidth: 2,
+                pointHoverBackgroundColor: color,
+                pointHoverBorderColor: '#ffffff',
+                pointHoverBorderWidth: 2,
+                tension: .28,
+                fill: false,
+                spanGaps: true
+            };
+        });
+
         if (addTotal && series.length) {
-            const length = series[0].values.length;
-            const totals = Array.from({ length }, (_, index) => series.reduce((sum, item) => sum + Number(item.values[index] || 0), 0));
+            const length = Math.max(...series.map(item => (item.values || []).length), 0);
+            const totals = Array.from({ length }, (_, index) =>
+                series.reduce((sum, item) => sum + Number((item.values || [])[index] || 0), 0)
+            );
             datasets.push({
-                label: 'Total',
+                label: totalLabel,
                 data: totals,
                 borderColor: '#1d1d1f',
-                backgroundColor: '#1d1d1f',
-                borderWidth: 2.5,
+                backgroundColor: 'rgba(29, 29, 31, .08)',
+                borderWidth: 2.8,
                 borderDash: [4, 4],
-                pointRadius: 2.6,
-                tension: .34,
-                fill: false
+                pointRadius: 3.2,
+                pointHoverRadius: 6.2,
+                pointHitRadius: 18,
+                pointBackgroundColor: '#ffffff',
+                pointBorderColor: '#1d1d1f',
+                pointBorderWidth: 2,
+                pointHoverBackgroundColor: '#1d1d1f',
+                pointHoverBorderColor: '#ffffff',
+                pointHoverBorderWidth: 2,
+                tension: .28,
+                fill: false,
+                spanGaps: true
             });
         }
         return datasets;
     }
 
-    new Chart(document.getElementById('leadsOverTimeChart'), {
-        type: 'line', data: { labels: labelsLeads, datasets: lineDatasets(seriesLeads, false) }, options: common
-    });
-    new Chart(document.getElementById('aiWelcomeChart'), {
-        type: 'line', data: { labels: labelsAI, datasets: lineDatasets(seriesAI, false) }, options: common
-    });
-    new Chart(document.getElementById('emailAutomationChart'), {
-        type: 'line', data: { labels: labelsEmail, datasets: lineDatasets(seriesEmail, true) }, options: common
-    });
-    new Chart(document.getElementById('whatsappAutomationChart'), {
-        type: 'line', data: { labels: labelsWhatsapp, datasets: lineDatasets(seriesWhatsapp, true) }, options: common
-    });
-
-    const barOptions = JSON.parse(JSON.stringify(common));
-    barOptions.plugins.legend.display = false;
-    new Chart(document.getElementById('leadsByPipelineChart'), {
-        type: 'bar',
-        data: {
-            labels: pipelines.map(row => row.label),
-            datasets: [{ label: 'Leads', data: pipelines.map(row => row.count), backgroundColor: '#0071e3', borderRadius: 8, maxBarThickness: 44 }]
-        },
-        options: barOptions
-    });
-
-    new Chart(document.getElementById('leadsByStageChart'), {
-        type: 'doughnut',
-        data: {
-            labels: stages.map(row => row.label),
-            datasets: [{ data: stages.map(row => row.count), backgroundColor: stages.map((_, index) => palette[index % palette.length]), borderColor: '#ffffff', borderWidth: 3 }]
-        },
-        options: {
+    function lineOptions(yTitle) {
+        return {
             responsive: true,
             maintainAspectRatio: false,
-            cutout: '68%',
+            animation: { duration: 240 },
+            events: ['mousemove', 'mouseout', 'click', 'touchstart', 'touchmove'],
+            interaction: { mode: 'index', intersect: false, axis: 'x' },
+            hover: { mode: 'index', intersect: false },
             plugins: {
-                legend: { position: 'bottom', labels: { color: '#6e6e73', usePointStyle: true, pointStyle: 'circle', boxWidth: 7, boxHeight: 7, padding: 12, font: { size: 10 } } },
-                tooltip: common.plugins.tooltip
+                legend: {
+                    display: true,
+                    position: 'top',
+                    align: 'center',
+                    onHover(event) {
+                        if (event && event.native && event.native.target) event.native.target.style.cursor = 'pointer';
+                    },
+                    onLeave(event) {
+                        if (event && event.native && event.native.target) event.native.target.style.cursor = 'default';
+                    },
+                    labels: {
+                        color: '#6e6e73',
+                        usePointStyle: false,
+                        boxWidth: 28,
+                        boxHeight: 10,
+                        padding: 16,
+                        font: { size: 11 }
+                    }
+                },
+                tooltip: {
+                    enabled: true,
+                    mode: 'index',
+                    intersect: false,
+                    position: 'nearest',
+                    displayColors: true,
+                    backgroundColor: 'rgba(29, 29, 31, .94)',
+                    titleColor: '#ffffff',
+                    bodyColor: '#ffffff',
+                    borderColor: 'rgba(255,255,255,.14)',
+                    borderWidth: 1,
+                    padding: 12,
+                    cornerRadius: 9,
+                    caretPadding: 8,
+                    titleFont: { size: 12, weight: '600' },
+                    bodyFont: { size: 11.5 },
+                    callbacks: {
+                        title(items) {
+                            return items.length ? items[0].label : '';
+                        },
+                        label(context) {
+                            return `${context.dataset.label}: ${formatNumber(context.parsed.y)}`;
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    grid: { color: 'rgba(15,23,42,.08)', drawTicks: false },
+                    border: { display: false },
+                    title: { display: true, text: 'Date', color: '#6e6e73', padding: { top: 10 }, font: { size: 11 } },
+                    ticks: { color: '#6e6e73', maxRotation: 42, minRotation: 0, autoSkip: true, maxTicksLimit: 18, padding: 8, font: { size: 10.5 } }
+                },
+                y: {
+                    beginAtZero: true,
+                    grid: { color: 'rgba(15,23,42,.08)', drawTicks: false },
+                    border: { display: false },
+                    title: { display: true, text: yTitle, color: '#6e6e73', padding: { bottom: 8 }, font: { size: 11 } },
+                    ticks: { precision: 0, color: '#6e6e73', padding: 8, callback: value => formatNumber(value), font: { size: 10.5 } }
+                }
             }
+        };
+    }
+
+    function renderLineChart({ canvasId, labels, series, addTotal = false, totalLabel = 'Total', yTitle = 'Number of Messages', emptyText, summary }) {
+        const canvas = document.getElementById(canvasId);
+        if (!canvas) return null;
+        const datasets = lineDatasets(series, { addTotal, totalLabel });
+        if (!hasActivity(datasets)) {
+            showEmpty(canvas, emptyText || 'No activity in the selected period.');
+            if (summary) showSummary(canvas, summary(datasets));
+            return null;
+        }
+        const chart = new Chart(canvas, {
+            type: 'line',
+            data: { labels, datasets },
+            options: lineOptions(yTitle)
+        });
+        if (summary) showSummary(canvas, summary(datasets));
+        return chart;
+    }
+
+    renderLineChart({
+        canvasId: 'leadsOverTimeChart',
+        labels: labelsLeads,
+        series: seriesLeads,
+        addTotal: true,
+        totalLabel: 'Total Leads',
+        yTitle: 'Number of Leads',
+        emptyText: 'No leads were created in the selected period.',
+        summary(datasets) {
+            const total = datasetByLabel(datasets, 'Total Leads');
+            return `Total Leads: ${formatNumber(total ? sumValues(total.data) : 0)}`;
         }
     });
+
+    renderLineChart({
+        canvasId: 'aiWelcomeChart',
+        labels: labelsAI,
+        series: seriesAI,
+        yTitle: 'Number of Messages',
+        emptyText: 'No AI or welcome messages were sent in the selected period.',
+        summary(datasets) {
+            const totalAI = datasetByLabel(datasets, 'Total AI Messages');
+            const bumpUps = datasetByLabel(datasets, 'Bump Up Messages');
+            const welcomes = datasetByLabel(datasets, 'Welcome Messages');
+            return `Total AI Messages Sent: ${formatNumber(totalAI ? sumValues(totalAI.data) : 0)}  |  Bump Up Messages: ${formatNumber(bumpUps ? sumValues(bumpUps.data) : 0)}  |  Welcome Messages: ${formatNumber(welcomes ? sumValues(welcomes.data) : 0)}`;
+        }
+    });
+
+    renderLineChart({
+        canvasId: 'emailAutomationChart',
+        labels: labelsEmail,
+        series: seriesEmail,
+        addTotal: true,
+        totalLabel: 'Total Email Messages',
+        yTitle: 'Number of Messages',
+        emptyText: 'No email automation messages were sent in the selected period.',
+        summary(datasets) {
+            const total = datasetByLabel(datasets, 'Total Email Messages');
+            return `Total Email Messages Sent: ${formatNumber(total ? sumValues(total.data) : 0)}`;
+        }
+    });
+
+    renderLineChart({
+        canvasId: 'whatsappAutomationChart',
+        labels: labelsWhatsapp,
+        series: seriesWhatsapp,
+        addTotal: true,
+        totalLabel: 'Total WhatsApp Messages',
+        yTitle: 'Number of Messages',
+        emptyText: 'No WhatsApp automation messages were sent in the selected period.',
+        summary(datasets) {
+            const total = datasetByLabel(datasets, 'Total WhatsApp Messages');
+            return `Total WhatsApp Messages Sent: ${formatNumber(total ? sumValues(total.data) : 0)}`;
+        }
+    });
+
+    const pipelineCanvas = document.getElementById('leadsByPipelineChart');
+    const pipelineCounts = pipelines.map(row => Number(row.count || 0));
+    if (pipelineCanvas && pipelineCounts.some(value => value !== 0)) {
+        new Chart(pipelineCanvas, {
+            type: 'bar',
+            data: {
+                labels: pipelines.map(row => row.label),
+                datasets: [{
+                    label: 'Leads',
+                    data: pipelineCounts,
+                    backgroundColor: rgba('#3b9ce8', .18),
+                    borderColor: '#3b9ce8',
+                    borderWidth: 2,
+                    borderRadius: 8,
+                    maxBarThickness: 44
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: { mode: 'index', intersect: false },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        enabled: true,
+                        backgroundColor: 'rgba(29, 29, 31, .94)',
+                        titleColor: '#ffffff',
+                        bodyColor: '#ffffff',
+                        padding: 12,
+                        cornerRadius: 9,
+                        callbacks: { label: context => `Leads: ${formatNumber(context.parsed.y)}` }
+                    }
+                },
+                scales: {
+                    x: { grid: { display: false }, border: { display: false }, title: { display: true, text: 'Pipeline', color: '#6e6e73' }, ticks: { color: '#6e6e73', font: { size: 10.5 } } },
+                    y: { beginAtZero: true, grid: { color: 'rgba(15,23,42,.08)' }, border: { display: false }, title: { display: true, text: 'Number of Leads', color: '#6e6e73' }, ticks: { precision: 0, color: '#6e6e73', callback: value => formatNumber(value), font: { size: 10.5 } } }
+                }
+            }
+        });
+    } else if (pipelineCanvas) {
+        showEmpty(pipelineCanvas, 'No pipeline lead data in the selected period.');
+    }
+
+    const stageCanvas = document.getElementById('leadsByStageChart');
+    const stageCounts = stages.map(row => Number(row.count || 0));
+    if (stageCanvas && stageCounts.some(value => value !== 0)) {
+        new Chart(stageCanvas, {
+            type: 'doughnut',
+            data: {
+                labels: stages.map(row => row.label),
+                datasets: [{
+                    data: stageCounts,
+                    backgroundColor: stages.map((_, index) => rgba(palette[index % palette.length], .72)),
+                    borderColor: stages.map((_, index) => palette[index % palette.length]),
+                    borderWidth: 2,
+                    hoverOffset: 7
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                cutout: '68%',
+                plugins: {
+                    legend: { position: 'bottom', labels: { color: '#6e6e73', usePointStyle: true, pointStyle: 'circle', boxWidth: 7, boxHeight: 7, padding: 12, font: { size: 10 } } },
+                    tooltip: {
+                        enabled: true,
+                        backgroundColor: 'rgba(29, 29, 31, .94)',
+                        titleColor: '#ffffff',
+                        bodyColor: '#ffffff',
+                        padding: 12,
+                        cornerRadius: 9,
+                        callbacks: {
+                            label(context) {
+                                const total = context.dataset.data.reduce((sum, value) => sum + Number(value || 0), 0);
+                                const value = Number(context.raw || 0);
+                                const percent = total ? ((value / total) * 100).toFixed(1) : '0.0';
+                                return `${context.label}: ${formatNumber(value)} (${percent}%)`;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    } else if (stageCanvas) {
+        showEmpty(stageCanvas, 'No stage lead data in the selected period.');
+    }
 
     const selectAll = document.getElementById('select-all-failed');
     if (selectAll) {
