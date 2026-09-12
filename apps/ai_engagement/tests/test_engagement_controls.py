@@ -102,16 +102,32 @@ class AIEngagementControlTests(TestCase):
         self.assertEqual(state["qualification_result"], RESULT_QUALIFIED)
         self.assertEqual(state["engagement_mode"], MODE_CONVERSATION)
 
-    def test_active_inbound_transport_survives_crm_pipeline_number_change(self):
-        self._inbound()
+    def test_established_ai_transport_survives_crm_pipeline_number_change(self):
+        inbound = self._inbound()
         decision = AIPermissionService().evaluate(
             organization=self.organization,
             lead=self.lead,
         )
         self.assertTrue(decision.allowed)
 
+        # Establish this exact account as a valid SHVYA conversation transport
+        # while the pipeline mapping still matches.
+        WhatsAppMessage.objects.create(
+            organization=self.organization,
+            account=self.account,
+            lead=self.lead,
+            direction=WhatsAppMessage.Direction.OUTBOUND,
+            from_number=self.account.display_phone_number,
+            to_number=self.lead.phone,
+            body="Hello from SHVYA",
+            status=WhatsAppMessage.Status.QUEUED,
+            raw_payload={
+                "shvya_ai": {"source_inbound_message_id": str(inbound.id)}
+            },
+        )
+
         # The CRM classification may move after a conversation starts. The
-        # existing organization-owned inbound account remains the reply route.
+        # established organization-owned account remains the reply route.
         self.pipeline.phone_number = "8888888888"
         self.pipeline.save(update_fields=["phone_number", "updated_at"])
         self.lead.refresh_from_db()
