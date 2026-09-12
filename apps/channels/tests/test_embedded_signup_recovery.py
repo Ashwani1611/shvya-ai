@@ -87,18 +87,45 @@ def test_resolve_signup_assets_rejects_missing_whatsapp_scope(monkeypatch):
     assert "whatsapp_business_messaging" in str(exc_info.value)
 
 
-def test_resolve_signup_assets_never_guesses_between_multiple_phones(monkeypatch):
+def test_resolve_signup_assets_requests_explicit_choice_for_multiple_phones(monkeypatch):
     monkeypatch.setattr(
         embedded_signup_service.embedded_provider,
         "list_waba_phone_numbers",
-        lambda **kwargs: [{"id": "phone-1"}, {"id": "phone-2"}],
+        lambda **kwargs: [
+            {
+                "id": "phone-1",
+                "display_phone_number": "+91 90000 00001",
+                "verified_name": "Primary",
+            },
+            {
+                "id": "phone-2",
+                "display_phone_number": "+91 90000 00002",
+                "verified_name": "Sales",
+            },
+        ],
     )
 
-    with pytest.raises(embedded_signup_service.EmbeddedSignupError) as exc_info:
+    with pytest.raises(
+        embedded_signup_service.EmbeddedSignupPhoneSelectionRequired
+    ) as exc_info:
         embedded_signup_service._resolve_signup_assets(
             access_token="token-1",
             waba_id="waba-1",
         )
 
-    assert exc_info.value.stage == "asset_discovery"
-    assert "multiple phone numbers" in str(exc_info.value)
+    assert exc_info.value.stage == "phone_selection_required"
+    assert exc_info.value.choices == [
+        {
+            "waba_id": "waba-1",
+            "phone_number_id": "phone-1",
+            "display_phone_number": "+91 90000 00001",
+            "verified_name": "Primary",
+        },
+        {
+            "waba_id": "waba-1",
+            "phone_number_id": "phone-2",
+            "display_phone_number": "+91 90000 00002",
+            "verified_name": "Sales",
+        },
+    ]
+    assert "token-1" not in repr(exc_info.value.choices)
