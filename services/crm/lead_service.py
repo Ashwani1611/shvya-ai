@@ -16,6 +16,16 @@ class DuplicateLeadError(Exception):
     in a way that isn't a normal update — e.g. a race condition."""
 
 
+def _schedule_new_lead_welcome(lead):
+    """Queue welcome orchestration only after the lead transaction commits."""
+    from apps.channels.welcome_tasks import send_lead_welcome_task
+
+    lead_id = str(lead.id)
+    transaction.on_commit(
+        lambda lead_id=lead_id: send_lead_welcome_task.delay(lead_id)
+    )
+
+
 def create_lead(*, organization, pipeline, stage, name, phone, **extra_fields):
     """
     Create a Lead. Raises DjangoValidationError (from Lead.clean()) if
@@ -36,6 +46,7 @@ def create_lead(*, organization, pipeline, stage, name, phone, **extra_fields):
         lead=lead,
         actor=None,
     )
+    _schedule_new_lead_welcome(lead)
 
     return lead
 
@@ -124,6 +135,7 @@ def upsert_lead(*, organization, pipeline=None, stage=None, name, phone,
                 lead=lead,
                 actor=None,
             )
+            _schedule_new_lead_welcome(lead)
 
             return lead, True
 
