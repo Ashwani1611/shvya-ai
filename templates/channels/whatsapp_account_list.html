@@ -90,8 +90,27 @@
                                 {{ account.get_status_display }}
                             </span>
                         </td>
-                        <td class="max-w-[260px] px-5 py-4 text-gray-600">
-                            {% if account.welcome_message %}{{ account.welcome_message|truncatechars:44 }}{% else %}<span class="text-gray-400">Not set</span>{% endif %}
+                        <td class="min-w-[250px] max-w-[300px] px-5 py-4 text-gray-600">
+                            {% if can_manage and account.connection_type == 'api' %}
+                            <form method="post" action="{% url 'whatsapp-welcome-template' account.id %}">
+                                {% csrf_token %}
+                                <select name="template_name" onchange="this.form.submit()" class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs text-gray-700 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100" aria-label="Welcome message template for {{ account.display_phone_number }}">
+                                    <option value="">No automatic welcome</option>
+                                    {% for template in account.approved_welcome_templates %}
+                                    <option value="{{ template.name }}" {% if account.welcome_message == template.name %}selected{% endif %}>{{ template.name }}</option>
+                                    {% endfor %}
+                                </select>
+                                {% if not account.approved_welcome_templates %}
+                                <p class="mt-1 text-[11px] text-gray-400">Create and approve a text template first.</p>
+                                {% else %}
+                                <p class="mt-1 text-[11px] text-gray-400">Sent automatically when a lead is created in New Leads for the linked pipeline.</p>
+                                {% endif %}
+                            </form>
+                            {% elif account.welcome_message %}
+                            {{ account.welcome_message|truncatechars:44 }}
+                            {% else %}
+                            <span class="text-gray-400">Not set</span>
+                            {% endif %}
                         </td>
                         <td class="px-5 py-4">
                             {% if account.request_contact_info %}
