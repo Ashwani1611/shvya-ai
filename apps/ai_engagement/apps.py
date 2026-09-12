@@ -13,6 +13,11 @@ class AiEngagementConfig(AppConfig):
         # customer-response path for both Meta API and Hosted WhatsApp.
         from . import background_signals  # noqa: F401
 
+        # Mirror the latest rolling conversation summary into one system Lead
+        # Note. The versioned InternalConversationSummary remains authoritative;
+        # this is a CRM visibility surface alongside qualification notes.
+        from . import summary_note_signals  # noqa: F401
+
         # Compile machine-evaluable conditional qualification rules and install
         # eligibility/NOT_APPLICABLE, conversation-mode, state-recovery and
         # atomic/idempotent state guards before EngagementService, graph and
