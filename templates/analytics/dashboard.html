@@ -1,344 +1,381 @@
 {% extends "base.html" %}
 {% load static %}
 
-{% block title %}SHVYA AI — Analytics{% endblock %}
+{% block title %}SHVYA AI — Insights{% endblock %}
 
-{% block header %}
-    Sales Analytics
+{% block extra_head %}
+{{ block.super }}
+<link rel="stylesheet" href="{% static 'css/insights_apple.css' %}">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
 {% endblock %}
 
+{% block header %}Insights{% endblock %}
+
 {% block content %}
-
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
-
-    <!-- =====================================================
-         FILTER BAR
-         ===================================================== -->
-
-    <form method="get" class="mb-6 flex flex-wrap items-center justify-between gap-3">
-
-        <div class="flex flex-wrap items-center gap-3">
-
-            <select name="pipeline" multiple class="hidden" id="pipeline-select">
-                {% for pipeline in pipelines %}
-                    <option value="{{ pipeline.id }}" {% if pipeline.id|stringformat:"s" in selected_pipeline_ids %}selected{% endif %}>
-                        {{ pipeline.name }}
-                    </option>
-                {% endfor %}
-            </select>
-
-            <div class="relative">
-
-                <button
-                    type="button"
-                    onclick="document.getElementById('pipeline-dropdown').classList.toggle('hidden')"
-                    class="flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-                >
-                    {% if selected_pipeline_ids %}{{ selected_pipeline_ids|length }} Pipeline{{ selected_pipeline_ids|length|pluralize }} Selected{% else %}All Pipelines{% endif %}
-                    <i class="ti ti-chevron-down text-xs"></i>
-                </button>
-
-                <div id="pipeline-dropdown" class="absolute z-10 mt-2 hidden w-64 rounded-lg border border-gray-200 bg-white p-3 shadow-lg">
-
+<div class="insights-shell">
+    <div class="ins-topbar">
+        <div class="ins-overview-tab">Overview</div>
+        <form method="get" class="ins-filter-form" aria-label="Insights filters">
+            <details class="ins-pipeline-filter">
+                <summary>
+                    <i class="ti ti-git-branch"></i>
+                    {% if selected_pipeline_ids %}
+                        {{ selected_pipeline_ids|length }} Pipeline{{ selected_pipeline_ids|length|pluralize }}
+                    {% else %}
+                        All Pipelines
+                    {% endif %}
+                    <i class="ti ti-chevron-down"></i>
+                </summary>
+                <div class="ins-pipeline-menu">
                     {% for pipeline in pipelines %}
-                        <label class="flex items-center gap-2 py-1.5 text-sm text-gray-700">
-                            <input type="checkbox" name="pipeline" value="{{ pipeline.id }}" {% if pipeline.id|stringformat:"s" in selected_pipeline_ids %}checked{% endif %} class="rounded border-gray-300 text-blue-600" />
-                            {{ pipeline.name }}
+                        <label class="ins-pipeline-option">
+                            <input type="checkbox" name="pipeline" value="{{ pipeline.id }}" {% if pipeline.id|stringformat:"s" in selected_pipeline_ids %}checked{% endif %}>
+                            <span>{{ pipeline.name }}</span>
                         </label>
+                    {% empty %}
+                        <div class="ins-pipeline-option">No active pipelines</div>
                     {% endfor %}
-
-                    <button type="submit" class="mt-2 w-full rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-blue-700">
-                        Apply
-                    </button>
-
                 </div>
+            </details>
 
+            <div class="ins-date-group">
+                <input class="ins-control" type="date" name="date_from" value="{{ date_from }}" aria-label="From date">
+                <span>to</span>
+                <input class="ins-control" type="date" name="date_to" value="{{ date_to }}" aria-label="To date">
             </div>
+            <button class="ins-button" type="submit"><i class="ti ti-adjustments-horizontal"></i> Apply</button>
+        </form>
+    </div>
 
-            <input type="date" name="date_from" value="{{ date_from }}" class="rounded-lg border border-gray-300 px-3 py-2 text-sm" />
-            <span class="text-gray-400">to</span>
-            <input type="date" name="date_to" value="{{ date_to }}" class="rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+    <div class="ins-kpi-grid">
+        <div class="ins-kpi">
+            <div class="ins-kpi-label"><i class="ti ti-users"></i> Leads Created</div>
+            <div class="ins-kpi-value">{{ overview.total_leads }}</div>
+            <div class="ins-kpi-meta">Selected period</div>
+        </div>
+        <div class="ins-kpi">
+            <div class="ins-kpi-label"><i class="ti ti-sparkles"></i> AI Messages</div>
+            <div class="ins-kpi-value">{{ overview.ai_messages }}</div>
+            <div class="ins-kpi-meta">Successful AI replies</div>
+        </div>
+        <div class="ins-kpi">
+            <div class="ins-kpi-label"><i class="ti ti-hand-wave"></i> Welcome Messages</div>
+            <div class="ins-kpi-value">{{ overview.welcome_messages }}</div>
+            <div class="ins-kpi-meta">Lead-created welcomes</div>
+        </div>
+        <div class="ins-kpi">
+            <div class="ins-kpi-label"><i class="ti ti-brand-whatsapp"></i> WhatsApp Automation</div>
+            <div class="ins-kpi-value">{{ overview.whatsapp_automation_messages }}</div>
+            <div class="ins-kpi-meta">Sequence messages sent</div>
+        </div>
+        <div class="ins-kpi">
+            <div class="ins-kpi-label"><i class="ti ti-mail"></i> Email Automation</div>
+            <div class="ins-kpi-value">{{ overview.email_automation_messages }}</div>
+            <div class="ins-kpi-meta">Sequence emails sent</div>
+        </div>
+        <a class="ins-kpi ins-kpi-failed" href="#failed-template-messages">
+            <div class="ins-kpi-label"><i class="ti ti-alert-circle"></i> Failed WhatsApp</div>
+            <div class="ins-kpi-value">{{ overview.failed_template_messages }}</div>
+            <div class="ins-kpi-meta">Open retry centre</div>
+        </a>
+    </div>
 
-            <button type="submit" class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">
-                Filter
-            </button>
+    <section class="ins-card">
+        <div class="ins-card-head">
+            <div>
+                <div class="ins-eyebrow">Acquisition</div>
+                <h2 class="ins-card-title">Lead Growth</h2>
+                <p class="ins-card-copy">See how new leads are entering SHVYA by source across the selected date range.</p>
+            </div>
+            <div class="ins-card-stat"><strong>{{ overview.total_leads }}</strong><span>Total leads</span></div>
+        </div>
+        <div class="ins-chart-wrap"><canvas id="leadsOverTimeChart"></canvas></div>
+    </section>
 
+    <section class="ins-card">
+        <div class="ins-card-head">
+            <div>
+                <div class="ins-eyebrow">AI engagement</div>
+                <h2 class="ins-card-title">AI &amp; Welcome Engagement</h2>
+                <p class="ins-card-copy">Track AI replies, bump-ups and automatic welcome messages without changing the underlying message activity graph.</p>
+            </div>
+            <div class="ins-card-stat"><strong>{{ overview.ai_messages|add:overview.welcome_messages }}</strong><span>AI + welcome</span></div>
+        </div>
+        <div class="ins-chart-wrap"><canvas id="aiWelcomeChart"></canvas></div>
+    </section>
+
+    <section class="ins-card">
+        <div class="ins-card-head">
+            <div>
+                <div class="ins-eyebrow">Cadence</div>
+                <h2 class="ins-card-title">Email Automation Activity</h2>
+                <p class="ins-card-copy">Email sequence sends over time, broken down by automation flow.</p>
+            </div>
+            <div class="ins-card-stat"><strong>{{ overview.email_automation_messages }}</strong><span>Emails sent</span></div>
+        </div>
+        <div class="ins-chart-wrap"><canvas id="emailAutomationChart"></canvas></div>
+    </section>
+
+    <section class="ins-card">
+        <div class="ins-card-head">
+            <div>
+                <div class="ins-eyebrow">Cadence</div>
+                <h2 class="ins-card-title">WhatsApp Automation Activity</h2>
+                <p class="ins-card-copy">WhatsApp sequence sends over time, with each flow visible as its own series and a total activity line.</p>
+            </div>
+            <div class="ins-card-stat"><strong>{{ overview.whatsapp_automation_messages }}</strong><span>Messages sent</span></div>
+        </div>
+        <div class="ins-chart-wrap"><canvas id="whatsappAutomationChart"></canvas></div>
+    </section>
+
+    <section class="ins-card">
+        <div class="ins-card-head">
+            <div>
+                <div class="ins-eyebrow">CRM health</div>
+                <h2 class="ins-card-title">Pipeline Performance</h2>
+                <p class="ins-card-copy">Understand where leads sit across your pipelines and stages for the same global filters.</p>
+            </div>
+        </div>
+        <div class="ins-pipeline-grid">
+            <div class="ins-subcard">
+                <h4>Pipeline Distribution</h4>
+                <div class="ins-chart-wrap"><canvas id="leadsByPipelineChart"></canvas></div>
+            </div>
+            <div class="ins-subcard">
+                <h4>Leads by Stage</h4>
+                <div class="ins-chart-wrap"><canvas id="leadsByStageChart"></canvas></div>
+            </div>
+        </div>
+    </section>
+
+    <section class="ins-card" id="failed-template-messages">
+        <div class="ins-card-head">
+            <div>
+                <div class="ins-eyebrow">WhatsApp API</div>
+                <h2 class="ins-card-title">Failed Template Messages</h2>
+                <p class="ins-card-copy">Inspect failed Meta template deliveries, retry individually, retry selected leads with another approved template, or export the affected leads.</p>
+            </div>
+            <div class="ins-card-stat"><strong>{{ overview.failed_template_messages }}</strong><span>Failed deliveries</span></div>
         </div>
 
-        {% if can_manage %}
+        <div class="ins-failed-toolbar" style="margin-bottom: 12px;">
+            <form id="bulk-retry-form" method="post" action="{% url 'crm-analytics-failed-whatsapp-retry' %}" class="ins-failed-toolbar">
+                {% csrf_token %}
+                <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                <select name="template_id" class="ins-control" required aria-label="Template for selected retries">
+                    <option value="">Choose approved template</option>
+                    {% for template in approved_templates %}
+                        <option value="{{ template.id }}">{{ template.name }}{% if template.account.business_name %} · {{ template.account.business_name }}{% endif %}</option>
+                    {% endfor %}
+                </select>
+                <button class="ins-button ins-button-danger" type="submit"><i class="ti ti-refresh"></i> Retry selected</button>
+            </form>
 
-            <button
-                type="button"
-                hx-get="{% url 'crm-analytics-settings' %}"
-                hx-target="#analytics-settings-modal-slot"
-                hx-swap="innerHTML"
-                class="flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-            >
-                <i class="ti ti-settings"></i>
-                Analytics Settings
-            </button>
+            <form method="get" action="{% url 'crm-analytics-failed-whatsapp-export' %}">
+                <input type="hidden" name="date_from" value="{{ date_from }}">
+                <input type="hidden" name="date_to" value="{{ date_to }}">
+                {% for pipeline_id in selected_pipeline_ids %}<input type="hidden" name="pipeline" value="{{ pipeline_id }}">{% endfor %}
+                <button class="ins-button ins-button-secondary" type="submit"><i class="ti ti-download"></i> Export leads</button>
+            </form>
+        </div>
 
+        {% if failed_page.object_list %}
+            <div class="ins-table-shell">
+                <table class="ins-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 36px;"><input id="select-all-failed" type="checkbox" aria-label="Select all failed messages"></th>
+                            <th>Lead</th>
+                            <th>Pipeline / Stage</th>
+                            <th>Template</th>
+                            <th>Failed at</th>
+                            <th>Failure</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for message in failed_page.object_list %}
+                            <tr>
+                                <td><input class="failed-message-checkbox" form="bulk-retry-form" type="checkbox" name="message_ids" value="{{ message.id }}" aria-label="Select {{ message.lead.name|default:message.to_number }}"></td>
+                                <td>
+                                    <div class="ins-lead-name">{% if message.lead %}{{ message.lead.name }}{% else %}Unknown lead{% endif %}</div>
+                                    <div class="ins-lead-phone">{% if message.lead %}{{ message.lead.phone }}{% else %}{{ message.to_number }}{% endif %}</div>
+                                </td>
+                                <td>
+                                    {% if message.lead %}
+                                        <span class="ins-badge">{{ message.lead.pipeline.name }}</span>
+                                        <div class="ins-lead-phone">{{ message.lead.stage.name }}</div>
+                                    {% else %}—{% endif %}
+                                </td>
+                                <td><span class="ins-badge">{{ message.media_payload.template_name|default:"Template" }}</span></td>
+                                <td>{{ message.created_at|date:"M d, Y" }}<div class="ins-lead-phone">{{ message.created_at|time:"g:i A" }}</div></td>
+                                <td>
+                                    <details class="ins-error-details">
+                                        <summary>View failure</summary>
+                                        <p>{{ message.error|default:"Meta rejected the template delivery. Open the conversation or retry with another approved template." }}</p>
+                                    </details>
+                                </td>
+                                <td>
+                                    <div class="ins-row-actions">
+                                        <form method="post" action="{% url 'crm-analytics-failed-whatsapp-retry' %}">
+                                            {% csrf_token %}
+                                            <input type="hidden" name="message_id" value="{{ message.id }}">
+                                            <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                                            <button class="ins-button ins-button-secondary ins-button-sm" type="submit"><i class="ti ti-refresh"></i> Retry</button>
+                                        </form>
+                                        {% if message.lead %}
+                                            <a class="ins-link" href="{% url 'whatsapp-chat-detail' message.lead.id %}">View chat</a>
+                                            <a class="ins-link" href="{% url 'crm-lead-detail' message.lead.id %}">View in CRM</a>
+                                        {% endif %}
+                                    </div>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="ins-pagination">
+                <span>Page {{ failed_page.number }} of {{ failed_page.paginator.num_pages }}</span>
+                <div class="ins-pagination-nav">
+                    {% if failed_page.has_previous %}
+                        <a class="ins-button ins-button-secondary ins-button-sm" href="?date_from={{ date_from }}&date_to={{ date_to }}{% for pipeline_id in selected_pipeline_ids %}&pipeline={{ pipeline_id }}{% endfor %}&page={{ failed_page.previous_page_number }}">Previous</a>
+                    {% endif %}
+                    {% if failed_page.has_next %}
+                        <a class="ins-button ins-button-secondary ins-button-sm" href="?date_from={{ date_from }}&date_to={{ date_to }}{% for pipeline_id in selected_pipeline_ids %}&pipeline={{ pipeline_id }}{% endfor %}&page={{ failed_page.next_page_number }}">Next</a>
+                    {% endif %}
+                </div>
+            </div>
+        {% else %}
+            <div class="ins-empty-state">
+                <i class="ti ti-circle-check"></i>
+                No failed WhatsApp API template messages in this period.
+            </div>
         {% endif %}
+    </section>
+</div>
 
-    </form>
+{{ leads_labels|json_script:"ins-leads-labels" }}
+{{ leads_series|json_script:"ins-leads-series" }}
+{{ ai_labels|json_script:"ins-ai-labels" }}
+{{ ai_series|json_script:"ins-ai-series" }}
+{{ email_labels|json_script:"ins-email-labels" }}
+{{ email_series|json_script:"ins-email-series" }}
+{{ whatsapp_labels|json_script:"ins-whatsapp-labels" }}
+{{ whatsapp_series|json_script:"ins-whatsapp-series" }}
+{{ leads_by_pipeline|json_script:"ins-pipelines" }}
+{{ leads_by_stage|json_script:"ins-stages" }}
 
-    <div id="analytics-settings-modal-slot"></div>
+<script>
+(function () {
+    const palette = ['#0071e3', '#34c759', '#ff9f0a', '#af52de', '#ff375f', '#5ac8fa', '#5856d6', '#30d158', '#ff453a', '#64d2ff'];
+    const read = id => JSON.parse(document.getElementById(id).textContent || '[]');
+    const labelsLeads = read('ins-leads-labels');
+    const seriesLeads = read('ins-leads-series');
+    const labelsAI = read('ins-ai-labels');
+    const seriesAI = read('ins-ai-series');
+    const labelsEmail = read('ins-email-labels');
+    const seriesEmail = read('ins-email-series');
+    const labelsWhatsapp = read('ins-whatsapp-labels');
+    const seriesWhatsapp = read('ins-whatsapp-series');
+    const pipelines = read('ins-pipelines');
+    const stages = read('ins-stages');
 
-
-    <!-- =====================================================
-         ALERTS & MISSES
-         ===================================================== -->
-
-    <div class="mb-6 rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-
-        <h3 class="flex items-center gap-2 text-base font-semibold text-gray-900">
-            <i class="ti ti-alert-triangle text-blue-600"></i>
-            Alerts &amp; Misses
-        </h3>
-
-        <p class="mt-1 text-sm text-gray-500">
-            Identify leads that slipped through or need urgent attention.
-        </p>
-
-        <div class="mt-4 flex items-center justify-between rounded-lg border border-red-100 bg-red-50/50 p-5">
-
-            <div class="flex items-center gap-3">
-                <i class="ti ti-mail text-red-500"></i>
-                <div>
-                    <p class="font-medium text-gray-900">Follow-Up Triggered, No Reply in 24h</p>
-                    <p class="text-sm italic text-gray-500">24+ hrs passed after follow-up, no reply yet</p>
-                </div>
-            </div>
-
-            <div class="flex items-center gap-6">
-                <div class="text-right">
-                    <span class="text-2xl font-bold text-gray-900">{{ no_reply_24h_count }}</span>
-                    <span class="text-sm text-gray-500">Leads</span>
-                </div>
-            </div>
-
-        </div>
-
-    </div>
-
-
-    <!-- =====================================================
-         OVERVIEW
-         ===================================================== -->
-
-    <div class="mb-6 rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-
-        <h3 class="flex items-center gap-2 text-base font-semibold text-gray-900">
-            <i class="ti ti-layout-grid text-blue-600"></i>
-            Overview
-        </h3>
-
-        <p class="mt-1 text-sm text-gray-500">
-            Track overall lead volume and call activity at a glance.
-        </p>
-
-        <div class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
-
-            <div class="rounded-lg border border-gray-200 p-5">
-                <p class="flex items-center gap-2 text-sm text-gray-500"><i class="ti ti-users"></i> Total Leads</p>
-                <p class="mt-2 text-3xl font-bold text-gray-900">{{ overview.total_leads }} <span class="text-sm font-normal text-gray-500">Leads</span></p>
-            </div>
-
-            <div class="rounded-lg border border-gray-200 p-5">
-                <p class="flex items-center gap-2 text-sm text-gray-500"><i class="ti ti-trending-up"></i> Total Call Time</p>
-                <p class="mt-2 text-3xl font-bold text-gray-900">{{ overview.total_call_minutes }} <span class="text-sm font-normal text-gray-500">Minutes</span></p>
-            </div>
-
-            <div class="rounded-lg border border-gray-200 p-5">
-                <p class="flex items-center gap-2 text-sm text-gray-500"><i class="ti ti-phone"></i> Calls Done</p>
-                <p class="mt-2 text-3xl font-bold text-gray-900">{{ overview.calls_done }} <span class="text-sm font-normal text-gray-500">Calls</span></p>
-            </div>
-
-        </div>
-
-    </div>
-
-
-    <!-- =====================================================
-         FOLLOW-UPS
-         ===================================================== -->
-
-    <div class="mb-6 rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-
-        <h3 class="flex items-center gap-2 text-base font-semibold text-gray-900">
-            <i class="ti ti-repeat text-blue-600"></i>
-            Follow-Ups
-        </h3>
-
-        <p class="mt-1 text-sm text-gray-500">
-            Monitor pending reminders and replies to keep follow-ups on track.
-        </p>
-
-        <div class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
-
-            <div class="rounded-lg border border-gray-200 p-5">
-                <p class="flex items-center gap-2 text-sm text-gray-500"><i class="ti ti-bell"></i> Pending Reminder</p>
-                <p class="mt-2 text-3xl font-bold text-gray-900">{{ pending_reminder_count }} <span class="text-sm font-normal text-gray-500">Leads</span></p>
-            </div>
-
-            <div class="rounded-lg border border-gray-200 p-5">
-                <p class="flex items-center gap-2 text-sm text-gray-500"><i class="ti ti-message-circle"></i> Pending Replies</p>
-                <p class="mt-2 text-3xl font-bold text-gray-900">{{ pending_replies_count }} <span class="text-sm font-normal text-gray-500">Leads</span></p>
-            </div>
-
-        </div>
-
-        <div class="mt-4 rounded-lg border border-dashed border-gray-300 bg-gray-50 p-4 text-sm text-gray-500">
-            Auto-follow-up metrics (sent count, no-automation count) aren't available yet — the Auto Follow-ups engine hasn't been built.
-        </div>
-
-    </div>
-
-
-    <!-- =====================================================
-         LEAD & MESSAGING OVERVIEW
-         ===================================================== -->
-
-    <div class="mb-6 rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-
-        <h3 class="flex items-center gap-2 text-base font-semibold text-gray-900">
-            <i class="ti ti-chart-bar text-blue-600"></i>
-            Lead &amp; Messaging Overview
-        </h3>
-
-        <p class="mt-1 text-sm text-gray-500">
-            Analyze new leads and failed messages.
-        </p>
-
-        <div class="mt-4 grid grid-cols-1 gap-6 lg:grid-cols-2">
-
-            <div class="rounded-lg border border-gray-200 p-5">
-                <p class="mb-3 text-sm font-semibold text-gray-900">New Leads</p>
-                <canvas id="newLeadsChart" height="180"></canvas>
-            </div>
-
-            <div class="rounded-lg border border-gray-200 p-5">
-                <p class="mb-3 text-sm font-semibold text-gray-900">Failed Messages</p>
-                <canvas id="failedMessagesChart" height="180"></canvas>
-            </div>
-
-        </div>
-
-        <div class="mt-4 rounded-lg border border-dashed border-gray-300 bg-gray-50 p-4 text-sm text-gray-500">
-            AI Qualified Leads and Auto Follow-Ups Sent charts aren't available yet — they need the Co-Pilot and Auto Follow-ups features built first.
-        </div>
-
-    </div>
-
-
-    <!-- =====================================================
-         PIPELINE DISTRIBUTION & LEAD FLOW
-         ===================================================== -->
-
-    <div class="mb-6 rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-
-        <h3 class="flex items-center gap-2 text-base font-semibold text-gray-900">
-            <i class="ti ti-git-branch text-blue-600"></i>
-            Pipeline Distribution &amp; Lead Flow
-        </h3>
-
-        <p class="mt-1 text-sm text-gray-500">
-            Get a quick snapshot of how leads are distributed across pipelines and stages.
-        </p>
-
-        <div class="mt-4 grid grid-cols-1 gap-6 lg:grid-cols-2">
-
-            <div class="rounded-lg border border-gray-200 p-5">
-                <p class="mb-3 text-sm font-semibold text-gray-900">Leads By Pipeline</p>
-                <canvas id="leadsByPipelineChart" height="220"></canvas>
-            </div>
-
-            <div class="rounded-lg border border-gray-200 p-5">
-                <p class="mb-3 text-sm font-semibold text-gray-900">Leads By Stage</p>
-                <canvas id="leadsByStageChart" height="220"></canvas>
-            </div>
-
-        </div>
-
-    </div>
-
-
-    {{ new_leads_labels|json_script:"new-leads-labels" }}
-    {{ new_leads_values|json_script:"new-leads-values" }}
-    {{ failed_messages_labels|json_script:"failed-messages-labels" }}
-    {{ failed_messages_values|json_script:"failed-messages-values" }}
-    {{ leads_by_pipeline|json_script:"leads-by-pipeline" }}
-    {{ leads_by_stage|json_script:"leads-by-stage" }}
-
-    <script>
-        function readJSON(elementId) {
-            return JSON.parse(document.getElementById(elementId).textContent);
+    const common = {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+            legend: {
+                position: 'top',
+                align: 'center',
+                labels: { color: '#6e6e73', usePointStyle: true, pointStyle: 'circle', boxWidth: 7, boxHeight: 7, padding: 16, font: { size: 11 } }
+            },
+            tooltip: { backgroundColor: 'rgba(29,29,31,.92)', padding: 11, cornerRadius: 10, titleFont: { size: 12 }, bodyFont: { size: 11 } }
+        },
+        scales: {
+            x: { grid: { display: false }, ticks: { color: '#86868b', maxRotation: 45, minRotation: 0, font: { size: 10 } }, border: { display: false } },
+            y: { beginAtZero: true, grid: { color: 'rgba(15,23,42,.055)' }, ticks: { precision: 0, color: '#86868b', font: { size: 10 } }, border: { display: false } }
         }
+    };
 
-        const newLeadsLabels = readJSON('new-leads-labels');
-        const newLeadsValues = readJSON('new-leads-values');
-        const failedMessagesLabels = readJSON('failed-messages-labels');
-        const failedMessagesValues = readJSON('failed-messages-values');
-        const leadsByPipeline = readJSON('leads-by-pipeline');
-        const leadsByStage = readJSON('leads-by-stage');
+    function lineDatasets(series, addTotal) {
+        const datasets = series.map((item, index) => ({
+            label: item.label,
+            data: item.values,
+            borderColor: palette[index % palette.length],
+            backgroundColor: palette[index % palette.length],
+            borderWidth: 2.2,
+            pointRadius: 2.4,
+            pointHoverRadius: 4,
+            tension: .34,
+            fill: false
+        }));
+        if (addTotal && series.length) {
+            const length = series[0].values.length;
+            const totals = Array.from({ length }, (_, index) => series.reduce((sum, item) => sum + Number(item.values[index] || 0), 0));
+            datasets.push({
+                label: 'Total',
+                data: totals,
+                borderColor: '#1d1d1f',
+                backgroundColor: '#1d1d1f',
+                borderWidth: 2.5,
+                borderDash: [4, 4],
+                pointRadius: 2.6,
+                tension: .34,
+                fill: false
+            });
+        }
+        return datasets;
+    }
 
-        const newLeadsCtx = document.getElementById('newLeadsChart');
-        new Chart(newLeadsCtx, {
-            type: 'line',
-            data: {
-                labels: newLeadsLabels,
-                datasets: [{
-                    label: 'New Leads',
-                    data: newLeadsValues,
-                    borderColor: '#7c3aed',
-                    tension: 0.3,
-                    fill: false,
-                }]
-            },
-            options: { plugins: { legend: { display: false } } }
-        });
+    new Chart(document.getElementById('leadsOverTimeChart'), {
+        type: 'line', data: { labels: labelsLeads, datasets: lineDatasets(seriesLeads, false) }, options: common
+    });
+    new Chart(document.getElementById('aiWelcomeChart'), {
+        type: 'line', data: { labels: labelsAI, datasets: lineDatasets(seriesAI, false) }, options: common
+    });
+    new Chart(document.getElementById('emailAutomationChart'), {
+        type: 'line', data: { labels: labelsEmail, datasets: lineDatasets(seriesEmail, true) }, options: common
+    });
+    new Chart(document.getElementById('whatsappAutomationChart'), {
+        type: 'line', data: { labels: labelsWhatsapp, datasets: lineDatasets(seriesWhatsapp, true) }, options: common
+    });
 
-        const failedMessagesCtx = document.getElementById('failedMessagesChart');
-        new Chart(failedMessagesCtx, {
-            type: 'line',
-            data: {
-                labels: failedMessagesLabels,
-                datasets: [{
-                    label: 'Failed Messages',
-                    data: failedMessagesValues,
-                    borderColor: '#ef4444',
-                    tension: 0.3,
-                    fill: false,
-                }]
-            },
-            options: { plugins: { legend: { display: false } } }
-        });
+    const barOptions = JSON.parse(JSON.stringify(common));
+    barOptions.plugins.legend.display = false;
+    new Chart(document.getElementById('leadsByPipelineChart'), {
+        type: 'bar',
+        data: {
+            labels: pipelines.map(row => row.label),
+            datasets: [{ label: 'Leads', data: pipelines.map(row => row.count), backgroundColor: '#0071e3', borderRadius: 8, maxBarThickness: 44 }]
+        },
+        options: barOptions
+    });
 
-        const leadsByPipelineCtx = document.getElementById('leadsByPipelineChart');
-        new Chart(leadsByPipelineCtx, {
-            type: 'bar',
-            data: {
-                labels: leadsByPipeline.map(row => row.label),
-                datasets: [{
-                    label: 'Leads',
-                    data: leadsByPipeline.map(row => row.count),
-                    backgroundColor: '#0ea5a3',
-                }]
-            },
-            options: { plugins: { legend: { display: false } } }
-        });
-
-        const leadsByStageCtx = document.getElementById('leadsByStageChart');
-        new Chart(leadsByStageCtx, {
-            type: 'pie',
-            data: {
-                labels: leadsByStage.map(row => row.label),
-                datasets: [{
-                    data: leadsByStage.map(row => row.count),
-                    backgroundColor: ['#3b82f6','#f97316','#22c55e','#a855f7','#ef4444','#06b6d4','#eab308','#64748b'],
-                }]
+    new Chart(document.getElementById('leadsByStageChart'), {
+        type: 'doughnut',
+        data: {
+            labels: stages.map(row => row.label),
+            datasets: [{ data: stages.map(row => row.count), backgroundColor: stages.map((_, index) => palette[index % palette.length]), borderColor: '#ffffff', borderWidth: 3 }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            cutout: '68%',
+            plugins: {
+                legend: { position: 'bottom', labels: { color: '#6e6e73', usePointStyle: true, pointStyle: 'circle', boxWidth: 7, boxHeight: 7, padding: 12, font: { size: 10 } } },
+                tooltip: common.plugins.tooltip
             }
-        });
-    </script>
+        }
+    });
 
+    const selectAll = document.getElementById('select-all-failed');
+    if (selectAll) {
+        selectAll.addEventListener('change', function () {
+            document.querySelectorAll('.failed-message-checkbox').forEach(box => { box.checked = selectAll.checked; });
+        });
+    }
+})();
+</script>
 {% endblock %}
