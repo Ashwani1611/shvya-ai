@@ -19,12 +19,20 @@ from services.crm.lead_service import upsert_lead
 logger = logging.getLogger(__name__)
 
 
+def _normalise_field_key(value):
+    return " ".join(str(value or "").strip().casefold().split())
+
+
 def _field_value(mapping, target, fields):
-    source = str(mapping.get(target, "")).strip().lower()
-    return next(
-        (value for key, value in fields.items() if str(key).strip().lower() == source),
-        "",
-    )
+    """Return a mapped Meta field value, matching keys case-insensitively."""
+    source = _normalise_field_key(mapping.get(target, ""))
+    if not source:
+        return ""
+
+    for key, value in fields.items():
+        if _normalise_field_key(key) == source:
+            return str(value or "").strip()
+    return ""
 
 
 def _fetch_lead(leadgen_id, page):
@@ -56,21 +64,34 @@ def meta_lead_webhook(request):
     except (TypeError, ValueError):
         return HttpResponse(status=400)
 
-    for entry in payload.get("entry", []):
-        page = MetaLeadPage.objects.filter(
-            page_id=str(entry.get("id")), is_active=True
-        ).first()
-        if not page:
-            continue
+    entries = payload.get("entry", [])
+    page_ids = [str(entry.get("id") or "") for entry in entries]
+    pages_by_id = {
+        page.page_id: page
+        for page in MetaLeadPage.objects.filter(
+            page_id__in=page_ids, is_active=True
+        )
+    }
 
-        secret = page.get_app_secret() or getattr(settings, "META_APP_SECRET", "")
-        expected_signature = "sha256=" + hmac.new(
-            secret.encode("utf-8"), request.body, hashlib.sha256
-        ).hexdigest()
-        if not secret or not hmac.compare_digest(
-            request.headers.get("X-Hub-Signature-256", ""), expected_signature
-        ):
-            return HttpResponse(status=403)
+    # Meta signs the entire request body once. Validate it before processing
+    # any event, using the configured app secret for one of the subscribed pages.
+    page = next(iter(pages_by_id.values()), None)
+    secret = (
+        page.get_app_secret() if page else ""
+    ) or getattr(settings, "META_APP_SECRET", "")
+    expected_signature = "sha256=" + hmac.new(
+        secret.encode("utf-8"), request.body, hashlib.sha256
+    ).hexdigest()
+    if not secret or not hmac.compare_digest(
+        request.headers.get("X-Hub-Signature-256", ""), expected_signature
+    ):
+        return HttpResponse(status=403)
+
+    for entry in entries:
+        page = pages_by_id.get(str(entry.get("id") or ""))
+        if not page:
+            logger.warning("Received Meta webhook for an unconfigured Page")
+            continue
 
         for change in entry.get("changes", []):
             value = change.get("value") or {}
@@ -93,6 +114,7 @@ def meta_lead_webhook(request):
                 fields = {
                     item.get("name", ""): (item.get("values") or [""])[0]
                     for item in lead_data.get("field_data", [])
+                    if item.get("name")
                 }
                 mapping = form.field_mapping or {}
                 phone = _field_value(mapping, "phone", fields)
