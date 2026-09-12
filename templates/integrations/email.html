@@ -1,0 +1,667 @@
+{% extends "base.html" %}
+
+{% block title %}Email | Connect Hub | SHVYA AI{% endblock %}
+{% block header %}Email{% endblock %}
+
+{% block extra_head %}
+{{ block.super }}
+<style>
+    .email-connect-page {
+        --email-blue: #0071e3;
+        --email-text: #1d1d1f;
+        --email-muted: #6e6e73;
+        --email-line: rgba(15, 23, 42, .08);
+        width: min(100%, 1240px);
+        margin: 0 auto;
+        color: var(--email-text);
+    }
+    .email-connect-page * { box-sizing: border-box; }
+    .email-back {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 18px;
+        color: #515154;
+        font-size: 13px;
+        font-weight: 600;
+        text-decoration: none;
+    }
+    .email-back:hover { color: var(--email-blue); }
+    .email-hero {
+        position: relative;
+        overflow: hidden;
+        min-height: 250px;
+        padding: 42px;
+        border: 1px solid rgba(255,255,255,.75);
+        border-radius: 32px;
+        background:
+            radial-gradient(circle at 82% 18%, rgba(90, 200, 250, .34), transparent 31%),
+            radial-gradient(circle at 70% 92%, rgba(0, 113, 227, .14), transparent 42%),
+            linear-gradient(135deg, rgba(255,255,255,.98), rgba(246,249,255,.92));
+        box-shadow: 0 28px 80px rgba(15,23,42,.075);
+    }
+    .email-hero::after {
+        content: "";
+        position: absolute;
+        right: -62px;
+        top: -72px;
+        width: 310px;
+        height: 310px;
+        border-radius: 50%;
+        border: 1px solid rgba(255,255,255,.75);
+        background: linear-gradient(145deg, rgba(255,255,255,.72), rgba(0,113,227,.055));
+        box-shadow: inset 0 0 80px rgba(255,255,255,.88);
+        pointer-events: none;
+    }
+    .email-hero-copy { position: relative; z-index: 1; max-width: 720px; }
+    .email-eyebrow {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 14px;
+        color: var(--email-blue);
+        font-size: 11px;
+        font-weight: 750;
+        letter-spacing: .12em;
+        text-transform: uppercase;
+    }
+    .email-eyebrow-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 999px;
+        background: var(--email-blue);
+        box-shadow: 0 0 0 6px rgba(0,113,227,.08);
+    }
+    .email-hero h1 {
+        max-width: 690px;
+        margin: 0;
+        font-size: clamp(34px, 4vw, 54px);
+        line-height: 1.02;
+        font-weight: 740;
+        letter-spacing: -.052em;
+    }
+    .email-hero p {
+        max-width: 650px;
+        margin: 16px 0 0;
+        color: var(--email-muted);
+        font-size: 16px;
+        line-height: 1.6;
+        letter-spacing: -.012em;
+    }
+    .email-status {
+        position: relative;
+        z-index: 1;
+        display: inline-flex;
+        align-items: center;
+        gap: 9px;
+        margin-top: 24px;
+        padding: 9px 13px;
+        border: 1px solid var(--email-line);
+        border-radius: 999px;
+        background: rgba(255,255,255,.72);
+        color: #515154;
+        font-size: 12px;
+        font-weight: 650;
+        backdrop-filter: blur(18px);
+        -webkit-backdrop-filter: blur(18px);
+    }
+    .email-status-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #ff9f0a;
+        box-shadow: 0 0 0 5px rgba(255,159,10,.11);
+    }
+    .email-status.is-connected .email-status-dot {
+        background: #30b34a;
+        box-shadow: 0 0 0 5px rgba(48,179,74,.1);
+    }
+    .email-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1.35fr) minmax(310px, .65fr);
+        gap: 22px;
+        margin-top: 22px;
+    }
+    .email-card {
+        border: 1px solid rgba(255,255,255,.72);
+        border-radius: 26px;
+        background: rgba(255,255,255,.9);
+        box-shadow: 0 16px 48px rgba(15,23,42,.05);
+        backdrop-filter: blur(24px) saturate(145%);
+        -webkit-backdrop-filter: blur(24px) saturate(145%);
+    }
+    .email-card-head {
+        padding: 26px 28px 20px;
+        border-bottom: 1px solid var(--email-line);
+    }
+    .email-card-head h2 {
+        margin: 0;
+        font-size: 20px;
+        font-weight: 700;
+        letter-spacing: -.028em;
+    }
+    .email-card-head p {
+        margin: 6px 0 0;
+        color: var(--email-muted);
+        font-size: 13px;
+        line-height: 1.55;
+    }
+    .email-form { padding: 26px 28px 28px; }
+    .email-form-section + .email-form-section {
+        margin-top: 28px;
+        padding-top: 26px;
+        border-top: 1px solid var(--email-line);
+    }
+    .email-form-section-title {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        margin-bottom: 17px;
+        font-size: 13px;
+        font-weight: 700;
+        letter-spacing: -.01em;
+    }
+    .email-form-section-title i { color: var(--email-blue); font-size: 18px; }
+    .email-field-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 16px;
+    }
+    .email-field-full { grid-column: 1 / -1; }
+    .email-field label {
+        display: block;
+        margin-bottom: 7px;
+        color: #3a3a3c;
+        font-size: 12px;
+        font-weight: 650;
+    }
+    .email-field input,
+    .email-field select {
+        width: 100%;
+        min-height: 46px !important;
+        padding: 10px 12px !important;
+        font-size: 14px !important;
+    }
+    .email-field-hint {
+        margin-top: 7px;
+        color: #86868b;
+        font-size: 11px;
+        line-height: 1.45;
+    }
+    .email-password-wrap { position: relative; }
+    .email-password-wrap input { padding-right: 76px !important; }
+    .email-password-toggle {
+        position: absolute;
+        right: 8px;
+        top: 50%;
+        transform: translateY(-50%) !important;
+        border: 0 !important;
+        background: transparent !important;
+        color: var(--email-blue) !important;
+        font-size: 11px;
+        font-weight: 700;
+        box-shadow: none !important;
+    }
+    .email-switch-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 18px;
+        margin-top: 20px;
+        padding: 15px 16px;
+        border: 1px solid var(--email-line);
+        border-radius: 17px;
+        background: #f8f8fa;
+    }
+    .email-switch-row h4 { margin: 0; font-size: 13px; font-weight: 700; }
+    .email-switch-row p { margin: 4px 0 0; color: var(--email-muted); font-size: 11px; line-height: 1.45; }
+    .email-switch {
+        position: relative;
+        width: 44px;
+        height: 26px;
+        flex: 0 0 auto;
+    }
+    .email-switch input { position: absolute; opacity: 0; pointer-events: none; }
+    .email-switch-track {
+        position: absolute;
+        inset: 0;
+        border-radius: 999px;
+        background: #d1d1d6;
+        transition: .18s ease;
+        cursor: pointer;
+    }
+    .email-switch-track::after {
+        content: "";
+        position: absolute;
+        width: 22px;
+        height: 22px;
+        left: 2px;
+        top: 2px;
+        border-radius: 50%;
+        background: #fff;
+        box-shadow: 0 2px 5px rgba(0,0,0,.18);
+        transition: .18s ease;
+    }
+    .email-switch input:checked + .email-switch-track { background: #34c759; }
+    .email-switch input:checked + .email-switch-track::after { transform: translateX(18px); }
+    .email-actions {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 10px;
+        margin-top: 24px;
+    }
+    .email-btn {
+        min-height: 42px;
+        padding: 10px 17px;
+        border-radius: 999px !important;
+        border: 1px solid transparent;
+        font-size: 13px;
+        font-weight: 680;
+        cursor: pointer;
+    }
+    .email-btn-primary {
+        border-color: #0071e3 !important;
+        background: #0071e3 !important;
+        color: #fff !important;
+    }
+    .email-btn-secondary {
+        border-color: var(--email-line) !important;
+        background: #f5f5f7 !important;
+        color: #1d1d1f !important;
+    }
+    .email-btn-danger {
+        margin-left: auto;
+        border-color: rgba(255,59,48,.16) !important;
+        background: rgba(255,59,48,.07) !important;
+        color: #d70015 !important;
+    }
+    .email-side { display: flex; flex-direction: column; gap: 18px; }
+    .email-guide { padding: 24px; }
+    .email-guide h3 {
+        margin: 0;
+        font-size: 17px;
+        font-weight: 700;
+        letter-spacing: -.024em;
+    }
+    .email-guide-intro { margin: 7px 0 19px; color: var(--email-muted); font-size: 12px; line-height: 1.55; }
+    .email-step {
+        display: grid;
+        grid-template-columns: 30px 1fr;
+        gap: 12px;
+        padding: 13px 0;
+    }
+    .email-step + .email-step { border-top: 1px solid var(--email-line); }
+    .email-step-number {
+        display: flex;
+        width: 30px;
+        height: 30px;
+        align-items: center;
+        justify-content: center;
+        border-radius: 50%;
+        background: rgba(0,113,227,.08);
+        color: var(--email-blue);
+        font-size: 12px;
+        font-weight: 750;
+    }
+    .email-step h4 { margin: 1px 0 4px; font-size: 12px; font-weight: 700; }
+    .email-step p { margin: 0; color: var(--email-muted); font-size: 11px; line-height: 1.55; }
+    .email-provider-help {
+        margin-top: 18px;
+        padding: 15px;
+        border-radius: 17px;
+        background: linear-gradient(145deg, #f5f8ff, #f8f8fa);
+        border: 1px solid rgba(0,113,227,.08);
+    }
+    .email-provider-help strong { display: block; margin-bottom: 5px; font-size: 12px; }
+    .email-provider-help p { margin: 0; color: var(--email-muted); font-size: 11px; line-height: 1.55; }
+    .email-security-card { padding: 20px 22px; }
+    .email-security-row {
+        display: flex;
+        gap: 12px;
+        align-items: flex-start;
+    }
+    .email-security-icon {
+        display: flex;
+        width: 38px;
+        height: 38px;
+        flex: 0 0 auto;
+        align-items: center;
+        justify-content: center;
+        border-radius: 13px;
+        background: rgba(0,113,227,.08);
+        color: var(--email-blue);
+        font-size: 19px;
+    }
+    .email-security-row h4 { margin: 1px 0 4px; font-size: 12px; font-weight: 700; }
+    .email-security-row p { margin: 0; color: var(--email-muted); font-size: 11px; line-height: 1.55; }
+    .email-error-note {
+        margin-top: 16px;
+        padding: 12px 14px;
+        border: 1px solid rgba(255,59,48,.13);
+        border-radius: 14px;
+        background: rgba(255,59,48,.055);
+        color: #b42318;
+        font-size: 11px;
+        line-height: 1.5;
+    }
+    @media (max-width: 980px) {
+        .email-grid { grid-template-columns: 1fr; }
+        .email-side { display: grid; grid-template-columns: 1fr 1fr; }
+    }
+    @media (max-width: 700px) {
+        .email-hero { padding: 28px 22px; border-radius: 25px; }
+        .email-card { border-radius: 22px; }
+        .email-card-head, .email-form { padding-left: 20px; padding-right: 20px; }
+        .email-field-grid { grid-template-columns: 1fr; }
+        .email-field-full { grid-column: auto; }
+        .email-side { display: flex; }
+        .email-actions { align-items: stretch; }
+        .email-btn { width: 100%; }
+        .email-btn-danger { margin-left: 0; }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="email-connect-page">
+    <a href="{% url 'crm-connect-hub' %}" class="email-back">
+        <i class="ti ti-chevron-left"></i>
+        Connect Hub
+    </a>
+
+    <section class="email-hero">
+        <div class="email-hero-copy">
+            <div class="email-eyebrow">
+                <span class="email-eyebrow-dot"></span>
+                Email connection
+            </div>
+            <h1>One mailbox. Ready for every email workflow.</h1>
+            <p>
+                Connect one organization email account securely, then use the same sender for email automation,
+                follow-ups, notifications and future email-triggered events across SHVYA.
+            </p>
+
+            <div class="email-status {% if configuration and configuration.is_connected %}is-connected{% endif %}">
+                <span class="email-status-dot"></span>
+                {% if configuration and configuration.is_connected %}
+                    Connected as {{ configuration.email_address }}
+                {% elif configuration and configuration.last_test_status == 'failed' %}
+                    Connection needs attention
+                {% elif configuration %}
+                    Configuration saved — test required
+                {% else %}
+                    No email connected
+                {% endif %}
+            </div>
+        </div>
+    </section>
+
+    <div class="email-grid">
+        <section class="email-card">
+            <div class="email-card-head">
+                <h2>Email configuration</h2>
+                <p>Only one email connection is allowed for this organization. Updating this form replaces the active sender settings.</p>
+            </div>
+
+            <form method="post" class="email-form" autocomplete="off">
+                {% csrf_token %}
+
+                <div class="email-form-section">
+                    <div class="email-form-section-title">
+                        <i class="ti ti-mail-cog"></i>
+                        Sender identity
+                    </div>
+
+                    <div class="email-field-grid">
+                        <div class="email-field">
+                            <label for="provider">Email provider</label>
+                            <select id="provider" name="provider">
+                                {% for value, label in provider_choices %}
+                                <option value="{{ value }}" {% if form_data.provider == value %}selected{% endif %}>{{ label }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+
+                        <div class="email-field">
+                            <label for="email_address">Email address</label>
+                            <input id="email_address" name="email_address" type="email" value="{{ form_data.email_address }}" placeholder="sales@company.com" required>
+                        </div>
+
+                        <div class="email-field">
+                            <label for="sender_name">Sender name</label>
+                            <input id="sender_name" name="sender_name" type="text" value="{{ form_data.sender_name }}" placeholder="Your company or team">
+                        </div>
+
+                        <div class="email-field">
+                            <label for="reply_to_email">Reply-to email</label>
+                            <input id="reply_to_email" name="reply_to_email" type="email" value="{{ form_data.reply_to_email }}" placeholder="Optional">
+                            <div class="email-field-hint">Leave blank to use the connected email address.</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="email-form-section">
+                    <div class="email-form-section-title">
+                        <i class="ti ti-server"></i>
+                        SMTP connection
+                    </div>
+
+                    <div class="email-field-grid">
+                        <div class="email-field email-field-full">
+                            <label for="smtp_host">SMTP host</label>
+                            <input id="smtp_host" name="smtp_host" type="text" value="{{ form_data.smtp_host }}" placeholder="smtp.example.com" required>
+                            <div class="email-field-hint">Use a public SMTP hostname. Local/private network hosts are blocked for security.</div>
+                        </div>
+
+                        <div class="email-field">
+                            <label for="smtp_port">SMTP port</label>
+                            <input id="smtp_port" name="smtp_port" type="number" min="1" max="65535" value="{{ form_data.smtp_port }}" required>
+                        </div>
+
+                        <div class="email-field">
+                            <label for="smtp_security">Security</label>
+                            <select id="smtp_security" name="smtp_security">
+                                {% for value, label in security_choices %}
+                                <option value="{{ value }}" {% if form_data.smtp_security == value %}selected{% endif %}>{{ label }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+
+                        <div class="email-field email-field-full">
+                            <label for="smtp_username">SMTP username</label>
+                            <input id="smtp_username" name="smtp_username" type="text" value="{{ form_data.smtp_username }}" placeholder="Usually the full email address" required>
+                        </div>
+
+                        <div class="email-field email-field-full">
+                            <label for="password">Password / app password</label>
+                            <div class="email-password-wrap">
+                                <input id="password" name="password" type="password" value="" placeholder="{% if configuration and configuration.has_password %}Saved securely — leave blank to keep it{% else %}Enter password or app password{% endif %}" autocomplete="new-password">
+                                <button class="email-password-toggle" type="button" id="toggle-password">Show</button>
+                            </div>
+                            <div class="email-field-hint">
+                                {% if configuration and configuration.has_password %}
+                                    A password is already stored. Enter a new one only when you want to replace it.
+                                {% else %}
+                                    Gmail and many providers require an app password instead of your normal login password.
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="email-switch-row">
+                        <div>
+                            <h4>Available to automations</h4>
+                            <p>The account must pass a connection test before it can stay enabled.</p>
+                        </div>
+                        <label class="email-switch" aria-label="Enable email for automations">
+                            <input type="checkbox" name="is_enabled" {% if form_data.is_enabled %}checked{% endif %}>
+                            <span class="email-switch-track"></span>
+                        </label>
+                    </div>
+
+                    {% if configuration and configuration.last_error %}
+                    <div class="email-error-note">
+                        <i class="ti ti-alert-circle"></i>
+                        {{ configuration.last_error }}
+                    </div>
+                    {% endif %}
+
+                    <div class="email-actions">
+                        <button class="email-btn email-btn-primary" type="submit" name="action" value="test">
+                            Test &amp; connect
+                        </button>
+                        <button class="email-btn email-btn-secondary" type="submit" name="action" value="save">
+                            Save changes
+                        </button>
+                        {% if configuration %}
+                        <button class="email-btn email-btn-danger" type="submit" name="action" value="disconnect" onclick="return confirm('Disconnect this email account and remove its stored credentials?');">
+                            Disconnect
+                        </button>
+                        {% endif %}
+                    </div>
+                </div>
+            </form>
+        </section>
+
+        <aside class="email-side">
+            <section class="email-card email-guide">
+                <h3>How to connect</h3>
+                <p class="email-guide-intro">The setup takes four steps. SHVYA tests authentication without sending an email.</p>
+
+                <div class="email-step">
+                    <span class="email-step-number">1</span>
+                    <div>
+                        <h4>Choose your provider</h4>
+                        <p>Select Gmail, Microsoft 365, Zoho or Custom SMTP. Known providers fill the standard server settings automatically.</p>
+                    </div>
+                </div>
+
+                <div class="email-step">
+                    <span class="email-step-number">2</span>
+                    <div>
+                        <h4>Create an app password when required</h4>
+                        <p>For accounts protected by two-factor authentication, generate an app password in your email provider and use it here.</p>
+                    </div>
+                </div>
+
+                <div class="email-step">
+                    <span class="email-step-number">3</span>
+                    <div>
+                        <h4>Confirm SMTP details</h4>
+                        <p>Check host, port, security and username. Your username is usually the full email address.</p>
+                    </div>
+                </div>
+
+                <div class="email-step">
+                    <span class="email-step-number">4</span>
+                    <div>
+                        <h4>Test &amp; connect</h4>
+                        <p>SHVYA authenticates to the SMTP server. A successful test activates this mailbox for automations and email events.</p>
+                    </div>
+                </div>
+
+                <div class="email-provider-help" id="provider-help">
+                    <strong id="provider-help-title">Gmail / Google Workspace</strong>
+                    <p id="provider-help-text">Use smtp.gmail.com, port 587 and STARTTLS. If 2-Step Verification is enabled, create a Google App Password and paste that password here.</p>
+                </div>
+            </section>
+
+            <section class="email-card email-security-card">
+                <div class="email-security-row">
+                    <span class="email-security-icon"><i class="ti ti-shield-lock"></i></span>
+                    <div>
+                        <h4>Credentials stay server-side</h4>
+                        <p>Your password or app password is encrypted before storage and is never returned to the browser after saving.</p>
+                    </div>
+                </div>
+                {% if configuration and configuration.last_tested_at %}
+                <div class="email-security-row" style="margin-top:16px; padding-top:16px; border-top:1px solid rgba(15,23,42,.08);">
+                    <span class="email-security-icon"><i class="ti ti-clock-check"></i></span>
+                    <div>
+                        <h4>Last connection test</h4>
+                        <p>{{ configuration.last_tested_at|date:"M j, Y · g:i A" }} — {{ configuration.get_last_test_status_display }}</p>
+                    </div>
+                </div>
+                {% endif %}
+            </section>
+        </aside>
+    </div>
+</div>
+
+<script>
+(function () {
+    const provider = document.getElementById('provider');
+    const email = document.getElementById('email_address');
+    const username = document.getElementById('smtp_username');
+    const host = document.getElementById('smtp_host');
+    const port = document.getElementById('smtp_port');
+    const security = document.getElementById('smtp_security');
+    const password = document.getElementById('password');
+    const togglePassword = document.getElementById('toggle-password');
+    const helpTitle = document.getElementById('provider-help-title');
+    const helpText = document.getElementById('provider-help-text');
+
+    const presets = {
+        gmail: {
+            host: 'smtp.gmail.com',
+            port: '587',
+            security: 'starttls',
+            title: 'Gmail / Google Workspace',
+            help: 'Use smtp.gmail.com, port 587 and STARTTLS. If 2-Step Verification is enabled, create a Google App Password and paste that password here.'
+        },
+        microsoft: {
+            host: 'smtp.office365.com',
+            port: '587',
+            security: 'starttls',
+            title: 'Microsoft 365 / Outlook',
+            help: 'Use smtp.office365.com, port 587 and STARTTLS. SMTP AUTH must be allowed for the mailbox by your Microsoft 365 settings.'
+        },
+        zoho: {
+            host: 'smtp.zoho.com',
+            port: '587',
+            security: 'starttls',
+            title: 'Zoho Mail',
+            help: 'Use smtp.zoho.com, port 587 and STARTTLS. Accounts with MFA should use a Zoho application-specific password.'
+        },
+        custom: {
+            title: 'Custom SMTP',
+            help: 'Get the SMTP hostname, port, security method, username and password from your email provider or administrator.'
+        }
+    };
+
+    function syncProvider() {
+        const preset = presets[provider.value] || presets.custom;
+        if (provider.value !== 'custom') {
+            host.value = preset.host;
+            port.value = preset.port;
+            security.value = preset.security;
+        }
+        helpTitle.textContent = preset.title;
+        helpText.textContent = preset.help;
+    }
+
+    provider.addEventListener('change', syncProvider);
+
+    email.addEventListener('input', function () {
+        if (!username.dataset.edited || username.value === '') {
+            username.value = email.value;
+        }
+    });
+
+    username.addEventListener('input', function () {
+        username.dataset.edited = '1';
+    });
+
+    togglePassword.addEventListener('click', function () {
+        const showing = password.type === 'text';
+        password.type = showing ? 'password' : 'text';
+        togglePassword.textContent = showing ? 'Show' : 'Hide';
+    });
+
+    const initialPreset = presets[provider.value] || presets.custom;
+    helpTitle.textContent = initialPreset.title;
+    helpText.textContent = initialPreset.help;
+})();
+</script>
+{% endblock %}
