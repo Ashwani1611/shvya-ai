@@ -22,7 +22,7 @@ urlpatterns = [
     path(
         "favicon.ico",
         RedirectView.as_view(
-            url=static("images/shvya-logo.svg"),
+            url=static("images/shvya-sidebar-logo.svg"),
             permanent=False,
         ),
         name="favicon",
