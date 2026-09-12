@@ -182,3 +182,33 @@ class WhatsAppRoutingDiagnosticsTests(TestCase):
         message = WhatsAppMessage.objects.get(external_id="meta-webhook-test")
         self.assertEqual(message.to_number, "919876543210")
         self.assertEqual(message.lead.pipeline_id, self.pipeline.id)
+
+    @patch("apps.channels.tasks.sync_whatsapp_templates_task.delay")
+    @patch("apps.channels.views_flat._verify_signature", return_value=True)
+    def test_template_status_webhook_queues_a_meta_sync(self, signature, delay):
+        from django.test import RequestFactory
+        from apps.channels.views_flat import _handle_webhook_delivery
+
+        self.account.waba_id = "waba-routing"
+        self.account.save(update_fields=["waba_id"])
+        payload = {
+            "entry": [
+                {
+                    "id": self.account.waba_id,
+                    "changes": [
+                        {
+                            "field": "message_template_status_update",
+                            "value": {"event": "APPROVED"},
+                        }
+                    ],
+                }
+            ]
+        }
+        request = RequestFactory().post(
+            "/webhook/", data=json.dumps(payload), content_type="application/json"
+        )
+        with self.captureOnCommitCallbacks(execute=True):
+            response = _handle_webhook_delivery(request)
+
+        self.assertEqual(response.status_code, 200)
+        delay.assert_called_once_with(str(self.account.id))
