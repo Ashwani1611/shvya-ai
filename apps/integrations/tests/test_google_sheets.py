@@ -151,6 +151,7 @@ class GoogleSheetsIntegrationTests(TestCase):
         )
         self.assertEqual(lead.name, "Rahul Sharma")
         self.assertEqual(lead.lead_source, "google_sheets")
+        self.assertEqual(lead.get_lead_source_display(), "Google Sheet")
         self.assertEqual(lead.attributes["budget"], "50000")
         self.assertEqual(lead.pipeline, self.pipeline)
         self.assertEqual(lead.stage, self.stage)
