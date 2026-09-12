@@ -4,6 +4,7 @@ import uuid
 
 from cryptography.fernet import Fernet, InvalidToken
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.db import models
 
 from apps.organizations.models import Organization
@@ -285,3 +286,148 @@ class EmailConfiguration(models.Model):
             ).decode("utf-8")
         except (InvalidToken, ValueError, TypeError):
             return ""
+
+
+class GoogleSheetIntegration(models.Model):
+    """One organization-scoped Google worksheet -> CRM lead sync configuration."""
+
+    id = models.UUIDField(
+        primary_key=True,
+        default=uuid.uuid4,
+        editable=False,
+    )
+    organization = models.ForeignKey(
+        Organization,
+        on_delete=models.CASCADE,
+        related_name="google_sheet_integrations",
+    )
+    name = models.CharField(
+        max_length=120,
+        default="Google Sheets Leads",
+    )
+    spreadsheet_id = models.CharField(
+        max_length=255,
+        blank=True,
+    )
+    spreadsheet_url = models.URLField(
+        max_length=2048,
+        blank=True,
+    )
+    sheet_id = models.CharField(
+        max_length=64,
+        blank=True,
+    )
+    worksheet_name = models.CharField(
+        max_length=180,
+        default="Sheet1",
+    )
+    pipeline = models.ForeignKey(
+        "crm.Pipeline",
+        on_delete=models.CASCADE,
+        related_name="google_sheet_integrations",
+    )
+    stage = models.ForeignKey(
+        "crm.Stage",
+        on_delete=models.CASCADE,
+        related_name="google_sheet_integrations",
+    )
+    mapping = models.JSONField(
+        default=dict,
+        blank=True,
+    )
+    discovered_headers = models.JSONField(
+        default=list,
+        blank=True,
+    )
+    webhook_token = models.UUIDField(
+        default=uuid.uuid4,
+        unique=True,
+        editable=False,
+    )
+    encrypted_secret = models.TextField(
+        blank=True,
+    )
+    import_existing = models.BooleanField(
+        default=True,
+    )
+    is_enabled = models.BooleanField(
+        default=False,
+    )
+    last_registered_at = models.DateTimeField(
+        null=True,
+        blank=True,
+    )
+    last_synced_at = models.DateTimeField(
+        null=True,
+        blank=True,
+    )
+    last_error = models.TextField(
+        blank=True,
+    )
+    created_count = models.PositiveBigIntegerField(
+        default=0,
+    )
+    updated_count = models.PositiveBigIntegerField(
+        default=0,
+    )
+    skipped_count = models.PositiveBigIntegerField(
+        default=0,
+    )
+    error_count = models.PositiveBigIntegerField(
+        default=0,
+    )
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+    )
+    updated_at = models.DateTimeField(
+        auto_now=True,
+    )
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(
+                fields=["organization", "is_enabled", "created_at"],
+                name="gsheet_org_enabled_created",
+            ),
+        ]
+        verbose_name = "Google Sheets Integration"
+        verbose_name_plural = "Google Sheets Integrations"
+
+    def __str__(self):
+        return f"{self.organization.name} - {self.name} ({self.worksheet_name})"
+
+    @property
+    def has_secret(self):
+        return bool(self.encrypted_secret)
+
+    def set_secret(self, raw_secret):
+        raw_secret = str(raw_secret or "")
+        self.encrypted_secret = (
+            _integration_fernet().encrypt(raw_secret.encode("utf-8")).decode("ascii")
+            if raw_secret
+            else ""
+        )
+
+    def get_secret(self):
+        if not self.encrypted_secret:
+            return ""
+        try:
+            return _integration_fernet().decrypt(
+                self.encrypted_secret.encode("ascii")
+            ).decode("utf-8")
+        except (InvalidToken, ValueError, TypeError):
+            return ""
+
+    def clean(self):
+        super().clean()
+        if self.organization_id and self.pipeline_id:
+            if self.pipeline.organization_id != self.organization_id:
+                raise ValidationError(
+                    {"pipeline": "Pipeline does not belong to this organization."}
+                )
+        if self.pipeline_id and self.stage_id:
+            if self.stage.pipeline_id != self.pipeline_id:
+                raise ValidationError(
+                    {"stage": "Stage does not belong to the selected pipeline."}
+                )

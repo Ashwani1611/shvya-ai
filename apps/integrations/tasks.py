@@ -5,7 +5,8 @@ from celery import shared_task
 from django.core.exceptions import ValidationError
 from django.utils import timezone
 
-from apps.integrations.models import WebhookDelivery
+from apps.integrations.models import GoogleSheetIntegration, WebhookDelivery
+from apps.integrations.services.google_sheets import process_google_sheet_rows
 from apps.integrations.services.webhook import (
     WEBHOOK_DELIVERY_HEADER,
     WEBHOOK_SECRET_HEADER,
@@ -168,3 +169,24 @@ def deliver_webhook_task(self, delivery_id):
 
     reason = f"Webhook endpoint returned HTTP {response.status_code}."
     return _retry_or_fail(self, delivery, reason)
+
+
+@shared_task(
+    bind=True,
+    max_retries=3,
+    acks_late=True,
+    name="apps.integrations.tasks.process_google_sheet_rows_task",
+)
+def process_google_sheet_rows_task(self, integration_id, rows):
+    """Process one Sheets batch off the request path so large imports stay responsive."""
+    try:
+        return process_google_sheet_rows(
+            integration_id=str(integration_id),
+            rows=rows if isinstance(rows, list) else [],
+        )
+    except Exception as exc:
+        logger.exception("Google Sheets sync failed for integration %s", integration_id)
+        GoogleSheetIntegration.objects.filter(id=integration_id).update(
+            last_error=str(exc)[:2000]
+        )
+        raise self.retry(exc=exc, countdown=min(30 * (2 ** self.request.retries), 300))
