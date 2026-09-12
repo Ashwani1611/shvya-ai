@@ -42,18 +42,18 @@ def _normalize_whatsapp_number(*, country_code="", phone_number="") -> str:
 
 
 class AIPermissionService:
-    """
-    Central evaluator for the SHVYA AI control hierarchy.
+    """Central evaluator for the SHVYA AI control hierarchy.
 
-    Active WhatsApp inbound conversations use the linked pipeline's AI switch as
-    the conversation-level master switch for both Connect API and Hosted
-    accounts. Stage transitions and stale lead-level toggles must not silently
-    stop subsequent AI replies after qualification or CRM movement. In every
-    case, the inbound WhatsApp account must still be the number linked to the
-    lead's current pipeline.
+    Customer-facing AI is allowed only when every configured control permits it:
 
-    Outside an active WhatsApp inbound conversation, the existing granular
-    pipeline, stage, and lead controls remain in effect.
+        Organization AI -> Pipeline AI -> Stage AI -> Lead AI
+
+    WhatsApp account routing remains fail-closed for a new conversation. Once
+    SHVYA has already produced an AI reply on a valid conversation account, that
+    account becomes an established transport for the lead and may continue to be
+    used after an intentional CRM pipeline move. This keeps cross-pipeline CRM
+    classification from stranding the chat without allowing an arbitrary second
+    organization number to engage the same lead.
     """
 
     WHATSAPP_AUTOMATION_CONNECTION_TYPES = {"api", "hosted"}
@@ -85,6 +85,15 @@ class AIPermissionService:
             .first()
         )
 
+    def _has_established_ai_transport(self, *, organization, lead, account) -> bool:
+        """Return whether this exact account has already carried a SHVYA AI reply."""
+        return lead.whatsapp_messages.filter(
+            organization=organization,
+            account=account,
+            direction="outbound",
+            raw_payload__shvya_ai__isnull=False,
+        ).exists()
+
     def _conversation_uses_pipeline_number(
         self,
         *,
@@ -92,12 +101,12 @@ class AIPermissionService:
         lead,
         latest_message=None,
     ):
-        """Fail closed when the customer's current inbound turn is on the wrong number.
+        """Validate the customer-facing WhatsApp transport for this conversation.
 
-        Account routing must follow the inbound customer conversation that AI is
-        being asked to answer. A newer manual/system outbound message on another
-        connected number is not a new customer conversation and must not disable
-        AI for an otherwise correctly mapped Hosted or Cloud API inbound turn.
+        Fresh conversations must match the lead's current pipeline number. A
+        previously established SHVYA AI transport may survive a later CRM
+        pipeline move, because the customer is still replying on that same
+        WhatsApp thread.
         """
         if latest_message is None:
             latest_message = self._latest_inbound_message(
@@ -106,22 +115,23 @@ class AIPermissionService:
             )
 
         # Permission evaluation is also used before an inbound conversation
-        # exists. The AI engagement worker separately requires an inbound
-        # message before it can generate or send a customer-facing reply.
+        # exists. The engagement worker independently requires an inbound turn.
         if latest_message is None:
             return True, "no_conversation_yet"
-
-        pipeline = getattr(lead, "pipeline", None)
-        expected_number = _normalize_whatsapp_number(
-            country_code=getattr(pipeline, "country_code", ""),
-            phone_number=getattr(pipeline, "phone_number", ""),
-        )
-        if not expected_number:
-            return False, "pipeline_whatsapp_number_missing"
 
         account = getattr(latest_message, "account", None)
         if account is None or account.organization_id != organization.id:
             return False, "whatsapp_account_organization_mismatch"
+        if not getattr(account, "is_active", False):
+            return False, "whatsapp_account_inactive"
+        if str(getattr(account, "status", "") or "").strip().casefold() != "connected":
+            return False, "whatsapp_account_not_connected"
+
+        inbound_connection_type = str(
+            getattr(account, "connection_type", "") or ""
+        ).strip().casefold()
+        if inbound_connection_type not in self.WHATSAPP_AUTOMATION_CONNECTION_TYPES:
+            return False, "unsupported_whatsapp_connection_type"
 
         actual_number = _normalize_whatsapp_number(
             phone_number=getattr(account, "display_phone_number", ""),
@@ -129,10 +139,24 @@ class AIPermissionService:
         if not actual_number:
             return False, "whatsapp_account_number_missing"
 
-        if actual_number != expected_number:
-            return False, "pipeline_whatsapp_account_mismatch"
+        pipeline = getattr(lead, "pipeline", None)
+        expected_number = _normalize_whatsapp_number(
+            country_code=getattr(pipeline, "country_code", ""),
+            phone_number=getattr(pipeline, "phone_number", ""),
+        )
+        if expected_number and actual_number == expected_number:
+            return True, "pipeline_whatsapp_account_match"
 
-        return True, "pipeline_whatsapp_account_match"
+        if self._has_established_ai_transport(
+            organization=organization,
+            lead=lead,
+            account=account,
+        ):
+            return True, "conversation_whatsapp_account_bound"
+
+        if not expected_number:
+            return False, "pipeline_whatsapp_number_missing"
+        return False, "pipeline_whatsapp_account_mismatch"
 
     def evaluate(
         self,
@@ -155,8 +179,24 @@ class AIPermissionService:
                 lead=lead,
             )
 
-        # Pipeline.ai_enabled is the conversation-level WhatsApp automation
-        # master switch for both Connect API and Hosted accounts.
+        # Organization is the top-level customer-facing AI master switch.
+        try:
+            org_info = self.org_info_service.get_or_create(
+                organization=organization,
+            )
+        except Exception as exc:
+            raise AIPermissionError(
+                "Organization AI configuration could not be loaded."
+            ) from exc
+
+        if not org_info.ai_enabled:
+            return self._decision(
+                allowed=False,
+                reason="organization_ai_disabled",
+                organization=organization,
+                lead=lead,
+            )
+
         if not getattr(lead.pipeline, "ai_enabled", True):
             return self._decision(
                 allowed=False,
@@ -165,41 +205,29 @@ class AIPermissionService:
                 lead=lead,
             )
 
+        # Stage and Lead switches are never bypassed for WhatsApp. This is
+        # intentional: an admin turning either switch off must stop both newly
+        # queued and already-generated AI replies before delivery.
+        if lead.stage_id and not lead.stage.ai_on:
+            return self._decision(
+                allowed=False,
+                reason="stage_ai_disabled",
+                organization=organization,
+                lead=lead,
+            )
+
+        if not lead.ai_enabled:
+            return self._decision(
+                allowed=False,
+                reason="lead_ai_disabled",
+                organization=organization,
+                lead=lead,
+            )
+
         latest_inbound = self._latest_inbound_message(
             organization=organization,
             lead=lead,
         )
-        inbound_account = getattr(latest_inbound, "account", None)
-        inbound_connection_type = str(
-            getattr(inbound_account, "connection_type", "") or ""
-        ).strip().casefold()
-        is_whatsapp_automation_inbound = (
-            latest_inbound is not None
-            and inbound_connection_type in self.WHATSAPP_AUTOMATION_CONNECTION_TYPES
-        )
-
-        # Once a customer is actively messaging the correctly linked WhatsApp
-        # number, stage transitions or stale lead-level state must not stop
-        # later inbound replies. The pipeline/account AI switch above remains
-        # authoritative. Granular stage/lead controls still apply when there is
-        # no active WhatsApp inbound conversation.
-        if not is_whatsapp_automation_inbound:
-            if lead.stage_id and not lead.stage.ai_on:
-                return self._decision(
-                    allowed=False,
-                    reason="stage_ai_disabled",
-                    organization=organization,
-                    lead=lead,
-                )
-
-            if not lead.ai_enabled:
-                return self._decision(
-                    allowed=False,
-                    reason="lead_ai_disabled",
-                    organization=organization,
-                    lead=lead,
-                )
-
         mapping_allowed, mapping_reason = self._conversation_uses_pipeline_number(
             organization=organization,
             lead=lead,

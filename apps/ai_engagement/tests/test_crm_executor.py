@@ -244,7 +244,7 @@ class CRMActionExecutorTests(TestCase):
         )
         self.assertEqual(result[0]["status"], "no_op")
 
-    def test_rejects_stage_from_other_pipeline(self):
+    def test_executes_stage_transition_to_other_org_owned_pipeline(self):
         other_pipeline = Pipeline.objects.create(
             organization=self.organization,
             name="Other Pipeline",
@@ -259,19 +259,24 @@ class CRMActionExecutorTests(TestCase):
 
         self.assertIsNotNone(other_stage)
 
-        with self.assertRaises(CRMActionExecutionError):
-            self.executor.execute(
-                organization=self.organization,
-                lead=self.lead,
-                actions=[
-                    {
-                        "type": "pipeline_transition",
-                        "stage_shift": {
-                            "stage_id": str(other_stage.id),
-                        },
-                    }
-                ],
-            )
+        result = self.executor.execute(
+            organization=self.organization,
+            lead=self.lead,
+            actions=[
+                {
+                    "type": "pipeline_transition",
+                    "stage_shift": {
+                        "stage_id": str(other_stage.id),
+                    },
+                }
+            ],
+        )
+
+        self.lead.refresh_from_db()
+        self.assertEqual(self.lead.pipeline_id, other_pipeline.id)
+        self.assertEqual(self.lead.stage_id, other_stage.id)
+        self.assertEqual(result[0]["status"], "executed")
+        self.assertEqual(result[0]["pipeline_id"], str(other_pipeline.id))
 
     def test_rejects_inactive_stage(self):
         inactive_stage = Stage.objects.create(

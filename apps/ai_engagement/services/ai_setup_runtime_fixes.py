@@ -36,18 +36,88 @@ BACKEND QUALIFICATION AUTHORITY
   short acknowledgment when appropriate and continue normal conversation.
 
 PIPELINE STAGE TRANSITIONS
-- pipeline.available_stages is the complete allow-list for stage movement.
+- pipeline.available_stages is the complete organization-owned allow-list for
+  AI-requestable stage movement. Entries may belong to another active pipeline
+  and include pipeline_id/pipeline_name for context.
 - For non-Qualified destinations, use each destination stage description as the
   movement criterion. Propose at most one pipeline_transition only when current
   conversation evidence clearly satisfies that destination description.
-- Never invent a stage id and never move a lead merely from vague positivity.
+- Never invent a stage id or pipeline id and never move a lead merely from vague
+  positivity. The backend resolves the selected stage's owning pipeline.
 - The Qualified destination remains application-controlled and may be selected
   only when deterministic qualification evaluation permits it.
+
+CRM ENRICHMENT
+- When the latest lead message explicitly supplies a value for an organization-
+  defined attribute, propose the matching attribute_update using only that value.
+- When the lead explicitly asks to be contacted/reminded/followed up at a real
+  date or time, propose a create_reminder with a grounded ISO-8601 due_at value.
+- Do not create speculative reminders, attributes, notes, stages, or identifiers.
 """.strip()
 
 
 def _clean_spaces(value: Any) -> str:
     return re.sub(r"\s+", " ", str(value or "")).strip()
+
+
+def _enhanced_pipeline_context(original_method):
+    """Expose active organization-owned stage destinations without weakening scope.
+
+    The core context historically exposed only stages in the lead's current
+    pipeline. AI can therefore never request a safe cross-pipeline CRM move even
+    though the deterministic CRM service already has an organization boundary.
+    This wrapper publishes active stages from active pipelines, with their owning
+    pipeline metadata, while keeping the current pipeline itself authoritative.
+    """
+
+    def build(builder, *, lead):
+        context = original_method(builder, lead=lead)
+        if not isinstance(context, dict) or not context:
+            return context
+
+        pipelines = list(
+            lead.organization.pipelines.filter(is_active=True)
+            .prefetch_related("stages")
+            .order_by("name", "id")
+        )
+        available_stages: list[dict[str, Any]] = []
+        available_pipelines: list[dict[str, Any]] = []
+        for pipeline in pipelines:
+            stages = sorted(
+                (stage for stage in pipeline.stages.all() if stage.is_active),
+                key=lambda item: (item.display_order, item.name, str(item.id)),
+            )
+            stage_payloads = [
+                {
+                    "id": str(stage.id),
+                    "name": stage.name,
+                    "description": stage.description,
+                    "config": stage.config,
+                    "pipeline_id": str(pipeline.id),
+                    "pipeline_name": pipeline.name,
+                    "is_current_pipeline": pipeline.id == lead.pipeline_id,
+                }
+                for stage in stages
+            ]
+            available_stages.extend(stage_payloads)
+            available_pipelines.append(
+                {
+                    "id": str(pipeline.id),
+                    "name": pipeline.name,
+                    "description": pipeline.description,
+                    "ai_enabled": pipeline.ai_enabled,
+                    "is_current": pipeline.id == lead.pipeline_id,
+                    "stages": stage_payloads,
+                }
+            )
+
+        return {
+            **context,
+            "available_stages": available_stages,
+            "available_pipelines": available_pipelines,
+        }
+
+    return build
 
 
 def _enhanced_evaluate_qualification(original_evaluator):
@@ -129,7 +199,11 @@ def _enhanced_controlled_actions(original_builder):
             })
             result = {
                 **result,
-                "stage_transition": {"stage_id": stage_id, "source": "stage_description"},
+                "stage_transition": {
+                    "stage_id": stage_id,
+                    "pipeline_id": str(destination.get("pipeline_id") or ""),
+                    "source": "stage_description",
+                },
             }
             break
         return controlled, result
@@ -331,6 +405,12 @@ def install_ai_setup_runtime_fixes() -> None:
     global _INSTALLED
     if _INSTALLED:
         return
+
+    from apps.ai_engagement.services.context import AIContextBuilder
+    original_pipeline_context = AIContextBuilder._build_pipeline_context
+    AIContextBuilder._build_pipeline_context = _enhanced_pipeline_context(
+        original_pipeline_context
+    )
 
     from apps.ai_engagement.graph import policy_actions as policy_actions_module
     original_evaluator = policy_actions_module.evaluate_qualification
