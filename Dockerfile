@@ -20,8 +20,4 @@ COPY . .
 
 EXPOSE 8000
 
-# Serve the Channels ASGI application so HTTP and WebSocket traffic share the
-# same production process. The previous WSGI-only Gunicorn entrypoint could not
-# accept /ws/whatsapp/... connections, which made Connect API chats require a
-# reload even though the Redis channel layer and consumers were configured.
-CMD ["daphne", "-b", "0.0.0.0", "-p", "8000", "config.asgi:application"]
+CMD ["gunicorn", "config.wsgi:application", "--bind", "0.0.0.0:8000", "--workers", "3"]
