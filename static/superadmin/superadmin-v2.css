@@ -666,6 +666,11 @@ body.sa-sidebar-collapsed .sa-user-card {
     gap: 14px;
 }
 
+.sa-trace { color: #475467; font-size: 11px; white-space: nowrap; }
+.sa-org-meta--danger { color: #b42318; }
+.sa-rag-note { display: flex; gap: 12px; margin-top: 18px; padding: 15px 17px; color: #667085; font-size: 12px; line-height: 1.5; }
+.sa-rag-note strong { color: #344054; white-space: nowrap; }
+
 .sa-ai-credit-page .sa-stat-card {
     min-height: 132px;
     padding: 18px;

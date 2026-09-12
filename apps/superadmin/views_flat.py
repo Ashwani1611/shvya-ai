@@ -22,6 +22,7 @@ from apps.organizations.models import (
     OrganizationPayment,
     OrganizationTag,
 )
+from apps.ai_engagement.models import Chunk, Document
 
 from apps.core.ratelimit import ratelimit
 
@@ -1730,3 +1731,61 @@ def admin_global_search(request):
             "results": results[:20],
         }
     )
+
+
+@superuser_required
+def rag_monitor_view(request):
+    """Show only organization-scoped RAG facts currently persisted in SHVYA."""
+    organizations = Organization.objects.order_by("name")
+    rows = []
+    total_documents = total_chunks = total_failures = 0
+
+    for organization in organizations:
+        documents = Document.objects.filter(organization=organization)
+        document_count = documents.count()
+        completed_count = documents.filter(
+            processing_status=Document.ProcessingStatus.COMPLETED,
+        ).count()
+        failed_count = documents.filter(
+            processing_status=Document.ProcessingStatus.FAILED,
+        ).count()
+        chunk_count = Chunk.objects.filter(
+            organization=organization,
+            document__organization=organization,
+            document__is_active=True,
+            document__processing_status=Document.ProcessingStatus.COMPLETED,
+            is_active=True,
+            embedding__isnull=False,
+        ).count()
+        versions = list(
+            documents.values_list("version", flat=True).order_by("-version").distinct()[:2]
+        )
+        freshness = round(completed_count * 100 / document_count, 1) if document_count else None
+        latest = documents.order_by("-updated_at").first()
+        status = "Healthy" if document_count and not failed_count and freshness == 100 else (
+            "Warning" if document_count else "No data"
+        )
+        rows.append({
+            "organization": organization,
+            "document_count": document_count,
+            "completed_count": completed_count,
+            "chunk_count": chunk_count,
+            "failed_count": failed_count,
+            "freshness": freshness,
+            "current_version": versions[0] if versions else None,
+            "previous_version": versions[1] if len(versions) > 1 else None,
+            "last_updated": latest.updated_at if latest else None,
+            "status": status,
+            "trace": f"org={organization.id}; docs={document_count}; chunks={chunk_count}; failed={failed_count}",
+        })
+        total_documents += document_count
+        total_chunks += chunk_count
+        total_failures += failed_count
+
+    return render(request, "superadmin/rag_monitor.html", {
+        "rows": rows,
+        "total_organizations": len(rows),
+        "total_documents": total_documents,
+        "total_chunks": total_chunks,
+        "total_failures": total_failures,
+    })

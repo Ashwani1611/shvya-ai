@@ -1,0 +1,47 @@
+{% extends "superadmin/base.html" %}
+
+{% block title %}RAG Monitor - SHVYA Super Admin{% endblock %}
+
+{% block content %}
+<div class="sa-page-header">
+    <div>
+        <div class="mb-2 inline-flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-indigo-600">AI reliability</div>
+        <h1 class="sa-page-title">RAG Monitor</h1>
+        <p class="sa-page-description">Evidence-led health for every organization. Values below come from persisted knowledge and embedding records.</p>
+    </div>
+    <span class="sa-live-pill"><span class="sa-live-dot" aria-hidden="true"></span>Live database view</span>
+</div>
+
+<div class="sa-stat-grid">
+    <div class="sa-stat-card"><div class="sa-stat-label">Organizations tracked</div><div class="sa-stat-value">{{ total_organizations }}</div><div class="sa-stat-note">Current organization records</div></div>
+    <div class="sa-stat-card"><div class="sa-stat-label">Knowledge documents</div><div class="sa-stat-value">{{ total_documents }}</div><div class="sa-stat-note">All persisted source versions</div></div>
+    <div class="sa-stat-card"><div class="sa-stat-label">Indexed chunks</div><div class="sa-stat-value">{{ total_chunks }}</div><div class="sa-stat-note">Active chunks with embeddings</div></div>
+</div>
+
+<section class="sa-panel sa-table-panel">
+    <div class="sa-table-header"><div><div class="sa-table-title">Organization pipeline evidence</div><div class="sa-table-subtitle">Freshness, vector index state, permissions boundary, and failure trace</div></div><div class="sa-badge sa-badge--warning">{{ total_failures }} processing failure{{ total_failures|pluralize }}</div></div>
+    <div class="sa-table-scroll">
+        <table class="sa-data-table" style="min-width: 1440px">
+            <thead><tr><th>Organization</th><th>Processing completed</th><th>Document versions</th><th>Indexed chunks</th><th>Retrieval accuracy</th><th>Answer accuracy</th><th>Permissions audit</th><th>Latency / cost</th><th>Record evidence</th><th>Processing status</th></tr></thead>
+            <tbody>
+            {% for row in rows %}
+                <tr>
+                    <td><a class="sa-org-link" href="{% url 'superadmin-organization-detail' organization_id=row.organization.id %}">{{ row.organization.name }}</a><div class="sa-org-meta">{{ row.document_count }} document{{ row.document_count|pluralize }}{% if row.last_updated %} · updated {{ row.last_updated|date:'M d, Y H:i' }}{% endif %}</div></td>
+                    <td><span class="sa-metric-value">{% if row.freshness != None %}{{ row.freshness }}%{% else %}Not measured{% endif %}</span></td>
+                    <td><span class="sa-metric-value">{% if row.current_version %}v{{ row.current_version }}{% else %}Not indexed{% endif %}</span>{% if row.previous_version %}<div class="sa-org-meta">Previous v{{ row.previous_version }}</div>{% endif %}</td>
+                    <td><span class="sa-metric-value">{{ row.chunk_count }}</span></td>
+                    <td><span class="sa-badge">Not instrumented</span></td>
+                    <td><span class="sa-badge">Not instrumented</span></td>
+                    <td><span class="sa-badge">Not measured</span></td>
+                    <td><span class="sa-badge">Not persisted</span></td>
+                    <td><code class="sa-trace">{{ row.trace }}</code>{% if row.failed_count %}<div class="sa-org-meta sa-org-meta--danger">{{ row.failed_count }} failed source{{ row.failed_count|pluralize }}</div>{% endif %}</td>
+                    <td>{% if row.status == 'Healthy' %}<span class="sa-badge sa-badge--success"><span class="sa-status-dot sa-status-dot--success" aria-hidden="true"></span>Healthy</span>{% elif row.status == 'Warning' %}<span class="sa-badge sa-badge--warning"><span class="sa-status-dot" style="background:#f79009" aria-hidden="true"></span>Warning</span>{% else %}<span class="sa-badge">No data</span>{% endif %}</td>
+                </tr>
+            {% empty %}<tr><td colspan="10" class="sa-empty-state">No organizations found.</td></tr>{% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+
+<section class="sa-panel sa-rag-note"><strong>Evaluation coverage</strong><span>Retrieval ranking, LLM answer accuracy, vector latency, token cost, and end-to-end failures need an evaluation/telemetry event model before they can be shown as percentages. This view intentionally leaves them unmeasured until those records exist.</span></section>
+{% endblock %}
