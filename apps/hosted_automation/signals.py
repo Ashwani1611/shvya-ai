@@ -6,7 +6,7 @@ from django.db.models.signals import post_save
 from django.dispatch import receiver
 from django.utils import timezone
 
-from apps.channels.models import WhatsAppMessage
+from apps.channels.models import WhatsAppAccount, WhatsAppMessage
 from apps.hosted_automation.models import HostedAutomationJob
 
 
@@ -72,19 +72,114 @@ def hosted_automation_job_wakeup(sender, instance, created, update_fields=None, 
     )
 
 
-@receiver(post_save, sender=WhatsAppMessage, dispatch_uid="hosted_automation_message_state")
-def hosted_message_state(sender, instance, created, **kwargs):
-    if not created or instance.account.connection_type != "hosted" or not instance.lead_id:
+def _queue_hosted_ai_from_persisted_message(message_id):
+    """Queue AI from the final persisted Hosted message identity.
+
+    WhatsApp Web may first persist a direct chat with an ``@lid`` identity and
+    then repair that row to the real phone/Lead in the same outer transaction.
+    AI scheduling must therefore re-read the committed message instead of
+    trusting the pre-repair ``lead`` value captured during initial persistence.
+    """
+    message = (
+        WhatsAppMessage.objects.select_related(
+            "account",
+            "account__organization",
+            "lead",
+            "lead__organization",
+            "lead__pipeline",
+            "lead__stage",
+        )
+        .filter(
+            pk=message_id,
+            account__connection_type=WhatsAppAccount.ConnectionType.coexisted,
+            direction=WhatsAppMessage.Direction.INBOUND,
+        )
+        .first()
+    )
+    if message is None or message.lead_id is None:
         return
 
-    if instance.direction == WhatsAppMessage.Direction.INBOUND:
+    payload = message.raw_payload if isinstance(message.raw_payload, dict) else {}
+    if payload.get("isHistory"):
+        return
+
+    account = message.account
+    lead = message.lead
+
+    from apps.ai_engagement.services.ai_permissions import (
+        AIPermissionError,
+        AIPermissionService,
+    )
+    from services.channels.hosted_automation_service import enqueue_ai_engagement
+    from services.channels.hosted_whatsapp_service import (
+        get_pipeline_for_account,
+        get_session_settings,
+    )
+
+    pipeline = get_pipeline_for_account(account=account)
+    if pipeline is None or lead.pipeline_id != pipeline.id:
+        return
+    if not get_session_settings(account=account).get("ai_auto_reply"):
+        return
+
+    try:
+        permission = AIPermissionService().evaluate(
+            organization=account.organization,
+            lead=lead,
+        )
+    except AIPermissionError:
+        return
+    if not permission.allowed:
+        return
+
+    # HostedAutomationJob.source_message is one-to-one, so repeated post-save
+    # callbacks (initial save + LID identity repair) remain idempotent.
+    enqueue_ai_engagement(
+        account=account,
+        lead=lead,
+        source_message=message,
+    )
+
+
+@receiver(post_save, sender=WhatsAppMessage, dispatch_uid="hosted_automation_message_state")
+def hosted_message_state(sender, instance, created, update_fields=None, **kwargs):
+    if instance.account.connection_type != WhatsAppAccount.ConnectionType.coexisted:
+        return
+    if instance.direction != WhatsAppMessage.Direction.INBOUND:
+        return
+
+    payload = instance.raw_payload if isinstance(instance.raw_payload, dict) else {}
+    if payload.get("isHistory"):
+        return
+
+    # Conversation-delay bookkeeping belongs only to the first persistence of
+    # a live inbound message. Identity-repair saves must not push follow-ups out
+    # a second time.
+    if created and instance.lead_id:
         def apply_inbound_delay():
             from services.channels.hosted_automation_service import register_hosted_lead_reply
 
+            message = (
+                WhatsAppMessage.objects.select_related("account", "lead")
+                .filter(pk=instance.pk)
+                .first()
+            )
+            if message is None or message.lead_id is None:
+                return
             register_hosted_lead_reply(
-                account=instance.account,
-                lead=instance.lead,
-                at=instance.created_at,
+                account=message.account,
+                lead=message.lead,
+                at=message.created_at,
             )
 
         transaction.on_commit(apply_inbound_delay)
+
+    # Schedule AI after the surrounding gateway transaction commits. This is
+    # intentionally registered even when the initial row had no Lead: a later
+    # identity-repair save in the same transaction can attach the canonical
+    # Lead before this callback re-reads the row.
+    transaction.on_commit(
+        lambda message_id=instance.pk: _queue_hosted_ai_from_persisted_message(
+            message_id
+        )
+    )
