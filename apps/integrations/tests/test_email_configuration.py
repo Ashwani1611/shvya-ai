@@ -8,7 +8,7 @@ from apps.integrations.models import EmailConfiguration
 from apps.integrations.services.email import (
     EmailConfigurationError,
     send_organization_email,
-    test_email_configuration,
+    test_email_configuration as verify_email_configuration,
     validate_smtp_host,
 )
 from apps.organizations.models import Organization
@@ -112,7 +112,7 @@ class EmailConfigurationServiceTests(TestCase):
         backend.open.return_value = True
         email_backend_class.return_value = backend
 
-        test_email_configuration(self.configuration)
+        verify_email_configuration(self.configuration)
 
         public_target.assert_called_once_with("smtp.gmail.com", 587)
         email_backend_class.assert_called_once_with(
