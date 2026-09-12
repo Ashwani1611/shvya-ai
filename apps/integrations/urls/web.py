@@ -1,6 +1,7 @@
 from django.urls import path
 from django.views.generic import RedirectView
 
+from apps.integrations.views.email import email_configuration_view
 from apps.integrations.views.web import (
     connect_hub_view,
     integration_detail_view,
@@ -33,8 +34,7 @@ urlpatterns = [
     ),
     path(
         "connect-hub/email/",
-        integration_detail_view,
-        {"integration_slug": "email"},
+        email_configuration_view,
         name="crm-connect-hub-email",
     ),
     path(
