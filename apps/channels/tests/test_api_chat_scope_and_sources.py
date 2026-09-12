@@ -82,6 +82,37 @@ class WhatsAppApiChatScopeAndSourceTests(TestCase):
         self.assertContains(response, connected_lead.name)
         self.assertNotContains(response, old_lead.name)
 
+    def test_reconnected_api_number_restores_existing_conversation_history(self):
+        old_account = WhatsAppAccount.objects.create(
+            organization=self.org,
+            connection_type=WhatsAppAccount.ConnectionType.API,
+            phone_number_id="meta-number-1",
+            display_phone_number="+919000000151",
+            status=WhatsAppAccount.Status.DISCONNECTED,
+            is_active=False,
+        )
+        lead = self._lead("+919000000152", "whatsapp_api")
+        self._message(old_account, lead, "Message before reconnect")
+
+        replacement = WhatsAppAccount.objects.create(
+            organization=self.org,
+            connection_type=WhatsAppAccount.ConnectionType.API,
+            phone_number_id="meta-number-1",
+            display_phone_number="+919000000151",
+            status=WhatsAppAccount.Status.CONNECTED,
+            is_active=True,
+        )
+
+        conversations = list_api_conversations(organization=self.org)
+        self.assertEqual(list(conversations.values_list("id", flat=True)), [lead.id])
+
+        scoped = list_api_conversations(organization=self.org, account=replacement)
+        self.assertEqual(list(scoped.values_list("id", flat=True)), [lead.id])
+
+        response = self.client.get(reverse("whatsapp-chat-detail", args=[lead.pk]))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Message before reconnect")
+
     def test_connected_numbers_lists_only_connected_api_accounts(self):
         visible = WhatsAppAccount.objects.create(
             organization=self.org,
