@@ -3,6 +3,7 @@ from django.urls import path
 from apps.hosted_automation import queue_views as hosted_queue_views
 from apps.hosted_automation import views as hosted_automation_views
 
+from . import api_account_repair_ui
 from . import api_account_ui
 from . import connection_ui
 from . import embedded_oauth_ui
@@ -46,7 +47,7 @@ urlpatterns = [
     path("connect/hosted/<uuid:account_id>/chats/send-media/", hosted_send_ui.hosted_session_chat_media_send_view, name="whatsapp-hosted-session-chat-media-send"),
 
     path("accounts/<uuid:account_id>/disconnect/", views_flat.whatsapp_disconnect_view, name="whatsapp-disconnect"),
-    path("accounts/<uuid:account_id>/resubscribe/", views_flat.whatsapp_resubscribe_view, name="whatsapp-resubscribe"),
+    path("accounts/<uuid:account_id>/resubscribe/", api_account_repair_ui.whatsapp_resubscribe_repair_view, name="whatsapp-resubscribe"),
     path("send/<uuid:lead_id>/", whatsapp_api_chat_ui.whatsapp_send_message_view, name="whatsapp-send-message"),
     path("campaigns/", views_flat.whatsapp_campaign_list_view, name="whatsapp-campaign-list"),
     path("campaigns/new/", views_flat.whatsapp_campaign_create_view, name="whatsapp-campaign-create"),
