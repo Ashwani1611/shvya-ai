@@ -57,6 +57,24 @@ class GenerationPolicyRegressionTests(SimpleTestCase):
             self.assertFalse(check_grounding(state)['grounding_approved'])
             provider.return_value.generate_text.assert_called_once()
 
+    def test_service_keeps_in_progress_flow_when_admin_edits_configuration(self):
+        context = precise.PreciseEngagementTests()._context('Hello')
+        context.organization['qualification_requirements'] = 'What is your occupation?'
+        requirements = compile_qualification_requirements('[id: city] Which city?')['requirements']
+        lead = SimpleNamespace(id='lead-1', stage=SimpleNamespace(name='New Lead'), attributes={
+            '_shvya_ai_qualification': {'qualification_status': 'in_progress', 'flow_snapshot': requirements}})
+        provider = Mock()
+        provider.generate_text.return_value = AITextResult(json.dumps({
+            'should_engage': True, 'message': requirements[0]['question'], 'file_document_id': None,
+            'crm_actions': [], 'next_requirement_id': requirements[0]['id'],
+            'reason_code': 'QUALIFICATION_NEXT'}), 'test')
+        service = EngagementService(provider=provider)
+        decision = service._langgraph_legacy_engage(organization=SimpleNamespace(id='org-1'), lead=lead, context=context)
+        self.assertEqual(decision.next_requirement_id, requirements[0]['id'])
+        payload = json.loads(provider.generate_text.call_args.kwargs['input_text'])
+        self.assertEqual(payload['qualification_turn']['current_requirement']['stable_id'], 'city')
+        self.assertEqual(provider.generate_text.call_count, 1)
+
     def test_changed_state_uses_a_new_generation_claim(self):
         context = precise.PreciseEngagementTests()._context('Hello')
         context.organization['qualification_requirements'] = ''
@@ -142,3 +160,4 @@ class ChannelQualificationRegressionTests(TestCase):
             self.assertTrue(_persist_engagement_answers(self.lead, decision, inbound.pk))
         self.lead.refresh_from_db()
         self.assertEqual(self.lead.attributes[STATE_KEY]['conversation_mode'], 'paused')
+
