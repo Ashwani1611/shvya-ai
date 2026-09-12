@@ -38,3 +38,15 @@ class LeadCreatedActivitySourceTests(SimpleTestCase):
 
         payload = create.call_args.kwargs
         self.assertEqual(payload["actor_name"], "")
+
+
+    @patch("services.crm_activity_service.LeadActivity.objects.create")
+    def test_meta_ads_creation_is_attributed_to_meta_ads(self, create):
+        record_lead_created(
+            lead=self._lead("meta_ads"),
+            actor=None,
+        )
+
+        payload = create.call_args.kwargs
+        self.assertEqual(payload["actor_name"], "Meta ads")
+        self.assertEqual(payload["details"]["lead_source"], "meta_ads")
