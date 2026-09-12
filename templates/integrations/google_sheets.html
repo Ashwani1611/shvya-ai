@@ -1,0 +1,382 @@
+{% extends "base.html" %}
+
+{% block title %}Google Sheets | Connect Hub | SHVYA AI{% endblock %}
+{% block header %}Google Sheets{% endblock %}
+
+{% block extra_head %}
+{{ block.super }}
+<style>
+    .gs-page {
+        --gs-blue: #0071e3;
+        --gs-green: #34c759;
+        --gs-text: #1d1d1f;
+        --gs-muted: #6e6e73;
+        --gs-line: rgba(15, 23, 42, .08);
+        --gs-soft: #f5f5f7;
+        width: min(100%, 1420px);
+        margin: 0 auto;
+        color: var(--gs-text);
+        font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", Inter, system-ui, sans-serif;
+    }
+    .gs-page * { box-sizing: border-box; }
+    .gs-back {
+        display: inline-flex; align-items: center; gap: 8px; margin-bottom: 18px;
+        color: #515154; font-size: 13px; font-weight: 650; text-decoration: none;
+    }
+    .gs-back:hover { color: var(--gs-blue); }
+    .gs-hero {
+        position: relative; overflow: hidden; min-height: 260px; padding: 44px;
+        border-radius: 34px; border: 1px solid rgba(255,255,255,.78);
+        background:
+            radial-gradient(circle at 86% 10%, rgba(52,199,89,.26), transparent 29%),
+            radial-gradient(circle at 75% 100%, rgba(0,113,227,.18), transparent 40%),
+            linear-gradient(135deg, rgba(255,255,255,.98), rgba(245,250,247,.94));
+        box-shadow: 0 28px 80px rgba(15,23,42,.075);
+    }
+    .gs-hero::after {
+        content: ""; position: absolute; width: 360px; height: 360px; right: -88px; top: -96px;
+        border-radius: 50%; border: 1px solid rgba(255,255,255,.86);
+        background: linear-gradient(145deg, rgba(255,255,255,.72), rgba(52,199,89,.07));
+        box-shadow: inset 0 0 90px rgba(255,255,255,.9); pointer-events: none;
+    }
+    .gs-hero-copy { position: relative; z-index: 1; max-width: 800px; }
+    .gs-eyebrow { display: inline-flex; align-items: center; gap: 9px; margin-bottom: 14px; color: #16883a; font-size: 11px; font-weight: 760; letter-spacing: .12em; text-transform: uppercase; }
+    .gs-eyebrow-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--gs-green); box-shadow: 0 0 0 6px rgba(52,199,89,.11); }
+    .gs-hero h1 { margin: 0; max-width: 760px; font-size: clamp(35px, 4vw, 56px); line-height: 1.01; font-weight: 750; letter-spacing: -.055em; }
+    .gs-hero p { margin: 17px 0 0; max-width: 730px; color: var(--gs-muted); font-size: 16px; line-height: 1.62; letter-spacing: -.014em; }
+    .gs-hero-pills { position: relative; z-index: 1; display: flex; flex-wrap: wrap; gap: 9px; margin-top: 25px; }
+    .gs-pill { display: inline-flex; align-items: center; gap: 8px; padding: 9px 13px; border: 1px solid var(--gs-line); border-radius: 999px; background: rgba(255,255,255,.76); color: #515154; font-size: 12px; font-weight: 650; backdrop-filter: blur(18px); }
+    .gs-pill i { color: var(--gs-blue); font-size: 16px; }
+
+    .gs-shell { display: grid; grid-template-columns: 330px minmax(0, 1fr); gap: 22px; margin-top: 22px; align-items: start; }
+    .gs-card { border: 1px solid rgba(255,255,255,.76); border-radius: 28px; background: rgba(255,255,255,.92); box-shadow: 0 16px 48px rgba(15,23,42,.055); backdrop-filter: blur(24px) saturate(145%); -webkit-backdrop-filter: blur(24px) saturate(145%); }
+    .gs-sidebar { position: sticky; top: 20px; padding: 18px; }
+    .gs-side-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 5px 4px 14px; }
+    .gs-side-head h2 { margin: 0; font-size: 18px; font-weight: 720; letter-spacing: -.03em; }
+    .gs-new-btn { display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; border: 0; border-radius: 50%; background: var(--gs-blue); color: #fff; text-decoration: none; box-shadow: 0 8px 18px rgba(0,113,227,.2); }
+    .gs-integrations { display: grid; gap: 8px; }
+    .gs-integration-item { display: block; padding: 14px; border: 1px solid transparent; border-radius: 18px; color: inherit; text-decoration: none; transition: .18s ease; }
+    .gs-integration-item:hover { background: #f7f7f9; }
+    .gs-integration-item.is-active { background: #f4f8ff; border-color: rgba(0,113,227,.14); box-shadow: inset 0 0 0 1px rgba(255,255,255,.8); }
+    .gs-integration-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+    .gs-integration-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 720; letter-spacing: -.01em; }
+    .gs-dot { width: 8px; height: 8px; border-radius: 50%; background: #c7c7cc; flex: 0 0 auto; }
+    .gs-dot.on { background: var(--gs-green); box-shadow: 0 0 0 4px rgba(52,199,89,.1); }
+    .gs-integration-meta { margin-top: 5px; color: #86868b; font-size: 11px; line-height: 1.45; }
+    .gs-empty-side { padding: 20px 12px; text-align: center; color: var(--gs-muted); font-size: 12px; line-height: 1.5; }
+
+    .gs-main { min-width: 0; display: grid; gap: 22px; }
+    .gs-card-head { padding: 27px 29px 20px; border-bottom: 1px solid var(--gs-line); }
+    .gs-card-head-flex { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }
+    .gs-card-head h2 { margin: 0; font-size: 22px; font-weight: 730; letter-spacing: -.035em; }
+    .gs-card-head p { margin: 7px 0 0; color: var(--gs-muted); font-size: 13px; line-height: 1.55; }
+    .gs-card-body { padding: 27px 29px 29px; }
+    .gs-status { display: inline-flex; align-items: center; gap: 8px; min-height: 34px; padding: 8px 12px; border: 1px solid var(--gs-line); border-radius: 999px; background: #f7f7f8; color: #68686c; font-size: 11px; font-weight: 700; white-space: nowrap; }
+    .gs-status.is-on { background: rgba(52,199,89,.08); color: #16883a; border-color: rgba(52,199,89,.15); }
+
+    .gs-field-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+    .gs-field-full { grid-column: 1 / -1; }
+    .gs-field label { display: block; margin-bottom: 7px; color: #3a3a3c; font-size: 12px; font-weight: 680; }
+    .gs-field input, .gs-field select { width: 100%; min-height: 46px !important; padding: 10px 12px !important; border-radius: 13px !important; font-size: 13px !important; }
+    .gs-field-hint { margin-top: 6px; color: #8e8e93; font-size: 11px; line-height: 1.45; }
+    .gs-toggle-row { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 15px 16px; margin-top: 18px; border: 1px solid var(--gs-line); border-radius: 17px; background: #f8f8fa; }
+    .gs-toggle-copy h4 { margin: 0; font-size: 13px; font-weight: 700; }
+    .gs-toggle-copy p { margin: 4px 0 0; color: var(--gs-muted); font-size: 11px; line-height: 1.45; }
+    .gs-switch { position: relative; width: 44px; height: 26px; flex: 0 0 auto; }
+    .gs-switch input { position: absolute; opacity: 0; pointer-events: none; }
+    .gs-switch span { position: absolute; inset: 0; border-radius: 999px; background: #d1d1d6; cursor: pointer; transition: .18s ease; }
+    .gs-switch span::after { content: ""; position: absolute; width: 22px; height: 22px; left: 2px; top: 2px; border-radius: 50%; background: white; box-shadow: 0 2px 5px rgba(0,0,0,.18); transition: .18s ease; }
+    .gs-switch input:checked + span { background: var(--gs-green); }
+    .gs-switch input:checked + span::after { transform: translateX(18px); }
+
+    .gs-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 22px; }
+    .gs-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 42px; padding: 10px 17px; border-radius: 999px !important; border: 1px solid transparent; font-size: 12px; font-weight: 700; text-decoration: none; cursor: pointer; transition: .18s ease; }
+    .gs-btn:hover { transform: translateY(-1px); }
+    .gs-btn-primary { background: var(--gs-blue); color: #fff; box-shadow: 0 9px 20px rgba(0,113,227,.18); }
+    .gs-btn-soft { background: #f5f5f7; color: #1d1d1f; border-color: rgba(0,0,0,.05); }
+    .gs-btn-danger { background: rgba(255,59,48,.07); color: #c21e16; border-color: rgba(255,59,48,.1); }
+
+    .gs-steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 22px; }
+    .gs-step { padding: 16px; border-radius: 18px; background: #f7f7f9; border: 1px solid rgba(0,0,0,.035); }
+    .gs-step-no { display: inline-flex; align-items: center; justify-content: center; width: 25px; height: 25px; border-radius: 50%; background: #fff; color: var(--gs-blue); font-size: 11px; font-weight: 800; box-shadow: 0 2px 8px rgba(15,23,42,.07); }
+    .gs-step h4 { margin: 10px 0 4px; font-size: 12px; font-weight: 720; }
+    .gs-step p { margin: 0; color: var(--gs-muted); font-size: 11px; line-height: 1.45; }
+
+    .gs-code-wrap { position: relative; overflow: hidden; border-radius: 20px; border: 1px solid rgba(255,255,255,.1); background: #101114; box-shadow: inset 0 1px rgba(255,255,255,.05); }
+    .gs-code-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; border-bottom: 1px solid rgba(255,255,255,.08); color: #b8b8bd; font-size: 11px; }
+    .gs-code-dots { display: flex; gap: 6px; }
+    .gs-code-dots span { width: 9px; height: 9px; border-radius: 50%; background: #48484a; }
+    .gs-code-dots span:first-child { background: #ff5f57; } .gs-code-dots span:nth-child(2) { background: #febc2e; } .gs-code-dots span:nth-child(3) { background: #28c840; }
+    .gs-copy { border: 0; border-radius: 999px; padding: 6px 10px; background: rgba(255,255,255,.1); color: #f5f5f7; font-size: 10px; font-weight: 700; cursor: pointer; }
+    .gs-code { display: block; width: 100%; min-height: 350px; max-height: 470px; margin: 0; padding: 18px; resize: vertical; border: 0 !important; outline: 0 !important; border-radius: 0 !important; background: transparent !important; color: #f5f5f7 !important; font: 11px/1.62 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important; white-space: pre; overflow: auto; }
+    .gs-manifest { margin-top: 12px; }
+    .gs-manifest summary { cursor: pointer; color: #515154; font-size: 11px; font-weight: 700; }
+    .gs-manifest pre { margin: 10px 0 0; padding: 14px; overflow: auto; border-radius: 16px; background: #f5f5f7; color: #3a3a3c; font: 10px/1.55 ui-monospace, monospace; }
+
+    .gs-map-head, .gs-map-row { display: grid; grid-template-columns: minmax(0, 1fr) 34px minmax(0, 1fr); gap: 10px; align-items: center; }
+    .gs-map-head { padding: 0 2px 9px; color: #86868b; font-size: 10px; font-weight: 760; text-transform: uppercase; letter-spacing: .08em; }
+    .gs-map-row { padding: 10px; margin-bottom: 8px; border-radius: 16px; background: #f8f8fa; border: 1px solid rgba(0,0,0,.035); }
+    .gs-map-source { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 680; }
+    .gs-map-arrow { text-align: center; color: #a1a1a6; }
+    .gs-map-row select { width: 100%; min-height: 40px !important; padding: 8px 10px !important; border-radius: 12px !important; font-size: 12px !important; }
+    .gs-no-headers { padding: 24px; border-radius: 18px; background: #f7f7f9; text-align: center; color: var(--gs-muted); font-size: 12px; line-height: 1.55; }
+
+    .gs-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+    .gs-stat { padding: 15px; border-radius: 17px; background: #f7f7f9; }
+    .gs-stat-value { font-size: 22px; font-weight: 750; letter-spacing: -.04em; }
+    .gs-stat-label { margin-top: 3px; color: #86868b; font-size: 10px; font-weight: 650; }
+    .gs-alert { margin-top: 14px; padding: 12px 14px; border-radius: 15px; background: rgba(255,149,0,.08); color: #8b5200; font-size: 11px; line-height: 1.5; }
+    .gs-good { background: rgba(52,199,89,.07); color: #167c35; }
+    .gs-section-rule { height: 1px; margin: 25px 0; background: var(--gs-line); }
+    .gs-danger-zone { display: flex; align-items: center; justify-content: space-between; gap: 18px; }
+    .gs-danger-zone h4 { margin: 0; font-size: 13px; font-weight: 700; }
+    .gs-danger-zone p { margin: 4px 0 0; color: var(--gs-muted); font-size: 11px; line-height: 1.45; }
+
+    @media (max-width: 980px) {
+        .gs-shell { grid-template-columns: 1fr; }
+        .gs-sidebar { position: static; }
+        .gs-integrations { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .gs-steps { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 680px) {
+        .gs-hero { padding: 30px 23px; border-radius: 26px; }
+        .gs-shell { gap: 16px; margin-top: 16px; }
+        .gs-card { border-radius: 23px; }
+        .gs-card-head, .gs-card-body { padding-left: 20px; padding-right: 20px; }
+        .gs-field-grid, .gs-stats, .gs-integrations { grid-template-columns: 1fr; }
+        .gs-card-head-flex, .gs-danger-zone { flex-direction: column; align-items: stretch; }
+        .gs-map-head { display: none; }
+        .gs-map-row { grid-template-columns: 1fr; gap: 7px; }
+        .gs-map-arrow { transform: rotate(90deg); }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="gs-page">
+    <a class="gs-back" href="{% url 'crm-connect-hub' %}"><i class="ti ti-arrow-left"></i> Connect Hub</a>
+
+    <section class="gs-hero">
+        <div class="gs-hero-copy">
+            <div class="gs-eyebrow"><span class="gs-eyebrow-dot"></span> Real-time lead sync</div>
+            <h1>Google Sheets, connected directly to your CRM.</h1>
+            <p>Create leads in Shvya within seconds when rows are added to a spreadsheet. Choose the destination pipeline and stage, map every column to your CRM fields, and add as many sheet integrations as your workflow needs.</p>
+            <div class="gs-hero-pills">
+                <span class="gs-pill"><i class="ti ti-bolt"></i> Event-driven sync</span>
+                <span class="gs-pill"><i class="ti ti-stack-2"></i> Batch-ready for large sheets</span>
+                <span class="gs-pill"><i class="ti ti-currency-rupee"></i> No paid connector required</span>
+                <span class="gs-pill"><i class="ti ti-shield-lock"></i> Per-integration secret</span>
+            </div>
+        </div>
+    </section>
+
+    <div class="gs-shell">
+        <aside class="gs-card gs-sidebar">
+            <div class="gs-side-head">
+                <h2>Your sheets</h2>
+                <a class="gs-new-btn" href="{% url 'crm-connect-hub-google-sheets' %}?new=1" title="Add Google Sheet"><i class="ti ti-plus"></i></a>
+            </div>
+            <div class="gs-integrations">
+                {% for item in integrations %}
+                <a class="gs-integration-item {% if selected and item.id == selected.id and not show_create %}is-active{% endif %}" href="{% url 'crm-connect-hub-google-sheets' %}?integration={{ item.id }}">
+                    <div class="gs-integration-top">
+                        <span class="gs-integration-name">{{ item.name }}</span>
+                        <span class="gs-dot {% if item.is_enabled %}on{% endif %}"></span>
+                    </div>
+                    <div class="gs-integration-meta">{{ item.worksheet_name }} → {{ item.pipeline.name }} / {{ item.stage.name }}</div>
+                    <div class="gs-integration-meta">{% if item.last_synced_at %}Synced {{ item.last_synced_at|timesince }} ago{% elif item.last_registered_at %}Connected · waiting for rows{% else %}Setup required{% endif %}</div>
+                </a>
+                {% empty %}
+                <div class="gs-empty-side">No Google Sheets are connected yet. Add the first one to start real-time lead capture.</div>
+                {% endfor %}
+            </div>
+        </aside>
+
+        <main class="gs-main">
+            {% if show_create %}
+            <section class="gs-card">
+                <div class="gs-card-head">
+                    <h2>Add a Google Sheet</h2>
+                    <p>Create one integration per worksheet. You can add multiple spreadsheets and multiple tabs, each with its own pipeline, stage, and mapping.</p>
+                </div>
+                <div class="gs-card-body">
+                    <form method="post">
+                        {% csrf_token %}
+                        <input type="hidden" name="action" value="create">
+                        <div class="gs-field-grid">
+                            <div class="gs-field">
+                                <label>Integration name</label>
+                                <input name="name" type="text" placeholder="Meta Ads Leads" maxlength="120" required>
+                                <div class="gs-field-hint">A private label shown only inside Shvya.</div>
+                            </div>
+                            <div class="gs-field">
+                                <label>Worksheet / tab name</label>
+                                <input name="worksheet_name" type="text" value="Sheet1" maxlength="180" required>
+                                <div class="gs-field-hint">Enter the exact tab name from Google Sheets.</div>
+                            </div>
+                            <div class="gs-field gs-field-full">
+                                <label>Spreadsheet URL <span style="font-weight:500;color:#8e8e93">(optional)</span></label>
+                                <input name="spreadsheet_url" type="text" placeholder="https://docs.google.com/spreadsheets/d/..."><div class="gs-field-hint">This helps identify the sheet in Shvya. The setup script also confirms the actual spreadsheet automatically.</div>
+                            </div>
+                            <div class="gs-field">
+                                <label>Pipeline</label>
+                                <select name="pipeline_id" class="gs-pipeline-select" data-stage-target="gs-create-stage" required>
+                                    <option value="">Select pipeline</option>
+                                    {% for pipeline in pipelines %}<option value="{{ pipeline.id }}">{{ pipeline.name }}</option>{% endfor %}
+                                </select>
+                            </div>
+                            <div class="gs-field">
+                                <label>Stage</label>
+                                <select name="stage_id" id="gs-create-stage" required>
+                                    <option value="">Select stage</option>
+                                    {% for pipeline in pipelines %}{% for stage in pipeline.stages.all %}<option value="{{ stage.id }}" data-pipeline="{{ pipeline.id }}">{{ pipeline.name }} · {{ stage.name }}</option>{% endfor %}{% endfor %}
+                                </select>
+                            </div>
+                        </div>
+                        <div class="gs-toggle-row">
+                            <div class="gs-toggle-copy"><h4>Import existing rows</h4><p>After mapping is activated, the 5-minute reconciliation trigger will import rows already present in the sheet.</p></div>
+                            <label class="gs-switch"><input type="checkbox" name="import_existing" checked><span></span></label>
+                        </div>
+                        <div class="gs-actions">
+                            <button class="gs-btn gs-btn-primary" type="submit"><i class="ti ti-arrow-right"></i> Create integration</button>
+                            {% if integrations %}<a class="gs-btn gs-btn-soft" href="{% url 'crm-connect-hub-google-sheets' %}">Cancel</a>{% endif %}
+                        </div>
+                    </form>
+                </div>
+            </section>
+            {% elif selected %}
+            <section class="gs-card">
+                <div class="gs-card-head">
+                    <div class="gs-card-head-flex">
+                        <div><h2>{{ selected.name }}</h2><p>{{ selected.worksheet_name }} → {{ selected.pipeline.name }} / {{ selected.stage.name }}</p></div>
+                        <span class="gs-status {% if selected.is_enabled %}is-on{% endif %}"><span class="gs-dot {% if selected.is_enabled %}on{% endif %}"></span>{% if selected.is_enabled %}Live sync{% else %}Paused{% endif %}</span>
+                    </div>
+                </div>
+                <div class="gs-card-body">
+                    <div class="gs-stats">
+                        <div class="gs-stat"><div class="gs-stat-value">{{ selected.created_count }}</div><div class="gs-stat-label">LEADS CREATED</div></div>
+                        <div class="gs-stat"><div class="gs-stat-value">{{ selected.updated_count }}</div><div class="gs-stat-label">LEADS UPDATED</div></div>
+                        <div class="gs-stat"><div class="gs-stat-value">{{ selected.skipped_count }}</div><div class="gs-stat-label">ROWS SKIPPED</div></div>
+                        <div class="gs-stat"><div class="gs-stat-value">{{ selected.error_count }}</div><div class="gs-stat-label">ROW ERRORS</div></div>
+                    </div>
+                    {% if selected.last_error %}<div class="gs-alert"><strong>Last sync issue:</strong> {{ selected.last_error }}</div>{% elif selected.last_synced_at %}<div class="gs-alert gs-good"><strong>Healthy:</strong> last CRM sync completed {{ selected.last_synced_at|timesince }} ago.</div>{% endif %}
+                </div>
+            </section>
+
+            <section class="gs-card">
+                <div class="gs-card-head"><h2>1. Sheet destination</h2><p>Choose where every new spreadsheet lead should enter Shvya.</p></div>
+                <div class="gs-card-body">
+                    <form method="post">
+                        {% csrf_token %}
+                        <input type="hidden" name="action" value="update"><input type="hidden" name="integration_id" value="{{ selected.id }}">
+                        <div class="gs-field-grid">
+                            <div class="gs-field"><label>Integration name</label><input name="name" type="text" value="{{ selected.name }}" maxlength="120" required></div>
+                            <div class="gs-field"><label>Worksheet / tab name</label><input name="worksheet_name" type="text" value="{{ selected.worksheet_name }}" maxlength="180" required></div>
+                            <div class="gs-field gs-field-full"><label>Spreadsheet URL</label><input name="spreadsheet_url" type="text" value="{{ selected.spreadsheet_url }}" placeholder="https://docs.google.com/spreadsheets/d/..."></div>
+                            <div class="gs-field"><label>Pipeline</label><select name="pipeline_id" class="gs-pipeline-select" data-stage-target="gs-edit-stage" required>{% for pipeline in pipelines %}<option value="{{ pipeline.id }}" {% if pipeline.id == selected.pipeline_id %}selected{% endif %}>{{ pipeline.name }}</option>{% endfor %}</select></div>
+                            <div class="gs-field"><label>Stage</label><select name="stage_id" id="gs-edit-stage" required>{% for pipeline in pipelines %}{% for stage in pipeline.stages.all %}<option value="{{ stage.id }}" data-pipeline="{{ pipeline.id }}" {% if stage.id == selected.stage_id %}selected{% endif %}>{{ pipeline.name }} · {{ stage.name }}</option>{% endfor %}{% endfor %}</select></div>
+                        </div>
+                        <div class="gs-toggle-row"><div class="gs-toggle-copy"><h4>Import existing rows</h4><p>Keep enabled to backfill rows that existed before real-time sync was activated.</p></div><label class="gs-switch"><input type="checkbox" name="import_existing" {% if selected.import_existing %}checked{% endif %}><span></span></label></div>
+                        <div class="gs-actions"><button class="gs-btn gs-btn-primary" type="submit">Save destination</button></div>
+                    </form>
+                </div>
+            </section>
+
+            <section class="gs-card">
+                <div class="gs-card-head"><h2>2. Install the real-time sync</h2><p>No OAuth2 library, Zapier, Make, or paid connector is required. Install this bound Apps Script once in the spreadsheet.</p></div>
+                <div class="gs-card-body">
+                    <div class="gs-steps">
+                        <div class="gs-step"><span class="gs-step-no">1</span><h4>Open Apps Script</h4><p>In the target Google Sheet, open Extensions → Apps Script.</p></div>
+                        <div class="gs-step"><span class="gs-step-no">2</span><h4>Paste and save</h4><p>Replace Code.gs with the generated code below and save the project.</p></div>
+                        <div class="gs-step"><span class="gs-step-no">3</span><h4>Run setup once</h4><p>Run the function starting with <strong>setupShvyaSync_</strong> and approve Google permissions.</p></div>
+                    </div>
+                    <div class="gs-code-wrap">
+                        <div class="gs-code-head"><div class="gs-code-dots"><span></span><span></span><span></span></div><span>Code.gs · generated securely for this integration</span><button class="gs-copy" type="button" data-copy-target="gs-apps-script">Copy code</button></div>
+                        <textarea id="gs-apps-script" class="gs-code" readonly spellcheck="false">{{ apps_script }}</textarea>
+                    </div>
+                    <details class="gs-manifest"><summary>Optional explicit appsscript.json manifest</summary><pre id="gs-manifest-code">{{ manifest_json }}</pre></details>
+                    <div class="gs-alert"><strong>After running setup:</strong> return here and refresh. Shvya will show the column headers discovered from row 1. A 5-minute reconciliation trigger is also installed to recover newly appended rows if an edit event is ever missed.</div>
+                </div>
+            </section>
+
+            <section class="gs-card">
+                <div class="gs-card-head"><h2>3. Map columns and activate</h2><p>Phone is required. Existing leads with the same phone number are updated instead of duplicated.</p></div>
+                <div class="gs-card-body">
+                    {% if mapping_rows %}
+                    <form method="post">
+                        {% csrf_token %}<input type="hidden" name="action" value="save_mapping"><input type="hidden" name="integration_id" value="{{ selected.id }}">
+                        <div class="gs-map-head"><span>Google Sheet column</span><span></span><span>Shvya field</span></div>
+                        {% for row in mapping_rows %}
+                        <div class="gs-map-row"><div class="gs-map-source" title="{{ row.header }}">{{ row.header }}</div><div class="gs-map-arrow"><i class="ti ti-arrow-right"></i></div><select name="map_{{ forloop.counter0 }}" data-selected="{{ row.selected }}"><option value="">Ignore this column</option><optgroup label="Lead fields"><option value="core:name">Name</option><option value="core:phone">Phone (required)</option><option value="core:email">Email</option><option value="core:notes">Notes</option></optgroup>{% if attributes %}<optgroup label="Attributes">{% for attribute in attributes %}<option value="attribute:{{ attribute.id }}">{{ attribute.name }}</option>{% endfor %}</optgroup>{% endif %}</select></div>
+                        {% endfor %}
+                        <div class="gs-toggle-row"><div class="gs-toggle-copy"><h4>Enable real-time sync</h4><p>New rows are queued instantly and processed by Shvya workers. Bulk pastes are automatically split into safe batches.</p></div><label class="gs-switch"><input type="checkbox" name="is_enabled" {% if selected.is_enabled %}checked{% endif %}><span></span></label></div>
+                        <div class="gs-actions"><button class="gs-btn gs-btn-primary" type="submit"><i class="ti ti-check"></i> Save mapping</button></div>
+                    </form>
+                    {% else %}
+                    <div class="gs-no-headers"><i class="ti ti-table-import" style="font-size:28px;color:#34c759"></i><br><strong style="color:#1d1d1f">Waiting for sheet headers.</strong><br>Install the Apps Script above and run its setup function. It will register row-1 column names here automatically.</div>
+                    {% endif %}
+                </div>
+            </section>
+
+            <section class="gs-card">
+                <div class="gs-card-head"><h2>Connection controls</h2><p>Pause syncing without removing the integration, rotate its secret, or remove the connection completely.</p></div>
+                <div class="gs-card-body">
+                    <div class="gs-danger-zone"><div><h4>{% if selected.is_enabled %}Pause incoming leads{% else %}Resume incoming leads{% endif %}</h4><p>The Apps Script can remain installed while the connection is paused.</p></div><form method="post">{% csrf_token %}<input type="hidden" name="action" value="toggle"><input type="hidden" name="integration_id" value="{{ selected.id }}"><button class="gs-btn gs-btn-soft" type="submit">{% if selected.is_enabled %}Pause sync{% else %}Enable sync{% endif %}</button></form></div>
+                    <div class="gs-section-rule"></div>
+                    <div class="gs-danger-zone"><div><h4>Rotate sync secret</h4><p>Immediately invalidates the current Apps Script secret and pauses sync until the new script is installed.</p></div><form method="post" onsubmit="return confirm('Rotate the sync secret? The current Apps Script will stop working until replaced.');">{% csrf_token %}<input type="hidden" name="action" value="rotate_secret"><input type="hidden" name="integration_id" value="{{ selected.id }}"><button class="gs-btn gs-btn-soft" type="submit">Rotate secret</button></form></div>
+                    <div class="gs-section-rule"></div>
+                    <div class="gs-danger-zone"><div><h4>Remove integration</h4><p>Stops Shvya from accepting events for this integration. Existing CRM leads are kept.</p></div><form method="post" onsubmit="return confirm('Remove this Google Sheets integration?');">{% csrf_token %}<input type="hidden" name="action" value="delete"><input type="hidden" name="integration_id" value="{{ selected.id }}"><button class="gs-btn gs-btn-danger" type="submit">Remove</button></form></div>
+                </div>
+            </section>
+            {% endif %}
+        </main>
+    </div>
+</div>
+
+<script>
+(function () {
+    function filterStages(pipelineSelect) {
+        const stage = document.getElementById(pipelineSelect.dataset.stageTarget || '');
+        if (!stage) return;
+        const pipelineId = pipelineSelect.value;
+        let firstVisible = null;
+        Array.from(stage.options).forEach(function (option) {
+            if (!option.dataset.pipeline) return;
+            const visible = option.dataset.pipeline === pipelineId;
+            option.hidden = !visible;
+            option.disabled = !visible;
+            if (visible && !firstVisible) firstVisible = option;
+        });
+        const selected = stage.options[stage.selectedIndex];
+        if (selected && selected.dataset.pipeline && selected.dataset.pipeline !== pipelineId) {
+            stage.value = firstVisible ? firstVisible.value : '';
+        }
+    }
+
+    document.querySelectorAll('.gs-pipeline-select').forEach(function (select) {
+        filterStages(select);
+        select.addEventListener('change', function () { filterStages(select); });
+    });
+
+    document.querySelectorAll('.gs-map-row select[data-selected]').forEach(function (select) {
+        if (select.dataset.selected) select.value = select.dataset.selected;
+    });
+
+    document.querySelectorAll('[data-copy-target]').forEach(function (button) {
+        button.addEventListener('click', async function () {
+            const target = document.getElementById(button.dataset.copyTarget);
+            if (!target) return;
+            const text = typeof target.value === 'string' ? target.value : target.textContent;
+            try {
+                await navigator.clipboard.writeText(text);
+                const old = button.textContent;
+                button.textContent = 'Copied';
+                setTimeout(function () { button.textContent = old; }, 1600);
+            } catch (err) {
+                if (target.select) { target.select(); document.execCommand('copy'); }
+            }
+        });
+    });
+})();
+</script>
+{% endblock %}
