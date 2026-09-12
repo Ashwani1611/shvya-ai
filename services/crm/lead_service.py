@@ -17,7 +17,11 @@ class DuplicateLeadError(Exception):
 
 
 def _schedule_new_lead_welcome(lead):
-    """Queue welcome orchestration only after the lead transaction commits."""
+    """Queue welcome orchestration only for New Lead(s), after commit."""
+    stage_name = str(getattr(lead.stage, "name", "") or "").strip().casefold()
+    if stage_name not in {"new lead", "new leads"}:
+        return
+
     from apps.channels.welcome_tasks import send_lead_welcome_task
 
     lead_id = str(lead.id)
