@@ -45,13 +45,18 @@ class AIPermissionService:
     """
     Central evaluator for the SHVYA AI control hierarchy.
 
-    Meta/API conversations use the normal pipeline, stage, and lead controls.
-    Hosted Account inbound conversations intentionally use the linked pipeline's
-    AI switch as the conversation-level master switch: stage/lead toggles must
-    not make an active Hosted conversation silently stop after qualification or
-    a CRM stage transition. In every case, the inbound WhatsApp account must
-    still be the number linked to the lead's current pipeline.
+    Active WhatsApp inbound conversations use the linked pipeline's AI switch as
+    the conversation-level master switch for both Connect API and Hosted
+    accounts. Stage transitions and stale lead-level toggles must not silently
+    stop subsequent AI replies after qualification or CRM movement. In every
+    case, the inbound WhatsApp account must still be the number linked to the
+    lead's current pipeline.
+
+    Outside an active WhatsApp inbound conversation, the existing granular
+    pipeline, stage, and lead controls remain in effect.
     """
+
+    WHATSAPP_AUTOMATION_CONNECTION_TYPES = {"api", "hosted"}
 
     def __init__(
         self,
@@ -150,8 +155,8 @@ class AIPermissionService:
                 lead=lead,
             )
 
-        # Pipeline.ai_enabled is also the Hosted Account AI Auto-Reply switch,
-        # so it remains the master on/off control for Hosted conversations.
+        # Pipeline.ai_enabled is the conversation-level WhatsApp automation
+        # master switch for both Connect API and Hosted accounts.
         if not getattr(lead.pipeline, "ai_enabled", True):
             return self._decision(
                 allowed=False,
@@ -165,16 +170,20 @@ class AIPermissionService:
             lead=lead,
         )
         inbound_account = getattr(latest_inbound, "account", None)
-        is_hosted_inbound = (
-            getattr(inbound_account, "connection_type", "") == "hosted"
+        inbound_connection_type = str(
+            getattr(inbound_account, "connection_type", "") or ""
+        ).strip().casefold()
+        is_whatsapp_automation_inbound = (
+            latest_inbound is not None
+            and inbound_connection_type in self.WHATSAPP_AUTOMATION_CONNECTION_TYPES
         )
 
-        # Hosted Account AI is conversation-level automation. Once a customer
-        # is messaging the correctly linked Hosted number, stage transitions or
-        # a stale lead-level toggle must not stop future inbound replies. The
-        # account/pipeline AI switch above remains authoritative. Meta/API keeps
-        # the existing granular stage + lead controls.
-        if not is_hosted_inbound:
+        # Once a customer is actively messaging the correctly linked WhatsApp
+        # number, stage transitions or stale lead-level state must not stop
+        # later inbound replies. The pipeline/account AI switch above remains
+        # authoritative. Granular stage/lead controls still apply when there is
+        # no active WhatsApp inbound conversation.
+        if not is_whatsapp_automation_inbound:
             if lead.stage_id and not lead.stage.ai_on:
                 return self._decision(
                     allowed=False,
