@@ -13,7 +13,6 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from django.conf import settings
 from django.core.cache import cache
-from django.core.mail import EmailMultiAlternatives
 from django.db import transaction
 from django.db.models import Max
 from django.utils import timezone
@@ -30,6 +29,7 @@ from apps.followups.models import (
     FollowupStep,
     LeadSequenceState,
 )
+from apps.integrations.services.email import send_organization_email
 from services.channels.template_service import render_template_body
 
 
@@ -1113,18 +1113,6 @@ def _send_email_step(state, step, execution):
     if not lead.email:
         _mark_skipped_and_advance(state, execution, "Lead has no email address.")
         return
-    if not getattr(settings, "FOLLOWUP_EMAIL_DELIVERY_ENABLED", False):
-        execution.status = FollowupExecution.Status.BLOCKED
-        execution.error = (
-            "Email transport is prepared but disabled until organization "
-            "DNS/sender configuration is ready."
-        )
-        execution.finished_at = timezone.now()
-        execution.save(update_fields=["status", "error", "finished_at", "updated_at"])
-        state.status = LeadSequenceState.Status.PAUSED
-        state.upcoming_send_at = None
-        state.save(update_fields=["status", "upcoming_send_at", "updated_at"])
-        return
 
     subject = _render_text(
         step.email_subject,
@@ -1136,13 +1124,12 @@ def _send_email_step(state, step, execution):
         lead,
         user=state.sequence.created_by,
     )
-    email = EmailMultiAlternatives(
+    send_organization_email(
+        organization=state.organization,
+        to=lead.email,
         subject=subject,
-        body=body,
-        from_email=settings.DEFAULT_FROM_EMAIL,
-        to=[lead.email],
+        text_body=body,
     )
-    email.send(fail_silently=False)
     now = timezone.now()
     execution.status = FollowupExecution.Status.SENT
     execution.finished_at = now
