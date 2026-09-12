@@ -30,8 +30,49 @@ def missing_consumers(queues, registered):
     return missing
 
 
+def _execution_state(*, message):
+    """Classify one inbound AI turn without exposing message or lead content."""
+    from apps.channels.models import WhatsAppMessage
+
+    payload = message.raw_payload if isinstance(message.raw_payload, dict) else {}
+    processed = bool((payload.get("shvya_ai_processing") or {}).get("processed"))
+    ai_outbound = WhatsAppMessage.objects.filter(
+        organization=message.organization,
+        lead=message.lead,
+        direction=WhatsAppMessage.Direction.OUTBOUND,
+        raw_payload__shvya_ai__source_inbound_message_id=str(message.id),
+    ).order_by("-created_at", "-id").first()
+
+    if ai_outbound is not None:
+        if ai_outbound.status == WhatsAppMessage.Status.FAILED:
+            return "ai_outbound_failed"
+        if ai_outbound.status == WhatsAppMessage.Status.QUEUED:
+            return "ai_outbound_still_queued"
+        return "ai_outbound_created"
+    if processed:
+        # A processed source with no linked outbound is the explicit
+        # should_engage=False path; engaging sends create the outbound in the
+        # same transaction as this marker.
+        return "processed_without_outbound_no_engagement"
+    return "unprocessed_without_outbound"
+
+
+def _credit_bucket(available):
+    try:
+        available = int(available)
+    except (TypeError, ValueError):
+        available = 0
+    if available <= 0:
+        return "credits_0"
+    if available < 5:
+        return "credits_1_to_4"
+    if available < 20:
+        return "credits_5_to_19"
+    return "credits_20_plus"
+
+
 def recent_api_ai_blockers(*, minutes=90, limit=25):
-    """Return aggregate blocker counts without exposing lead/message content."""
+    """Return aggregate blocker/execution counts without customer data."""
     from apps.ai_engagement.services.diagnostics import diagnose_engagement
     from apps.channels.models import WhatsAppAccount, WhatsAppMessage
 
@@ -61,6 +102,8 @@ def recent_api_ai_blockers(*, minutes=90, limit=25):
             blockers.update(str(item) for item in report_blockers)
         else:
             blockers["ready"] += 1
+        blockers[_execution_state(message=message)] += 1
+        blockers[_credit_bucket(report.get("available_ai_credits"))] += 1
         if inspected >= limit:
             break
 
