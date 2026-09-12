@@ -43,8 +43,9 @@ def save_settings(*, organization, hot_lead_stage, lead_won_stage, lead_lost_sta
 def get_overview_metrics(*, organization, pipeline_ids=None, date_from=None, date_to=None):
     """Top-line metrics used by the Overview cards.
 
-    Existing call metrics are kept for compatibility while the Insights page
-    also receives the messaging metrics that power the Apple-style overview.
+    Existing call metrics remain available for compatibility. Date filtering is
+    optional so callers outside the Insights page can continue requesting the
+    all-time overview exactly as before.
     """
     from apps.channels.models import WhatsAppAccount, WhatsAppMessage
     from apps.followups.models import FollowupExecution, FollowupStep
@@ -62,11 +63,11 @@ def get_overview_metrics(*, organization, pipeline_ids=None, date_from=None, dat
         calls = calls.filter(lead__pipeline_id__in=pipeline_ids)
     call_totals = calls.aggregate(total_seconds=Sum("duration_seconds"), calls_done=Count("id"))
 
-    messages = WhatsAppMessage.objects.filter(
-        organization=organization,
-        created_at__date__gte=date_from,
-        created_at__date__lte=date_to,
-    )
+    messages = WhatsAppMessage.objects.filter(organization=organization)
+    if date_from:
+        messages = messages.filter(created_at__date__gte=date_from)
+    if date_to:
+        messages = messages.filter(created_at__date__lte=date_to)
     if pipeline_ids:
         messages = messages.filter(lead__pipeline_id__in=pipeline_ids)
 
@@ -90,9 +91,11 @@ def get_overview_metrics(*, organization, pipeline_ids=None, date_from=None, dat
     executions = FollowupExecution.objects.filter(
         organization=organization,
         status=FollowupExecution.Status.SENT,
-        updated_at__date__gte=date_from,
-        updated_at__date__lte=date_to,
     )
+    if date_from:
+        executions = executions.filter(updated_at__date__gte=date_from)
+    if date_to:
+        executions = executions.filter(updated_at__date__lte=date_to)
     if pipeline_ids:
         executions = executions.filter(lead__pipeline_id__in=pipeline_ids)
 
