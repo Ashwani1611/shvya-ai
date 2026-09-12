@@ -142,9 +142,9 @@ class NewLeadWelcomeTests(TestCase):
         self.assertFalse(WhatsAppMessage.objects.filter(lead=lead).exists())
 
     @patch("apps.channels.hosted_send_tasks.send_hosted_whatsapp_message_task.delay")
-    @patch("services.channels.welcome_message_service.OpenAIProvider.generate_text")
+    @patch("services.channels.welcome_message_service.OpenAIProvider")
     def test_hosted_welcome_is_generated_from_organization_information(
-        self, generate_text, hosted_delay
+        self, provider_class, hosted_delay
     ):
         OrgInfo.objects.update_or_create(
             organization=self.org,
@@ -163,8 +163,9 @@ class NewLeadWelcomeTests(TestCase):
             status=WhatsAppAccount.Status.CONNECTED,
             is_active=True,
         )
-        generate_text.return_value = AITextResult(
-            text="Hi Jane, welcome to Welcome Org. How can we help you today?",
+        provider = provider_class.return_value
+        provider.generate_text.return_value = AITextResult(
+            text="Hi Jane, welcome to Welcome Org. We're glad to connect with you.",
             model="test-model",
         )
         lead = self._lead()
@@ -178,9 +179,9 @@ class NewLeadWelcomeTests(TestCase):
             message.raw_payload["shvya_welcome"]["source"],
             "organization_information_ai",
         )
-        self.assertEqual(message.body, generate_text.return_value.text)
+        self.assertEqual(message.body, provider.generate_text.return_value.text)
         hosted_delay.assert_called_once_with(str(message.id))
-        prompt_input = generate_text.call_args.kwargs["input_text"]
+        prompt_input = provider.generate_text.call_args.kwargs["input_text"]
         self.assertIn("We help businesses automate customer engagement.", prompt_input)
         self.assertIn("Keep messages concise and professional.", prompt_input)
 
@@ -196,6 +197,19 @@ class NewLeadWelcomeTests(TestCase):
             )
 
         delay.assert_called_once_with(str(lead.id))
+
+    @patch("apps.channels.welcome_tasks.send_lead_welcome_task.delay")
+    def test_central_create_lead_does_not_schedule_outside_new_leads(self, delay):
+        with self.captureOnCommitCallbacks(execute=True):
+            create_lead(
+                organization=self.org,
+                pipeline=self.pipeline,
+                stage=self.qualified_stage,
+                name="Qualified Lead",
+                phone="+919000000100",
+            )
+
+        delay.assert_not_called()
 
 
 class WelcomeTemplateSettingsTests(TestCase):
