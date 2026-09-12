@@ -2,12 +2,12 @@ import copy
 import json
 from datetime import datetime, timedelta
 from datetime import timezone as dt_timezone
+from unittest.mock import patch
 
 from django.contrib.sessions.backends.db import SessionStore
-from django.core import mail
 from django.core.exceptions import ValidationError
 from django.db import transaction
-from django.test import Client, TestCase, override_settings
+from django.test import Client, TestCase
 from django.urls import reverse
 from django.utils import timezone
 
@@ -388,8 +388,8 @@ class SmartTriggerTests(TestCase):
             WhatsAppMessage.objects.filter(direction="outbound").count(), 1
         )
 
-    @override_settings(FOLLOWUP_EMAIL_DELIVERY_ENABLED=True)
-    def test_email_has_durable_claim_and_no_duplicate(self):
+    @patch("services.triggers.actions.send_organization_email")
+    def test_email_has_durable_claim_and_no_duplicate(self, send_email):
         rule = self.rule(
             action_type="email",
             action={"subject": "Hello {{lead_name}}", "body": "Welcome"},
@@ -398,8 +398,15 @@ class SmartTriggerTests(TestCase):
         self.assertEqual(run.status, "email_ready")
         deliver_email(run.id)
         deliver_email(run.id)
-        self.assertEqual(len(mail.outbox), 1)
-        self.assertIn(str(run.id), mail.outbox[0].extra_headers["Message-ID"])
+        send_email.assert_called_once_with(
+            organization=self.org,
+            to="lead@example.com",
+            subject="Hello Test Lead",
+            text_body="Welcome",
+            headers={"Message-ID": f"<smart-trigger-{run.id}@shvya-ai.com>"},
+        )
+        run.refresh_from_db()
+        self.assertEqual(run.status, "completed")
 
     def test_disabled_rule_cancels_pending_action(self):
         rule = self.rule()
