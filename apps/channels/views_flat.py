@@ -531,8 +531,12 @@ def _handle_webhook_delivery(request):
                 is_active=True,
             ).select_related("organization")
             if phone_number_id:
+                # Message webhooks identify the receiving number directly.
+                # Do not also require the WABA entry id: older embedded-signup
+                # records can have a stale/missing WABA while the number ID is
+                # still valid and is sufficient to route the conversation.
                 accounts = accounts.filter(phone_number_id=phone_number_id)
-            if entry.get("id"):
+            elif entry.get("id"):
                 accounts = accounts.filter(waba_id=str(entry["id"]))
             if not phone_number_id and not entry.get("id"):
                 accounts = accounts.none()
