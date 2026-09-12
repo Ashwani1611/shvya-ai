@@ -2,9 +2,12 @@
 
 The primary template service intentionally remains the source of truth for
 validation, media uploads, auditing, and remote synchronization. This module
-adds two compatibility fixes required by Meta's message-template API:
+adds compatibility fixes required by Meta's message-template API:
 
 * BODY variables must include sample values when a template is created.
+* Templates that SHVYA rewrites to numbered variables explicitly declare the
+  POSITIONAL parameter format so Meta interprets ``{{1}}``, ``{{2}}`` etc.
+  consistently.
 * Meta may return ``rejected_reason=NONE`` for non-rejected templates; that
   sentinel is not an actual rejection reason and must not be shown to users.
 """
@@ -49,6 +52,24 @@ def _add_body_examples(*, template, payload):
         example["body_text"] = [values]
         component["example"] = example
         break
+    return payload
+
+
+def _add_parameter_format(payload):
+    """Tell Meta explicitly when the payload contains positional variables.
+
+    SHVYA stores friendly CRM placeholders locally but ``build_meta_body``
+    converts them to Meta's numbered ``{{1}}``/``{{2}}`` representation before
+    submission. Meta defaults to positional parameters, however explicitly
+    declaring the format avoids ambiguous/invalid-parameter responses on newer
+    template APIs and keeps the stored payload aligned with Meta's schema.
+    """
+    for component in payload.get("components") or []:
+        if str(component.get("type") or "").upper() != "BODY":
+            continue
+        if base.META_VAR_RE.search(str(component.get("text") or "")):
+            payload["parameter_format"] = "POSITIONAL"
+            break
     return payload
 
 
@@ -105,6 +126,7 @@ def submit_template(*, template, attachment_file=None, carousel_files=None):
         carousel_config=carousel_config,
     )
     payload = _add_body_examples(template=template, payload=payload)
+    payload = _add_parameter_format(payload)
 
     # Persist the exact payload shape that is about to be sent so diagnostics
     # and the editor state match what Meta received.
