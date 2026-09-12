@@ -113,7 +113,7 @@ class WhatsAppRoutingDiagnosticsTests(TestCase):
         self.assertFalse(AICreditWallet.objects.filter(organization=self.org).exists())
         self.assertNotIn("test-key-never-sent", json.dumps(report))
 
-    def test_hosted_diagnostics_ignore_stage_toggle_but_show_missing_job(self):
+    def test_hosted_diagnostics_respect_stage_toggle_and_show_missing_job(self):
         self.account.connection_type = "hosted"
         self.account.save(update_fields=["connection_type"])
         lead = self._lead()
@@ -122,7 +122,7 @@ class WhatsAppRoutingDiagnosticsTests(TestCase):
         self.stage.save(update_fields=["ai_on"])
         lead.refresh_from_db()
         report = diagnose_engagement(lead=lead)
-        self.assertNotIn("stage_ai_disabled", report["blockers"])
+        self.assertIn("stage_ai_disabled", report["blockers"])
         self.assertIn(
             "no_hosted_ai_job_check_live_inbound_and_lead_mapping", report["blockers"]
         )
