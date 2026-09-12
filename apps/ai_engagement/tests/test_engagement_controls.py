@@ -118,6 +118,31 @@ class AIEngagementControlTests(TestCase):
         self.assertFalse(decision.allowed)
         self.assertEqual(decision.reason, "pipeline_whatsapp_account_mismatch")
 
+    def test_api_inbound_uses_pipeline_switch_as_master_control(self):
+        self._inbound()
+
+        self.new_lead.ai_on = False
+        self.new_lead.save(update_fields=["ai_on", "updated_at"])
+        self.lead.ai_enabled = False
+        self.lead.save(update_fields=["ai_enabled", "updated_at"])
+        self.lead.refresh_from_db()
+
+        decision = AIPermissionService().evaluate(
+            organization=self.organization,
+            lead=self.lead,
+        )
+        self.assertTrue(decision.allowed)
+
+        self.pipeline.ai_enabled = False
+        self.pipeline.save(update_fields=["ai_enabled", "updated_at"])
+        self.lead.refresh_from_db()
+        decision = AIPermissionService().evaluate(
+            organization=self.organization,
+            lead=self.lead,
+        )
+        self.assertFalse(decision.allowed)
+        self.assertEqual(decision.reason, "pipeline_ai_disabled")
+
     def test_hosted_inbound_uses_pipeline_switch_as_master_control(self):
         self.account.connection_type = "hosted"
         self.account.save(update_fields=["connection_type", "updated_at"])
@@ -145,10 +170,12 @@ class AIEngagementControlTests(TestCase):
         self.assertFalse(decision.allowed)
         self.assertEqual(decision.reason, "pipeline_ai_disabled")
 
-    def test_queued_ai_message_is_cancelled_when_current_stage_ai_is_off(self):
+    def test_queued_api_ai_message_survives_stage_and_lead_ai_changes(self):
         self._inbound()
         self.new_lead.ai_on = False
         self.new_lead.save(update_fields=["ai_on", "updated_at"])
+        self.lead.ai_enabled = False
+        self.lead.save(update_fields=["ai_enabled", "updated_at"])
         message = WhatsAppMessage.objects.create(
             organization=self.organization,
             account=self.account,
@@ -156,13 +183,13 @@ class AIEngagementControlTests(TestCase):
             direction=WhatsAppMessage.Direction.OUTBOUND,
             from_number=self.account.display_phone_number,
             to_number=self.lead.phone,
-            body="This must not send",
+            body="This should still send",
             status=WhatsAppMessage.Status.QUEUED,
             raw_payload={"shvya_ai": {"source_inbound_message_id": "source"}},
         )
         message.refresh_from_db()
-        self.assertEqual(message.status, WhatsAppMessage.Status.FAILED)
-        self.assertIn("stage_ai_disabled", message.error)
+        self.assertEqual(message.status, WhatsAppMessage.Status.QUEUED)
+        self.assertEqual(message.error, "")
 
     def test_system_stages_remain_canonically_named_and_active(self):
         self.new_lead.name = "Incoming"
