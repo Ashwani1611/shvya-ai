@@ -15,6 +15,7 @@ from . import hosted_ui
 from . import template_action_ui
 from . import template_ui
 from . import views_flat
+from . import welcome_ui
 from . import whatsapp_api_chat_ui
 from . import whatsapp_template_send_ui
 from . import whatsapp_ui
@@ -23,6 +24,7 @@ urlpatterns = [
     path("leads/<uuid:lead_id>/ai-status/", ai_reply_status_ui.ai_reply_status, name="whatsapp-ai-reply-status"),
     path("accounts/", api_account_ui.whatsapp_account_list_view, name="whatsapp-accounts"),
     path("accounts/<uuid:account_id>/automation-settings/", views_flat.whatsapp_account_automation_settings_view, name="whatsapp-account-automation-settings"),
+    path("accounts/<uuid:account_id>/welcome-template/", welcome_ui.whatsapp_welcome_template_view, name="whatsapp-welcome-template"),
     path("connect/", views_flat.whatsapp_connect_choice_view, name="whatsapp-connect-choice"),
     path("connect/api/", connection_ui.whatsapp_connect_api_view, name="whatsapp-connect-api"),
     path("connect/api/attempt-event/", connection_ui.whatsapp_connection_attempt_event_view, name="whatsapp-connection-attempt-event"),
