@@ -1,10 +1,11 @@
+from django.db.models import Prefetch
 from django.shortcuts import render
 from django.views.decorators.http import require_GET
 
 from apps.accounts.models import User
 from apps.crm.decorators import crm_login_required
 
-from .models import WhatsAppAccount
+from .models import WhatsAppAccount, WhatsAppTemplate
 
 
 @crm_login_required
@@ -12,12 +13,30 @@ from .models import WhatsAppAccount
 def whatsapp_account_list_view(request):
     """Connected Numbers is the Meta API account list, never the Hosted list."""
     user = request.crm_user
-    accounts = WhatsAppAccount.objects.filter(
-        organization=user.organization,
-        connection_type=WhatsAppAccount.ConnectionType.API,
-        status=WhatsAppAccount.Status.CONNECTED,
-        is_active=True,
-    ).order_by("-updated_at")
+    approved_welcome_templates = (
+        WhatsAppTemplate.objects.filter(
+            status=WhatsAppTemplate.Status.APPROVED,
+            attachment_type=WhatsAppTemplate.AttachmentType.NONE,
+        )
+        .exclude(meta_template_id="")
+        .order_by("name")
+    )
+    accounts = (
+        WhatsAppAccount.objects.filter(
+            organization=user.organization,
+            connection_type=WhatsAppAccount.ConnectionType.API,
+            status=WhatsAppAccount.Status.CONNECTED,
+            is_active=True,
+        )
+        .prefetch_related(
+            Prefetch(
+                "templates",
+                queryset=approved_welcome_templates,
+                to_attr="approved_welcome_templates",
+            )
+        )
+        .order_by("-updated_at")
+    )
     selected_owner = None
     owner_id = request.GET.get("owner", "").strip()
     if owner_id:
