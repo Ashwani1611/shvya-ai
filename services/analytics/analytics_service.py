@@ -201,7 +201,13 @@ def get_ai_welcome_trend(*, organization, date_from, date_to, pipeline_ids=None)
         messages.annotate(day=TruncDate("created_at"))
         .values("day")
         .annotate(
-            ai_replies=Count("id", filter=Q(raw_payload__shvya_ai__origin="engagement")),
+            # Most normal AI replies predate the explicit `origin=engagement`
+            # marker and only carry `raw_payload.shvya_ai`. Count every AI
+            # message except bump-ups so historical data remains visible.
+            ai_replies=(
+                Count("id", filter=Q(raw_payload__shvya_ai__isnull=False))
+                - Count("id", filter=Q(raw_payload__shvya_ai__origin="bump_up"))
+            ),
             ai_bumpups=Count("id", filter=Q(raw_payload__shvya_ai__origin="bump_up")),
             welcome_messages=Count(
                 "id",
