@@ -79,6 +79,11 @@ def _queue_hosted_ai_from_persisted_message(message_id):
     then repair that row to the real phone/Lead in the same outer transaction.
     AI scheduling must therefore re-read the committed message instead of
     trusting the pre-repair ``lead`` value captured during initial persistence.
+
+    The inbound account itself owns the live transport. A lead may subsequently
+    move to another CRM pipeline while the same WhatsApp conversation continues,
+    so queueing is intentionally not rejected only because the new pipeline has
+    a different configured number.
     """
     message = (
         WhatsAppMessage.objects.select_related(
@@ -111,14 +116,11 @@ def _queue_hosted_ai_from_persisted_message(message_id):
         AIPermissionService,
     )
     from services.channels.hosted_automation_service import enqueue_ai_engagement
-    from services.channels.hosted_whatsapp_service import (
-        get_pipeline_for_account,
-        get_session_settings,
-    )
+    from services.channels.hosted_whatsapp_service import get_session_settings
 
-    pipeline = get_pipeline_for_account(account=account)
-    if pipeline is None or lead.pipeline_id != pipeline.id:
-        return
+    # Connection-level automation remains an independent switch. The canonical
+    # permission service below enforces organization, current pipeline, stage,
+    # lead, tenant, and transport state.
     if not get_session_settings(account=account).get("ai_auto_reply"):
         return
 
