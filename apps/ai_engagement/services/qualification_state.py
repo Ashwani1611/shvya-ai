@@ -358,7 +358,12 @@ def attributes_with_state(lead, state: dict) -> dict:
 
 def _persist_state(lead, state: dict) -> dict:
     attributes = attributes_with_state(lead, state)
-    lead.__class__.objects.filter(pk=lead.pk).update(attributes=attributes)
+    sink = getattr(lead, "_persist_qualification_state", None)
+    if callable(sink):
+        # The isolated Sandbox uses the same transitions with a session sink.
+        sink(attributes)
+    else:
+        lead.__class__.objects.filter(pk=lead.pk).update(attributes=attributes)
     lead.attributes = attributes
     return state
 
@@ -507,7 +512,7 @@ def _match_option_answer(text: str, options: list[dict[str, str]]) -> str | None
     for index, option in enumerate(options, start=1):
         key = str(option.get("key") or "").strip().casefold()
         value = str(option.get("value") or "").strip()
-        aliases = {key, str(index), value.casefold(), f"option {key}", f"option {index}"}
+        aliases = {key, str(index), value.casefold(), value.casefold().strip(" .!?;:"), f"option {key}", f"option {index}"}
         if index <= 26:
             aliases.add(chr(96 + index))
         if normalized in aliases or stripped in aliases:

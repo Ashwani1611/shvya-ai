@@ -9,6 +9,7 @@ from config.celery import app
 REQUIRED = {
     "ai_realtime": {
         "ai.generate_ai_engagement_response",
+        "ai.recover_api_engagement",
         "apps.channels.tasks.send_whatsapp_message_task",
     },
     "hosted_ai": {

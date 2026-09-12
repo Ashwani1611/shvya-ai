@@ -427,6 +427,19 @@ class EngagementService:
         except ValueError as exc:
             raise EngagementError(str(exc)) from exc
         next_item = next_requirement(requirements, projected["requirement_states"])
+        source_id = self._latest_inbound_message_id(context=context)
+        answered_now = bool(source_id) and any(
+            item.get("status") == "answered" and str(item.get("source_message_id") or "") == str(source_id)
+            for item in projected["requirement_states"].values()
+        )
+        greeting = self._latest_inbound_text(context=context).strip().casefold().strip(" .!?") in {"hi", "hello", "hey", "hii", "namaste"}
+        runtime_saved = ((getattr(context, "lead", {}) or {}).get("attributes") or {}).get(STATE_KEY) or {}
+        qualifying = qualification_state.get("engagement_mode") == MODE_QUALIFICATION
+        if (next_item and qualifying and decision.should_engage
+                and runtime_saved.get("conversation_mode") not in {"paused", "opt_out"}
+                and (answered_now or (greeting and not qualification_state.get("last_asked_requirement_id")))
+                and decision.next_requirement_id != str(next_item["id"])):
+            raise EngagementError("The backend has a pending qualification question; acknowledge this turn and ask NEXT_REQUIREMENT with its options.")
         try:
             validate_response(decision=decision, requirements=requirements,
                 runtime=contract(qualification=projected, requirements=requirements,

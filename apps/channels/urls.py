@@ -4,6 +4,7 @@ from apps.hosted_automation import queue_views as hosted_queue_views
 from apps.hosted_automation import views as hosted_automation_views
 
 from . import api_account_repair_ui
+from . import ai_reply_status_ui
 from . import api_account_ui
 from . import connection_ui
 from . import embedded_oauth_ui
@@ -19,6 +20,7 @@ from . import whatsapp_template_send_ui
 from . import whatsapp_ui
 
 urlpatterns = [
+    path("leads/<uuid:lead_id>/ai-status/", ai_reply_status_ui.ai_reply_status, name="whatsapp-ai-reply-status"),
     path("accounts/", api_account_ui.whatsapp_account_list_view, name="whatsapp-accounts"),
     path("accounts/<uuid:account_id>/automation-settings/", views_flat.whatsapp_account_automation_settings_view, name="whatsapp-account-automation-settings"),
     path("connect/", views_flat.whatsapp_connect_choice_view, name="whatsapp-connect-choice"),
