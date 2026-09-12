@@ -115,6 +115,7 @@ class Lead(models.Model):
             ("whatsapp", "WhatsApp"),
             ("google_sheets", "Google Sheet"),
             ("csv_import", "CSV Import"),
+            ("meta_ads", "Meta ads"),
         ],
         default="system",
     )

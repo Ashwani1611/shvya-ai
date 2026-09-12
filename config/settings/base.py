@@ -595,6 +595,11 @@ META_APP_SECRET = config(
     default="",
 )
 
+META_LEAD_VERIFY_TOKEN = config(
+    "META_LEAD_VERIFY_TOKEN",
+    default="",
+)
+
 
 # ============================================================
 # WhatsApp (Meta) Embedded Signup

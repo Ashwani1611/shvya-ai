@@ -12,6 +12,11 @@ from apps.integrations.views.web import (
     shvya_api_view,
 )
 from apps.integrations.views.webhook import webhook_view
+from apps.integrations.views.meta_leads import (
+    meta_lead_form_save,
+    meta_lead_forms_view,
+    meta_lead_page_save,
+)
 
 
 urlpatterns = [
@@ -53,9 +58,18 @@ urlpatterns = [
     ),
     path(
         "connect-hub/meta-lead-ad-forms/",
-        integration_detail_view,
-        {"integration_slug": "meta-lead-ad-forms"},
+        meta_lead_forms_view,
         name="crm-connect-hub-meta-lead-ad-forms",
+    ),
+    path(
+        "connect-hub/meta-lead-ad-forms/pages/save/",
+        meta_lead_page_save,
+        name="meta-lead-page-save",
+    ),
+    path(
+        "connect-hub/meta-lead-ad-forms/forms/save/",
+        meta_lead_form_save,
+        name="meta-lead-form-save",
     ),
     path(
         "connect-hub/razorpay/",
