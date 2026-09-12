@@ -1,5 +1,6 @@
 from django.test import TestCase
 
+from apps.ai_engagement.models import OrgInfo
 from apps.ai_engagement.services.ai_permissions import AIPermissionService
 from apps.ai_engagement.services.qualification_state import (
     MODE_CONVERSATION,
@@ -101,7 +102,7 @@ class AIEngagementControlTests(TestCase):
         self.assertEqual(state["qualification_result"], RESULT_QUALIFIED)
         self.assertEqual(state["engagement_mode"], MODE_CONVERSATION)
 
-    def test_ai_permission_requires_pipeline_linked_whatsapp_number(self):
+    def test_active_inbound_transport_survives_crm_pipeline_number_change(self):
         self._inbound()
         decision = AIPermissionService().evaluate(
             organization=self.organization,
@@ -109,30 +110,58 @@ class AIEngagementControlTests(TestCase):
         )
         self.assertTrue(decision.allowed)
 
-        self.account.display_phone_number = "+918888888888"
-        self.account.save(update_fields=["display_phone_number", "updated_at"])
+        # The CRM classification may move after a conversation starts. The
+        # existing organization-owned inbound account remains the reply route.
+        self.pipeline.phone_number = "8888888888"
+        self.pipeline.save(update_fields=["phone_number", "updated_at"])
+        self.lead.refresh_from_db()
+        decision = AIPermissionService().evaluate(
+            organization=self.organization,
+            lead=self.lead,
+        )
+        self.assertTrue(decision.allowed)
+
+    def test_organization_ai_toggle_blocks_active_whatsapp_inbound(self):
+        self._inbound()
+        org_info, _ = OrgInfo.objects.get_or_create(organization=self.organization)
+        org_info.ai_enabled = False
+        org_info.save(update_fields=["ai_enabled", "updated_at"])
+
+        self.lead.refresh_from_db()
         decision = AIPermissionService().evaluate(
             organization=self.organization,
             lead=self.lead,
         )
         self.assertFalse(decision.allowed)
-        self.assertEqual(decision.reason, "pipeline_whatsapp_account_mismatch")
+        self.assertEqual(decision.reason, "organization_ai_disabled")
 
-    def test_api_inbound_uses_pipeline_switch_as_master_control(self):
+    def test_api_inbound_requires_pipeline_stage_and_lead_switches(self):
         self._inbound()
 
         self.new_lead.ai_on = False
         self.new_lead.save(update_fields=["ai_on", "updated_at"])
-        self.lead.ai_enabled = False
-        self.lead.save(update_fields=["ai_enabled", "updated_at"])
         self.lead.refresh_from_db()
-
         decision = AIPermissionService().evaluate(
             organization=self.organization,
             lead=self.lead,
         )
-        self.assertTrue(decision.allowed)
+        self.assertFalse(decision.allowed)
+        self.assertEqual(decision.reason, "stage_ai_disabled")
 
+        self.new_lead.ai_on = True
+        self.new_lead.save(update_fields=["ai_on", "updated_at"])
+        self.lead.ai_enabled = False
+        self.lead.save(update_fields=["ai_enabled", "updated_at"])
+        self.lead.refresh_from_db()
+        decision = AIPermissionService().evaluate(
+            organization=self.organization,
+            lead=self.lead,
+        )
+        self.assertFalse(decision.allowed)
+        self.assertEqual(decision.reason, "lead_ai_disabled")
+
+        self.lead.ai_enabled = True
+        self.lead.save(update_fields=["ai_enabled", "updated_at"])
         self.pipeline.ai_enabled = False
         self.pipeline.save(update_fields=["ai_enabled", "updated_at"])
         self.lead.refresh_from_db()
@@ -143,23 +172,35 @@ class AIEngagementControlTests(TestCase):
         self.assertFalse(decision.allowed)
         self.assertEqual(decision.reason, "pipeline_ai_disabled")
 
-    def test_hosted_inbound_uses_pipeline_switch_as_master_control(self):
+    def test_hosted_inbound_requires_pipeline_stage_and_lead_switches(self):
         self.account.connection_type = "hosted"
         self.account.save(update_fields=["connection_type", "updated_at"])
         self._inbound()
 
         self.new_lead.ai_on = False
         self.new_lead.save(update_fields=["ai_on", "updated_at"])
-        self.lead.ai_enabled = False
-        self.lead.save(update_fields=["ai_enabled", "updated_at"])
         self.lead.refresh_from_db()
-
         decision = AIPermissionService().evaluate(
             organization=self.organization,
             lead=self.lead,
         )
-        self.assertTrue(decision.allowed)
+        self.assertFalse(decision.allowed)
+        self.assertEqual(decision.reason, "stage_ai_disabled")
 
+        self.new_lead.ai_on = True
+        self.new_lead.save(update_fields=["ai_on", "updated_at"])
+        self.lead.ai_enabled = False
+        self.lead.save(update_fields=["ai_enabled", "updated_at"])
+        self.lead.refresh_from_db()
+        decision = AIPermissionService().evaluate(
+            organization=self.organization,
+            lead=self.lead,
+        )
+        self.assertFalse(decision.allowed)
+        self.assertEqual(decision.reason, "lead_ai_disabled")
+
+        self.lead.ai_enabled = True
+        self.lead.save(update_fields=["ai_enabled", "updated_at"])
         self.pipeline.ai_enabled = False
         self.pipeline.save(update_fields=["ai_enabled", "updated_at"])
         self.lead.refresh_from_db()
@@ -170,12 +211,10 @@ class AIEngagementControlTests(TestCase):
         self.assertFalse(decision.allowed)
         self.assertEqual(decision.reason, "pipeline_ai_disabled")
 
-    def test_queued_api_ai_message_survives_stage_and_lead_ai_changes(self):
+    def test_queued_api_ai_message_is_cancelled_when_stage_or_lead_ai_changes(self):
         self._inbound()
         self.new_lead.ai_on = False
         self.new_lead.save(update_fields=["ai_on", "updated_at"])
-        self.lead.ai_enabled = False
-        self.lead.save(update_fields=["ai_enabled", "updated_at"])
         message = WhatsAppMessage.objects.create(
             organization=self.organization,
             account=self.account,
@@ -183,13 +222,13 @@ class AIEngagementControlTests(TestCase):
             direction=WhatsAppMessage.Direction.OUTBOUND,
             from_number=self.account.display_phone_number,
             to_number=self.lead.phone,
-            body="This should still send",
+            body="This must not send",
             status=WhatsAppMessage.Status.QUEUED,
             raw_payload={"shvya_ai": {"source_inbound_message_id": "source"}},
         )
         message.refresh_from_db()
-        self.assertEqual(message.status, WhatsAppMessage.Status.QUEUED)
-        self.assertEqual(message.error, "")
+        self.assertEqual(message.status, WhatsAppMessage.Status.FAILED)
+        self.assertIn("stage_ai_disabled", message.error)
 
     def test_system_stages_remain_canonically_named_and_active(self):
         self.new_lead.name = "Incoming"
@@ -206,7 +245,7 @@ class AIEngagementControlTests(TestCase):
         self.assertEqual(self.qualified.name, "Qualified")
         self.assertTrue(self.qualified.is_active)
 
-    def test_disabled_lead_does_not_cancel_hosted_sequence_priority(self):
+    def test_disabled_lead_cancels_hosted_ai_priority_job(self):
         from apps.hosted_automation.models import HostedAutomationJob
         from services.channels.hosted_automation_service import enqueue_ai_engagement, has_pending_ai
 
@@ -217,11 +256,12 @@ class AIEngagementControlTests(TestCase):
         self.lead.ai_enabled = False
         self.lead.save(update_fields=["ai_enabled", "updated_at"])
 
-        self.assertTrue(has_pending_ai(account=self.account))
+        self.assertFalse(has_pending_ai(account=self.account))
         job.refresh_from_db()
-        self.assertEqual(job.status, HostedAutomationJob.Status.QUEUED)
+        self.assertEqual(job.status, HostedAutomationJob.Status.SKIPPED)
+        self.assertEqual(job.result.get("reason"), "lead_ai_disabled")
 
-    def test_resumed_hosted_reply_survives_stage_ai_change(self):
+    def test_resumed_hosted_reply_respects_stage_ai_change(self):
         from unittest.mock import patch
 
         from django.utils import timezone
@@ -258,10 +298,11 @@ class AIEngagementControlTests(TestCase):
         with patch("services.channels.hosted_whatsapp_transport.send_hosted_message") as send:
             result = process_hosted_ai_engagement_job_task.run(str(job.pk))
 
-        self.assertEqual(result["delivery"]["status"], "sent")
-        send.assert_called_once()
+        self.assertEqual(result["status"], "skipped")
+        self.assertEqual(result["reason"], "stage_ai_disabled")
+        send.assert_not_called()
         job.refresh_from_db()
-        self.assertEqual(job.status, HostedAutomationJob.Status.COMPLETED)
+        self.assertEqual(job.status, HostedAutomationJob.Status.SKIPPED)
 
     def test_context_has_qualification_state_without_changing_custom_attributes(self):
         from apps.ai_engagement.services.context import AIContextBuilder
