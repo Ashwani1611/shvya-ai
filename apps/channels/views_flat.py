@@ -5,6 +5,7 @@ import logging
 
 from django.conf import settings
 from django.contrib import messages
+from django.db import transaction
 from django.http import HttpResponse, HttpResponseForbidden, JsonResponse
 from django.shortcuts import redirect, render
 from django.urls import reverse
@@ -524,14 +525,37 @@ def _handle_webhook_delivery(request):
             metadata = value.get("metadata", {})
             phone_number_id = metadata.get("phone_number_id")
 
-            account = WhatsAppAccount.objects.filter(
-                phone_number_id=phone_number_id,
-            ).select_related("organization").first()
+            accounts = WhatsAppAccount.objects.filter(
+                connection_type=WhatsAppAccount.ConnectionType.API,
+                status=WhatsAppAccount.Status.CONNECTED,
+                is_active=True,
+            ).select_related("organization")
+            if phone_number_id:
+                accounts = accounts.filter(phone_number_id=phone_number_id)
+            if entry.get("id"):
+                accounts = accounts.filter(waba_id=str(entry["id"]))
+            if not phone_number_id and not entry.get("id"):
+                accounts = accounts.none()
+
+            account = accounts.first()
 
             if not account:
                 logger.warning(
-                    "WhatsApp webhook: no account for phone_number_id=%s",
+                    "WhatsApp webhook: no connected API account for phone_number_id=%s",
                     phone_number_id,
+                )
+                continue
+
+            # Template changes do not appear in ``messages`` or ``statuses``.
+            # Queue a complete Graph API refresh so approval, rejection,
+            # remote creation, and remote deletion all reach the dashboard.
+            if change.get("field") == "message_template_status_update":
+                from apps.channels.tasks import sync_whatsapp_templates_task
+
+                transaction.on_commit(
+                    lambda account_id=str(account.id): sync_whatsapp_templates_task.delay(
+                        account_id
+                    )
                 )
                 continue
 
