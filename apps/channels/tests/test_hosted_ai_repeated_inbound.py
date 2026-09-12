@@ -55,9 +55,9 @@ class HostedAIRepeatedInboundTests(TestCase):
             stage=self.stage,
             name="Repeat Lead",
             phone="+919876543210",
-            ai_enabled=False,
+            ai_enabled=True,
         )
-        self.stage.ai_on = False
+        self.stage.ai_on = True
         self.stage.save(update_fields=["ai_on", "updated_at"])
 
     def _receive(self, *, message_id, body):
