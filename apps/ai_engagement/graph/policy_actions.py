@@ -94,14 +94,12 @@ def evaluate_qualification(*, runtime_policy: dict[str, Any], projected_state: d
         state = requirement_states.get(criterion_id) or {}
         status = str(state.get("status") or "unknown")
         required = bool(criterion.get("required", True))
-        if status not in {"answered", "not_applicable"}:
+        if status not in {"answered", "not_applicable", "skipped"}:
             verdict = "unknown"
             if required:
                 required_missing = True
-        elif status == "not_applicable":
-            verdict = "pass" if not required else "unknown"
-            if required:
-                required_unknown = True
+        elif status in {"not_applicable", "skipped"}:
+            verdict = "pass"
         else:
             verdict = evaluate_condition(state.get("value"), criterion.get("pass_condition"))
             if required and verdict == "fail":

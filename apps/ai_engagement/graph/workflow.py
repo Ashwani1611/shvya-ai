@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from apps.ai_engagement.services.runtime_state import STATE_KEY, observe_message, contract, validate_response, state_revision
 import os
 from copy import deepcopy
 from dataclasses import replace
@@ -81,6 +82,11 @@ def _prepare(state: EngagementGraphState) -> dict:
     org_context["_runtime_policy"] = policy
     context = replace(context, organization=org_context)
     qualification_state = state_for_lead(lead, requirements=requirements)
+    lead_context = dict(context.lead or {})
+    attributes = dict(lead_context.get("attributes") or {})
+    attributes[STATE_KEY] = observe_message(attributes.get(STATE_KEY), service._latest_inbound_text(context=context))
+    lead_context["attributes"] = attributes
+    context = replace(context, lead=lead_context)
 
     return {
         "context": context,
@@ -302,7 +308,15 @@ def _validate_decision(state: EngagementGraphState) -> dict:
         requirements=state.get("requirements") or [],
     )
     validated_file_id = _validated_file_document_id(decision=decision, context=state["context"])
-    decision = replace(decision, crm_actions=controlled_actions, file_document_id=validated_file_id)
+    from apps.ai_engagement.services.qualification_state import project_answer_updates
+    projected = project_answer_updates(state=state.get("qualification_state") or {},
+        requirements=state.get("requirements") or [], updates=decision.qualification_updates,
+        messages=(state["context"].conversation or {}).get("messages", []))
+    runtime = contract(qualification=projected, requirements=state.get("requirements") or [],
+        saved=observe_message(((state["context"].lead or {}).get("attributes") or {}).get(STATE_KEY), state.get("latest_text", "")))
+    validate_response(decision=decision, runtime=runtime, requirements=state.get("requirements") or [])
+    decision = replace(decision, crm_actions=controlled_actions, file_document_id=validated_file_id,
+        backend_revision=state_revision(state["lead"]), flow_version=runtime["flow_version"])
 
     logger.info(
         "ai_engagement_graph organization=%s lead=%s route=%s model=%s rag=%s/%s qualification=%s crm_actions=%s file=%s",
@@ -316,7 +330,7 @@ def _validate_decision(state: EngagementGraphState) -> dict:
         len(controlled_actions),
         validated_file_id,
     )
-    return {"decision": decision, "validation_errors": errors}
+    return {"decision": decision, "validation_errors": errors, "qualification_state": projected}
 
 
 def build_engagement_graph():

@@ -4,6 +4,10 @@ import json
 import os
 import re
 import logging
+from pathlib import Path
+from apps.ai_engagement.services.runtime_state import STATE_KEY, contract, validate_response
+
+BACKEND_OPERATING_POLICY = (Path(__file__).resolve().parent.parent / "prompts" / "backend_operating_policy.md").read_text(encoding="utf-8")
 from dataclasses import dataclass, field
 from typing import Any
 from redis.exceptions import RedisError
@@ -113,6 +117,8 @@ class EngagementDecision:
     crm_actions: list[dict[str, Any]]
     reason: str
     model: str
+    backend_revision: str = ""
+    flow_version: str = ""
     next_requirement_id: str | None = None
     reason_code: str = ""
     qualification_updates: list[dict[str, Any]] = field(default_factory=list)
@@ -128,6 +134,8 @@ class EngagementDecision:
             # orchestration uses the bounded reason_code enum.
             "reason": self.reason,
             "reason_code": self.reason_code or self.reason,
+            "backend_revision": self.backend_revision,
+            "flow_version": self.flow_version,
             "next_requirement_id": self.next_requirement_id,
             "model": self.model,
             "qualification_updates": self.qualification_updates,
@@ -413,6 +421,12 @@ class EngagementService:
         except ValueError as exc:
             raise EngagementError(str(exc)) from exc
         next_item = next_requirement(requirements, projected["requirement_states"])
+        try:
+            validate_response(decision=decision, requirements=requirements,
+                runtime=contract(qualification=projected, requirements=requirements,
+                    saved=((getattr(context, "lead", {}) or {}).get("attributes") or {}).get(STATE_KEY)))
+        except ValueError as exc:
+            raise EngagementError(str(exc)) from exc
         if decision.next_requirement_id:
             allowed_next_id = str(next_item.get("id")) if next_item else ""
             if decision.next_requirement_id != allowed_next_id:
@@ -542,7 +556,7 @@ Do not add explanations, markdown, or chain-of-thought.
         if normalized in self._SIMPLE_ACKS:
             return False
 
-        compact = re.sub(r"[\s,₹$€£+\-./:]", "", normalized)
+        compact = re.sub(r"[\s,â‚¹$â‚¬Â£+\-./:]", "", normalized)
         if len(normalized) <= 40 and compact and compact.isdigit():
             return False
         if len(normalized) <= 24 and re.fullmatch(
@@ -592,7 +606,7 @@ Do not add explanations, markdown, or chain-of-thought.
             "============================================================\n"
             "SHVYA AI ENGAGEMENT TASK\n"
             "============================================================\n"
-            f"{self.ENGAGEMENT_TASK_INSTRUCTIONS.strip()}"
+            f"{self.ENGAGEMENT_TASK_INSTRUCTIONS.strip()}\n\nBACKEND OPERATING POLICY\n{BACKEND_OPERATING_POLICY}"
         )
 
     def _recent_conversation_char_budget(self) -> int:
@@ -660,6 +674,10 @@ Do not add explanations, markdown, or chain-of-thought.
         }
 
         payload = {
+            "backend_state": contract(qualification=qualification_state or {},
+                requirements=profile.get("qualification", {}).get("requirements", []),
+                saved=((data["lead"] or {}).get("attributes") or {}).get(STATE_KEY),
+                organization_id=(data["organization"] or {}).get("id", "")),
             "current_time": timezone.now().isoformat(),
             "organization": organization_payload,
             "lead": lead_data,
@@ -795,7 +813,7 @@ Do not add explanations, markdown, or chain-of-thought.
         context: AIContext,
     ) -> None:
         organization_id = str((context.organization or {}).get("id") or "")
-        lead_id = str((context.lead or {}).get("id") or "")
+        lead_id = str((getattr(context, "lead", {}) or {}).get("id") or "")
         if organization_id != str(organization.id):
             raise EngagementError("AI context organization does not match request.")
         if lead_id != str(lead.id):

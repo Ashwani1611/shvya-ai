@@ -29,10 +29,41 @@ from apps.ai_engagement.services.summary_lock import (
 logger = logging.getLogger(__name__)
 
 
-def _persist_engagement_answers(lead, decision):
-    from apps.ai_engagement.services.qualification_state import persist_answer_updates
+def _persist_engagement_answers(lead, decision, source_message_id):
+    """Revalidate and finalize once, inside the caller's lead transaction."""
+    from apps.ai_engagement.models import OrgInfo
+    from apps.ai_engagement.services.qualification_state import persist_answer_updates, state_for_lead, project_answer_updates, requirements_for_lead
+    from apps.ai_engagement.services.organization_profile import compile_qualification_requirements
+    from apps.ai_engagement.services.runtime_state import contract, validate_response, finalize_runtime, STATE_KEY, response_hash, observe_message, state_revision
 
+    inbound = lead.whatsapp_messages.select_for_update().get(
+        pk=source_message_id, organization_id=lead.organization_id, direction="inbound")
+    payload = dict(inbound.raw_payload or {})
+    if (payload.get("shvya_ai_processing") or {}).get("processed"):
+        return False
+    org_info = OrgInfo.objects.filter(organization_id=lead.organization_id).first()
+    requirements = compile_qualification_requirements(org_info.qualification_requirements if org_info else "")["requirements"]
+    requirements = requirements_for_lead(lead, requirements)
+    if getattr(decision, "backend_revision", "") and decision.backend_revision != state_revision(lead):
+        raise ValueError("Backend state changed during response generation; retry required.")
+    if getattr(decision, "flow_version", "") and decision.flow_version != contract(qualification={}, requirements=requirements)["flow_version"]:
+        raise ValueError("Qualification flow changed during response generation; retry required.")
+    lead.attributes = dict(lead.attributes or {})
+    lead.attributes[STATE_KEY] = observe_message(lead.attributes.get(STATE_KEY), inbound.body)
+    projected = project_answer_updates(state=state_for_lead(lead, requirements=requirements),
+        requirements=requirements, updates=getattr(decision, "qualification_updates", []),
+        messages=[{"id": str(inbound.id), "body": inbound.body, "direction": "inbound"}])
+    validate_response(decision=decision, requirements=requirements,
+        runtime=contract(qualification=projected, requirements=requirements,
+                         saved=(lead.attributes or {}).get(STATE_KEY), organization_id=lead.organization_id))
     persist_answer_updates(lead=lead, updates=getattr(decision, "qualification_updates", []))
+    finalize_runtime(lead=lead, decision=decision, qualification=projected,
+                     requirements=requirements, message_id=source_message_id)
+    payload["shvya_ai_processing"] = {"message_id": str(source_message_id),
+        "processed": True, "response_hash": response_hash(decision.message)}
+    inbound.raw_payload = payload
+    inbound.save(update_fields=["raw_payload", "updated_at"])
+    return True
 
 
 @shared_task(name="ai.flush_background_enrichment")
@@ -1294,7 +1325,8 @@ def _execute_ai_engagement_response(
                         ),
                     }
 
-                _persist_engagement_answers(lead, decision)
+                if not _persist_engagement_answers(lead, decision, source_inbound_message_id):
+                    return {"status": "skipped", "reason": "message_already_processed", "lead_id": str(lead_id)}
                 crm_result = (
                     CRMActionExecutor().execute(
                         organization=organization,
@@ -1492,7 +1524,8 @@ def _execute_ai_engagement_response(
             # CRM ACTIONS
             # ------------------------------------------------
 
-            _persist_engagement_answers(lead, decision)
+            if not _persist_engagement_answers(lead, decision, source_inbound_message_id):
+                return {"status": "skipped", "reason": "message_already_processed", "lead_id": str(lead_id)}
             crm_result = (
                 CRMActionExecutor().execute(
                     organization=organization,
