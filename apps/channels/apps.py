@@ -32,7 +32,11 @@ class ChannelsConfig(AppConfig):
         from services.channels.hosted_whatsapp_transport import (
             install_hosted_whatsapp_transport,
         )
+        from services.channels.whatsapp_phone_registration import (
+            install_whatsapp_phone_registration,
+        )
 
+        install_whatsapp_phone_registration()
         install_whatsapp_template_transport()
         install_hosted_whatsapp_transport()
         install_whatsapp_failure_diagnostics()
