@@ -8,6 +8,7 @@ precise SHVYA orchestration rules.
 from __future__ import annotations
 
 import os
+import sys
 
 from services.channels.reply_intent_service import Intent, classify_reply
 
@@ -26,6 +27,57 @@ def _debounce_seconds() -> int:
 
 def _normalized_text(value: str) -> str:
     return " ".join(str(value or "").strip().casefold().split())
+
+
+def _conversation_bound_hosted_block_reason(*, account, lead):
+    """Apply live AI controls without re-binding the lead to its old pipeline.
+
+    The durable Hosted job already identifies the exact inbound account and lead.
+    A CRM move to another organization-owned pipeline must not invalidate that
+    WhatsApp thread. Organization/pipeline/stage/lead switches are still checked
+    by the canonical permission service, while the Hosted connection switch is
+    checked on the actual account that received the customer message.
+    """
+    from apps.ai_engagement.services.ai_permissions import AIPermissionService
+    from apps.channels.models import WhatsAppAccount, WhatsAppMessage
+    from apps.crm.models import Lead
+    from services.channels.hosted_whatsapp_service import get_session_settings
+
+    lead = Lead.objects.select_related(
+        "organization", "pipeline", "stage"
+    ).get(pk=lead.pk)
+
+    if account.organization_id != lead.organization_id:
+        return "whatsapp_account_organization_mismatch"
+    if account.connection_type != WhatsAppAccount.ConnectionType.coexisted:
+        return "unsupported_whatsapp_connection_type"
+    if not account.is_active:
+        return "whatsapp_account_inactive"
+    if account.status != WhatsAppAccount.Status.CONNECTED:
+        return "whatsapp_account_not_connected"
+
+    latest_for_account = (
+        WhatsAppMessage.objects.filter(
+            organization=lead.organization,
+            account=account,
+            lead=lead,
+            direction=WhatsAppMessage.Direction.INBOUND,
+        )
+        .order_by("-created_at", "-id")
+        .first()
+    )
+    if latest_for_account is None:
+        return "conversation_whatsapp_account_missing"
+
+    decision = AIPermissionService().evaluate(
+        organization=lead.organization,
+        lead=lead,
+    )
+    if not decision.allowed:
+        return decision.reason
+    if not get_session_settings(account=account).get("ai_auto_reply"):
+        return "ai_auto_reply_disabled"
+    return ""
 
 
 def install_ai_orchestration_hooks() -> None:
@@ -70,5 +122,15 @@ def install_ai_orchestration_hooks() -> None:
     # Hosted durable jobs already deduplicate by source message. Use the same
     # short debounce as Meta instead of the legacy one-minute response delay.
     hosted_automation_service.AI_RESPONSE_DELAY_SECONDS = _debounce_seconds()
+    hosted_automation_service.hosted_ai_block_reason = (
+        _conversation_bound_hosted_block_reason
+    )
+
+    # Celery may already have imported the task module before Django app-ready
+    # hooks run. Refresh that module-level reference as well without importing it
+    # eagerly and creating an app-startup cycle.
+    hosted_tasks = sys.modules.get("apps.hosted_automation.tasks")
+    if hosted_tasks is not None:
+        hosted_tasks.hosted_ai_block_reason = _conversation_bound_hosted_block_reason
 
     _INSTALLED = True
