@@ -7,6 +7,11 @@ fallback: a welcome must never leave from an unrelated number.
 """
 
 import logging
+from datetime import timedelta
+
+from django.db import transaction
+from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 
 from apps.ai_engagement.models import OrgInfo
 from apps.ai_engagement.services.ai_provider import OpenAIProvider
@@ -26,6 +31,7 @@ logger = logging.getLogger(__name__)
 
 NEW_LEAD_STAGE_NAMES = frozenset({"new lead", "new leads"})
 WELCOME_TRIGGER = "lead_created"
+HOSTED_WELCOME_GAP = timedelta(seconds=30)
 
 
 def _is_new_lead_stage(lead):
@@ -77,17 +83,54 @@ def _already_has_welcome(*, lead, account):
     ).exists()
 
 
-def _mark_welcome_message(*, message, source):
+def _mark_welcome_message(*, message, source, scheduled_for=None):
     payload = message.raw_payload if isinstance(message.raw_payload, dict) else {}
+    welcome_payload = {
+        "trigger": WELCOME_TRIGGER,
+        "source": source,
+    }
+    if scheduled_for is not None:
+        welcome_payload["scheduled_for"] = scheduled_for.isoformat()
+
     message.raw_payload = {
         **payload,
-        "shvya_welcome": {
-            "trigger": WELCOME_TRIGGER,
-            "source": source,
-        },
+        "shvya_welcome": welcome_payload,
     }
     message.save(update_fields=["raw_payload", "updated_at"])
     return message
+
+
+def _last_hosted_welcome_slot(*, account):
+    """Return the most recently reserved Hosted welcome send time for an account."""
+    latest = (
+        WhatsAppMessage.objects.filter(
+            account=account,
+            direction=WhatsAppMessage.Direction.OUTBOUND,
+            raw_payload__shvya_welcome__trigger=WELCOME_TRIGGER,
+        )
+        .order_by("-created_at")
+        .first()
+    )
+    if not latest:
+        return None
+
+    payload = latest.raw_payload if isinstance(latest.raw_payload, dict) else {}
+    welcome_payload = payload.get("shvya_welcome") or {}
+    raw_scheduled_for = welcome_payload.get("scheduled_for")
+    if raw_scheduled_for:
+        scheduled_for = parse_datetime(str(raw_scheduled_for))
+        if scheduled_for is not None:
+            if timezone.is_naive(scheduled_for):
+                scheduled_for = timezone.make_aware(
+                    scheduled_for,
+                    timezone.get_current_timezone(),
+                )
+            return scheduled_for
+
+    # Backward-compatible fallback for Hosted welcomes created before the
+    # scheduling metadata existed. This prevents an immediate burst directly
+    # after deployment if a welcome was just queued by the previous code.
+    return latest.created_at
 
 
 def _generate_hosted_welcome(*, lead):
@@ -169,19 +212,48 @@ def _queue_hosted_welcome(*, lead, account):
     if not body:
         return {"status": "skipped", "reason": "empty_ai_welcome"}
 
-    message = queue_outbound_message(
-        organization=lead.organization,
-        account=account,
-        to_number=lead.phone,
-        body=body,
-        lead=lead,
-    )
-    _mark_welcome_message(message=message, source="organization_information_ai")
+    # Serialize reservations per Hosted account. Multiple workers can generate
+    # welcome copy concurrently, but only one can reserve the next send slot at
+    # a time, so a bulk lead import cannot collapse into a WhatsApp burst.
+    with transaction.atomic():
+        locked_account = WhatsAppAccount.objects.select_for_update().get(id=account.id)
+
+        # Re-check idempotency while holding the account lock. This closes the
+        # race where duplicate tasks for the same lead start at the same time.
+        if _already_has_welcome(lead=lead, account=locked_account):
+            return {"status": "skipped", "reason": "welcome_already_queued"}
+
+        now = timezone.now()
+        previous_slot = _last_hosted_welcome_slot(account=locked_account)
+        scheduled_for = now
+        if previous_slot is not None:
+            scheduled_for = max(now, previous_slot + HOSTED_WELCOME_GAP)
+
+        message = queue_outbound_message(
+            organization=lead.organization,
+            account=locked_account,
+            to_number=lead.phone,
+            body=body,
+            lead=lead,
+        )
+        _mark_welcome_message(
+            message=message,
+            source="organization_information_ai",
+            scheduled_for=scheduled_for,
+        )
 
     from apps.channels.hosted_send_tasks import send_hosted_whatsapp_message_task
 
-    send_hosted_whatsapp_message_task.delay(str(message.id))
-    return {"status": "queued", "message_id": str(message.id), "transport": "hosted"}
+    send_hosted_whatsapp_message_task.apply_async(
+        args=[str(message.id)],
+        eta=scheduled_for,
+    )
+    return {
+        "status": "queued",
+        "message_id": str(message.id),
+        "transport": "hosted",
+        "scheduled_for": scheduled_for.isoformat(),
+    }
 
 
 def send_new_lead_welcome(*, lead_id):
