@@ -86,10 +86,15 @@ _SMOOTH_INBOX_SCRIPT = b"""
       if (!nextShell) throw new Error('WhatsApp inbox shell missing');
 
       shell.innerHTML = nextShell.innerHTML;
+      // Update the browser URL before binding the replacement shell. The socket
+      // selector reads window.location to decide whether it should subscribe to
+      // the org inbox or the active lead thread. Previously bindShell() ran
+      // first, leaving the socket attached to the prior conversation after an
+      // in-page navigation and making the newly opened chat miss live events.
+      if (push !== false) history.pushState({shvyaWhatsAppInbox: true}, '', target.pathname + target.search);
       decorateShell(shell);
       if (window.htmx) window.htmx.process(shell);
       bindShell(shell);
-      if (push !== false) history.pushState({shvyaWhatsAppInbox: true}, '', target.pathname + target.search);
     } catch (error) {
       window.location.assign(target.toString());
       return;
