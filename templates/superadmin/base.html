@@ -91,6 +91,17 @@
                     </svg>
                     <span class="sa-nav-text">AI Coins</span>
                 </a>
+
+                <a
+                    href="{% url 'superadmin-rag-monitor' %}"
+                    title="RAG Monitor"
+                    class="sa-nav-link {% if request.resolver_match.url_name == 'superadmin-rag-monitor' %}is-active{% endif %}"
+                >
+                    <svg class="sa-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                        <path d="M4 5h16M4 12h16M4 19h16M8 5v14" stroke-linecap="round"/>
+                    </svg>
+                    <span class="sa-nav-text">RAG Monitor</span>
+                </a>
             </nav>
 
             {% if organization and request.resolver_match.url_name == 'superadmin-organization-detail' %}

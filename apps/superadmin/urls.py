@@ -4,6 +4,7 @@ from .views import (
     admin_global_search,
     ai_credit_overview_view,
     org_list_view,
+    rag_monitor_view,
     organization_ai_credit_view,
     organization_create_view,
     organization_detail_view,
@@ -48,6 +49,12 @@ urlpatterns = [
         "",
         org_list_view,
         name="superadmin-org-list",
+    ),
+
+    path(
+        "rag-monitor/",
+        rag_monitor_view,
+        name="superadmin-rag-monitor",
     ),
 
     # =========================================================
