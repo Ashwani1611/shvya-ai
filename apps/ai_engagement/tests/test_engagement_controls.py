@@ -118,6 +118,33 @@ class AIEngagementControlTests(TestCase):
         self.assertFalse(decision.allowed)
         self.assertEqual(decision.reason, "pipeline_whatsapp_account_mismatch")
 
+    def test_hosted_inbound_uses_pipeline_switch_as_master_control(self):
+        self.account.connection_type = "hosted"
+        self.account.save(update_fields=["connection_type", "updated_at"])
+        self._inbound()
+
+        self.new_lead.ai_on = False
+        self.new_lead.save(update_fields=["ai_on", "updated_at"])
+        self.lead.ai_enabled = False
+        self.lead.save(update_fields=["ai_enabled", "updated_at"])
+        self.lead.refresh_from_db()
+
+        decision = AIPermissionService().evaluate(
+            organization=self.organization,
+            lead=self.lead,
+        )
+        self.assertTrue(decision.allowed)
+
+        self.pipeline.ai_enabled = False
+        self.pipeline.save(update_fields=["ai_enabled", "updated_at"])
+        self.lead.refresh_from_db()
+        decision = AIPermissionService().evaluate(
+            organization=self.organization,
+            lead=self.lead,
+        )
+        self.assertFalse(decision.allowed)
+        self.assertEqual(decision.reason, "pipeline_ai_disabled")
+
     def test_queued_ai_message_is_cancelled_when_current_stage_ai_is_off(self):
         self._inbound()
         self.new_lead.ai_on = False
@@ -152,45 +179,67 @@ class AIEngagementControlTests(TestCase):
         self.assertEqual(self.qualified.name, "Qualified")
         self.assertTrue(self.qualified.is_active)
 
-    def test_disabled_lead_releases_hosted_sequence_priority(self):
+    def test_disabled_lead_does_not_cancel_hosted_sequence_priority(self):
         from apps.hosted_automation.models import HostedAutomationJob
         from services.channels.hosted_automation_service import enqueue_ai_engagement, has_pending_ai
+
         self.account.connection_type = "hosted"
-        self.account.save()
+        self.account.save(update_fields=["connection_type", "updated_at"])
         message = self._inbound()
-        # The webhook already created the inbound row; use the persisted source.
-        message = self.lead.whatsapp_messages.get(external_id="wamid-inbound")
         job = enqueue_ai_engagement(account=self.account, lead=self.lead, source_message=message)
         self.lead.ai_enabled = False
-        self.lead.save(update_fields=["ai_enabled"])
-        self.assertFalse(has_pending_ai(account=self.account))
-        job.refresh_from_db()
-        self.assertEqual(job.status, HostedAutomationJob.Status.SKIPPED)
-        self.assertEqual(job.result["reason"], "lead_ai_disabled")
+        self.lead.save(update_fields=["ai_enabled", "updated_at"])
 
-    def test_resumed_hosted_reply_is_cancelled_before_delivery(self):
+        self.assertTrue(has_pending_ai(account=self.account))
+        job.refresh_from_db()
+        self.assertEqual(job.status, HostedAutomationJob.Status.QUEUED)
+
+    def test_resumed_hosted_reply_survives_stage_ai_change(self):
         from unittest.mock import patch
+
         from django.utils import timezone
+
         from apps.hosted_automation.models import HostedAutomationJob
         from apps.hosted_automation.tasks import process_hosted_ai_engagement_job_task
+
         self.account.connection_type = "hosted"
-        self.account.save()
+        self.account.save(update_fields=["connection_type", "updated_at"])
         self._inbound()
         inbound = self.lead.whatsapp_messages.get(external_id="wamid-inbound")
-        outbound = WhatsAppMessage.objects.create(organization=self.organization, account=self.account, lead=self.lead, direction="outbound", status="queued", body="Paused reply", raw_payload={"shvya_ai": {"source_inbound_message_id": str(inbound.pk)}})
-        job = HostedAutomationJob.objects.create(organization=self.organization, account=self.account, lead=self.lead, source_message=inbound, available_at=timezone.now(), result={"message_id": str(outbound.pk)})
+        outbound = WhatsAppMessage.objects.create(
+            organization=self.organization,
+            account=self.account,
+            lead=self.lead,
+            direction="outbound",
+            status="queued",
+            body="Paused reply",
+            raw_payload={
+                "shvya_ai": {"source_inbound_message_id": str(inbound.pk)}
+            },
+        )
+        job = HostedAutomationJob.objects.create(
+            organization=self.organization,
+            account=self.account,
+            lead=self.lead,
+            source_message=inbound,
+            available_at=timezone.now(),
+            result={"message_id": str(outbound.pk)},
+        )
         self.new_lead.ai_on = False
-        self.new_lead.save(update_fields=["ai_on"])
+        self.new_lead.save(update_fields=["ai_on", "updated_at"])
+
         with patch("services.channels.hosted_whatsapp_transport.send_hosted_message") as send:
             result = process_hosted_ai_engagement_job_task.run(str(job.pk))
-        self.assertEqual(result["reason"], "stage_ai_disabled")
-        send.assert_not_called()
-        outbound.refresh_from_db()
-        self.assertEqual(outbound.status, "failed")
+
+        self.assertEqual(result["delivery"]["status"], "sent")
+        send.assert_called_once()
+        job.refresh_from_db()
+        self.assertEqual(job.status, HostedAutomationJob.Status.COMPLETED)
 
     def test_context_has_qualification_state_without_changing_custom_attributes(self):
         from apps.ai_engagement.services.context import AIContextBuilder
         from apps.ai_engagement.services.qualification_state import QUALIFICATION_STATE_KEY
+
         context = AIContextBuilder()._build_lead_context(lead=self.lead)
         self.assertEqual(context["qualification"]["engagement_mode"], MODE_QUALIFICATION)
         self.lead.refresh_from_db()
