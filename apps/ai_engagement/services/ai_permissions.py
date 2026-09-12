@@ -48,13 +48,12 @@ class AIPermissionService:
 
         Organization AI -> Pipeline AI -> Stage AI -> Lead AI
 
-    The checks are deliberately re-read from the database by callers before
-    generation and again before delivery. WhatsApp transport ownership is
-    conversation-scoped: once a customer is actively talking to an organization
-    owned Connect API/Hosted account, a later CRM pipeline move must not strand
-    that live conversation merely because the destination pipeline has another
-    routing number. The current pipeline/stage/lead switches still govern whether
-    AI may continue after that move.
+    WhatsApp account routing remains fail-closed for a new conversation. Once
+    SHVYA has already produced an AI reply on a valid conversation account, that
+    account becomes an established transport for the lead and may continue to be
+    used after an intentional CRM pipeline move. This keeps cross-pipeline CRM
+    classification from stranding the chat without allowing an arbitrary second
+    organization number to engage the same lead.
     """
 
     WHATSAPP_AUTOMATION_CONNECTION_TYPES = {"api", "hosted"}
@@ -86,6 +85,15 @@ class AIPermissionService:
             .first()
         )
 
+    def _has_established_ai_transport(self, *, organization, lead, account) -> bool:
+        """Return whether this exact account has already carried a SHVYA AI reply."""
+        return lead.whatsapp_messages.filter(
+            organization=organization,
+            account=account,
+            direction="outbound",
+            raw_payload__shvya_ai__isnull=False,
+        ).exists()
+
     def _conversation_uses_pipeline_number(
         self,
         *,
@@ -95,13 +103,10 @@ class AIPermissionService:
     ):
         """Validate the customer-facing WhatsApp transport for this conversation.
 
-        A freshly routed lead normally matches the current pipeline number. Once
-        that lead is intentionally moved by CRM automation, however, the same
-        WhatsApp thread remains the authoritative transport. We therefore accept
-        an organization-owned, active, connected inbound account even if the CRM
-        destination pipeline has a different number. This keeps transport routing
-        and CRM classification separate while still failing closed on foreign or
-        disconnected accounts.
+        Fresh conversations must match the lead's current pipeline number. A
+        previously established SHVYA AI transport may survive a later CRM
+        pipeline move, because the customer is still replying on that same
+        WhatsApp thread.
         """
         if latest_message is None:
             latest_message = self._latest_inbound_message(
@@ -142,9 +147,16 @@ class AIPermissionService:
         if expected_number and actual_number == expected_number:
             return True, "pipeline_whatsapp_account_match"
 
-        # The inbound message itself is a strong conversation binding. Allow it
-        # to survive an intentional pipeline transfer inside the same tenant.
-        return True, "conversation_whatsapp_account_bound"
+        if self._has_established_ai_transport(
+            organization=organization,
+            lead=lead,
+            account=account,
+        ):
+            return True, "conversation_whatsapp_account_bound"
+
+        if not expected_number:
+            return False, "pipeline_whatsapp_number_missing"
+        return False, "pipeline_whatsapp_account_mismatch"
 
     def evaluate(
         self,
