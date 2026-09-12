@@ -123,9 +123,15 @@ def record_lead_created(
     Record initial Lead creation.
     """
 
-    actor_name_override = None
-    if actor is None and getattr(lead, "lead_source", "") == "google_sheets":
-        actor_name_override = "Google Sheet"
+    source_labels = {
+        "google_sheets": "Google Sheet",
+        "meta_ads": "Meta ads",
+    }
+    actor_name_override = (
+        source_labels.get(getattr(lead, "lead_source", ""))
+        if actor is None
+        else None
+    )
 
     return create_lead_activity(
         lead=lead,

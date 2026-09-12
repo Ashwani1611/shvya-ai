@@ -1,12 +1,76 @@
 {% extends "base.html" %}
 {% block title %}Meta Lead Ads · SHVYA AI{% endblock %}
-{% block extra_head %}<style>
-.meta-shell{max-width:1180px;margin:auto}.meta-card{background:#fff;border:1px solid #e5e7eb;border-radius:28px;box-shadow:0 18px 55px rgba(15,23,42,.06)}.meta-input{width:100%;border:1px solid #d1d5db;border-radius:14px;padding:.7rem .85rem;background:#fff;outline:none}.meta-input:focus{border-color:#111827;box-shadow:0 0 0 4px rgba(17,24,39,.08)}.meta-label{display:block;font-size:.76rem;font-weight:650;color:#4b5563;margin-bottom:.35rem}.meta-button{border-radius:999px;padding:.7rem 1rem;font-weight:650}
-</style>{% endblock %}
-{% block content %}<main class="meta-shell px-5 py-8 lg:px-10 overflow-y-auto">
-<div class="mb-9 flex flex-col gap-3 md:flex-row md:items-end md:justify-between"><div><p class="text-xs font-semibold uppercase tracking-[.18em] text-gray-500">Connect Hub</p><h1 class="mt-2 text-4xl font-semibold tracking-tight text-gray-950">Meta Lead Ads</h1><p class="mt-2 max-w-2xl text-gray-500">Bring every instant-form lead into the right pipeline, stage, and attributes automatically.</p></div><div class="rounded-full bg-gray-900 px-4 py-2 text-sm font-semibold text-white">Lead source: Meta ads</div></div>
-<div class="grid gap-6 xl:grid-cols-[.82fr_1.18fr]">
-<section class="meta-card p-6 lg:p-8"><h2 class="text-xl font-semibold">1. Add a Facebook Page</h2><p class="mt-1 text-sm text-gray-500">Use the long-lived Page access token from Meta Graph API Explorer.</p><form method="post" action="{% url 'meta-lead-page-save' %}" class="mt-6 space-y-4">{% csrf_token %}<label><span class="meta-label">Page name</span><input class="meta-input" name="page_name" placeholder="Acme Homes" required></label><label><span class="meta-label">Page ID</span><input class="meta-input" name="page_id" placeholder="1234567890" required></label><label><span class="meta-label">Page access token</span><input class="meta-input" type="password" name="page_access_token" placeholder="Paste token" required></label><label><span class="meta-label">App secret (optional)</span><input class="meta-input" type="password" name="app_secret" placeholder="Paste app secret"></label><button class="meta-button w-full bg-gray-900 text-white">Save page</button></form>{% for page in pages %}<div class="mt-5 flex items-center justify-between rounded-2xl bg-gray-50 px-4 py-3"><span class="font-medium">{{ page.page_name|default:page.page_id }}</span><span class="text-xs font-semibold text-green-600">Connected</span></div>{% endfor %}</section>
-<section class="meta-card p-6 lg:p-8"><h2 class="text-xl font-semibold">2. Route a lead form</h2><p class="mt-1 text-sm text-gray-500">Create one mapping per instant form. New leads always keep the source “Meta ads”.</p>{% if not pages %}<div class="mt-6 rounded-2xl bg-gray-50 p-5 text-sm">Save a Page first.</div>{% else %}<form method="post" action="{% url 'meta-lead-form-save' %}" class="mt-6 space-y-5">{% csrf_token %}<div class="grid gap-4 sm:grid-cols-2"><label><span class="meta-label">Facebook Page</span><select class="meta-input" name="page">{% for page in pages %}<option value="{{ page.id }}">{{ page.page_name|default:page.page_id }}</option>{% endfor %}</select></label><label><span class="meta-label">Form ID</span><input class="meta-input" name="form_id" required></label></div><label><span class="meta-label">Form name</span><input class="meta-input" name="form_name" required></label><div class="grid gap-4 sm:grid-cols-2"><label><span class="meta-label">Pipeline</span><select id="meta-pipeline" class="meta-input" name="pipeline">{% for pipeline in pipelines %}<option value="{{ pipeline.id }}">{{ pipeline.name }}</option>{% endfor %}</select></label><label><span class="meta-label">Stage</span><select id="meta-stage" class="meta-input" name="stage"></select></label></div><div class="border-t pt-5"><h3 class="font-semibold">Match Meta fields</h3><p class="mt-1 text-sm text-gray-500">Enter the exact field key used in the instant form.</p><div class="mt-4 grid gap-4 sm:grid-cols-3"><label><span class="meta-label">Full name</span><input class="meta-input" name="name" placeholder="full_name"></label><label><span class="meta-label">Phone</span><input class="meta-input" name="phone" placeholder="phone_number" required></label><label><span class="meta-label">Email</span><input class="meta-input" name="email" placeholder="email"></label></div><div class="mt-4 grid gap-4 sm:grid-cols-2">{% for attribute in attributes %}<label><span class="meta-label">{{ attribute.name }}</span><input class="meta-input" name="attribute:{{ attribute.key }}" placeholder="Meta field key"></label>{% empty %}<p class="text-sm text-gray-500">Create CRM attributes first for extra questions.</p>{% endfor %}</div></div><button class="meta-button w-full bg-blue-600 text-white">Save mapping</button></form>{% endif %}</section></div>
-<section class="meta-card mt-6 p-6 lg:p-8"><h2 class="text-xl font-semibold">Webhook setup</h2><p class="mt-1 text-sm text-gray-500">In Meta App Dashboard → Webhooks → Page, subscribe to <strong>leadgen</strong>.</p><code class="mt-4 block overflow-x-auto rounded-2xl bg-gray-950 px-4 py-3 text-sm text-gray-100">{{ webhook_url }}</code><p class="mt-3 text-xs text-gray-400">Use the META_LEAD_VERIFY_TOKEN environment value as the verify token.</p></section>
-</main><script>const pipelineStages={ {% for p in pipelines %}"{{ p.id }}":[{% for s in p.stages.all %}{id:"{{ s.id }}",name:"{{ s.name|escapejs }}"},{% endfor %}],{% endfor %} };const p=document.getElementById("meta-pipeline"),s=document.getElementById("meta-stage");function sync(){if(!p||!s)return;s.innerHTML=(pipelineStages[p.value]||[]).map(x=>`<option value="${x.id}">${x.name}</option>`).join("")}p?.addEventListener("change",sync);sync();</script>{% endblock %}
+{% block extra_head %}
+<style>
+  .meta-page{min-height:100%;background:linear-gradient(145deg,#f7f8fa 0%,#fff 48%,#eef4ff 100%);color:#1d1d1f}
+  .meta-wrap{max-width:1180px;margin:0 auto;padding:56px 28px 80px}
+  .meta-eyebrow{font-size:12px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:#6e6e73}
+  .meta-hero{display:grid;grid-template-columns:1fr auto;gap:28px;align-items:end;margin-bottom:42px}
+  .meta-hero h1{font-size:clamp(40px,6vw,72px);line-height:.98;letter-spacing:-.06em;font-weight:700;margin:12px 0 16px}
+  .meta-hero p{max-width:590px;font-size:19px;line-height:1.45;color:#6e6e73}
+  .meta-progress{display:flex;align-items:center;gap:8px;font-size:13px;color:#6e6e73;white-space:nowrap}
+  .meta-dot{width:9px;height:9px;border-radius:50%;background:#0071e3;box-shadow:0 0 0 5px rgba(0,113,227,.12)}
+  .meta-panel{background:rgba(255,255,255,.82);backdrop-filter:blur(18px);border:1px solid rgba(0,0,0,.07);border-radius:30px;box-shadow:0 12px 34px rgba(0,0,0,.055)}
+  .meta-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px}
+  .meta-panel-head{padding:30px 32px 0}
+  .meta-step{display:inline-flex;width:27px;height:27px;align-items:center;justify-content:center;border-radius:50%;background:#1d1d1f;color:#fff;font-size:12px;font-weight:700;margin-bottom:14px}
+  .meta-panel h2{font-size:27px;letter-spacing:-.03em;font-weight:650;margin:0}
+  .meta-panel .intro{font-size:15px;line-height:1.45;color:#6e6e73;margin:7px 0 0}
+  .meta-form{padding:25px 32px 32px;display:grid;gap:16px}
+  .meta-field{display:grid;gap:7px}.meta-label{font-size:13px;font-weight:600;color:#424245}
+  .meta-input{width:100%;box-sizing:border-box;border:1px solid #d2d2d7;background:rgba(255,255,255,.9);border-radius:12px;padding:12px 13px;color:#1d1d1f;font-size:15px;outline:none;transition:.16s}
+  .meta-input:focus{border-color:#0071e3;box-shadow:0 0 0 4px rgba(0,113,227,.14)}
+  .meta-two,.meta-three{display:grid;gap:14px}.meta-two{grid-template-columns:repeat(2,minmax(0,1fr))}.meta-three{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .meta-button{appearance:none;border:0;border-radius:999px;background:#0071e3;color:#fff;font-weight:600;font-size:15px;padding:13px 19px;cursor:pointer;transition:background .16s,transform .16s}
+  .meta-button:hover{background:#0077ed;transform:scale(1.01)}
+  .meta-connected{display:flex;gap:10px;align-items:center;margin:0 32px 30px;padding:13px 15px;border-radius:16px;background:#f5f5f7;font-size:14px}.meta-connected i{width:8px;height:8px;border-radius:50%;background:#30d158}
+  .meta-route{margin-top:20px}.meta-divider{height:1px;background:#e8e8ed;margin:4px 0}
+  .meta-webhook{margin-top:20px;padding:32px;display:grid;grid-template-columns:1fr auto;gap:24px;align-items:center}
+  .meta-webhook h2{font-size:28px;letter-spacing:-.03em;margin:0}.meta-webhook p{color:#6e6e73;margin:7px 0 0;line-height:1.45}
+  .meta-code{margin-top:15px;display:block;max-width:620px;overflow:auto;border-radius:13px;background:#1d1d1f;color:#f5f5f7;padding:13px 15px;font-size:13px}
+  .meta-muted{margin:0;color:#6e6e73;font-size:14px}.meta-empty{margin:25px 32px 32px;border-radius:18px;background:#f5f5f7;padding:19px;color:#6e6e73;font-size:14px}
+  @media(max-width:800px){.meta-wrap{padding:38px 18px 60px}.meta-hero,.meta-webhook{grid-template-columns:1fr}.meta-grid{grid-template-columns:1fr}.meta-hero h1{font-size:47px}.meta-panel-head,.meta-form{padding-left:22px;padding-right:22px}.meta-connected,.meta-empty{margin-left:22px;margin-right:22px}.meta-two,.meta-three{grid-template-columns:1fr}.meta-progress{display:none}}
+</style>
+{% endblock %}
+{% block content %}
+<main class="meta-page overflow-y-auto"><div class="meta-wrap">
+  <header class="meta-hero">
+    <div><div class="meta-eyebrow">Connect Hub</div><h1>Every lead.<br>Exactly where it belongs.</h1><p>Connect your Meta instant forms once. SHVYA brings each response into the right pipeline, stage, and CRM fields automatically.</p></div>
+    <div class="meta-progress"><span class="meta-dot"></span><span>Two simple steps</span></div>
+  </header>
+  <div class="meta-grid">
+    <section class="meta-panel">
+      <div class="meta-panel-head"><span class="meta-step">1</span><h2>Connect a Page.</h2><p class="intro">Add the Page that receives your lead forms.</p></div>
+      <form method="post" action="{% url 'meta-lead-page-save' %}" class="meta-form">{% csrf_token %}
+        <label class="meta-field"><span class="meta-label">Page name</span><input class="meta-input" name="page_name" placeholder="Acme Homes" required></label>
+        <label class="meta-field"><span class="meta-label">Page ID</span><input class="meta-input" name="page_id" inputmode="numeric" placeholder="1234567890" required></label>
+        <label class="meta-field"><span class="meta-label">Page access token</span><input class="meta-input" type="password" name="page_access_token" placeholder="Paste your long-lived token" required></label>
+        <label class="meta-field"><span class="meta-label">App secret <span style="font-weight:400;color:#6e6e73">(optional when configured globally)</span></span><input class="meta-input" type="password" name="app_secret" placeholder="Paste app secret"></label>
+        <button class="meta-button">Save Page</button>
+      </form>
+      {% for page in pages %}<div class="meta-connected"><i></i><span>{{ page.page_name|default:page.page_id }}</span><span style="margin-left:auto;color:#6e6e73">Connected</span></div>{% endfor %}
+    </section>
+    <section class="meta-panel">
+      <div class="meta-panel-head"><span class="meta-step">2</span><h2>Set the destination.</h2><p class="intro">Give each instant form its own route and field mapping.</p></div>
+      {% if not pages %}<div class="meta-empty">Connect a Facebook Page first, then return here to route your forms.</div>{% else %}
+      <form method="post" action="{% url 'meta-lead-form-save' %}" class="meta-form">{% csrf_token %}
+        <div class="meta-two"><label class="meta-field"><span class="meta-label">Facebook Page</span><select class="meta-input" name="page">{% for page in pages %}<option value="{{ page.id }}">{{ page.page_name|default:page.page_id }}</option>{% endfor %}</select></label><label class="meta-field"><span class="meta-label">Form ID</span><input class="meta-input" name="form_id" placeholder="Meta form ID" required></label></div>
+        <label class="meta-field"><span class="meta-label">Form name</span><input class="meta-input" name="form_name" placeholder="e.g. Property enquiry" required></label>
+        <div class="meta-two"><label class="meta-field"><span class="meta-label">Pipeline</span><select id="meta-pipeline" class="meta-input" name="pipeline">{% for pipeline in pipelines %}<option value="{{ pipeline.id }}">{{ pipeline.name }}</option>{% endfor %}</select></label><label class="meta-field"><span class="meta-label">Stage</span><select id="meta-stage" class="meta-input" name="stage"></select></label></div>
+        <div class="meta-divider"></div>
+        <div class="meta-route"><h3 style="font-size:17px;margin:0;letter-spacing:-.02em">Match the answers.</h3><p class="meta-muted" style="margin-top:5px">Use the exact field key from the instant form.</p></div>
+        <div class="meta-three"><label class="meta-field"><span class="meta-label">Full name</span><input class="meta-input" name="name" placeholder="full_name"></label><label class="meta-field"><span class="meta-label">Phone</span><input class="meta-input" name="phone" placeholder="phone_number" required></label><label class="meta-field"><span class="meta-label">Email</span><input class="meta-input" name="email" placeholder="email"></label></div>
+        {% if attributes %}<div class="meta-two">{% for attribute in attributes %}<label class="meta-field"><span class="meta-label">{{ attribute.name }}</span><input class="meta-input" name="attribute:{{ attribute.key }}" placeholder="Meta field key"></label>{% endfor %}</div>{% endif %}
+        <button class="meta-button">Save form mapping</button>
+      </form>{% endif %}
+    </section>
+  </div>
+  <section class="meta-panel meta-webhook"><div><div class="meta-eyebrow">Meta configuration</div><h2 style="margin-top:10px">Finish in Meta.</h2><p>In Meta App Dashboard → Webhooks → Page, subscribe to <strong>leadgen</strong> and use this callback URL.</p><code class="meta-code">{{ webhook_url }}</code></div><p class="meta-muted">Use your <code>META_LEAD_VERIFY_TOKEN</code> environment value as the verify token.</p></section>
+</div></main>
+<script>
+const pipelineStages={ {% for p in pipelines %}"{{ p.id }}":[{% for s in p.stages.all %}{id:"{{ s.id }}",name:"{{ s.name|escapejs }}"},{% endfor %}],{% endfor %} };
+const pipeline=document.getElementById("meta-pipeline"),stage=document.getElementById("meta-stage");
+function syncStages(){if(!pipeline||!stage)return;stage.innerHTML=(pipelineStages[pipeline.value]||[]).map(item=>`<option value="${item.id}">${item.name}</option>`).join("");}
+pipeline?.addEventListener("change",syncStages);syncStages();
+</script>
+{% endblock %}
