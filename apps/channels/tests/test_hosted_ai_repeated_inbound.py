@@ -1,3 +1,5 @@
+from unittest.mock import patch
+
 from django.test import TestCase
 
 from apps.accounts.models import User
@@ -59,21 +61,27 @@ class HostedAIRepeatedInboundTests(TestCase):
         self.stage.save(update_fields=["ai_on", "updated_at"])
 
     def _receive(self, *, message_id, body):
-        with self.captureOnCommitCallbacks(execute=True):
-            return handle_gateway_event(
-                payload={
-                    "sessionId": str(self.account.id),
-                    "event": "message",
-                    "messageId": message_id,
-                    "from": "919876543210@c.us",
-                    "to": "918700274739@c.us",
-                    "chatId": "919876543210@c.us",
-                    "contactName": "Repeat Lead",
-                    "body": body,
-                    "messageType": "text",
-                    "isGroup": False,
-                }
-            )
+        # Creating the durable job also schedules its delayed dispatcher after
+        # commit. Keep this test scoped to inbound->job creation rather than
+        # executing the Celery task eagerly (which would call the AI provider).
+        with patch(
+            "apps.hosted_automation.signals.dispatch_due_hosted_ai.apply_async"
+        ):
+            with self.captureOnCommitCallbacks(execute=True):
+                return handle_gateway_event(
+                    payload={
+                        "sessionId": str(self.account.id),
+                        "event": "message",
+                        "messageId": message_id,
+                        "from": "919876543210@c.us",
+                        "to": "918700274739@c.us",
+                        "chatId": "919876543210@c.us",
+                        "contactName": "Repeat Lead",
+                        "body": body,
+                        "messageType": "text",
+                        "isGroup": False,
+                    }
+                )
 
     def test_every_new_hosted_inbound_creates_an_ai_job(self):
         first = self._receive(message_id="HOSTED-TURN-1", body="Hello")
