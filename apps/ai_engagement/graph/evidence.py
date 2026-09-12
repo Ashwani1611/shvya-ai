@@ -100,7 +100,7 @@ def check_grounding(state):
         "qualification_question_id": decision.next_requirement_id,
         "requirements": state.get("requirements", []),
         "backend_state": state.get("qualification_state", {}),
-        "runtime_state": contract(qualification=state.get("qualification_state") or {}, requirements=state.get("requirements") or [], saved=((context.lead or {}).get("attributes") or {}).get(STATE_KEY)),
+        "runtime_state": contract(qualification=state.get("qualification_state") or {}, requirements=state.get("requirements") or [], saved=((getattr(context, "lead", {}) or {}).get("attributes") or {}).get(STATE_KEY)),
         "proposed_answer_updates": getattr(decision, "qualification_updates", []),
     }
 

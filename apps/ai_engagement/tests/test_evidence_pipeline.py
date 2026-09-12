@@ -22,7 +22,7 @@ class EvidencePipelineTests(SimpleTestCase):
         self.assertEqual(len(result[0]["content"]), 12000)
 
     def test_initial_and_rolling_character_limits(self):
-        self.assertEqual(len(compact("😀" * 600)), 500)
+        self.assertEqual(len(compact("ðŸ˜€" * 600)), 500)
         result = merge_summary("a" * 500, "b" * 200)
         self.assertLessEqual(len(result), 500)
         self.assertEqual(len(result.split(" ")[-1]), 150)
@@ -46,11 +46,12 @@ class EvidencePipelineTests(SimpleTestCase):
             "lead": SimpleNamespace(id="lead"),
         }
 
-    def test_grounding_skips_secondary_model_for_non_org_fact_turns(self):
+    def test_grounding_validates_non_org_fact_turns_too(self):
         state = self._state(reason_code="QUALIFICATION_NEXT")
         with patch("apps.ai_engagement.graph.evidence.OpenAIProvider") as provider:
+            provider.return_value.generate_text.return_value.text = '{"approved":true,"reason":"supported"}'
             result = check_grounding(state)
-        provider.assert_not_called()
+        provider.return_value.generate_text.assert_called_once()
         self.assertTrue(result["grounding_approved"])
         self.assertNotIn("decision", result)
 

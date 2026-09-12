@@ -424,7 +424,7 @@ class EngagementService:
         try:
             validate_response(decision=decision, requirements=requirements,
                 runtime=contract(qualification=projected, requirements=requirements,
-                    saved=((context.lead or {}).get("attributes") or {}).get(STATE_KEY)))
+                    saved=((getattr(context, "lead", {}) or {}).get("attributes") or {}).get(STATE_KEY)))
         except ValueError as exc:
             raise EngagementError(str(exc)) from exc
         if decision.next_requirement_id:
@@ -556,7 +556,7 @@ Do not add explanations, markdown, or chain-of-thought.
         if normalized in self._SIMPLE_ACKS:
             return False
 
-        compact = re.sub(r"[\s,₹$€£+\-./:]", "", normalized)
+        compact = re.sub(r"[\s,â‚¹$â‚¬Â£+\-./:]", "", normalized)
         if len(normalized) <= 40 and compact and compact.isdigit():
             return False
         if len(normalized) <= 24 and re.fullmatch(
@@ -813,7 +813,7 @@ Do not add explanations, markdown, or chain-of-thought.
         context: AIContext,
     ) -> None:
         organization_id = str((context.organization or {}).get("id") or "")
-        lead_id = str((context.lead or {}).get("id") or "")
+        lead_id = str((getattr(context, "lead", {}) or {}).get("id") or "")
         if organization_id != str(organization.id):
             raise EngagementError("AI context organization does not match request.")
         if lead_id != str(lead.id):
