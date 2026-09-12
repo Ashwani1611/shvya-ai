@@ -18,6 +18,48 @@ from django.db import transaction
 logger = logging.getLogger(__name__)
 
 
+@shared_task(bind=True, max_retries=3, default_retry_delay=30)
+def sync_whatsapp_templates_task(self, account_id):
+    """Refresh one connected Cloud API account after a Meta template event.
+
+    Meta's webhook only tells us that a template changed; the Graph API remains
+    the authoritative source for its complete definition and for remote deletes.
+    Keeping that fetch out of the webhook request makes Meta acknowledgements
+    fast and retryable.
+    """
+    from apps.channels.models import WhatsAppAccount
+    from services.channels.template_service import TemplateError
+    from services.channels.template_meta_fix import sync_templates
+
+    account = (
+        WhatsAppAccount.objects.select_related("organization")
+        .filter(
+            id=account_id,
+            connection_type=WhatsAppAccount.ConnectionType.API,
+            status=WhatsAppAccount.Status.CONNECTED,
+            is_active=True,
+        )
+        .first()
+    )
+    if not account:
+        return {"status": "skipped", "reason": "account_not_connected"}
+
+    try:
+        summary = sync_templates(
+            organization=account.organization,
+            account=account,
+        )
+    except TemplateError as exc:
+        logger.warning(
+            "Template sync after Meta webhook failed for account %s: %s",
+            account_id,
+            exc,
+        )
+        raise self.retry(exc=exc)
+
+    return {"status": "synced", **summary}
+
+
 # ============================================================
 # SINGLE MESSAGE SEND
 # ============================================================
