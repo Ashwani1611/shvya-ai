@@ -234,23 +234,11 @@ def _retrieve_knowledge(state: EngagementGraphState) -> dict:
     }
 
 
-def _requirements_as_authoring_text(requirements: list[dict]) -> str:
-    """Serialize only the pinned flow so legacy compilation cannot see new edits."""
-    lines: list[str] = []
-    for requirement in requirements or []:
-        question = str(requirement.get("question") or requirement.get("label") or "").strip()
-        if question:
-            lines.append(question)
-    return "\n".join(lines)
-
-
 def _generate(state: EngagementGraphState) -> dict:
+    # Keep the authored organization policy intact. The service uses the same
+    # persisted flow snapshot as this graph; serializing questions back to prose
+    # destroys explicit IDs, conditional rules and flow-version metadata.
     context = state["context"]
-    requirements = state.get("requirements") or []
-    if requirements:
-        org_context = dict(context.organization or {})
-        org_context["qualification_requirements"] = _requirements_as_authoring_text(requirements)
-        context = replace(context, organization=org_context)
 
     decision = state["legacy_engage"](
         state["service"],

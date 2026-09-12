@@ -9,10 +9,24 @@ STATE_KEY = "_shvya_ai_runtime"
 TERMINAL_REQUIREMENTS = {"answered", "not_applicable", "skipped"}
 
 
+def _semantic_state(value):
+    # Audit bookkeeping is allowed to change while a response is generated.
+    # Answers, IDs, status, flow snapshots and operational facts are not.
+    if isinstance(value, dict):
+        return {key: _semantic_state(item) for key, item in value.items()
+                if key not in {"history", "asked_at", "updated_at", "created_at"}}
+    if isinstance(value, list):
+        return [_semantic_state(item) for item in value]
+    return value
+
+
 def state_revision(lead):
     attributes = lead.attributes if isinstance(getattr(lead, "attributes", None), dict) else {}
-    return response_hash(json.dumps({"qualification": attributes.get("_shvya_ai_qualification"),
-        "runtime": attributes.get(STATE_KEY), "stage": str(getattr(lead, "stage_id", ""))}, sort_keys=True, default=str))
+    return response_hash(json.dumps(_semantic_state({
+        "qualification": attributes.get("_shvya_ai_qualification"),
+        "runtime": attributes.get(STATE_KEY),
+        "stage": str(getattr(lead, "stage_id", "")),
+    }), sort_keys=True, default=str))
 
 
 def response_hash(message):
@@ -72,7 +86,7 @@ def contract(*, qualification, requirements, saved=None, organization_id=""):
         "scheduled_time": saved.get("scheduled_time"),
         "flow_id": saved.get("flow_id") or f"qualification:{organization_id}",
         "flow_version": hashlib.sha256(json.dumps(requirements, sort_keys=True, ensure_ascii=False).encode()).hexdigest(),
-        "stable_requirement_id": current,
+        "stable_requirement_id": (next_item.get("stable_id") or current) if current else None,
     }
 
 
