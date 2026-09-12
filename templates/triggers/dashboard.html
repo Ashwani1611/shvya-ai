@@ -1,13 +1,17 @@
 {% extends "base.html" %}
 {% load static %}
 {% block title %}Workflows · SHVYA AI{% endblock %}
-{% block header %}<button id="st-mobile-nav" type="button" aria-label="Open navigation" aria-expanded="false" aria-controls="app-sidebar">☰</button> Workflows{% endblock %}
+{% block header %}Workflows{% endblock %}
 {% block content %}
 <link rel="stylesheet" href="{% static 'triggers/dashboard.css' %}?v=1">
 <link rel="stylesheet" href="{% static 'triggers/apple_workflows.css' %}?v=2">
 {{ trigger_catalog|json_script:"trigger-catalog" }}
 <main id="smart-triggers" class="st" data-admin="{{ trigger_admin|yesno:'true,false' }}" data-api="{% url 'crm-smart-triggers' %}">
-  <button id="st-nav-backdrop" aria-label="Close navigation" hidden></button>
+  {# The premium shell owns mobile navigation. The legacy Workflows JS still
+     references these IDs during initialization, so keep inert compatibility
+     controls inside the feature root where the shell will not replace them. #}
+  <button id="st-mobile-nav" type="button" hidden aria-hidden="true" tabindex="-1"></button>
+  <button id="st-nav-backdrop" type="button" hidden aria-hidden="true" tabindex="-1"></button>
   <div hidden>{% csrf_token %}</div>
   <div id="st-notice" role="status" aria-live="polite" hidden></div>
   <section id="st-home">
