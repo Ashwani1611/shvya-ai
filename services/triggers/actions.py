@@ -4,15 +4,17 @@ import logging
 from datetime import datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
-from django.conf import settings
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
-from django.core.mail import EmailMultiAlternatives
 from django.db import transaction
 from django.utils import timezone
 
 from apps.channels.models import WhatsAppAccount, WhatsAppMessage
 from apps.crm.models import Lead, LeadReminder, Stage
 from apps.followups.models import FollowupSequence, LeadSequenceState
+from apps.integrations.services.email import (
+    EmailConfigurationError,
+    send_organization_email,
+)
 from apps.triggers.models import TriggerRun
 from services.followup_service import (
     FollowupError,
@@ -221,13 +223,8 @@ def _apply(run, lead):
         if not lead.email:
             run.status, run.detail = "skipped", "Lead has no email address."
             return
-        if not getattr(settings, "FOLLOWUP_EMAIL_DELIVERY_ENABLED", False):
-            run.status, run.detail = (
-                "blocked",
-                "Email sender configuration is not enabled.",
-            )
-            return
         # Email is dispatched separately after a durable sending claim is committed.
+        # The delivery worker uses the organization's connected Connect Hub mailbox.
         run.status = "email_ready"
         return
     else:
@@ -255,14 +252,16 @@ def deliver_email(run_id):
                 .replace("\n", " ")
             )
             body = _render_text(run.action["body"], run.lead, run.rule.created_by)
-            EmailMultiAlternatives(
+            send_organization_email(
+                organization=run.lead.organization,
+                to=run.lead.email,
                 subject=subject,
-                body=body,
-                from_email=settings.DEFAULT_FROM_EMAIL,
-                to=[run.lead.email],
+                text_body=body,
                 headers={"Message-ID": f"<smart-trigger-{run.id}@shvya-ai.com>"},
-            ).send(fail_silently=False)
+            )
             run.status = "completed"
+    except EmailConfigurationError as exc:
+        run.status, run.detail = "failed", str(exc)[:1000]
     except Exception:
         logger.exception("Smart Trigger email outcome is uncertain: %s", run.id)
         run.status, run.detail = (
