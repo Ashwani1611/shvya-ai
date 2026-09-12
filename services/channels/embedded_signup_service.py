@@ -38,6 +38,27 @@ class EmbeddedSignupError(Exception):
         self.meta_error_code = str(meta_error_code or "")
 
 
+class EmbeddedSignupPhoneSelectionRequired(EmbeddedSignupError):
+    """Raised when authorization is valid but Meta exposes multiple phones.
+
+    ``choices`` contains only safe Meta asset metadata. The access token is
+    attached in-memory by ``complete_embedded_signup`` immediately before the
+    exception leaves the service; callers must never log or render it.
+    """
+
+    def __init__(self, choices):
+        super().__init__(
+            "Choose which authorized WhatsApp phone number SHVYA should connect.",
+            stage="phone_selection_required",
+        )
+        self.choices = choices
+        self._access_token = ""
+
+    @property
+    def access_token(self):
+        return self._access_token
+
+
 def _meta_error_details(exc):
     """Return ``(code, message)`` without exposing tokens or raw payloads."""
     body = getattr(exc, "response_body", None)
@@ -104,7 +125,7 @@ def _provider_error(exc, *, stage="asset_discovery"):
     )
 
 
-def _phone_ids_for_waba(*, waba_id, access_token):
+def _list_phones_for_waba(*, waba_id, access_token):
     try:
         phones = embedded_provider.list_waba_phone_numbers(
             waba_id=waba_id,
@@ -112,7 +133,24 @@ def _phone_ids_for_waba(*, waba_id, access_token):
         )
     except WhatsAppAPIError as exc:
         raise _provider_error(exc) from exc
-    return _unique_ids(item.get("id") for item in phones if isinstance(item, dict))
+    return [item for item in phones if isinstance(item, dict) and item.get("id")]
+
+
+def _phone_ids_for_waba(*, waba_id, access_token):
+    phones = _list_phones_for_waba(
+        waba_id=waba_id,
+        access_token=access_token,
+    )
+    return _unique_ids(item.get("id") for item in phones)
+
+
+def _safe_phone_choice(*, waba_id, phone):
+    return {
+        "waba_id": str(waba_id),
+        "phone_number_id": str(phone.get("id") or ""),
+        "display_phone_number": str(phone.get("display_phone_number") or ""),
+        "verified_name": str(phone.get("verified_name") or ""),
+    }
 
 
 def _resolve_signup_assets(*, access_token, waba_id="", phone_number_id=""):
@@ -120,7 +158,10 @@ def _resolve_signup_assets(*, access_token, waba_id="", phone_number_id=""):
 
     The normal browser FINISH event still supplies both IDs. This recovery path
     exists for Meta/browser handoff races where OAuth succeeds but the FINISH
-    postMessage is delayed or absent.
+    postMessage is delayed or absent. If Meta exposes multiple authorized phone
+    numbers and does not identify the selected one, the caller receives the safe
+    choices so SHVYA can ask the admin directly instead of making them restart
+    Meta signup or guessing a number.
     """
     waba_id = str(waba_id or "").strip()
     phone_number_id = str(phone_number_id or "").strip()
@@ -199,29 +240,31 @@ def _resolve_signup_assets(*, access_token, waba_id="", phone_number_id=""):
             stage="asset_discovery",
         )
 
-    discovered_pairs = []
+    discovered_choices = []
+    seen_pairs = set()
     for candidate in candidate_wabas:
-        for phone_id in _phone_ids_for_waba(
+        for phone in _list_phones_for_waba(
             waba_id=candidate,
             access_token=access_token,
         ):
-            discovered_pairs.append((candidate, phone_id))
+            choice = _safe_phone_choice(waba_id=candidate, phone=phone)
+            pair = (choice["waba_id"], choice["phone_number_id"])
+            if pair in seen_pairs:
+                continue
+            seen_pairs.add(pair)
+            discovered_choices.append(choice)
 
-    if len(discovered_pairs) == 1:
-        return discovered_pairs[0]
-    if not discovered_pairs:
+    if len(discovered_choices) == 1:
+        choice = discovered_choices[0]
+        return choice["waba_id"], choice["phone_number_id"]
+    if not discovered_choices:
         raise EmbeddedSignupError(
             "Meta authorized the WhatsApp Business Account, but no phone number was "
             "visible to the returned token. Finish adding/verifying a phone number in "
             "Meta Embedded Signup and try again.",
             stage="asset_discovery",
         )
-    raise EmbeddedSignupError(
-        "Meta did not identify which phone number was selected and the authorized "
-        "account contains multiple phone numbers. Please run Connect API again and "
-        "select the intended phone number.",
-        stage="asset_discovery",
-    )
+    raise EmbeddedSignupPhoneSelectionRequired(discovered_choices)
 
 
 def complete_embedded_signup(
@@ -232,48 +275,68 @@ def complete_embedded_signup(
     phone_number_id="",
     attempt=None,
     redirect_uri="",
+    access_token="",
 ):
-    """Authorize Meta, resolve assets, persist the number, then subscribe webhooks."""
+    """Authorize Meta, resolve assets, persist the number, then subscribe webhooks.
+
+    ``access_token`` is used only when resuming a short-lived server-side phone
+    selection created after a successful OAuth exchange. Normal callers should
+    pass the authorization ``code`` and let this function exchange it.
+    """
     if not settings.META_APP_ID or not settings.META_APP_SECRET:
         raise EmbeddedSignupError(
             "Embedded signup is not configured on this server yet.",
             stage="server_configuration",
         )
 
-    try:
-        access_token = embedded_provider.exchange_code_for_access_token(
-            app_id=settings.META_APP_ID,
-            app_secret=settings.META_APP_SECRET,
-            code=code,
-            redirect_uri=redirect_uri,
+    access_token = str(access_token or "").strip()
+    if not access_token:
+        if not code:
+            raise EmbeddedSignupError(
+                "Meta authorization is no longer available. Please start Connect API again.",
+                stage="token_exchange",
+            )
+        try:
+            access_token = embedded_provider.exchange_code_for_access_token(
+                app_id=settings.META_APP_ID,
+                app_secret=settings.META_APP_SECRET,
+                code=code,
+                redirect_uri=redirect_uri,
+            )
+        except WhatsAppAPIError as exc:
+            error_code, reason = _meta_error_details(exc)
+            raise EmbeddedSignupError(
+                reason,
+                stage="token_exchange",
+                meta_error_code=error_code,
+            ) from exc
+
+        logger.info(
+            "Embedded signup token exchange succeeded: org=%s attempt=%s token_received=True",
+            organization.id,
+            getattr(attempt, "id", None),
         )
-    except WhatsAppAPIError as exc:
-        error_code, reason = _meta_error_details(exc)
-        raise EmbeddedSignupError(
-            reason,
+        _update_attempt(
+            attempt,
+            status="token_exchanged",
             stage="token_exchange",
-            meta_error_code=error_code,
-        ) from exc
+            token_received=True,
+            meta_error_code="",
+            error_message="",
+        )
 
-    logger.info(
-        "Embedded signup token exchange succeeded: org=%s attempt=%s token_received=True",
-        organization.id,
-        getattr(attempt, "id", None),
-    )
-    _update_attempt(
-        attempt,
-        status="token_exchanged",
-        stage="token_exchange",
-        token_received=True,
-        meta_error_code="",
-        error_message="",
-    )
+    try:
+        waba_id, phone_number_id = _resolve_signup_assets(
+            access_token=access_token,
+            waba_id=waba_id,
+            phone_number_id=phone_number_id,
+        )
+    except EmbeddedSignupPhoneSelectionRequired as exc:
+        # Keep the credential only in memory here. The direct OAuth view encrypts
+        # it before placing the short-lived continuation in the user's session.
+        exc._access_token = access_token
+        raise
 
-    waba_id, phone_number_id = _resolve_signup_assets(
-        access_token=access_token,
-        waba_id=waba_id,
-        phone_number_id=phone_number_id,
-    )
     logger.info(
         "Embedded signup assets resolved: org=%s attempt=%s waba_id=%s phone_number_id=%s",
         organization.id,
