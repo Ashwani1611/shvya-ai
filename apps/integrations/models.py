@@ -9,7 +9,7 @@ from django.db import models
 from apps.organizations.models import Organization
 
 
-def _webhook_fernet():
+def _integration_fernet():
     """Return a stable Fernet instance derived from Django's SECRET_KEY."""
     digest = hashlib.sha256(settings.SECRET_KEY.encode("utf-8")).digest()
     return Fernet(base64.urlsafe_b64encode(digest))
@@ -60,7 +60,7 @@ class WebhookConfiguration(models.Model):
     def set_secret(self, raw_secret):
         raw_secret = str(raw_secret or "")
         self.encrypted_secret = (
-            _webhook_fernet().encrypt(raw_secret.encode("utf-8")).decode("ascii")
+            _integration_fernet().encrypt(raw_secret.encode("utf-8")).decode("ascii")
             if raw_secret
             else ""
         )
@@ -70,7 +70,7 @@ class WebhookConfiguration(models.Model):
             return ""
 
         try:
-            return _webhook_fernet().decrypt(
+            return _integration_fernet().decrypt(
                 self.encrypted_secret.encode("ascii")
             ).decode("utf-8")
         except (InvalidToken, ValueError, TypeError):
@@ -159,3 +159,129 @@ class WebhookDelivery(models.Model):
 
     def __str__(self):
         return f"{self.event_type} {self.lead_id} ({self.status})"
+
+
+class EmailConfiguration(models.Model):
+    """Single organization-scoped SMTP identity used by email automations."""
+
+    class Provider(models.TextChoices):
+        GMAIL = "gmail", "Gmail / Google Workspace"
+        MICROSOFT = "microsoft", "Microsoft 365 / Outlook"
+        ZOHO = "zoho", "Zoho Mail"
+        CUSTOM = "custom", "Custom SMTP"
+
+    class Security(models.TextChoices):
+        STARTTLS = "starttls", "STARTTLS"
+        SSL = "ssl", "SSL/TLS"
+        NONE = "none", "None"
+
+    class TestStatus(models.TextChoices):
+        NOT_TESTED = "not_tested", "Not tested"
+        SUCCESS = "success", "Connected"
+        FAILED = "failed", "Connection failed"
+
+    id = models.UUIDField(
+        primary_key=True,
+        default=uuid.uuid4,
+        editable=False,
+    )
+    organization = models.OneToOneField(
+        Organization,
+        on_delete=models.CASCADE,
+        related_name="email_configuration",
+    )
+    provider = models.CharField(
+        max_length=20,
+        choices=Provider.choices,
+        default=Provider.CUSTOM,
+    )
+    email_address = models.EmailField(
+        max_length=254,
+    )
+    sender_name = models.CharField(
+        max_length=120,
+        blank=True,
+    )
+    reply_to_email = models.EmailField(
+        max_length=254,
+        blank=True,
+    )
+    smtp_host = models.CharField(
+        max_length=255,
+    )
+    smtp_port = models.PositiveIntegerField(
+        default=587,
+    )
+    smtp_security = models.CharField(
+        max_length=16,
+        choices=Security.choices,
+        default=Security.STARTTLS,
+    )
+    smtp_username = models.CharField(
+        max_length=254,
+    )
+    encrypted_password = models.TextField(
+        blank=True,
+    )
+    is_enabled = models.BooleanField(
+        default=False,
+    )
+    last_test_status = models.CharField(
+        max_length=16,
+        choices=TestStatus.choices,
+        default=TestStatus.NOT_TESTED,
+    )
+    last_tested_at = models.DateTimeField(
+        null=True,
+        blank=True,
+    )
+    last_error = models.TextField(
+        blank=True,
+    )
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+    )
+    updated_at = models.DateTimeField(
+        auto_now=True,
+    )
+
+    class Meta:
+        ordering = ["organization__name"]
+        verbose_name = "Email Configuration"
+        verbose_name_plural = "Email Configurations"
+
+    def __str__(self):
+        return f"Email - {self.organization.name} ({self.email_address})"
+
+    @property
+    def has_password(self):
+        return bool(self.encrypted_password)
+
+    @property
+    def is_connected(self):
+        return (
+            self.is_enabled
+            and self.last_test_status == self.TestStatus.SUCCESS
+            and self.has_password
+        )
+
+    def set_password(self, raw_password):
+        raw_password = str(raw_password or "")
+        self.encrypted_password = (
+            _integration_fernet()
+            .encrypt(raw_password.encode("utf-8"))
+            .decode("ascii")
+            if raw_password
+            else ""
+        )
+
+    def get_password(self):
+        if not self.encrypted_password:
+            return ""
+
+        try:
+            return _integration_fernet().decrypt(
+                self.encrypted_password.encode("ascii")
+            ).decode("utf-8")
+        except (InvalidToken, ValueError, TypeError):
+            return ""
