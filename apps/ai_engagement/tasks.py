@@ -57,6 +57,10 @@ def _persist_engagement_answers(lead, decision, source_message_id):
         runtime=contract(qualification=projected, requirements=requirements,
                          saved=(lead.attributes or {}).get(STATE_KEY), organization_id=lead.organization_id))
     persist_answer_updates(lead=lead, updates=getattr(decision, "qualification_updates", []))
+    # The answer persistence wrapper reloads the row. Apply this message's
+    # runtime intent afterwards so that reload cannot erase pause/resume/opt-out.
+    lead.attributes = dict(lead.attributes or {})
+    lead.attributes[STATE_KEY] = observe_message(lead.attributes.get(STATE_KEY), inbound.body)
     finalize_runtime(lead=lead, decision=decision, qualification=projected,
                      requirements=requirements, message_id=source_message_id)
     payload["shvya_ai_processing"] = {"message_id": str(source_message_id),

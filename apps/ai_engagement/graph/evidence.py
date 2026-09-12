@@ -83,7 +83,20 @@ def check_grounding(state):
     if not decision.should_engage:
         return {"grounding_approved": True}
 
-    # Every customer reply is checked regardless of its model-selected reason.
+    # Exact backend-selected question text has no model-authored business claims
+    # to verify. This is a content check, never a reason-code/model-name bypass.
+    runtime = contract(qualification=state.get("qualification_state") or {},
+        requirements=state.get("requirements") or [],
+        saved=((getattr(state["context"], "lead", {}) or {}).get("attributes") or {}).get(STATE_KEY))
+    selected = runtime.get("current_requirement_id")
+    canonical = next((item for item in state.get("requirements", [])
+                      if str(item.get("id")) == selected), None)
+    if (canonical and decision.next_requirement_id == selected
+            and str(decision.message).strip() == str(canonical.get("question") or "").strip()
+            and not decision.qualification_updates and not decision.crm_actions
+            and decision.file_document_id is None):
+        return {"grounding_approved": True}
+
 
     context = state["context"]
     payload = {
@@ -96,6 +109,9 @@ def check_grounding(state):
         ],
         "runtime_policy": state.get("runtime_policy", {}),
         "organization_facts": (context.organization or {}).get("about", ""),
+        "organization_name": (context.organization or {}).get("name", ""),
+        "engagement_instructions": (context.organization or {}).get("engagement_instructions", ""),
+        "bot_languages": (context.organization or {}).get("bot_languages", ""),
         "knowledge": context.knowledge or [],
         "qualification_question_id": decision.next_requirement_id,
         "requirements": state.get("requirements", []),

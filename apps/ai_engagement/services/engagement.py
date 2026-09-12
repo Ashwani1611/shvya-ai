@@ -5,7 +5,7 @@ import os
 import re
 import logging
 from pathlib import Path
-from apps.ai_engagement.services.runtime_state import STATE_KEY, contract, validate_response
+from apps.ai_engagement.services.runtime_state import STATE_KEY, contract, validate_response, state_revision, response_hash
 
 BACKEND_OPERATING_POLICY = (Path(__file__).resolve().parent.parent / "prompts" / "backend_operating_policy.md").read_text(encoding="utf-8")
 from dataclasses import dataclass, field
@@ -49,6 +49,7 @@ from apps.ai_engagement.services.qualification_state import (
     apply_unambiguous_reply,
     next_requirement,
     state_for_lead,
+    requirements_for_lead,
     project_answer_updates,
 )
 
@@ -257,7 +258,8 @@ class EngagementService:
         )
 
         profile = compile_org_ai_profile_from_context(context.organization or {})
-        requirements = profile.get("qualification", {}).get("requirements", [])
+        requirements = requirements_for_lead(lead, profile.get("qualification", {}).get("requirements", []))
+        profile["qualification"]["requirements"] = requirements
         qualification_state = state_for_lead(lead, requirements=requirements)
 
         # Conservative zero-LLM extraction: only bind an obvious short reply to
@@ -313,17 +315,21 @@ class EngagementService:
                     note_limit=self.NOTE_LIMIT,
                 )
                 profile = compile_org_ai_profile_from_context(context.organization or {})
-                requirements = profile.get("qualification", {}).get("requirements", [])
+                requirements = requirements_for_lead(lead, profile.get("qualification", {}).get("requirements", []))
+                profile["qualification"]["requirements"] = requirements
                 qualification_state = state_for_lead(lead, requirements=requirements)
 
         source_message_id = self._latest_inbound_message_id(context=context)
         claim = None
-        result_key = f"shvya:ai:decision:v2:{organization.id}:{lead.id}:{source_message_id}"
+        # A retry after a real state/configuration change must generate a new
+        # decision, even while the previous turn's successful claim is alive.
+        generation_revision = response_hash(state_revision(lead) + json.dumps(profile, sort_keys=True, default=str))
+        result_key = f"shvya:ai:decision:v3:{organization.id}:{lead.id}:{source_message_id}:{generation_revision}"
         if source_message_id:
             try:
                 claim = EngagementGenerationLock(
                     lead_id=getattr(lead, "id", "unknown"),
-                    source_message_id=source_message_id,
+                    source_message_id=f"{source_message_id}:{generation_revision}",
                 )
                 if not claim.acquire():
                     saved = cache.get(result_key)
