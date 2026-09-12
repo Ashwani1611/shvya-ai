@@ -45,9 +45,12 @@ class AIPermissionService:
     """
     Central evaluator for the SHVYA AI control hierarchy.
 
-    AI may operate only when pipeline, current stage, and lead switches are
-    enabled. For an existing WhatsApp conversation, the account carrying that
-    conversation must also be the number linked to the lead's current pipeline.
+    Meta/API conversations use the normal pipeline, stage, and lead controls.
+    Hosted Account inbound conversations intentionally use the linked pipeline's
+    AI switch as the conversation-level master switch: stage/lead toggles must
+    not make an active Hosted conversation silently stop after qualification or
+    a CRM stage transition. In every case, the inbound WhatsApp account must
+    still be the number linked to the lead's current pipeline.
     """
 
     def __init__(
@@ -66,15 +69,8 @@ class AIPermissionService:
             stage_id=(str(lead.stage_id) if lead.stage_id else None),
         )
 
-    def _conversation_uses_pipeline_number(self, *, organization, lead):
-        """Fail closed when the customer's current inbound turn is on the wrong number.
-
-        Account routing must follow the inbound customer conversation that AI is
-        being asked to answer. A newer manual/system outbound message on another
-        connected number is not a new customer conversation and must not disable
-        AI for an otherwise correctly mapped Hosted or Cloud API inbound turn.
-        """
-        latest_message = (
+    def _latest_inbound_message(self, *, organization, lead):
+        return (
             lead.whatsapp_messages.filter(
                 organization=organization,
                 direction="inbound",
@@ -83,6 +79,26 @@ class AIPermissionService:
             .order_by("-created_at", "-id")
             .first()
         )
+
+    def _conversation_uses_pipeline_number(
+        self,
+        *,
+        organization,
+        lead,
+        latest_message=None,
+    ):
+        """Fail closed when the customer's current inbound turn is on the wrong number.
+
+        Account routing must follow the inbound customer conversation that AI is
+        being asked to answer. A newer manual/system outbound message on another
+        connected number is not a new customer conversation and must not disable
+        AI for an otherwise correctly mapped Hosted or Cloud API inbound turn.
+        """
+        if latest_message is None:
+            latest_message = self._latest_inbound_message(
+                organization=organization,
+                lead=lead,
+            )
 
         # Permission evaluation is also used before an inbound conversation
         # exists. The AI engagement worker separately requires an inbound
@@ -134,6 +150,8 @@ class AIPermissionService:
                 lead=lead,
             )
 
+        # Pipeline.ai_enabled is also the Hosted Account AI Auto-Reply switch,
+        # so it remains the master on/off control for Hosted conversations.
         if not getattr(lead.pipeline, "ai_enabled", True):
             return self._decision(
                 allowed=False,
@@ -142,25 +160,41 @@ class AIPermissionService:
                 lead=lead,
             )
 
-        if lead.stage_id and not lead.stage.ai_on:
-            return self._decision(
-                allowed=False,
-                reason="stage_ai_disabled",
-                organization=organization,
-                lead=lead,
-            )
+        latest_inbound = self._latest_inbound_message(
+            organization=organization,
+            lead=lead,
+        )
+        inbound_account = getattr(latest_inbound, "account", None)
+        is_hosted_inbound = (
+            getattr(inbound_account, "connection_type", "") == "hosted"
+        )
 
-        if not lead.ai_enabled:
-            return self._decision(
-                allowed=False,
-                reason="lead_ai_disabled",
-                organization=organization,
-                lead=lead,
-            )
+        # Hosted Account AI is conversation-level automation. Once a customer
+        # is messaging the correctly linked Hosted number, stage transitions or
+        # a stale lead-level toggle must not stop future inbound replies. The
+        # account/pipeline AI switch above remains authoritative. Meta/API keeps
+        # the existing granular stage + lead controls.
+        if not is_hosted_inbound:
+            if lead.stage_id and not lead.stage.ai_on:
+                return self._decision(
+                    allowed=False,
+                    reason="stage_ai_disabled",
+                    organization=organization,
+                    lead=lead,
+                )
+
+            if not lead.ai_enabled:
+                return self._decision(
+                    allowed=False,
+                    reason="lead_ai_disabled",
+                    organization=organization,
+                    lead=lead,
+                )
 
         mapping_allowed, mapping_reason = self._conversation_uses_pipeline_number(
             organization=organization,
             lead=lead,
+            latest_message=latest_inbound,
         )
         if not mapping_allowed:
             return self._decision(
