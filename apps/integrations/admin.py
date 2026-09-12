@@ -2,6 +2,8 @@ from django.contrib import admin
 
 from apps.integrations.models import (
     EmailConfiguration,
+    MetaLeadForm,
+    MetaLeadPage,
     WebhookConfiguration,
     WebhookDelivery,
 )
@@ -75,3 +77,23 @@ class EmailConfigurationAdmin(admin.ModelAdmin):
         "created_at",
         "updated_at",
     )
+
+
+@admin.register(MetaLeadPage)
+class MetaLeadPageAdmin(admin.ModelAdmin):
+    list_display = ("page_name", "page_id", "organization", "is_active", "updated_at")
+    list_filter = ("is_active",)
+    search_fields = ("page_name", "page_id", "organization__name")
+    readonly_fields = (
+        "encrypted_page_access_token",
+        "encrypted_app_secret",
+        "created_at",
+        "updated_at",
+    )
+
+
+@admin.register(MetaLeadForm)
+class MetaLeadFormAdmin(admin.ModelAdmin):
+    list_display = ("form_name", "form_id", "page", "pipeline", "stage", "is_active")
+    list_filter = ("is_active",)
+    search_fields = ("form_name", "form_id", "page__page_name")

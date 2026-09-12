@@ -4,6 +4,7 @@ from django.urls import include, path
 from django.views.generic import RedirectView, TemplateView
 
 from apps.channels.webhook_security import whatsapp_webhook_secure_view
+from apps.integrations.views.meta_leads import meta_lead_webhook
 from apps.superadmin.views import admin_global_search
 
 from rest_framework_simplejwt.views import (
@@ -166,6 +167,12 @@ urlpatterns = [
         "webhooks/whatsapp/",
         whatsapp_webhook_secure_view,
         name="whatsapp-webhook",
+    ),
+
+    path(
+        "webhooks/meta-leads/",
+        meta_lead_webhook,
+        name="meta-lead-webhook",
     ),
 
     # =========================================================

@@ -431,3 +431,103 @@ class GoogleSheetIntegration(models.Model):
                 raise ValidationError(
                     {"stage": "Stage does not belong to the selected pipeline."}
                 )
+
+
+class MetaLeadPage(models.Model):
+    """Organization-scoped Facebook Page used for Meta Lead Ads."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    organization = models.ForeignKey(
+        Organization, on_delete=models.CASCADE, related_name="meta_lead_pages"
+    )
+    page_id = models.CharField(max_length=80)
+    page_name = models.CharField(max_length=150, blank=True)
+    encrypted_page_access_token = models.TextField()
+    encrypted_app_secret = models.TextField(blank=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["organization", "page_id"], name="uniq_meta_page_org"
+            )
+        ]
+
+    def set_page_access_token(self, value):
+        self.encrypted_page_access_token = _integration_fernet().encrypt(
+            str(value).encode("utf-8")
+        ).decode("ascii")
+
+    def get_page_access_token(self):
+        try:
+            return _integration_fernet().decrypt(
+                self.encrypted_page_access_token.encode("ascii")
+            ).decode("utf-8")
+        except (InvalidToken, ValueError, TypeError):
+            return ""
+
+    def set_app_secret(self, value):
+        self.encrypted_app_secret = (
+            _integration_fernet().encrypt(str(value).encode("utf-8")).decode("ascii")
+            if value else ""
+        )
+
+    def get_app_secret(self):
+        if not self.encrypted_app_secret:
+            return ""
+        try:
+            return _integration_fernet().decrypt(
+                self.encrypted_app_secret.encode("ascii")
+            ).decode("utf-8")
+        except (InvalidToken, ValueError, TypeError):
+            return ""
+
+    def __str__(self):
+        return self.page_name or self.page_id
+
+
+class MetaLeadForm(models.Model):
+    """Routing and field mapping for one Meta instant form."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    page = models.ForeignKey(
+        MetaLeadPage, on_delete=models.CASCADE, related_name="forms"
+    )
+    form_id = models.CharField(max_length=100)
+    form_name = models.CharField(max_length=200)
+    pipeline = models.ForeignKey(
+        "crm.Pipeline", on_delete=models.PROTECT, related_name="meta_lead_forms"
+    )
+    stage = models.ForeignKey(
+        "crm.Stage", on_delete=models.PROTECT, related_name="meta_lead_forms"
+    )
+    field_mapping = models.JSONField(default=dict, blank=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["form_name"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["page", "form_id"], name="uniq_meta_form_page"
+            )
+        ]
+
+    def clean(self):
+        super().clean()
+        if self.pipeline_id and self.stage_id:
+            if self.stage.pipeline_id != self.pipeline_id:
+                raise ValidationError(
+                    {"stage": "Stage must belong to the selected pipeline."}
+                )
+        if self.page_id and self.pipeline_id:
+            if self.pipeline.organization_id != self.page.organization_id:
+                raise ValidationError(
+                    {"pipeline": "Pipeline must belong to this organization."}
+                )
+
+    def __str__(self):
+        return self.form_name
