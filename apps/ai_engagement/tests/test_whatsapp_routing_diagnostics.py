@@ -153,6 +153,9 @@ class WhatsAppRoutingDiagnosticsTests(TestCase):
         payload = {
             "entry": [
                 {
+                    # The phone_number_id is sufficient for message routing;
+                    # an old/stale WABA value must not suppress the chat.
+                    "id": "stale-waba-id",
                     "changes": [
                         {
                             "value": {
