@@ -38,6 +38,17 @@ def _accounts(user):
     ).order_by("business_name", "display_phone_number")
 
 
+def _templates(user):
+    """Templates belonging only to active, connected Meta API accounts."""
+    return WhatsAppTemplate.objects.filter(
+        organization=user.organization,
+        account__organization=user.organization,
+        account__connection_type=WhatsAppAccount.ConnectionType.API,
+        account__status=WhatsAppAccount.Status.CONNECTED,
+        account__is_active=True,
+    ).select_related("account")
+
+
 def _account(user, value):
     if not value:
         return None
@@ -45,11 +56,7 @@ def _account(user, value):
 
 
 def _template(user, template_id):
-    return (
-        WhatsAppTemplate.objects.filter(id=template_id, organization=user.organization)
-        .select_related("account")
-        .first()
-    )
+    return _templates(user).filter(id=template_id).first()
 
 
 def _json_list(request, field_name, label):
@@ -119,7 +126,7 @@ def _form_values(request, template=None):
 @require_GET
 def template_list(request):
     user = request.crm_user
-    qs = WhatsAppTemplate.objects.filter(organization=user.organization).select_related("account")
+    qs = _templates(user)
     category = (request.GET.get("category") or "").strip().lower()
     status = (request.GET.get("status") or "").strip().lower()
     account_id = (request.GET.get("account") or "").strip()
