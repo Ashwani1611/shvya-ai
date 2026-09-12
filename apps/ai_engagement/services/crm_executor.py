@@ -21,6 +21,7 @@ from apps.crm.models import (
 )
 from services.crm.lead_transition import (
     LeadTransitionError,
+    move_lead_to_pipeline_stage,
     move_lead_to_stage,
 )
 from services.crm.attribute_service import (
@@ -231,16 +232,24 @@ class CRMActionExecutor:
         action: dict[str, Any],
         actor=None,
     ) -> dict[str, Any]:
+        """Move to an allow-listed active stage anywhere in this organization.
+
+        The model supplies only a stage UUID from runtime context. The backend
+        resolves its owning pipeline and enforces tenant/activity boundaries.
+        This supports both same-pipeline stage movement and explicit CRM
+        cross-pipeline routing without allowing the model to invent a pipeline.
+        """
         stage_id = action[
             "stage_shift"
         ]["stage_id"]
 
         stage = (
             Stage.objects
+            .select_related("pipeline")
             .filter(
                 id=stage_id,
-                pipeline_id=lead.pipeline_id,
                 pipeline__organization=organization,
+                pipeline__is_active=True,
                 is_active=True,
             )
             .first()
@@ -248,10 +257,15 @@ class CRMActionExecutor:
 
         if stage is None:
             raise CRMActionExecutionError(
-                "Requested stage does not belong to "
-                "the lead's active pipeline."
+                "Requested stage does not belong to an active "
+                "pipeline in this organization."
             )
 
+        old_pipeline_id = (
+            str(lead.pipeline_id)
+            if lead.pipeline_id
+            else None
+        )
         old_stage_id = (
             str(lead.stage_id)
             if lead.stage_id
@@ -259,11 +273,19 @@ class CRMActionExecutor:
         )
 
         try:
-            move_lead_to_stage(
-                lead=lead,
-                stage=stage,
-                actor=actor,
-            )
+            if stage.pipeline_id == lead.pipeline_id:
+                move_lead_to_stage(
+                    lead=lead,
+                    stage=stage,
+                    actor=actor,
+                )
+            else:
+                move_lead_to_pipeline_stage(
+                    lead=lead,
+                    pipeline=stage.pipeline,
+                    stage=stage,
+                    actor=actor,
+                )
         except LeadTransitionError as exc:
             raise CRMActionExecutionError(
                 str(exc)
@@ -273,12 +295,14 @@ class CRMActionExecutor:
             "type": "pipeline_transition",
             "status": (
                 "no_op"
-                if old_stage_id == str(stage.id)
+                if (
+                    old_pipeline_id == str(stage.pipeline_id)
+                    and old_stage_id == str(stage.id)
+                )
                 else "executed"
             ),
-            "stage_id": str(
-                stage.id
-            ),
+            "pipeline_id": str(stage.pipeline_id),
+            "stage_id": str(stage.id),
         }
 
     # ============================================================
