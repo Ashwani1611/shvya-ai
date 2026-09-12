@@ -9,15 +9,14 @@ from django.shortcuts import redirect, render
 from django.views.decorators.http import require_GET, require_POST
 
 from apps.crm.decorators import crm_login_required
+from services.channels.template_delete_fix import delete_template
+from services.channels.template_meta_fix import submit_template, sync_templates
 from services.channels.template_service import (
     TemplateError,
     available_placeholders,
     copy_template,
     create_template,
-    delete_template,
     state_for,
-    submit_template,
-    sync_templates,
     update_draft,
 )
 
