@@ -78,7 +78,7 @@ def assert_public_smtp_target(host, port):
         for address in addresses:
             _validate_public_ip(address[4][0])
     except ValidationError as exc:
-        raise EmailConfigurationError(exc.message) from exc
+        raise EmailConfigurationError("; ".join(exc.messages)) from exc
 
     return host
 
