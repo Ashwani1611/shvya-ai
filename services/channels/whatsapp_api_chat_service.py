@@ -33,28 +33,104 @@ def list_api_accounts(*, organization, connected_only=True):
     )
 
 
+def _connected_identity_values(*, organization, account=None):
+    """Return identifiers that belong to currently connected Meta API numbers.
+
+    Reconnecting the same Meta number can create or reactivate a different
+    ``WhatsAppAccount`` row while historical ``WhatsAppMessage`` rows remain
+    attached to the older account row. The inbox should keep that history when
+    the same number is connected again, but must still hide chats for numbers
+    that are genuinely removed/disconnected.
+    """
+    connected = _api_accounts(organization=organization, connected_only=True)
+    if account is not None:
+        if (
+            account.connection_type != API_CONNECTION_TYPE
+            or not account.is_active
+            or account.status != WhatsAppAccount.Status.CONNECTED
+            or account.organization_id != organization.id
+        ):
+            return set(), set(), set()
+        connected = connected.filter(pk=account.pk)
+
+    account_ids = set(connected.values_list("id", flat=True))
+    phone_number_ids = {
+        value
+        for value in connected.values_list("phone_number_id", flat=True)
+        if value
+    }
+    display_numbers = {
+        value
+        for value in connected.values_list("display_phone_number", flat=True)
+        if value
+    }
+    return account_ids, phone_number_ids, display_numbers
+
+
+def _visible_message_account_q(*, organization, account=None, prefix=""):
+    """Build a Q matching API message accounts represented by a live number."""
+    account_ids, phone_number_ids, display_numbers = _connected_identity_values(
+        organization=organization,
+        account=account,
+    )
+    identity_q = Q()
+    if account_ids:
+        identity_q |= Q(**{f"{prefix}account_id__in": account_ids})
+    if phone_number_ids:
+        identity_q |= Q(**{f"{prefix}account__phone_number_id__in": phone_number_ids})
+    if display_numbers:
+        identity_q |= Q(**{f"{prefix}account__display_phone_number__in": display_numbers})
+
+    if not (account_ids or phone_number_ids or display_numbers):
+        return Q(pk__in=[])
+
+    return (
+        Q(**{f"{prefix}organization": organization})
+        & Q(**{f"{prefix}account__connection_type": API_CONNECTION_TYPE})
+        & identity_q
+    )
+
+
 def resolve_api_account_for_lead(*, organization, lead):
     """Resolve only a connected Meta/Cloud API account for this lead."""
+    connected_accounts = _api_accounts(
+        organization=organization,
+        connected_only=True,
+    )
+
+    # Prefer the currently connected account representing the number this lead
+    # already used, even when the most recent message belongs to an older row
+    # for that same Meta number.
     last_message = (
         WhatsAppMessage.objects.filter(
             organization=organization,
             lead=lead,
             account__connection_type=API_CONNECTION_TYPE,
-            account__is_active=True,
-            account__status=WhatsAppAccount.Status.CONNECTED,
         )
         .select_related("account")
         .order_by("-created_at", "-pk")
         .first()
     )
     if last_message:
-        return last_message.account
+        prior = last_message.account
+        account = connected_accounts.filter(
+            models.Q(phone_number_id=prior.phone_number_id)
+            if prior.phone_number_id
+            else models.Q(pk=prior.pk)
+        ).first()
+        if account:
+            return account
+        if prior.display_phone_number:
+            account = connected_accounts.filter(
+                display_phone_number=prior.display_phone_number
+            ).first()
+            if account:
+                return account
 
     if lead.pipeline_id and lead.pipeline.phone_number:
         pipeline_phone = str(lead.pipeline.phone_number or "").strip()
         account = (
-            _api_accounts(organization=organization, connected_only=True)
-            .filter(
+            connected_accounts.filter(
                 models.Q(display_phone_number=pipeline_phone)
                 | models.Q(phone_number_id=pipeline_phone)
             )
@@ -63,17 +139,17 @@ def resolve_api_account_for_lead(*, organization, lead):
         if account:
             return account
 
-    return _api_accounts(organization=organization, connected_only=True).first()
+    return connected_accounts.first()
 
 
 def is_within_api_24h_window(*, lead):
-    """Return True only when a recent inbound exists on a connected Meta API account."""
+    """Return True when a recent inbound belongs to a currently connected API number."""
+    organization = lead.organization
+    visible_q = _visible_message_account_q(organization=organization)
     last_inbound = (
         WhatsAppMessage.objects.filter(
+            visible_q,
             lead=lead,
-            account__connection_type=API_CONNECTION_TYPE,
-            account__is_active=True,
-            account__status=WhatsAppAccount.Status.CONNECTED,
             direction=WhatsAppMessage.Direction.INBOUND,
         )
         .order_by("-created_at", "-pk")
@@ -85,32 +161,33 @@ def is_within_api_24h_window(*, lead):
 
 
 def list_api_conversations(*, organization, account=None, tab="all"):
-    """Return conversation rows backed only by currently connected Meta API accounts."""
+    """Return chats for Meta API numbers that are currently connected.
+
+    Historical messages from a prior account row remain visible when the same
+    Meta number is connected again. Messages for numbers with no live API
+    account remain excluded.
+    """
     if account is not None and (
         account.connection_type != API_CONNECTION_TYPE
         or not account.is_active
         or account.status != WhatsAppAccount.Status.CONNECTED
+        or account.organization_id != organization.id
     ):
         account = None
 
-    acc_q = Q(
-        whatsapp_messages__organization=organization,
-        whatsapp_messages__account__connection_type=API_CONNECTION_TYPE,
-        whatsapp_messages__account__is_active=True,
-        whatsapp_messages__account__status=WhatsAppAccount.Status.CONNECTED,
-    )
-    if account:
-        acc_q &= Q(whatsapp_messages__account=account)
-
     base_msg_qs = WhatsAppMessage.objects.filter(
-        organization=organization,
+        _visible_message_account_q(
+            organization=organization,
+            account=account,
+        ),
         lead__isnull=False,
-        account__connection_type=API_CONNECTION_TYPE,
-        account__is_active=True,
-        account__status=WhatsAppAccount.Status.CONNECTED,
     )
-    if account:
-        base_msg_qs = base_msg_qs.filter(account=account)
+
+    acc_q = _visible_message_account_q(
+        organization=organization,
+        account=account,
+        prefix="whatsapp_messages__",
+    )
 
     lead_ids = base_msg_qs.values_list("lead_id", flat=True).distinct()
     last_msg_qs = base_msg_qs.filter(lead=OuterRef("pk")).order_by(
@@ -159,18 +236,9 @@ def list_api_conversations(*, organization, account=None, tab="all"):
     elif tab == "failed":
         leads = leads.filter(last_msg_status=WhatsAppMessage.Status.FAILED)
     elif tab == "broadcasts":
-        broadcast_lead_ids = (
-            WhatsAppMessage.objects.filter(
-                organization=organization,
-                account__connection_type=API_CONNECTION_TYPE,
-                account__is_active=True,
-                account__status=WhatsAppAccount.Status.CONNECTED,
-                bulk_recipient__isnull=False,
-                **({"account": account} if account else {}),
-            )
-            .values_list("lead_id", flat=True)
-            .distinct()
-        )
+        broadcast_lead_ids = base_msg_qs.filter(
+            bulk_recipient__isnull=False,
+        ).values_list("lead_id", flat=True).distinct()
         leads = leads.filter(id__in=broadcast_lead_ids)
 
     return leads
@@ -178,30 +246,19 @@ def list_api_conversations(*, organization, account=None, tab="all"):
 
 def get_api_conversation_messages(*, organization, lead, account=None):
     queryset = WhatsAppMessage.objects.filter(
-        organization=organization,
+        _visible_message_account_q(
+            organization=organization,
+            account=account,
+        ),
         lead=lead,
-        account__connection_type=API_CONNECTION_TYPE,
-        account__is_active=True,
-        account__status=WhatsAppAccount.Status.CONNECTED,
     )
-    if account:
-        if (
-            account.connection_type != API_CONNECTION_TYPE
-            or not account.is_active
-            or account.status != WhatsAppAccount.Status.CONNECTED
-        ):
-            return queryset.none()
-        queryset = queryset.filter(account=account)
     return queryset.order_by("created_at", "pk")
 
 
 def mark_api_conversation_read(*, organization, lead):
     return WhatsAppMessage.objects.filter(
-        organization=organization,
+        _visible_message_account_q(organization=organization),
         lead=lead,
-        account__connection_type=API_CONNECTION_TYPE,
-        account__is_active=True,
-        account__status=WhatsAppAccount.Status.CONNECTED,
         direction=WhatsAppMessage.Direction.INBOUND,
         is_read=False,
     ).update(is_read=True)
