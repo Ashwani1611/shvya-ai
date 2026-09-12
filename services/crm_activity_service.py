@@ -45,6 +45,7 @@ def create_lead_activity(
     *,
     lead,
     actor=None,
+    actor_name_override=None,
     topic,
     organization=None,
     old_pipeline=None,
@@ -68,8 +69,10 @@ def create_lead_activity(
     if organization is None:
         organization = lead.organization
 
-    actor_name = _actor_name(
-        actor
+    actor_name = (
+        str(actor_name_override).strip()
+        if actor_name_override is not None
+        else _actor_name(actor)
     )
 
     return LeadActivity.objects.create(
@@ -120,9 +123,14 @@ def record_lead_created(
     Record initial Lead creation.
     """
 
+    actor_name_override = None
+    if actor is None and getattr(lead, "lead_source", "") == "google_sheets":
+        actor_name_override = "Google Sheet"
+
     return create_lead_activity(
         lead=lead,
         actor=actor,
+        actor_name_override=actor_name_override,
         topic=LeadActivity.Topic.LEAD_CREATED,
         new_pipeline=lead.pipeline,
         new_stage=lead.stage,
@@ -130,6 +138,7 @@ def record_lead_created(
             "lead_name": lead.name,
             "email": lead.email or "",
             "phone": lead.phone or "",
+            "lead_source": getattr(lead, "lead_source", "") or "",
         },
     )
 
