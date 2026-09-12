@@ -56,6 +56,7 @@ class WhatsAppTemplateMetaFixTests(TestCase):
             for component in payload["components"]
             if component["type"] == "BODY"
         )
+        self.assertEqual(payload["parameter_format"], "POSITIONAL")
         self.assertEqual(body_component["text"], "Hi {{1}} from {{2}}")
         self.assertEqual(
             body_component["example"]["body_text"],
@@ -67,6 +68,26 @@ class WhatsAppTemplateMetaFixTests(TestCase):
             template.meta_state.components,
             payload["components"],
         )
+
+    @patch("services.channels.template_meta_fix.base.WhatsAppClient._post")
+    def test_static_template_does_not_send_unnecessary_parameter_format(self, client_post):
+        client_post.return_value = {
+            "id": "meta-template-static-1",
+            "status": "PENDING",
+        }
+        template = template_service.create_template(
+            organization=self.org,
+            account=self.account,
+            created_by=self.user,
+            name="static_welcome",
+            body="Welcome to our business",
+            category=WhatsAppTemplate.Category.UTILITY,
+        )
+
+        submit_template(template=template)
+
+        payload = client_post.call_args.args[1]
+        self.assertNotIn("parameter_format", payload)
 
     @patch("services.channels.template_meta_fix.base._remote_templates")
     def test_sync_removes_meta_none_rejection_sentinel(self, remote_templates):
