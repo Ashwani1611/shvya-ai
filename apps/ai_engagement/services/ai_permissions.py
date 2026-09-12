@@ -67,17 +67,26 @@ class AIPermissionService:
         )
 
     def _conversation_uses_pipeline_number(self, *, organization, lead):
-        """Fail closed when a WhatsApp conversation is on the wrong number."""
+        """Fail closed when the customer's current inbound turn is on the wrong number.
+
+        Account routing must follow the inbound customer conversation that AI is
+        being asked to answer. A newer manual/system outbound message on another
+        connected number is not a new customer conversation and must not disable
+        AI for an otherwise correctly mapped Hosted or Cloud API inbound turn.
+        """
         latest_message = (
-            lead.whatsapp_messages.filter(organization=organization)
+            lead.whatsapp_messages.filter(
+                organization=organization,
+                direction="inbound",
+            )
             .select_related("account")
             .order_by("-created_at", "-id")
             .first()
         )
 
-        # Permission evaluation is also used before a conversation exists. The
-        # AI engagement worker separately requires an inbound message before it
-        # can generate or send a customer-facing reply.
+        # Permission evaluation is also used before an inbound conversation
+        # exists. The AI engagement worker separately requires an inbound
+        # message before it can generate or send a customer-facing reply.
         if latest_message is None:
             return True, "no_conversation_yet"
 
