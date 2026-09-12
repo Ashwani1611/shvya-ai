@@ -43,6 +43,20 @@ def diagnose_engagement(*, lead):
         "status": latest.status,
         "created_at": latest.created_at.isoformat(),
     }
+    inbound = lead.whatsapp_messages.filter(organization=lead.organization, direction="inbound").order_by("-created_at", "-id").first()
+    if inbound:
+        execution = (inbound.raw_payload or {}).get("shvya_ai_execution") or {}
+        report["execution"] = {key: execution.get(key) for key in ("status", "reason", "attempts", "updated_at")}
+        report["inbound_processed"] = bool(((inbound.raw_payload or {}).get("shvya_ai_processing") or {}).get("processed"))
+    from apps.ai_engagement.services.qualification_state import state_for_lead, requirements_for_lead
+    from apps.ai_engagement.services.organization_profile import compile_qualification_requirements
+    from apps.ai_engagement.models import OrgInfo
+    info = OrgInfo.objects.filter(organization=lead.organization).first()
+    requirements = requirements_for_lead(lead, compile_qualification_requirements(info.qualification_requirements if info else "")["requirements"])
+    qualification = state_for_lead(lead, requirements=requirements)
+    report["qualification"] = {key: qualification.get(key) for key in
+        ("qualification_status", "conversation_mode", "current_requirement_id", "last_asked_requirement_id")}
+    report["answered_count"] = len(qualification.get("answered_requirement_ids") or [])
     account = latest.account
     report["account_id"] = str(account.id)
     report["connection_type"] = account.connection_type

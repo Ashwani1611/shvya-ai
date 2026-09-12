@@ -56,7 +56,7 @@ def _normalized(value: Any) -> str:
 def _boolish(value: Any) -> bool | None:
     if isinstance(value, bool):
         return value
-    text = _normalized(value)
+    text = _normalized(value).strip(" .!?;:")
     if text in {"yes", "y", "yeah", "yep", "true", "1", "on", "running", "using"}:
         return True
     if text in {"no", "n", "nope", "false", "0", "off", "not running", "not using"}:
@@ -179,6 +179,17 @@ def _condition_from_requirement(
                 "operator": "eq",
                 "value": _condition_value(natural.group("value")),
             }, first_line[: natural.start()].rstrip(" ,:-")
+
+    # A leading condition is the same backend rule as a trailing condition.
+    leading_ads = re.match(
+        r"^if\s+(?:the\s+lead|you|they)\s+(?P<negative>does\s+not|do\s+not|doesn't|don't)?\s*(?:runs?|uses?)\s+(?:meta\s+)?ads\s*[,;:]\s*(?P<question>.+)$",
+        first_line, flags=re.IGNORECASE,
+    )
+    if leading_ads:
+        source_id = _prior_ads_requirement(requirements, current_index)
+        if source_id:
+            return {"requirement_id": source_id, "operator": "eq",
+                    "value": not bool(leading_ads.group("negative"))}, leading_ads.group("question")
 
     not_ads = re.search(
         r"\s+if\s+(?:you(?:'re|\s+are)\s+)?not\s+(?:using|running)\s+(?:meta\s+)?ads\b.*$",

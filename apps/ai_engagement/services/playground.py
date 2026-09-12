@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from copy import deepcopy
 from types import SimpleNamespace
 from typing import Any
 
@@ -16,6 +17,19 @@ from apps.ai_engagement.services.engagement import (
 )
 from apps.ai_engagement.services.org_info import OrgInfoService
 from apps.ai_engagement.services.retrieval import KnowledgeRetrievalService
+from apps.ai_engagement.services.organization_profile import compile_org_ai_profile_from_context
+from apps.ai_engagement.services.qualification_state import (
+    apply_unambiguous_reply, attributes_with_state, next_requirement,
+    project_answer_updates, record_last_asked_requirement, requirements_for_lead, state_for_lead,
+)
+from apps.ai_engagement.services.runtime_state import STATE_KEY, observe_message, contract, response_hash
+from apps.ai_engagement.graph.evidence import check_grounding
+
+
+class _SandboxLead(SimpleNamespace):
+    def _persist_qualification_state(self, attributes):
+        self.attributes = deepcopy(attributes)
+
 
 
 class PlaygroundError(Exception):
@@ -93,6 +107,13 @@ class PlaygroundService:
             current_message=message,
             session_id=session_id,
         )
+        cached = cache.get(self._session_cache_key(organization=organization, session_id=session_id))
+        saved = cached if isinstance(cached, dict) else {}
+        turn = int(saved.get("turn", 0)) + 1
+        conversation[-1]["id"] = f"playground:{session_id}:turn:{turn}"
+        visitor = _SandboxLead(id=f"playground:{session_id}", organization_id=organization.id,
+            stage=SimpleNamespace(name="New Lead"), attributes=deepcopy(saved.get("attributes") or {}))
+        visitor.attributes[STATE_KEY] = observe_message(visitor.attributes.get(STATE_KEY), message)
         org_info = self.org_info_service.get_or_create(organization=organization)
         knowledge = self._retrieve_knowledge(organization=organization, query=message)
 
@@ -114,14 +135,14 @@ class PlaygroundService:
                 "phone": "",
                 "email": "",
                 "notes": "",
-                "attributes": {},
+                "attributes": visitor.attributes,
                 "lead_source": "playground",
                 "stage_entered_at": None,
                 "created_at": None,
                 "updated_at": None,
             },
             pipeline={},
-            stage={},
+            stage={"name": "New Lead"},
             contacts=[],
             attributes=[],
             conversation={"message_count": len(conversation), "messages": conversation},
@@ -130,9 +151,18 @@ class PlaygroundService:
             knowledge=knowledge,
         )
 
+        profile = compile_org_ai_profile_from_context(context.organization)
+        requirements = requirements_for_lead(visitor, profile["qualification"]["requirements"])
+        profile["qualification"]["requirements"] = requirements
+        direct = apply_unambiguous_reply(lead=visitor, requirements=requirements,
+            text=message, source_message_id=conversation[-1]["id"])
+        qualification = direct["state"]
+        context.lead["attributes"] = visitor.attributes
         try:
-            instructions = self.engagement_service._build_instructions(context=context)
-            input_text = self.engagement_service._build_input(context=context)
+            instructions = self.engagement_service._build_instructions(context=context, profile=profile)
+            input_text = self.engagement_service._build_input(context=context, profile=profile,
+                qualification_state=qualification,
+                next_item=next_requirement(requirements, qualification["requirement_states"]))
             provider = self.provider or OpenAIProvider()
             result = self.engagement_service._generate_provider_text(
                 provider=provider,
@@ -148,9 +178,9 @@ class PlaygroundService:
             )
             try:
                 decision = self.engagement_service._normalize_result(result=result)
-                self.engagement_service._validate_engagement_policy(
-                    decision=decision,
-                    context=context,
+                self.engagement_service._validate_qualification_decision(
+                    decision=decision, context=context,
+                    requirements=requirements, qualification_state=qualification,
                 )
             except EngagementError as exc:
                 decision = self.engagement_service._repair_result_once(
@@ -167,15 +197,33 @@ class PlaygroundService:
                         "task": "playground",
                     },
                 )
-                self.engagement_service._validate_engagement_policy(
-                    decision=decision,
-                    context=context,
+                self.engagement_service._validate_qualification_decision(
+                    decision=decision, context=context,
+                    requirements=requirements, qualification_state=qualification,
                 )
         except AIProviderError as exc:
             raise PlaygroundError("AI Playground generation failed.") from exc
         except EngagementError as exc:
             raise PlaygroundError(str(exc)) from exc
 
+        projected = project_answer_updates(state=qualification, requirements=requirements,
+            updates=decision.qualification_updates, messages=conversation)
+        grounded = check_grounding({"decision": decision, "context": context,
+            "organization": organization, "lead": visitor, "latest_text": message,
+            "qualification_state": projected, "requirements": requirements, "runtime_policy": profile})
+        decision = grounded.get("decision", decision)
+        # Re-project only the surviving validated updates; a rejected model reply
+        # must not write answers/actions. Deterministic option answers survive.
+        projected = project_answer_updates(state=qualification, requirements=requirements,
+            updates=decision.qualification_updates, messages=conversation)
+        visitor.attributes = attributes_with_state(visitor, projected)
+        if decision.next_requirement_id:
+            record_last_asked_requirement(visitor, decision.next_requirement_id, requirements=requirements)
+        qualification = state_for_lead(visitor, requirements=requirements)
+        visitor.attributes[STATE_KEY] = contract(qualification=qualification, requirements=requirements,
+            saved=visitor.attributes.get(STATE_KEY), organization_id=organization.id)
+        visitor.attributes[STATE_KEY].update(message_id=conversation[-1]["id"], processed=True,
+            response_hash=response_hash(decision.message))
         response_text = decision.message if decision.should_engage else ""
         updated_history = list(source_history)
         updated_history.extend(
@@ -188,6 +236,8 @@ class PlaygroundService:
             organization=organization,
             session_id=session_id,
             history=updated_history,
+            attributes=visitor.attributes,
+            turn=turn,
         )
 
         return PlaygroundResult(
@@ -227,6 +277,8 @@ class PlaygroundService:
         organization,
         session_id: str,
         history: list[dict[str, Any]],
+        attributes: dict | None = None,
+        turn: int = 0,
     ) -> None:
         normalized = self._normalize_role_history(history)[-self.MAX_HISTORY_MESSAGES :]
         cache.set(
@@ -234,7 +286,7 @@ class PlaygroundService:
                 organization=organization,
                 session_id=session_id,
             ),
-            {"history": normalized},
+            {"history": normalized, "attributes": deepcopy(attributes or {}), "turn": turn},
             timeout=self.SESSION_TTL_SECONDS,
         )
 

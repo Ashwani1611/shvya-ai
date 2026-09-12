@@ -36,12 +36,8 @@ def install_ai_orchestration_hooks() -> None:
     from services.channels import hosted_automation_service, whatsapp_service
 
     def debounced_queue_engagement(*, lead_id):
-        from apps.ai_engagement.tasks import generate_ai_engagement_response
-
-        return generate_ai_engagement_response.apply_async(
-            args=[str(lead_id)],
-            countdown=0,
-        )
+        from apps.ai_engagement.services.execution_tracker import queue_api_engagement
+        return queue_api_engagement(lead_id=lead_id)
 
     def background_summary_is_signal_owned(*, lead_id):
         # apps.ai_engagement.background_signals owns throttled summary and

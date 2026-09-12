@@ -171,6 +171,7 @@
         <div class="side-panel wa-scrollbar flex-1 overflow-y-auto" id="panel-personal">
             <section class="border-b border-gray-100 px-4 py-4">
                 <div class="mb-3 flex items-center justify-between"><h3 class="text-xs font-bold text-gray-800">Personal info</h3><span id="quick-save-state" class="hidden text-[10px]"></span></div>
+                <a class="mb-3 inline-block text-xs underline" href="{% url 'whatsapp-ai-reply-status' active_lead.id %}">AI reply status</a>
                 <form id="lead-quick-form" action="{% url 'whatsapp-lead-quick-update' active_lead.id %}" class="space-y-3">
                     {% csrf_token %}
                     <div><label class="mb-1 block text-[11px] font-semibold text-gray-600">Name</label><input id="lead-name" name="name" value="{{ active_lead.name }}" class="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm outline-none transition focus:border-green-500 focus:ring-2 focus:ring-green-100"></div>

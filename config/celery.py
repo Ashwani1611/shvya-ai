@@ -20,6 +20,7 @@ app.autodiscover_tasks()
 # engagement and its final single-message delivery share the realtime lane;
 # Hosted Account AI keeps its own isolated production lane.
 app.conf.task_routes = {
+    "ai.recover_api_engagement": {"queue": "ai_realtime"},
     "ai.generate_ai_engagement_response": {
         "queue": "ai_realtime",
     },
@@ -38,6 +39,7 @@ app.conf.task_routes = {
 # self-schedules a due-time wake-up, and the dedicated 5-second recovery scan
 # catches jobs created before deployment or any wake-up that was missed.
 app.conf.beat_schedule = {
+    "recover-api-ai-every-30-seconds": {"task": "ai.recover_api_engagement", "schedule": 30.0},
     "dispatch-smart-triggers-every-10-seconds": {
         "task": "apps.triggers.tasks.dispatch_smart_triggers",
         "schedule": 10.0,

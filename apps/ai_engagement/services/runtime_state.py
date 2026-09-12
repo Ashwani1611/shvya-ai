@@ -97,10 +97,15 @@ def validate_response(*, decision, runtime, requirements):
         raise ValueError("Response asks a requirement outside the backend's next valid action.")
     if selected:
         item = next(item for item in requirements if str(item["id"]) == selected)
-        message = str(decision.message)
-        positions = [message.find(str(option.get("value", "")) if isinstance(option, dict) else str(option)) for option in item.get("options", [])]
-        if any(position < 0 for position in positions) or positions != sorted(positions):
-            raise ValueError("Response must preserve every configured option in order.")
+        message = " ".join(str(decision.message).casefold().split())
+        cursor = 0
+        for option in item.get("options", []):
+            value = str(option.get("value", "")) if isinstance(option, dict) else str(option)
+            value = " ".join(value.casefold().split()).strip(" .!?;:")
+            match = re.search(r"(?<!\w)" + re.escape(value) + r"(?!\w)", message[cursor:]) if value else None
+            if match is None:
+                raise ValueError("Response must preserve every configured option in order.")
+            cursor += match.end()
     if not getattr(decision, "should_engage", False) and selected:
         raise ValueError("A silent decision cannot open a customer interaction.")
 

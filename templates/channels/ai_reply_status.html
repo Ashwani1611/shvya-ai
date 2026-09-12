@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="mx-auto max-w-3xl p-6">
+  <h1 class="text-xl font-semibold">AI reply status</h1>
+  <p class="mt-2 text-gray-600">{{ lead.name }}</p>
+  <section class="mt-5 rounded-xl border bg-white p-5">
+    <h2 class="font-semibold">{{ status_label }}</h2>
+    {% for reason in reasons %}<p class="mt-2">{{ reason }}</p>{% endfor %}
+    {% if report.execution.updated_at %}<p class="mt-3 text-sm text-gray-500">Last update: {{ report.execution.updated_at }}</p>{% endif %}
+    <p class="mt-3">Qualification: {{ report.qualification.qualification_status|default:"Not started" }} · {{ report.answered_count|default:0 }} answers saved</p>
+    {% if report.hosted_job %}<p class="mt-2">Hosted reply: {{ report.hosted_job.status }} · Scheduled: {{ report.hosted_job.available_at }}</p>{% endif %}
+  </section>
+  <p class="mt-4 text-sm text-gray-500">Refresh this page after sending a test message to see its latest progress. This page does not send or retry messages.</p>
+  <a class="mt-4 inline-block underline" href="">Refresh status</a>
+</div>
+{% endblock %}
+
