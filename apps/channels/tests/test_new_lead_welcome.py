@@ -1,3 +1,4 @@
+from datetime import timedelta
 from unittest.mock import patch
 
 from django.contrib.sessions.backends.db import SessionStore
@@ -54,6 +55,17 @@ class NewLeadWelcomeTests(TestCase):
             display_phone_number=number,
             waba_id="987654321",
             access_token="test-token",
+            status=WhatsAppAccount.Status.CONNECTED,
+            is_active=True,
+        )
+
+    def _hosted_account(self):
+        return WhatsAppAccount.objects.create(
+            organization=self.org,
+            connection_type=WhatsAppAccount.ConnectionType.coexisted,
+            business_name="Hosted Sender",
+            phone_number_id="+919876543210",
+            display_phone_number="+919876543210",
             status=WhatsAppAccount.Status.CONNECTED,
             is_active=True,
         )
@@ -141,10 +153,10 @@ class NewLeadWelcomeTests(TestCase):
         )
         self.assertFalse(WhatsAppMessage.objects.filter(lead=lead).exists())
 
-    @patch("apps.channels.hosted_send_tasks.send_hosted_whatsapp_message_task.delay")
+    @patch("apps.channels.hosted_send_tasks.send_hosted_whatsapp_message_task.apply_async")
     @patch("services.channels.welcome_message_service.OpenAIProvider")
     def test_hosted_welcome_is_generated_from_organization_information(
-        self, provider_class, hosted_delay
+        self, provider_class, hosted_apply_async
     ):
         OrgInfo.objects.update_or_create(
             organization=self.org,
@@ -154,15 +166,7 @@ class NewLeadWelcomeTests(TestCase):
                 "engagement_instructions": "Keep messages concise and professional.",
             },
         )
-        account = WhatsAppAccount.objects.create(
-            organization=self.org,
-            connection_type=WhatsAppAccount.ConnectionType.coexisted,
-            business_name="Hosted Sender",
-            phone_number_id="+919876543210",
-            display_phone_number="+919876543210",
-            status=WhatsAppAccount.Status.CONNECTED,
-            is_active=True,
-        )
+        account = self._hosted_account()
         provider = provider_class.return_value
         provider.generate_text.return_value = AITextResult(
             text="Hi Jane, welcome to Welcome Org. We're glad to connect with you.",
@@ -180,10 +184,51 @@ class NewLeadWelcomeTests(TestCase):
             "organization_information_ai",
         )
         self.assertEqual(message.body, provider.generate_text.return_value.text)
-        hosted_delay.assert_called_once_with(str(message.id))
+        hosted_apply_async.assert_called_once_with(
+            args=[str(message.id)],
+            eta=hosted_apply_async.call_args.kwargs["eta"],
+        )
+        self.assertEqual(
+            message.raw_payload["shvya_welcome"]["scheduled_for"],
+            hosted_apply_async.call_args.kwargs["eta"].isoformat(),
+        )
         prompt_input = provider.generate_text.call_args.kwargs["input_text"]
         self.assertIn("We help businesses automate customer engagement.", prompt_input)
         self.assertIn("Keep messages concise and professional.", prompt_input)
+
+    @patch("apps.channels.hosted_send_tasks.send_hosted_whatsapp_message_task.apply_async")
+    @patch("services.channels.welcome_message_service.OpenAIProvider")
+    def test_hosted_welcomes_are_spaced_30_seconds_per_account(
+        self, provider_class, hosted_apply_async
+    ):
+        self._hosted_account()
+        provider_class.return_value.generate_text.return_value = AITextResult(
+            text="Welcome to Welcome Org.",
+            model="test-model",
+        )
+        first_lead = self._lead(phone="+919000000011")
+        second_lead = self._lead(phone="+919000000012")
+
+        first = send_new_lead_welcome(lead_id=first_lead.id)
+        second = send_new_lead_welcome(lead_id=second_lead.id)
+
+        self.assertEqual(first["status"], "queued")
+        self.assertEqual(second["status"], "queued")
+        self.assertEqual(hosted_apply_async.call_count, 2)
+        first_eta = hosted_apply_async.call_args_list[0].kwargs["eta"]
+        second_eta = hosted_apply_async.call_args_list[1].kwargs["eta"]
+        self.assertEqual(second_eta - first_eta, timedelta(seconds=30))
+
+        first_message = WhatsAppMessage.objects.get(id=first["message_id"])
+        second_message = WhatsAppMessage.objects.get(id=second["message_id"])
+        self.assertEqual(
+            first_message.raw_payload["shvya_welcome"]["scheduled_for"],
+            first_eta.isoformat(),
+        )
+        self.assertEqual(
+            second_message.raw_payload["shvya_welcome"]["scheduled_for"],
+            second_eta.isoformat(),
+        )
 
     @patch("apps.channels.welcome_tasks.send_lead_welcome_task.delay")
     def test_central_create_lead_schedules_welcome_after_commit(self, delay):
