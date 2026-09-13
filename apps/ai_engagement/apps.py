@@ -114,6 +114,16 @@ class AiEngagementConfig(AppConfig):
 
         install_crm_action_projection_fix()
 
+        # Engagement Instructions may carry authored backend policy under
+        # ##Qualification criteria, ##Stage shifting and ##Attribute mapped.
+        # Compile those sections into the same runtime used by Hosted and Meta
+        # API so replies and durable CRM actions cannot diverge.
+        from apps.ai_engagement.services.engagement_instruction_runtime import (
+            install_engagement_instruction_runtime,
+        )
+
+        install_engagement_instruction_runtime()
+
         # LangGraph is the turn-level orchestration authority. It keeps the
         # existing EngagementService/Celery/WhatsApp contracts stable while
         # segmenting context, deterministic extraction, routing, RAG,
