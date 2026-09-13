@@ -119,20 +119,37 @@ def install_fixed_prompt_overrides() -> None:
             snapshot = qstate.get("flow_snapshot")
             requirements = deepcopy(snapshot) if isinstance(snapshot, list) and snapshot else qualification_requirements
             states = qstate.get("requirement_states") if isinstance(qstate.get("requirement_states"), dict) else {}
-            current_id = str(
-                qstate.get("current_requirement_id")
-                or qstate.get("next_requirement_id")
-                or ""
-            ).strip()
-            current = next(
-                (deepcopy(item) for item in requirements if str(item.get("id") or "") == current_id),
-                None,
-            )
-            if current is None and isinstance(payload.get("next_requirement"), dict):
-                current = deepcopy(payload["next_requirement"])
-                current_id = str(current.get("id") or "")
 
-            following = _first_following_requirement(requirements, states, current_id)
+            # Qualification is a New Lead-only workflow. State keeps the next
+            # unresolved requirement for recovery/audit even after the lead moves
+            # to another stage, but that requirement must not be exposed to the
+            # response model as an active turn outside qualification mode. Doing
+            # so creates a contradictory contract: the model is told to ask it
+            # while the backend validator correctly rejects it.
+            engagement_mode = str(qstate.get("engagement_mode") or "conversation").strip().casefold()
+            qualification_active = (
+                engagement_mode in {"qualification", "qualifying"}
+                and str(qstate.get("qualification_status") or "").strip().casefold() != "completed"
+            )
+
+            current_id = ""
+            current = None
+            following = None
+            if qualification_active:
+                current_id = str(
+                    qstate.get("current_requirement_id")
+                    or qstate.get("next_requirement_id")
+                    or ""
+                ).strip()
+                current = next(
+                    (deepcopy(item) for item in requirements if str(item.get("id") or "") == current_id),
+                    None,
+                )
+                if current is None and isinstance(payload.get("next_requirement"), dict):
+                    current = deepcopy(payload["next_requirement"])
+                    current_id = str(current.get("id") or "")
+                following = _first_following_requirement(requirements, states, current_id)
+
             recent = payload.get("recent_conversation")
             messages = recent.get("messages") if isinstance(recent, dict) else []
             latest_inbound_id = ""
@@ -145,13 +162,15 @@ def install_fixed_prompt_overrides() -> None:
 
             payload["qualification_turn"] = {
                 "status": qstate.get("qualification_status"),
+                "mode": engagement_mode,
                 "flow_version": qstate.get("flow_version"),
                 "current_requirement": current,
                 "next_requirement_if_current_answered": following,
                 "answered_requirement_ids": qstate.get("answered_requirement_ids") or [],
                 "answers": qstate.get("qualification_answers") or {},
                 "current_requirement_was_asked": bool(
-                    current_id
+                    qualification_active
+                    and current_id
                     and str(qstate.get("last_asked_requirement_id") or "") == current_id
                 ),
                 "latest_message_already_processed": bool(
@@ -159,7 +178,7 @@ def install_fixed_prompt_overrides() -> None:
                     and latest_inbound_id in (qstate.get("processed_message_ids") or [])
                 ),
             }
-            # Keep the legacy key as a single bounded requirement for compatibility.
+            # Keep the legacy key bounded to the same backend-active requirement.
             payload["next_requirement"] = current
 
         return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
