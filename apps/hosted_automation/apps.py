@@ -7,7 +7,7 @@ class HostedAutomationConfig(AppConfig):
     verbose_name = "Hosted WhatsApp Automation"
 
     def ready(self):
-        from services.channels.hosted_ai_delay import install_hosted_ai_delay_dispatch
-
-        install_hosted_ai_delay_dispatch()
+        # Hosted AI enqueueing is owned by the persisted-message signal and
+        # execution receives its account/source context explicitly. No Celery
+        # task or sender methods are replaced process-wide.
         from . import signals  # noqa: F401
