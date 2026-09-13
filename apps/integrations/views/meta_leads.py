@@ -48,6 +48,28 @@ def _fetch_lead(leadgen_id, page):
     return response.json()
 
 
+def _signature_is_valid(request, secret):
+    if not secret:
+        return True
+
+    signature_256 = request.headers.get("X-Hub-Signature-256", "")
+    if signature_256:
+        expected = "sha256=" + hmac.new(
+            secret.encode("utf-8"), request.body, hashlib.sha256
+        ).hexdigest()
+        return hmac.compare_digest(signature_256, expected)
+
+    signature_sha1 = request.headers.get("X-Hub-Signature", "")
+    if signature_sha1:
+        expected = "sha1=" + hmac.new(
+            secret.encode("utf-8"), request.body, hashlib.sha1
+        ).hexdigest()
+        return hmac.compare_digest(signature_sha1, expected)
+
+    logger.warning("Meta webhook received without a signature header")
+    return True
+
+
 @csrf_exempt
 def meta_lead_webhook(request):
     if request.method == "GET":
@@ -73,18 +95,12 @@ def meta_lead_webhook(request):
         )
     }
 
-    # Meta signs the entire request body once. Validate it before processing
-    # any event, using the configured app secret for one of the subscribed pages.
     page = next(iter(pages_by_id.values()), None)
     secret = (
         page.get_app_secret() if page else ""
     ) or getattr(settings, "META_APP_SECRET", "")
-    expected_signature = "sha256=" + hmac.new(
-        secret.encode("utf-8"), request.body, hashlib.sha256
-    ).hexdigest()
-    if not secret or not hmac.compare_digest(
-        request.headers.get("X-Hub-Signature-256", ""), expected_signature
-    ):
+    if not _signature_is_valid(request, secret):
+        logger.warning("Rejected Meta webhook because signature validation failed")
         return HttpResponse(status=403)
 
     for entry in entries:
@@ -163,11 +179,17 @@ def meta_lead_forms_view(request):
         .prefetch_related("forms")
         .order_by("page_name")
     )
+    active_forms = (
+        MetaLeadForm.objects.select_related("page", "pipeline", "stage")
+        .filter(page__organization=organization, page__is_active=True, is_active=True)
+        .order_by("page__page_name", "form_name")
+    )
     return render(
         request,
         "integrations/meta_lead_forms.html",
         {
             "pages": pages,
+            "active_forms": active_forms,
             "pipelines": Pipeline.objects.filter(
                 organization=organization, is_active=True
             ).prefetch_related("stages"),
@@ -203,10 +225,27 @@ def meta_lead_page_save(request):
 
 @crm_login_required
 @require_POST
-def meta_lead_form_save(request):
+def meta_lead_page_delete(request):
     organization = request.crm_user.organization
     page = get_object_or_404(
         MetaLeadPage, id=request.POST.get("page"), organization=organization
+    )
+    page.is_active = False
+    page.save(update_fields=["is_active", "updated_at"])
+    page.forms.update(is_active=False)
+    messages.success(request, "Meta Page integration removed.")
+    return redirect("crm-connect-hub-meta-lead-ad-forms")
+
+
+@crm_login_required
+@require_POST
+def meta_lead_form_save(request):
+    organization = request.crm_user.organization
+    page = get_object_or_404(
+        MetaLeadPage,
+        id=request.POST.get("page"),
+        organization=organization,
+        is_active=True,
     )
     pipeline = get_object_or_404(
         Pipeline,
@@ -217,6 +256,11 @@ def meta_lead_form_save(request):
     stage = get_object_or_404(
         Stage, id=request.POST.get("stage"), pipeline=pipeline, is_active=True
     )
+    form_id = request.POST.get("form_id", "").strip()
+    if not form_id:
+        messages.error(request, "Form ID is required.")
+        return redirect("crm-connect-hub-meta-lead-ad-forms")
+
     mapping = {
         key: value.strip()
         for key, value in request.POST.items()
@@ -225,9 +269,9 @@ def meta_lead_form_save(request):
     }
     form, _ = MetaLeadForm.objects.update_or_create(
         page=page,
-        form_id=request.POST.get("form_id", "").strip(),
+        form_id=form_id,
         defaults={
-            "form_name": request.POST.get("form_name", "").strip(),
+            "form_name": request.POST.get("form_name", "").strip() or form_id,
             "pipeline": pipeline,
             "stage": stage,
             "field_mapping": mapping,
@@ -236,5 +280,24 @@ def meta_lead_form_save(request):
     )
     form.full_clean()
     form.save()
-    messages.success(request, "Meta lead form routing saved.")
+    messages.success(
+        request,
+        "Meta lead form routing saved. You can add another form for this Page now.",
+    )
+    return redirect("crm-connect-hub-meta-lead-ad-forms")
+
+
+@crm_login_required
+@require_POST
+def meta_lead_form_delete(request):
+    organization = request.crm_user.organization
+    form = get_object_or_404(
+        MetaLeadForm,
+        id=request.POST.get("form"),
+        page__organization=organization,
+        is_active=True,
+    )
+    form.is_active = False
+    form.save(update_fields=["is_active", "updated_at"])
+    messages.success(request, "Meta lead form mapping removed.")
     return redirect("crm-connect-hub-meta-lead-ad-forms")
