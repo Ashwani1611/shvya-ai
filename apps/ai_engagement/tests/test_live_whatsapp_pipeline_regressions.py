@@ -1,5 +1,6 @@
 import json
 from types import SimpleNamespace
+from unittest.mock import patch
 
 from django.test import TestCase
 
@@ -158,10 +159,18 @@ class LiveWhatsAppPipelineRegressionTests(TestCase):
         )
         self._inbound("invalid-provider-turn", "Hi")
 
-        decision = EngagementService(provider=_InvalidQualificationProvider()).engage(
-            organization=self.organization,
-            lead=self.lead,
-        )
+        # Production workers leave EngagementService.provider unset and resolve
+        # OpenAIProvider internally. Patch that factory so this regression covers
+        # the real fail-soft boundary without weakening strict injected-provider
+        # validation tests elsewhere.
+        with patch(
+            "apps.ai_engagement.services.engagement.OpenAIProvider",
+            return_value=_InvalidQualificationProvider(),
+        ):
+            decision = EngagementService().engage(
+                organization=self.organization,
+                lead=self.lead,
+            )
 
         self.assertTrue(decision.should_engage)
         self.assertEqual(decision.model, "deterministic-fallback")
