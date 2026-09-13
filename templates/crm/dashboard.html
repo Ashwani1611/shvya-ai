@@ -5,6 +5,47 @@
 {{ block.super }}
 <link rel="stylesheet" href="{% static 'crm/bulk.css' %}">
 <link rel="stylesheet" href="{% static 'crm/apple_crm.css' %}">
+<style>
+    /* CRM must scroll inside the dashboard main pane only. Keeping the shell
+       fixed prevents the entire sidebar/header from moving and exposing the
+       empty document canvas underneath. This is inline intentionally so the
+       viewport lock cannot be defeated by a stale cached static stylesheet. */
+    html.shvya-premium-shell,
+    html.shvya-premium-shell body {
+        width: 100%;
+        height: 100%;
+        min-height: 0 !important;
+        overflow: hidden !important;
+        overscroll-behavior: none;
+    }
+
+    html.shvya-premium-shell body > .flex.h-screen.overflow-hidden {
+        position: fixed !important;
+        inset: 0 !important;
+        width: 100% !important;
+        height: 100vh !important;
+        height: 100dvh !important;
+        min-height: 0 !important;
+        max-height: 100dvh !important;
+        overflow: hidden !important;
+    }
+
+    html.shvya-premium-shell #app-sidebar + div {
+        height: 100% !important;
+        min-height: 0 !important;
+        max-height: 100% !important;
+        overflow: hidden !important;
+    }
+
+    html.shvya-premium-shell #app-sidebar + div > main {
+        flex: 1 1 auto !important;
+        min-height: 0 !important;
+        max-height: 100% !important;
+        overflow-x: hidden !important;
+        overflow-y: auto !important;
+        overscroll-behavior-y: contain;
+    }
+</style>
 <script src="{% static 'crm/bulk.js' %}" defer></script>
 {% endblock %}
 
