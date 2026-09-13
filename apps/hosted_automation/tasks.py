@@ -214,6 +214,19 @@ def process_hosted_ai_engagement_job_task(self, job_id):
     }:
         return {"status": "skipped", "reason": "job_already_finished"}
 
+    source_payload = (
+        job.source_message.raw_payload
+        if isinstance(job.source_message.raw_payload, dict)
+        else {}
+    )
+    if source_payload.get("isHistory") is True:
+        _cancel_generated_message(job)
+        job.status = HostedAutomationJob.Status.SKIPPED
+        job.completed_at = timezone.now()
+        job.result = {**(job.result or {}), "reason": "source_message_is_history"}
+        job.save(update_fields=["status", "completed_at", "result", "updated_at"])
+        return {"status": "skipped", "reason": "source_message_is_history"}
+
     latest = (
         job.lead.whatsapp_messages.filter(
             organization=job.organization,
