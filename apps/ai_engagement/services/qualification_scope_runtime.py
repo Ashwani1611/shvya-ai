@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from copy import deepcopy
+from copy import copy, deepcopy
+from dataclasses import is_dataclass, replace
 
 
 _INSTALLED = False
@@ -29,6 +30,11 @@ def _clean(value) -> str:
 
 def _lead_stage_name(lead) -> str:
     return _clean(getattr(getattr(lead, "stage", None), "name", ""))
+
+
+def _context_stage_name(context) -> str:
+    stage = getattr(context, "stage", None)
+    return _clean(stage.get("name") if isinstance(stage, dict) else "")
 
 
 def _patch_qualification_state() -> None:
@@ -89,7 +95,28 @@ def _restore_new_lead_stage_guards() -> None:
     qualification_crm_action_runtime._NEW_LEAD_STAGE_NAMES.discard("in conversation")
 
 
-def _strip_automatic_in_conversation_transition() -> None:
+def _without_qualification_proposals(decision):
+    """Keep normal CRM proposals but remove qualification output outside New Lead."""
+
+    if is_dataclass(decision):
+        try:
+            return replace(
+                decision,
+                qualification_updates=[],
+                next_requirement_id=None,
+            )
+        except TypeError:
+            pass
+
+    cloned = copy(decision)
+    if hasattr(cloned, "qualification_updates"):
+        setattr(cloned, "qualification_updates", [])
+    if hasattr(cloned, "next_requirement_id"):
+        setattr(cloned, "next_requirement_id", None)
+    return cloned
+
+
+def _enforce_policy_action_scope() -> None:
     from apps.ai_engagement.graph import policy_actions as policy_actions_module
 
     if getattr(policy_actions_module, "_shvya_new_lead_scope_patch", False):
@@ -98,8 +125,15 @@ def _strip_automatic_in_conversation_transition() -> None:
     current_builder = policy_actions_module.build_controlled_actions
 
     def build(*, decision, context, runtime_policy, qualification_state, requirements):
+        stage_name = _context_stage_name(context)
+        effective_decision = (
+            decision
+            if stage_name in _NEW_LEAD_STAGE_NAMES
+            else _without_qualification_proposals(decision)
+        )
+
         controlled, result = current_builder(
-            decision=decision,
+            decision=effective_decision,
             context=context,
             runtime_policy=runtime_policy,
             qualification_state=qualification_state,
@@ -108,6 +142,9 @@ def _strip_automatic_in_conversation_transition() -> None:
         controlled = [deepcopy(item) for item in controlled]
         result = deepcopy(result) if isinstance(result, dict) else {}
 
+        # #167 added an automatic New Lead -> In Conversation transition on the
+        # first genuine inbound. That conflicts with the qualification contract:
+        # the lead must remain in New Lead until deterministic completion.
         transition = result.get("stage_transition")
         if (
             isinstance(transition, dict)
@@ -166,7 +203,7 @@ def install_qualification_scope_runtime() -> None:
 
     _patch_qualification_state()
     _restore_new_lead_stage_guards()
-    _strip_automatic_in_conversation_transition()
+    _enforce_policy_action_scope()
     _restore_prompt_scope()
 
     _INSTALLED = True
