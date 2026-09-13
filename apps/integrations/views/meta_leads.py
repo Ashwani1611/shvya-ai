@@ -2,6 +2,7 @@ import hashlib
 import hmac
 import json
 import logging
+import re
 
 import requests
 from django.conf import settings
@@ -34,6 +35,69 @@ def _field_value(mapping, target, fields):
         if _normalise_field_key(key) == source:
             return str(value or "").strip()
     return ""
+
+
+def _field_value_with_fallbacks(mapping, target, fields, fallback_names):
+    """Return a mapped value, then try common Meta field names."""
+    value = _field_value(mapping, target, fields)
+    if value:
+        return value
+
+    for fallback in fallback_names:
+        normalised_fallback = _normalise_field_key(fallback)
+        for key, value in fields.items():
+            if _normalise_field_key(key) == normalised_fallback:
+                return str(value or "").strip()
+    return ""
+
+
+def _meta_lead_name(mapping, fields):
+    name = _field_value_with_fallbacks(
+        mapping,
+        "name",
+        fields,
+        ("full_name", "name", "first_name", "last_name"),
+    )
+    if name:
+        return name
+
+    first_name = _field_value_with_fallbacks(
+        {"first_name": mapping.get("first_name", "")},
+        "first_name",
+        fields,
+        ("first_name",),
+    )
+    last_name = _field_value_with_fallbacks(
+        {"last_name": mapping.get("last_name", "")},
+        "last_name",
+        fields,
+        ("last_name",),
+    )
+    return " ".join(part for part in (first_name, last_name) if part).strip()
+
+
+def _normalise_meta_phone(value):
+    """Convert Meta phone answers into the CRM format when possible."""
+    value = str(value or "").strip()
+    if not value:
+        return ""
+    if value.startswith("+"):
+        return value
+
+    digits = re.sub(r"\D", "", value)
+    if not digits:
+        return value
+
+    default_country_code = str(
+        getattr(settings, "META_LEAD_DEFAULT_COUNTRY_CODE", "+91") or "+91"
+    ).strip()
+    default_country_digits = re.sub(r"\D", "", default_country_code)
+
+    if len(digits) == 10 and default_country_digits:
+        return f"+{default_country_digits}{digits}"
+    if len(digits) > 10:
+        return f"+{digits}"
+    return value
 
 
 def _fetch_lead(leadgen_id, page):
@@ -131,14 +195,35 @@ def meta_lead_webhook(request):
                     continue
 
                 fields = {
-                    item.get("name", ""): (item.get("values") or [""])[0]
+                    item.get("name", ""): ", ".join(
+                        str(answer)
+                        for answer in (item.get("values") or [""])
+                        if answer is not None
+                    )
                     for item in lead_data.get("field_data", [])
                     if item.get("name")
                 }
                 mapping = form.field_mapping or {}
-                phone = _field_value(mapping, "phone", fields)
+                phone = _normalise_meta_phone(
+                    _field_value_with_fallbacks(
+                        mapping,
+                        "phone",
+                        fields,
+                        (
+                            "phone_number",
+                            "phone",
+                            "mobile_number",
+                            "mobile",
+                            "contact_number",
+                        ),
+                    )
+                )
                 if not phone:
-                    logger.warning("Meta lead %s has no mapped phone", leadgen_id)
+                    logger.warning(
+                        "Meta lead %s has no mapped phone. Available fields: %s",
+                        leadgen_id,
+                        ", ".join(sorted(fields)),
+                    )
                     continue
 
                 attributes = {
@@ -161,11 +246,22 @@ def meta_lead_webhook(request):
                     organization=page.organization,
                     pipeline=form.pipeline,
                     stage=form.stage,
-                    name=_field_value(mapping, "name", fields) or "Meta Lead",
+                    name=_meta_lead_name(mapping, fields) or "Meta Lead",
                     phone=phone,
-                    email=_field_value(mapping, "email", fields),
+                    email=_field_value_with_fallbacks(
+                        mapping,
+                        "email",
+                        fields,
+                        ("email", "email_address"),
+                    ),
                     attributes=attributes,
                     lead_source="meta_ads",
+                )
+                logger.info(
+                    "Imported Meta lead %s for form %s into organization %s",
+                    leadgen_id,
+                    form.form_id,
+                    page.organization_id,
                 )
             except Exception:
                 logger.exception("Failed to import Meta lead %s", leadgen_id)
