@@ -42,6 +42,26 @@ _TOKEN_ALIASES = {
     "buying": "buyer",
 }
 
+_AUTHORED_POLICY_PROMPT = r"""
+AI BRAIN AUTHORED CRM POLICY
+- RUNTIME_POLICY.crm is compiled from the organization-owned sections in
+  Engagement Instructions. Treat it as mandatory CRM policy, not conversational
+  background text.
+- crm.stage_shifting contains authored conditions for moving a lead to an
+  available stage/pipeline. When current conversation evidence clearly matches a
+  rule, propose exactly one pipeline_transition using the matching available
+  stage id. Never invent an id.
+- crm.attribute_mapped contains authored qualification-to-attribute mappings.
+  When the latest inbound supplies the mapped qualification value, propose the
+  corresponding attribute update with only that evidence-backed value.
+- crm.qualification_criteria may describe qualification/completion behavior, but
+  the backend qualification state remains the only authority for question order,
+  the current requirement, and completion.
+- New Lead/New leads is the only qualification stage. In every other stage,
+  continue normal conversation only; never emit qualification_updates or restart
+  the questionnaire. CRM stage movement and reminders may still be proposed.
+""".strip()
+
 
 def _clean(value: Any) -> str:
     return re.sub(r"\s+", " ", str(value or "")).strip()
@@ -293,14 +313,13 @@ def _merge_authored_attribute_updates(
 def _stage_rule_references_destination(rule: str, destination: dict[str, Any]) -> bool:
     normalized = _normalized(rule)
     stage_name = _normalized(destination.get("name"))
-    pipeline_name = _normalized(destination.get("pipeline_name"))
     if stage_name and stage_name in normalized:
         return True
     if stage_name:
         stage_tokens = _tokens(stage_name)
         if stage_tokens and stage_tokens.issubset(_tokens(rule)):
             return True
-    return bool(pipeline_name and pipeline_name in normalized and stage_name in normalized)
+    return False
 
 
 def _condition_part(rule: str, destination: dict[str, Any]) -> str:
@@ -350,14 +369,15 @@ def _strong_evidence_match(latest_text: str, condition: str) -> bool:
         {"buyer", "buy"},
         {"image", "screenshot"},
         {"payment", "screenshot"},
-        {"not", "interested"},
     )
     for group in intent_groups:
-        if condition_tokens & group and latest_tokens & group:
-            condition_intent = condition_tokens & group
-            latest_intent = latest_tokens & group
-            if condition_intent & latest_intent:
-                return True
+        condition_intent = condition_tokens & group
+        latest_intent = latest_tokens & group
+        if condition_intent and latest_intent and condition_intent & latest_intent:
+            return True
+
+    if {"not", "interested"}.issubset(condition_tokens):
+        return "not interested" in _normalized(latest_text)
     return False
 
 
@@ -450,19 +470,19 @@ def _action_wrapper(current_builder):
         )
         controlled = [dict(item) for item in controlled]
         latest_message_id, latest_text = _latest_inbound(context)
-
-        from apps.ai_engagement.services.qualification_state import project_answer_updates
-
-        projected = project_answer_updates(
-            state=qualification_state,
-            requirements=requirements,
-            updates=getattr(decision, "qualification_updates", []) or [],
-            messages=(getattr(context, "conversation", None) or {}).get("messages", []),
-        )
-
         stage = getattr(context, "stage", None)
         stage_name = _normalized(stage.get("name") if isinstance(stage, dict) else "")
-        if stage_name in {"new lead", "new leads"}:
+        in_new_lead = stage_name in {"new lead", "new leads"}
+
+        if in_new_lead:
+            from apps.ai_engagement.services.qualification_state import project_answer_updates
+
+            projected = project_answer_updates(
+                state=qualification_state,
+                requirements=requirements,
+                updates=getattr(decision, "qualification_updates", []) or [],
+                messages=(getattr(context, "conversation", None) or {}).get("messages", []),
+            )
             _merge_authored_attribute_updates(
                 controlled,
                 context=context,
@@ -471,6 +491,10 @@ def _action_wrapper(current_builder):
                 runtime_policy=runtime_policy,
                 latest_message_id=latest_message_id,
             )
+        else:
+            # Qualification is strictly New Lead-only. Other stages may route or
+            # create reminders but this policy layer never projects qualification.
+            projected = qualification_state
 
         _authored_stage_transition(
             controlled,
@@ -512,5 +536,12 @@ def install_engagement_instruction_runtime() -> None:
     policy_actions_module.build_controlled_actions = _action_wrapper(
         policy_actions_module.build_controlled_actions
     )
+
+    from apps.ai_engagement.services.engagement import EngagementService
+
+    if _AUTHORED_POLICY_PROMPT not in EngagementService.ENGAGEMENT_TASK_INSTRUCTIONS:
+        EngagementService.ENGAGEMENT_TASK_INSTRUCTIONS = (
+            f"{EngagementService.ENGAGEMENT_TASK_INSTRUCTIONS}\n\n{_AUTHORED_POLICY_PROMPT}"
+        )
 
     _INSTALLED = True
