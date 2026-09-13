@@ -1666,31 +1666,7 @@
             </div>
 
 
-            {% if lead.display_note_text %}
-
-            <p
-                class="
-                    text-sm
-                    leading-6
-                    text-gray-700
-                    whitespace-pre-wrap
-                "
-            >
-                {{ lead.display_note_text }}
-            </p>
-
-            {% else %}
-
-            <p
-                class="
-                    text-sm
-                    text-gray-400
-                "
-            >
-                No notes added yet.
-            </p>
-
-            {% endif %}
+            {% include "crm/partials/notes_editor.html" with note_lead=lead %}
 
         </section>
 
