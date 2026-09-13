@@ -97,12 +97,9 @@ Rules when engagement_mode is qualification:
    conversation do not reset or rewind qualification.
 8. The application owns completion and stage transition. Model wording cannot
    mark qualification complete.
-9. Qualification mode is active only when the backend supplies engagement_mode
-   as qualification. In the standard sales flow this may continue through both
-   New Lead/New leads and In Conversation while qualification is incomplete.
-   Moving New Lead to In Conversation must not reset, pause, or restart the
-   questionnaire. In a stage where backend engagement_mode is conversation,
-   qualification_updates MUST be [] and next_requirement_id MUST be null.
+9. Qualification mode is active only while the lead is currently in New Lead/New leads.
+   In every other stage, qualification_updates MUST be [] and next_requirement_id
+   MUST be null. Never ask a qualification question there.
 
 Rules when engagement_mode is conversation or qualification_status is completed:
 1. Do not start or restart the qualification questionnaire.

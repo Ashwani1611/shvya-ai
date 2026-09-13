@@ -94,9 +94,8 @@ class AiEngagementConfig(AppConfig):
         )
         install_langgraph_orchestration()
 
-        # Keep qualification active through New Lead -> In Conversation while
-        # making normal acknowledgements, call requests, and completed flows
-        # conversational instead of restarting the questionnaire or falling back.
+        # Natural conversation safeguards only. Qualification stage scope remains
+        # owned by the core New Lead state machine and routing layers above.
         from apps.ai_engagement.services.natural_conversation_runtime import (
             install_natural_conversation_runtime,
         )
