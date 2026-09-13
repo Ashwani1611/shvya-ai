@@ -206,3 +206,84 @@ class HostedChatCompleteSyncTests(TestCase):
         self.assertEqual(snapshot["selected_chat"], real_phone)
         self.assertEqual(snapshot["selected_name"], "Rohan Verma")
         self.assertEqual([m.body for m in snapshot["thread"]], ["Resolved conversation"])
+
+
+    def test_history_message_is_promoted_when_same_message_arrives_live(self):
+        raw_chat_id = "423456789012@lid"
+        real_phone = "+919844445555"
+        item = self._resolved_item(
+            message_id="HISTORY-THEN-LIVE-1",
+            phone=real_phone,
+            raw_chat_id=raw_chat_id,
+            body="Same message",
+        )
+
+        handle_hosted_gateway_event(
+            payload={
+      "sessionId": str(self.account.id),
+      "event": "history_sync",
+      "messages": [item],
+            }
+        )
+        from apps.channels.models import WhatsAppMessage
+        message = WhatsAppMessage.objects.get(external_id="wweb:HISTORY-THEN-LIVE-1")
+        self.assertTrue(message.raw_payload.get("isHistory"))
+
+        handle_hosted_gateway_event(
+            payload={
+      "sessionId": str(self.account.id),
+      "event": "message",
+      **item,
+            }
+        )
+        message.refresh_from_db()
+        self.assertFalse(message.raw_payload.get("isHistory"))
+
+    def test_history_sync_cannot_downgrade_live_message(self):
+        raw_chat_id = "523456789012@lid"
+        real_phone = "+919855556666"
+        item = self._resolved_item(
+            message_id="LIVE-THEN-HISTORY-1",
+            phone=real_phone,
+            raw_chat_id=raw_chat_id,
+            body="Realtime wins",
+        )
+
+        handle_hosted_gateway_event(
+            payload={
+      "sessionId": str(self.account.id),
+      "event": "message",
+      **item,
+            }
+        )
+        from apps.channels.models import WhatsAppMessage
+        message = WhatsAppMessage.objects.get(external_id="wweb:LIVE-THEN-HISTORY-1")
+        self.assertFalse(message.raw_payload.get("isHistory"))
+
+        handle_hosted_gateway_event(
+            payload={
+      "sessionId": str(self.account.id),
+      "event": "history_sync",
+      "messages": [item],
+            }
+        )
+        message.refresh_from_db()
+        self.assertFalse(message.raw_payload.get("isHistory"))
+
+    def test_history_only_message_remains_history(self):
+        item = self._resolved_item(
+            message_id="HISTORY-ONLY-1",
+            phone="+919866667777",
+            raw_chat_id="623456789012@lid",
+            body="Imported history",
+        )
+        handle_hosted_gateway_event(
+            payload={
+      "sessionId": str(self.account.id),
+      "event": "history_sync",
+      "messages": [item],
+            }
+        )
+        from apps.channels.models import WhatsAppMessage
+        message = WhatsAppMessage.objects.get(external_id="wweb:HISTORY-ONLY-1")
+        self.assertTrue(message.raw_payload.get("isHistory"))
