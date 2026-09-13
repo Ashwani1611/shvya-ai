@@ -129,6 +129,17 @@ urlpatterns = [
     ),
 
     # =========================================================
+    # Apple Stage Editor
+    #
+    # Keep this before the broad CRM include so the dedicated modal endpoints
+    # own /dashboard/stage-editor/* without disturbing legacy stage routes.
+    # =========================================================
+    path(
+        "dashboard/stage-editor/",
+        include("apps.crm.urls.stage_editor"),
+    ),
+
+    # =========================================================
     # CRM Web Dashboard
     # =========================================================
     path(

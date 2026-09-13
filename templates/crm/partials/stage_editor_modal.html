@@ -1,0 +1,248 @@
+<div
+    class="shvya-stage-editor-overlay fixed inset-0 z-[180] flex items-center justify-center p-4 sm:p-6"
+    data-stage-editor-overlay
+    role="presentation"
+>
+    <section
+        class="shvya-stage-editor-surface w-full max-w-3xl overflow-hidden"
+        data-stage-editor-surface
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="stage-editor-title"
+    >
+        <header class="shvya-stage-editor-header">
+            <div class="min-w-0">
+                <p class="shvya-stage-editor-eyebrow">CRM · {{ pipeline.name }}</p>
+                <h2 id="stage-editor-title" class="shvya-stage-editor-title">Edit stages</h2>
+                <p class="shvya-stage-editor-subtitle">
+                    Update stage names, descriptions and AI behaviour. Changes are saved to the backend immediately.
+                </p>
+            </div>
+
+            <button
+                type="button"
+                class="shvya-stage-editor-close"
+                data-stage-editor-close
+                aria-label="Close stage editor"
+                title="Close"
+            >
+                <i class="ti ti-x"></i>
+            </button>
+        </header>
+
+        {% if stage_editor_error %}
+        <div class="shvya-stage-editor-alert" role="alert">
+            <i class="ti ti-alert-circle"></i>
+            <span>{{ stage_editor_error }}</span>
+        </div>
+        {% endif %}
+
+        <div class="shvya-stage-editor-scroll">
+            <div class="shvya-stage-editor-section-heading">
+                <div>
+                    <p class="shvya-stage-editor-section-title">Pipeline stages</p>
+                    <p class="shvya-stage-editor-section-copy">
+                        {{ stage_count }} stage{{ stage_count|pluralize }} · descriptions can guide your team and backend logic.
+                    </p>
+                </div>
+                <span class="shvya-stage-editor-count">{{ stage_count }}</span>
+            </div>
+
+            <div class="shvya-stage-editor-list">
+                {% for stage in stages %}
+                <article
+                    class="shvya-stage-editor-card"
+                    data-stage-editor-row
+                    data-stage-id="{{ stage.id }}"
+                >
+                    <div class="shvya-stage-editor-card-main">
+                        <form
+                            method="post"
+                            action="{% url 'crm-stage-editor-update' stage.id %}"
+                            class="shvya-stage-editor-fields"
+                            data-stage-editor-form
+                            data-stage-id="{{ stage.id }}"
+                            novalidate
+                        >
+                            {% csrf_token %}
+                            <input type="hidden" name="active_stage" value="{{ active_stage_id }}">
+                            <input type="hidden" name="pipeline" value="{{ pipeline.id }}">
+
+                            <div class="shvya-stage-editor-name-row">
+                                <label class="shvya-stage-editor-field-label" for="stage-name-{{ stage.id }}">
+                                    Stage name
+                                </label>
+
+                                <div class="shvya-stage-editor-save-state" data-stage-editor-save-state aria-live="polite">
+                                    Saved
+                                </div>
+                            </div>
+
+                            <div class="shvya-stage-editor-name-control">
+                                <input
+                                    id="stage-name-{{ stage.id }}"
+                                    type="text"
+                                    name="name"
+                                    value="{{ stage.name }}"
+                                    maxlength="100"
+                                    required
+                                    autocomplete="off"
+                                    class="shvya-stage-editor-input"
+                                    {% if stage.is_system_locked %}
+                                        readonly
+                                        aria-readonly="true"
+                                        title="{{ stage.name }} is a required SHVYA system stage and cannot be renamed."
+                                    {% endif %}
+                                >
+
+                                {% if stage.is_system_locked %}
+                                <span class="shvya-stage-editor-lock" title="System stage">
+                                    <i class="ti ti-lock"></i>
+                                    Locked
+                                </span>
+                                {% endif %}
+                            </div>
+
+                            <label class="shvya-stage-editor-field-label" for="stage-description-{{ stage.id }}">
+                                Description
+                            </label>
+                            <textarea
+                                id="stage-description-{{ stage.id }}"
+                                name="description"
+                                maxlength="{{ description_max_length }}"
+                                rows="2"
+                                class="shvya-stage-editor-textarea"
+                                placeholder="Describe when a lead belongs in this stage and what should happen next."
+                            >{{ stage.description }}</textarea>
+
+                            <div class="shvya-stage-editor-field-footer">
+                                <span>Saved automatically</span>
+                                <button
+                                    type="submit"
+                                    class="shvya-stage-editor-save-button"
+                                    aria-label="Save {{ stage.name }}"
+                                    title="Save now"
+                                >
+                                    <i class="ti ti-check"></i>
+                                    Save
+                                </button>
+                            </div>
+                        </form>
+
+                        <div class="shvya-stage-editor-actions">
+                            <form
+                                method="post"
+                                hx-post="{% url 'crm-stage-editor-ai-toggle' stage.id %}"
+                                hx-target="#modal-root"
+                                hx-swap="innerHTML"
+                                class="m-0"
+                            >
+                                {% csrf_token %}
+                                <input type="hidden" name="active_stage" value="{{ active_stage_id }}">
+                                <button
+                                    type="submit"
+                                    class="shvya-stage-editor-ai {% if stage.ai_on %}is-on{% else %}is-off{% endif %}"
+                                    role="switch"
+                                    aria-checked="{% if stage.ai_on %}true{% else %}false{% endif %}"
+                                    title="Stage AI is {% if stage.ai_on %}on{% else %}off{% endif %}"
+                                >
+                                    <i class="ti ti-sparkles"></i>
+                                    <span>AI {% if stage.ai_on %}On{% else %}Off{% endif %}</span>
+                                </button>
+                            </form>
+
+                            <form
+                                method="post"
+                                hx-post="{% url 'crm-stage-editor-delete' stage.id %}"
+                                hx-target="#modal-root"
+                                hx-swap="innerHTML"
+                                class="m-0"
+                            >
+                                {% csrf_token %}
+                                <input type="hidden" name="active_stage" value="{{ active_stage_id }}">
+                                <button
+                                    type="submit"
+                                    class="shvya-stage-editor-delete"
+                                    {% if stage.is_system_locked %}
+                                        disabled
+                                        aria-disabled="true"
+                                        title="This system stage cannot be deleted"
+                                    {% else %}
+                                        hx-confirm="Delete {{ stage.name }}? This is only allowed when the stage has no leads."
+                                        title="Delete {{ stage.name }}"
+                                    {% endif %}
+                                    aria-label="Delete {{ stage.name }}"
+                                >
+                                    <i class="ti ti-trash"></i>
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                </article>
+                {% empty %}
+                <div class="shvya-stage-editor-empty">
+                    <i class="ti ti-layout-kanban"></i>
+                    <p>No stages in this pipeline yet.</p>
+                </div>
+                {% endfor %}
+            </div>
+
+            <section class="shvya-stage-editor-add-card">
+                <div class="shvya-stage-editor-add-heading">
+                    <div>
+                        <p class="shvya-stage-editor-section-title">Add stage</p>
+                        <p class="shvya-stage-editor-section-copy">Create a new stage with its backend description from the start.</p>
+                    </div>
+                    <div class="shvya-stage-editor-add-icon">
+                        <i class="ti ti-plus"></i>
+                    </div>
+                </div>
+
+                <form
+                    method="post"
+                    hx-post="{% url 'crm-stage-editor-create' %}"
+                    hx-target="#modal-root"
+                    hx-swap="innerHTML"
+                    class="shvya-stage-editor-add-form"
+                >
+                    {% csrf_token %}
+                    <input type="hidden" name="pipeline" value="{{ pipeline.id }}">
+                    <input type="hidden" name="active_stage" value="{{ active_stage_id }}">
+
+                    <div>
+                        <label class="shvya-stage-editor-field-label" for="new-stage-name">Stage name</label>
+                        <input
+                            id="new-stage-name"
+                            type="text"
+                            name="name"
+                            maxlength="100"
+                            required
+                            autocomplete="off"
+                            placeholder="New stage name"
+                            class="shvya-stage-editor-input"
+                        >
+                    </div>
+
+                    <div>
+                        <label class="shvya-stage-editor-field-label" for="new-stage-description">Description</label>
+                        <textarea
+                            id="new-stage-description"
+                            name="description"
+                            maxlength="{{ description_max_length }}"
+                            rows="2"
+                            placeholder="Describe when a lead belongs here and what should happen next."
+                            class="shvya-stage-editor-textarea"
+                        ></textarea>
+                    </div>
+
+                    <div class="shvya-stage-editor-add-actions">
+                        <button type="submit" class="shvya-stage-editor-primary">
+                            <i class="ti ti-plus"></i>
+                            Add stage
+                        </button>
+                    </div>
+                </form>
+            </section>
+        </div>
+    </section>
+</div>
