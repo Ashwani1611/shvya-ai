@@ -122,3 +122,10 @@ class AiEngagementConfig(AppConfig):
             install_ai_orchestration_hooks,
         )
         install_ai_orchestration_hooks()
+
+        # The first customer-facing WhatsApp reply must always greet once before
+        # presenting the backend-selected first qualification requirement.
+        from apps.ai_engagement.services.first_inbound_welcome_runtime import (
+            install_first_inbound_welcome_runtime,
+        )
+        install_first_inbound_welcome_runtime()
