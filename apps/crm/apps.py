@@ -13,35 +13,43 @@ class CrmConfig(AppConfig):
         # lead-table query construction into a focused service. This avoids a
         # risky rewrite of the large dashboard view module and lets every
         # existing HTMX endpoint use the optimized builder automatically.
-        from apps.ai_engagement.models import InternalConversationSummary
         from apps.crm.views import dashboard as dashboard_views
         from services.crm.dashboard_query_service import (
             build_lead_table_context,
         )
 
-        dashboard_views._build_lead_table_context = (
-            build_lead_table_context
-        )
+        # Conversation summaries are generated asynchronously. A lead card can
+        # therefore be rendered before the summary exists and remain on screen
+        # after the summary has been published. Using the rendered boolean as a
+        # status indicator makes the card stale even though the summary modal
+        # reads the current database state.
+        #
+        # Treat the card as an action instead: always expose "View summary" and
+        # let the modal remain the authoritative live state. If a summary has
+        # not been generated yet, the modal already explains that clearly.
+        def build_lead_table_context_with_summary_action(*args, **kwargs):
+            context = build_lead_table_context(*args, **kwargs)
 
-        # The standalone lead-card refresh path does not use the lead-table
-        # builder, so preserve the original context builder and enrich only
-        # the Conversation Summary state. This keeps every existing card
-        # behavior unchanged while preventing a refreshed card from falling
-        # back to "No summary yet" when an active summary already exists.
-        original_lead_card_context = dashboard_views._lead_card_context
+            for group in context.get("stage_groups", []):
+                for lead in group.get("leads", []):
+                    lead.has_conversation_summary = True
 
-        def lead_card_context_with_summary(lead, user):
-            context = original_lead_card_context(lead, user)
-            context["conversation_summary"] = (
-                InternalConversationSummary.objects
-                .filter(
-                    organization=user.organization,
-                    lead=lead,
-                    is_active=True,
-                )
-                .exclude(summary="")
-                .exists()
-            )
             return context
 
-        dashboard_views._lead_card_context = lead_card_context_with_summary
+        dashboard_views._build_lead_table_context = (
+            build_lead_table_context_with_summary_action
+        )
+
+        # Standalone lead-card refreshes bypass the lead-table builder, so keep
+        # the same action-only state there as well. This prevents a refreshed
+        # card from reintroducing the stale "No summary yet" copy.
+        original_lead_card_context = dashboard_views._lead_card_context
+
+        def lead_card_context_with_summary_action(lead, user):
+            context = original_lead_card_context(lead, user)
+            context["conversation_summary"] = True
+            return context
+
+        dashboard_views._lead_card_context = (
+            lead_card_context_with_summary_action
+        )
