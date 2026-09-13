@@ -6,17 +6,19 @@ from apps.integrations.views.google_sheets import (
     google_sheets_ingest_view,
     google_sheets_view,
 )
+from apps.integrations.views.meta_leads import (
+    meta_lead_form_delete,
+    meta_lead_form_save,
+    meta_lead_forms_view,
+    meta_lead_page_delete,
+    meta_lead_page_save,
+)
 from apps.integrations.views.web import (
     connect_hub_view,
     integration_detail_view,
     shvya_api_view,
 )
 from apps.integrations.views.webhook import webhook_view
-from apps.integrations.views.meta_leads import (
-    meta_lead_form_save,
-    meta_lead_forms_view,
-    meta_lead_page_save,
-)
 
 
 urlpatterns = [
@@ -67,9 +69,19 @@ urlpatterns = [
         name="meta-lead-page-save",
     ),
     path(
+        "connect-hub/meta-lead-ad-forms/pages/delete/",
+        meta_lead_page_delete,
+        name="meta-lead-page-delete",
+    ),
+    path(
         "connect-hub/meta-lead-ad-forms/forms/save/",
         meta_lead_form_save,
         name="meta-lead-form-save",
+    ),
+    path(
+        "connect-hub/meta-lead-ad-forms/forms/delete/",
+        meta_lead_form_delete,
+        name="meta-lead-form-delete",
     ),
     path(
         "connect-hub/razorpay/",
