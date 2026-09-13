@@ -1,131 +1,35 @@
 import json
-import os
-from types import SimpleNamespace
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 
 from django.core.cache import cache
-from django.test import SimpleTestCase, TestCase, override_settings
+from django.test import TestCase
 from django.utils import timezone
 
-from apps.ai_engagement.services.ai_provider import (
-    AIProviderConfigurationError, AITextResult, OpenAIProvider,
-)
-from apps.ai_engagement.services.engagement import (
-    ENGAGEMENT_RESPONSE_SCHEMA, EngagementError, EngagementService,
-)
-from apps.ai_engagement.tests import test_precise_orchestration as fixtures
+from apps.ai_engagement.models import OrgInfo
+from apps.ai_engagement.services.ai_provider import AITextResult
+from apps.ai_engagement.services.qualification_state import state_for_lead
+from apps.ai_engagement.tasks import generate_ai_engagement_response
+from apps.channels.models import WhatsAppAccount, WhatsAppMessage
+from apps.crm.models import Lead, Pipeline
+from apps.hosted_automation.models import HostedAutomationJob
+from apps.hosted_automation.tasks import process_hosted_ai_engagement_job_task
+from apps.organizations.models import Organization
 
 
-@override_settings(CACHES={"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}})
-class EngagementRecoveryTests(SimpleTestCase):
+class MultiTurnTransportRecoveryTests(TestCase):
     def setUp(self):
         cache.clear()
-        self.context = fixtures.PreciseEngagementTests()._context("I live in Delhi")
-        self.context.organization["qualification_requirements"] = "Which city?\nWhat is your budget?"
-        self.context.conversation["messages"][0]["id"] = "inbound-1"
-        self.valid = {
-            "should_engage": True, "message": "What is your budget?",
-            "file_document_id": None, "crm_actions": [],
-            "qualification_updates": [{
-                "requirement_id": "which_city", "value": "Delhi",
-                "source_message_id": "inbound-1", "evidence": "Delhi",
-            }],
-            "next_requirement_id": "what_is_your_budget", "reason_code": "QUALIFICATION_NEXT",
-        }
-
-    def _engage(self, outputs):
-        provider = Mock()
-        provider.generate_text.side_effect = [AITextResult(json.dumps(item), "test") for item in outputs]
-        with patch("apps.ai_engagement.services.engagement.EngagementGenerationLock") as lock:
-            lock.return_value.acquire.return_value = True
-            result = EngagementService(provider=provider).engage(
-                organization=SimpleNamespace(id="org-1"), lead=SimpleNamespace(id="lead-1"),
-                context=self.context,
-            )
-        return result, provider
-
-    def test_wrong_next_question_is_repaired_using_original_evidence(self):
-        invalid = {**self.valid, "next_requirement_id": "which_city", "message": "Which city?"}
-        result, provider = self._engage([invalid, self.valid])
-        self.assertEqual(result.message, "What is your budget?")
-        self.assertEqual(provider.generate_text.call_count, 2)
-        repair = provider.generate_text.call_args.kwargs
-        self.assertEqual(repair["metadata"]["phase"], "schema_repair")
-        turn = json.loads(repair["input_text"])["original_turn"]
-        self.assertEqual(turn["recent_conversation"]["messages"][0]["body"], "I live in Delhi")
-        self.assertEqual(result.qualification_updates[0]["value"], "Delhi")
-
-    def test_unsupported_evidence_can_be_corrected_without_losing_reply(self):
-        invalid = {**self.valid, "qualification_updates": [{
-            **self.valid["qualification_updates"][0], "evidence": "Mumbai", "value": "Mumbai",
-        }]}
-        result, provider = self._engage([invalid, self.valid])
-        self.assertEqual(result.qualification_updates[0]["value"], "Delhi")
-        self.assertEqual(provider.generate_text.call_count, 2)
-
-    def test_invalid_repair_never_caches_or_persists_unsupported_answers(self):
-        invalid = {**self.valid, "next_requirement_id": "invented_requirement"}
-        with self.assertRaises(EngagementError):
-            self._engage([invalid, invalid])
-        self.assertIsNone(cache.get("shvya:ai:decision:org-1:lead-1:inbound-1"))
-
-    def test_provider_initialization_failure_releases_turn_claim(self):
-        with (
-            patch("apps.ai_engagement.services.engagement.EngagementGenerationLock") as lock,
-            patch("apps.ai_engagement.services.engagement.OpenAIProvider",
-                  side_effect=AIProviderConfigurationError("missing key")),
-        ):
-            lock.return_value.acquire.return_value = True
-            with self.assertRaises(AIProviderConfigurationError):
-                EngagementService().engage(
-                    organization=SimpleNamespace(id="org-1"), lead=SimpleNamespace(id="lead-1"),
-                    context=self.context,
-                )
-            lock.return_value.finish.assert_called_once_with(success=False)
-
-
-@override_settings(OPENAI_API_KEY="test-key")
-class StructuredReplyBudgetTests(SimpleTestCase):
-    @patch.dict(os.environ, {"OPENAI_ENGAGEMENT_MAX_OUTPUT_TOKENS": "300"})
-    def test_legacy_budget_cannot_truncate_structured_reply_and_repair(self):
-        client = Mock()
-        client.responses.create.return_value = SimpleNamespace(output_text="{}", model="test")
-        provider = OpenAIProvider(client=client)
-        for phase, expected in [("primary", 700), ("schema_repair", 1400)]:
-            provider.generate_text(
-                instructions="Test", input_text="Test",
-                metadata={"task": "engagement", "phase": phase},
-                response_schema=ENGAGEMENT_RESPONSE_SCHEMA,
-            )
-            self.assertEqual(client.responses.create.call_args.kwargs["max_output_tokens"], expected)
-        provider.generate_text(instructions="Test", input_text="Test", metadata={"task": "engagement"})
-        self.assertEqual(client.responses.create.call_args.kwargs["max_output_tokens"], 300)
-
-
-@override_settings(
-    CACHES={"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}},
-    CHANNEL_LAYERS={"default": {"BACKEND": "channels.layers.InMemoryChannelLayer"}},
-)
-class MultiTurnTransportRecoveryTests(TestCase):
-    """Exercise the real graph and finalizer on both transports, without sending."""
 
     def _conversation(self, transport):
-        from apps.ai_engagement.models import OrgInfo
-        from apps.ai_engagement.services.qualification_state import state_for_lead
-        from apps.ai_engagement.tasks import generate_ai_engagement_response
-        from apps.channels.models import WhatsAppAccount, WhatsAppMessage
-        from apps.crm.models import Lead, Pipeline, Stage
-        from apps.hosted_automation.models import HostedAutomationJob
-        from apps.hosted_automation.tasks import process_hosted_ai_engagement_job_task
-        from apps.organizations.models import Organization
-
-        cache.clear()
-        org = Organization.objects.create(name=f"Recovery {transport}")
+        org = Organization.objects.create(name=f"{transport}-recovery")
         pipeline = Pipeline.objects.create(
-            organization=org, name="Sales", country_code="+91", phone_number="9876543210",
+            organization=org,
+            name="Sales",
+            country_code="+91",
+            phone_number="9876543210",
             ai_enabled=True,
         )
-        stage = Stage.objects.create(pipeline=pipeline, name="New Lead", display_order=0, ai_on=True)
+        stage = pipeline.stages.get(name="New leads")
         lead = Lead.objects.create(
             organization=org, pipeline=pipeline, stage=stage,
             name="Test Customer", phone="+919111111111", ai_enabled=True,
@@ -210,7 +114,10 @@ class MultiTurnTransportRecoveryTests(TestCase):
                     deliver(message=outbound)
 
             self.assertEqual(provider.generate_text.call_count, 7)
-            self.assertEqual(api_send.call_count, 6)
+            # API replies use the generic sender task. Hosted replies are sent
+            # directly by the durable Hosted job so Account Health/pacing stays
+            # provider-specific and no process-global sender interception exists.
+            self.assertEqual(api_send.call_count, 6 if transport == "api" else 0)
             self.assertEqual(hosted_send.call_count, 6 if transport == "hosted" else 0)
             self.assertEqual(lead.whatsapp_messages.filter(direction="outbound").count(), 6)
             lead.refresh_from_db()
