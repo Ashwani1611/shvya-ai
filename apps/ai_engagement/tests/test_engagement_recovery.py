@@ -204,7 +204,13 @@ class MultiTurnTransportRecoveryTests(TestCase):
                 self.assertEqual(result["status"], "completed", result)
                 outbound = WhatsAppMessage.objects.get(pk=result["message_id"])
                 self.assertEqual(outbound.account_id, account.id)
-                self.assertEqual(outbound.body, expected["message"])
+                expected_outbound_message = expected["message"]
+                if index == 0:
+                    expected_outbound_message = (
+                        f"Hi Test! Thanks for reaching out to Recovery {transport}.\n\n"
+                        f"{expected['message']}"
+                    )
+                self.assertEqual(outbound.body, expected_outbound_message)
                 self.assertEqual(outbound.raw_payload["shvya_ai"]["source_inbound_message_id"], str(inbound.id))
                 if transport == "api":
                     deliver(message=outbound)

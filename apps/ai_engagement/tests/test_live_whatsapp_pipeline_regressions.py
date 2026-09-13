@@ -174,7 +174,11 @@ class LiveWhatsAppPipelineRegressionTests(TestCase):
 
         self.assertTrue(decision.should_engage)
         self.assertEqual(decision.model, "deterministic-fallback")
-        self.assertEqual(decision.message, "What is your budget?")
+        self.assertEqual(
+            decision.message,
+            "Hi Customer! Thanks for reaching out to Live Regression Org.\n\n"
+            "What is your budget?",
+        )
         self.assertEqual(decision.crm_actions, [])
         self.assertIsNotNone(decision.next_requirement_id)
 
