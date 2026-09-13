@@ -100,9 +100,32 @@ def _normalise_meta_phone(value):
     return value
 
 
+def _phone_is_crm_compatible(value):
+    return bool(str(value or "").startswith("+") and len(re.sub(r"\D", "", str(value))) >= 8)
+
+
+def _phone_like_field(fields):
+    """Return the first phone-looking answer from any Meta field key."""
+    phone_markers = ("phone", "mobile", "contact", "whatsapp")
+    for key, value in fields.items():
+        normalised_key = _normalise_field_key(key)
+        if any(marker in normalised_key for marker in phone_markers):
+            value = str(value or "").strip()
+            if value:
+                return value
+    return ""
+
+
+def _fallback_phone_from_leadgen_id(leadgen_id):
+    digits = re.sub(r"\D", "", str(leadgen_id or ""))
+    if len(digits) >= 8:
+        return f"+{digits[:31]}"
+    return ""
+
+
 def _fetch_lead(leadgen_id, page):
     response = requests.get(
-        f"https://graph.facebook.com/v23.0/{leadgen_id}",
+        f"https://graph.facebook.com/v26.0/{leadgen_id}",
         params={
             "fields": "field_data,ad_id,form_id,created_time",
             "access_token": page.get_page_access_token(),
@@ -204,23 +227,36 @@ def meta_lead_webhook(request):
                     if item.get("name")
                 }
                 mapping = form.field_mapping or {}
-                phone = _normalise_meta_phone(
-                    _field_value_with_fallbacks(
-                        mapping,
+                raw_phone = _field_value_with_fallbacks(
+                    mapping,
+                    "phone",
+                    fields,
+                    (
+                        "phone_number",
                         "phone",
-                        fields,
-                        (
-                            "phone_number",
-                            "phone",
-                            "mobile_number",
-                            "mobile",
-                            "contact_number",
-                        ),
-                    )
+                        "mobile_number",
+                        "mobile",
+                        "contact_number",
+                    ),
                 )
-                if not phone:
+                phone = _normalise_meta_phone(raw_phone)
+                phone_warning = ""
+
+                if not _phone_is_crm_compatible(phone):
+                    phone = _normalise_meta_phone(_phone_like_field(fields))
+                    if phone:
+                        phone_warning = "Phone was recovered from another phone-like Meta field."
+
+                if not _phone_is_crm_compatible(phone):
+                    phone = _fallback_phone_from_leadgen_id(leadgen_id)
+                    phone_warning = (
+                        "Meta did not provide a CRM-compatible phone value; "
+                        "used Meta lead ID as fallback phone so the lead is still traceable."
+                    )
+
+                if not _phone_is_crm_compatible(phone):
                     logger.warning(
-                        "Meta lead %s has no mapped phone. Available fields: %s",
+                        "Meta lead %s has no CRM-compatible phone. Available fields: %s",
                         leadgen_id,
                         ", ".join(sorted(fields)),
                     )
@@ -242,7 +278,11 @@ def meta_lead_webhook(request):
                         ),
                     }
                 )
-                upsert_lead(
+                if phone_warning:
+                    attributes["meta_import_warning"] = phone_warning
+                    attributes["meta_raw_phone"] = raw_phone
+
+                lead, created = upsert_lead(
                     organization=page.organization,
                     pipeline=form.pipeline,
                     stage=form.stage,
@@ -258,10 +298,12 @@ def meta_lead_webhook(request):
                     lead_source="meta_ads",
                 )
                 logger.info(
-                    "Imported Meta lead %s for form %s into organization %s",
+                    "%s Meta lead %s for form %s into organization %s as CRM lead %s",
+                    "Created" if created else "Updated",
                     leadgen_id,
                     form.form_id,
                     page.organization_id,
+                    lead.id,
                 )
             except Exception:
                 logger.exception("Failed to import Meta lead %s", leadgen_id)
