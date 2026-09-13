@@ -1,3 +1,4 @@
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from django.test import TestCase
@@ -147,7 +148,7 @@ class HostedExistingChatIgnoreListTests(TestCase):
             HostedChatIgnoreContact.objects.filter(pk=old.pk).exists()
         )
 
-    def test_ignored_live_chat_does_not_auto_create_lead(self):
+    def test_ignored_live_chat_auto_creates_lead_after_reengagement(self):
         HostedChatIgnoreContact.objects.create(
             organization=self.organization,
             account=self.account,
@@ -160,12 +161,15 @@ class HostedExistingChatIgnoreListTests(TestCase):
             payload=self._message_payload(message_id="ignored-live")
         )
 
-        self.assertEqual(Lead.objects.count(), 0)
-        self.assertIsNone(message.lead)
+        lead = Lead.objects.get(phone="+919876543210")
+        self.assertEqual(message.lead, lead)
+        self.assertEqual(lead.pipeline, self.pipeline)
+        self.assertEqual(lead.stage, self.stage)
         self.assertTrue(message.raw_payload["ignoredExistingChat"])
+        self.assertTrue(message.raw_payload["leadCreationMessage"])
         self.assertEqual(message.status, WhatsAppMessage.Status.RECEIVED)
 
-    def test_lid_message_uses_snapshot_phone_and_stays_ignored(self):
+    def test_lid_message_uses_snapshot_phone_and_auto_creates_lead(self):
         HostedChatIgnoreContact.objects.create(
             organization=self.organization,
             account=self.account,
@@ -181,9 +185,50 @@ class HostedExistingChatIgnoreListTests(TestCase):
 
         message = handle_gateway_event(payload=payload)
 
-        self.assertEqual(Lead.objects.count(), 0)
+        lead = Lead.objects.get(phone="+919876543210")
+        self.assertEqual(message.lead, lead)
         self.assertEqual(message.from_number, "+919876543210")
         self.assertTrue(message.raw_payload["ignoredExistingChat"])
+        self.assertTrue(message.raw_payload["leadCreationMessage"])
+
+    def test_ignored_live_chat_is_eligible_for_hosted_ai(self):
+        HostedChatIgnoreContact.objects.create(
+            organization=self.organization,
+            account=self.account,
+            phone_number="+919876543210",
+            contact_name="Existing Contact",
+            chat_id="919876543210@c.us",
+        )
+        self.pipeline.ai_enabled = True
+        self.pipeline.save(update_fields=["ai_enabled", "updated_at"])
+
+        with (
+            patch(
+                "apps.ai_engagement.services.ai_permissions.AIPermissionService.evaluate",
+                return_value=SimpleNamespace(allowed=True, reason="allowed"),
+            ),
+            patch(
+                "services.channels.hosted_automation_service.enqueue_ai_engagement"
+            ) as enqueue_ai,
+            self.captureOnCommitCallbacks(execute=True),
+        ):
+            message = handle_gateway_event(
+                payload=self._message_payload(message_id="ignored-live-ai")
+            )
+
+        lead = Lead.objects.get(phone="+919876543210")
+        self.assertEqual(message.lead, lead)
+        self.assertTrue(message.raw_payload["ignoredExistingChat"])
+        self.assertTrue(message.raw_payload["leadCreationMessage"])
+        self.assertTrue(enqueue_ai.called)
+        self.assertTrue(
+            any(
+                call.kwargs.get("account") == self.account
+                and call.kwargs.get("lead") == lead
+                and call.kwargs.get("source_message") == message
+                for call in enqueue_ai.call_args_list
+            )
+        )
 
     def test_manually_created_lead_attaches_even_when_number_is_ignored(self):
         HostedChatIgnoreContact.objects.create(
