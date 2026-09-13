@@ -1,6 +1,9 @@
 from collections import Counter
 from datetime import timedelta
+import os
+import re
 
+from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 from django.utils import timezone
 
@@ -18,6 +21,8 @@ REQUIRED = {
     },
 }
 
+_SAFE_CODE = re.compile(r"[a-z][a-z0-9_]{0,79}")
+
 
 def missing_consumers(queues, registered):
     missing = []
@@ -29,6 +34,24 @@ def missing_consumers(queues, registered):
         ):
             missing.append(queue)
     return missing
+
+
+def configured_ai_models():
+    """Return effective non-secret model routing for production diagnostics."""
+    from apps.ai_engagement.services.ai_provider import OpenAIProvider
+
+    fallback = str(
+        getattr(settings, "OPENAI_AI_MODEL", "") or OpenAIProvider.DEFAULT_MODEL
+    ).strip()
+    models = {}
+    for feature in ("engagement", "qualification", "internal_summary"):
+        env_name = OpenAIProvider.TASK_MODEL_ENV[feature]
+        models[feature] = str(
+            os.getenv(env_name, "")
+            or getattr(settings, env_name, "")
+            or fallback
+        ).strip()
+    return models
 
 
 def _execution_state(*, message):
@@ -72,6 +95,11 @@ def _credit_bucket(available):
     return "credits_20_plus"
 
 
+def _safe_code(value):
+    value = str(value or "").strip()
+    return value if _SAFE_CODE.fullmatch(value) else ""
+
+
 def recent_api_ai_blockers(*, minutes=90, limit=25):
     """Return aggregate blocker/execution counts without customer data."""
     from apps.ai_engagement.services.diagnostics import diagnose_engagement
@@ -111,8 +139,52 @@ def recent_api_ai_blockers(*, minutes=90, limit=25):
     return inspected, blockers
 
 
+def recent_hosted_ai_jobs(*, minutes=90, limit=50):
+    """Summarize Hosted AI execution without exposing message bodies or errors."""
+    from apps.hosted_automation.models import HostedAutomationJob
+
+    now = timezone.now()
+    jobs = list(
+        HostedAutomationJob.objects.filter(
+            kind=HostedAutomationJob.Kind.AI_ENGAGEMENT,
+            created_at__gte=now - timedelta(minutes=minutes),
+        )
+        .order_by("-created_at", "-id")[:limit]
+    )
+    counts = Counter()
+    for job in jobs:
+        counts[f"status_{job.status}"] += 1
+        result = job.result if isinstance(job.result, dict) else {}
+
+        reason = _safe_code(result.get("reason"))
+        if reason:
+            counts[f"reason_{reason}"] += 1
+
+        delivery = result.get("delivery")
+        if isinstance(delivery, dict):
+            delivery_status = _safe_code(delivery.get("status"))
+            if delivery_status:
+                counts[f"delivery_{delivery_status}"] += 1
+
+        if (
+            job.status == HostedAutomationJob.Status.QUEUED
+            and job.available_at <= now - timedelta(seconds=60)
+        ):
+            counts["stale_queued"] += 1
+        if job.status == HostedAutomationJob.Status.PROCESSING:
+            started_at = job.started_at or job.updated_at
+            if started_at and started_at <= now - timedelta(minutes=5):
+                counts["stale_processing"] += 1
+        if job.status == HostedAutomationJob.Status.FAILED and job.error:
+            # Deliberately report only that an error was persisted. Raw provider,
+            # transport, or gateway error text may contain customer/credential data.
+            counts["failed_with_persisted_error"] += 1
+
+    return len(jobs), counts
+
+
 class Command(BaseCommand):
-    help = "Verify AI queue consumers and summarize recent WhatsApp API blockers."
+    help = "Verify AI consumers and summarize recent WhatsApp API + Hosted AI health."
 
     def handle(self, *args, **options):
         inspect = app.control.inspect(timeout=5)
@@ -126,14 +198,32 @@ class Command(BaseCommand):
             self.style.SUCCESS("Hosted and WhatsApp API AI consumers are ready.")
         )
 
+        models = configured_ai_models()
+        self.stdout.write(
+            "Configured AI models: "
+            f"engagement={models['engagement']}; "
+            f"qualification={models['qualification']}; "
+            f"summary={models['internal_summary']}"
+        )
+
         inspected, blockers = recent_api_ai_blockers()
         if not inspected:
             self.stdout.write("Recent WhatsApp API AI diagnostics: no inbound leads found.")
-            return
+        else:
+            summary = ", ".join(
+                f"{reason}={count}" for reason, count in sorted(blockers.items())
+            )
+            self.stdout.write(
+                f"Recent WhatsApp API AI diagnostics: leads={inspected}; {summary}"
+            )
 
-        summary = ", ".join(
-            f"{reason}={count}" for reason, count in sorted(blockers.items())
-        )
-        self.stdout.write(
-            f"Recent WhatsApp API AI diagnostics: leads={inspected}; {summary}"
-        )
+        hosted_inspected, hosted = recent_hosted_ai_jobs()
+        if not hosted_inspected:
+            self.stdout.write("Recent Hosted AI diagnostics: no jobs found.")
+        else:
+            hosted_summary = ", ".join(
+                f"{reason}={count}" for reason, count in sorted(hosted.items())
+            )
+            self.stdout.write(
+                f"Recent Hosted AI diagnostics: jobs={hosted_inspected}; {hosted_summary}"
+            )
