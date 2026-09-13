@@ -31,34 +31,49 @@ class QualificationCheckService:
     required.
     """
 
+    MESSAGE_LIMIT = 100
+    KNOWLEDGE_LIMIT = 3
+    NOTE_LIMIT = 5
+
     def __init__(self, *, provider=None, context_builder=None) -> None:
         self.provider = provider
         self.context_builder = context_builder or AIContextBuilder()
+
+    @staticmethod
+    def _build_input(data: dict) -> str:
+        organization = data.get("organization") or {}
+        lead = data.get("lead") or {}
+        return json.dumps(
+            {
+                "organization": {
+                    "name": organization.get("name", ""),
+                    "about": organization.get("about", ""),
+                    "bot_languages": organization.get("bot_languages", ""),
+                    "qualification_requirements": organization.get(
+                        "qualification_requirements", ""
+                    ),
+                    "engagement_instructions": organization.get(
+                        "engagement_instructions", ""
+                    ),
+                },
+                "qualification_state": lead.get("qualification") or {},
+                "lead": lead,
+                "recent_conversation": data.get("conversation") or {},
+                "conversation_summary": data.get("conversation_summary"),
+            },
+            ensure_ascii=False,
+        )
 
     def check(self, *, organization, lead) -> QualificationCheckResult:
         context = self.context_builder.build(
             organization=organization,
             lead=lead,
-            message_limit=24,
-            knowledge_limit=3,
-            note_limit=5,
+            message_limit=self.MESSAGE_LIMIT,
+            knowledge_limit=self.KNOWLEDGE_LIMIT,
+            note_limit=self.NOTE_LIMIT,
         )
         data = context.as_dict()
-        input_text = json.dumps(
-            {
-                "organization": {
-                    "name": data["organization"].get("name", ""),
-                    "about": data["organization"].get("about", ""),
-                    "qualification_requirements": data["organization"].get(
-                        "qualification_requirements", ""
-                    ),
-                },
-                "lead": data["lead"],
-                "recent_conversation": data["conversation"],
-                "conversation_summary": data["conversation_summary"],
-            },
-            ensure_ascii=False,
-        )
+        input_text = self._build_input(data)
         provider = self.provider or OpenAIProvider()
         try:
             result = provider.generate_text(
