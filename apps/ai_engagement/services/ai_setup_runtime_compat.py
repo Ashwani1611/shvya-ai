@@ -10,6 +10,10 @@ _FILE_REQUEST_RE = re.compile(
     r"prospectus|portfolio|flyer|leaflet|datasheet|price\s*list|pricelist)\b",
     re.IGNORECASE,
 )
+_QUALIFICATION_REASON_CODES = {
+    "QUALIFICATION_NEXT",
+    "QUALIFICATION_CLARIFY",
+}
 
 
 def _stage_name(context) -> str:
@@ -34,6 +38,15 @@ def _latest_inbound_text(context) -> str:
     return ""
 
 
+def _has_qualification_output(decision) -> bool:
+    return bool(
+        (getattr(decision, "qualification_updates", []) or [])
+        or getattr(decision, "next_requirement_id", None)
+        or str(getattr(decision, "reason_code", "") or "").strip().upper()
+        in _QUALIFICATION_REASON_CODES
+    )
+
+
 def install_ai_setup_runtime_compat() -> None:
     """Keep bounded callers compatible without weakening production stage rules.
 
@@ -41,8 +54,8 @@ def install_ai_setup_runtime_compat() -> None:
     and unit tests intentionally construct a smaller context. Also, the backend
     may deterministically mark the final New Lead qualification answer complete
     before the model decision for that same inbound turn is validated. In both
-    cases validation should remain compatible while a concrete non-New-Lead stage
-    must still reject qualification output.
+    cases qualification-shaped output should remain valid, while a concrete
+    non-New-Lead stage must still reject it.
     """
 
     global _INSTALLED
@@ -96,13 +109,13 @@ def install_ai_setup_runtime_compat() -> None:
         stage_name = _stage_name(context)
         effective_state = qualification_state
 
-        # A concrete non-New-Lead stage remains strict. When stage metadata is
-        # absent (bounded/test context), preserve the long-standing validator
-        # contract. When the current stage is New Lead, allow the final answer
-        # from this same turn to be validated idempotently even if deterministic
-        # extraction already flipped engagement_mode to conversation/completed.
+        # Only qualification-shaped output needs compatibility treatment. This
+        # avoids turning an ordinary greeting/normal-conversation decision into
+        # qualification mode merely because a bounded test context omits stage
+        # metadata. A concrete non-New-Lead stage is never relaxed.
         if (
             qualification_state.get("engagement_mode") != MODE_QUALIFICATION
+            and _has_qualification_output(decision)
             and (not stage_name or stage_name == NEW_LEAD_STAGE)
         ):
             effective_state = {
