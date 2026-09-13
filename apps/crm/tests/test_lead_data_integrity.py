@@ -14,6 +14,7 @@ from apps.crm.models import (
     Pipeline,
     Stage,
 )
+from apps.followups.models import FollowupSenderState
 from apps.organizations.models import Organization
 from services.crm.lead_service import create_lead, upsert_lead
 from services.crm.lead_transition import move_lead_to_pipeline_stage
@@ -79,6 +80,10 @@ class LeadDataIntegrityTests(TestCase):
             body="Delete this with the lead",
             status=WhatsAppMessage.Status.RECEIVED,
         )
+        sender_state = FollowupSenderState.objects.create(
+            account=self.account,
+            last_lead=self.lead,
+        )
 
         lead_id = self.lead.id
         pipeline_id = self.pipeline.id
@@ -106,17 +111,23 @@ class LeadDataIntegrityTests(TestCase):
             LeadActivity.objects.filter(pk__in=activity_ids).exists()
         )
 
+        # Sender throttling belongs to the WhatsApp account, not to one Lead.
+        # Keep the shared throttle row but erase its pointer to the deleted Lead.
+        sender_state.refresh_from_db()
+        self.assertIsNone(sender_state.last_lead_id)
+
         # Pipeline and Stage are shared organization configuration, not data
         # owned by one Lead, so deleting a Lead must never delete them.
         self.assertTrue(Pipeline.objects.filter(pk=pipeline_id).exists())
         self.assertTrue(Stage.objects.filter(pk=stage_id).exists())
 
-    def test_every_non_cascade_lead_relation_has_an_explicit_hard_delete_path(self):
+    def test_every_non_cascade_lead_relation_has_an_explicit_deletion_rule(self):
         """Prevent future models from silently leaving orphaned Lead data.
 
-        WhatsAppMessage is the one historical SET_NULL relation; the Lead
-        pre_delete receiver hard-deletes those rows. Any new Lead relation must
-        use CASCADE unless an equally explicit product deletion path is added.
+        WhatsAppMessage is a historical SET_NULL relation but the Lead
+        pre_delete receiver hard-deletes its rows. FollowupSenderState is
+        account-owned throttling state; deleting a Lead intentionally clears
+        only its last_lead pointer. Every other Lead-owned relation must CASCADE.
         """
         exceptions = []
 
@@ -127,13 +138,20 @@ class LeadDataIntegrityTests(TestCase):
                     continue
                 if remote_field.on_delete is models.CASCADE:
                     continue
-                exceptions.append((model, field.name, remote_field.on_delete))
+                exceptions.append(
+                    (model._meta.label_lower, field.name, remote_field.on_delete)
+                )
 
         self.assertEqual(
-            [(model, field_name) for model, field_name, _ in exceptions],
-            [(WhatsAppMessage, "lead")],
+            {(label, field_name) for label, field_name, _ in exceptions},
+            {
+                ("channels.whatsappmessage", "lead"),
+                ("followups.followupsenderstate", "last_lead"),
+            },
         )
-        self.assertIs(exceptions[0][2], models.SET_NULL)
+        self.assertTrue(
+            all(on_delete is models.SET_NULL for _, _, on_delete in exceptions)
+        )
 
     def test_create_lead_is_persisted_with_pipeline_stage_and_creation_history(self):
         created = create_lead(
