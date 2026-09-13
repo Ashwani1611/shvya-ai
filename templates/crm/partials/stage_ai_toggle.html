@@ -1,3 +1,6 @@
+{% load static %}
+<link rel="stylesheet" href="{% static 'css/lead_details_apple.css' %}">
+
 <form
     method="post"
     hx-post="{% url 'crm-stage-ai-toggle' stage.id %}"
