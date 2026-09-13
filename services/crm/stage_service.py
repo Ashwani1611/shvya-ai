@@ -1,9 +1,15 @@
 from django.core.exceptions import ValidationError
 
 from apps.crm.models import Stage
+from services.crm.lead_transition import LeadTransitionError, move_lead_to_stage
 
 
 def move_lead(*, lead, new_stage):
+    """Compatibility wrapper for callers that advance a lead within a pipeline.
+
+    All stage changes are persisted through the canonical transition service so
+    stage_entered_at and LeadActivity history stay consistent with the Lead row.
+    """
     if not isinstance(new_stage, Stage):
         raise ValidationError("new_stage must be a Stage instance.")
 
@@ -12,10 +18,14 @@ def move_lead(*, lead, new_stage):
             "Stage does not belong to the lead's pipeline."
         )
 
-    lead.stage = new_stage
-    lead.save(update_fields=["stage", "updated_at"])
-
-    return lead
+    try:
+        return move_lead_to_stage(
+            lead=lead,
+            stage=new_stage,
+            actor=None,
+        )
+    except LeadTransitionError as exc:
+        raise ValidationError(str(exc)) from exc
 
 
 def move_to_next_stage(*, lead):
