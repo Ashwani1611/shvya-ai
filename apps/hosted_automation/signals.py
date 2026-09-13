@@ -1,5 +1,3 @@
-from datetime import timedelta
-
 from celery import shared_task
 from django.db import transaction
 from django.db.models.signals import post_save
@@ -8,13 +6,6 @@ from django.utils import timezone
 
 from apps.channels.models import WhatsAppAccount, WhatsAppMessage
 from apps.hosted_automation.models import HostedAutomationJob
-
-
-# The customer-facing target is a reply within roughly 60 seconds. Starting
-# generation at 60 seconds makes that impossible because model generation and
-# Hosted gateway delivery still have to happen afterwards. Reserve 15 seconds
-# for those steps and let Beat remain only a recovery scanner.
-HOSTED_AI_PROCESSING_BUDGET_SECONDS = 15
 
 
 @shared_task(name="hosted.dispatch_due_ai")
@@ -31,24 +22,17 @@ def dispatch_due_hosted_ai():
     dispatch_uid="hosted_automation_job_wakeup",
 )
 def hosted_automation_job_wakeup(sender, instance, created, update_fields=None, **kwargs):
-    """Self-schedule queued Hosted AI instead of relying only on Celery Beat."""
+    """Self-schedule queued Hosted AI at its exact configured due time."""
     if instance.status != HostedAutomationJob.Status.QUEUED:
         return
 
     if not created and update_fields is not None and "available_at" not in update_fields:
         return
 
-    if created:
-        accelerated_at = instance.available_at - timedelta(
-            seconds=HOSTED_AI_PROCESSING_BUDGET_SECONDS
-        )
-        if accelerated_at < instance.available_at:
-            HostedAutomationJob.objects.filter(
-                pk=instance.pk,
-                status=HostedAutomationJob.Status.QUEUED,
-            ).update(available_at=accelerated_at)
-            instance.available_at = accelerated_at
-
+    # ``enqueue_ai_engagement`` already owns the Hosted debounce. Do not subtract
+    # a second processing budget here; doing so makes a 5-second debounce execute
+    # immediately. Generation/delivery time is separate from the intentional
+    # pre-generation debounce.
     delay_seconds = max(
         0.0,
         (instance.available_at - timezone.now()).total_seconds(),
@@ -62,7 +46,7 @@ def hosted_automation_job_wakeup(sender, instance, created, update_fields=None, 
 
 
 def _queue_hosted_ai_from_persisted_message(message_id):
-    """Queue AI from the final persisted Hosted message identity."""
+    """Canonical Hosted AI enqueue path from the final persisted inbound row."""
     message = (
         WhatsAppMessage.objects.select_related(
             "account",
@@ -149,9 +133,9 @@ def hosted_message_state(sender, instance, created, update_fields=None, **kwargs
 
         transaction.on_commit(apply_inbound_delay)
 
-    # Always resolve and permission-check the exact committed inbound row. This
-    # prevents another connected WhatsApp number for the same Lead from stealing
-    # the Hosted job's permission context.
+    # This signal is the single Hosted AI enqueue path. Always resolve and
+    # permission-check the exact committed inbound row so another connected
+    # number for the same Lead cannot steal this job's account context.
     transaction.on_commit(
         lambda message_id=instance.pk: _queue_hosted_ai_from_persisted_message(
             message_id

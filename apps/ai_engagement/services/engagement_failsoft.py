@@ -16,13 +16,12 @@ _INSTALLED = False
 logger = logging.getLogger(__name__)
 
 
-def build_deterministic_fallback_decision(*, organization, lead):
+def build_deterministic_fallback_decision(*, organization, lead, latest_inbound=None):
     """Build a provider-free, RAG-free response from persisted backend state.
 
-    This is intentionally independent from AIContextBuilder. A generation failure
-    must not be followed by another model/RAG/context path that can fail for the
-    same reason. Qualification fallback uses only the exact authored question
-    compiled from OrgInfo; conversation fallback is a neutral acknowledgement.
+    ``latest_inbound`` lets provider-specific workers bind runtime intent to the
+    exact conversation they own. Generic callers may omit it and keep the
+    existing lead-wide behavior.
     """
     from apps.ai_engagement.models import OrgInfo
     from apps.ai_engagement.services.engagement import EngagementDecision
@@ -53,14 +52,15 @@ def build_deterministic_fallback_decision(*, organization, lead):
 
     attributes = lead.attributes if isinstance(getattr(lead, "attributes", None), dict) else {}
     runtime = attributes.get(STATE_KEY, {})
-    latest_inbound = (
-        lead.whatsapp_messages.filter(
-            organization_id=organization.pk,
-            direction="inbound",
+    if latest_inbound is None:
+        latest_inbound = (
+            lead.whatsapp_messages.filter(
+                organization_id=organization.pk,
+                direction="inbound",
+            )
+            .order_by("-created_at", "-id")
+            .first()
         )
-        .order_by("-created_at", "-id")
-        .first()
-    )
     if latest_inbound is not None:
         runtime = observe_message(runtime, latest_inbound.body)
 
@@ -114,9 +114,14 @@ def build_deterministic_fallback_decision(*, organization, lead):
 
 def _fallback_decision(*, service, organization, lead):
     """Compatibility wrapper for the installed EngagementService guard."""
+    latest_inbound = None
+    resolver = getattr(service.context_builder, "latest_inbound_for_fallback", None)
+    if callable(resolver):
+        latest_inbound = resolver(organization=organization, lead=lead)
     return build_deterministic_fallback_decision(
         organization=organization,
         lead=lead,
+        latest_inbound=latest_inbound,
     )
 
 
@@ -162,7 +167,8 @@ def install_engagement_failsoft() -> None:
                 "AI engagement validation/provider path failed for lead %s; using deterministic fail-soft reply",
                 getattr(lead, "pk", None),
             )
-            return build_deterministic_fallback_decision(
+            return _fallback_decision(
+                service=self,
                 organization=organization,
                 lead=lead,
             )

@@ -210,7 +210,10 @@ class MultiTurnTransportRecoveryTests(TestCase):
                     deliver(message=outbound)
 
             self.assertEqual(provider.generate_text.call_count, 7)
-            self.assertEqual(api_send.call_count, 6)
+            # API replies use the generic sender task. Hosted replies are sent
+            # directly by the durable Hosted job so Account Health/pacing stays
+            # provider-specific and no process-global sender interception exists.
+            self.assertEqual(api_send.call_count, 6 if transport == "api" else 0)
             self.assertEqual(hosted_send.call_count, 6 if transport == "hosted" else 0)
             self.assertEqual(lead.whatsapp_messages.filter(direction="outbound").count(), 6)
             lead.refresh_from_db()
