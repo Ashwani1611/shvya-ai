@@ -104,6 +104,16 @@ class AiEngagementConfig(AppConfig):
 
         install_crm_routing_reliability()
 
+        # Plan CRM writes from the projected current-turn qualification state,
+        # not only the already-persisted state. This covers natural-language
+        # answers captured by the model and keeps cross-pipeline Qualified
+        # fallback deterministic rather than choosing an ambiguous target.
+        from apps.ai_engagement.services.crm_action_projection_fix import (
+            install_crm_action_projection_fix,
+        )
+
+        install_crm_action_projection_fix()
+
         # LangGraph is the turn-level orchestration authority. It keeps the
         # existing EngagementService/Celery/WhatsApp contracts stable while
         # segmenting context, deterministic extraction, routing, RAG,
