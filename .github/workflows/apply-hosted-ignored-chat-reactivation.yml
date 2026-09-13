@@ -1,0 +1,64 @@
+name: Apply ignored Hosted chat reactivation fix
+
+on:
+  push:
+    branches: [fix/hosted-ignored-chat-reactivation]
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: fix/hosted-ignored-chat-reactivation
+      - name: Apply focused code and regression test changes
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          service_path = Path('services/channels/hosted_whatsapp_service.py')
+          service = service_path.read_text()
+          old = '''    settings = get_session_settings(account=account)\n    pipeline = get_pipeline_for_account(account=account)\n    if (\n        not is_outbound\n        and not historical\n        and not lead\n        and peer\n        and not ignored_existing_chat\n        and settings["auto_lead_creation"]\n        and pipeline\n    ):\n'''
+          new = '''    settings = get_session_settings(account=account)\n    pipeline = get_pipeline_for_account(account=account)\n    # The existing-chat snapshot protects history import only. Once WhatsApp\n    # emits a genuine realtime inbound, that contact has re-engaged and must\n    # be eligible for normal Lead creation and AI automation, even if the\n    # number was present when the Hosted session was first connected.\n    if (\n        not is_outbound\n        and not historical\n        and not lead\n        and peer\n        and settings["auto_lead_creation"]\n        and pipeline\n    ):\n'''
+          if old not in service:
+              raise SystemExit('Hosted lead-creation condition did not match expected source')
+          service_path.write_text(service.replace(old, new, 1))
+
+          test_path = Path('apps/channels/tests/test_hosted_ignore_list.py')
+          tests = test_path.read_text()
+          tests = tests.replace(
+              'from unittest.mock import patch\n',
+              'from types import SimpleNamespace\nfrom unittest.mock import patch\n',
+              1,
+          )
+
+          old_test = '''    def test_ignored_live_chat_does_not_auto_create_lead(self):\n        HostedChatIgnoreContact.objects.create(\n            organization=self.organization,\n            account=self.account,\n            phone_number="+919876543210",\n            contact_name="Existing Contact",\n            chat_id="109698229481548@lid",\n        )\n\n        message = handle_gateway_event(\n            payload=self._message_payload(message_id="ignored-live")\n        )\n\n        self.assertEqual(Lead.objects.count(), 0)\n        self.assertIsNone(message.lead)\n        self.assertTrue(message.raw_payload["ignoredExistingChat"])\n        self.assertEqual(message.status, WhatsAppMessage.Status.RECEIVED)\n'''
+          new_test = '''    def test_ignored_live_chat_auto_creates_lead_after_reengagement(self):\n        HostedChatIgnoreContact.objects.create(\n            organization=self.organization,\n            account=self.account,\n            phone_number="+919876543210",\n            contact_name="Existing Contact",\n            chat_id="109698229481548@lid",\n        )\n\n        message = handle_gateway_event(\n            payload=self._message_payload(message_id="ignored-live")\n        )\n\n        lead = Lead.objects.get(phone="+919876543210")\n        self.assertEqual(message.lead, lead)\n        self.assertEqual(lead.pipeline, self.pipeline)\n        self.assertEqual(lead.stage, self.stage)\n        self.assertTrue(message.raw_payload["ignoredExistingChat"])\n        self.assertTrue(message.raw_payload["leadCreationMessage"])\n        self.assertEqual(message.status, WhatsAppMessage.Status.RECEIVED)\n'''
+          if old_test not in tests:
+              raise SystemExit('Ignored live-chat regression test did not match expected source')
+          tests = tests.replace(old_test, new_test, 1)
+
+          old_lid = '''    def test_lid_message_uses_snapshot_phone_and_stays_ignored(self):\n        HostedChatIgnoreContact.objects.create(\n            organization=self.organization,\n            account=self.account,\n            phone_number="+919876543210",\n            contact_name="Existing LID Contact",\n            chat_id="109698229481548@lid",\n        )\n        payload = self._message_payload(\n            message_id="lid-fallback",\n            chat_id="109698229481548@lid",\n        )\n        payload["from"] = "109698229481548@lid"\n\n        message = handle_gateway_event(payload=payload)\n\n        self.assertEqual(Lead.objects.count(), 0)\n        self.assertEqual(message.from_number, "+919876543210")\n        self.assertTrue(message.raw_payload["ignoredExistingChat"])\n'''
+          new_lid = '''    def test_lid_message_uses_snapshot_phone_and_auto_creates_lead(self):\n        HostedChatIgnoreContact.objects.create(\n            organization=self.organization,\n            account=self.account,\n            phone_number="+919876543210",\n            contact_name="Existing LID Contact",\n            chat_id="109698229481548@lid",\n        )\n        payload = self._message_payload(\n            message_id="lid-fallback",\n            chat_id="109698229481548@lid",\n        )\n        payload["from"] = "109698229481548@lid"\n\n        message = handle_gateway_event(payload=payload)\n\n        lead = Lead.objects.get(phone="+919876543210")\n        self.assertEqual(message.lead, lead)\n        self.assertEqual(message.from_number, "+919876543210")\n        self.assertTrue(message.raw_payload["ignoredExistingChat"])\n        self.assertTrue(message.raw_payload["leadCreationMessage"])\n'''
+          if old_lid not in tests:
+              raise SystemExit('LID ignored-chat regression test did not match expected source')
+          tests = tests.replace(old_lid, new_lid, 1)
+
+          anchor = '''    def test_manually_created_lead_attaches_even_when_number_is_ignored(self):\n'''
+          ai_test = '''    def test_ignored_live_chat_is_eligible_for_hosted_ai(self):\n        HostedChatIgnoreContact.objects.create(\n            organization=self.organization,\n            account=self.account,\n            phone_number="+919876543210",\n            contact_name="Existing Contact",\n            chat_id="919876543210@c.us",\n        )\n        self.pipeline.ai_enabled = True\n        self.pipeline.save(update_fields=["ai_enabled", "updated_at"])\n\n        with (\n            patch(\n                "apps.ai_engagement.services.ai_permissions.AIPermissionService.evaluate",\n                return_value=SimpleNamespace(allowed=True, reason="allowed"),\n            ),\n            patch(\n                "services.channels.hosted_automation_service.enqueue_ai_engagement"\n            ) as enqueue_ai,\n            self.captureOnCommitCallbacks(execute=True),\n        ):\n            message = handle_gateway_event(\n                payload=self._message_payload(message_id="ignored-live-ai")\n            )\n\n        lead = Lead.objects.get(phone="+919876543210")\n        self.assertEqual(message.lead, lead)\n        self.assertTrue(message.raw_payload["ignoredExistingChat"])\n        self.assertTrue(message.raw_payload["leadCreationMessage"])\n        self.assertTrue(enqueue_ai.called)\n        self.assertTrue(\n            any(\n                call.kwargs.get("account") == self.account\n                and call.kwargs.get("lead") == lead\n                and call.kwargs.get("source_message") == message\n                for call in enqueue_ai.call_args_list\n            )\n        )\n\n'''
+          if anchor not in tests:
+              raise SystemExit('AI regression test insertion anchor not found')
+          tests = tests.replace(anchor, ai_test + anchor, 1)
+          test_path.write_text(tests)
+          PY
+
+          git rm .github/workflows/apply-hosted-ignored-chat-reactivation.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add services/channels/hosted_whatsapp_service.py apps/channels/tests/test_hosted_ignore_list.py
+          git commit -m "Allow ignored Hosted contacts to re-engage as leads"
+          git push origin HEAD:fix/hosted-ignored-chat-reactivation
