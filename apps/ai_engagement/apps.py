@@ -83,6 +83,17 @@ class AiEngagementConfig(AppConfig):
 
         install_ai_setup_runtime_compat()
 
+        # Deterministic extraction may persist a qualification answer before the
+        # graph plans CRM actions. Bridge that persisted turn into attribute
+        # updates and Qualified progression while keeping qualification strictly
+        # New Lead-only. Also create grounded follow-up reminders for explicit
+        # call/demo/meeting requests.
+        from apps.ai_engagement.services.qualification_crm_action_runtime import (
+            install_qualification_crm_action_runtime,
+        )
+
+        install_qualification_crm_action_runtime()
+
         # LangGraph is the turn-level orchestration authority. It keeps the
         # existing EngagementService/Celery/WhatsApp contracts stable while
         # segmenting context, deterministic extraction, routing, RAG,
