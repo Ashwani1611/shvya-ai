@@ -12,6 +12,7 @@ class ChannelsConfig(AppConfig):
         # connection/template operational audit concerns.
         from . import connection_attempts  # noqa: F401
         from . import hosted_ignore_models  # noqa: F401
+        from . import hosted_lifecycle  # noqa: F401
         from . import template_models  # noqa: F401
         from . import lead_source_signals  # noqa: F401
 
