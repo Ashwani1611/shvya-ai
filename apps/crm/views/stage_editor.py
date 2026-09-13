@@ -7,7 +7,7 @@ from django.shortcuts import get_object_or_404, render
 from django.views.decorators.http import require_GET, require_POST
 
 from apps.crm.decorators import crm_login_required
-from apps.crm.models import Lead, Pipeline, Stage
+from apps.crm.models import Lead, Stage
 from apps.crm.views.api import get_user_pipelines
 
 
