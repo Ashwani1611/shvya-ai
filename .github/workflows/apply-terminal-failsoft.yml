@@ -1,0 +1,87 @@
+name: Apply terminal fail-soft patch
+
+on:
+  push:
+    branches: [fix/ai-engagement-terminal-failsoft]
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.event.head_commit.message == 'Apply terminal fail-soft patch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: fix/ai-engagement-terminal-failsoft
+      - name: Apply worker-boundary fail-soft
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('apps/ai_engagement/tasks.py')
+          text = path.read_text(encoding='utf-8')
+          old = '''        logger.error(
+            "generate_ai_engagement_response: "
+            "permanent engagement failure for lead %s: %s",
+            lead_id,
+            exc,
+        )
+
+        return {
+            "status": "failed",
+            "reason": (
+                "engagement_generation_failed"
+            ),
+            "lead_id": str(
+                lead_id
+            ),
+            "error": str(
+                exc
+            ),
+        }
+'''
+          new = '''        logger.error(
+            "generate_ai_engagement_response: "
+            "permanent engagement failure for lead %s: %s; "
+            "using deterministic worker fail-soft",
+            lead_id,
+            exc,
+        )
+
+        from apps.ai_engagement.services.engagement_failsoft import (
+            build_deterministic_fallback_decision,
+        )
+
+        try:
+            decision = build_deterministic_fallback_decision(
+                organization=organization,
+                lead=lead,
+            )
+        except Exception as fallback_exc:
+            # Generation already failed permanently. If persisted backend state
+            # itself cannot be read safely, retry the task rather than returning
+            # a terminal customer-facing silence.
+            logger.exception(
+                "generate_ai_engagement_response: deterministic fail-soft "
+                "construction failed for lead %s",
+                lead_id,
+            )
+            raise task.retry(
+                exc=fallback_exc,
+                countdown=30,
+            )
+'''
+          count = text.count(old)
+          if count != 1:
+              raise SystemExit(f'expected exactly one permanent failure block, found {count}')
+          path.write_text(text.replace(old, new), encoding='utf-8')
+          PY
+          git rm .github/workflows/apply-terminal-failsoft.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add apps/ai_engagement/tasks.py
+          git commit -m 'Guarantee deterministic fail-soft at engagement worker boundary'
+          git push origin HEAD:fix/ai-engagement-terminal-failsoft
