@@ -291,6 +291,16 @@ class CRMActionExecutor:
                 str(exc)
             ) from exc
 
+        qualification_note_id = None
+        if str(stage.name or "").strip().casefold() == "qualified":
+            from apps.ai_engagement.services.qualification import QualificationService
+            note = QualificationService().append_backend_completion_summary(
+                organization=organization,
+                lead=lead,
+                created_by=actor,
+            )
+            qualification_note_id = str(note.id) if note is not None else None
+
         return {
             "type": "pipeline_transition",
             "status": (
@@ -303,6 +313,7 @@ class CRMActionExecutor:
             ),
             "pipeline_id": str(stage.pipeline_id),
             "stage_id": str(stage.id),
+            "qualification_note_id": qualification_note_id,
         }
 
     # ============================================================

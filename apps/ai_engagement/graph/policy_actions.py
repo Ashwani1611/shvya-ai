@@ -4,7 +4,10 @@ import re
 from copy import deepcopy
 from typing import Any
 
-from apps.ai_engagement.services.qualification_state import project_answer_updates
+from apps.ai_engagement.services.qualification_state import (
+    MODE_QUALIFICATION,
+    project_answer_updates,
+)
 
 
 _TEMPORAL_TERMS = re.compile(
@@ -154,7 +157,12 @@ def _attribute_keys(context) -> set[str]:
 
 
 def _qualification_attribute_updates(*, runtime_policy, qualification_updates, context) -> list[dict[str, Any]]:
-    keys = _attribute_keys(context)
+    definitions = [
+        item
+        for item in (context.pipeline or {}).get("attribute_definitions") or []
+        if isinstance(item, dict) and str(item.get("key") or "").strip()
+    ]
+    keys = {str(item.get("key") or "").strip() for item in definitions}
     if not keys:
         return []
     criteria = {
@@ -162,14 +170,33 @@ def _qualification_attribute_updates(*, runtime_policy, qualification_updates, c
         for item in (runtime_policy.get("qualification") or {}).get("criteria") or []
         if isinstance(item, dict)
     }
-    updates: list[dict[str, Any]] = []
-    for answer in qualification_updates or []:
-        criterion = criteria.get(str(answer.get("requirement_id") or "")) or {}
+
+    def semantic_key(criterion):
         candidates = [
             str(criterion.get("attribute_key") or "").strip(),
             str(criterion.get("id") or "").strip(),
         ]
-        key = next((candidate for candidate in candidates if candidate and candidate in keys), None)
+        exact = next((candidate for candidate in candidates if candidate and candidate in keys), None)
+        if exact:
+            return exact
+
+        criterion_text = _normalize_text(
+            f"{criterion.get('label') or ''} {criterion.get('question') or ''}"
+        )
+        criterion_tokens = set(re.findall(r"[a-z0-9]+", criterion_text))
+        stop = {"a", "an", "and", "are", "do", "does", "for", "how", "is", "of", "or", "the", "to", "what", "where", "which", "your"}
+        for definition in definitions:
+            name = str(definition.get("name") or "").strip()
+            key = str(definition.get("key") or "").strip()
+            tokens = set(re.findall(r"[a-z0-9]+", _normalize_text(name or key))) - stop
+            if len(tokens) >= 2 and tokens.issubset(criterion_tokens):
+                return key
+        return None
+
+    updates: list[dict[str, Any]] = []
+    for answer in qualification_updates or []:
+        criterion = criteria.get(str(answer.get("requirement_id") or "")) or {}
+        key = semantic_key(criterion)
         if key:
             updates.append({"key": key, "value": answer.get("value")})
     return updates
@@ -191,10 +218,19 @@ def build_controlled_actions(
     """
 
     messages = (context.conversation or {}).get("messages", [])
+    qualification_active = (
+        str(qualification_state.get("engagement_mode") or "").strip().casefold()
+        == MODE_QUALIFICATION
+    )
+    qualification_updates = (
+        getattr(decision, "qualification_updates", []) or []
+        if qualification_active
+        else []
+    )
     projected = project_answer_updates(
         state=qualification_state,
         requirements=requirements,
-        updates=getattr(decision, "qualification_updates", []) or [],
+        updates=qualification_updates,
         messages=messages,
     )
     evaluation = evaluate_qualification(
@@ -213,7 +249,7 @@ def build_controlled_actions(
     attribute_keys = _attribute_keys(context)
     qualification_values = {
         _normalize_text(item.get("value"))
-        for item in getattr(decision, "qualification_updates", []) or []
+        for item in qualification_updates
     }
 
     for action in getattr(decision, "crm_actions", []) or []:
@@ -254,7 +290,7 @@ def build_controlled_actions(
 
     deterministic_attrs = _qualification_attribute_updates(
         runtime_policy=runtime_policy,
-        qualification_updates=getattr(decision, "qualification_updates", []) or [],
+        qualification_updates=qualification_updates,
         context=context,
     )
     if deterministic_attrs:
@@ -267,7 +303,7 @@ def build_controlled_actions(
                 by_key[item["key"]] = item
             existing["updates"] = list(by_key.values())
 
-    if evaluation["outcome"] == "qualified":
+    if qualification_active and evaluation["outcome"] == "qualified":
         qualified_stage_id = qualification_state.get("qualified_stage_id")
         if qualified_stage_id:
             controlled.append(
