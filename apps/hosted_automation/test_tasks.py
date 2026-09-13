@@ -1,3 +1,4 @@
+from datetime import timedelta
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -61,7 +62,7 @@ class HostedAIContextBuilderTests(SimpleTestCase):
 
 class HostedAIDebounceTests(SimpleTestCase):
     def test_job_wakeup_respects_available_at_without_15_second_acceleration(self):
-        available_at = timezone.now() + timezone.timedelta(seconds=5)
+        available_at = timezone.now() + timedelta(seconds=5)
         instance = SimpleNamespace(
             status=HostedAutomationJob.Status.QUEUED,
             available_at=available_at,
