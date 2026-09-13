@@ -22,9 +22,21 @@ class DuplicateLeadError(Exception):
 
 
 def _schedule_new_lead_welcome(lead):
-    """Queue welcome orchestration only for New Lead(s), after commit."""
+    """Queue outbound-created welcome orchestration for New Lead(s) after commit.
+
+    Leads created from a customer's first inbound WhatsApp API message must not
+    receive the configured API template welcome. That inbound message already
+    queues the canonical AI Engagement worker, which builds the customer-facing
+    response from AI Brain qualification requirements and engagement instructions.
+    """
     stage_name = str(getattr(lead.stage, "name", "") or "").strip().casefold()
     if stage_name not in {"new lead", "new leads"}:
+        return
+
+    # `whatsapp_api` is the explicit creation marker used by the Meta inbound
+    # message handler. Keep template welcomes for CRM/import/API-created leads,
+    # but let inbound-created leads use only the AI Engagement response path.
+    if str(getattr(lead, "lead_source", "") or "").strip().casefold() == "whatsapp_api":
         return
 
     from apps.channels.welcome_tasks import send_lead_welcome_task
