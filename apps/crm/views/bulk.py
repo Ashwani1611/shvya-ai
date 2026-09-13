@@ -18,8 +18,11 @@ from apps.accounts.models import User
 from apps.crm.decorators import crm_login_required
 from apps.crm.models import AttributeDefinition, Lead, PipelinePermission, Stage
 from apps.followups.models import FollowupSequence
-from services.crm.lead_transition import LeadTransitionError, move_lead_to_stage
-from services.crm_activity_service import record_pipeline_changed
+from services.crm.lead_transition import (
+    LeadTransitionError,
+    move_lead_to_pipeline_stage,
+    move_lead_to_stage,
+)
 from services.followup_service import (
     FollowupError,
     assign_sequence,
@@ -203,13 +206,12 @@ def _update(user, pipeline, leads, data):
             if lead.pipeline_id == target.pk:
                 move_lead_to_stage(lead=lead, stage=stage, actor=user)
             else:
-                old_pipeline, old_stage = lead.pipeline, lead.stage
-                lead.pipeline, lead.stage = target, stage
-                lead.stage_entered_at = timezone.now()
-                lead.full_clean()
-                lead.save(update_fields=["pipeline", "stage", "stage_entered_at", "updated_at"])
-                record_pipeline_changed(lead=lead, actor=user, old_pipeline=old_pipeline,
-                                        new_pipeline=target, old_stage=old_stage, new_stage=stage)
+                move_lead_to_pipeline_stage(
+                    lead=lead,
+                    pipeline=target,
+                    stage=stage,
+                    actor=user,
+                )
         if sequence_action == "assign":
             assign_sequence(lead=lead, sequence=sequence, actor=user)
         elif sequence_action == "clear":

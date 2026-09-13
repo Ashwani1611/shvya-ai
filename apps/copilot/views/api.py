@@ -3,7 +3,6 @@ import json
 from django.db import transaction
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404
-from django.utils import timezone
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
 from apps.accounts.models import User
@@ -22,7 +21,7 @@ from services.copilot_service import (
     update_copilot_config,
     visible_pipelines_for_user,
 )
-from services.crm_activity_service import record_stage_changed
+from services.crm.lead_transition import LeadTransitionError, move_lead_to_stage
 
 
 def _json_body(request):
@@ -151,7 +150,7 @@ def config_api(request):
 @require_POST
 @transaction.atomic
 def move_stage_api(request, lead_id):
-    """Move a lead using the CRM's existing stage model and activity trail."""
+    """Move a lead through the shared database-backed transition service."""
 
     user = request.crm_user
     try:
@@ -181,17 +180,14 @@ def move_stage_api(request, lead_id):
             {"message": "Lead is already in this stage.", "stage": new_stage.name}
         )
 
-    old_stage = lead.stage
-    lead.stage = new_stage
-    lead.stage_entered_at = timezone.now()
-    lead.save(update_fields=["stage", "stage_entered_at", "updated_at"])
-    record_stage_changed(
-        lead=lead,
-        actor=user,
-        pipeline=lead.pipeline,
-        old_stage=old_stage,
-        new_stage=new_stage,
-    )
+    try:
+        move_lead_to_stage(
+            lead=lead,
+            stage=new_stage,
+            actor=user,
+        )
+    except LeadTransitionError as exc:
+        return JsonResponse({"message": str(exc)}, status=400)
 
     # The stale-stage signal is now known to be invalid. Remove it immediately;
     # the scheduled scan will reconcile every other flag.

@@ -9,6 +9,11 @@ from django.db import IntegrityError, transaction
 
 from apps.crm.models import Lead
 from services.crm_activity_service import record_lead_created
+from services.crm.lead_transition import (
+    LeadTransitionError,
+    move_lead_to_pipeline_stage,
+    move_lead_to_stage,
+)
 
 
 class DuplicateLeadError(Exception):
@@ -80,23 +85,42 @@ def upsert_lead(*, organization, pipeline=None, stage=None, name, phone,
     fallback name, so a repeated message must not turn e.g. "Rahul Kumar"
     into "9198...". New WhatsApp-only leads get a readable placeholder
     instead of displaying the phone number as their name.
+
+    Existing-lead pipeline/stage changes are always delegated to the shared
+    transition service so the database row and LeadActivity history are
+    committed together. No caller is allowed to create a UI-only move.
     """
     attributes = attributes or {}
     is_whatsapp_inbound = lead_source == "whatsapp_api"
 
     try:
         with transaction.atomic():
-            existing = Lead.objects.filter(
-                organization=organization, phone=phone
-            ).first()
+            existing = (
+                Lead.objects.select_for_update()
+                .filter(organization=organization, phone=phone)
+                .select_related("pipeline", "stage")
+                .first()
+            )
 
             if existing:
+                transition = None
+
                 if not is_whatsapp_inbound:
-                    if pipeline:
-                        existing.pipeline = pipeline
-                    if stage:
-                        existing.stage = stage
                     existing.name = name or existing.name
+
+                    if pipeline and pipeline.id != existing.pipeline_id:
+                        if stage is None:
+                            raise DjangoValidationError(
+                                {
+                                    "stage": (
+                                        "Stage is required when moving a lead "
+                                        "to another pipeline."
+                                    )
+                                }
+                            )
+                        transition = ("pipeline", pipeline, stage)
+                    elif stage and stage.id != existing.stage_id:
+                        transition = ("stage", stage)
 
                 if email:
                     existing.email = email
@@ -105,8 +129,30 @@ def upsert_lead(*, organization, pipeline=None, stage=None, name, phone,
                 if attributes:
                     existing.attributes = {**existing.attributes, **attributes}
 
+                # Validate and persist non-routing changes first. The enclosing
+                # transaction guarantees they roll back if the transition fails.
                 existing.full_clean()
                 existing.save()
+
+                try:
+                    if transition and transition[0] == "pipeline":
+                        _, target_pipeline, target_stage = transition
+                        move_lead_to_pipeline_stage(
+                            lead=existing,
+                            pipeline=target_pipeline,
+                            stage=target_stage,
+                            actor=None,
+                        )
+                    elif transition and transition[0] == "stage":
+                        _, target_stage = transition
+                        move_lead_to_stage(
+                            lead=existing,
+                            stage=target_stage,
+                            actor=None,
+                        )
+                except LeadTransitionError as exc:
+                    raise DjangoValidationError(str(exc)) from exc
+
                 return existing, False
 
             if pipeline is None or stage is None:

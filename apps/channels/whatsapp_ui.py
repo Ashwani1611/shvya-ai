@@ -1,11 +1,16 @@
 from django.core.exceptions import ValidationError
 from django.core.validators import validate_email
+from django.db import transaction
 from django.http import JsonResponse
-from django.utils import timezone
 from django.views.decorators.http import require_GET, require_POST
 
 from apps.crm.decorators import crm_login_required
 from apps.crm.models import AttributeDefinition, Lead, Pipeline, Stage
+from services.crm.lead_transition import (
+    LeadTransitionError,
+    move_lead_to_pipeline_stage,
+    move_lead_to_stage,
+)
 
 
 @crm_login_required
@@ -37,18 +42,27 @@ def whatsapp_lead_pipeline_options_view(request, lead_id):
 
 @crm_login_required
 @require_POST
+@transaction.atomic
 def whatsapp_lead_quick_update_view(request, lead_id):
     """Update fields exposed by the WhatsApp side panel.
 
     Phone is intentionally not accepted here. A WhatsApp conversation is
     keyed to the lead phone number, so changing it from the inbox can detach
     the visible conversation from its stored message history.
+
+    Pipeline/stage changes always use the shared backend transition service;
+    the UI response is derived from the database-backed Lead instance.
     """
     user = request.crm_user
-    lead = Lead.objects.filter(
-        id=lead_id,
-        organization=user.organization,
-    ).select_related("pipeline", "stage").first()
+    lead = (
+        Lead.objects.select_for_update()
+        .filter(
+            id=lead_id,
+            organization=user.organization,
+        )
+        .select_related("pipeline", "stage")
+        .first()
+    )
 
     if not lead:
         return JsonResponse({"error": "Lead not found."}, status=404)
@@ -75,42 +89,65 @@ def whatsapp_lead_quick_update_view(request, lead_id):
         lead.email = email
         update_fields.append("email")
 
+    target_pipeline = None
+    target_stage = None
+
     if "pipeline" in request.POST:
         pipeline_id = (request.POST.get("pipeline") or "").strip()
-        pipeline = Pipeline.objects.filter(
+        target_pipeline = Pipeline.objects.filter(
             id=pipeline_id,
             organization=user.organization,
             is_active=True,
         ).first()
-        if not pipeline:
+        if not target_pipeline:
             return JsonResponse({"error": "Invalid pipeline."}, status=400)
-
-        lead.pipeline = pipeline
-        update_fields.append("pipeline")
 
         # A stage always belongs to one pipeline. When the pipeline changes,
         # move the lead to the first active stage of the selected pipeline so
         # the inbox never keeps a stage from the previous pipeline.
-        first_stage = Stage.objects.filter(
-            pipeline=pipeline,
+        target_stage = Stage.objects.filter(
+            pipeline=target_pipeline,
             is_active=True,
         ).order_by("display_order").first()
-        lead.stage = first_stage
-        lead.stage_entered_at = timezone.now()
-        update_fields.extend(["stage", "stage_entered_at"])
+        if not target_stage:
+            return JsonResponse(
+                {"error": "The selected pipeline has no active stage."},
+                status=400,
+            )
 
-    if "stage" in request.POST and "pipeline" not in request.POST:
+    elif "stage" in request.POST:
         stage_id = (request.POST.get("stage") or "").strip()
-        stage = Stage.objects.filter(
+        target_stage = Stage.objects.filter(
             id=stage_id,
             pipeline=lead.pipeline,
             is_active=True,
         ).first()
-        if not stage:
+        if not target_stage:
             return JsonResponse({"error": "Invalid stage."}, status=400)
-        lead.stage = stage
-        lead.stage_entered_at = timezone.now()
-        update_fields.extend(["stage", "stage_entered_at"])
+
+    try:
+        if target_pipeline is not None:
+            if lead.pipeline_id == target_pipeline.id:
+                move_lead_to_stage(
+                    lead=lead,
+                    stage=target_stage,
+                    actor=user,
+                )
+            else:
+                move_lead_to_pipeline_stage(
+                    lead=lead,
+                    pipeline=target_pipeline,
+                    stage=target_stage,
+                    actor=user,
+                )
+        elif target_stage is not None:
+            move_lead_to_stage(
+                lead=lead,
+                stage=target_stage,
+                actor=user,
+            )
+    except LeadTransitionError as exc:
+        return JsonResponse({"error": str(exc)}, status=400)
 
     if update_fields:
         lead.save(update_fields=[*dict.fromkeys(update_fields), "updated_at"])
