@@ -65,9 +65,32 @@ jobs:
               echo "Generated missing ${key} in production .env."
             }
 
+            upgrade_legacy_env_value() {
+              key="$1"
+              legacy="$2"
+              desired="$3"
+              current="$(sed -n "s/^${key}=//p" .env | tail -n 1 | tr -d '\r')"
+
+              if [ -n "$current" ] && [ "$current" != "$legacy" ]; then
+                echo "Keeping explicit ${key} production override."
+                return
+              fi
+
+              if grep -q "^${key}=" .env; then
+                sed -i "s|^${key}=.*$|${key}=${desired}|" .env
+              else
+                printf '\n%s=%s\n' "$key" "$desired" >> .env
+              fi
+              echo "Updated ${key} production default."
+            }
+
             echo "Ensuring internal WhatsApp gateway secrets exist..."
             ensure_env_secret WHATSAPP_WEB_GATEWAY_TOKEN
             ensure_env_secret WHATSAPP_WEB_CALLBACK_TOKEN
+
+            echo "Upgrading legacy customer-facing AI defaults..."
+            upgrade_legacy_env_value OPENAI_ENGAGEMENT_MODEL gpt-4.1-nano gpt-5.6-terra
+            upgrade_legacy_env_value OPENAI_ENGAGEMENT_MAX_OUTPUT_TOKENS 700 1600
             chmod 600 .env
 
             echo "Validating Docker Compose configuration..."
