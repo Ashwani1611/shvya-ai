@@ -93,6 +93,16 @@ class AiEngagementConfig(AppConfig):
 
         install_engagement_failsoft()
 
+        # Defense in depth at the Celery execution boundary: if any permanent
+        # EngagementError still reaches the canonical task's terminal
+        # engagement_generation_failed result, finalize a deterministic reply
+        # through the normal permission/freshness/idempotency/send checks.
+        from apps.ai_engagement.services.task_execution_failsoft import (
+            install_task_execution_failsoft,
+        )
+
+        install_task_execution_failsoft()
+
         # Preserve existing channel entry points while installing deterministic
         # orchestration policy: short debounce, no generic positive-keyword
         # stage movement, throttled enrichment, and consistent Hosted/Meta AI
