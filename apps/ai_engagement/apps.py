@@ -94,6 +94,21 @@ class AiEngagementConfig(AppConfig):
         )
         install_langgraph_orchestration()
 
+        # Keep qualification active through New Lead -> In Conversation while
+        # making normal acknowledgements, call requests, and completed flows
+        # conversational instead of restarting the questionnaire or falling back.
+        from apps.ai_engagement.services.natural_conversation_runtime import (
+            install_natural_conversation_runtime,
+        )
+        install_natural_conversation_runtime()
+
+        # A lead saying they already booked is a report, not a new callback
+        # request. Preserve that distinction while still escalating missed calls.
+        from apps.ai_engagement.services.natural_conversation_booking_guard import (
+            install_natural_conversation_booking_guard,
+        )
+        install_natural_conversation_booking_guard()
+
         from apps.ai_engagement.services.engagement_failsoft import (
             install_engagement_failsoft,
         )
