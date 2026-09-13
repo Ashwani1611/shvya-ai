@@ -94,6 +94,15 @@ class AiEngagementConfig(AppConfig):
 
         install_qualification_crm_action_runtime()
 
+        # Expand grounded reminder parsing for normal lead language such as
+        # "next Monday at 5 PM", "13 Sep 17:30", or "in 2 hours". The parser
+        # still requires a concrete time and never invents one.
+        from apps.ai_engagement.services.reminder_time_runtime import (
+            install_reminder_time_runtime,
+        )
+
+        install_reminder_time_runtime()
+
         # Close the remaining production gaps: use attribute descriptions as
         # mapping guidance, resolve Qualified across active organization
         # pipelines, preserve evidence-bound cross-pipeline routing, and accept a
