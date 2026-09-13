@@ -12,6 +12,9 @@ from apps.channels.models import WhatsAppAccount, WhatsAppMessage
 from apps.crm.models import Lead, Pipeline
 from apps.crm.views.api import BulkMoveStageAPIView
 from apps.organizations.models import Organization
+from services.channels.ai_orchestration_hooks import (
+    _conversation_bound_hosted_block_reason,
+)
 
 
 class _InvalidQualificationProvider:
@@ -96,6 +99,38 @@ class LiveWhatsAppPipelineRegressionTests(TestCase):
 
         self.assertTrue(decision.allowed)
         self.assertEqual(decision.reason, "allowed")
+
+    def test_hosted_permission_uses_its_exact_inbound_even_if_other_number_is_newer(self):
+        hosted = WhatsAppAccount.objects.create(
+            organization=self.organization,
+            connection_type=WhatsAppAccount.ConnectionType.coexisted,
+            business_name="Sales Hosted",
+            phone_number_id="+919876543210",
+            display_phone_number="+919876543210",
+            status=WhatsAppAccount.Status.CONNECTED,
+            is_active=True,
+        )
+        WhatsAppMessage.objects.create(
+            organization=self.organization,
+            account=hosted,
+            lead=self.lead,
+            direction=WhatsAppMessage.Direction.INBOUND,
+            external_id="hosted-owned-turn",
+            from_number=self.lead.phone,
+            to_number=hosted.display_phone_number,
+            body="Hosted question",
+            status=WhatsAppMessage.Status.RECEIVED,
+        )
+        # A later inbound on another connected number must not steal the durable
+        # Hosted job's permission context.
+        self._inbound("newer-api-turn", "API question")
+
+        reason = _conversation_bound_hosted_block_reason(
+            account=hosted,
+            lead=self.lead,
+        )
+
+        self.assertEqual(reason, "")
 
     def test_pipeline_context_marks_persisted_pipeline_as_current_and_candidates_internal(self):
         self.lead.pipeline = self.leads
