@@ -10,7 +10,6 @@ from apps.ai_engagement.services.qualification_state import (
     MODE_CONVERSATION,
     MODE_QUALIFICATION,
     STATUS_COMPLETED,
-    STATUS_NOT_STARTED,
     mark_in_progress,
     state_for_lead,
 )
@@ -43,15 +42,18 @@ class NaturalConversationRuntimeTests(TestCase):
         self.assertNotEqual(state["qualification_status"], STATUS_COMPLETED)
         self.assertEqual(state["engagement_mode"], MODE_CONVERSATION)
 
-    def test_mark_in_progress_does_not_start_qualification_outside_new_lead(self):
+    def test_mark_in_progress_does_not_reopen_qualification_outside_new_lead(self):
         in_conversation = self._stage("In Conversation", 20)
         self.lead.stage = in_conversation
         self.lead.save(update_fields=["stage", "updated_at"])
         self.lead.refresh_from_db()
 
+        before = state_for_lead(self.lead)
         state = mark_in_progress(self.lead)
 
-        self.assertEqual(state["qualification_status"], STATUS_NOT_STARTED)
+        # The lifecycle may remain in_progress so existing answers are preserved,
+        # but qualification must stay paused outside New Lead.
+        self.assertEqual(state["qualification_status"], before["qualification_status"])
         self.assertEqual(state["engagement_mode"], MODE_CONVERSATION)
 
     def test_first_reply_does_not_auto_move_qualifying_lead_to_in_conversation(self):
@@ -117,7 +119,7 @@ class NaturalConversationRuntimeTests(TestCase):
             "first_genuine_inbound",
         )
 
-    def test_final_new_lead_answer_moves_directly_to_qualified(self):
+    def test_completed_new_lead_moves_directly_to_qualified_not_in_conversation(self):
         in_conversation = self._stage("In Conversation", 20)
         requirement = {
             "id": "budget",
@@ -153,28 +155,24 @@ class NaturalConversationRuntimeTests(TestCase):
             stage={"id": str(self.new_lead.id), "name": "New leads"},
         )
         state = {
-            "qualification_status": "in_progress",
-            "engagement_mode": MODE_QUALIFICATION,
+            "qualification_status": "completed",
+            "qualification_completed": True,
+            "all_requirements_answered": True,
+            "engagement_mode": MODE_CONVERSATION,
             "requirement_states": {
                 "budget": {
-                    "status": "asked",
-                    "value": None,
-                    "source_message_id": None,
+                    "status": "answered",
+                    "value": "50000",
+                    "source_message_id": "m-final",
+                    "raw_answer": "50000",
                 }
             },
             "qualified_stage_id": str(self.qualified.id),
         }
         decision = SimpleNamespace(
-            qualification_updates=[
-                {
-                    "requirement_id": "budget",
-                    "value": "50000",
-                    "source_message_id": "m-final",
-                    "evidence": "50000",
-                }
-            ],
+            qualification_updates=[],
             crm_actions=[],
-            reason_code="QUALIFICATION_NEXT",
+            reason_code="QUALIFICATION_COMPLETE",
             should_engage=True,
             message="Thanks.",
             next_requirement_id=None,
@@ -208,6 +206,10 @@ class NaturalConversationRuntimeTests(TestCase):
         self.assertEqual(
             transitions[0]["stage_shift"]["stage_id"],
             str(self.qualified.id),
+        )
+        self.assertNotEqual(
+            transitions[0]["stage_shift"]["stage_id"],
+            str(in_conversation.id),
         )
 
     def test_failsoft_treats_cool_as_conversation_not_unknown_information(self):
