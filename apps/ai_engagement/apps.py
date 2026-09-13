@@ -56,6 +56,15 @@ class AiEngagementConfig(AppConfig):
 
         install_ai_setup_runtime_fixes()
 
+        # Mark the persisted pipeline as current and every cross-pipeline routing
+        # candidate as internal-only so the model cannot confuse CRM metadata
+        # with customer-facing organization facts.
+        from apps.ai_engagement.services.pipeline_context_guard import (
+            install_pipeline_context_guard,
+        )
+
+        install_pipeline_context_guard()
+
         # Some bounded internal/test contexts omit the current stage because no
         # stage operation is expected. Keep the transition wrapper compatible
         # with those callers without weakening validation in full AIContext.
