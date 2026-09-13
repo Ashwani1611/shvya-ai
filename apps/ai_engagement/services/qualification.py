@@ -586,6 +586,66 @@ class QualificationService:
 
         return existing_note
 
+    def append_backend_completion_summary(
+        self,
+        *,
+        organization,
+        lead: Lead,
+        created_by=None,
+    ) -> LeadNote | None:
+        """Persist a very short note from backend-verified qualification answers."""
+        from apps.ai_engagement.models import OrgInfo
+        from apps.ai_engagement.services.organization_profile import compile_qualification_requirements
+        from apps.ai_engagement.services.qualification_state import (
+            QUALIFIED_STAGE,
+            RESULT_QUALIFIED,
+            STATUS_COMPLETED,
+            normalize_stage_name,
+            requirements_for_lead,
+            state_for_lead,
+        )
+
+        lead.refresh_from_db(fields=["attributes", "stage", "pipeline", "updated_at"])
+        if normalize_stage_name(getattr(getattr(lead, "stage", None), "name", "")) != QUALIFIED_STAGE:
+            return None
+        org_info = OrgInfo.objects.filter(organization=organization).first()
+        configured = compile_qualification_requirements(
+            org_info.qualification_requirements if org_info else ""
+        )["requirements"]
+        requirements = requirements_for_lead(lead, configured)
+        state = state_for_lead(lead, requirements=requirements)
+        if (
+            state.get("qualification_status") != STATUS_COMPLETED
+            or state.get("qualification_result") != RESULT_QUALIFIED
+        ):
+            return None
+
+        parts = []
+        states = state.get("requirement_states") or {}
+        for requirement in requirements:
+            requirement_id = str(requirement.get("id") or "")
+            answer = states.get(requirement_id) or {}
+            if answer.get("status") != "answered":
+                continue
+            value = answer.get("value")
+            if isinstance(value, bool):
+                rendered = "Yes" if value else "No"
+            else:
+                rendered = str(value or "").strip()
+            if not rendered:
+                continue
+            label = compact(str(requirement.get("label") or requirement_id), 64)
+            parts.append(f"{label}: {rendered}")
+        summary = compact("; ".join(parts), 360)
+        if not summary:
+            return None
+        return self.append_summary(
+            lead=lead,
+            summary=summary,
+            model="deterministic-backend",
+            created_by=created_by,
+        )
+
     # ========================================================
     # FULL WORKFLOW
     # ========================================================
