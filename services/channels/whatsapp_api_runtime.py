@@ -66,6 +66,144 @@ def _placeholder_lead_name(name, phone="") -> bool:
     return bool(value_digits and value_digits == re.sub(r"\D", "", value) and not re.search(r"[A-Za-z]", value))
 
 
+def _meta_api_error_text(error) -> str:
+    """Keep Meta's actionable error after the sender transaction rolls back.
+
+    The canonical sender holds the WhatsAppMessage row in an atomic transaction.
+    A permanent Meta 4xx raises out of that transaction, so DB writes made while
+    handling the exception are rolled back.  The Celery post-run signal only sees
+    the exception text; make that text carry the safe Meta code/message/details so
+    the terminal FAILED write can preserve the real reason.
+    """
+    status_code = getattr(error, "status_code", None)
+    response_body = getattr(error, "response_body", None)
+    prefix = (
+        f"WhatsApp API returned {status_code}"
+        if status_code is not None
+        else "WhatsApp API request failed"
+    )
+
+    try:
+        payload = json.loads(response_body) if isinstance(response_body, str) else response_body
+    except (TypeError, ValueError, json.JSONDecodeError):
+        payload = None
+
+    meta_error = payload.get("error") if isinstance(payload, dict) else None
+    if not isinstance(meta_error, dict):
+        return str(error or prefix)[:1000]
+
+    parts = [prefix]
+    code = meta_error.get("code")
+    subcode = meta_error.get("error_subcode")
+    error_type = str(meta_error.get("type") or "").strip()
+    message = str(meta_error.get("message") or "").strip()
+    error_data = meta_error.get("error_data") or {}
+    details = (
+        str(error_data.get("details") or "").strip()
+        if isinstance(error_data, dict)
+        else ""
+    )
+    fbtrace_id = str(meta_error.get("fbtrace_id") or "").strip()
+
+    if code not in (None, ""):
+        parts.append(f"code {code}")
+    if subcode not in (None, ""):
+        parts.append(f"subcode {subcode}")
+    if error_type:
+        parts.append(error_type)
+    if details:
+        parts.append(details)
+    elif message:
+        parts.append(message)
+    if fbtrace_id:
+        parts.append(f"fbtrace_id {fbtrace_id}")
+
+    return "; ".join(parts)[:1000]
+
+
+def _source_inbound_for_ai_message(message):
+    """Return the exact API inbound message that caused an AI outbound reply."""
+    payload = message.raw_payload if isinstance(message.raw_payload, dict) else {}
+    ai_metadata = payload.get("shvya_ai") or {}
+    if not isinstance(ai_metadata, dict):
+        return None
+    source_id = str(ai_metadata.get("source_inbound_message_id") or "").strip()
+    if not source_id:
+        return None
+
+    from apps.channels.models import WhatsAppAccount, WhatsAppMessage
+
+    return (
+        WhatsAppMessage.objects.select_related("account")
+        .filter(
+            pk=source_id,
+            organization_id=message.organization_id,
+            lead_id=message.lead_id,
+            direction=WhatsAppMessage.Direction.INBOUND,
+            account__connection_type=WhatsAppAccount.ConnectionType.API,
+        )
+        .first()
+    )
+
+
+def _bind_outbound_to_source_api_account(message):
+    """Send a 24h AI reply from the same Meta number that received the inbound.
+
+    Meta's customer-service window is scoped to the business/consumer
+    conversation.  A recent inbound on API number A does not authorize a free-form
+    reply from API number B.  SHVYA previously checked only the inbound timestamp
+    and could resolve the outbound sender separately, producing a Meta 400/131047
+    even though the lead had just messaged.
+    """
+    source = _source_inbound_for_ai_message(message)
+    if source is None:
+        return None
+
+    from apps.channels.models import WhatsAppAccount
+
+    source_account = source.account
+    connected = WhatsAppAccount.objects.filter(
+        organization_id=message.organization_id,
+        connection_type=WhatsAppAccount.ConnectionType.API,
+        status=WhatsAppAccount.Status.CONNECTED,
+        is_active=True,
+    )
+
+    target = None
+    if source_account.is_active and source_account.status == WhatsAppAccount.Status.CONNECTED:
+        target = connected.filter(pk=source_account.pk).first()
+
+    if target is None and source_account.phone_number_id:
+        target = (
+            connected.filter(phone_number_id=source_account.phone_number_id)
+            .order_by("-updated_at", "-connected_at")
+            .first()
+        )
+
+    if target is None and source_account.display_phone_number:
+        target = (
+            connected.filter(display_phone_number=source_account.display_phone_number)
+            .order_by("-updated_at", "-connected_at")
+            .first()
+        )
+
+    if target is None:
+        return None
+
+    update_fields = []
+    if message.account_id != target.id:
+        message.account = target
+        update_fields.append("account")
+    if message.from_number != target.phone_number_id:
+        message.from_number = target.phone_number_id
+        update_fields.append("from_number")
+    if update_fields:
+        update_fields.append("updated_at")
+        message.save(update_fields=update_fields)
+
+    return target
+
+
 def _persist_terminal_send_status(message_id, *, error="") -> None:
     from apps.channels.models import WhatsAppMessage
     from services.channels.realtime import publish_status
@@ -73,11 +211,19 @@ def _persist_terminal_send_status(message_id, *, error="") -> None:
     message = WhatsAppMessage.objects.filter(pk=message_id).first()
     if message is None:
         return
+
+    update_fields = []
     if message.status == WhatsAppMessage.Status.QUEUED:
         message.status = WhatsAppMessage.Status.FAILED
-        if error and not message.error:
-            message.error = str(error)[:1000]
-        message.save(update_fields=["status", "error", "updated_at"])
+        update_fields.append("status")
+    if error:
+        final_error = str(error)[:1000]
+        if message.error != final_error:
+            message.error = final_error
+            update_fields.append("error")
+    if update_fields:
+        update_fields.append("updated_at")
+        message.save(update_fields=update_fields)
     publish_status(message)
 
 
@@ -119,7 +265,7 @@ def install_whatsapp_api_runtime() -> None:
     if _INSTALLED:
         return
 
-    from apps.channels.providers.whatsapp import WhatsAppClient
+    from apps.channels.providers.whatsapp import WhatsAppAPIError, WhatsAppClient
     from apps.channels import views_flat
     from services.channels import whatsapp_service
 
@@ -164,6 +310,27 @@ def install_whatsapp_api_runtime() -> None:
     WhatsAppClient.send_text_message = send_text_message
     WhatsAppClient.send_template_message = send_template_message
     WhatsAppClient.send_media_message = send_media_message
+
+    # AI replies inside the 24-hour customer-service window must use the exact
+    # API number that received the source inbound message.  Resolve/reconnect to
+    # the same Meta phone identity before the provider call rather than trusting
+    # a generic organization-level account fallback.
+    original_send_outbound = whatsapp_service.send_outbound_message
+
+    @wraps(original_send_outbound)
+    def send_outbound_message(*, message):
+        _bind_outbound_to_source_api_account(message)
+        try:
+            return original_send_outbound(message=message)
+        except whatsapp_service.WhatsAppSendError as exc:
+            cause = exc.__cause__
+            if isinstance(cause, WhatsAppAPIError):
+                raise whatsapp_service.WhatsAppSendError(
+                    _meta_api_error_text(cause)
+                ) from cause
+            raise
+
+    whatsapp_service.send_outbound_message = send_outbound_message
 
     # Capture Meta's contact profile name for the duration of the webhook. The
     # canonical inbound service remains the only place that creates/links Leads.
