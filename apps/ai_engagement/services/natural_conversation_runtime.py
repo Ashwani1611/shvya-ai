@@ -21,6 +21,11 @@ _CALL_REQUEST_RE = re.compile(
     r"schedule\s+(?:a\s+)?(?:call|demo|meeting)|demo|meeting)\b",
     flags=re.IGNORECASE,
 )
+_UNCONFIRMED_FUTURE_PROMISE_RE = re.compile(
+    r"\b(?:i|we)\s+(?:will|'ll)\s+(?:confirm|check|ask|inform|tell|contact|call|"
+    r"follow\s*up|get\s+back)\b",
+    flags=re.IGNORECASE,
+)
 
 _NATURAL_CONVERSATION_INSTRUCTIONS = r"""
 NATURAL CONVERSATION AND QUALIFICATION CONTINUITY
@@ -43,6 +48,8 @@ NATURAL CONVERSATION AND QUALIFICATION CONTINUITY
 - For explicit call/demo/human-contact requests, use configured CRM actions when the
   matching organization stage/reminder is available. Do not claim a booked slot unless
   the system confirms it; a requested/preferred time is not a confirmed appointment.
+- Never promise "I/we will confirm/check/get back/call/follow up" unless this turn also
+  creates a validated backend action that can actually carry out or surface that work.
 - If the lead reports that a previously booked call was missed, treat that as a human
   follow-up/escalation request rather than a generic unknown-information question.
 """.strip()
@@ -53,7 +60,7 @@ def _clean(value) -> str:
 
 
 def _normalized(value) -> str:
-    return _clean(value).casefold().strip(" .!?;:")
+    return _clean(value).replace("’", "'").replace("‘", "'").casefold().strip(" .!?;:")
 
 
 def _stage_name_from_lead(lead) -> str:
@@ -167,7 +174,7 @@ def _patch_policy_actions() -> None:
         controlled = [dict(item) for item in controlled]
         stage = getattr(context, "stage", None)
         stage_name = _normalized(stage.get("name") if isinstance(stage, dict) else "")
-        latest_message_id, latest_text = authored_runtime._latest_inbound(context)
+        latest_message_id, _latest_text = authored_runtime._latest_inbound(context)
 
         # The authored attribute mapping wrapper historically skipped In Conversation.
         # Re-project the current verified answer so mappings such as Q1 -> BIGGEST
@@ -306,6 +313,7 @@ def _patch_engagement_validation_and_prompt() -> None:
         latest_text = _latest_inbound_text(context)
         normalized = _normalized(latest_text)
         reason_code = str(getattr(decision, "reason_code", "") or "").strip().upper()
+        message = str(getattr(decision, "message", "") or "").strip()
 
         if normalized in _SIMPLE_ACKS and reason_code == "UNKNOWN_INFORMATION":
             raise engagement_module.EngagementError(
@@ -313,11 +321,19 @@ def _patch_engagement_validation_and_prompt() -> None:
             )
 
         if (
+            message
+            and _UNCONFIRMED_FUTURE_PROMISE_RE.search(message)
+            and not (getattr(decision, "crm_actions", None) or [])
+        ):
+            raise engagement_module.EngagementError(
+                "Do not promise a future confirmation, callback, follow-up, or get-back unless this turn includes a validated backend action."
+            )
+
+        if (
             qualification_state.get("qualification_status") == "completed"
             and runtime.get("qualification_completion_ack_sent")
         ):
             previous_hash = str(runtime.get("qualification_completion_ack_hash") or "")
-            message = str(getattr(decision, "message", "") or "").strip()
             if previous_hash and message and response_hash(message) == previous_hash:
                 raise engagement_module.EngagementError(
                     "The qualification completion acknowledgement was already sent. Continue normal conversation without repeating it."
