@@ -2,13 +2,15 @@ from types import SimpleNamespace
 
 from django.test import TestCase
 
+from apps.ai_engagement.graph.policy_actions import build_controlled_actions
 from apps.ai_engagement.services.engagement_failsoft import (
     build_deterministic_fallback_decision,
 )
 from apps.ai_engagement.services.qualification_state import (
+    MODE_CONVERSATION,
     MODE_QUALIFICATION,
     STATUS_COMPLETED,
-    STATUS_IN_PROGRESS,
+    STATUS_NOT_STARTED,
     mark_in_progress,
     state_for_lead,
 )
@@ -30,7 +32,7 @@ class NaturalConversationRuntimeTests(TestCase):
             ai_on=True,
         )
 
-    def test_in_conversation_keeps_incomplete_qualification_active(self):
+    def test_in_conversation_is_normal_conversation_only(self):
         in_conversation = self._stage("In Conversation", 20)
         self.lead.stage = in_conversation
         self.lead.save(update_fields=["stage", "updated_at"])
@@ -39,9 +41,9 @@ class NaturalConversationRuntimeTests(TestCase):
         state = state_for_lead(self.lead)
 
         self.assertNotEqual(state["qualification_status"], STATUS_COMPLETED)
-        self.assertEqual(state["engagement_mode"], MODE_QUALIFICATION)
+        self.assertEqual(state["engagement_mode"], MODE_CONVERSATION)
 
-    def test_mark_in_progress_works_after_new_lead_moves_to_in_conversation(self):
+    def test_mark_in_progress_does_not_start_qualification_outside_new_lead(self):
         in_conversation = self._stage("In Conversation", 20)
         self.lead.stage = in_conversation
         self.lead.save(update_fields=["stage", "updated_at"])
@@ -49,8 +51,164 @@ class NaturalConversationRuntimeTests(TestCase):
 
         state = mark_in_progress(self.lead)
 
-        self.assertEqual(state["qualification_status"], STATUS_IN_PROGRESS)
-        self.assertEqual(state["engagement_mode"], MODE_QUALIFICATION)
+        self.assertEqual(state["qualification_status"], STATUS_NOT_STARTED)
+        self.assertEqual(state["engagement_mode"], MODE_CONVERSATION)
+
+    def test_first_reply_does_not_auto_move_qualifying_lead_to_in_conversation(self):
+        in_conversation = self._stage("In Conversation", 20)
+        context = SimpleNamespace(
+            conversation={
+                "messages": [
+                    {"id": "m1", "direction": "inbound", "body": "Yes"},
+                ]
+            },
+            pipeline={
+                "attribute_definitions": [],
+                "available_stages": [
+                    {
+                        "id": str(in_conversation.id),
+                        "name": "In Conversation",
+                        "is_current_pipeline": True,
+                        "pipeline_name": self.pipeline.name,
+                    },
+                    {
+                        "id": str(self.qualified.id),
+                        "name": "Qualified",
+                        "is_current_pipeline": True,
+                        "pipeline_name": self.pipeline.name,
+                    },
+                ],
+            },
+            stage={"id": str(self.new_lead.id), "name": "New leads"},
+        )
+        state = {
+            "qualification_status": "in_progress",
+            "engagement_mode": MODE_QUALIFICATION,
+            "requirement_states": {},
+            "qualified_stage_id": str(self.qualified.id),
+        }
+        decision = SimpleNamespace(
+            qualification_updates=[],
+            crm_actions=[],
+            reason_code="QUALIFICATION_NEXT",
+            should_engage=True,
+            message="",
+            next_requirement_id=None,
+        )
+
+        actions, result = build_controlled_actions(
+            decision=decision,
+            context=context,
+            runtime_policy={"qualification": {"criteria": []}, "crm": {}},
+            qualification_state=state,
+            requirements=[],
+        )
+
+        self.assertFalse(
+            any(
+                action.get("type") == "pipeline_transition"
+                and (action.get("stage_shift") or {}).get("stage_id")
+                == str(in_conversation.id)
+                for action in actions
+            )
+        )
+        self.assertNotEqual(
+            (result.get("stage_transition") or {}).get("source"),
+            "first_genuine_inbound",
+        )
+
+    def test_final_new_lead_answer_moves_directly_to_qualified(self):
+        in_conversation = self._stage("In Conversation", 20)
+        requirement = {
+            "id": "budget",
+            "stable_id": "budget",
+            "label": "Budget",
+            "question": "What is your budget?",
+            "required": True,
+            "priority": 1,
+        }
+        context = SimpleNamespace(
+            conversation={
+                "messages": [
+                    {"id": "m-final", "direction": "inbound", "body": "50000"},
+                ]
+            },
+            pipeline={
+                "attribute_definitions": [],
+                "available_stages": [
+                    {
+                        "id": str(in_conversation.id),
+                        "name": "In Conversation",
+                        "is_current_pipeline": True,
+                        "pipeline_name": self.pipeline.name,
+                    },
+                    {
+                        "id": str(self.qualified.id),
+                        "name": "Qualified",
+                        "is_current_pipeline": True,
+                        "pipeline_name": self.pipeline.name,
+                    },
+                ],
+            },
+            stage={"id": str(self.new_lead.id), "name": "New leads"},
+        )
+        state = {
+            "qualification_status": "in_progress",
+            "engagement_mode": MODE_QUALIFICATION,
+            "requirement_states": {
+                "budget": {
+                    "status": "asked",
+                    "value": None,
+                    "source_message_id": None,
+                }
+            },
+            "qualified_stage_id": str(self.qualified.id),
+        }
+        decision = SimpleNamespace(
+            qualification_updates=[
+                {
+                    "requirement_id": "budget",
+                    "value": "50000",
+                    "source_message_id": "m-final",
+                    "evidence": "50000",
+                }
+            ],
+            crm_actions=[],
+            reason_code="QUALIFICATION_NEXT",
+            should_engage=True,
+            message="Thanks.",
+            next_requirement_id=None,
+        )
+
+        actions, _result = build_controlled_actions(
+            decision=decision,
+            context=context,
+            runtime_policy={
+                "qualification": {
+                    "criteria": [
+                        {
+                            "id": "budget",
+                            "required": True,
+                            "pass_condition": None,
+                        }
+                    ]
+                },
+                "crm": {},
+            },
+            qualification_state=state,
+            requirements=[requirement],
+        )
+
+        transitions = [
+            action
+            for action in actions
+            if action.get("type") == "pipeline_transition"
+        ]
+        self.assertEqual(len(transitions), 1)
+        self.assertEqual(
+            transitions[0]["stage_shift"]["stage_id"],
+            str(self.qualified.id),
+        )
 
     def test_failsoft_treats_cool_as_conversation_not_unknown_information(self):
         inbound = self._inbound("wamid-cool")
