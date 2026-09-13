@@ -1,184 +1,136 @@
 {% extends "base.html" %}
-{% load static %}
 
 {% block title %}SHVYA AI — Connect WhatsApp Business API{% endblock %}
 {% block header %}Connect API{% endblock %}
 
 {% block content %}
-<div class="mx-auto max-w-7xl space-y-6 pb-10">
+<div class="-mx-4 -mt-4 min-h-[calc(100vh-5rem)] bg-[#f5f5f7] px-4 py-8 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8 lg:py-10">
+    <div class="mx-auto max-w-5xl">
+        <div class="mb-8 text-center sm:mb-10">
+            <div class="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-white text-[#25D366] shadow-[0_1px_2px_rgba(0,0,0,.04),0_10px_30px_rgba(0,0,0,.06)] ring-1 ring-black/[.04]">
+                <i class="ti ti-brand-whatsapp text-[30px]"></i>
+            </div>
+            <p class="mt-5 text-sm font-semibold tracking-tight text-[#6e6e73]">WhatsApp Business API</p>
+            <h1 class="mx-auto mt-2 max-w-3xl text-3xl font-semibold tracking-[-0.035em] text-[#1d1d1f] sm:text-4xl lg:text-[44px] lg:leading-[1.08]">
+                Connect WhatsApp to SHVYA.
+            </h1>
+            <p class="mx-auto mt-3 max-w-xl text-[15px] leading-6 text-[#6e6e73] sm:text-base">
+                Use Meta's official setup to connect your number and start managing conversations in SHVYA.
+            </p>
+        </div>
 
-    <section class="overflow-hidden rounded-2xl border border-emerald-100 bg-gradient-to-br from-emerald-50 via-white to-blue-50 shadow-sm">
-        <div class="grid gap-8 px-6 py-7 lg:grid-cols-[1.08fr_.92fr] lg:px-9 lg:py-9">
+        {% if form.non_field_errors %}
+        <div class="mb-5 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {% for error in form.non_field_errors %}{{ error }}{% endfor %}
+        </div>
+        {% endif %}
+        <div id="embedded-signup-error" class="mb-5 hidden break-words rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 [overflow-wrap:anywhere]"></div>
+
+        <section class="overflow-hidden rounded-[28px] bg-white shadow-[0_1px_2px_rgba(0,0,0,.04),0_12px_40px_rgba(0,0,0,.06)] ring-1 ring-black/[.05]">
+            <div class="grid gap-0 lg:grid-cols-[1.15fr_.85fr]">
+                <div class="p-6 sm:p-8 lg:p-10">
+                    <div class="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#f5f5f7] text-[#1d1d1f]">
+                        <i class="ti ti-plug-connected text-2xl"></i>
+                    </div>
+                    <h2 class="mt-6 text-2xl font-semibold tracking-[-0.025em] text-[#1d1d1f] sm:text-[30px]">Connect with Meta</h2>
+                    <p class="mt-2 max-w-xl text-sm leading-6 text-[#6e6e73] sm:text-[15px]">
+                        Sign in with Meta, select your business and choose the WhatsApp number you want to use.
+                    </p>
+
+                    <div class="mt-6 flex flex-wrap gap-2 text-xs font-medium text-[#6e6e73]">
+                        <span class="rounded-full bg-[#f5f5f7] px-3 py-1.5">Official Meta flow</span>
+                        <span class="rounded-full bg-[#f5f5f7] px-3 py-1.5">Secure connection</span>
+                        <span class="rounded-full bg-[#f5f5f7] px-3 py-1.5">No coding</span>
+                    </div>
+
+                    {% if embedded_signup_available %}
+                    <button type="button" id="embedded-signup-btn" disabled class="mt-7 inline-flex w-full items-center justify-center gap-2 rounded-full bg-[#1d1d1f] px-6 py-3.5 text-sm font-semibold text-white shadow-sm transition duration-200 hover:bg-black focus:outline-none focus:ring-4 focus:ring-black/10 disabled:cursor-not-allowed disabled:opacity-45 sm:w-auto sm:min-w-[260px]">
+                        <i class="ti ti-brand-whatsapp text-lg"></i>
+                        <span>Loading Meta…</span>
+                    </button>
+                    {% else %}
+                    <div class="mt-7 rounded-2xl bg-[#fff7ed] px-4 py-3 text-sm text-[#9a3412] ring-1 ring-orange-100">
+                        Meta one-click setup is unavailable right now. Use manual setup below.
+                    </div>
+                    {% endif %}
+                </div>
+
+                <div class="border-t border-black/[.06] bg-[#fbfbfd] p-6 sm:p-8 lg:border-l lg:border-t-0 lg:p-10">
+                    <p class="text-xs font-semibold uppercase tracking-[0.12em] text-[#86868b]">Before you connect</p>
+                    <div class="mt-5 space-y-5">
+                        <div class="flex gap-3">
+                            <div class="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white text-[#0071e3] ring-1 ring-black/[.05]"><i class="ti ti-user-check"></i></div>
+                            <div>
+                                <p class="text-sm font-semibold text-[#1d1d1f]">Meta admin access</p>
+                                <p class="mt-0.5 text-xs leading-5 text-[#6e6e73]">Use an account with access to your business portfolio.</p>
+                            </div>
+                        </div>
+                        <div class="flex gap-3">
+                            <div class="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white text-[#0071e3] ring-1 ring-black/[.05]"><i class="ti ti-device-mobile"></i></div>
+                            <div>
+                                <p class="text-sm font-semibold text-[#1d1d1f]">WhatsApp number</p>
+                                <p class="mt-0.5 text-xs leading-5 text-[#6e6e73]">Keep the number ready for verification during setup.</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <a href="{% url 'whatsapp-accounts' %}" class="mt-7 inline-flex items-center gap-1.5 text-sm font-semibold text-[#0071e3] transition hover:underline">
+                        Manage connected numbers <i class="ti ti-chevron-right text-base"></i>
+                    </a>
+                </div>
+            </div>
+
+            <div class="border-t border-black/[.06] px-6 py-5 sm:px-8 lg:px-10">
+                <details class="group" {% if not embedded_signup_available %}open{% endif %}>
+                    <summary class="flex cursor-pointer list-none items-center justify-between gap-4 py-1 text-sm font-semibold text-[#1d1d1f]">
+                        <span class="flex items-center gap-2.5"><i class="ti ti-settings text-lg text-[#86868b]"></i>Manual setup</span>
+                        <i class="ti ti-chevron-down text-lg text-[#86868b] transition group-open:rotate-180"></i>
+                    </summary>
+
+                    <div class="pt-5">
+                        <p class="mb-5 text-sm leading-6 text-[#6e6e73]">Enter your Meta credentials if you prefer to connect manually.</p>
+                        <form method="post" action="{% url 'whatsapp-connect-api' %}" class="grid gap-4 sm:grid-cols-2">
+                            {% csrf_token %}
+                            <div>
+                                <label class="mb-1.5 block text-xs font-semibold text-[#1d1d1f]">Phone Number ID</label>
+                                <input type="text" name="phone_number_id" value="{{ form.phone_number_id.value|default:'' }}" placeholder="109876543210987" class="w-full rounded-xl border border-black/10 bg-[#f5f5f7] px-3.5 py-3 text-sm text-[#1d1d1f] outline-none transition placeholder:text-[#a1a1a6] focus:border-[#0071e3] focus:bg-white focus:ring-4 focus:ring-[#0071e3]/10">
+                                {% if form.phone_number_id.errors %}<p class="mt-1 text-xs text-red-600">{{ form.phone_number_id.errors.0 }}</p>{% endif %}
+                            </div>
+                            <div>
+                                <label class="mb-1.5 block text-xs font-semibold text-[#1d1d1f]">WABA ID <span class="font-normal text-[#86868b]">Optional</span></label>
+                                <input type="text" name="waba_id" value="{{ form.waba_id.value|default:'' }}" placeholder="123456789012345" class="w-full rounded-xl border border-black/10 bg-[#f5f5f7] px-3.5 py-3 text-sm text-[#1d1d1f] outline-none transition placeholder:text-[#a1a1a6] focus:border-[#0071e3] focus:bg-white focus:ring-4 focus:ring-[#0071e3]/10">
+                            </div>
+                            <div>
+                                <label class="mb-1.5 block text-xs font-semibold text-[#1d1d1f]">Display number <span class="font-normal text-[#86868b]">Optional</span></label>
+                                <input type="text" name="display_phone_number" value="{{ form.display_phone_number.value|default:'' }}" placeholder="+91 98765 43210" class="w-full rounded-xl border border-black/10 bg-[#f5f5f7] px-3.5 py-3 text-sm text-[#1d1d1f] outline-none transition placeholder:text-[#a1a1a6] focus:border-[#0071e3] focus:bg-white focus:ring-4 focus:ring-[#0071e3]/10">
+                            </div>
+                            <div>
+                                <label class="mb-1.5 block text-xs font-semibold text-[#1d1d1f]">Access Token</label>
+                                <input type="password" name="access_token" placeholder="System-user access token" class="w-full rounded-xl border border-black/10 bg-[#f5f5f7] px-3.5 py-3 text-sm text-[#1d1d1f] outline-none transition placeholder:text-[#a1a1a6] focus:border-[#0071e3] focus:bg-white focus:ring-4 focus:ring-[#0071e3]/10">
+                                {% if form.access_token.errors %}<p class="mt-1 text-xs text-red-600">{{ form.access_token.errors.0 }}</p>{% endif %}
+                            </div>
+                            <div class="sm:col-span-2 flex flex-col gap-3 pt-1 sm:flex-row sm:items-center sm:justify-between">
+                                <p class="text-xs text-[#86868b]"><i class="ti ti-lock mr-1"></i>Your token is stored securely.</p>
+                                <button type="submit" class="inline-flex items-center justify-center gap-2 rounded-full bg-[#0071e3] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#0077ed] focus:outline-none focus:ring-4 focus:ring-[#0071e3]/15">
+                                    Connect manually
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </details>
+            </div>
+        </section>
+
+        <div class="mt-5 flex flex-col items-center justify-between gap-3 rounded-[22px] bg-white px-5 py-4 text-center shadow-[0_1px_2px_rgba(0,0,0,.03)] ring-1 ring-black/[.04] sm:flex-row sm:text-left">
             <div>
-                <div class="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-white/80 px-3 py-1 text-xs font-semibold text-emerald-700 shadow-sm">
-                    <i class="ti ti-brand-whatsapp"></i>
-                    WhatsApp Business API
-                </div>
-
-                <h1 class="mt-4 max-w-2xl text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
-                    Connect your WhatsApp and manage every lead from SHVYA
-                    <span class="text-amber-500">⚡</span>
-                </h1>
-                <p class="mt-3 max-w-2xl text-sm leading-6 text-slate-600 sm:text-[15px]">
-                    Use Meta's official WhatsApp Business Platform to reply faster, keep conversations connected to CRM leads, automate follow-ups, and manage team communication from one place.
-                </p>
-
-                <div class="mt-6 grid gap-3 sm:grid-cols-2">
-                    <div class="rounded-xl border border-white/80 bg-white/85 p-4 shadow-sm">
-                        <div class="flex gap-3">
-                            <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-100 text-emerald-600"><i class="ti ti-bolt text-xl"></i></div>
-                            <div><h3 class="text-sm font-bold text-slate-900">Always active</h3><p class="mt-1 text-xs leading-5 text-slate-500">Respond to leads even when your team is away.</p></div>
-                        </div>
-                    </div>
-                    <div class="rounded-xl border border-white/80 bg-white/85 p-4 shadow-sm">
-                        <div class="flex gap-3">
-                            <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-orange-100 text-orange-500"><i class="ti ti-chart-bar text-xl"></i></div>
-                            <div><h3 class="text-sm font-bold text-slate-900">Campaign insights</h3><p class="mt-1 text-xs leading-5 text-slate-500">See delivery, replies and campaign performance.</p></div>
-                        </div>
-                    </div>
-                    <div class="rounded-xl border border-white/80 bg-white/85 p-4 shadow-sm">
-                        <div class="flex gap-3">
-                            <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-100 text-violet-600"><i class="ti ti-refresh text-xl"></i></div>
-                            <div><h3 class="text-sm font-bold text-slate-900">Smart follow-ups</h3><p class="mt-1 text-xs leading-5 text-slate-500">Automated sequences keep leads moving.</p></div>
-                        </div>
-                    </div>
-                    <div class="rounded-xl border border-white/80 bg-white/85 p-4 shadow-sm">
-                        <div class="flex gap-3">
-                            <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-100 text-blue-600"><i class="ti ti-message-circle text-xl"></i></div>
-                            <div><h3 class="text-sm font-bold text-slate-900">Unified inbox</h3><p class="mt-1 text-xs leading-5 text-slate-500">Your team works from one official conversation view.</p></div>
-                        </div>
-                    </div>
-                    <div class="rounded-xl border border-white/80 bg-white/85 p-4 shadow-sm">
-                        <div class="flex gap-3">
-                            <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-rose-100 text-rose-500"><i class="ti ti-shield-check text-xl"></i></div>
-                            <div><h3 class="text-sm font-bold text-slate-900">Secure & official</h3><p class="mt-1 text-xs leading-5 text-slate-500">Connect through Meta's official onboarding flow.</p></div>
-                        </div>
-                    </div>
-                    <div class="rounded-xl border border-white/80 bg-white/85 p-4 shadow-sm">
-                        <div class="flex gap-3">
-                            <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-teal-100 text-teal-600"><i class="ti ti-clock text-xl"></i></div>
-                            <div><h3 class="text-sm font-bold text-slate-900">Quick setup</h3><p class="mt-1 text-xs leading-5 text-slate-500">Guided connection with no coding required.</p></div>
-                        </div>
-                    </div>
-                </div>
+                <p class="text-sm font-semibold text-[#1d1d1f]">Need a different connection method?</p>
+                <p class="mt-0.5 text-xs text-[#86868b]">Use a Coexisted Account instead.</p>
             </div>
-
-            <div class="flex items-center justify-center">
-                <img src="{% static 'channels/whatsapp_api_hero.svg' %}" alt="WhatsApp Business API connected to SHVYA CRM" class="w-full max-w-[610px] rounded-2xl" loading="lazy">
-            </div>
+            <a href="{% url 'whatsapp-connect-hosted' %}" class="inline-flex items-center gap-1 text-sm font-semibold text-[#0071e3] hover:underline">
+                Open Coexisted Accounts <i class="ti ti-chevron-right text-base"></i>
+            </a>
         </div>
-    </section>
-
-    {% if form.non_field_errors %}
-    <div class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-        {% for error in form.non_field_errors %}{{ error }}{% endfor %}
     </div>
-    {% endif %}
-    <div id="embedded-signup-error" class="hidden break-words rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 [overflow-wrap:anywhere]"></div>
-
-    <section class="grid gap-6 lg:grid-cols-[1fr_360px]">
-        <div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-7">
-            <div class="flex items-start justify-between gap-4">
-                <div>
-                    <h2 class="text-xl font-bold text-slate-900">Connect WhatsApp now</h2>
-                    <p class="mt-2 max-w-2xl text-sm leading-6 text-slate-500">Start Meta's official embedded signup. You will choose or create your WhatsApp Business Account and connect a phone number securely.</p>
-                </div>
-                <div class="hidden h-11 w-11 items-center justify-center rounded-xl bg-emerald-100 text-emerald-600 sm:flex"><i class="ti ti-lock text-xl"></i></div>
-            </div>
-
-            <div class="mt-5 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
-                <div class="flex gap-3">
-                    <i class="ti ti-shield-check mt-0.5 text-lg text-emerald-600"></i>
-                    <div><p class="text-sm font-bold text-emerald-800">Official & secure</p><p class="mt-1 text-xs leading-5 text-emerald-700">Authentication and account selection happen through Meta. SHVYA only stores the connection data required to operate your integration.</p></div>
-                </div>
-            </div>
-
-            {% if embedded_signup_available %}
-            <button type="button" id="embedded-signup-btn" disabled class="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-5 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto sm:min-w-[320px]">
-                <i class="ti ti-brand-whatsapp text-lg"></i>
-                <span>Loading Meta…</span>
-            </button>
-            <p class="mt-3 text-xs text-slate-400"><i class="ti ti-lock"></i> Secure Meta connection · No coding required · Usually takes only a few minutes.</p>
-            {% else %}
-            <div class="mt-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-                <i class="ti ti-alert-triangle mr-1"></i>
-                One-click Meta signup is not configured on this server yet. Add <code class="rounded bg-amber-100 px-1">META_APP_ID</code> and <code class="rounded bg-amber-100 px-1">META_WA_EMBEDDED_SIGNUP_CONFIG_ID</code>, or use the manual connection below.
-            </div>
-            {% endif %}
-
-            <div class="my-6 flex items-center gap-3 text-xs text-slate-400"><div class="h-px flex-1 bg-slate-200"></div><span>Manual connection</span><div class="h-px flex-1 bg-slate-200"></div></div>
-
-            <details class="group" {% if not embedded_signup_available %}open{% endif %}>
-                <summary class="flex cursor-pointer list-none items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-100">
-                    <span><i class="ti ti-settings mr-2 text-slate-500"></i>Enter Meta credentials manually</span>
-                    <i class="ti ti-chevron-down transition group-open:rotate-180"></i>
-                </summary>
-
-                <div class="mt-4 rounded-xl border border-slate-200 p-4 sm:p-5">
-                    <div class="mb-5 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-xs leading-5 text-blue-700">
-                        You need a <strong>Phone Number ID</strong> and a <strong>system-user access token</strong> from Meta's WhatsApp Business Platform. Tokens are stored securely and are never displayed again after saving.
-                    </div>
-                    <form method="post" action="{% url 'whatsapp-connect-api' %}" class="grid gap-4 sm:grid-cols-2">
-                        {% csrf_token %}
-                        <div>
-                            <label class="mb-1.5 block text-xs font-semibold text-slate-700">Phone Number ID</label>
-                            <input type="text" name="phone_number_id" value="{{ form.phone_number_id.value|default:'' }}" placeholder="e.g. 109876543210987" class="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100">
-                            {% if form.phone_number_id.errors %}<p class="mt-1 text-xs text-red-600">{{ form.phone_number_id.errors.0 }}</p>{% endif %}
-                        </div>
-                        <div>
-                            <label class="mb-1.5 block text-xs font-semibold text-slate-700">WhatsApp Business Account ID <span class="font-normal text-slate-400">(optional)</span></label>
-                            <input type="text" name="waba_id" value="{{ form.waba_id.value|default:'' }}" placeholder="e.g. 123456789012345" class="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100">
-                        </div>
-                        <div>
-                            <label class="mb-1.5 block text-xs font-semibold text-slate-700">Display Phone Number <span class="font-normal text-slate-400">(optional)</span></label>
-                            <input type="text" name="display_phone_number" value="{{ form.display_phone_number.value|default:'' }}" placeholder="e.g. +91 98765 43210" class="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100">
-                        </div>
-                        <div>
-                            <label class="mb-1.5 block text-xs font-semibold text-slate-700">Access Token</label>
-                            <input type="password" name="access_token" placeholder="System-user access token" class="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100">
-                            {% if form.access_token.errors %}<p class="mt-1 text-xs text-red-600">{{ form.access_token.errors.0 }}</p>{% endif %}
-                        </div>
-                        <div class="sm:col-span-2 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                            <p class="text-xs text-slate-400"><i class="ti ti-lock"></i> Access token is stored securely.</p>
-                            <button type="submit" class="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-5 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"><i class="ti ti-plug-connected"></i>Connect manually</button>
-                        </div>
-                    </form>
-                </div>
-            </details>
-        </div>
-
-        <aside class="space-y-4">
-            <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                <h3 class="text-sm font-bold text-slate-900">What you need</h3>
-                <ul class="mt-4 space-y-3 text-xs leading-5 text-slate-600">
-                    <li class="flex gap-2"><i class="ti ti-circle-check mt-0.5 text-emerald-500"></i><span>Facebook account with access to your business portfolio.</span></li>
-                    <li class="flex gap-2"><i class="ti ti-circle-check mt-0.5 text-emerald-500"></i><span>Business details such as name, website and category.</span></li>
-                    <li class="flex gap-2"><i class="ti ti-circle-check mt-0.5 text-emerald-500"></i><span>Admin permission for the WhatsApp Business Account.</span></li>
-                    <li class="flex gap-2"><i class="ti ti-circle-check mt-0.5 text-emerald-500"></i><span>A phone number that can be used with WhatsApp Business.</span></li>
-                </ul>
-            </div>
-
-            <div class="rounded-2xl border border-blue-100 bg-blue-50/70 p-5">
-                <h3 class="text-sm font-bold text-slate-900">Already connected?</h3>
-                <p class="mt-2 text-xs leading-5 text-slate-600">Manage active numbers, reconnect notifications or remove a number from the connected accounts screen.</p>
-                <a href="{% url 'whatsapp-accounts' %}" class="mt-4 inline-flex items-center gap-2 text-xs font-bold text-blue-600 hover:text-blue-700">Manage connected numbers <i class="ti ti-arrow-right"></i></a>
-            </div>
-
-            <div class="rounded-2xl border border-violet-100 bg-violet-50/70 p-5">
-                <h3 class="text-sm font-bold text-slate-900">Want a coexisted account?</h3>
-                <p class="mt-2 text-xs leading-5 text-slate-600">Use the Coexisted Accounts option if you want SHVYA's alternative onboarding path.</p>
-                <a href="{% url 'whatsapp-connect-hosted' %}" class="mt-4 inline-flex items-center gap-2 text-xs font-bold text-violet-600 hover:text-violet-700">Open Coexisted Accounts <i class="ti ti-arrow-right"></i></a>
-            </div>
-        </aside>
-    </section>
-
-    <section class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-        <div class="grid gap-5 md:grid-cols-3">
-            <div><div class="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-100 text-emerald-600"><i class="ti ti-message-circle text-lg"></i></div><h3 class="mt-3 text-sm font-bold text-slate-900">1. Connect your number</h3><p class="mt-1 text-xs leading-5 text-slate-500">Complete Meta signup and allow SHVYA to receive message events.</p></div>
-            <div><div class="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-100 text-blue-600"><i class="ti ti-users text-lg"></i></div><h3 class="mt-3 text-sm font-bold text-slate-900">2. Start receiving leads</h3><p class="mt-1 text-xs leading-5 text-slate-500">Incoming WhatsApp conversations stay tied to your CRM records.</p></div>
-            <div><div class="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-100 text-violet-600"><i class="ti ti-rocket text-lg"></i></div><h3 class="mt-3 text-sm font-bold text-slate-900">3. Use chats, templates & broadcasts</h3><p class="mt-1 text-xs leading-5 text-slate-500">Once connected, SHVYA automatically exposes the WhatsApp working tools in the sidebar.</p></div>
-        </div>
-    </section>
 </div>
 
 {% if embedded_signup_available %}
