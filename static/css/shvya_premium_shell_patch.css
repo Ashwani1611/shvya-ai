@@ -1,6 +1,57 @@
 /* Final premium shell overrides.
    This file intentionally loads after the original premium sidebar styles. */
 
+/* Lock the dashboard chrome to the viewport. The legacy shell already uses
+   an internal scrolling <main>, so the document itself must never become the
+   scroll container. Allowing the page/body to scroll moves the complete
+   sidebar/header shell and exposes the empty canvas below it. */
+html.shvya-premium-shell,
+html.shvya-premium-shell body {
+    width: 100%;
+    height: 100%;
+    min-height: 100%;
+    overflow: hidden !important;
+    overscroll-behavior: none;
+}
+
+html.shvya-premium-shell body > .flex.h-screen.overflow-hidden {
+    width: 100%;
+    height: 100vh !important;
+    height: 100dvh !important;
+    min-height: 0 !important;
+    max-height: 100dvh !important;
+    overflow: hidden !important;
+}
+
+html.shvya-premium-shell #app-sidebar + div {
+    height: 100% !important;
+    min-height: 0 !important;
+    max-height: 100% !important;
+    overflow: hidden !important;
+}
+
+html.shvya-premium-shell #app-sidebar + div > header {
+    flex: 0 0 auto;
+}
+
+html.shvya-premium-shell #app-sidebar + div > main {
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    overscroll-behavior-y: contain;
+    -webkit-overflow-scrolling: touch;
+}
+
+@media (min-width: 901px) {
+    html.shvya-premium-shell #app-sidebar {
+        height: calc(100vh - 24px) !important;
+        height: calc(100dvh - 24px) !important;
+        max-height: calc(100dvh - 24px) !important;
+        align-self: flex-start;
+    }
+}
+
 /* Never reveal the legacy sidebar while the premium shell is expected. */
 html.shvya-premium-shell #app-sidebar:not(.shvya-premium-sidebar-ready) > * {
     visibility: hidden !important;
