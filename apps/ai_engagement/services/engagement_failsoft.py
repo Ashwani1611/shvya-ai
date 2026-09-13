@@ -1,10 +1,10 @@
 """Deterministic last-resort customer reply when model validation cannot recover.
 
 The normal engagement path remains authoritative and is always attempted first.
-This wrapper exists only to prevent a genuine inbound WhatsApp turn from ending
-in silence because both the primary model result and its schema-repair result
-failed validation. It never invents CRM actions, qualification answers, business
-facts, pipeline movement, attributes, reminders, or identifiers.
+This wrapper exists only to prevent a genuine production WhatsApp turn from
+ending in silence because both the primary model result and its schema-repair
+result failed validation. It never invents CRM actions, qualification answers,
+business facts, pipeline movement, attributes, reminders, or identifiers.
 """
 
 from __future__ import annotations
@@ -93,7 +93,13 @@ def _fallback_decision(*, service, organization, lead):
 
 
 def install_engagement_failsoft() -> None:
-    """Wrap the fully installed engagement stack with a safe last-resort reply."""
+    """Wrap the production provider path with a safe last-resort reply.
+
+    Tests and explicit service callers frequently inject a provider specifically
+    to validate strict schema/security failures. Those calls must continue to
+    raise EngagementError. Production workers instantiate EngagementService
+    without an injected provider, so only that path receives fail-soft behavior.
+    """
     global _INSTALLED
     if _INSTALLED:
         return
@@ -114,6 +120,10 @@ def install_engagement_failsoft() -> None:
                 context=context,
             )
         except engagement_module.EngagementError as exc:
+            # Explicit/injected providers are used by callers that need strict
+            # validation semantics. Do not convert their failures into replies.
+            if self.provider is not None:
+                raise
             # Celery remains the single retry owner for temporary provider/network
             # faults. Fail-soft is for permanent provider/schema/validation cases.
             if isinstance(exc.__cause__, AIProviderTransientError):
