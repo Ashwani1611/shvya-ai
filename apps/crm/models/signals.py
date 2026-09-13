@@ -1,10 +1,11 @@
-from django.db.models.signals import post_delete, post_save
+from django.db.models.signals import post_delete, post_save, pre_delete
 from django.dispatch import receiver
 
 from apps.organizations.models import Organization
 from services.crm.attribute_cache import invalidate_attribute_definitions
 
 from .attribute import AttributeDefinition
+from .lead import Lead
 from .pipeline import Pipeline
 from .stage import Stage
 
@@ -102,6 +103,28 @@ def create_default_stages(sender, instance, created, **kwargs):
                 "is_active": True,
             },
         )
+
+
+# ============================================================
+# PERMANENT LEAD DELETION
+# ============================================================
+
+@receiver(pre_delete, sender=Lead, dispatch_uid="crm_hard_delete_lead_whatsapp_messages")
+def hard_delete_lead_whatsapp_messages(sender, instance, **kwargs):
+    """Delete linked chat rows before deleting a Lead.
+
+    WhatsAppMessage historically used SET_NULL so removing a CRM Lead left its
+    conversation rows in the database. Product deletion is now explicitly a
+    permanent Lead deletion, therefore every message attached to that Lead is
+    removed in the same database delete transaction. Messages that were never
+    attached to any Lead remain untouched.
+    """
+    from apps.channels.models import WhatsAppMessage
+
+    WhatsAppMessage.objects.filter(
+        organization_id=instance.organization_id,
+        lead_id=instance.pk,
+    ).delete()
 
 
 # ============================================================

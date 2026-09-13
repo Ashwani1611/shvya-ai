@@ -31,19 +31,10 @@ def dispatch_due_hosted_ai():
     dispatch_uid="hosted_automation_job_wakeup",
 )
 def hosted_automation_job_wakeup(sender, instance, created, update_fields=None, **kwargs):
-    """Self-schedule queued Hosted AI instead of relying only on Celery Beat.
-
-    Beat remains the recovery scanner and priority coordinator. New jobs are
-    pulled forward by a small processing budget so AI generation and Hosted
-    delivery can normally complete by the 60-second customer-facing target.
-    The dispatcher still performs the lock, live permission checks,
-    supersession checks, health checks, and AI-before-sequence claim.
-    """
+    """Self-schedule queued Hosted AI instead of relying only on Celery Beat."""
     if instance.status != HostedAutomationJob.Status.QUEUED:
         return
 
-    # Reschedule only when the job was created or its due time changed, such as
-    # an Account Health pause. Other queued-field saves must not fan out tasks.
     if not created and update_fields is not None and "available_at" not in update_fields:
         return
 
@@ -51,8 +42,6 @@ def hosted_automation_job_wakeup(sender, instance, created, update_fields=None, 
         accelerated_at = instance.available_at - timedelta(
             seconds=HOSTED_AI_PROCESSING_BUDGET_SECONDS
         )
-        # Persist the accelerated due time without firing post_save again.
-        # Health-pause requeues are deliberately not accelerated.
         if accelerated_at < instance.available_at:
             HostedAutomationJob.objects.filter(
                 pk=instance.pk,
@@ -73,18 +62,7 @@ def hosted_automation_job_wakeup(sender, instance, created, update_fields=None, 
 
 
 def _queue_hosted_ai_from_persisted_message(message_id):
-    """Queue AI from the final persisted Hosted message identity.
-
-    WhatsApp Web may first persist a direct chat with an ``@lid`` identity and
-    then repair that row to the real phone/Lead in the same outer transaction.
-    AI scheduling must therefore re-read the committed message instead of
-    trusting the pre-repair ``lead`` value captured during initial persistence.
-
-    The inbound account itself owns the live transport. A lead may subsequently
-    move to another CRM pipeline while the same WhatsApp conversation continues,
-    so queueing is intentionally not rejected only because the new pipeline has
-    a different configured number.
-    """
+    """Queue AI from the final persisted Hosted message identity."""
     message = (
         WhatsAppMessage.objects.select_related(
             "account",
@@ -118,9 +96,6 @@ def _queue_hosted_ai_from_persisted_message(message_id):
     from services.channels.hosted_automation_service import enqueue_ai_engagement
     from services.channels.hosted_whatsapp_service import get_session_settings
 
-    # Connection-level automation remains an independent switch. The canonical
-    # permission service below enforces organization, current pipeline, stage,
-    # lead, tenant, and transport state.
     if not get_session_settings(account=account).get("ai_auto_reply"):
         return
 
@@ -128,6 +103,7 @@ def _queue_hosted_ai_from_persisted_message(message_id):
         permission = AIPermissionService().evaluate(
             organization=account.organization,
             lead=lead,
+            latest_inbound=message,
         )
     except AIPermissionError:
         return
@@ -154,9 +130,6 @@ def hosted_message_state(sender, instance, created, update_fields=None, **kwargs
     if payload.get("isHistory"):
         return
 
-    # Conversation-delay bookkeeping belongs only to the first persistence of
-    # a live inbound message. Identity-repair saves must not push follow-ups out
-    # a second time.
     if created and instance.lead_id:
         def apply_inbound_delay():
             from services.channels.hosted_automation_service import register_hosted_lead_reply
@@ -176,10 +149,9 @@ def hosted_message_state(sender, instance, created, update_fields=None, **kwargs
 
         transaction.on_commit(apply_inbound_delay)
 
-    # Schedule AI after the surrounding gateway transaction commits. This is
-    # intentionally registered even when the initial row had no Lead: a later
-    # identity-repair save in the same transaction can attach the canonical
-    # Lead before this callback re-reads the row.
+    # Always resolve and permission-check the exact committed inbound row. This
+    # prevents another connected WhatsApp number for the same Lead from stealing
+    # the Hosted job's permission context.
     transaction.on_commit(
         lambda message_id=instance.pk: _queue_hosted_ai_from_persisted_message(
             message_id

@@ -30,14 +30,7 @@ def _normalized_text(value: str) -> str:
 
 
 def _conversation_bound_hosted_block_reason(*, account, lead):
-    """Apply live AI controls without re-binding the lead to its old pipeline.
-
-    The durable Hosted job already identifies the exact inbound account and lead.
-    A CRM move to another organization-owned pipeline must not invalidate that
-    WhatsApp thread. Organization/pipeline/stage/lead switches are still checked
-    by the canonical permission service, while the Hosted connection switch is
-    checked on the actual account that received the customer message.
-    """
+    """Apply live AI controls to the exact durable Hosted conversation."""
     from apps.ai_engagement.services.ai_permissions import AIPermissionService
     from apps.channels.models import WhatsAppAccount, WhatsAppMessage
     from apps.crm.models import Lead
@@ -63,6 +56,7 @@ def _conversation_bound_hosted_block_reason(*, account, lead):
             lead=lead,
             direction=WhatsAppMessage.Direction.INBOUND,
         )
+        .select_related("account")
         .order_by("-created_at", "-id")
         .first()
     )
@@ -72,6 +66,7 @@ def _conversation_bound_hosted_block_reason(*, account, lead):
     decision = AIPermissionService().evaluate(
         organization=lead.organization,
         lead=lead,
+        latest_inbound=latest_for_account,
     )
     if not decision.allowed:
         return decision.reason

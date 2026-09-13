@@ -63,7 +63,9 @@ def recover_api_engagement():
         if (message.raw_payload.get('shvya_ai_processing') or {}).get('processed'):
             continue
         stamp = parse_datetime(str(execution.get('updated_at') or ''))
-        delay = 300 if execution.get('status') == 'processing' else 90
+        # Provider generation may legitimately take longer, while an unpublished
+        # queued/retrying turn should be recovered quickly.
+        delay = 180 if execution.get('status') == 'processing' else 30
         if stamp and (now - stamp).total_seconds() < delay:
             continue
         if int(execution.get('attempts', 0)) >= 5:
@@ -80,10 +82,11 @@ def recover_api_engagement():
         except Exception:
             logger.exception('AI recovery could not publish a retained turn')
     # A successful DB commit followed by failed task publication must not strand
-    # its saved reply. Existing sender row locks protect against duplicate sends.
+    # its saved reply. Existing sender row locks and status checks protect against
+    # duplicate sends, so retry delivery aggressively after a short grace period.
     outgoing = WhatsAppMessage.objects.filter(direction='outbound', status='queued',
         account__connection_type='api', created_at__gte=cutoff,
-        created_at__lte=now - timedelta(seconds=90), raw_payload__has_key='shvya_ai')[:100]
+        created_at__lte=now - timedelta(seconds=10), raw_payload__has_key='shvya_ai')[:100]
     for message in outgoing:
         metadata = (message.raw_payload or {}).get('shvya_ai') or {}
         source = metadata.get('source_inbound_message_id')
@@ -91,7 +94,7 @@ def recover_api_engagement():
                 raw_payload__has_key=KEY).exists():
             continue
         stamp = parse_datetime(str(metadata.get('recovery_dispatched_at') or ''))
-        if stamp and (now - stamp).total_seconds() < 90:
+        if stamp and (now - stamp).total_seconds() < 15:
             continue
         metadata['recovery_dispatched_at'] = now.isoformat()
         WhatsAppMessage.objects.filter(pk=message.pk).update(raw_payload={**message.raw_payload, 'shvya_ai': metadata})

@@ -48,12 +48,11 @@ class AIPermissionService:
 
         Organization AI -> Pipeline AI -> Stage AI -> Lead AI
 
-    WhatsApp account routing remains fail-closed for a new conversation. Once
-    SHVYA has already produced an AI reply on a valid conversation account, that
-    account becomes an established transport for the lead and may continue to be
-    used after an intentional CRM pipeline move. This keeps cross-pipeline CRM
-    classification from stranding the chat without allowing an arbitrary second
-    organization number to engage the same lead.
+    New WhatsApp conversations remain bound to the number configured for the
+    lead's current pipeline. An already-established conversation may continue on
+    its original authenticated organization account after a legitimate CRM
+    pipeline move; this prevents classification changes from stranding the chat
+    without allowing a brand-new message on an unrelated number to bypass routing.
     """
 
     WHATSAPP_AUTOMATION_CONNECTION_TYPES = {"api", "hosted"}
@@ -94,6 +93,23 @@ class AIPermissionService:
             raw_payload__shvya_ai__isnull=False,
         ).exists()
 
+    def _has_established_conversation_transport(
+        self,
+        *,
+        organization,
+        lead,
+        account,
+        latest_message,
+    ) -> bool:
+        """Return whether this lead already had history on the inbound account."""
+        history = lead.whatsapp_messages.filter(
+            organization=organization,
+            account=account,
+        )
+        if getattr(latest_message, "pk", None):
+            history = history.exclude(pk=latest_message.pk)
+        return history.exists()
+
     def _conversation_uses_pipeline_number(
         self,
         *,
@@ -101,21 +117,13 @@ class AIPermissionService:
         lead,
         latest_message=None,
     ):
-        """Validate the customer-facing WhatsApp transport for this conversation.
-
-        Fresh conversations must match the lead's current pipeline number. A
-        previously established SHVYA AI transport may survive a later CRM
-        pipeline move, because the customer is still replying on that same
-        WhatsApp thread.
-        """
+        """Validate the customer-facing WhatsApp transport for this conversation."""
         if latest_message is None:
             latest_message = self._latest_inbound_message(
                 organization=organization,
                 lead=lead,
             )
 
-        # Permission evaluation is also used before an inbound conversation
-        # exists. The engagement worker independently requires an inbound turn.
         if latest_message is None:
             return True, "no_conversation_yet"
 
@@ -147,7 +155,12 @@ class AIPermissionService:
         if expected_number and actual_number == expected_number:
             return True, "pipeline_whatsapp_account_match"
 
-        if self._has_established_ai_transport(
+        if self._has_established_conversation_transport(
+            organization=organization,
+            lead=lead,
+            account=account,
+            latest_message=latest_message,
+        ) or self._has_established_ai_transport(
             organization=organization,
             lead=lead,
             account=account,
@@ -163,8 +176,14 @@ class AIPermissionService:
         *,
         organization,
         lead,
+        latest_inbound=None,
     ) -> AIPermissionDecision:
-        """Evaluate current, non-cached AI permission state for one Lead."""
+        """Evaluate current, non-cached AI permission state for one Lead.
+
+        ``latest_inbound`` lets durable provider-specific jobs bind permission
+        evaluation to the exact authenticated message they own rather than a
+        newer message on a different connected number for the same Lead.
+        """
 
         if organization is None:
             raise AIPermissionError("Organization is required.")
@@ -179,7 +198,6 @@ class AIPermissionService:
                 lead=lead,
             )
 
-        # Organization is the top-level customer-facing AI master switch.
         try:
             org_info = self.org_info_service.get_or_create(
                 organization=organization,
@@ -205,9 +223,6 @@ class AIPermissionService:
                 lead=lead,
             )
 
-        # Stage and Lead switches are never bypassed for WhatsApp. This is
-        # intentional: an admin turning either switch off must stop both newly
-        # queued and already-generated AI replies before delivery.
         if lead.stage_id and not lead.stage.ai_on:
             return self._decision(
                 allowed=False,
@@ -224,10 +239,11 @@ class AIPermissionService:
                 lead=lead,
             )
 
-        latest_inbound = self._latest_inbound_message(
-            organization=organization,
-            lead=lead,
-        )
+        if latest_inbound is None:
+            latest_inbound = self._latest_inbound_message(
+                organization=organization,
+                lead=lead,
+            )
         mapping_allowed, mapping_reason = self._conversation_uses_pipeline_number(
             organization=organization,
             lead=lead,

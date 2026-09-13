@@ -1,6 +1,7 @@
 import logging
 
 from django.core.exceptions import ValidationError as DjangoValidationError
+from django.db import transaction
 from django.db.models import Q
 from django.shortcuts import get_object_or_404
 from rest_framework import status
@@ -14,8 +15,14 @@ from apps.crm.authentication import SHVYAAPIKeyAuthentication
 from apps.crm.models import Lead, Pipeline, Stage
 from apps.crm.serializers import LeadUpsertSerializer
 from services.crm.lead_service import DuplicateLeadError, upsert_lead
+from services.crm.lead_transition import (
+    LeadTransitionError,
+    move_lead_to_pipeline_stage,
+    move_lead_to_stage,
+)
 
 logger = logging.getLogger(__name__)
+
 
 class LeadUpsertAPIView(APIView):
 
@@ -339,6 +346,9 @@ class BulkMoveStageAPIView(APIView):
         stage_name = request.data.get(
             "stage"
         )
+        pipeline_name = request.data.get(
+            "pipeline"
+        )
 
         if not lead_ids:
 
@@ -366,26 +376,68 @@ class BulkMoveStageAPIView(APIView):
             api_key.organization
         )
 
-        stage = get_object_or_404(
-            Stage,
+        stages = Stage.objects.filter(
             pipeline__organization=organization,
+            pipeline__is_active=True,
             name=stage_name,
             is_active=True,
+        ).select_related("pipeline").order_by("pipeline__name", "id")
+        if pipeline_name:
+            stages = stages.filter(pipeline__name=pipeline_name)
+
+        candidates = list(stages[:2])
+        if not candidates:
+            return Response(
+                {"message": "The requested active pipeline/stage was not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        if len(candidates) > 1:
+            return Response(
+                {
+                    "message": (
+                        "This stage name exists in more than one pipeline. "
+                        "Supply pipeline so the destination is unambiguous."
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        target_stage = candidates[0]
+        target_pipeline = target_stage.pipeline
+        leads = list(
+            Lead.objects.filter(
+                organization=organization,
+                id__in=lead_ids,
+            ).select_related("pipeline", "stage").order_by("id")
         )
 
-        leads = Lead.objects.filter(
-            organization=organization,
-            id__in=lead_ids,
-        )
-
-        updated_count = leads.update(
-            stage=stage
-        )
+        try:
+            with transaction.atomic():
+                for lead in leads:
+                    if lead.pipeline_id == target_pipeline.id:
+                        move_lead_to_stage(
+                            lead=lead,
+                            stage=target_stage,
+                            actor=getattr(request, "user", None),
+                        )
+                    else:
+                        move_lead_to_pipeline_stage(
+                            lead=lead,
+                            pipeline=target_pipeline,
+                            stage=target_stage,
+                            actor=getattr(request, "user", None),
+                        )
+        except LeadTransitionError as exc:
+            return Response(
+                {"message": str(exc)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         return Response(
             {
-                "updated": updated_count,
-                "stage": stage.name,
+                "updated": len(leads),
+                "pipeline": target_pipeline.name,
+                "stage": target_stage.name,
             },
             status=status.HTTP_200_OK,
         )
@@ -394,7 +446,6 @@ class BulkMoveStageAPIView(APIView):
 # ============================================================
 # CRM PIPELINE ACCESS
 # ============================================================
-
 def get_user_pipelines(user):
     """
     Return the active pipelines this CRM user is allowed to access.
@@ -488,5 +539,3 @@ STAGE_THEMES = [
         "avatar_text": "text-amber-700",
     },
 ]
-
-

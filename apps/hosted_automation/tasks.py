@@ -81,17 +81,13 @@ def _send_generated_ai_message(job):
 def _hosted_ai_execution_scope(job):
     """Keep the shared AI engine pinned to this Hosted conversation.
 
-    The canonical AI engine is intentionally lead-centric. A lead can however
-    have WhatsApp history on more than one connected number, so resolving the
-    latest message/account without the Hosted job's account can switch the
-    execution to another conversation and make the Hosted job silently skip or
-    create its outbound message under the wrong account.
-
-    Hosted AI workers run in dedicated Celery worker processes. Temporarily
-    scope the shared helpers inside that worker process, then restore them in a
-    finally block so every execution stays bound to the durable job's account.
+    The canonical AI engine is intentionally lead-centric. A lead can have
+    WhatsApp history on more than one connected number, so every latest-message,
+    account, context, duplicate, and permission lookup is scoped to the durable
+    Hosted job's exact account while this single-worker task executes.
     """
     from apps.ai_engagement import tasks as ai_tasks
+    from apps.ai_engagement.services.ai_permissions import AIPermissionService
     from apps.ai_engagement.services.context import AIContextBuilder
     from services.channels import whatsapp_service
 
@@ -99,6 +95,7 @@ def _hosted_ai_execution_scope(job):
     original_existing = ai_tasks._has_existing_ai_response
     original_resolver = whatsapp_service.resolve_account_for_lead
     original_get_messages = AIContextBuilder._get_messages
+    original_permission_latest = AIPermissionService._latest_inbound_message
 
     def hosted_latest(*, lead):
         return (
@@ -161,13 +158,33 @@ def _hosted_ai_execution_scope(job):
         messages.reverse()
         return messages
 
+    def hosted_permission_latest(permission_service, *, organization, lead):
+        if organization.pk != job.organization_id or lead.pk != job.lead_id:
+            return original_permission_latest(
+                permission_service,
+                organization=organization,
+                lead=lead,
+            )
+        return (
+            lead.whatsapp_messages.filter(
+                organization=organization,
+                account_id=job.account_id,
+                direction=WhatsAppMessage.Direction.INBOUND,
+            )
+            .select_related("account")
+            .order_by("-created_at", "-id")
+            .first()
+        )
+
     ai_tasks._latest_whatsapp_message = hosted_latest
     ai_tasks._has_existing_ai_response = hosted_existing
     whatsapp_service.resolve_account_for_lead = hosted_resolver
     AIContextBuilder._get_messages = hosted_get_messages
+    AIPermissionService._latest_inbound_message = hosted_permission_latest
     try:
         yield
     finally:
+        AIPermissionService._latest_inbound_message = original_permission_latest
         AIContextBuilder._get_messages = original_get_messages
         whatsapp_service.resolve_account_for_lead = original_resolver
         ai_tasks._has_existing_ai_response = original_existing
