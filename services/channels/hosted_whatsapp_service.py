@@ -528,40 +528,9 @@ def _persist_gateway_message(*, account, payload, historical=False):
         WhatsAppMessage.objects.filter(pk=message.pk).update(created_at=occurred_at)
         message.created_at = occurred_at
 
-    if (
-        lead
-        and pipeline
-        and lead.pipeline_id == pipeline.id
-        and not is_outbound
-        and not historical
-        and settings["ai_auto_reply"]
-    ):
-        def queue_ai_reply():
-            from apps.ai_engagement.services.ai_permissions import AIPermissionService
-            from services.channels.hosted_automation_service import enqueue_ai_engagement
-
-            current_lead = (
-                Lead.objects.select_related("organization", "pipeline", "stage")
-                .filter(id=lead.id, organization=account.organization)
-                .first()
-            )
-            if not current_lead or current_lead.pipeline_id != pipeline.id:
-                return
-
-            permission = AIPermissionService().evaluate(
-                organization=account.organization,
-                lead=current_lead,
-            )
-            if not permission.allowed:
-                return
-
-            enqueue_ai_engagement(
-                account=account,
-                lead=current_lead,
-                source_message=message,
-            )
-
-        transaction.on_commit(queue_ai_reply)
+    # Hosted AI enqueueing is intentionally signal-owned. The post-save signal
+    # resolves the final committed message identity (including LID repair and
+    # live/history precedence) and creates the durable job from that exact row.
 
     return message
 
@@ -709,4 +678,3 @@ def queued_messages(*, account):
         direction=WhatsAppMessage.Direction.OUTBOUND,
         status=WhatsAppMessage.Status.QUEUED,
     ).select_related("lead").order_by("created_at")
-
