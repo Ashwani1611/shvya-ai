@@ -45,8 +45,7 @@ def _fallback_decision(*, service, organization, lead):
     state = state_for_lead(lead, requirements=requirements)
     runtime = (lead.attributes or {}).get(STATE_KEY, {}) if isinstance(lead.attributes, dict) else {}
 
-    # An explicit opt-out remains a hard stop even when the provider/validator
-    # failed. Never turn fail-soft behavior into an opt-out bypass.
+    # An explicit opt-out remains a hard stop even when validation failed.
     if runtime.get("conversation_mode") == "opt_out":
         return EngagementDecision(
             should_engage=False,
@@ -81,8 +80,7 @@ def _fallback_decision(*, service, organization, lead):
 
     # Conversation mode cannot safely manufacture organization-specific facts
     # without a valid model result. A neutral acknowledgement keeps the channel
-    # responsive and invites a concrete follow-up while all CRM side effects are
-    # deliberately suppressed.
+    # responsive while all CRM side effects are deliberately suppressed.
     return EngagementDecision(
         should_engage=True,
         message="Thanks for your message. I’ve received it. Please share the specific detail you’d like help with.",
@@ -101,6 +99,7 @@ def install_engagement_failsoft() -> None:
         return
 
     from apps.ai_engagement.services import engagement as engagement_module
+    from apps.ai_engagement.services.ai_provider import AIProviderTransientError
 
     service_class = engagement_module.EngagementService
     original_engage = service_class.engage
@@ -115,6 +114,10 @@ def install_engagement_failsoft() -> None:
                 context=context,
             )
         except engagement_module.EngagementError as exc:
+            # Celery remains the single retry owner for temporary provider/network
+            # faults. Fail-soft is for permanent provider/schema/validation cases.
+            if isinstance(exc.__cause__, AIProviderTransientError):
+                raise
             logger.exception(
                 "AI engagement validation/provider path failed for lead %s; using deterministic fail-soft reply",
                 getattr(lead, "pk", None),
