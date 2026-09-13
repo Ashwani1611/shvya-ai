@@ -14,7 +14,7 @@ from apps.channels.template_models import WhatsAppTemplateMetadata
 from apps.crm.models import Lead, Pipeline, Stage
 from apps.organizations.models import Organization
 from services.channels.welcome_message_service import send_new_lead_welcome
-from services.crm.lead_service import create_lead
+from services.crm.lead_service import create_lead, upsert_lead
 
 
 class NewLeadWelcomeTests(TestCase):
@@ -242,6 +242,37 @@ class NewLeadWelcomeTests(TestCase):
             )
 
         delay.assert_called_once_with(str(lead.id))
+
+    @patch("apps.channels.welcome_tasks.send_lead_welcome_task.delay")
+    def test_external_upsert_new_lead_still_schedules_template_welcome(self, delay):
+        with self.captureOnCommitCallbacks(execute=True):
+            lead, created = upsert_lead(
+                organization=self.org,
+                pipeline=self.pipeline,
+                stage=self.new_stage,
+                name="External Lead",
+                phone="+919000000101",
+                lead_source="system",
+            )
+
+        self.assertTrue(created)
+        delay.assert_called_once_with(str(lead.id))
+
+    @patch("apps.channels.welcome_tasks.send_lead_welcome_task.delay")
+    def test_whatsapp_api_inbound_new_lead_skips_template_welcome(self, delay):
+        with self.captureOnCommitCallbacks(execute=True):
+            lead, created = upsert_lead(
+                organization=self.org,
+                pipeline=self.pipeline,
+                stage=self.new_stage,
+                name="919000000102",
+                phone="+919000000102",
+                lead_source="whatsapp_api",
+            )
+
+        self.assertTrue(created)
+        self.assertEqual(lead.lead_source, "whatsapp_api")
+        delay.assert_not_called()
 
     @patch("apps.channels.welcome_tasks.send_lead_welcome_task.delay")
     def test_central_create_lead_does_not_schedule_outside_new_leads(self, delay):
