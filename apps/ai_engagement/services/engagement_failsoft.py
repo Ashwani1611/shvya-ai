@@ -1,7 +1,7 @@
 """Deterministic last-resort customer reply when model validation cannot recover.
 
 The normal engagement path remains authoritative and is always attempted first.
-This wrapper exists only to prevent a genuine production WhatsApp turn from
+This module exists only to prevent a genuine production WhatsApp turn from
 ending in silence because both the primary model result and its schema-repair
 result failed validation. It never invents CRM actions, qualification answers,
 business facts, pipeline movement, attributes, reminders, or identifiers.
@@ -16,10 +16,18 @@ _INSTALLED = False
 logger = logging.getLogger(__name__)
 
 
-def _fallback_decision(*, service, organization, lead):
+def build_deterministic_fallback_decision(*, organization, lead):
+    """Build a provider-free, RAG-free response from persisted backend state.
+
+    This is intentionally independent from AIContextBuilder. A generation failure
+    must not be followed by another model/RAG/context path that can fail for the
+    same reason. Qualification fallback uses only the exact authored question
+    compiled from OrgInfo; conversation fallback is a neutral acknowledgement.
+    """
+    from apps.ai_engagement.models import OrgInfo
     from apps.ai_engagement.services.engagement import EngagementDecision
     from apps.ai_engagement.services.organization_profile import (
-        compile_org_ai_profile_from_context,
+        compile_qualification_requirements,
     )
     from apps.ai_engagement.services.qualification_state import (
         MODE_QUALIFICATION,
@@ -27,33 +35,46 @@ def _fallback_decision(*, service, organization, lead):
         requirements_for_lead,
         state_for_lead,
     )
-    from apps.ai_engagement.services.runtime_state import STATE_KEY
+    from apps.ai_engagement.services.runtime_state import STATE_KEY, observe_message
 
-    context = service.context_builder.build(
-        organization=organization,
-        lead=lead,
-        knowledge_query=None,
-        message_limit=service.MESSAGE_LIMIT,
-        knowledge_limit=service.KNOWLEDGE_LIMIT,
-        note_limit=service.NOTE_LIMIT,
+    org_info = (
+        OrgInfo.objects.filter(organization_id=organization.pk)
+        .only("qualification_requirements")
+        .first()
     )
-    profile = compile_org_ai_profile_from_context(context.organization or {})
+    compiled = compile_qualification_requirements(
+        org_info.qualification_requirements if org_info else ""
+    )
     requirements = requirements_for_lead(
         lead,
-        profile.get("qualification", {}).get("requirements", []),
+        compiled.get("requirements", []),
     )
     state = state_for_lead(lead, requirements=requirements)
-    runtime = (lead.attributes or {}).get(STATE_KEY, {}) if isinstance(lead.attributes, dict) else {}
 
-    # An explicit opt-out remains a hard stop even when validation failed.
-    if runtime.get("conversation_mode") == "opt_out":
+    attributes = lead.attributes if isinstance(getattr(lead, "attributes", None), dict) else {}
+    runtime = attributes.get(STATE_KEY, {})
+    latest_inbound = (
+        lead.whatsapp_messages.filter(
+            organization_id=organization.pk,
+            direction="inbound",
+        )
+        .order_by("-created_at", "-id")
+        .first()
+    )
+    if latest_inbound is not None:
+        runtime = observe_message(runtime, latest_inbound.body)
+
+    # Explicit pause/opt-out remains authoritative even if generation failed.
+    conversation_mode = runtime.get("conversation_mode")
+    if conversation_mode in {"paused", "opt_out"}:
+        reason = "OPT_OUT" if conversation_mode == "opt_out" else "NO_ACTION"
         return EngagementDecision(
             should_engage=False,
             message="",
             file_document_id=None,
             crm_actions=[],
-            reason="OPT_OUT",
-            reason_code="OPT_OUT",
+            reason=reason,
+            reason_code=reason,
             model="deterministic-fallback",
         )
 
@@ -64,9 +85,8 @@ def _fallback_decision(*, service, organization, lead):
         and isinstance(item, dict)
         and str(item.get("question") or "").strip()
     ):
-        # Use the exact backend-compiled question. It already includes authored
-        # options in order, which satisfies runtime validation without asking the
-        # model to reconstruct the questionnaire.
+        # Use the exact backend-compiled question. It already contains authored
+        # options in order and does not reconstruct or invent questionnaire text.
         return EngagementDecision(
             should_engage=True,
             message=str(item["question"]).strip(),
@@ -92,6 +112,14 @@ def _fallback_decision(*, service, organization, lead):
     )
 
 
+def _fallback_decision(*, service, organization, lead):
+    """Compatibility wrapper for the installed EngagementService guard."""
+    return build_deterministic_fallback_decision(
+        organization=organization,
+        lead=lead,
+    )
+
+
 def install_engagement_failsoft() -> None:
     """Wrap the production provider path with a safe last-resort reply.
 
@@ -99,6 +127,8 @@ def install_engagement_failsoft() -> None:
     to validate strict schema/security failures. Those calls must continue to
     raise EngagementError. Production workers instantiate EngagementService
     without an injected provider, so only that path receives fail-soft behavior.
+    The worker also owns a second terminal guard so this wrapper is defense in
+    depth rather than the only protection against customer-facing silence.
     """
     global _INSTALLED
     if _INSTALLED:
@@ -132,8 +162,7 @@ def install_engagement_failsoft() -> None:
                 "AI engagement validation/provider path failed for lead %s; using deterministic fail-soft reply",
                 getattr(lead, "pk", None),
             )
-            return _fallback_decision(
-                service=self,
+            return build_deterministic_fallback_decision(
                 organization=organization,
                 lead=lead,
             )
