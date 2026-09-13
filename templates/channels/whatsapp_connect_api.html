@@ -4,116 +4,126 @@
 {% block header %}Connect API{% endblock %}
 
 {% block content %}
-<div class="-mx-4 -mt-4 min-h-[calc(100vh-5rem)] bg-[#f5f5f7] px-4 py-8 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8 lg:py-10">
-    <div class="mx-auto max-w-5xl">
-        <div class="mb-8 text-center sm:mb-10">
-            <div class="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-white text-[#25D366] shadow-[0_1px_2px_rgba(0,0,0,.04),0_10px_30px_rgba(0,0,0,.06)] ring-1 ring-black/[.04]">
-                <i class="ti ti-brand-whatsapp text-[30px]"></i>
+<div class="-mx-4 -mt-4 min-h-[calc(100vh-5rem)] overflow-hidden bg-[#f5f5f7] px-4 pb-12 pt-8 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8 lg:pb-16 lg:pt-12">
+    <div class="pointer-events-none absolute left-1/2 top-24 h-[420px] w-[760px] -translate-x-1/2 rounded-full bg-[radial-gradient(circle,rgba(37,211,102,.10)_0%,rgba(0,113,227,.05)_38%,transparent_72%)] blur-2xl"></div>
+
+    <div class="relative mx-auto max-w-6xl">
+        <header class="mx-auto max-w-4xl text-center">
+            <div class="mx-auto inline-flex items-center gap-2 rounded-full bg-white/90 px-3.5 py-2 text-xs font-semibold text-[#1d1d1f] shadow-[0_1px_2px_rgba(0,0,0,.04),0_8px_30px_rgba(0,0,0,.05)] ring-1 ring-black/[.05] backdrop-blur-xl">
+                <span class="flex h-6 w-6 items-center justify-center rounded-full bg-[#25D366]/10 text-[#16a34a]"><i class="ti ti-brand-whatsapp text-sm"></i></span>
+                WhatsApp Business API
             </div>
-            <p class="mt-5 text-sm font-semibold tracking-tight text-[#6e6e73]">WhatsApp Business API</p>
-            <h1 class="mx-auto mt-2 max-w-3xl text-3xl font-semibold tracking-[-0.035em] text-[#1d1d1f] sm:text-4xl lg:text-[44px] lg:leading-[1.08]">
-                Connect WhatsApp to SHVYA.
+            <h1 class="mx-auto mt-7 max-w-4xl text-[38px] font-semibold leading-[1.02] tracking-[-0.05em] text-[#1d1d1f] sm:text-[52px] lg:text-[64px]">
+                Your WhatsApp.<br class="hidden sm:block"> Connected to SHVYA.
             </h1>
-            <p class="mx-auto mt-3 max-w-xl text-[15px] leading-6 text-[#6e6e73] sm:text-base">
-                Use Meta's official setup to connect your number and start managing conversations in SHVYA.
+            <p class="mx-auto mt-5 max-w-2xl text-[16px] leading-7 text-[#6e6e73] sm:text-[18px]">
+                Connect through Meta’s official flow and bring conversations, automation and CRM into one place.
             </p>
-        </div>
+        </header>
 
         {% if form.non_field_errors %}
-        <div class="mb-5 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        <div class="mx-auto mt-8 max-w-4xl rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 shadow-sm">
             {% for error in form.non_field_errors %}{{ error }}{% endfor %}
         </div>
         {% endif %}
-        <div id="embedded-signup-error" class="mb-5 hidden break-words rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 [overflow-wrap:anywhere]"></div>
+        <div id="embedded-signup-error" class="mx-auto mt-8 hidden max-w-4xl break-words rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 shadow-sm [overflow-wrap:anywhere]"></div>
 
-        <section class="overflow-hidden rounded-[28px] bg-white shadow-[0_1px_2px_rgba(0,0,0,.04),0_12px_40px_rgba(0,0,0,.06)] ring-1 ring-black/[.05]">
-            <div class="grid gap-0 lg:grid-cols-[1.15fr_.85fr]">
-                <div class="p-6 sm:p-8 lg:p-10">
-                    <div class="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#f5f5f7] text-[#1d1d1f]">
-                        <i class="ti ti-plug-connected text-2xl"></i>
-                    </div>
-                    <h2 class="mt-6 text-2xl font-semibold tracking-[-0.025em] text-[#1d1d1f] sm:text-[30px]">Connect with Meta</h2>
-                    <p class="mt-2 max-w-xl text-sm leading-6 text-[#6e6e73] sm:text-[15px]">
-                        Sign in with Meta, select your business and choose the WhatsApp number you want to use.
-                    </p>
+        <section class="relative mt-10 overflow-hidden rounded-[36px] bg-white shadow-[0_2px_4px_rgba(0,0,0,.04),0_24px_70px_rgba(0,0,0,.08)] ring-1 ring-black/[.04] sm:mt-12">
+            <div class="pointer-events-none absolute -right-28 -top-28 h-80 w-80 rounded-full bg-[#25D366]/10 blur-3xl"></div>
+            <div class="pointer-events-none absolute bottom-0 left-[32%] h-56 w-56 rounded-full bg-[#0071e3]/[.06] blur-3xl"></div>
 
-                    <div class="mt-6 flex flex-wrap gap-2 text-xs font-medium text-[#6e6e73]">
-                        <span class="rounded-full bg-[#f5f5f7] px-3 py-1.5">Official Meta flow</span>
-                        <span class="rounded-full bg-[#f5f5f7] px-3 py-1.5">Secure connection</span>
-                        <span class="rounded-full bg-[#f5f5f7] px-3 py-1.5">No coding</span>
+            <div class="relative grid lg:grid-cols-[1.08fr_.92fr]">
+                <div class="flex min-h-[430px] flex-col justify-between p-7 sm:p-10 lg:p-12">
+                    <div>
+                        <div class="flex h-14 w-14 items-center justify-center rounded-[18px] bg-[#1d1d1f] text-white shadow-[0_10px_24px_rgba(0,0,0,.16)]">
+                            <i class="ti ti-plug-connected text-[27px]"></i>
+                        </div>
+                        <p class="mt-8 text-sm font-semibold text-[#0071e3]">Official Meta connection</p>
+                        <h2 class="mt-2 max-w-xl text-3xl font-semibold leading-tight tracking-[-0.035em] text-[#1d1d1f] sm:text-[40px]">
+                            Connect in a few guided steps.
+                        </h2>
+                        <p class="mt-4 max-w-xl text-[15px] leading-6 text-[#6e6e73] sm:text-base">
+                            Sign in with Meta, choose your business and select the WhatsApp number you want SHVYA to manage.
+                        </p>
+
+                        <div class="mt-7 flex flex-wrap gap-2.5">
+                            <span class="inline-flex items-center gap-1.5 rounded-full bg-[#f5f5f7] px-3.5 py-2 text-xs font-semibold text-[#424245]"><i class="ti ti-shield-check text-[#0071e3]"></i> Meta authorized</span>
+                            <span class="inline-flex items-center gap-1.5 rounded-full bg-[#f5f5f7] px-3.5 py-2 text-xs font-semibold text-[#424245]"><i class="ti ti-lock text-[#0071e3]"></i> Secure setup</span>
+                            <span class="inline-flex items-center gap-1.5 rounded-full bg-[#f5f5f7] px-3.5 py-2 text-xs font-semibold text-[#424245]"><i class="ti ti-code-off text-[#0071e3]"></i> No coding</span>
+                        </div>
                     </div>
 
-                    {% if embedded_signup_available %}
-                    <button type="button" id="embedded-signup-btn" disabled class="mt-7 inline-flex w-full items-center justify-center gap-2 rounded-full bg-[#1d1d1f] px-6 py-3.5 text-sm font-semibold text-white shadow-sm transition duration-200 hover:bg-black focus:outline-none focus:ring-4 focus:ring-black/10 disabled:cursor-not-allowed disabled:opacity-45 sm:w-auto sm:min-w-[260px]">
-                        <i class="ti ti-brand-whatsapp text-lg"></i>
-                        <span>Loading Meta…</span>
-                    </button>
-                    {% else %}
-                    <div class="mt-7 rounded-2xl bg-[#fff7ed] px-4 py-3 text-sm text-[#9a3412] ring-1 ring-orange-100">
-                        Meta one-click setup is unavailable right now. Use manual setup below.
+                    <div class="mt-9">
+                        {% if embedded_signup_available %}
+                        <button type="button" id="embedded-signup-btn" disabled class="group inline-flex w-full items-center justify-center gap-2.5 rounded-full bg-[#0071e3] px-7 py-4 text-[15px] font-semibold text-white shadow-[0_8px_22px_rgba(0,113,227,.20)] transition duration-200 hover:bg-[#0077ed] hover:shadow-[0_10px_26px_rgba(0,113,227,.25)] focus:outline-none focus:ring-4 focus:ring-[#0071e3]/15 disabled:cursor-not-allowed disabled:opacity-45 sm:w-auto sm:min-w-[285px]">
+                            <i class="ti ti-brand-whatsapp text-xl"></i>
+                            <span>Loading Meta…</span>
+                            <i class="ti ti-arrow-up-right text-base opacity-70 transition group-hover:translate-x-0.5 group-hover:-translate-y-0.5"></i>
+                        </button>
+                        {% else %}
+                        <div class="max-w-xl rounded-2xl bg-[#fff7ed] px-4 py-3.5 text-sm leading-6 text-[#9a3412] ring-1 ring-orange-100">
+                            Meta one-click setup is unavailable right now. Use manual setup below.
+                        </div>
+                        {% endif %}
                     </div>
-                    {% endif %}
                 </div>
 
-                <div class="border-t border-black/[.06] bg-[#fbfbfd] p-6 sm:p-8 lg:border-l lg:border-t-0 lg:p-10">
-                    <p class="text-xs font-semibold uppercase tracking-[0.12em] text-[#86868b]">Before you connect</p>
-                    <div class="mt-5 space-y-5">
-                        <div class="flex gap-3">
-                            <div class="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white text-[#0071e3] ring-1 ring-black/[.05]"><i class="ti ti-user-check"></i></div>
-                            <div>
-                                <p class="text-sm font-semibold text-[#1d1d1f]">Meta admin access</p>
-                                <p class="mt-0.5 text-xs leading-5 text-[#6e6e73]">Use an account with access to your business portfolio.</p>
+                <div class="relative overflow-hidden border-t border-black/[.06] bg-[#0a0a0a] p-7 text-white sm:p-10 lg:border-l lg:border-t-0 lg:p-12">
+                    <div class="pointer-events-none absolute -right-16 top-2 h-64 w-64 rounded-full bg-[#25D366]/20 blur-3xl"></div>
+                    <div class="pointer-events-none absolute -bottom-20 -left-16 h-64 w-64 rounded-full bg-[#0071e3]/20 blur-3xl"></div>
+                    <div class="relative">
+                        <div class="flex items-center justify-between">
+                            <div class="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/10 text-[#25D366] ring-1 ring-white/10 backdrop-blur-xl">
+                                <i class="ti ti-brand-meta text-2xl"></i>
                             </div>
+                            <span class="rounded-full bg-white/10 px-3 py-1.5 text-[11px] font-semibold text-white/70 ring-1 ring-white/10">META</span>
                         </div>
-                        <div class="flex gap-3">
-                            <div class="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white text-[#0071e3] ring-1 ring-black/[.05]"><i class="ti ti-device-mobile"></i></div>
-                            <div>
-                                <p class="text-sm font-semibold text-[#1d1d1f]">WhatsApp number</p>
-                                <p class="mt-0.5 text-xs leading-5 text-[#6e6e73]">Keep the number ready for verification during setup.</p>
-                            </div>
-                        </div>
-                    </div>
 
-                    <a href="{% url 'whatsapp-accounts' %}" class="mt-7 inline-flex items-center gap-1.5 text-sm font-semibold text-[#0071e3] transition hover:underline">
-                        Manage connected numbers <i class="ti ti-chevron-right text-base"></i>
-                    </a>
+                        <div class="mt-16 sm:mt-20">
+                            <p class="text-xs font-semibold uppercase tracking-[0.16em] text-white/45">Simple by design</p>
+                            <h3 class="mt-3 text-3xl font-semibold leading-tight tracking-[-0.035em] sm:text-[36px]">One secure flow.<br>Everything connected.</h3>
+                            <p class="mt-4 max-w-sm text-sm leading-6 text-white/60">Once connected, your WhatsApp account becomes available across SHVYA conversations and automation.</p>
+                        </div>
+
+                        <a href="{% url 'whatsapp-accounts' %}" class="mt-10 inline-flex items-center gap-1.5 text-sm font-semibold text-[#6eb8ff] transition hover:text-white">
+                            Manage connected numbers <i class="ti ti-chevron-right text-base"></i>
+                        </a>
+                    </div>
                 </div>
             </div>
 
-            <div class="border-t border-black/[.06] px-6 py-5 sm:px-8 lg:px-10">
+            <div class="relative border-t border-black/[.06] bg-white px-7 py-5 sm:px-10 lg:px-12">
                 <details class="group" {% if not embedded_signup_available %}open{% endif %}>
                     <summary class="flex cursor-pointer list-none items-center justify-between gap-4 py-1 text-sm font-semibold text-[#1d1d1f]">
-                        <span class="flex items-center gap-2.5"><i class="ti ti-settings text-lg text-[#86868b]"></i>Manual setup</span>
-                        <i class="ti ti-chevron-down text-lg text-[#86868b] transition group-open:rotate-180"></i>
+                        <span class="flex items-center gap-2.5"><span class="flex h-8 w-8 items-center justify-center rounded-full bg-[#f5f5f7]"><i class="ti ti-settings text-base text-[#6e6e73]"></i></span>Manual setup</span>
+                        <span class="flex items-center gap-1 text-xs font-medium text-[#86868b]">Advanced <i class="ti ti-chevron-down text-lg transition group-open:rotate-180"></i></span>
                     </summary>
 
-                    <div class="pt-5">
+                    <div class="pt-6">
                         <p class="mb-5 text-sm leading-6 text-[#6e6e73]">Enter your Meta credentials if you prefer to connect manually.</p>
                         <form method="post" action="{% url 'whatsapp-connect-api' %}" class="grid gap-4 sm:grid-cols-2">
                             {% csrf_token %}
                             <div>
                                 <label class="mb-1.5 block text-xs font-semibold text-[#1d1d1f]">Phone Number ID</label>
-                                <input type="text" name="phone_number_id" value="{{ form.phone_number_id.value|default:'' }}" placeholder="109876543210987" class="w-full rounded-xl border border-black/10 bg-[#f5f5f7] px-3.5 py-3 text-sm text-[#1d1d1f] outline-none transition placeholder:text-[#a1a1a6] focus:border-[#0071e3] focus:bg-white focus:ring-4 focus:ring-[#0071e3]/10">
+                                <input type="text" name="phone_number_id" value="{{ form.phone_number_id.value|default:'' }}" placeholder="109876543210987" class="w-full rounded-2xl border border-black/[.08] bg-[#f5f5f7] px-4 py-3.5 text-sm text-[#1d1d1f] outline-none transition placeholder:text-[#a1a1a6] focus:border-[#0071e3] focus:bg-white focus:ring-4 focus:ring-[#0071e3]/10">
                                 {% if form.phone_number_id.errors %}<p class="mt-1 text-xs text-red-600">{{ form.phone_number_id.errors.0 }}</p>{% endif %}
                             </div>
                             <div>
                                 <label class="mb-1.5 block text-xs font-semibold text-[#1d1d1f]">WABA ID <span class="font-normal text-[#86868b]">Optional</span></label>
-                                <input type="text" name="waba_id" value="{{ form.waba_id.value|default:'' }}" placeholder="123456789012345" class="w-full rounded-xl border border-black/10 bg-[#f5f5f7] px-3.5 py-3 text-sm text-[#1d1d1f] outline-none transition placeholder:text-[#a1a1a6] focus:border-[#0071e3] focus:bg-white focus:ring-4 focus:ring-[#0071e3]/10">
+                                <input type="text" name="waba_id" value="{{ form.waba_id.value|default:'' }}" placeholder="123456789012345" class="w-full rounded-2xl border border-black/[.08] bg-[#f5f5f7] px-4 py-3.5 text-sm text-[#1d1d1f] outline-none transition placeholder:text-[#a1a1a6] focus:border-[#0071e3] focus:bg-white focus:ring-4 focus:ring-[#0071e3]/10">
                             </div>
                             <div>
                                 <label class="mb-1.5 block text-xs font-semibold text-[#1d1d1f]">Display number <span class="font-normal text-[#86868b]">Optional</span></label>
-                                <input type="text" name="display_phone_number" value="{{ form.display_phone_number.value|default:'' }}" placeholder="+91 98765 43210" class="w-full rounded-xl border border-black/10 bg-[#f5f5f7] px-3.5 py-3 text-sm text-[#1d1d1f] outline-none transition placeholder:text-[#a1a1a6] focus:border-[#0071e3] focus:bg-white focus:ring-4 focus:ring-[#0071e3]/10">
+                                <input type="text" name="display_phone_number" value="{{ form.display_phone_number.value|default:'' }}" placeholder="+91 98765 43210" class="w-full rounded-2xl border border-black/[.08] bg-[#f5f5f7] px-4 py-3.5 text-sm text-[#1d1d1f] outline-none transition placeholder:text-[#a1a1a6] focus:border-[#0071e3] focus:bg-white focus:ring-4 focus:ring-[#0071e3]/10">
                             </div>
                             <div>
                                 <label class="mb-1.5 block text-xs font-semibold text-[#1d1d1f]">Access Token</label>
-                                <input type="password" name="access_token" placeholder="System-user access token" class="w-full rounded-xl border border-black/10 bg-[#f5f5f7] px-3.5 py-3 text-sm text-[#1d1d1f] outline-none transition placeholder:text-[#a1a1a6] focus:border-[#0071e3] focus:bg-white focus:ring-4 focus:ring-[#0071e3]/10">
+                                <input type="password" name="access_token" placeholder="System-user access token" class="w-full rounded-2xl border border-black/[.08] bg-[#f5f5f7] px-4 py-3.5 text-sm text-[#1d1d1f] outline-none transition placeholder:text-[#a1a1a6] focus:border-[#0071e3] focus:bg-white focus:ring-4 focus:ring-[#0071e3]/10">
                                 {% if form.access_token.errors %}<p class="mt-1 text-xs text-red-600">{{ form.access_token.errors.0 }}</p>{% endif %}
                             </div>
                             <div class="sm:col-span-2 flex flex-col gap-3 pt-1 sm:flex-row sm:items-center sm:justify-between">
                                 <p class="text-xs text-[#86868b]"><i class="ti ti-lock mr-1"></i>Your token is stored securely.</p>
-                                <button type="submit" class="inline-flex items-center justify-center gap-2 rounded-full bg-[#0071e3] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#0077ed] focus:outline-none focus:ring-4 focus:ring-[#0071e3]/15">
-                                    Connect manually
-                                </button>
+                                <button type="submit" class="inline-flex items-center justify-center gap-2 rounded-full bg-[#1d1d1f] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-black focus:outline-none focus:ring-4 focus:ring-black/10">Connect manually</button>
                             </div>
                         </form>
                     </div>
@@ -121,15 +131,101 @@
             </div>
         </section>
 
-        <div class="mt-5 flex flex-col items-center justify-between gap-3 rounded-[22px] bg-white px-5 py-4 text-center shadow-[0_1px_2px_rgba(0,0,0,.03)] ring-1 ring-black/[.04] sm:flex-row sm:text-left">
-            <div>
-                <p class="text-sm font-semibold text-[#1d1d1f]">Need a different connection method?</p>
-                <p class="mt-0.5 text-xs text-[#86868b]">Use a Coexisted Account instead.</p>
+        <section class="mt-14 sm:mt-16">
+            <div class="mx-auto max-w-3xl text-center">
+                <p class="text-sm font-semibold text-[#0071e3]">Before you connect</p>
+                <h2 class="mt-2 text-3xl font-semibold tracking-[-0.04em] text-[#1d1d1f] sm:text-[42px]">Have these five things ready.</h2>
+                <p class="mx-auto mt-3 max-w-xl text-sm leading-6 text-[#6e6e73] sm:text-base">A little preparation makes Meta setup faster and smoother.</p>
             </div>
-            <a href="{% url 'whatsapp-connect-hosted' %}" class="inline-flex items-center gap-1 text-sm font-semibold text-[#0071e3] hover:underline">
-                Open Coexisted Accounts <i class="ti ti-chevron-right text-base"></i>
-            </a>
-        </div>
+
+            <div class="mt-8 grid gap-4 md:grid-cols-2 lg:grid-cols-6">
+                <article class="group relative overflow-hidden rounded-[28px] bg-white p-6 shadow-[0_1px_2px_rgba(0,0,0,.03),0_14px_36px_rgba(0,0,0,.05)] ring-1 ring-black/[.04] transition duration-300 hover:-translate-y-0.5 hover:shadow-[0_18px_44px_rgba(0,0,0,.08)] md:col-span-1 lg:col-span-2">
+                    <div class="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#eaf3ff] text-[#0071e3]"><i class="ti ti-user-shield text-[22px]"></i></div>
+                    <p class="mt-6 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#86868b]">01</p>
+                    <h3 class="mt-1 text-lg font-semibold tracking-[-0.02em] text-[#1d1d1f]">Meta admin access</h3>
+                    <p class="mt-2 text-sm leading-6 text-[#6e6e73]">Use a Meta account with admin access to the Business Portfolio that will own your WhatsApp account.</p>
+                </article>
+
+                <article class="group relative overflow-hidden rounded-[28px] bg-white p-6 shadow-[0_1px_2px_rgba(0,0,0,.03),0_14px_36px_rgba(0,0,0,.05)] ring-1 ring-black/[.04] transition duration-300 hover:-translate-y-0.5 hover:shadow-[0_18px_44px_rgba(0,0,0,.08)] md:col-span-1 lg:col-span-2">
+                    <div class="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#f2edff] text-[#7c3aed]"><i class="ti ti-world-www text-[22px]"></i></div>
+                    <p class="mt-6 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#86868b]">02</p>
+                    <h3 class="mt-1 text-lg font-semibold tracking-[-0.02em] text-[#1d1d1f]">Business website</h3>
+                    <p class="mt-2 text-sm leading-6 text-[#6e6e73]">Keep a live website that clearly represents your business, brand and contact details.</p>
+                </article>
+
+                <article class="group relative overflow-hidden rounded-[28px] bg-white p-6 shadow-[0_1px_2px_rgba(0,0,0,.03),0_14px_36px_rgba(0,0,0,.05)] ring-1 ring-black/[.04] transition duration-300 hover:-translate-y-0.5 hover:shadow-[0_18px_44px_rgba(0,0,0,.08)] md:col-span-1 lg:col-span-2">
+                    <div class="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#fff1e8] text-[#f97316]"><i class="ti ti-file-certificate text-[22px]"></i></div>
+                    <p class="mt-6 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#86868b]">03</p>
+                    <h3 class="mt-1 text-lg font-semibold tracking-[-0.02em] text-[#1d1d1f]">Address proof</h3>
+                    <p class="mt-2 text-sm leading-6 text-[#6e6e73]">Keep valid business and address documents ready in case Meta requests verification.</p>
+                </article>
+
+                <article class="group relative overflow-hidden rounded-[28px] bg-[#1d1d1f] p-7 text-white shadow-[0_18px_48px_rgba(0,0,0,.12)] md:col-span-1 lg:col-span-3">
+                    <div class="pointer-events-none absolute -right-16 -top-20 h-56 w-56 rounded-full bg-[#25D366]/20 blur-3xl"></div>
+                    <div class="relative flex h-11 w-11 items-center justify-center rounded-2xl bg-white/10 text-[#25D366] ring-1 ring-white/10"><i class="ti ti-device-mobile-check text-[22px]"></i></div>
+                    <div class="relative mt-8">
+                        <p class="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/45">04</p>
+                        <h3 class="mt-1 text-xl font-semibold tracking-[-0.025em]">A fresh WhatsApp number</h3>
+                        <p class="mt-2 max-w-md text-sm leading-6 text-white/60">Use a number that is not currently active on WhatsApp, WhatsApp Business or another WhatsApp API account.</p>
+                    </div>
+                </article>
+
+                <article class="group relative overflow-hidden rounded-[28px] bg-gradient-to-br from-[#eaf3ff] to-white p-7 shadow-[0_1px_2px_rgba(0,0,0,.03),0_14px_36px_rgba(0,0,0,.05)] ring-1 ring-black/[.04] md:col-span-1 lg:col-span-3">
+                    <div class="flex h-11 w-11 items-center justify-center rounded-2xl bg-white text-[#0071e3] shadow-sm ring-1 ring-black/[.04]"><i class="ti ti-credit-card text-[22px]"></i></div>
+                    <div class="mt-8">
+                        <p class="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#86868b]">05</p>
+                        <h3 class="mt-1 text-xl font-semibold tracking-[-0.025em] text-[#1d1d1f]">International payments</h3>
+                        <p class="mt-2 max-w-md text-sm leading-6 text-[#6e6e73]">Keep a credit card with international and online payments enabled for Meta billing.</p>
+                    </div>
+                </article>
+            </div>
+        </section>
+
+        <section class="relative mt-14 overflow-hidden rounded-[36px] bg-gradient-to-br from-[#07120c] via-[#0b1710] to-[#101010] p-7 text-white shadow-[0_24px_70px_rgba(0,0,0,.16)] sm:mt-16 sm:p-10 lg:p-12">
+            <div class="pointer-events-none absolute -right-20 -top-24 h-96 w-96 rounded-full bg-[#25D366]/20 blur-3xl"></div>
+            <div class="pointer-events-none absolute bottom-0 left-1/3 h-64 w-64 rounded-full bg-[#0071e3]/10 blur-3xl"></div>
+
+            <div class="relative grid items-center gap-10 lg:grid-cols-[1.05fr_.95fr]">
+                <div>
+                    <div class="inline-flex items-center gap-2 rounded-full bg-white/10 px-3.5 py-2 text-xs font-semibold text-white/80 ring-1 ring-white/10 backdrop-blur-xl">
+                        <i class="ti ti-arrows-exchange text-[#25D366]"></i> Coexistence
+                    </div>
+                    <h2 class="mt-6 max-w-2xl text-3xl font-semibold leading-tight tracking-[-0.04em] sm:text-[44px]">
+                        Keep WhatsApp Business.<br>Add SHVYA automation.
+                    </h2>
+                    <p class="mt-4 max-w-2xl text-[15px] leading-7 text-white/60 sm:text-base">
+                        Connect your existing WhatsApp Business number through coexistence. Keep using the WhatsApp Business app while SHVYA adds API-style automation, CRM sync and team workflows around it.
+                    </p>
+
+                    <div class="mt-7 flex flex-wrap gap-2.5">
+                        <span class="rounded-full bg-white/10 px-3.5 py-2 text-xs font-semibold text-white/75 ring-1 ring-white/10">Keep your Business app</span>
+                        <span class="rounded-full bg-white/10 px-3.5 py-2 text-xs font-semibold text-white/75 ring-1 ring-white/10">Same business number</span>
+                        <span class="rounded-full bg-white/10 px-3.5 py-2 text-xs font-semibold text-white/75 ring-1 ring-white/10">SHVYA automation</span>
+                    </div>
+
+                    <a href="{% url 'whatsapp-connect-hosted' %}" class="mt-8 inline-flex items-center gap-2 rounded-full bg-white px-6 py-3.5 text-sm font-semibold text-[#1d1d1f] transition hover:bg-[#f5f5f7]">
+                        Connect with coexistence <i class="ti ti-arrow-up-right text-base"></i>
+                    </a>
+                </div>
+
+                <div class="relative mx-auto w-full max-w-[420px]">
+                    <div class="absolute -left-5 top-10 h-[250px] w-[150px] rotate-[-8deg] rounded-[34px] border border-white/10 bg-white/[.06] shadow-2xl backdrop-blur-xl"></div>
+                    <div class="relative ml-auto h-[310px] w-[185px] rotate-[6deg] rounded-[38px] border border-white/15 bg-gradient-to-b from-white/15 to-white/[.04] p-3 shadow-[0_30px_70px_rgba(0,0,0,.35)] backdrop-blur-2xl">
+                        <div class="flex h-full flex-col overflow-hidden rounded-[29px] bg-[#0f2016] ring-1 ring-white/[.06]">
+                            <div class="flex items-center justify-between px-4 pt-4 text-[10px] text-white/50"><span>SHVYA</span><i class="ti ti-wifi"></i></div>
+                            <div class="flex flex-1 flex-col items-center justify-center px-5 text-center">
+                                <div class="flex h-14 w-14 items-center justify-center rounded-[18px] bg-[#25D366] text-white shadow-[0_12px_28px_rgba(37,211,102,.25)]"><i class="ti ti-brand-whatsapp text-3xl"></i></div>
+                                <p class="mt-5 text-sm font-semibold">WhatsApp Business</p>
+                                <p class="mt-1 text-[11px] leading-4 text-white/45">Your app stays available</p>
+                                <div class="my-4 h-7 w-px bg-gradient-to-b from-white/10 via-[#25D366]/70 to-white/10"></div>
+                                <div class="rounded-full bg-white/10 px-3 py-1.5 text-[10px] font-semibold text-[#8cf5b2] ring-1 ring-white/10">Connected to SHVYA</div>
+                            </div>
+                            <div class="mx-auto mb-3 h-1 w-16 rounded-full bg-white/20"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
     </div>
 </div>
 
