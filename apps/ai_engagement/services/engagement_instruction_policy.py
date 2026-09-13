@@ -71,8 +71,9 @@ def parse_engagement_instruction_sections(raw: str) -> dict[str, str]:
     """Extract authored AI Brain policy sections without interpreting their prose.
 
     The UI allows free-form Engagement Instructions, so headings are deliberately
-    tolerant of both ``##Stage shifting`` and ``## Stage shifting``.  Unknown
-    headings remain part of general instructions and are not treated as CRM policy.
+    tolerant of both ``##Stage shifting`` and ``## Stage shifting``. Unknown
+    headings end the current known policy section instead of leaking unrelated
+    instructions into CRM authority.
     """
 
     buckets: dict[str, list[str]] = {key: [] for key in _SECTION_ALIASES}
@@ -82,8 +83,7 @@ def parse_engagement_instruction_sections(raw: str) -> dict[str, str]:
         line = raw_line.rstrip()
         heading = _HEADING_RE.match(line)
         if heading:
-            canonical = _canonical_heading(heading.group("title"))
-            current = canonical
+            current = _canonical_heading(heading.group("title"))
             continue
 
         canonical_plain = _plain_heading(line)
@@ -132,6 +132,36 @@ def _looks_like_questionnaire(value: str) -> bool:
     )
 
 
+def _is_completion_directive(line: str) -> bool:
+    """Keep lifecycle prose in policy but out of the questionnaire itself."""
+
+    text = _clean(_BULLET_RE.sub("", line)).casefold()
+    if not text or "?" in text:
+        return False
+    completion_term = bool(
+        re.search(
+            r"\b(?:qualified|qualif(?:y|ied|ication)\s+complete|mark\s+.*qualif|move\s+.*qualif)\b",
+            text,
+        )
+    )
+    all_answers = bool(
+        re.search(
+            r"\b(?:after|once|when|if)?\s*(?:all|every)\s+(?:required\s+)?(?:qualification\s+)?(?:questions?|requirements?|answers?)\b",
+            text,
+        )
+    )
+    return completion_term and all_answers
+
+
+def _questionnaire_only(section: str) -> str:
+    lines = [
+        line.rstrip()
+        for line in str(section or "").splitlines()
+        if line.strip() and not _is_completion_directive(line)
+    ]
+    return "\n".join(lines).strip()
+
+
 def effective_qualification_source(
     *,
     qualification_requirements: str,
@@ -140,9 +170,10 @@ def effective_qualification_source(
     """Return the one questionnaire source used by generation and persistence.
 
     The dedicated Qualification Requirements field remains the primary source for
-    backwards compatibility.  When it is empty, a real questionnaire authored
-    under ``##Qualification criteria`` becomes the questionnaire instead.  Pure
-    completion/routing prose in that section is never miscompiled as a question.
+    backwards compatibility. When it is empty, a real questionnaire authored
+    under ``##Qualification criteria`` becomes the questionnaire instead.
+    Completion/routing prose remains policy and is not accidentally compiled as
+    an extra qualification question.
     """
 
     dedicated = str(qualification_requirements or "").strip()
@@ -152,8 +183,9 @@ def effective_qualification_source(
     section = parse_engagement_instruction_sections(engagement_instructions).get(
         "qualification_criteria", ""
     )
-    if section and _looks_like_questionnaire(section):
-        return section, "engagement_instructions.qualification_criteria"
+    questionnaire = _questionnaire_only(section)
+    if questionnaire and _looks_like_questionnaire(questionnaire):
+        return questionnaire, "engagement_instructions.qualification_criteria"
     return "", "none"
 
 
