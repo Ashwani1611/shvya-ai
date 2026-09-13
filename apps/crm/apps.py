@@ -14,6 +14,7 @@ class CrmConfig(AppConfig):
         # risky rewrite of the large dashboard view module and lets every
         # existing HTMX endpoint use the optimized builder automatically.
         from apps.crm.views import dashboard as dashboard_views
+        from apps.crm.views import filtering as filtering_views
         from services.crm.dashboard_query_service import (
             build_lead_table_context,
         )
@@ -52,4 +53,26 @@ class CrmConfig(AppConfig):
 
         dashboard_views._lead_card_context = (
             lead_card_context_with_summary_action
+        )
+
+        # The CRM filter/search endpoint builds lead cards through a separate
+        # preparation helper in views/filtering.py. That path bypasses both
+        # dashboard hooks above, so filtered or stage-refreshed cards could
+        # still render the stale "No summary yet" state. Keep the same summary
+        # action contract there as well.
+        original_filtered_prepare_lead = filtering_views._prepare_lead
+
+        def filtered_prepare_lead_with_summary_action(
+            lead,
+            attribute_definitions,
+        ):
+            prepared_lead = original_filtered_prepare_lead(
+                lead,
+                attribute_definitions,
+            )
+            prepared_lead.has_conversation_summary = True
+            return prepared_lead
+
+        filtering_views._prepare_lead = (
+            filtered_prepare_lead_with_summary_action
         )
