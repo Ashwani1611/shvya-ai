@@ -5,7 +5,7 @@ from django.test import SimpleTestCase, TestCase
 
 from apps.channels.models import WhatsAppAccount, WhatsAppMessage
 from apps.channels.providers.whatsapp import WhatsAppClient
-from apps.crm.models import Lead, Pipeline, Stage
+from apps.crm.models import Lead, Pipeline
 from apps.organizations.models import Organization
 from services.channels.whatsapp_api_runtime import (
     _contact_names_from_payload,
@@ -55,7 +55,7 @@ class WhatsAppAPITerminalStatusTests(TestCase):
     def setUp(self):
         self.organization = Organization.objects.create(name="Delivery Org")
         self.pipeline = Pipeline.objects.create(organization=self.organization, name="Sales")
-        self.stage = Stage.objects.create(pipeline=self.pipeline, name="New leads")
+        self.stage = self.pipeline.stages.get(name="New leads")
         self.account = WhatsAppAccount.objects.create(
             organization=self.organization,
             business_name="API",
