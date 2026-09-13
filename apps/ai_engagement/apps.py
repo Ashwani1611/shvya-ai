@@ -94,6 +94,16 @@ class AiEngagementConfig(AppConfig):
 
         install_qualification_crm_action_runtime()
 
+        # Close the remaining production gaps: use attribute descriptions as
+        # mapping guidance, resolve Qualified across active organization
+        # pipelines, preserve evidence-bound cross-pipeline routing, and accept a
+        # concrete date/time as sufficient reminder evidence.
+        from apps.ai_engagement.services.crm_routing_reliability import (
+            install_crm_routing_reliability,
+        )
+
+        install_crm_routing_reliability()
+
         # LangGraph is the turn-level orchestration authority. It keeps the
         # existing EngagementService/Celery/WhatsApp contracts stable while
         # segmenting context, deterministic extraction, routing, RAG,
