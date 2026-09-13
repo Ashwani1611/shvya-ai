@@ -7,6 +7,7 @@ import re
 import requests
 from django.conf import settings
 from django.contrib import messages
+from django.db import transaction
 from django.db.models import Prefetch
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -19,6 +20,40 @@ from apps.integrations.models import MetaLeadForm, MetaLeadPage
 from services.crm.lead_service import upsert_lead
 
 logger = logging.getLogger(__name__)
+
+
+META_LEAD_ATTRIBUTE_DEFINITIONS = (
+    ("Meta Lead Ad Id", "meta_lead_ad_id"),
+    ("Meta Lead Form", "meta_lead_form"),
+    ("Meta Lead Form Id", "meta_lead_form_id"),
+)
+
+
+def _ensure_meta_attribute_definitions(organization):
+    """Make Meta import attributes visible in the CRM lead attribute UI."""
+    existing_keys = set(
+        AttributeDefinition.objects.filter(
+            organization=organization,
+            key__in=[key for _name, key in META_LEAD_ATTRIBUTE_DEFINITIONS],
+        ).values_list("key", flat=True)
+    )
+    definitions = []
+    for index, (name, key) in enumerate(META_LEAD_ATTRIBUTE_DEFINITIONS, start=900):
+        if key in existing_keys:
+            continue
+        definition = AttributeDefinition(
+            organization=organization,
+            name=name,
+            key=key,
+            field_type=AttributeDefinition.FieldType.TEXT,
+            description="Automatically filled when a lead is created from Meta Lead Ads.",
+            display_order=index,
+        )
+        definition.full_clean()
+        definitions.append(definition)
+
+    if definitions:
+        AttributeDefinition.objects.bulk_create(definitions, ignore_conflicts=True)
 
 
 def _normalise_field_key(value):
@@ -77,12 +112,10 @@ def _meta_lead_name(mapping, fields):
 
 
 def _normalise_meta_phone(value):
-    """Convert Meta phone answers into the CRM format when possible."""
+    """Convert Meta phone answers into a consistent CRM phone format."""
     value = str(value or "").strip()
     if not value:
         return ""
-    if value.startswith("+"):
-        return value
 
     digits = re.sub(r"\D", "", value)
     if not digits:
@@ -93,9 +126,21 @@ def _normalise_meta_phone(value):
     ).strip()
     default_country_digits = re.sub(r"\D", "", default_country_code)
 
-    if len(digits) == 10 and default_country_digits:
-        return f"+{default_country_digits}{digits}"
-    if len(digits) > 10:
+    if digits.startswith("00") and len(digits) > 2:
+        digits = digits[2:]
+
+    if default_country_digits:
+        if len(digits) == 10:
+            return f"+{default_country_digits}{digits}"
+        if (
+            digits.startswith(default_country_digits)
+            and len(digits) == len(default_country_digits) + 10
+        ):
+            return f"+{digits}"
+        if digits.startswith("0") and len(digits) == 11:
+            return f"+{default_country_digits}{digits[-10:]}"
+
+    if value.startswith("+") or len(digits) > 10:
         return f"+{digits}"
     return value
 
@@ -282,21 +327,23 @@ def meta_lead_webhook(request):
                     attributes["meta_import_warning"] = phone_warning
                     attributes["meta_raw_phone"] = raw_phone
 
-                lead, created = upsert_lead(
-                    organization=page.organization,
-                    pipeline=form.pipeline,
-                    stage=form.stage,
-                    name=_meta_lead_name(mapping, fields) or "Meta Lead",
-                    phone=phone,
-                    email=_field_value_with_fallbacks(
-                        mapping,
-                        "email",
-                        fields,
-                        ("email", "email_address"),
-                    ),
-                    attributes=attributes,
-                    lead_source="meta_ads",
-                )
+                with transaction.atomic():
+                    _ensure_meta_attribute_definitions(page.organization)
+                    lead, created = upsert_lead(
+                        organization=page.organization,
+                        pipeline=form.pipeline,
+                        stage=form.stage,
+                        name=_meta_lead_name(mapping, fields) or "Meta Lead",
+                        phone=phone,
+                        email=_field_value_with_fallbacks(
+                            mapping,
+                            "email",
+                            fields,
+                            ("email", "email_address"),
+                        ),
+                        attributes=attributes,
+                        lead_source="meta_ads",
+                    )
                 logger.info(
                     "%s Meta lead %s for form %s into organization %s as CRM lead %s",
                     "Created" if created else "Updated",
