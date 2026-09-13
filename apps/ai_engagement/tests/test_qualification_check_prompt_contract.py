@@ -55,12 +55,13 @@ class QualificationCheckPromptContractTests(SimpleTestCase):
             "inbound",
         )
 
-    def test_prompt_preserves_all_questions_override_and_default_majority_rule(self):
+    def test_prompt_defaults_to_all_required_and_never_generic_majority(self):
         prompt = QUALIFICATION_CHECK_INSTRUCTIONS.casefold()
 
-        self.assertIn("all-questions override", prompt)
-        self.assertIn("default majority rule", prompt)
-        self.assertIn("strictly more than half", prompt)
+        self.assertIn("strict required-item completion", prompt)
+        self.assertIn("every required applicable", prompt)
+        self.assertIn("majority/threshold rule only", prompt)
+        self.assertIn("never apply a generic majority rule", prompt)
         self.assertIn("qualification_requirements", prompt)
         self.assertIn("engagement_instructions", prompt)
         self.assertIn("all_questions_answered", prompt)
@@ -70,3 +71,9 @@ class QualificationCheckPromptContractTests(SimpleTestCase):
 
         self.assertIn("does not need to have been explicitly asked first", prompt)
         self.assertIn("volunteered information", prompt)
+
+    def test_prompt_does_not_qualify_from_demo_interest(self):
+        prompt = QUALIFICATION_CHECK_INSTRUCTIONS.casefold()
+
+        self.assertIn("demo interest", prompt)
+        self.assertIn("never invent missing answers", prompt)
