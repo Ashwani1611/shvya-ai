@@ -101,13 +101,7 @@ class AIPermissionService:
         account,
         latest_message,
     ) -> bool:
-        """Return whether this lead already had history on the inbound account.
-
-        A previous customer or agent message is enough to prove that the account
-        is the continuing conversation transport. The current inbound row alone
-        is intentionally insufficient so a newly misrouted number still fails
-        closed.
-        """
+        """Return whether this lead already had history on the inbound account."""
         history = lead.whatsapp_messages.filter(
             organization=organization,
             account=account,
@@ -130,8 +124,6 @@ class AIPermissionService:
                 lead=lead,
             )
 
-        # Permission evaluation is also used before an inbound conversation
-        # exists. The engagement worker independently requires an inbound turn.
         if latest_message is None:
             return True, "no_conversation_yet"
 
@@ -184,8 +176,14 @@ class AIPermissionService:
         *,
         organization,
         lead,
+        latest_inbound=None,
     ) -> AIPermissionDecision:
-        """Evaluate current, non-cached AI permission state for one Lead."""
+        """Evaluate current, non-cached AI permission state for one Lead.
+
+        ``latest_inbound`` lets durable provider-specific jobs bind permission
+        evaluation to the exact authenticated message they own rather than a
+        newer message on a different connected number for the same Lead.
+        """
 
         if organization is None:
             raise AIPermissionError("Organization is required.")
@@ -200,7 +198,6 @@ class AIPermissionService:
                 lead=lead,
             )
 
-        # Organization is the top-level customer-facing AI master switch.
         try:
             org_info = self.org_info_service.get_or_create(
                 organization=organization,
@@ -226,9 +223,6 @@ class AIPermissionService:
                 lead=lead,
             )
 
-        # Stage and Lead switches are never bypassed for WhatsApp. This is
-        # intentional: an admin turning either switch off must stop both newly
-        # queued and already-generated AI replies before delivery.
         if lead.stage_id and not lead.stage.ai_on:
             return self._decision(
                 allowed=False,
@@ -245,10 +239,11 @@ class AIPermissionService:
                 lead=lead,
             )
 
-        latest_inbound = self._latest_inbound_message(
-            organization=organization,
-            lead=lead,
-        )
+        if latest_inbound is None:
+            latest_inbound = self._latest_inbound_message(
+                organization=organization,
+                lead=lead,
+            )
         mapping_allowed, mapping_reason = self._conversation_uses_pipeline_number(
             organization=organization,
             lead=lead,
