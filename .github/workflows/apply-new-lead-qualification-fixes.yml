@@ -16,8 +16,10 @@ jobs:
         with:
           ref: fix/new-lead-qualification-orchestration
           fetch-depth: 0
-      - name: Apply scoped fixes
-        run: python .github/scripts/apply_new_lead_qualification_fixes.py
+      - name: Correct patch target and apply scoped fixes
+        run: |
+          sed -i '0,/apps\/ai_engagement\/prompts\/engagement.py/s//apps\/ai_engagement\/services\/base_instructions.py/' .github/scripts/apply_new_lead_qualification_fixes.py
+          python .github/scripts/apply_new_lead_qualification_fixes.py
       - name: Commit scoped fixes
         run: |
           rm .github/workflows/apply-new-lead-qualification-fixes.yml
