@@ -1,8 +1,9 @@
 """Fixed lead qualification-check instructions."""
 
 QUALIFICATION_CHECK_INSTRUCTIONS = r"""
-Analyze the supplied organization configuration and lead conversation to determine
-whether the lead has answered the configured qualification questions.
+Analyze the supplied organization configuration, persisted qualification state,
+and actual lead conversation to determine whether the configured qualification
+requirements are complete.
 
 The input contains:
 - organization.about
@@ -13,48 +14,47 @@ The input contains:
 - conversation_summary
 
 QUALIFICATION RULES
-1. Evaluate every configured qualification requirement independently.
-2. A qualification requirement counts as answered when the lead has clearly
-   supplied the requested information in the conversation or verified persisted
-   qualification state.
-3. A question does NOT need to have been explicitly asked first. If the lead
+1. Treat persisted backend qualification state as authoritative when it contains
+   a state for a configured requirement. Do not make a completed requirement
+   unanswered merely because later conversation text is unrelated.
+2. Evaluate every required applicable qualification requirement independently.
+3. A requirement counts as answered when verified persisted state says answered,
+   or when clear inbound conversation evidence supplies the requested information.
+4. A question does NOT need to have been explicitly asked first. If the lead
    volunteered information that clearly answers a configured requirement, count
    that requirement as answered.
-4. Qualification is based on whether the requested information was answered, not
-   on whether the answer is positive, desirable, or commercially attractive.
-5. Do not invent answers or infer missing information from enthusiasm,
-   politeness, profession, phone number, or unrelated CRM data.
-6. Interpret short answers such as A/B/C/D, numbers, Yes/No, "sure", or similar
-   responses only in the context of the qualification question that was actually
-   active/asked at that point in the conversation or in verified backend state.
-7. Newer explicit lead statements override older summaries or extracted values
-   when they conflict.
-8. answered and not_applicable may satisfy completion. unknown and unclear do
-   not satisfy completion.
+5. Qualification is based on whether required information was supplied, not on
+   enthusiasm, commercial attractiveness, demo interest, or positive sentiment.
+6. Interpret A/B/C/D, numbers, Yes/No, and other short replies only against the
+   qualification question that was active/asked at that point according to
+   verified backend/conversation context. Never search the full questionnaire for
+   a convenient meaning for an ambiguous short answer.
+7. Newer explicit lead corrections override older extracted values when they
+   clearly refer to the same requirement.
+8. answered and not_applicable satisfy completion. unknown, asked, and unclear do
+   not satisfy completion. skipped satisfies completion only when the configured
+   organization flow allows that requirement to be skipped.
+9. Never invent missing answers or infer them from profession, phone number,
+   politeness, booking/demo interest, or unrelated CRM data.
 
-ALL-QUESTIONS OVERRIDE
+COMPLETION POLICY
+- Default behavior is strict required-item completion: qualified=true only when
+  every required applicable configured qualification requirement is complete.
 - Inspect BOTH organization.qualification_requirements and
-  organization.engagement_instructions.
-- If either explicitly says that all qualification questions/requirements must be
-  answered before the lead is qualified, set qualified=true ONLY when every
-  required applicable qualification question has been answered.
-- Examples of this intent include wording such as "qualify only when all
-  questions have been answered", "all questions must be answered", or an
-  equivalent explicit rule.
-
-DEFAULT MAJORITY RULE
-- When there is NO explicit all-questions requirement, consider the lead
-  qualified when the lead has answered the majority of the configured
-  qualification questions.
-- Majority means strictly more than half of the required applicable questions.
-- Do not apply a stricter completion rule unless the organization configuration
-  explicitly requires it.
+  organization.engagement_instructions for an explicit organization-authored
+  alternative completion policy.
+- Apply a majority/threshold rule ONLY when the organization explicitly configures
+  that policy. Never apply a generic majority rule by default.
+- If the organization explicitly says all questions/requirements must be answered,
+  qualified=true only when all required applicable items are complete.
+- If persisted backend qualification state says the flow is completed and its
+  configured requirement states support that completion, do not reopen it.
 
 OUTPUT FIELDS
 - all_questions_answered=true only when every required applicable qualification
-  question is answered.
-- qualified follows the all-questions override when configured; otherwise it
-  follows the majority rule above.
+  requirement is complete.
+- qualified follows the configured completion policy, with strict all-required
+  completion as the default.
 - reason must be short and factual. If complete, use a concise reason such as
   "all information received". If incomplete, state the important missing
   qualification information without exposing hidden reasoning.
