@@ -16,6 +16,25 @@ _SMOOTH_INBOX_SCRIPT = b"""
   let chatSocketPath = '';
   let chatReconnect = null;
 
+  // Replacement shells do not execute inline scripts. Delegate context tabs
+  // from the persistent document, including navigation from the empty inbox.
+  document.addEventListener('click', function (event) {
+    const tab = event.target.closest('.side-tab');
+    if (!tab) return;
+    const shell = tab.closest('#wa-web-shell');
+    if (!shell) return;
+    const panel = shell.querySelector('#panel-' + tab.dataset.panel);
+    if (!panel) return;
+    shell.querySelectorAll('.side-panel').forEach(function (item) { item.classList.toggle('hidden', item !== panel); });
+    shell.querySelectorAll('.side-tab').forEach(function (item) {
+      item.setAttribute('aria-selected', String(item === tab));
+      item.classList.toggle('text-gray-500', item !== tab);
+      item.classList.toggle('border-transparent', item !== tab);
+      item.style.color = item === tab ? '#128c7e' : '';
+      item.style.borderBottomColor = item === tab ? '#128c7e' : '';
+    });
+  });
+
   function filterParams(source) {
     const output = new URLSearchParams();
     source.forEach(function (value, key) {
@@ -220,6 +239,8 @@ _SMOOTH_INBOX_SCRIPT = b"""
     try {
       chatSocket = new WebSocket(protocol + '://' + window.location.host + nextPath);
       chatSocket.onmessage = function () {
+        // A live message must not discard an unsaved note draft.
+        if (document.querySelector('[data-note-editor]:not([hidden])')) return;
         // The server remains the source of truth for message/media rendering.
         // Replace only the inbox shell, preserving the current filters/chat.
         navigate(window.location.href, false, false);

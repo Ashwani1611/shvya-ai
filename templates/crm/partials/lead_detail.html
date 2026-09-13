@@ -192,37 +192,7 @@
             </div>
 
 
-            {% if lead_note_text %}
-
-                <div
-                    class="bg-gray-50
-                           border border-gray-200
-                           rounded-lg
-                           p-3"
-                >
-                    <p
-                        class="text-sm text-gray-700 whitespace-pre-wrap"
-                    >
-                        {{ lead_note_text }}
-                    </p>
-                </div>
-
-            {% else %}
-
-                <div
-                    class="border border-dashed
-                           border-gray-200
-                           rounded-lg
-                           p-4
-                           text-center
-                           text-sm
-                           text-gray-400"
-                >
-                    No notes yet.
-                </div>
-
-            {% endif %}
-
+            {% include "crm/partials/notes_editor.html" with note_lead=lead %}
         </div>
 
 

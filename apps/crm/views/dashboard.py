@@ -4439,14 +4439,7 @@ def lead_note_save(
         note=created_note,
     )
 
-    lead.notes = note
-
-    lead.save(
-        update_fields=[
-            "notes",
-            "updated_at",
-        ]
-    )
+    lead.save(update_fields=["updated_at"])
 
     response = HttpResponse("")
 
@@ -4708,12 +4701,7 @@ def lead_edit_save(
 
         lead.phone = ""
 
-    if hasattr(
-        lead,
-        "notes",
-    ):
-
-        lead.notes = notes
+    # Notes are append-only LeadNote records; do not overwrite note history.
 
     # --------------------------------------------------------
     # ATTRIBUTES
@@ -4770,36 +4758,13 @@ def lead_edit_save(
             .first()
         )
 
-        if notes:
-
-            if latest_manual_note:
-
-                latest_manual_note.note = (
-                    notes
-                )
-
-                latest_manual_note.save(
-                    update_fields=[
-                        "note",
-                        "updated_at",
-                    ]
-                )
-
-            else:
-
-                LeadNote.objects.create(
-                    lead=lead,
-                    created_by=user,
-                    note=notes,
-                    note_type="manual",
-                )
-
-
-        else:
-
-            if latest_manual_note:
-
-                latest_manual_note.delete()
+        if notes and (not latest_manual_note or latest_manual_note.note.strip() != notes.strip()):
+            LeadNote.objects.create(
+                lead=lead,
+                created_by=user,
+                note=notes,
+                note_type="manual",
+            )
 
     except DjangoValidationError as e:
 

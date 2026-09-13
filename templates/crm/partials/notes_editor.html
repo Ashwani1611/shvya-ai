@@ -1,0 +1,21 @@
+<section class="mt-4 rounded-xl border border-gray-200 p-3" data-lead-notes>
+    <div class="mb-2 flex items-center justify-between">
+        <h3 class="text-sm font-semibold">Notes</h3>
+        <button type="button" class="text-xs text-blue-600" onclick="this.closest('[data-lead-notes]').querySelector('[data-note-editor]').hidden=false; this.closest('[data-lead-notes]').querySelector('textarea').focus()">Add note</button>
+    </div>
+    <div class="max-h-60 overflow-y-auto cursor-text" tabindex="0" role="button" aria-label="Double-click to add a note" ondblclick="this.parentElement.querySelector('[data-note-editor]').hidden=false; this.parentElement.querySelector('textarea').focus()" onkeydown="if(event.key==='Enter'){event.preventDefault();this.parentElement.querySelector('[data-note-editor]').hidden=false;this.parentElement.querySelector('textarea').focus()}">
+        {% if note_lead.notes %}<p class="mb-2 text-sm whitespace-pre-wrap">{{ note_lead.notes }}</p>{% endif %}
+        {% for entry in note_lead.lead_notes.all %}
+        <div class="border-t py-2"><p class="text-sm whitespace-pre-wrap break-words">{{ entry.note }}</p><p class="text-xs text-gray-400">{{ entry.created_at|date:"d M Y, h:i A" }}</p></div>
+        {% empty %}{% if not note_lead.notes %}<p class="text-xs text-gray-400">No notes yet.</p>{% endif %}{% endfor %}
+        <p class="text-xs text-gray-400">Double-click to add a note.</p>
+    </div>
+    <form hidden data-note-editor method="post" action="{% url 'crm-lead-note-save' note_lead.id %}"
+          onsubmit="event.preventDefault(); var form=this; var button=form.querySelector('[type=submit]'); if(button.disabled)return; button.disabled=true; var status=form.querySelector('[role=alert]'); status.textContent='Saving…'; fetch(form.action,{method:'POST',credentials:'same-origin',headers:{'X-Requested-With':'XMLHttpRequest'},body:new FormData(form)}).then(function(response){if(!response.ok)throw new Error('Could not save note. Please try again.'); window.location.reload()}).catch(function(error){status.textContent=error.message;button.disabled=false})">
+        {% csrf_token %}
+        <textarea name="note" rows="3" required aria-label="New note" placeholder="Add a new note…" class="mt-2 w-full rounded-lg border p-2 text-sm"></textarea>
+        <p role="alert" class="text-xs text-red-600"></p>
+        <button type="button" class="mt-2 px-3 py-2 text-xs" onclick="this.form.hidden=true">Cancel</button>
+        <button type="submit" class="mt-2 rounded-lg bg-blue-600 px-3 py-2 text-xs text-white">Save note</button>
+    </form>
+</section>
