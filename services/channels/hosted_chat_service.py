@@ -177,7 +177,9 @@ def repair_gateway_message_identity(*, message, payload, historical=False):
     is_group = bool(payload.get("isGroup"))
     is_outbound = bool(payload.get("fromMe"))
 
-    merged = dict(_payload(message))
+    existing_payload = _payload(message)
+    was_history = bool(existing_payload.get("isHistory"))
+    merged = dict(existing_payload)
     incoming = {k: v for k, v in payload.items() if v is not None}
     if _is_lid_derived_phone(incoming.get("peerPhone"), raw_chat_id):
         incoming.pop("peerPhone", None)
@@ -190,8 +192,12 @@ def repair_gateway_message_identity(*, message, payload, historical=False):
         merged["peerPhone"] = peer_phone
     if raw_chat_id:
         merged["rawChatId"] = raw_chat_id
-    if historical or merged.get("isHistory"):
-        merged["isHistory"] = True
+
+    # Realtime delivery is authoritative. History sync may enrich an
+    # existing live row, but it must never downgrade that row back to
+    # history. Conversely, seeing the same WhatsApp message through the
+    # realtime callback promotes a previously imported history row to live.
+    merged["isHistory"] = was_history if historical else False
 
     account_phone = normalize_whatsapp_number(
         phone_number=(message.account.display_phone_number or message.account.phone_number_id)
