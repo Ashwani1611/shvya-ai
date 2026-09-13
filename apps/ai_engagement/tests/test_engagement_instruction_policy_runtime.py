@@ -14,9 +14,7 @@ from apps.ai_engagement.services.engagement_instruction_policy import (
     effective_qualification_source,
     parse_engagement_instruction_sections,
 )
-from apps.ai_engagement.services.organization_profile import (
-    compile_org_ai_profile_from_context,
-)
+from apps.ai_engagement.services.organization_profile import compile_org_ai_profile_from_context
 from apps.ai_engagement.services.qualification_state import (
     apply_unambiguous_reply,
     record_last_asked_requirement,
@@ -83,6 +81,7 @@ class EngagementInstructionPolicyParsingTests(SimpleTestCase):
             engagement_instructions=AUTHORED_POLICY,
         )
         self.assertIn("What is your biggest challenge?", source)
+        self.assertNotIn("mark the lead qualified", source)
         self.assertEqual(
             source_name,
             "engagement_instructions.qualification_criteria",
@@ -120,6 +119,13 @@ class AuthoredPolicyCRMIntegrationTests(TestCase):
         )
         self.new_lead = self.sales.stages.get(name="New leads")
         self.qualified = self.sales.stages.get(name="Qualified")
+        self.follow_up = Stage.objects.create(
+            pipeline=self.sales,
+            name="Follow-up",
+            description="Normal conversation stage.",
+            is_active=True,
+            display_order=60,
+        )
 
         self.seller_pipeline = Pipeline.objects.create(
             organization=self.organization,
@@ -204,7 +210,10 @@ class AuthoredPolicyCRMIntegrationTests(TestCase):
             profile["qualification"]["source"],
             "engagement_instructions.qualification_criteria",
         )
-        self.assertEqual(policy["qualification"]["source"], profile["qualification"]["source"])
+        self.assertEqual(
+            policy["qualification"]["source"],
+            profile["qualification"]["source"],
+        )
         self.assertIn("Q3 -> Daily Leads", policy["crm"]["attribute_mapped"])
         self.assertTrue(any("Seller" in rule for rule in policy["crm"]["stage_shifting"]))
 
@@ -238,11 +247,9 @@ class AuthoredPolicyCRMIntegrationTests(TestCase):
             )
             self.assertTrue(captured["changed"])
 
-            context, runtime_policy, pinned_requirements, _profile = (
-                self._context_policy_requirements(
-                    message_id=message_id,
-                    body=answer,
-                )
+            context, runtime_policy, pinned_requirements, _profile = self._context_policy_requirements(
+                message_id=message_id,
+                body=answer,
             )
             qualification_state = state_for_lead(
                 self.lead,
@@ -285,8 +292,7 @@ class AuthoredPolicyCRMIntegrationTests(TestCase):
         self.assertIn("Referrals", notes[0].note)
 
     def test_non_new_stage_can_shift_cross_pipeline_from_authored_stage_rule(self):
-        follow_up = self.sales.stages.get(name="Follow-up")
-        self.lead.stage = follow_up
+        self.lead.stage = self.follow_up
         self.lead.save(update_fields=["stage", "updated_at"])
 
         context, runtime_policy, requirements, _profile = self._context_policy_requirements(
@@ -322,8 +328,7 @@ class AuthoredPolicyCRMIntegrationTests(TestCase):
         self.assertEqual(self.lead.stage_id, self.seller.id)
 
     def test_stage_description_can_route_without_model_stage_proposal(self):
-        follow_up = self.sales.stages.get(name="Follow-up")
-        self.lead.stage = follow_up
+        self.lead.stage = self.follow_up
         self.lead.save(update_fields=["stage", "updated_at"])
 
         context, runtime_policy, requirements, _profile = self._context_policy_requirements(
@@ -342,8 +347,7 @@ class AuthoredPolicyCRMIntegrationTests(TestCase):
         self.assertEqual(transition["stage_shift"]["stage_id"], str(self.human.id))
 
     def test_concrete_date_time_creates_reminder_in_conversation_stage(self):
-        follow_up = self.sales.stages.get(name="Follow-up")
-        self.lead.stage = follow_up
+        self.lead.stage = self.follow_up
         self.lead.save(update_fields=["stage", "updated_at"])
         context, runtime_policy, requirements, _profile = self._context_policy_requirements(
             message_id="reminder-turn",
