@@ -48,12 +48,11 @@ class AIPermissionService:
 
         Organization AI -> Pipeline AI -> Stage AI -> Lead AI
 
-    An authenticated inbound WhatsApp message is also the authoritative transport
-    for that active conversation. The CRM pipeline can legitimately change while
-    the customer keeps replying on the original WhatsApp thread, so a pipeline
-    move must never strand an already-received inbound turn. Pipeline number
-    matching is still used before a conversation exists; tenant, account, status,
-    connection type, and every AI toggle continue to fail closed.
+    New WhatsApp conversations remain bound to the number configured for the
+    lead's current pipeline. An already-established conversation may continue on
+    its original authenticated organization account after a legitimate CRM
+    pipeline move; this prevents classification changes from stranding the chat
+    without allowing a brand-new message on an unrelated number to bypass routing.
     """
 
     WHATSAPP_AUTOMATION_CONNECTION_TYPES = {"api", "hosted"}
@@ -94,6 +93,29 @@ class AIPermissionService:
             raw_payload__shvya_ai__isnull=False,
         ).exists()
 
+    def _has_established_conversation_transport(
+        self,
+        *,
+        organization,
+        lead,
+        account,
+        latest_message,
+    ) -> bool:
+        """Return whether this lead already had history on the inbound account.
+
+        A previous customer or agent message is enough to prove that the account
+        is the continuing conversation transport. The current inbound row alone
+        is intentionally insufficient so a newly misrouted number still fails
+        closed.
+        """
+        history = lead.whatsapp_messages.filter(
+            organization=organization,
+            account=account,
+        )
+        if getattr(latest_message, "pk", None):
+            history = history.exclude(pk=latest_message.pk)
+        return history.exists()
+
     def _conversation_uses_pipeline_number(
         self,
         *,
@@ -101,14 +123,7 @@ class AIPermissionService:
         lead,
         latest_message=None,
     ):
-        """Validate the customer-facing WhatsApp transport for this conversation.
-
-        Before an inbound conversation exists the configured pipeline number is
-        the routing source of truth. Once an authenticated inbound message exists,
-        that exact organization-owned account is authoritative for the live turn.
-        This lets API and Hosted conversations survive a legitimate CRM pipeline
-        move even when the destination pipeline is mapped to another number.
-        """
+        """Validate the customer-facing WhatsApp transport for this conversation."""
         if latest_message is None:
             latest_message = self._latest_inbound_message(
                 organization=organization,
@@ -148,14 +163,12 @@ class AIPermissionService:
         if expected_number and actual_number == expected_number:
             return True, "pipeline_whatsapp_account_match"
 
-        # The message reached SHVYA through this authenticated account and is the
-        # exact latest inbound turn being evaluated. Treat that transport as bound
-        # immediately; requiring an earlier AI outbound creates a deadlock after a
-        # pipeline move (the first reply can never be produced to establish it).
-        if latest_message is not None:
-            return True, "conversation_whatsapp_account_bound"
-
-        if self._has_established_ai_transport(
+        if self._has_established_conversation_transport(
+            organization=organization,
+            lead=lead,
+            account=account,
+            latest_message=latest_message,
+        ) or self._has_established_ai_transport(
             organization=organization,
             lead=lead,
             account=account,
