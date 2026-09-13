@@ -20,7 +20,7 @@ class TerminalEngagementFailsoftTests(TestCase):
     def _permanent_failure(*args, **kwargs):
         raise EngagementError("Permanent provider/schema validation failure")
 
-    def test_permanent_generation_error_queues_neutral_safe_reply(self):
+    def test_permanent_generation_error_queues_safe_unknown_reply(self):
         source = self._inbound()
         with patch(
             "apps.ai_engagement.services.engagement.EngagementService.engage",
@@ -36,7 +36,7 @@ class TerminalEngagementFailsoftTests(TestCase):
         outbound = WhatsAppMessage.objects.get(pk=result["message_id"])
         self.assertEqual(
             outbound.body,
-            "Thanks for your message. I’ve received it. Please share the specific detail you’d like help with.",
+            "I don’t have enough verified information to answer that confidently. The team would need to confirm it.",
         )
         self.assertEqual(outbound.raw_payload["shvya_ai"]["source_inbound_message_id"], str(source.id))
         send.assert_called_once_with(str(outbound.id))
@@ -60,6 +60,74 @@ class TerminalEngagementFailsoftTests(TestCase):
         self.assertEqual(outbound.body, expected["question"])
         self.assertEqual(outbound.raw_payload["shvya_ai"]["model"], "deterministic-fallback")
         self.assertEqual(outbound.raw_payload["shvya_ai"]["next_requirement_id"], expected["id"])
+
+    def test_failsoft_answers_lead_generation_from_authored_about(self):
+        OrgInfo.objects.create(
+            organization=self.organization,
+            about=(
+                "SHVYA helps businesses convert and manage existing leads.\n"
+                "SHVYA does not generate or sell leads."
+            ),
+        )
+        source = self._inbound(external_id="wamid-lead-generation")
+        source.body = "Do you help in lead generation?"
+        source.save(update_fields=["body", "updated_at"])
+
+        decision = build_deterministic_fallback_decision(
+            organization=self.organization,
+            lead=self.lead,
+            latest_inbound=source,
+        )
+
+        self.assertTrue(decision.should_engage)
+        self.assertEqual(decision.reason_code, "ANSWER_ORG_QUESTION")
+        self.assertIn("convert and manage existing leads", decision.message)
+        self.assertIn("does not generate or sell leads", decision.message)
+        self.assertNotIn("specific detail", decision.message)
+
+    def test_failsoft_features_use_authored_capability_section(self):
+        OrgInfo.objects.create(
+            organization=self.organization,
+            about=(
+                "SHVYA AI helps businesses manage existing leads.\n\n"
+                "Primary capabilities:\n"
+                "- AI lead engagement\n"
+                "- Lead qualification\n"
+                "- Automated follow-ups\n"
+                "- CRM and lead management\n"
+            ),
+        )
+        source = self._inbound(external_id="wamid-features")
+        source.body = "What are SHVYA features?"
+        source.save(update_fields=["body", "updated_at"])
+
+        decision = build_deterministic_fallback_decision(
+            organization=self.organization,
+            lead=self.lead,
+            latest_inbound=source,
+        )
+
+        self.assertEqual(decision.reason_code, "ANSWER_ORG_QUESTION")
+        self.assertIn("AI lead engagement", decision.message)
+        self.assertIn("Lead qualification", decision.message)
+        self.assertIn("Automated follow-ups", decision.message)
+        self.assertNotIn("specific detail", decision.message)
+
+    def test_failsoft_user_reported_booking_is_not_confirmed(self):
+        source = self._inbound(external_id="wamid-booked-demo")
+        source.body = "I booked a demo today at 6pm"
+        source.save(update_fields=["body", "updated_at"])
+
+        decision = build_deterministic_fallback_decision(
+            organization=self.organization,
+            lead=self.lead,
+            latest_inbound=source,
+        )
+
+        self.assertTrue(decision.should_engage)
+        self.assertIn("booking you’ve reported", decision.message)
+        self.assertIn("can’t confirm", decision.message)
+        self.assertNotIn("Your booking is confirmed", decision.message)
 
     def test_transient_provider_failure_still_retries_instead_of_fallback(self):
         self._inbound(external_id="wamid-transient")
