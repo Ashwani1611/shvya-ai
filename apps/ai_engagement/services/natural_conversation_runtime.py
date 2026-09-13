@@ -6,7 +6,6 @@ from dataclasses import replace
 
 
 _INSTALLED = False
-_QUALIFICATION_STAGE_NAMES = {"new lead", "new leads", "in conversation"}
 _SIMPLE_ACKS = {
     "ok", "okay", "sure", "cool", "great", "fine", "thanks", "thank you",
     "got it", "understood", "alright", "all right", "it's alright", "its alright",
@@ -28,15 +27,12 @@ _UNCONFIRMED_FUTURE_PROMISE_RE = re.compile(
 )
 
 _NATURAL_CONVERSATION_INSTRUCTIONS = r"""
-NATURAL CONVERSATION AND QUALIFICATION CONTINUITY
-- This section supersedes any earlier sentence that says qualification is New Lead-only.
-- Qualification may remain active in both New Lead/New leads and In Conversation until
-  backend qualification_status becomes completed.
-- Moving New Lead -> In Conversation on the lead's first genuine inbound response is a
-  normal CRM transition and MUST NOT pause, reset, or restart qualification.
+NATURAL CONVERSATION SAFEGUARDS
+- Qualification stage scope, sequence, completion, and stage movement are owned by
+  backend state. Do not broaden qualification into another CRM stage.
 - Qualification requirements are data requirements, not a customer-facing script.
-  Respond to the lead's actual intent first, then naturally continue with the one
-  backend-authorized unanswered qualification question when appropriate.
+  Respond to the lead's actual intent first, then continue only with the one
+  backend-authorized unanswered qualification question when qualification is active.
 - Never repeat the qualification completion acknowledgement after the backend marks
   qualification_completion_ack_sent=true.
 - Treat short social acknowledgements such as okay, sure, cool, thanks, alright,
@@ -44,7 +40,7 @@ NATURAL CONVERSATION AND QUALIFICATION CONTINUITY
   unknown-information fallback.
 - After qualification is complete, continue as a normal sales assistant. A greeting,
   acknowledgement, pricing question, call request, complaint, or later message must
-  never restart Q1-Q5.
+  never restart qualification.
 - For explicit call/demo/human-contact requests, use configured CRM actions when the
   matching organization stage/reminder is available. Do not claim a booked slot unless
   the system confirms it; a requested/preferred time is not a confirmed appointment.
@@ -63,10 +59,6 @@ def _normalized(value) -> str:
     return _clean(value).replace("’", "'").replace("‘", "'").casefold().strip(" .!?;:")
 
 
-def _stage_name_from_lead(lead) -> str:
-    return _normalized(getattr(getattr(lead, "stage", None), "name", ""))
-
-
 def _latest_inbound_text(context) -> str:
     conversation = getattr(context, "conversation", None)
     messages = conversation.get("messages", []) if isinstance(conversation, dict) else []
@@ -77,164 +69,6 @@ def _latest_inbound_text(context) -> str:
         if body:
             return body
     return ""
-
-
-def _patch_qualification_state() -> None:
-    from apps.ai_engagement.services import qualification_state as qstate
-
-    if getattr(qstate, "_shvya_natural_conversation_patch", False):
-        return
-
-    original_normalize = qstate._normalize_runtime_state
-    original_mark_in_progress = qstate.mark_in_progress
-    original_reset_state = qstate.reset_state
-
-    def normalize_runtime_state(state, requirements, *, lead=None):
-        normalized = original_normalize(state, requirements, lead=lead)
-        if lead is None:
-            return normalized
-        stage_name = _stage_name_from_lead(lead)
-        if (
-            stage_name in _QUALIFICATION_STAGE_NAMES
-            and normalized.get("qualification_status") != qstate.STATUS_COMPLETED
-        ):
-            normalized["engagement_mode"] = qstate.MODE_QUALIFICATION
-            if not normalized.get("current_requirement_id"):
-                item = qstate.next_requirement(
-                    requirements,
-                    normalized.get("requirement_states", {}),
-                )
-                if item is not None:
-                    requirement_id = str(item.get("id") or "").strip() or None
-                    normalized["current_requirement_id"] = requirement_id
-                    normalized["next_requirement_id"] = requirement_id
-        return normalized
-
-    def mark_in_progress(lead):
-        stage_name = _stage_name_from_lead(lead)
-        if stage_name not in _QUALIFICATION_STAGE_NAMES:
-            return original_mark_in_progress(lead)
-        state = qstate.state_for_lead(lead)
-        if state.get("qualification_status") == qstate.STATUS_NOT_STARTED:
-            state["qualification_status"] = qstate.STATUS_IN_PROGRESS
-            state["engagement_mode"] = qstate.MODE_QUALIFICATION
-            qstate._append_history(state, event="qualification_started")
-            qstate._persist_state(lead, state)
-        return qstate.state_for_lead(lead)
-
-    def reset_state(lead):
-        state = original_reset_state(lead)
-        if (
-            _stage_name_from_lead(lead) in _QUALIFICATION_STAGE_NAMES
-            and state.get("qualification_status") != qstate.STATUS_COMPLETED
-            and state.get("engagement_mode") != qstate.MODE_QUALIFICATION
-        ):
-            state["engagement_mode"] = qstate.MODE_QUALIFICATION
-            qstate._persist_state(lead, state)
-        return qstate.state_for_lead(lead)
-
-    qstate._normalize_runtime_state = normalize_runtime_state
-    qstate.mark_in_progress = mark_in_progress
-    qstate.reset_state = reset_state
-    qstate._shvya_natural_conversation_patch = True
-
-    # signals.py imports these functions before AppConfig.ready installs runtime
-    # patches, so update its bound aliases too.
-    from apps.ai_engagement import signals as signal_module
-
-    signal_module.mark_in_progress = mark_in_progress
-
-
-def _patch_qualification_stage_guards() -> None:
-    from apps.ai_engagement.services import conversation_priority_runtime
-    from apps.ai_engagement.services import qualification_crm_action_runtime
-
-    conversation_priority_runtime._NEW_LEAD_STAGE_NAMES.add("in conversation")
-    qualification_crm_action_runtime._NEW_LEAD_STAGE_NAMES.add("in conversation")
-
-
-def _patch_policy_actions() -> None:
-    from apps.ai_engagement.graph import policy_actions as policy_actions_module
-    from apps.ai_engagement.services import engagement_instruction_runtime as authored_runtime
-    from apps.ai_engagement.services.qualification_state import project_answer_updates
-
-    if getattr(policy_actions_module, "_shvya_natural_conversation_patch", False):
-        return
-
-    current_builder = policy_actions_module.build_controlled_actions
-
-    def build(*, decision, context, runtime_policy, qualification_state, requirements):
-        controlled, result = current_builder(
-            decision=decision,
-            context=context,
-            runtime_policy=runtime_policy,
-            qualification_state=qualification_state,
-            requirements=requirements,
-        )
-        controlled = [dict(item) for item in controlled]
-        stage = getattr(context, "stage", None)
-        stage_name = _normalized(stage.get("name") if isinstance(stage, dict) else "")
-        latest_message_id, _latest_text = authored_runtime._latest_inbound(context)
-
-        # The authored attribute mapping wrapper historically skipped In Conversation.
-        # Re-project the current verified answer so mappings such as Q1 -> BIGGEST
-        # PROBLEM continue after New Lead -> In Conversation.
-        if stage_name == "in conversation":
-            projected = project_answer_updates(
-                state=qualification_state,
-                requirements=requirements,
-                updates=getattr(decision, "qualification_updates", []) or [],
-                messages=(getattr(context, "conversation", None) or {}).get("messages", []),
-            )
-            authored_runtime._merge_authored_attribute_updates(
-                controlled,
-                context=context,
-                projected_state=projected,
-                requirements=requirements,
-                runtime_policy=runtime_policy,
-                latest_message_id=latest_message_id,
-            )
-            result = {**result, "projected_qualification_state": projected}
-
-        # First genuine inbound moves New Lead -> In Conversation, but only when
-        # another stronger transition (Qualified, Call Requested, handoff, etc.)
-        # has not already been selected for this turn.
-        if (
-            stage_name in {"new lead", "new leads"}
-            and latest_message_id
-            and not any(item.get("type") == "pipeline_transition" for item in controlled)
-            and qualification_state.get("qualification_status") != "completed"
-        ):
-            pipeline = getattr(context, "pipeline", None)
-            destinations = pipeline.get("available_stages", []) if isinstance(pipeline, dict) else []
-            in_conversation = next(
-                (
-                    item
-                    for item in destinations
-                    if isinstance(item, dict)
-                    and _normalized(item.get("name")) == "in conversation"
-                    and item.get("id") is not None
-                ),
-                None,
-            )
-            if in_conversation is not None:
-                stage_id = str(in_conversation.get("id"))
-                controlled.append({
-                    "type": "pipeline_transition",
-                    "stage_shift": {"stage_id": stage_id},
-                })
-                result = {
-                    **result,
-                    "stage_transition": {
-                        "stage_id": stage_id,
-                        "source": "first_genuine_inbound",
-                    },
-                }
-
-        return controlled, result
-
-    policy_actions_module.build_controlled_actions = build
-    policy_actions_module._shvya_natural_conversation_patch = True
 
 
 def _patch_completion_ack_tracking() -> None:
@@ -284,19 +118,11 @@ def _patch_engagement_validation_and_prompt() -> None:
     if getattr(EngagementService, "_shvya_natural_conversation_patch", False):
         return
 
-    # Remove the contradictory authored-policy sentence already appended by an
-    # earlier runtime installer, then add the final authoritative behavior.
-    EngagementService.ENGAGEMENT_TASK_INSTRUCTIONS = (
-        EngagementService.ENGAGEMENT_TASK_INSTRUCTIONS.replace(
-            "- New Lead/New leads is the only qualification stage. In every other stage,\n"
-            "  continue normal conversation only; never emit qualification_updates or restart\n"
-            "  the questionnaire. CRM stage movement and reminders may still be proposed.\n",
-            "- New Lead/New leads and In Conversation may carry an incomplete qualification flow.\n"
-            "  A move to In Conversation does not pause or restart qualification.\n",
+    if _NATURAL_CONVERSATION_INSTRUCTIONS not in EngagementService.ENGAGEMENT_TASK_INSTRUCTIONS:
+        EngagementService.ENGAGEMENT_TASK_INSTRUCTIONS = (
+            f"{EngagementService.ENGAGEMENT_TASK_INSTRUCTIONS}\n\n"
+            f"{_NATURAL_CONVERSATION_INSTRUCTIONS}"
         )
-        + "\n\n"
-        + _NATURAL_CONVERSATION_INSTRUCTIONS
-    )
 
     current_validator = EngagementService._validate_qualification_decision
 
@@ -480,15 +306,12 @@ def _patch_failsoft() -> None:
 
 
 def install_natural_conversation_runtime() -> None:
-    """Make Hosted + Meta WhatsApp engagement stateful without weakening backend control."""
+    """Install natural WhatsApp safeguards without changing qualification scope."""
 
     global _INSTALLED
     if _INSTALLED:
         return
 
-    _patch_qualification_state()
-    _patch_qualification_stage_guards()
-    _patch_policy_actions()
     _patch_completion_ack_tracking()
     _patch_engagement_validation_and_prompt()
     _patch_failsoft()
