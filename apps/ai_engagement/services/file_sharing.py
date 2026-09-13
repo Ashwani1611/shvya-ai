@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from typing import Any
 
@@ -179,90 +180,75 @@ Rules for the fields:
         organization,
         context,
     ) -> list[dict[str, Any]]:
-        """
-        Convert retrieved knowledge documents into unique,
-        organization-scoped file candidates.
-        """
+        """Build an organization-scoped allow-list for guided file sharing.
 
-        knowledge_items = (
-            context.as_dict().get(
-                "knowledge",
-                [],
-            )
-        )
-
+        Normally candidates come from verified RAG chunks. When the latest lead
+        message explicitly asks for a file/brochure/catalogue/document, also
+        expose configured eligible files so a missing semantic chunk cannot make
+        a real uploaded file impossible to send. The response model still must
+        match share_instruction and may select only an ID in this allow-list.
+        """
+        knowledge_items = context.as_dict().get("knowledge", [])
         document_ids = {
             int(item["document_id"])
             for item in knowledge_items
             if item.get("document_id") is not None
         }
-
-        if not document_ids:
+        latest_text = ""
+        conversation = context.as_dict().get("conversation", {})
+        for message in reversed(conversation.get("messages", []) or []):
+            if isinstance(message, dict) and message.get("direction") == "inbound":
+                latest_text = str(message.get("body") or "").strip()
+                if latest_text:
+                    break
+        explicit_file_request = bool(re.search(
+            r"(?:brochure|catalog(?:ue)?|pdf|file|document|deck|presentation|menu|prospectus|portfolio|flyer|leaflet|datasheet|price\s*list|pricelist)",
+            latest_text,
+            flags=re.IGNORECASE,
+        ))
+        if not document_ids and not explicit_file_request:
             return []
 
-        documents = self.get_eligible_documents(
-            organization=organization,
-            document_ids=document_ids,
+        retrieved_documents = (
+            self.get_eligible_documents(
+                organization=organization,
+                document_ids=document_ids,
+            )
+            if document_ids
+            else []
         )
+        documents = list(retrieved_documents)
+        if explicit_file_request:
+            seen = {document.id for document in documents}
+            for document in self.get_eligible_documents(organization=organization):
+                if document.id not in seen:
+                    documents.append(document)
+                    seen.add(document.id)
+                if len(documents) >= 10:
+                    break
 
-        documents_by_id = {
-            document.id: document
-            for document in documents
-        }
+        evidence_by_id: dict[int, dict[str, Any]] = {}
+        for item in knowledge_items:
+            raw_id = item.get("document_id")
+            if raw_id is None:
+                continue
+            document_id = int(raw_id)
+            existing = evidence_by_id.get(document_id)
+            if existing is None or float(item.get("similarity", 0.0)) > float(existing.get("similarity", 0.0)):
+                evidence_by_id[document_id] = item
 
         candidates = []
-
-        seen_ids = set()
-
-        for item in knowledge_items:
-            raw_document_id = item.get(
-                "document_id"
-            )
-
-            if raw_document_id is None:
-                continue
-
-            document_id = int(
-                raw_document_id
-            )
-
-            if document_id in seen_ids:
-                continue
-
-            document = documents_by_id.get(
-                document_id
-            )
-
-            if document is None:
-                continue
-
-            seen_ids.add(
-                document_id
-            )
-
-            candidates.append(
-                {
-                    "document_id": document.id,
-                    "name": document.name,
-                    "version": document.version,
-                    "source_url": document.source_url,
-                    "share_instruction": document.share_instruction,
-                    "relevance": float(
-                        item.get(
-                            "similarity",
-                            0.0,
-                        )
-                    ),
-                    "evidence": (
-                        item.get(
-                            "content",
-                            "",
-                        )
-                        or ""
-                    ).strip(),
-                }
-            )
-
+        for document in documents[:10]:
+            item = evidence_by_id.get(document.id, {})
+            candidates.append({
+                "document_id": document.id,
+                "name": document.name,
+                "version": document.version,
+                "source_url": document.source_url,
+                "share_instruction": document.share_instruction,
+                "relevance": float(item.get("similarity", 0.0)),
+                "evidence": str(item.get("content") or "").strip(),
+            })
         return candidates
 
     # ========================================================

@@ -418,6 +418,19 @@ class EngagementService:
     ):
         """Validate both primary and repaired output before caching or writes."""
         self._validate_engagement_policy(decision=decision, context=context)
+        qualifying = qualification_state.get("engagement_mode") == MODE_QUALIFICATION
+        if not qualifying:
+            if getattr(decision, "qualification_updates", []) or getattr(decision, "next_requirement_id", None):
+                raise EngagementError(
+                    "Qualification updates/questions are allowed only while the lead is in New Lead qualification mode."
+                )
+            if str(getattr(decision, "reason_code", "") or "").strip().upper() in {
+                "QUALIFICATION_NEXT",
+                "QUALIFICATION_CLARIFY",
+            }:
+                raise EngagementError(
+                    "Qualification reason codes are not allowed outside New Lead qualification mode."
+                )
         try:
             projected = project_answer_updates(
                 state=qualification_state, requirements=requirements,
@@ -434,7 +447,6 @@ class EngagementService:
         )
         greeting = self._latest_inbound_text(context=context).strip().casefold().strip(" .!?") in {"hi", "hello", "hey", "hii", "namaste"}
         runtime_saved = ((getattr(context, "lead", {}) or {}).get("attributes") or {}).get(STATE_KEY) or {}
-        qualifying = qualification_state.get("engagement_mode") == MODE_QUALIFICATION
         if (next_item and qualifying and decision.should_engage
                 and runtime_saved.get("conversation_mode") not in {"paused", "opt_out"}
                 and (answered_now or (greeting and not qualification_state.get("last_asked_requirement_id")))

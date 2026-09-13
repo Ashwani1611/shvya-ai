@@ -74,6 +74,7 @@ class ControlledCRMActionTests(SimpleTestCase):
     def _qualification_state(self):
         return {
             "qualification_status": "in_progress",
+            "engagement_mode": "qualification",
             "requirement_states": {
                 "budget": {
                     "status": "unknown",

@@ -383,28 +383,69 @@ def ensure_state(lead, requirements=None) -> dict:
 
 
 def state_after_stage_change(*, lead, old_stage_name: str, new_stage_name: str) -> dict:
+    """Keep qualification lifecycle separate from ordinary CRM stage movement.
+
+    New Lead is the only stage where qualification may run. Moving an incomplete
+    lead elsewhere pauses the questionnaire without destroying its answers. If the
+    lead later returns to New Lead, the same unresolved requirement resumes.
+    Qualified is the only stage transition that finalizes the backend result.
+    """
     state = state_for_lead(lead)
     old_name = normalize_stage_name(old_stage_name)
     new_name = normalize_stage_name(new_stage_name)
-    if state["qualification_status"] != STATUS_COMPLETED:
-        if new_name == QUALIFIED_STAGE:
-            state["qualification_status"] = STATUS_COMPLETED
-            state["qualification_result"] = RESULT_QUALIFIED
-            state["qualification_completed_at"] = timezone.now().isoformat()
-            state["current_requirement_id"] = None
+    now = timezone.now().isoformat()
+
+    if new_name == QUALIFIED_STAGE:
+        changed = (
+            state.get("qualification_status") != STATUS_COMPLETED
+            or state.get("qualification_result") != RESULT_QUALIFIED
+        )
+        state["qualification_status"] = STATUS_COMPLETED
+        state["qualification_result"] = RESULT_QUALIFIED
+        state["qualification_completed_at"] = state.get("qualification_completed_at") or now
+        state["current_requirement_id"] = None
+        state["next_requirement_id"] = None
+        if changed:
             _append_history(state, event="qualification_completed")
-        elif old_name == NEW_LEAD_STAGE and new_name != NEW_LEAD_STAGE:
-            state["qualification_status"] = STATUS_COMPLETED
-            state["qualification_completed_at"] = timezone.now().isoformat()
-            state["current_requirement_id"] = None
-            _append_history(state, event="qualification_closed_by_stage_change")
+
+    elif old_name == NEW_LEAD_STAGE and new_name != NEW_LEAD_STAGE:
+        if state.get("qualification_status") != STATUS_COMPLETED:
+            state["engagement_mode"] = MODE_CONVERSATION
+            _append_history(state, event="qualification_paused_by_stage_change")
+
+    elif new_name == NEW_LEAD_STAGE and old_name != NEW_LEAD_STAGE:
+        history_events = {
+            str(item.get("event") or "")
+            for item in state.get("history", [])
+            if isinstance(item, dict)
+        }
+        legacy_stage_close = (
+            state.get("qualification_status") == STATUS_COMPLETED
+            and state.get("qualification_result") != RESULT_QUALIFIED
+            and "qualification_closed_by_stage_change" in history_events
+            and "qualification_answers_complete" not in history_events
+        )
+        if legacy_stage_close:
+            requirement_states = state.get("requirement_states") or {}
+            has_progress = any(
+                str(item.get("status") or "")
+                in {REQUIREMENT_ASKED, REQUIREMENT_ANSWERED, REQUIREMENT_UNCLEAR}
+                for item in requirement_states.values()
+                if isinstance(item, dict)
+            )
+            state["qualification_status"] = (
+                STATUS_IN_PROGRESS if has_progress else STATUS_NOT_STARTED
+            )
+            state["qualification_result"] = ""
+            state["qualification_completed_at"] = None
+            state["qualification_completed"] = False
+            _append_history(state, event="qualification_resumed_from_legacy_stage_close")
+        elif state.get("qualification_status") != STATUS_COMPLETED:
+            _append_history(state, event="qualification_resumed_by_stage_change")
+
     state["qualification_completed"] = state["qualification_status"] == STATUS_COMPLETED
-    state["engagement_mode"] = (
-        MODE_QUALIFICATION
-        if new_name == NEW_LEAD_STAGE and state["qualification_status"] != STATUS_COMPLETED
-        else MODE_CONVERSATION
-    )
-    return state
+    active_requirements = requirements_for_lead(lead)
+    return _normalize_runtime_state(state, active_requirements, lead=lead)
 
 
 def mark_in_progress(lead) -> dict:
