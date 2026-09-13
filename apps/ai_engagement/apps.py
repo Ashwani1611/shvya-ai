@@ -56,6 +56,15 @@ class AiEngagementConfig(AppConfig):
 
         install_ai_setup_runtime_fixes()
 
+        # Conversation intent has priority over questionnaire progression. Hide
+        # the full qualification snapshot from the model, expose only bounded
+        # askable/capture-only state, and reject questionnaire-style responses.
+        from apps.ai_engagement.services.conversation_priority_runtime import (
+            install_conversation_priority_runtime,
+        )
+
+        install_conversation_priority_runtime()
+
         # Mark the persisted pipeline as current and every cross-pipeline routing
         # candidate as internal-only so the model cannot confuse CRM metadata
         # with customer-facing organization facts.
