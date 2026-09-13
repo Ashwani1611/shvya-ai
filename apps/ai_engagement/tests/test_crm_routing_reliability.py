@@ -19,7 +19,7 @@ from apps.ai_engagement.services.qualification_state import (
     record_last_asked_requirement,
     state_for_lead,
 )
-from apps.crm.models import AttributeDefinition, Lead, Pipeline
+from apps.crm.models import AttributeDefinition, Lead, Pipeline, Stage
 from apps.organizations.models import Organization
 
 
@@ -32,7 +32,6 @@ class QualificationRoutingReliabilityTests(TestCase):
             is_active=True,
         )
         self.new_lead = self.sales.stages.get(name="New leads")
-        # Reproduce organizations where Qualified lives in another pipeline.
         self.sales.stages.filter(name="Qualified").update(is_active=False)
 
         self.qualified_pipeline = Pipeline.objects.create(
@@ -41,6 +40,12 @@ class QualificationRoutingReliabilityTests(TestCase):
             is_active=True,
         )
         self.qualified = self.qualified_pipeline.stages.get(name="Qualified")
+        # Cross-pipeline fallback must never choose arbitrarily. Make this test
+        # organization intentionally have one unambiguous active external target.
+        Stage.objects.filter(
+            pipeline__organization=self.organization,
+            name__iexact="Qualified",
+        ).exclude(pk=self.qualified.pk).update(is_active=False)
 
         self.org_info = OrgInfo.objects.create(
             organization=self.organization,
@@ -73,10 +78,34 @@ class QualificationRoutingReliabilityTests(TestCase):
             phone="+919000000777",
         )
 
-    def test_description_mapped_answer_fills_attribute_and_moves_cross_pipeline_qualified(self):
-        requirements = compile_qualification_requirements(
+    def _requirements(self):
+        return compile_qualification_requirements(
             self.org_info.qualification_requirements
         )["requirements"]
+
+    def _context_and_policy(self, *, message_id, body, requirements):
+        self.lead.refresh_from_db()
+        context = AIContextBuilder().build(
+            organization=self.organization,
+            lead=self.lead,
+            message_limit=12,
+            knowledge_limit=3,
+            note_limit=5,
+        )
+        context.conversation["messages"] = [{
+            "id": message_id,
+            "direction": "inbound",
+            "body": body,
+        }]
+        profile = compile_org_ai_profile_from_context(context.organization)
+        runtime_policy = get_runtime_policy(
+            organization=self.organization,
+            profile=profile,
+        )
+        return context, runtime_policy
+
+    def test_backend_captured_answer_uses_description_and_moves_cross_pipeline_qualified(self):
+        requirements = self._requirements()
         requirement = requirements[0]
         record_last_asked_requirement(
             self.lead,
@@ -95,23 +124,10 @@ class QualificationRoutingReliabilityTests(TestCase):
         self.lead.refresh_from_db()
         qualification_state = state_for_lead(self.lead, requirements=requirements)
         self.assertEqual(qualification_state["qualified_stage_id"], str(self.qualified.id))
-
-        context = AIContextBuilder().build(
-            organization=self.organization,
-            lead=self.lead,
-            message_limit=12,
-            knowledge_limit=3,
-            note_limit=5,
-        )
-        context.conversation["messages"] = [{
-            "id": "final-answer",
-            "direction": "inbound",
-            "body": "B",
-        }]
-        profile = compile_org_ai_profile_from_context(context.organization)
-        runtime_policy = get_runtime_policy(
-            organization=self.organization,
-            profile=profile,
+        context, runtime_policy = self._context_and_policy(
+            message_id="final-answer",
+            body="B",
+            requirements=requirements,
         )
 
         actions, _ = build_controlled_actions(
@@ -143,6 +159,52 @@ class QualificationRoutingReliabilityTests(TestCase):
         self.assertEqual(self.lead.attributes["lead_system_answer"], "Excel/Sheets")
         self.assertEqual(self.lead.pipeline_id, self.qualified_pipeline.id)
         self.assertEqual(self.lead.stage_id, self.qualified.id)
+
+    def test_model_captured_natural_answer_projects_before_attribute_and_qualified_actions(self):
+        requirements = self._requirements()
+        requirement = requirements[0]
+        record_last_asked_requirement(
+            self.lead,
+            requirement["id"],
+            requirements=requirements,
+        )
+        qualification_state = state_for_lead(self.lead, requirements=requirements)
+        context, runtime_policy = self._context_and_policy(
+            message_id="natural-answer",
+            body="I currently manage them in Excel/Sheets",
+            requirements=requirements,
+        )
+        decision = SimpleNamespace(
+            qualification_updates=[{
+                "requirement_id": requirement["id"],
+                "value": "Excel/Sheets",
+                "source_message_id": "natural-answer",
+                "evidence": "Excel/Sheets",
+            }],
+            crm_actions=[],
+        )
+
+        actions, result = build_controlled_actions(
+            decision=decision,
+            context=context,
+            runtime_policy=runtime_policy,
+            qualification_state=qualification_state,
+            requirements=requirements,
+        )
+
+        attribute_action = next(
+            item for item in actions if item.get("type") == "attribute_updates"
+        )
+        self.assertEqual(
+            attribute_action["updates"],
+            [{"key": "lead_system_answer", "value": "Excel/Sheets"}],
+        )
+        transition = next(
+            item for item in actions if item.get("type") == "pipeline_transition"
+        )
+        self.assertEqual(transition["stage_shift"]["stage_id"], str(self.qualified.id))
+        projected = result["projected_qualification_state"]
+        self.assertTrue(projected["all_requirements_answered"])
 
 
 class ConversationRoutingReliabilityTests(SimpleTestCase):
