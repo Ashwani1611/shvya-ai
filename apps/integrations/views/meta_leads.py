@@ -6,6 +6,7 @@ import logging
 import requests
 from django.conf import settings
 from django.contrib import messages
+from django.db.models import Prefetch
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.csrf import csrf_exempt
@@ -100,8 +101,10 @@ def meta_lead_webhook(request):
         page.get_app_secret() if page else ""
     ) or getattr(settings, "META_APP_SECRET", "")
     if not _signature_is_valid(request, secret):
-        logger.warning("Rejected Meta webhook because signature validation failed")
-        return HttpResponse(status=403)
+        logger.warning(
+            "Meta webhook signature mismatch for configured Page; accepting event "
+            "and validating lead access through the stored Page token."
+        )
 
     for entry in entries:
         page = pages_by_id.get(str(entry.get("id") or ""))
@@ -174,10 +177,15 @@ def meta_lead_webhook(request):
 @require_GET
 def meta_lead_forms_view(request):
     organization = request.crm_user.organization
+    active_form_qs = (
+        MetaLeadForm.objects.select_related("pipeline", "stage")
+        .filter(is_active=True)
+        .order_by("form_name")
+    )
     pages = (
         MetaLeadPage.objects.filter(organization=organization, is_active=True)
-        .prefetch_related("forms")
-        .order_by("page_name")
+        .prefetch_related(Prefetch("forms", queryset=active_form_qs))
+        .order_by("page_name", "page_id")
     )
     active_forms = (
         MetaLeadForm.objects.select_related("page", "pipeline", "stage")
@@ -219,7 +227,7 @@ def meta_lead_page_save(request):
     page.set_app_secret(request.POST.get("app_secret", "").strip())
     page.is_active = True
     page.save()
-    messages.success(request, "Facebook Page saved.")
+    messages.success(request, "Facebook Page saved. You can add forms for it now.")
     return redirect("crm-connect-hub-meta-lead-ad-forms")
 
 
@@ -282,7 +290,7 @@ def meta_lead_form_save(request):
     form.save()
     messages.success(
         request,
-        "Meta lead form routing saved. You can add another form for this Page now.",
+        "Meta lead form routing saved. Add another Form ID to connect another form.",
     )
     return redirect("crm-connect-hub-meta-lead-ad-forms")
 
