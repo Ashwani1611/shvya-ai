@@ -75,6 +75,15 @@ class AiEngagementConfig(AppConfig):
 
         install_langgraph_orchestration()
 
+        # After every normal graph/provider/repair layer is installed, add one
+        # deterministic last-resort response. A malformed provider result must
+        # not leave a genuine inbound WhatsApp turn unanswered.
+        from apps.ai_engagement.services.engagement_failsoft import (
+            install_engagement_failsoft,
+        )
+
+        install_engagement_failsoft()
+
         # Preserve existing channel entry points while installing deterministic
         # orchestration policy: short debounce, no generic positive-keyword
         # stage movement, throttled enrichment, and consistent Hosted/Meta AI
