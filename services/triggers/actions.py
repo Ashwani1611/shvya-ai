@@ -16,6 +16,11 @@ from apps.integrations.services.email import (
     send_organization_email,
 )
 from apps.triggers.models import TriggerRun
+from services.crm.lead_transition import (
+    LeadTransitionError,
+    move_lead_to_pipeline_stage,
+    move_lead_to_stage,
+)
 from services.followup_service import (
     FollowupError,
     _render_text,
@@ -80,7 +85,13 @@ def execute(run_id):
                     _apply(run, lead)
                 finally:
                     causal_rules.reset(token)
-        except (ValueError, ValidationError, FollowupError, ObjectDoesNotExist) as exc:
+        except (
+            ValueError,
+            ValidationError,
+            LeadTransitionError,
+            FollowupError,
+            ObjectDoesNotExist,
+        ) as exc:
             run.status = "failed"
             run.detail = str(exc)[:1000]
         except Exception:
@@ -132,35 +143,19 @@ def _apply(run, lead):
         if stage.id == lead.stage_id:
             run.status, run.detail = "skipped", "Lead is already in this stage."
             return
-        from services.crm_activity_service import (
-            record_pipeline_changed,
-            record_stage_changed,
-        )
 
-        old, old_pipeline = lead.stage, lead.pipeline
-        lead.pipeline, lead.stage, lead.stage_entered_at = (
-            stage.pipeline,
-            stage,
-            timezone.now(),
-        )
-        lead.full_clean()
-        lead.save(update_fields=["pipeline", "stage", "stage_entered_at", "updated_at"])
-        if old_pipeline.id == stage.pipeline_id:
-            record_stage_changed(
+        if lead.pipeline_id == stage.pipeline_id:
+            move_lead_to_stage(
                 lead=lead,
+                stage=stage,
                 actor=actor,
-                pipeline=stage.pipeline,
-                old_stage=old,
-                new_stage=stage,
             )
         else:
-            record_pipeline_changed(
+            move_lead_to_pipeline_stage(
                 lead=lead,
+                pipeline=stage.pipeline,
+                stage=stage,
                 actor=actor,
-                old_pipeline=old_pipeline,
-                new_pipeline=stage.pipeline,
-                old_stage=old,
-                new_stage=stage,
             )
     elif kind == "attribute":
         from apps.crm.models import AttributeDefinition
