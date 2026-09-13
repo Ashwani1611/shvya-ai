@@ -819,7 +819,7 @@
 
                     {% for lead in group.leads %}
 
-                        {% include "crm/partials/lead_card.html" %}
+                        {% include "crm/partials/lead_card.html" with conversation_summary=lead.has_conversation_summary %}
 
                     {% endfor %}
 

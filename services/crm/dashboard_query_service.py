@@ -1,9 +1,10 @@
 """Query-efficient context builder for the CRM lead dashboard."""
 
-from django.db.models import Count, OuterRef, Prefetch, Q, Subquery, TextField
+from django.db.models import Count, Exists, OuterRef, Prefetch, Q, Subquery, TextField
 from django.db.models.functions import Cast, Upper
 from django.utils import timezone
 
+from apps.ai_engagement.models import InternalConversationSummary
 from apps.crm.models import (
     Lead,
     LeadActivity,
@@ -145,6 +146,16 @@ def build_lead_table_context(
         .order_by("-created_at")
     )
 
+    active_summary_qs = (
+        InternalConversationSummary.objects
+        .filter(
+            organization=organization,
+            lead_id=OuterRef("pk"),
+            is_active=True,
+        )
+        .exclude(summary="")
+    )
+
     leads_qs = (
         Lead.objects
         .filter(
@@ -162,6 +173,7 @@ def build_lead_table_context(
                     lead_id=OuterRef("pk"), status__in=["active", "paused"],
                 ).values("sequence__name")[:1]
             ),
+            has_conversation_summary=Exists(active_summary_qs),
         )
     )
 
