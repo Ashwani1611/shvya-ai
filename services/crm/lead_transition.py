@@ -12,6 +12,11 @@ class LeadTransitionError(Exception):
     """Raised when a Lead stage/pipeline transition cannot be performed safely."""
 
 
+def _activity_actor(actor):
+    """Return only a persisted Django user suitable for LeadActivity.actor."""
+    return actor if getattr(actor, "pk", None) is not None else None
+
+
 def move_lead_to_stage(
     *,
     lead: Lead,
@@ -50,7 +55,7 @@ def move_lead_to_stage(
             )
             record_stage_changed(
                 lead=lead,
-                actor=actor,
+                actor=_activity_actor(actor),
                 pipeline=pipeline,
                 old_stage=old_stage,
                 new_stage=stage,
@@ -110,7 +115,7 @@ def move_lead_to_pipeline_stage(
             )
             record_pipeline_changed(
                 lead=lead,
-                actor=actor,
+                actor=_activity_actor(actor),
                 old_pipeline=old_pipeline,
                 new_pipeline=pipeline,
                 old_stage=old_stage,
