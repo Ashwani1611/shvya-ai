@@ -113,6 +113,15 @@ class AiEngagementConfig(AppConfig):
         )
         install_engagement_failsoft()
 
+        # Resolve attributes, qualification, stage and workflow mutations before
+        # the canonical task builds the final customer-facing response. Install
+        # this before task fail-soft so terminal generation recovery still wraps
+        # the complete transactional execution path.
+        from apps.ai_engagement.services.transactional_turn_runtime import (
+            install_transactional_turn_runtime,
+        )
+        install_transactional_turn_runtime()
+
         from apps.ai_engagement.services.task_execution_failsoft import (
             install_task_execution_failsoft,
         )
