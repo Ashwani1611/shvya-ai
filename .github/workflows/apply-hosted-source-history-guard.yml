@@ -1,0 +1,35 @@
+name: Apply Hosted source history guard
+on:
+  push:
+    branches:
+      - fix/hosted-source-history-guard
+    paths:
+      - .github/workflows/apply-hosted-source-history-guard.yml
+permissions:
+  contents: write
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: fix/hosted-source-history-guard
+      - name: Apply focused guard
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('apps/hosted_automation/tasks.py')
+          text = path.read_text()
+          needle = '''    if job.status not in {\n        HostedAutomationJob.Status.PROCESSING,\n        HostedAutomationJob.Status.QUEUED,\n    }:\n        return {"status": "skipped", "reason": "job_already_finished"}\n\n    latest = (\n'''
+          replacement = '''    if job.status not in {\n        HostedAutomationJob.Status.PROCESSING,\n        HostedAutomationJob.Status.QUEUED,\n    }:\n        return {"status": "skipped", "reason": "job_already_finished"}\n\n    source_payload = (\n        job.source_message.raw_payload\n        if isinstance(job.source_message.raw_payload, dict)\n        else {}\n    )\n    if source_payload.get("isHistory") is True:\n        _cancel_generated_message(job)\n        job.status = HostedAutomationJob.Status.SKIPPED\n        job.completed_at = timezone.now()\n        job.result = {**(job.result or {}), "reason": "source_message_is_history"}\n        job.save(update_fields=["status", "completed_at", "result", "updated_at"])\n        return {"status": "skipped", "reason": "source_message_is_history"}\n\n    latest = (\n'''
+          if needle not in text:
+              raise SystemExit('target block not found')
+          path.write_text(text.replace(needle, replacement, 1))
+          PY
+          rm .github/workflows/apply-hosted-source-history-guard.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add apps/hosted_automation/tasks.py .github/workflows/apply-hosted-source-history-guard.yml
+          git commit -m 'Skip Hosted AI jobs sourced from history messages'
+          git push origin HEAD:fix/hosted-source-history-guard
