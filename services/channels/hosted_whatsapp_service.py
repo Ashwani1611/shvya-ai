@@ -465,12 +465,15 @@ def _persist_gateway_message(*, account, payload, historical=False):
 
     settings = get_session_settings(account=account)
     pipeline = get_pipeline_for_account(account=account)
+    # The existing-chat snapshot protects history import only. Once WhatsApp
+    # emits a genuine realtime inbound, that contact has re-engaged and must
+    # be eligible for normal Lead creation and AI automation, even if the
+    # number was present when the Hosted session was first connected.
     if (
         not is_outbound
         and not historical
         and not lead
         and peer
-        and not ignored_existing_chat
         and settings["auto_lead_creation"]
         and pipeline
     ):
