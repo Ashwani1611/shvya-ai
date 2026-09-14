@@ -1,57 +1,97 @@
 /*
  * SHVYA CRM lead-card final visual authority.
  *
- * This file loads after every CRM layout/presentation layer. It intentionally
- * uses the same structural selectors as the stabilizer, plus explicit state
- * hooks, so generic !important resets cannot flatten lead-card colour states.
+ * Keep the stabilized CRM geometry, but preserve the original lead-card effect
+ * added on 13 Sep 2026: soft 3D depth, very light individual colour glows and
+ * a subtle hover lift. State tiles remain explicit so generic !important rules
+ * cannot flatten their colours.
  */
 
-/* Give the outside halo enough room inside the CRM scroll region. */
 html.shvya-crm-apple-v2 body .crm-premium-page [data-lead-cards] {
     overflow: visible !important;
     padding: 7px 7px 26px !important;
 }
 
-/* Every lead card gets the original blue outside colour/depth. nth-child(n)
-   deliberately beats the older per-card nth-child shadow rules. */
+/* -------------------------------------------------------------------------
+   Original lead-card effect — soft 3D + very light individual glow
+   ------------------------------------------------------------------------- */
+
 html.shvya-crm-apple-v2 body .crm-premium-page [data-lead-cards] > .lead-card:nth-child(n) {
     position: relative !important;
-    border: 1px solid rgba(59, 130, 246, 0.18) !important;
+    border: 1px solid rgba(15, 23, 42, 0.07) !important;
     border-left: 6px solid #3b82f6 !important;
-    outline: 2px solid rgba(59, 130, 246, 0.16) !important;
-    outline-offset: 2px !important;
+    outline: 0 !important;
     background: #ffffff !important;
-    box-shadow:
-        inset 0 1px 0 rgba(255, 255, 255, 0.98),
-        0 3px 8px rgba(15, 23, 42, 0.04),
-        0 12px 28px rgba(59, 130, 246, 0.15),
-        0 28px 58px rgba(59, 130, 246, 0.10) !important;
-    -webkit-filter: drop-shadow(0 10px 18px rgba(59, 130, 246, 0.08)) !important;
-    filter: drop-shadow(0 10px 18px rgba(59, 130, 246, 0.08)) !important;
+    -webkit-filter: none !important;
+    filter: none !important;
     transform: translateY(0) translateZ(0) !important;
+    box-shadow:
+        0 4px 14px rgba(59, 130, 246, 0.055),
+        0 12px 28px rgba(59, 130, 246, 0.025) !important;
     transition:
         transform 180ms ease,
-        outline-color 180ms ease,
         border-color 180ms ease,
         box-shadow 180ms ease,
-        filter 180ms ease !important;
+        background-color 180ms ease !important;
 }
 
-html.shvya-crm-apple-v2 body .crm-premium-page [data-lead-cards] > .lead-card:nth-child(n):hover {
-    border-color: rgba(59, 130, 246, 0.32) !important;
-    border-left-color: #2563eb !important;
-    outline-color: rgba(59, 130, 246, 0.34) !important;
-    transform: translateY(-3px) translateZ(0) !important;
+html.shvya-crm-apple-v2 body .crm-premium-page [data-lead-cards] > .lead-card:nth-child(5n + 1) {
     box-shadow:
-        inset 0 1px 0 rgba(255, 255, 255, 1),
-        0 5px 12px rgba(15, 23, 42, 0.045),
-        0 16px 34px rgba(59, 130, 246, 0.21),
-        0 34px 68px rgba(59, 130, 246, 0.14) !important;
-    -webkit-filter: drop-shadow(0 14px 24px rgba(59, 130, 246, 0.12)) !important;
-    filter: drop-shadow(0 14px 24px rgba(59, 130, 246, 0.12)) !important;
+        0 4px 14px rgba(59, 130, 246, 0.060),
+        0 12px 28px rgba(59, 130, 246, 0.028) !important;
 }
 
-/* Conversation Summary + Last Activity: keep the original visible blue tile. */
+html.shvya-crm-apple-v2 body .crm-premium-page [data-lead-cards] > .lead-card:nth-child(5n + 2) {
+    box-shadow:
+        0 4px 14px rgba(139, 92, 246, 0.055),
+        0 12px 28px rgba(139, 92, 246, 0.025) !important;
+}
+
+html.shvya-crm-apple-v2 body .crm-premium-page [data-lead-cards] > .lead-card:nth-child(5n + 3) {
+    box-shadow:
+        0 4px 14px rgba(6, 182, 212, 0.055),
+        0 12px 28px rgba(6, 182, 212, 0.025) !important;
+}
+
+html.shvya-crm-apple-v2 body .crm-premium-page [data-lead-cards] > .lead-card:nth-child(5n + 4) {
+    box-shadow:
+        0 4px 14px rgba(34, 197, 94, 0.050),
+        0 12px 28px rgba(34, 197, 94, 0.022) !important;
+}
+
+html.shvya-crm-apple-v2 body .crm-premium-page [data-lead-cards] > .lead-card:nth-child(5n + 5) {
+    box-shadow:
+        0 4px 14px rgba(245, 158, 11, 0.050),
+        0 12px 28px rgba(245, 158, 11, 0.022) !important;
+}
+
+/* Original hover: only a very subtle 1px lift. */
+html.shvya-crm-apple-v2 body .crm-premium-page [data-lead-cards] > .lead-card:nth-child(n):hover {
+    border-color: rgba(15, 23, 42, 0.10) !important;
+    border-left-color: #3b82f6 !important;
+    outline: 0 !important;
+    transform: translateY(-1px) translateZ(0) !important;
+    -webkit-filter: none !important;
+    filter: none !important;
+    box-shadow:
+        0 7px 20px rgba(59, 130, 246, 0.075),
+        0 16px 34px rgba(59, 130, 246, 0.035) !important;
+}
+
+/* Selection remains clearly visible without replacing the normal card glow. */
+html.shvya-crm-apple-v2 body .crm-premium-page [data-lead-cards] > .lead-card.crm-is-selected {
+    outline: 2px solid rgba(0, 113, 227, 0.72) !important;
+    outline-offset: -2px !important;
+    box-shadow:
+        0 0 0 4px rgba(0, 113, 227, 0.14),
+        0 7px 20px rgba(59, 130, 246, 0.075),
+        0 16px 34px rgba(59, 130, 246, 0.035) !important;
+}
+
+/* -------------------------------------------------------------------------
+   Conversation Summary + Last Activity keep their blue Apple-style tiles
+   ------------------------------------------------------------------------- */
+
 html.shvya-crm-apple-v2 body .crm-premium-page .lead-card > div:has(> .grid > [id^="lead-followup-control-"]) > .grid > button,
 html.shvya-crm-apple-v2 body .crm-premium-page .lead-card > div:has(> .grid > [id^="lead-followup-control-"]) > .grid > div:not([id^="lead-followup-control-"]) {
     border-color: rgba(59, 130, 246, 0.28) !important;
@@ -73,8 +113,10 @@ html.shvya-crm-apple-v2 body .crm-premium-page .lead-card > div:has(> .grid > [i
     color: #3b82f6 !important;
 }
 
-/* Auto Follow-up: explicit rendered state wins over the stabilizer's generic
-   `> .grid > * { background:#fff !important; }` rule. */
+/* -------------------------------------------------------------------------
+   Auto Follow-up explicit visual states
+   ------------------------------------------------------------------------- */
+
 html.shvya-crm-apple-v2 body .crm-premium-page .lead-card > div:has(> .grid > [id^="lead-followup-control-"]) > .grid > .shvya-followup-tile[data-followup-state="idle"] {
     border-color: rgba(59, 130, 246, 0.30) !important;
     background:
@@ -138,13 +180,7 @@ html.shvya-crm-apple-v2 body .crm-premium-page .shvya-followup-tile[data-followu
         transition: none !important;
     }
 
-    /* Preserve a clear hover state without movement when reduced motion is on. */
     html.shvya-crm-apple-v2 body .crm-premium-page [data-lead-cards] > .lead-card:nth-child(n):hover {
         transform: none !important;
-        outline-color: rgba(59, 130, 246, 0.42) !important;
-        box-shadow:
-            inset 0 1px 0 rgba(255, 255, 255, 1),
-            0 6px 16px rgba(59, 130, 246, 0.20),
-            0 26px 58px rgba(59, 130, 246, 0.15) !important;
     }
 }
