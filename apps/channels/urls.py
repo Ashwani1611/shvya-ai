@@ -6,6 +6,7 @@ from apps.hosted_automation import views as hosted_automation_views
 from . import api_account_repair_ui
 from . import ai_reply_status_ui
 from . import api_account_ui
+from . import coexistence_ui
 from . import connection_ui
 from . import embedded_oauth_ui
 from . import hosted_attachment_ui
@@ -27,11 +28,15 @@ urlpatterns = [
     path("accounts/<uuid:account_id>/automation-settings/", views_flat.whatsapp_account_automation_settings_view, name="whatsapp-account-automation-settings"),
     path("accounts/<uuid:account_id>/welcome-template/", welcome_ui.whatsapp_welcome_template_view, name="whatsapp-welcome-template"),
     path("connect/", views_flat.whatsapp_connect_choice_view, name="whatsapp-connect-choice"),
-    path("connect/api/", connection_ui.whatsapp_connect_api_view, name="whatsapp-connect-api"),
+    # Keep the existing Connect API page, but its Coexistence card now enters
+    # Meta's dedicated Business App onboarding instead of Hosted WhatsApp Web.
+    path("connect/api/", coexistence_ui.whatsapp_connect_api_entry_view, name="whatsapp-connect-api"),
     path("connect/api/attempt-event/", connection_ui.whatsapp_connection_attempt_event_view, name="whatsapp-connection-attempt-event"),
     path("connect/api/embedded-signup/", connection_ui.whatsapp_embedded_signup_callback_view, name="whatsapp-embedded-signup-callback"),
     path("connect/api/direct/start/", embedded_oauth_ui.whatsapp_embedded_signup_direct_start_view, name="whatsapp-embedded-signup-direct-start"),
     path("connect/api/direct/return/", embedded_oauth_ui.whatsapp_embedded_signup_direct_return_view, name="whatsapp-embedded-signup-direct-return"),
+    path("connect/coexistence/", coexistence_ui.whatsapp_connect_coexistence_view, name="whatsapp-connect-coexistence"),
+    path("connect/coexistence/embedded-signup/", coexistence_ui.whatsapp_coexistence_callback_view, name="whatsapp-coexistence-callback"),
 
     # Hosted linked-device WhatsApp sessions (whatsapp-web.js gateway).
     path("connect/hosted/", hosted_manage_ui.whatsapp_connect_hosted_view, name="whatsapp-connect-hosted"),

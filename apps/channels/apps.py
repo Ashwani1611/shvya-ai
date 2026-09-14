@@ -42,6 +42,9 @@ class ChannelsConfig(AppConfig):
         from services.channels.whatsapp_api_runtime import (
             install_whatsapp_api_runtime,
         )
+        from services.channels.whatsapp_coexistence_runtime import (
+            install_whatsapp_coexistence_runtime,
+        )
         from services.channels.instagram_runtime import install_instagram_runtime
 
         install_instagram_runtime()
@@ -50,3 +53,6 @@ class ChannelsConfig(AppConfig):
         install_hosted_whatsapp_transport()
         install_whatsapp_failure_diagnostics()
         install_whatsapp_api_runtime()
+        # Install last so the Coexistence extension sits behind the existing
+        # webhook signature verification and standard API message runtime.
+        install_whatsapp_coexistence_runtime()
