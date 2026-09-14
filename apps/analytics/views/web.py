@@ -1,5 +1,6 @@
 import csv
 from datetime import date as date_cls, timedelta
+from uuid import UUID
 
 from django.contrib import messages
 from django.core.paginator import Paginator
@@ -25,6 +26,7 @@ from services.analytics.analytics_service import (
     get_or_create_settings,
     get_overview_metrics,
     save_settings,
+    organization_timezone,
 )
 
 
@@ -34,11 +36,17 @@ def _can_manage(user):
 
 def _parse_pipeline_ids(request):
     raw = request.GET.getlist("pipeline")
-    return [p for p in raw if p] or None
+    valid = []
+    for value in raw:
+        try:
+            valid.append(str(UUID(value)))
+        except (ValueError, TypeError, AttributeError):
+            continue
+    return valid or None
 
 
 def _parse_date_range(request):
-    today = timezone.localdate()
+    today = timezone.localdate(timezone=organization_timezone(request.crm_user.organization))
     default_from = today - timedelta(days=28)
 
     try:
@@ -66,7 +74,7 @@ def _date_axis(date_from, date_to):
     while current <= end:
         days.append(current)
         current += timedelta(days=1)
-    return days, [day.strftime("%b %d") for day in days]
+    return days, [day.isoformat() for day in days]
 
 
 def _grouped_series(rows, *, date_from, date_to, group_key, label_map=None):
@@ -74,7 +82,8 @@ def _grouped_series(rows, *, date_from, date_to, group_key, label_map=None):
     buckets = {}
     for row in rows:
         group = row.get(group_key) or "Unassigned"
-        buckets.setdefault(str(group), {})[row["day"]] = row["count"]
+        bucket = buckets.setdefault(str(group), {})
+        bucket[row["day"]] = bucket.get(row["day"], 0) + row["count"]
 
     series = []
     for group in sorted(buckets, key=lambda value: str(label_map.get(value, value) if label_map else value).lower()):
@@ -115,7 +124,7 @@ def analytics_dashboard_view(request):
     pipeline_ids = _parse_pipeline_ids(request)
     date_from, date_to = _parse_date_range(request)
 
-    pipelines = Pipeline.objects.filter(organization=organization, is_active=True).order_by("name")
+    pipelines = Pipeline.objects.filter(organization=organization, ).order_by("name")
     overview = get_overview_metrics(
         organization=organization,
         pipeline_ids=pipeline_ids,
@@ -211,6 +220,10 @@ def analytics_dashboard_view(request):
             "date_from": date_from,
             "date_to": date_to,
             "overview": overview,
+            "insights_timezone": str(organization_timezone(organization)),
+            "insights_updated_at": timezone.now(),
+            "crm_pipeline_count": len(leads_by_pipeline),
+            "crm_stage_count": len(leads_by_stage),
             "leads_labels": leads_labels,
             "leads_series": leads_series,
             "ai_labels": ai_labels,

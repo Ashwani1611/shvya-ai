@@ -237,3 +237,36 @@
     .ins-failed-toolbar { width: 100%; align-items: stretch; }
     .ins-failed-toolbar select, .ins-failed-toolbar .ins-button { width: 100%; }
 }
+/* Quiet surfaces, generous typography and a distinct CRM overview. */
+.ins-hero { padding: 28px 4px 36px; }
+.ins-hero h1 { margin: 12px 0 16px; font-size: clamp(32px, 4vw, 58px); line-height: 1.06; letter-spacing: -.055em; font-weight: 720; }
+.ins-hero h1 span { color: #86868b; }
+.ins-hero p { color: var(--ins-muted); font-size: 15px; line-height: 1.6; }
+.ins-freshness { margin-top: 16px; color: #6e6e73; font-size: 11px; line-height: 1.7; }
+.ins-freshness a { margin-left: 8px; color: var(--ins-blue); }
+.ins-health { padding: clamp(20px, 3vw, 36px); background: linear-gradient(145deg, #f2f7ff 0%, #fafbff 45%, #fff 100%); }
+.ins-health .ins-card-title { font-size: clamp(24px, 2.5vw, 34px); letter-spacing: -.04em; }
+.ins-health-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin: 26px 0; }
+.ins-health-metrics > div { padding: 22px; background: rgba(255,255,255,.85); border: 1px solid rgba(0,113,227,.07); border-radius: 22px; }
+.ins-health-metrics strong { display: block; margin: 16px 0 8px; font-size: clamp(28px, 3vw, 42px); line-height: 1; letter-spacing: -.05em; font-variant-numeric: tabular-nums; }
+.ins-health-metrics span:last-child { color: #6e6e73; font-size: 12px; }
+.ins-health-icon { display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 12px; background: #e8f2ff; color: #0071e3; font-size: 23px; }
+.ins-health .ins-subcard { background: white; padding: 22px; border-radius: 22px; min-width: 0; }
+.ins-health .ins-subcard h4 { margin-bottom: 5px; font-size: 16px; }
+.ins-health-caption { margin: 0 0 12px; font-size: 12px; color: #6e6e73; }
+.ins-health-detail { margin-top: 20px; font-size: 12px; }
+.ins-health-detail summary { cursor: pointer; color: #0071e3; padding: 8px 0; }
+.ins-health-lists { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+.ins-health-lists dl > div { display: flex; justify-content: space-between; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--ins-line); }
+.ins-health-lists dd { margin: 0; font-weight: 650; font-variant-numeric: tabular-nums; }
+.insights-shell :focus-visible { outline: 3px solid #0071e3; outline-offset: 3px; }
+@media (max-width: 680px) {
+    .ins-health-metrics { gap: 8px; }
+    .ins-health-metrics > div { padding: 12px; border-radius: 16px; }
+    .ins-health-metrics span:last-child { font-size: 10px; }
+    .ins-health-lists { grid-template-columns: 1fr; gap: 8px; }
+    .ins-pipeline-menu { right: auto; left: 0; max-width: 80vw; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .insights-shell *, .insights-shell *::before, .insights-shell *::after { animation: none !important; transition: none !important; }
+}

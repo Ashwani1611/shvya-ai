@@ -1,8 +1,9 @@
 """Tenant-scoped aggregation helpers for the Insights workspace."""
-from datetime import timedelta
+from datetime import date, datetime, time, timedelta
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from django.db.models import Count, Q, Sum
-from django.db.models.functions import TruncDate
+from django.db.models.functions import Coalesce, TruncDate
 from django.utils import timezone
 
 from apps.analytics.models import AnalyticsSettings
@@ -14,15 +15,45 @@ from apps.crm.models.reminder import LeadReminder
 SUCCESS_MESSAGE_STATUSES = ("sent", "delivered", "read")
 
 
+def organization_timezone(organization):
+    try:
+        return ZoneInfo(organization.timezone)
+    except (ZoneInfoNotFoundError, ValueError, TypeError):
+        return timezone.get_default_timezone()
+
+
+def _date_scope(qs, *, organization, field="created_at", date_from=None, date_to=None):
+    """Local calendar days expressed as index-friendly, half-open UTC bounds."""
+    tz = organization_timezone(organization)
+    if date_from:
+        start = datetime.combine(date.fromisoformat(str(date_from)), time.min, tzinfo=tz)
+        qs = qs.filter(**{f"{field}__gte": start})
+    if date_to:
+        end = datetime.combine(date.fromisoformat(str(date_to)) + timedelta(days=1), time.min, tzinfo=tz)
+        qs = qs.filter(**{f"{field}__lt": end})
+    return qs
+
+
+def _sent_executions(*, organization, pipeline_ids=None, date_from=None, date_to=None):
+    from apps.followups.models import FollowupExecution
+
+    qs = FollowupExecution.objects.filter(
+        organization=organization, status=FollowupExecution.Status.SENT,
+    ).filter(
+        Q(whatsapp_message__isnull=True)
+        | Q(whatsapp_message__status__in=SUCCESS_MESSAGE_STATUSES)
+    ).annotate(activity_at=Coalesce("finished_at", "updated_at"))
+    if pipeline_ids:
+        qs = qs.filter(lead__pipeline_id__in=pipeline_ids)
+    return _date_scope(qs, organization=organization, field="activity_at",
+                       date_from=date_from, date_to=date_to)
+
+
 def _scope_leads(*, organization, pipeline_ids=None, date_from=None, date_to=None):
     qs = Lead.objects.filter(organization=organization)
     if pipeline_ids:
         qs = qs.filter(pipeline_id__in=pipeline_ids)
-    if date_from:
-        qs = qs.filter(created_at__date__gte=date_from)
-    if date_to:
-        qs = qs.filter(created_at__date__lte=date_to)
-    return qs
+    return _date_scope(qs, organization=organization, date_from=date_from, date_to=date_to)
 
 
 def get_or_create_settings(*, organization):
@@ -64,10 +95,7 @@ def get_overview_metrics(*, organization, pipeline_ids=None, date_from=None, dat
     call_totals = calls.aggregate(total_seconds=Sum("duration_seconds"), calls_done=Count("id"))
 
     messages = WhatsAppMessage.objects.filter(organization=organization)
-    if date_from:
-        messages = messages.filter(created_at__date__gte=date_from)
-    if date_to:
-        messages = messages.filter(created_at__date__lte=date_to)
+    messages = _date_scope(messages, organization=organization, date_from=date_from, date_to=date_to)
     if pipeline_ids:
         messages = messages.filter(lead__pipeline_id__in=pipeline_ids)
 
@@ -88,16 +116,8 @@ def get_overview_metrics(*, organization, pipeline_ids=None, date_from=None, dat
         media_payload__transport="template",
     ).count()
 
-    executions = FollowupExecution.objects.filter(
-        organization=organization,
-        status=FollowupExecution.Status.SENT,
-    )
-    if date_from:
-        executions = executions.filter(updated_at__date__gte=date_from)
-    if date_to:
-        executions = executions.filter(updated_at__date__lte=date_to)
-    if pipeline_ids:
-        executions = executions.filter(lead__pipeline_id__in=pipeline_ids)
+    executions = _sent_executions(organization=organization, pipeline_ids=pipeline_ids,
+                                  date_from=date_from, date_to=date_to)
 
     total_seconds = call_totals["total_seconds"] or 0
     return {
@@ -159,7 +179,7 @@ def get_new_leads_trend(*, organization, date_from, date_to, pipeline_ids=None):
         date_to=date_to,
     )
     rows = (
-        leads.annotate(day=TruncDate("created_at"))
+        leads.annotate(day=TruncDate("created_at", tzinfo=organization_timezone(organization)))
         .values("day")
         .annotate(count=Count("id"))
         .order_by("day")
@@ -176,7 +196,7 @@ def get_leads_over_time(*, organization, date_from, date_to, pipeline_ids=None):
         date_to=date_to,
     )
     return list(
-        leads.annotate(day=TruncDate("created_at"))
+        leads.annotate(day=TruncDate("created_at", tzinfo=organization_timezone(organization)))
         .values("day", "lead_source")
         .annotate(count=Count("id"))
         .order_by("day", "lead_source")
@@ -191,14 +211,13 @@ def get_ai_welcome_trend(*, organization, date_from, date_to, pipeline_ids=None)
         organization=organization,
         direction=WhatsAppMessage.Direction.OUTBOUND,
         status__in=SUCCESS_MESSAGE_STATUSES,
-        created_at__date__gte=date_from,
-        created_at__date__lte=date_to,
     )
+    messages = _date_scope(messages, organization=organization, date_from=date_from, date_to=date_to)
     if pipeline_ids:
         messages = messages.filter(lead__pipeline_id__in=pipeline_ids)
 
     rows = (
-        messages.annotate(day=TruncDate("created_at"))
+        messages.annotate(day=TruncDate("created_at", tzinfo=organization_timezone(organization)))
         .values("day")
         .annotate(
             # Most normal AI replies predate the explicit `origin=engagement`
@@ -224,18 +243,11 @@ def get_automation_flow_trend(*, organization, date_from, date_to, step_type, pi
     """Daily sent follow-up executions grouped by sequence name."""
     from apps.followups.models import FollowupExecution
 
-    executions = FollowupExecution.objects.filter(
-        organization=organization,
-        status=FollowupExecution.Status.SENT,
-        step__step_type=step_type,
-        updated_at__date__gte=date_from,
-        updated_at__date__lte=date_to,
-    )
-    if pipeline_ids:
-        executions = executions.filter(lead__pipeline_id__in=pipeline_ids)
+    executions = _sent_executions(organization=organization, pipeline_ids=pipeline_ids,
+                                  date_from=date_from, date_to=date_to).filter(step__step_type=step_type)
 
     return list(
-        executions.annotate(day=TruncDate("updated_at"))
+        executions.annotate(day=TruncDate("activity_at", tzinfo=organization_timezone(organization)))
         .values("day", "sequence__name")
         .annotate(count=Count("id"))
         .order_by("day", "sequence__name")
@@ -248,13 +260,12 @@ def get_failed_messages_trend(*, organization, date_from, date_to, pipeline_ids=
     messages = WhatsAppMessage.objects.filter(
         organization=organization,
         status=WhatsAppMessage.Status.FAILED,
-        created_at__date__gte=date_from,
-        created_at__date__lte=date_to,
     )
+    messages = _date_scope(messages, organization=organization, date_from=date_from, date_to=date_to)
     if pipeline_ids:
         messages = messages.filter(lead__pipeline_id__in=pipeline_ids)
     rows = (
-        messages.annotate(day=TruncDate("created_at"))
+        messages.annotate(day=TruncDate("created_at", tzinfo=organization_timezone(organization)))
         .values("day")
         .annotate(count=Count("id"))
         .order_by("day")
@@ -273,10 +284,7 @@ def get_failed_template_messages_queryset(*, organization, date_from=None, date_
         account__connection_type=WhatsAppAccount.ConnectionType.API,
         media_payload__transport="template",
     ).select_related("lead", "lead__pipeline", "lead__stage", "account")
-    if date_from:
-        messages = messages.filter(created_at__date__gte=date_from)
-    if date_to:
-        messages = messages.filter(created_at__date__lte=date_to)
+    messages = _date_scope(messages, organization=organization, date_from=date_from, date_to=date_to)
     if pipeline_ids:
         messages = messages.filter(lead__pipeline_id__in=pipeline_ids)
     return messages.order_by("-created_at")
@@ -303,8 +311,8 @@ def get_leads_by_stage(*, organization, pipeline_ids=None, date_from=None, date_
         date_from=date_from,
         date_to=date_to,
     )
-    rows = leads.values("stage__name").annotate(count=Count("id")).order_by("-count")
+    rows = leads.values("stage_id", "stage__name", "pipeline__name").annotate(count=Count("id")).order_by("-count")
     return [
-        {"label": row["stage__name"] or "No Stage", "count": row["count"]}
+        {"label": f"{row['pipeline__name']} · {row['stage__name'] or 'No Stage'}", "count": row["count"]}
         for row in rows
     ]

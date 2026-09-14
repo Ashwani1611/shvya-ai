@@ -31,8 +31,8 @@
             '.ins-fallback-tooltip-row{display:flex;align-items:center;gap:7px;margin:2px 0}',
             '.ins-fallback-tooltip-dot{width:8px;height:8px;flex:0 0 8px;border-radius:2px}',
             '.ins-fallback-empty{display:flex;align-items:center;justify-content:center;min-height:285px;color:#6e6e73;font-size:12.5px}',
-            '.ins-fallback-pie-layout{display:grid;grid-template-columns:minmax(250px,1fr) minmax(180px,.65fr);align-items:center;min-height:300px}',
-            '.ins-fallback-pie-legend{display:flex;flex-direction:column;gap:8px;padding:16px 16px 16px 0;font-size:11px}',
+            '.ins-fallback-pie-layout{display:grid;grid-template-columns:minmax(0,1fr);align-items:center;min-height:300px}',
+            '.ins-fallback-pie-legend{display:flex;flex-wrap:wrap;justify-content:center;gap:8px;padding:0 12px 16px;font-size:11px;overflow-wrap:anywhere}',
             '@media(max-width:720px){.ins-fallback-pie-layout{grid-template-columns:1fr}.ins-fallback-pie-legend{padding:0 16px 16px;flex-direction:row;flex-wrap:wrap}.ins-fallback-surface svg{height:280px}}'
         ].join('');
         document.head.appendChild(style);
@@ -239,7 +239,7 @@
 
         const count = Math.max(labels.length, 1);
         const stepX = count > 1 ? chartWidth / (count - 1) : chartWidth;
-        const maxXTicks = 16;
+        const maxXTicks = window.innerWidth < 680 ? 6 : 14;
         const tickEvery = Math.max(1, Math.ceil(count / maxXTicks));
         labels.forEach(function (label, index) {
             const x = margin.left + (count > 1 ? index * stepX : chartWidth / 2);
@@ -248,7 +248,7 @@
                     x1: x, y1: margin.top, x2: x, y2: margin.top + chartHeight,
                     stroke: 'rgba(15,23,42,.075)', 'stroke-width': 1
                 }));
-                textNode(svg, x, margin.top + chartHeight + 22, label, {
+                textNode(svg, x, margin.top + chartHeight + 22, label.slice(5), {
                     'text-anchor': 'end', transform: 'rotate(-36 ' + x + ' ' + (margin.top + chartHeight + 22) + ')'
                 });
             }
@@ -272,7 +272,7 @@
             });
             if (item.total) path.setAttribute('stroke-dasharray', '5 5');
             svg.appendChild(path);
-            points.forEach(function (point) {
+            (count > 60 ? [] : points).forEach(function (point) {
                 svg.appendChild(svgElement('circle', {
                     cx: point[0], cy: point[1], r: 3,
                     fill: '#fff', stroke: item.color, 'stroke-width': 2

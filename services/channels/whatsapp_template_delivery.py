@@ -141,6 +141,10 @@ def _send_template_transport(message):
     if ai_metadata is not None:
         final_payload["shvya_ai"] = ai_metadata
 
+    for key in ("shvya_welcome", "shvya_auto_followup"):
+        if key in existing_payload:
+            final_payload[key] = existing_payload[key]
+
     message.status = WhatsAppMessage.Status.SENT
     message.external_id = external_id
     message.raw_payload = final_payload
