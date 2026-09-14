@@ -1,6 +1,7 @@
 from django.urls import path
 from django.views.generic import RedirectView
 
+from apps.channels import instagram_ui
 from apps.core.coming_soon import coming_soon
 from apps.crm.views.ai_setup import ai_setup_view
 from apps.crm.views.faq import faq_view
@@ -85,7 +86,40 @@ coming_soon_urlpatterns = [
         name="crm-support-portal",
     ),
 
-    # Instagram
-    path("instagram/connect/", coming_soon, {"feature": "instagram-connect"}, name="crm-instagram-connect"),
-    path("instagram/chats/", coming_soon, {"feature": "instagram-chats"}, name="crm-instagram-chats"),
+    # Instagram professional messaging.
+    path(
+        "instagram/connect/",
+        instagram_ui.instagram_connect_view,
+        name="crm-instagram-connect",
+    ),
+    path(
+        "instagram/connect/start/",
+        instagram_ui.instagram_oauth_start_view,
+        name="crm-instagram-oauth-start",
+    ),
+    path(
+        "instagram/connect/return/",
+        instagram_ui.instagram_oauth_return_view,
+        name="crm-instagram-oauth-return",
+    ),
+    path(
+        "instagram/disconnect/",
+        instagram_ui.instagram_disconnect_view,
+        name="crm-instagram-disconnect",
+    ),
+    path(
+        "instagram/chats/",
+        instagram_ui.instagram_chat_list_view,
+        name="crm-instagram-chats",
+    ),
+    path(
+        "instagram/chats/<str:conversation_id>/",
+        instagram_ui.instagram_chat_detail_view,
+        name="crm-instagram-chat-detail",
+    ),
+    path(
+        "instagram/chats/<str:conversation_id>/send/",
+        instagram_ui.instagram_send_message_view,
+        name="crm-instagram-send-message",
+    ),
 ]
