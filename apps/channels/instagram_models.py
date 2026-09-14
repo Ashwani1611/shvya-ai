@@ -83,9 +83,7 @@ class InstagramOAuthAttempt(models.Model):
     )
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
+        on_delete=models.CASCADE,
         related_name="instagram_oauth_attempts",
     )
     authorization_code = EncryptedTextField(blank=True)
