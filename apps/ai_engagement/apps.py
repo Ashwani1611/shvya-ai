@@ -82,6 +82,14 @@ class AiEngagementConfig(AppConfig):
         )
         install_engagement_instruction_runtime()
 
+        # Install the grounding scope boundary before the qualification routing
+        # wrapper is created. This guarantees every wrapper reference, including
+        # early imports held by tests/workflows, sees the scoped helper.
+        from apps.ai_engagement.services.qualification_grounding_scope_guard import (
+            install_qualification_grounding_scope_guard,
+        )
+        install_qualification_grounding_scope_guard()
+
         # Active qualification answers are resolved against the persisted current
         # requirement before generic knowledge/grounding fallback. This also
         # normalizes authored option ranges and strengthens description-based
@@ -90,14 +98,6 @@ class AiEngagementConfig(AppConfig):
             install_qualification_answer_routing_runtime,
         )
         install_qualification_answer_routing_runtime()
-
-        # Qualification-specific grounding recovery is valid only while the turn
-        # actually carries an authored qualification flow. Ordinary business-fact
-        # replies must still pass through the standard hallucination gate.
-        from apps.ai_engagement.services.qualification_grounding_scope_guard import (
-            install_qualification_grounding_scope_guard,
-        )
-        install_qualification_grounding_scope_guard()
 
         # Qualified can only come from deterministic completed qualification;
         # never let a model-selected Qualified target become generic routing.
