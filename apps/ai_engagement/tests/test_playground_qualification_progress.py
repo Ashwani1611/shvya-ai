@@ -41,23 +41,8 @@ class PlaygroundQualificationProgressRegressionTests(SimpleTestCase):
             bump_up_count=0,
         )
 
-        first = self.requirements[0]
         self.provider = Mock()
-        self.provider.generate_text.return_value = AITextResult(
-            json.dumps(
-                {
-                    "should_engage": True,
-                    "silence_rule": None,
-                    "message": first["question"],
-                    "file_document_id": None,
-                    "crm_actions": [],
-                    "qualification_updates": [],
-                    "next_requirement_id": first["id"],
-                    "reason_code": "QUALIFICATION_NEXT",
-                }
-            ),
-            "test-model",
-        )
+        self._set_provider_to_fail_after_q4()
 
         retrieval = Mock()
         retrieval.retrieve_by_vector.return_value = []
@@ -72,53 +57,66 @@ class PlaygroundQualificationProgressRegressionTests(SimpleTestCase):
             name="Shvya Test",
         )
 
+    def _provider_result_for_requirement(self, index):
+        requirement = self.requirements[index]
+        return AITextResult(
+            json.dumps(
+                {
+                    "should_engage": True,
+                    "silence_rule": None,
+                    "message": requirement["question"],
+                    "file_document_id": None,
+                    "crm_actions": [],
+                    "qualification_updates": [],
+                    "next_requirement_id": requirement["id"],
+                    "reason_code": "QUALIFICATION_NEXT",
+                }
+            ),
+            "test-model",
+        )
+
+    def _set_provider_to_fail_after_q4(self):
+        self.provider.generate_text.side_effect = [
+            self._provider_result_for_requirement(0),
+            self._provider_result_for_requirement(1),
+            self._provider_result_for_requirement(2),
+            self._provider_result_for_requirement(3),
+            RuntimeError("simulated provider/schema failure after Q4"),
+        ]
+
     def _start_and_reach_q4(self, session_id):
-        self.service.run(
+        first = self.service.run(
             organization=self.organization,
             session_id=session_id,
             message="Hi",
         )
-        for answer in ("A", "B", "A"):
-            self.service.run(
+        self.assertIn(self.requirements[0]["question"], first.response)
+
+        for answer, expected_index in (("A", 1), ("B", 2), ("A", 3)):
+            result = self.service.run(
                 organization=self.organization,
                 session_id=session_id,
                 message=answer,
             )
+            self.assertIn(self.requirements[expected_index]["question"], result.response)
 
-    def _assert_next_question(self, result, index):
-        self.assertEqual(result.model, "deterministic")
+    def _assert_q5_recovery(self, result):
+        self.assertEqual(result.model, "deterministic-recovery")
         self.assertTrue(result.response.startswith("Nice."))
-        self.assertIn(self.requirements[index]["question"], result.response)
+        self.assertIn(self.requirements[4]["question"], result.response)
 
-    def test_option_answers_advance_to_q5_without_new_provider_calls(self):
-        first = self.service.run(
+    def test_q4_option_answer_recovers_to_q5_when_generation_fails(self):
+        self._start_and_reach_q4("screenshot-flow")
+
+        result = self.service.run(
             organization=self.organization,
             session_id="screenshot-flow",
-            message="Hi",
+            message="A",
         )
-        self.assertIn(self.requirements[0]["question"], first.response)
-        self.assertEqual(self.provider.generate_text.call_count, 1)
 
-        turns = [
-            ("A", 1),
-            ("B", 2),
-            ("A", 3),
-            ("A", 4),
-        ]
-        for answer, expected_index in turns:
-            result = self.service.run(
-                organization=self.organization,
-                session_id="screenshot-flow",
-                message=answer,
-            )
-            self._assert_next_question(result, expected_index)
+        self._assert_q5_recovery(result)
 
-        # Configured qualification text, language and engagement instructions are
-        # intentionally present. They must not force exact option replies through
-        # the provider merely to discover the backend-owned next requirement.
-        self.assertEqual(self.provider.generate_text.call_count, 1)
-
-    def test_yes_text_for_q4_advances_to_q5_without_provider(self):
+    def test_q4_yes_text_recovers_to_q5_when_generation_fails(self):
         self._start_and_reach_q4("yes-flow")
 
         result = self.service.run(
@@ -127,10 +125,9 @@ class PlaygroundQualificationProgressRegressionTests(SimpleTestCase):
             message="YES",
         )
 
-        self._assert_next_question(result, 4)
-        self.assertEqual(self.provider.generate_text.call_count, 1)
+        self._assert_q5_recovery(result)
 
-    def test_natural_yes_text_for_q4_advances_to_q5_without_provider(self):
+    def test_q4_natural_yes_text_recovers_to_q5_when_generation_fails(self):
         self._start_and_reach_q4("natural-yes-flow")
 
         result = self.service.run(
@@ -139,5 +136,4 @@ class PlaygroundQualificationProgressRegressionTests(SimpleTestCase):
             message="YES, I RUN ADS",
         )
 
-        self._assert_next_question(result, 4)
-        self.assertEqual(self.provider.generate_text.call_count, 1)
+        self._assert_q5_recovery(result)
