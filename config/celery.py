@@ -61,4 +61,8 @@ app.conf.beat_schedule = {
         "task": "ai.dispatch_bump_ups",
         "schedule": 60.0,
     },
+    "refresh-instagram-tokens-every-6-hours": {
+        "task": "apps.channels.instagram_tasks.refresh_instagram_tokens_task",
+        "schedule": 21600.0,
+    },
 }
