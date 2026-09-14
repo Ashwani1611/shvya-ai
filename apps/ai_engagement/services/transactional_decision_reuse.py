@@ -63,6 +63,7 @@ def install_transactional_decision_reuse() -> None:
             runtime._PRECOMPUTED_DECISION.set(
                 {
                     "lead_id": str(lead.pk),
+                    "source_message_id": str(source_message_id or ""),
                     "revision": committed_revision,
                     "decision": final_candidate,
                 }
@@ -78,10 +79,72 @@ def install_transactional_decision_reuse() -> None:
 
     runtime._resolve_state_before_response = resolve_state_before_response
 
+    # A deterministic transition can intentionally land on a stage whose AI is
+    # disabled (for example Qualified or Human Handoff). That new stage must stop
+    # future turns, but it must not suppress the completion acknowledgement for
+    # the exact inbound message that caused the transition. Only bypass the stage
+    # gate for that one pre-resolved message; all other controls are rechecked.
+    from apps.ai_engagement.services.ai_permissions import AIPermissionService
+
+    current_permission_evaluate = AIPermissionService.evaluate
+
+    def evaluate_permission(self, *, organization, lead, latest_inbound=None):
+        permission = current_permission_evaluate(
+            self,
+            organization=organization,
+            lead=lead,
+            latest_inbound=latest_inbound,
+        )
+        if permission.allowed or permission.reason != "stage_ai_disabled":
+            return permission
+
+        cached = runtime._PRECOMPUTED_DECISION.get()
+        if not isinstance(cached, dict) or cached.get("lead_id") != str(getattr(lead, "pk", "")):
+            return permission
+
+        if latest_inbound is None:
+            latest_inbound = self._latest_inbound_message(
+                organization=organization,
+                lead=lead,
+            )
+        source_message_id = str(cached.get("source_message_id") or "")
+        if not source_message_id or str(getattr(latest_inbound, "pk", "") or "") != source_message_id:
+            return permission
+
+        # The original evaluator already verified organization + pipeline before
+        # reaching the stage gate. Re-check controls that normally come after it
+        # so this can never become a general permission bypass.
+        if not getattr(lead, "ai_enabled", True):
+            return self._decision(
+                allowed=False,
+                reason="lead_ai_disabled",
+                organization=organization,
+                lead=lead,
+            )
+        mapping_allowed, mapping_reason = self._conversation_uses_pipeline_number(
+            organization=organization,
+            lead=lead,
+            latest_message=latest_inbound,
+        )
+        if not mapping_allowed:
+            return self._decision(
+                allowed=False,
+                reason=mapping_reason,
+                organization=organization,
+                lead=lead,
+            )
+        return self._decision(
+            allowed=True,
+            reason="same_turn_stage_transition_finalization",
+            organization=organization,
+            lead=lead,
+        )
+
+    AIPermissionService.evaluate = evaluate_permission
+
     # ContextVars survive until explicitly reset. Always clear the one-turn
-    # response candidate even when the canonical path exits early (for example a
-    # permission/account freshness re-check) so a later inbound message on the
-    # same worker can never consume a stale decision.
+    # response candidate even when the canonical path exits early so a later
+    # inbound message on the same worker can never consume a stale decision.
     from apps.ai_engagement import tasks as task_module
 
     current_task_execute = task_module._execute_ai_engagement_response_impl
