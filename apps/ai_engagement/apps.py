@@ -113,6 +113,13 @@ class AiEngagementConfig(AppConfig):
         )
         install_engagement_failsoft()
 
+        # The executor is the final backend evidence gate for non-Qualified stage
+        # moves; Qualified remains strictly tied to completed qualification.
+        from apps.ai_engagement.services.stage_transition_evidence import (
+            install_stage_transition_evidence,
+        )
+        install_stage_transition_evidence()
+
         # Reliable existing CRM values can satisfy mapped qualification fields
         # before generation, preventing duplicate questions and stale state.
         from apps.ai_engagement.services.attribute_state_reconciliation import (
