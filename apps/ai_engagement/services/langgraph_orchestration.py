@@ -112,4 +112,13 @@ def install_langgraph_orchestration() -> None:
     EngagementService._build_input = policy_aware_input
     EngagementService._langgraph_legacy_engage = legacy_engage
 
+    # Sandbox keeps the same provider/validation path during normal operation,
+    # but can recover with the backend-owned next qualification question if
+    # generation fails. Production WhatsApp routing stays unchanged.
+    from apps.ai_engagement.services.playground_graph_recovery import (
+        install_playground_graph_recovery,
+    )
+
+    install_playground_graph_recovery()
+
     _INSTALLED = True
