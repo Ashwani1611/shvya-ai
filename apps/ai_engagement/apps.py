@@ -82,6 +82,23 @@ class AiEngagementConfig(AppConfig):
         )
         install_engagement_instruction_runtime()
 
+        # Active qualification answers are resolved against the persisted current
+        # requirement before generic knowledge/grounding fallback. This also
+        # normalizes authored option ranges and strengthens description-based
+        # attribute mapping without changing organization-specific flows.
+        from apps.ai_engagement.services.qualification_answer_routing_runtime import (
+            install_qualification_answer_routing_runtime,
+        )
+        install_qualification_answer_routing_runtime()
+
+        # Qualification-specific grounding recovery is valid only while the turn
+        # actually carries an authored qualification flow. Ordinary business-fact
+        # replies must still pass through the standard hallucination gate.
+        from apps.ai_engagement.services.qualification_grounding_scope_guard import (
+            install_qualification_grounding_scope_guard,
+        )
+        install_qualification_grounding_scope_guard()
+
         # Qualified can only come from deterministic completed qualification;
         # never let a model-selected Qualified target become generic routing.
         from apps.ai_engagement.services.qualified_transition_guard import (
