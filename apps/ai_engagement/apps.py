@@ -113,6 +113,13 @@ class AiEngagementConfig(AppConfig):
         )
         install_engagement_failsoft()
 
+        # Reliable existing CRM values can satisfy mapped qualification fields
+        # before generation, preventing duplicate questions and stale state.
+        from apps.ai_engagement.services.attribute_state_reconciliation import (
+            install_attribute_state_reconciliation,
+        )
+        install_attribute_state_reconciliation()
+
         # Resolve attributes, qualification, stage and workflow mutations before
         # the canonical task builds the final customer-facing response. Install
         # this before task fail-soft so terminal generation recovery still wraps
