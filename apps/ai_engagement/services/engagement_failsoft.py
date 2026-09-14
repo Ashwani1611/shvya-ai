@@ -213,8 +213,43 @@ def build_deterministic_fallback_decision(*, organization, lead, latest_inbound=
     exact conversation they own. Generic callers may omit it and keep the
     existing lead-wide behavior.
     """
-    from apps.ai_engagement.models import OrgInfo
     from apps.ai_engagement.services.engagement import EngagementDecision
+    from apps.ai_engagement.services.runtime_state import STATE_KEY, observe_message
+
+    # Runtime-owned pause/opt-out intent can be decided without touching the
+    # organization database. This keeps reply eligibility deterministic even if
+    # the provider or another backend dependency is already in a fail-soft path.
+    attributes = lead.attributes if isinstance(getattr(lead, "attributes", None), dict) else {}
+    runtime = attributes.get(STATE_KEY, {})
+    if latest_inbound is None:
+        latest_inbound = _latest_inbound_for_lead(organization=organization, lead=lead)
+    latest_text = str(getattr(latest_inbound, "body", "") or "").strip() if latest_inbound is not None else ""
+    if latest_inbound is not None:
+        runtime = observe_message(runtime, latest_text)
+
+    conversation_mode = runtime.get("conversation_mode")
+    if conversation_mode == "opt_out":
+        return EngagementDecision(
+            should_engage=False,
+            message="",
+            file_document_id=None,
+            crm_actions=[],
+            reason="OPT_OUT",
+            reason_code="OPT_OUT",
+            model="deterministic-fallback",
+        )
+    if conversation_mode == "paused":
+        return EngagementDecision(
+            should_engage=True,
+            message="Understood. We can continue whenever you're ready.",
+            file_document_id=None,
+            crm_actions=[],
+            reason="NORMAL_CONVERSATION",
+            reason_code="NORMAL_CONVERSATION",
+            model="deterministic-paused-ack",
+        )
+
+    from apps.ai_engagement.models import OrgInfo
     from apps.ai_engagement.services.organization_profile import (
         compile_qualification_requirements,
     )
@@ -224,7 +259,6 @@ def build_deterministic_fallback_decision(*, organization, lead, latest_inbound=
         requirements_for_lead,
         state_for_lead,
     )
-    from apps.ai_engagement.services.runtime_state import STATE_KEY, observe_message
 
     org_info = (
         OrgInfo.objects.filter(organization_id=organization.pk)
@@ -239,28 +273,6 @@ def build_deterministic_fallback_decision(*, organization, lead, latest_inbound=
         compiled.get("requirements", []),
     )
     state = state_for_lead(lead, requirements=requirements)
-
-    attributes = lead.attributes if isinstance(getattr(lead, "attributes", None), dict) else {}
-    runtime = attributes.get(STATE_KEY, {})
-    if latest_inbound is None:
-        latest_inbound = _latest_inbound_for_lead(organization=organization, lead=lead)
-    latest_text = str(getattr(latest_inbound, "body", "") or "").strip() if latest_inbound is not None else ""
-    if latest_inbound is not None:
-        runtime = observe_message(runtime, latest_text)
-
-    # Explicit pause/opt-out remains authoritative even if generation failed.
-    conversation_mode = runtime.get("conversation_mode")
-    if conversation_mode in {"paused", "opt_out"}:
-        reason = "OPT_OUT" if conversation_mode == "opt_out" else "NO_ACTION"
-        return EngagementDecision(
-            should_engage=False,
-            message="",
-            file_document_id=None,
-            crm_actions=[],
-            reason=reason,
-            reason_code=reason,
-            model="deterministic-fallback",
-        )
 
     about = org_info.about if org_info else ""
     organization_name = str(getattr(organization, "name", "") or "")
