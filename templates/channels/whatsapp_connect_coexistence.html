@@ -192,7 +192,17 @@
     });
 
     window.fbAsyncInit = function () {
-        FB.init({appId: appId, autoLogAppEvents: true, xfbml: true, version: "v21.0"});
+        // Keep Login for Business on the classic OAuth popup. Meta's current
+        // FedCM path can replace the config_id permissions with scope=openid,
+        // which surfaces the misleading "needs at least one supported permission" error.
+        FB.init({
+            appId: appId,
+            autoLogAppEvents: true,
+            cookie: true,
+            xfbml: false,
+            version: "v25.0",
+            fedCM: false
+        });
         button.disabled = false;
         button.querySelector("span").textContent = "Connect existing WhatsApp";
     };
