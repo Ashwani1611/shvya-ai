@@ -77,4 +77,32 @@ def install_transactional_decision_reuse() -> None:
         return result
 
     runtime._resolve_state_before_response = resolve_state_before_response
+
+    # ContextVars survive until explicitly reset. Always clear the one-turn
+    # response candidate even when the canonical path exits early (for example a
+    # permission/account freshness re-check) so a later inbound message on the
+    # same worker can never consume a stale decision.
+    from apps.ai_engagement import tasks as task_module
+
+    current_task_execute = task_module._execute_ai_engagement_response_impl
+
+    def execute_task(*, task, lead_id: str):
+        try:
+            return current_task_execute(task=task, lead_id=lead_id)
+        finally:
+            runtime._PRECOMPUTED_DECISION.set(None)
+
+    task_module._execute_ai_engagement_response_impl = execute_task
+
+    from apps.hosted_automation import execution as hosted_execution
+
+    current_hosted_execute = hosted_execution.execute_hosted_ai_engagement
+
+    def execute_hosted(*, task, job):
+        try:
+            return current_hosted_execute(task=task, job=job)
+        finally:
+            runtime._PRECOMPUTED_DECISION.set(None)
+
+    hosted_execution.execute_hosted_ai_engagement = execute_hosted
     _INSTALLED = True
