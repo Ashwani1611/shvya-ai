@@ -3,7 +3,7 @@
 import logging
 
 from celery import shared_task
-from django.utils import timezone
+from django.db import transaction
 
 from .instagram_models import (
     InstagramAccount,
@@ -47,15 +47,13 @@ def complete_instagram_oauth_task(self, attempt_id):
                 account.save(update_fields=["last_error", "updated_at"])
             if exc.transient and self.request.retries < self.max_retries:
                 raise self.retry(exc=exc)
-            # OAuth exchange itself succeeded; retain the connection so a later
-            # sync/subscription retry can repair it without making the user log in again.
             return {"status": "connected_with_warning", "error": str(exc)}
 
         if exc.transient and self.request.retries < self.max_retries:
             raise self.retry(exc=exc)
         fail_oauth_attempt(attempt.id, exc)
         return {"status": "failed", "error": str(exc)}
-    except Exception as exc:  # defensive: keep an auditable failed attempt
+    except Exception as exc:
         logger.exception("Instagram OAuth completion failed for %s", attempt_id)
         fail_oauth_attempt(attempt.id, exc)
         raise
@@ -65,7 +63,10 @@ def complete_instagram_oauth_task(self, attempt_id):
 
 @shared_task(bind=True, max_retries=2, default_retry_delay=30)
 def sync_instagram_account_task(self, account_id):
-    from services.channels.instagram_service import InstagramAPIError, sync_account_conversations
+    from services.channels.instagram_service import (
+        InstagramAPIError,
+        sync_account_conversations,
+    )
 
     account = InstagramAccount.objects.filter(
         pk=account_id,
@@ -90,13 +91,12 @@ def sync_instagram_account_task(self, account_id):
 
 @shared_task
 def send_instagram_message_task(message_id):
-    """Send once. We deliberately do not blind-retry an ambiguous Meta timeout.
-
-    Instagram's Send API does not expose a SHVYA-controlled idempotency key. If
-    a timeout happened after Meta accepted a message, an automatic resend could
-    duplicate a customer-facing DM. The row stays failed and can be reconciled.
-    """
-    from services.channels.instagram_service import InstagramAPIError, fail_message, send_queued_message
+    """Send once rather than blindly retrying an ambiguous Meta timeout."""
+    from services.channels.instagram_service import (
+        InstagramAPIError,
+        fail_message,
+        send_queued_message,
+    )
 
     message = InstagramMessage.objects.filter(pk=message_id).first()
     if not message:
@@ -111,13 +111,17 @@ def send_instagram_message_task(message_id):
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=15)
 def process_instagram_webhook_delivery_task(self, delivery_id):
-    from services.channels.instagram_service import fail_webhook_delivery, process_webhook_delivery
+    from services.channels.instagram_service import (
+        fail_webhook_delivery,
+        process_webhook_delivery,
+    )
 
     delivery = InstagramWebhookDelivery.objects.filter(pk=delivery_id).first()
     if not delivery:
         return {"status": "missing"}
     try:
-        count = process_webhook_delivery(delivery)
+        with transaction.atomic():
+            count = process_webhook_delivery(delivery)
     except Exception as exc:
         logger.exception("Instagram webhook processing failed for %s", delivery_id)
         fail_webhook_delivery(delivery_id, exc)
@@ -155,7 +159,10 @@ def refresh_instagram_tokens_task():
 
 @shared_task
 def disconnect_instagram_account_task(account_id):
-    from services.channels.instagram_service import InstagramAPIError, unsubscribe_account_webhooks
+    from services.channels.instagram_service import (
+        InstagramAPIError,
+        unsubscribe_account_webhooks,
+    )
 
     account = InstagramAccount.objects.filter(pk=account_id).first()
     if not account:
@@ -164,8 +171,6 @@ def disconnect_instagram_account_task(account_id):
     try:
         unsubscribe_account_webhooks(account)
     except InstagramAPIError as exc:
-        # Disconnect is privacy-sensitive. Clear the local credential even if
-        # Meta cannot be reached; App Dashboard can revoke subscriptions too.
         warning = str(exc)
         logger.warning("Could not unsubscribe Instagram account %s: %s", account.id, exc)
 
