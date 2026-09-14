@@ -10,6 +10,20 @@ _INSTALLED = False
 _TERMINAL = {"answered", "skipped", "not_applicable"}
 
 
+def _is_persistent_model_instance(value) -> bool:
+    """Return whether value is a saved Django model instance.
+
+    EngagementService is intentionally usable with lightweight objects in pure
+    generation/unit contexts. Reconciliation is a database concern and must not
+    turn those contexts into implicit ORM operations.
+    """
+    return bool(
+        value is not None
+        and getattr(value, "_meta", None) is not None
+        and getattr(value, "pk", None) is not None
+    )
+
+
 def reconcile_lead_qualification_from_attributes(*, organization, lead):
     """Use reliable existing CRM values to satisfy mapped requirements once.
 
@@ -22,6 +36,9 @@ def reconcile_lead_qualification_from_attributes(*, organization, lead):
     from apps.ai_engagement.services.organization_profile import compile_org_ai_profile
     from apps.ai_engagement.services import qualification_state as state_module
     from apps.crm.models import AttributeDefinition, Lead
+
+    if not _is_persistent_model_instance(organization) or not _is_persistent_model_instance(lead):
+        return None
 
     with transaction.atomic():
         locked = (
@@ -152,14 +169,15 @@ def install_attribute_state_reconciliation() -> None:
     current_engage = EngagementService.engage
 
     def engage(self, *, organization, lead, knowledge_query=None, context=None):
-        reconcile_lead_qualification_from_attributes(
-            organization=organization,
-            lead=lead,
-        )
-        try:
-            lead.refresh_from_db(fields=["attributes", "pipeline", "stage"])
-        except AttributeError:
-            pass
+        if _is_persistent_model_instance(organization) and _is_persistent_model_instance(lead):
+            reconcile_lead_qualification_from_attributes(
+                organization=organization,
+                lead=lead,
+            )
+            try:
+                lead.refresh_from_db(fields=["attributes", "pipeline", "stage"])
+            except (AttributeError, TypeError, ValueError):
+                pass
         return current_engage(
             self,
             organization=organization,
