@@ -1,6 +1,7 @@
 <div
     id="lead-followup-control-{{ lead.id }}"
-    class="rounded-lg border px-3 py-2.5 {% if current_state %}border-emerald-200 bg-emerald-50{% elif display_state %}border-orange-200 bg-orange-50{% else %}border-blue-200 bg-blue-50{% endif %}"
+    data-followup-state="{% if current_state %}active{% elif display_state %}completed{% else %}idle{% endif %}"
+    class="shvya-followup-tile rounded-lg border px-3 py-2.5 {% if current_state %}border-emerald-200 bg-emerald-50{% elif display_state %}border-orange-200 bg-orange-50{% else %}border-blue-200 bg-blue-50{% endif %}"
 >
     <div class="flex items-center justify-between gap-2">
         <span class="text-[10px] font-semibold uppercase tracking-wide {% if current_state %}text-emerald-700{% elif display_state %}text-orange-700{% else %}text-blue-700{% endif %}">Auto Follow-up</span>
