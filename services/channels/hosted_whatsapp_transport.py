@@ -145,6 +145,7 @@ def send_hosted_message(*, message, defer_on_pause=True):
     final_payload = dict(response)
     for key in (
         "shvya_ai",
+        "shvya_welcome",
         "shvya_hosted",
         "shvya_auto_followup",
         "peerKey",

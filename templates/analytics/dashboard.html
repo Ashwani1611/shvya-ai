@@ -6,7 +6,7 @@
 {% block extra_head %}
 {{ block.super }}
 <link rel="stylesheet" href="{% static 'css/insights_apple.css' %}">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.js" integrity="sha384-G436+Z2nlA8+PNoeRvWdxKbvOf8E/y+lYxqht2iBwNHTQDV5CJr3+AGVj8fGZi5t" crossorigin="anonymous"></script>
 <script src="{% static 'js/insights_chart_fallback.js' %}"></script>
 {% endblock %}
 
@@ -14,6 +14,12 @@
 
 {% block content %}
 <div class="insights-shell">
+    <header class="ins-hero">
+        <div class="ins-eyebrow">Your business. In focus.</div>
+        <h1>Every conversation.<br><span>A clearer picture.</span></h1>
+        <p>Lead growth, AI engagement and automation activity, together in one view.</p>
+        <div class="ins-freshness">Updated {{ insights_updated_at|date:"M d, Y H:i" }} · Reporting timezone: {{ insights_timezone }} <a href="{{ request.get_full_path }}">Refresh data</a></div>
+    </header>
     <div class="ins-topbar">
         <div class="ins-overview-tab">Overview</div>
         <form method="get" class="ins-filter-form" aria-label="Insights filters">
@@ -34,7 +40,7 @@
                             <span>{{ pipeline.name }}</span>
                         </label>
                     {% empty %}
-                        <div class="ins-pipeline-option">No active pipelines</div>
+                        <div class="ins-pipeline-option">No pipelines</div>
                     {% endfor %}
                 </div>
             </details>
@@ -129,24 +135,37 @@
         <div class="ins-chart-wrap"><canvas id="whatsappAutomationChart"></canvas></div>
     </section>
 
-    <section class="ins-card">
+    <section class="ins-card ins-health">
         <div class="ins-card-head">
             <div>
                 <div class="ins-eyebrow">CRM health</div>
                 <h2 class="ins-card-title">Pipeline Performance</h2>
-                <p class="ins-card-copy">Understand where leads sit across your pipelines and stages for the same global filters. Hover a bar or stage to see its exact value.</p>
+                <p class="ins-card-copy">Current pipeline and stage of leads created in your selected period. Each stage is shown with its pipeline so the numbers stay meaningful.</p>
             </div>
+        </div>
+        <div class="ins-health-metrics">
+            <div><span class="ins-health-icon">↗</span><strong>{{ overview.total_leads }}</strong><span>Leads in this cohort</span></div>
+            <div><span class="ins-health-icon">≋</span><strong>{{ crm_pipeline_count }}</strong><span>Pipelines with leads</span></div>
+            <div><span class="ins-health-icon">◎</span><strong>{{ crm_stage_count }}</strong><span>Stages with leads</span></div>
         </div>
         <div class="ins-pipeline-grid">
             <div class="ins-subcard">
                 <h4>Pipeline Distribution</h4>
+                <p class="ins-health-caption">Where your opportunities live.</p>
                 <div class="ins-chart-wrap"><canvas id="leadsByPipelineChart"></canvas></div>
             </div>
             <div class="ins-subcard">
                 <h4>Leads by Stage</h4>
+                <p class="ins-health-caption">Every stage. A precise count.</p>
                 <div class="ins-chart-wrap"><canvas id="leadsByStageChart"></canvas></div>
             </div>
         </div>
+        <details class="ins-health-detail"><summary>View exact pipeline and stage counts</summary>
+            <div class="ins-health-lists">
+                <dl>{% for row in leads_by_pipeline %}<div><dt>{{ row.label }}</dt><dd>{{ row.count }}</dd></div>{% empty %}<p>No leads in the selected period.</p>{% endfor %}</dl>
+                <dl>{% for row in leads_by_stage %}<div><dt>{{ row.label }}</dt><dd>{{ row.count }}</dd></div>{% empty %}<p>No stage activity in the selected period.</p>{% endfor %}</dl>
+            </div>
+        </details>
     </section>
 
     <section class="ins-card" id="failed-template-messages">
@@ -189,7 +208,7 @@
                             <th>Lead</th>
                             <th>Pipeline / Stage</th>
                             <th>Template</th>
-                            <th>Failed at</th>
+                            <th>Message created</th>
                             <th>Failure</th>
                             <th>Actions</th>
                         </tr>
@@ -269,6 +288,13 @@
 
 <script>
 (function () {
+    // Retry selection must work even when the chart library is unavailable.
+    const selectAll = document.getElementById('select-all-failed');
+    if (selectAll) {
+        selectAll.addEventListener('change', function () {
+            document.querySelectorAll('.failed-message-checkbox').forEach(box => { box.checked = selectAll.checked; });
+        });
+    }
     const palette = ['#38bdb8', '#ff9138', '#3b9ce8', '#9162f5', '#ff5579', '#f6b83f', '#63c76a', '#64748b', '#a855f7', '#06b6d4'];
     const formatter = new Intl.NumberFormat('en-IN');
     const read = id => JSON.parse(document.getElementById(id).textContent || '[]');
@@ -392,7 +418,7 @@
                 borderColor: color,
                 backgroundColor: rgba(color, .12),
                 borderWidth: 2.5,
-                pointRadius: 3,
+                pointRadius: (item.values || []).length > 60 ? 0 : 3,
                 pointHoverRadius: 6,
                 pointHitRadius: 18,
                 pointBackgroundColor: '#ffffff',
@@ -402,6 +428,7 @@
                 pointHoverBorderColor: '#ffffff',
                 pointHoverBorderWidth: 2,
                 tension: .28,
+                cubicInterpolationMode: 'monotone',
                 fill: false,
                 spanGaps: true
             };
@@ -419,7 +446,7 @@
                 backgroundColor: 'rgba(29, 29, 31, .08)',
                 borderWidth: 2.8,
                 borderDash: [4, 4],
-                pointRadius: 3.2,
+                pointRadius: length > 60 ? 0 : 3.2,
                 pointHoverRadius: 6.2,
                 pointHitRadius: 18,
                 pointBackgroundColor: '#ffffff',
@@ -429,6 +456,7 @@
                 pointHoverBorderColor: '#ffffff',
                 pointHoverBorderWidth: 2,
                 tension: .28,
+                cubicInterpolationMode: 'monotone',
                 fill: false,
                 spanGaps: true
             });
@@ -440,7 +468,7 @@
         return {
             responsive: true,
             maintainAspectRatio: false,
-            animation: { duration: 240 },
+            animation: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? false : { duration: 240 },
             events: ['mousemove', 'mouseout', 'click', 'touchstart', 'touchmove'],
             interaction: { mode: 'index', intersect: false, axis: 'x' },
             hover: { mode: 'index', intersect: false },
@@ -495,7 +523,7 @@
                     grid: { color: 'rgba(15,23,42,.08)', drawTicks: false },
                     border: { display: false },
                     title: { display: true, text: 'Date', color: '#6e6e73', padding: { top: 10 }, font: { size: 11 } },
-                    ticks: { color: '#6e6e73', maxRotation: 42, minRotation: 0, autoSkip: true, maxTicksLimit: 18, padding: 8, font: { size: 10.5 } }
+                    ticks: { color: '#6e6e73', maxRotation: 42, minRotation: 0, autoSkip: true, maxTicksLimit: window.innerWidth < 680 ? 6 : 14, padding: 8, font: { size: 10.5 } }
                 },
                 y: {
                     beginAtZero: true,
@@ -512,6 +540,8 @@
         const canvas = document.getElementById(canvasId);
         if (!canvas) return null;
         const datasets = lineDatasets(series, { addTotal, totalLabel });
+        canvas.setAttribute('role', 'img');
+        canvas.setAttribute('aria-label', datasets.map(item => `${item.label}: ${formatNumber(sumValues(item.data))}`).join('; '));
         if (!hasActivity(datasets)) {
             showEmpty(canvas, emptyText || 'No activity in the selected period.');
             if (summary) showSummary(canvas, summary(datasets));
@@ -669,12 +699,6 @@
         showEmpty(stageCanvas, 'No stage lead data in the selected period.');
     }
 
-    const selectAll = document.getElementById('select-all-failed');
-    if (selectAll) {
-        selectAll.addEventListener('change', function () {
-            document.querySelectorAll('.failed-message-checkbox').forEach(box => { box.checked = selectAll.checked; });
-        });
-    }
 })();
 </script>
 {% endblock %}
