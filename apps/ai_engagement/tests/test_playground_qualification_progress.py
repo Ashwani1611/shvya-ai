@@ -72,6 +72,24 @@ class PlaygroundQualificationProgressRegressionTests(SimpleTestCase):
             name="Shvya Test",
         )
 
+    def _start_and_reach_q4(self, session_id):
+        self.service.run(
+            organization=self.organization,
+            session_id=session_id,
+            message="Hi",
+        )
+        for answer in ("A", "B", "A"):
+            self.service.run(
+                organization=self.organization,
+                session_id=session_id,
+                message=answer,
+            )
+
+    def _assert_next_question(self, result, index):
+        self.assertEqual(result.model, "deterministic")
+        self.assertTrue(result.response.startswith("Nice."))
+        self.assertIn(self.requirements[index]["question"], result.response)
+
     def test_option_answers_advance_to_q5_without_new_provider_calls(self):
         first = self.service.run(
             organization=self.organization,
@@ -93,11 +111,7 @@ class PlaygroundQualificationProgressRegressionTests(SimpleTestCase):
                 session_id="screenshot-flow",
                 message=answer,
             )
-            self.assertEqual(result.model, "deterministic")
-            self.assertEqual(
-                result.response,
-                self.requirements[expected_index]["question"],
-            )
+            self._assert_next_question(result, expected_index)
 
         # Configured qualification text, language and engagement instructions are
         # intentionally present. They must not force exact option replies through
@@ -105,17 +119,7 @@ class PlaygroundQualificationProgressRegressionTests(SimpleTestCase):
         self.assertEqual(self.provider.generate_text.call_count, 1)
 
     def test_yes_text_for_q4_advances_to_q5_without_provider(self):
-        self.service.run(
-            organization=self.organization,
-            session_id="yes-flow",
-            message="Hi",
-        )
-        for answer in ("A", "B", "A"):
-            self.service.run(
-                organization=self.organization,
-                session_id="yes-flow",
-                message=answer,
-            )
+        self._start_and_reach_q4("yes-flow")
 
         result = self.service.run(
             organization=self.organization,
@@ -123,6 +127,17 @@ class PlaygroundQualificationProgressRegressionTests(SimpleTestCase):
             message="YES",
         )
 
-        self.assertEqual(result.model, "deterministic")
-        self.assertEqual(result.response, self.requirements[4]["question"])
+        self._assert_next_question(result, 4)
+        self.assertEqual(self.provider.generate_text.call_count, 1)
+
+    def test_natural_yes_text_for_q4_advances_to_q5_without_provider(self):
+        self._start_and_reach_q4("natural-yes-flow")
+
+        result = self.service.run(
+            organization=self.organization,
+            session_id="natural-yes-flow",
+            message="YES, I RUN ADS",
+        )
+
+        self._assert_next_question(result, 4)
         self.assertEqual(self.provider.generate_text.call_count, 1)
