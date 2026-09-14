@@ -156,8 +156,9 @@ class InstagramUITests(TestCase):
             reverse("crm-instagram-send-message", args=["conversation-1"]),
             {"body": "Thanks for messaging us."},
         )
-        self.assertRedirects(
-            response,
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(
+            response["Location"],
             reverse("crm-instagram-chat-detail", args=["conversation-1"]),
         )
         send_text_message_mock.assert_called_once()
