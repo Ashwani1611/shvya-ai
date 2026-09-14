@@ -42,7 +42,9 @@ class ChannelsConfig(AppConfig):
         from services.channels.whatsapp_api_runtime import (
             install_whatsapp_api_runtime,
         )
+        from services.channels.instagram_runtime import install_instagram_runtime
 
+        install_instagram_runtime()
         install_whatsapp_phone_registration()
         install_whatsapp_template_transport()
         install_hosted_whatsapp_transport()

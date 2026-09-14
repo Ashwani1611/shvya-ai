@@ -25,6 +25,21 @@ SECURE_REDIRECT_EXEMPT = [
     r"^dashboard/whatsapp/connect/hosted/media/",
 ]
 
+# Instagram API with Instagram Login exposes a dedicated Instagram App ID and
+# App Secret in Meta's Instagram API setup. They are not interchangeable with
+# the generic Meta App ID used by WhatsApp Embedded Signup. Production requires
+# the dedicated pair so SHVYA never redirects customers to Instagram with the
+# wrong client_id.
+META_INSTAGRAM_APP_ID = config(
+    "META_INSTAGRAM_APP_ID",
+    default="",
+)
+META_INSTAGRAM_APP_SECRET = config(
+    "META_INSTAGRAM_APP_SECRET",
+    default="",
+)
+META_INSTAGRAM_REQUIRE_DEDICATED_CREDENTIALS = True
+
 # Reuse healthy PostgreSQL connections across Gunicorn requests instead of
 # paying connection setup cost on every request. Keep the lifetime tunable
 # for deployments that later introduce PgBouncer.
