@@ -3,7 +3,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from django.test import TestCase
+from django.test import TestCase, override_settings
 
 from apps.ai_engagement.graph import evidence as evidence_module
 from apps.ai_engagement.graph.evidence import SAFE_UNKNOWN_REPLY
@@ -407,14 +407,24 @@ class QualificationAnswerRoutingPriorityTests(TestCase):
             "latest_text": "What is the price of the unavailable plan?",
             "runtime_policy": {},
         }
-        with patch(
-            "apps.ai_engagement.graph.evidence.OpenAIProvider.generate_text",
-            return_value=AITextResult(
-                text='{"approved":false,"reason":"unsupported_fact"}',
-                model="test",
-            ),
-        ) as grounding_provider:
-            grounded = evidence_module.check_grounding(state)
-        grounding_provider.assert_called_once()
-        self.assertFalse(grounded["grounding_approved"])
-        self.assertEqual(grounded["decision"].message, SAFE_UNKNOWN_REPLY)
+        # Keep the real constructor: a method-only mock still requires a key.
+        # Exercise both provider rejection and fail-closed configuration failure.
+        for api_key in ("test-key-never-sent", ""):
+            with self.subTest(provider_configured=bool(api_key)), override_settings(
+                OPENAI_API_KEY=api_key,
+            ), patch(
+                "apps.ai_engagement.graph.evidence.OpenAIProvider.generate_text",
+                return_value=AITextResult(
+                    text='{"approved":false,"reason":"unsupported_fact"}',
+                    model="test",
+                ),
+            ) as grounding_provider:
+                grounded = evidence_module.check_grounding(state)
+                self.assertFalse(grounded["grounding_approved"])
+                self.assertEqual(grounded["decision"].message, SAFE_UNKNOWN_REPLY)
+                self.assertFalse(grounded.get("qualification_answer_authoritative"))
+                self.assertFalse(grounded.get("grounding_recovered"))
+                if api_key:
+                    grounding_provider.assert_called_once()
+                else:
+                    grounding_provider.assert_not_called()
