@@ -3,6 +3,7 @@ from django.templatetags.static import static
 from django.urls import include, path
 from django.views.generic import RedirectView, TemplateView
 
+from apps.channels.instagram_webhook import instagram_webhook_view
 from apps.channels.webhook_security import whatsapp_webhook_secure_view
 from apps.integrations.views.meta_leads import meta_lead_webhook
 from apps.superadmin.views import admin_global_search
@@ -25,6 +26,7 @@ urlpatterns = [
         RedirectView.as_view(
             url=static("images/shvya-sidebar-logo.svg"),
             permanent=False,
+            query_string=True,
         ),
         name="favicon",
     ),
@@ -108,9 +110,6 @@ urlpatterns = [
 
     # =========================================================
     # Cadence Web Dashboard
-    #
-    # Keep this before the broad CRM dashboard include so the real feature
-    # owns /dashboard/cadence/* rather than a legacy placeholder.
     # =========================================================
     path(
         "dashboard/cadence/",
@@ -119,9 +118,6 @@ urlpatterns = [
 
     # =========================================================
     # Connect Hub Web Dashboard
-    #
-    # Keep this before the broad CRM dashboard include so the integrations
-    # app owns /dashboard/connect-hub/* and the legacy redirect.
     # =========================================================
     path(
         "dashboard/",
@@ -130,9 +126,6 @@ urlpatterns = [
 
     # =========================================================
     # Apple Stage Editor
-    #
-    # Keep this before the broad CRM include so the dedicated modal endpoints
-    # own /dashboard/stage-editor/* without disturbing legacy stage routes.
     # =========================================================
     path(
         "dashboard/stage-editor/",
@@ -172,14 +165,18 @@ urlpatterns = [
     ),
 
     # =========================================================
-    # WhatsApp Webhook
+    # Meta Webhooks
     # =========================================================
     path(
         "webhooks/whatsapp/",
         whatsapp_webhook_secure_view,
         name="whatsapp-webhook",
     ),
-
+    path(
+        "webhooks/instagram/",
+        instagram_webhook_view,
+        name="instagram-webhook",
+    ),
     path(
         "webhooks/meta-leads/",
         meta_lead_webhook,
