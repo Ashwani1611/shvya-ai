@@ -1,0 +1,317 @@
+/*
+ * SHVYA CRM lead-card layout stabilization.
+ *
+ * This file intentionally loads after the legacy CRM styles and the Apple CRM
+ * presentation layers. It only fixes visual geometry; CRM data, HTMX actions,
+ * stage changes, Notes/Calls quick panels and backend behaviour stay untouched.
+ */
+
+html.shvya-crm-apple-v2 body .lead-card {
+    overflow: hidden !important;
+    border-radius: 24px !important;
+    background: #ffffff !important;
+    box-shadow:
+        0 1px 2px rgba(15, 23, 42, 0.025),
+        0 12px 34px rgba(15, 23, 42, 0.055) !important;
+}
+
+/* -------------------------------------------------------------------------
+   Lead identity row
+   ------------------------------------------------------------------------- */
+
+html.shvya-crm-apple-v2 body .lead-card > div:first-of-type {
+    padding: 18px 20px !important;
+    background: #ffffff !important;
+}
+
+html.shvya-crm-apple-v2 body .lead-card > div:first-of-type > .flex.items-start.gap-4 {
+    display: grid !important;
+    grid-template-columns: 20px 48px minmax(0, 1fr) auto !important;
+    align-items: center !important;
+    column-gap: 14px !important;
+    row-gap: 12px !important;
+}
+
+html.shvya-crm-apple-v2 body .lead-card .crm-lead-checkbox {
+    width: 18px !important;
+    height: 18px !important;
+    margin: 0 !important;
+    align-self: center !important;
+}
+
+html.shvya-crm-apple-v2 body .lead-card .w-11.h-11.rounded-lg {
+    width: 48px !important;
+    height: 48px !important;
+    min-width: 48px !important;
+    min-height: 48px !important;
+    border-radius: 15px !important;
+    background: #f2f2f4 !important;
+    color: #636366 !important;
+    font-size: 13px !important;
+    box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.045) !important;
+}
+
+html.shvya-crm-apple-v2 body .lead-card > div:first-of-type > .flex.items-start.gap-4 > .min-w-0.flex-1 {
+    width: 100% !important;
+    min-width: 0 !important;
+}
+
+html.shvya-crm-apple-v2 body .lead-card > div:first-of-type h3 {
+    margin: 0 !important;
+    font-size: 16px !important;
+    line-height: 1.25 !important;
+    font-weight: 700 !important;
+    letter-spacing: -0.018em !important;
+}
+
+html.shvya-crm-apple-v2 body .lead-card > div:first-of-type a[href*="whatsapp"] {
+    min-height: 25px !important;
+    padding: 3px 8px !important;
+    border-radius: 999px !important;
+    font-size: 11px !important;
+    line-height: 1 !important;
+}
+
+/* Contact information and pipeline age should never run together. */
+html.shvya-crm-apple-v2 body .lead-card > div:first-of-type > .flex.items-start.gap-4 > .min-w-0.flex-1 > div:nth-child(2) {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    align-items: center !important;
+    column-gap: 16px !important;
+    row-gap: 5px !important;
+    margin-top: 7px !important;
+    color: #6e6e73 !important;
+    font-size: 12.5px !important;
+    line-height: 1.35 !important;
+}
+
+html.shvya-crm-apple-v2 body .lead-card > div:first-of-type > .flex.items-start.gap-4 > .min-w-0.flex-1 > div:nth-child(3) {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    align-items: center !important;
+    column-gap: 16px !important;
+    row-gap: 4px !important;
+    margin-top: 6px !important;
+    color: #86868b !important;
+    font-size: 11.5px !important;
+    line-height: 1.35 !important;
+}
+
+html.shvya-crm-apple-v2 body .lead-card > div:first-of-type > .flex.items-start.gap-4 > .min-w-0.flex-1 > div:nth-child(3) strong {
+    color: #3a3a3c !important;
+    font-weight: 650 !important;
+}
+
+html.shvya-crm-apple-v2 body .lead-card > div:first-of-type > .flex.items-start.gap-4 > .flex.items-center.gap-2.shrink-0 {
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    align-items: center !important;
+    justify-content: flex-end !important;
+    gap: 8px !important;
+    min-width: max-content !important;
+}
+
+html.shvya-crm-apple-v2 body .lead-card > div:first-of-type button[hx-get*="edit"] {
+    min-height: 40px !important;
+    padding: 0 14px !important;
+}
+
+/* -------------------------------------------------------------------------
+   Summary tiles
+   ------------------------------------------------------------------------- */
+
+html.shvya-crm-apple-v2 body .lead-card > div:nth-of-type(2) {
+    padding: 14px 20px !important;
+    background: #fafafa !important;
+}
+
+html.shvya-crm-apple-v2 body .lead-card > div:nth-of-type(2) > .grid {
+    display: grid !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    align-items: stretch !important;
+    gap: 12px !important;
+}
+
+html.shvya-crm-apple-v2 body .lead-card > div:nth-of-type(2) > .grid > * {
+    min-width: 0 !important;
+    min-height: 92px !important;
+    height: auto !important;
+    padding: 13px 14px !important;
+    border: 1px solid rgba(15, 23, 42, 0.065) !important;
+    border-radius: 17px !important;
+    background: #ffffff !important;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.02) !important;
+}
+
+html.shvya-crm-apple-v2 body .lead-card > div:nth-of-type(2) > .grid > button {
+    display: block !important;
+    width: auto !important;
+    text-align: left !important;
+}
+
+html.shvya-crm-apple-v2 body .lead-card > div:nth-of-type(2) > .grid > *:hover {
+    border-color: rgba(0, 113, 227, 0.14) !important;
+    background: #ffffff !important;
+    box-shadow: 0 5px 16px rgba(15, 23, 42, 0.045) !important;
+}
+
+html.shvya-crm-apple-v2 body .lead-card > div:nth-of-type(2) > .grid [class*="uppercase"] {
+    color: #6e6e73 !important;
+    font-size: 10px !important;
+    line-height: 1.2 !important;
+    letter-spacing: 0.065em !important;
+}
+
+html.shvya-crm-apple-v2 body .lead-card > div:nth-of-type(2) > .grid p.text-sm,
+html.shvya-crm-apple-v2 body .lead-card > div:nth-of-type(2) > .grid a.text-sm {
+    margin-top: 7px !important;
+    color: #1d1d1f !important;
+    font-size: 13px !important;
+    line-height: 1.35 !important;
+    font-weight: 650 !important;
+}
+
+html.shvya-crm-apple-v2 body .lead-card [id^="lead-followup-control-"] select {
+    height: 32px !important;
+    margin-top: 1px !important;
+    border-color: rgba(15, 23, 42, 0.08) !important;
+    border-radius: 10px !important;
+    background: #f5f5f7 !important;
+    color: #3a3a3c !important;
+}
+
+/* -------------------------------------------------------------------------
+   Card navigation row
+   ------------------------------------------------------------------------- */
+
+html.shvya-crm-apple-v2 body .lead-card > div:nth-of-type(3) {
+    padding: 9px 20px !important;
+    background: rgba(255, 255, 255, 0.98) !important;
+}
+
+html.shvya-crm-apple-v2 body .lead-card > div:nth-of-type(3) > .flex {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    align-items: center !important;
+    gap: 6px 8px !important;
+    min-height: 34px !important;
+}
+
+html.shvya-crm-apple-v2 body .lead-card > div:nth-of-type(3) .lead-detail-tab,
+html.shvya-crm-apple-v2 body .lead-card > div:nth-of-type(3) .shvya-quick-tab {
+    min-height: 32px !important;
+    padding: 0 9px !important;
+    border: 1px solid transparent !important;
+    border-radius: 10px !important;
+    color: #6e6e73 !important;
+    font-size: 12.5px !important;
+    line-height: 1 !important;
+    white-space: nowrap !important;
+}
+
+html.shvya-crm-apple-v2 body .lead-card > div:nth-of-type(3) .lead-detail-tab:hover,
+html.shvya-crm-apple-v2 body .lead-card > div:nth-of-type(3) .shvya-quick-tab:hover {
+    border-color: rgba(15, 23, 42, 0.065) !important;
+    background: #f5f5f7 !important;
+    color: #1d1d1f !important;
+}
+
+html.shvya-crm-apple-v2 body .lead-card > div:nth-of-type(3) .lead-detail-tab.text-blue-600,
+html.shvya-crm-apple-v2 body .lead-card > div:nth-of-type(3) .shvya-quick-tab.text-blue-600 {
+    border-color: rgba(0, 113, 227, 0.13) !important;
+    background: rgba(0, 113, 227, 0.07) !important;
+    color: #0071e3 !important;
+}
+
+/* -------------------------------------------------------------------------
+   Quick panels opened by Details / Calls / Notes / Activity
+   ------------------------------------------------------------------------- */
+
+html.shvya-crm-apple-v2 body .lead-card .shvya-quick-panel {
+    margin: 12px 20px 18px !important;
+    padding: 16px !important;
+    border-radius: 18px !important;
+    background: #ffffff !important;
+}
+
+/* -------------------------------------------------------------------------
+   Responsive card geometry
+   ------------------------------------------------------------------------- */
+
+@media (max-width: 1100px) {
+    html.shvya-crm-apple-v2 body .lead-card > div:first-of-type > .flex.items-start.gap-4 {
+        grid-template-columns: 20px 44px minmax(0, 1fr) !important;
+    }
+
+    html.shvya-crm-apple-v2 body .lead-card .w-11.h-11.rounded-lg {
+        width: 44px !important;
+        height: 44px !important;
+        min-width: 44px !important;
+        min-height: 44px !important;
+    }
+
+    html.shvya-crm-apple-v2 body .lead-card > div:first-of-type > .flex.items-start.gap-4 > .flex.items-center.gap-2.shrink-0 {
+        grid-column: 3 / -1 !important;
+        justify-self: start !important;
+        justify-content: flex-start !important;
+        flex-wrap: wrap !important;
+        min-width: 0 !important;
+    }
+}
+
+@media (max-width: 820px) {
+    html.shvya-crm-apple-v2 body .lead-card > div:first-of-type,
+    html.shvya-crm-apple-v2 body .lead-card > div:nth-of-type(2),
+    html.shvya-crm-apple-v2 body .lead-card > div:nth-of-type(3) {
+        padding-left: 15px !important;
+        padding-right: 15px !important;
+    }
+
+    html.shvya-crm-apple-v2 body .lead-card > div:nth-of-type(2) > .grid {
+        grid-template-columns: 1fr !important;
+        gap: 9px !important;
+    }
+
+    html.shvya-crm-apple-v2 body .lead-card > div:nth-of-type(2) > .grid > * {
+        min-height: 0 !important;
+    }
+
+    html.shvya-crm-apple-v2 body .lead-card > div:first-of-type > .flex.items-start.gap-4 {
+        grid-template-columns: 18px 42px minmax(0, 1fr) !important;
+        column-gap: 10px !important;
+    }
+
+    html.shvya-crm-apple-v2 body .lead-card .w-11.h-11.rounded-lg {
+        width: 42px !important;
+        height: 42px !important;
+        min-width: 42px !important;
+        min-height: 42px !important;
+    }
+
+    html.shvya-crm-apple-v2 body .lead-card select[name="stage"] {
+        width: min(160px, 48vw) !important;
+    }
+
+    html.shvya-crm-apple-v2 body .lead-card .shvya-quick-panel {
+        margin-left: 12px !important;
+        margin-right: 12px !important;
+    }
+}
+
+@media (max-width: 520px) {
+    html.shvya-crm-apple-v2 body .lead-card > div:first-of-type > .flex.items-start.gap-4 {
+        grid-template-columns: 18px minmax(0, 1fr) !important;
+    }
+
+    html.shvya-crm-apple-v2 body .lead-card .w-11.h-11.rounded-lg {
+        display: none !important;
+    }
+
+    html.shvya-crm-apple-v2 body .lead-card > div:first-of-type > .flex.items-start.gap-4 > .min-w-0.flex-1 {
+        grid-column: 2 !important;
+    }
+
+    html.shvya-crm-apple-v2 body .lead-card > div:first-of-type > .flex.items-start.gap-4 > .flex.items-center.gap-2.shrink-0 {
+        grid-column: 2 !important;
+    }
+}
