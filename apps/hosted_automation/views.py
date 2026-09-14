@@ -20,7 +20,10 @@ from services.channels.hosted_automation_service import (
     set_health_enabled,
     update_hosted_whatsapp_step,
 )
-from services.channels.hosted_health_guard import sync_hosted_health_from_messages
+from services.channels.hosted_health_guard import (
+    hosted_health_message_counts,
+    sync_hosted_health_from_messages,
+)
 from services.followup_service import FollowupError, create_sequence, duplicate_sequence
 
 
@@ -248,7 +251,7 @@ def hosted_account_health(request, account_id):
 
     # Reconcile against realtime outbound rows before reading or changing the
     # switch. This includes messages sent directly from the linked WhatsApp app,
-    # so the visible 250-message window matches the actual connected number.
+    # so the 250-message gate follows the actual connected number activity.
     sync_hosted_health_from_messages(account=account)
 
     if request.method == "POST":
@@ -256,6 +259,18 @@ def hosted_account_health(request, account_id):
         snapshot = set_health_enabled(account=account, enabled=enabled)
     else:
         snapshot = health_snapshot(account=account)
+
+    # The durable window counter can temporarily include a reserved automation
+    # slot before the provider confirms the send. The UI must display messages
+    # actually sent, not reservations, so overwrite the visible counters with
+    # authoritative successful outbound rows while retaining the durable gate.
+    exact_counts = hosted_health_message_counts(account=account)
+    snapshot.update(exact_counts)
+    snapshot["remaining"] = max(
+        0,
+        snapshot["recommended_limit"] - snapshot["window_messages_sent"],
+    )
+
     paused_until = snapshot.get("paused_until")
     snapshot["paused_until"] = paused_until.isoformat() if paused_until else None
     return JsonResponse({"ok": True, "health": snapshot})

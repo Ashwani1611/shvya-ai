@@ -33,10 +33,10 @@ def send_hosted_message(*, message, defer_on_pause=True):
     from services.channels.hosted_automation_service import (
         HostedAutomationPaused,
         hosted_ai_block_reason,
-        message_is_automation,
     )
     from services.channels.hosted_health_guard import (
         finalize_hosted_send,
+        message_is_hosted_automation,
         release_hosted_automation_reservation,
         reserve_hosted_automation_send,
     )
@@ -76,7 +76,7 @@ def send_hosted_message(*, message, defer_on_pause=True):
         media_url = media_payload["url"]
         filename = media_payload.get("filename")
 
-    is_automation = message_is_automation(message)
+    is_automation = message_is_hosted_automation(message)
     reservation_acquired = False
     if is_automation:
         gate = reserve_hosted_automation_send(account=account)
