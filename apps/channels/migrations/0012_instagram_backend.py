@@ -51,7 +51,7 @@ class Migration(migrations.Migration):
                 ("completed_at", models.DateTimeField(blank=True, null=True)),
                 ("created_at", models.DateTimeField(auto_now_add=True)),
                 ("updated_at", models.DateTimeField(auto_now=True)),
-                ("created_by", models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name="instagram_oauth_attempts", to=settings.AUTH_USER_MODEL)),
+                ("created_by", models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name="instagram_oauth_attempts", to=settings.AUTH_USER_MODEL)),
                 ("organization", models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name="instagram_oauth_attempts", to="organizations.organization")),
             ],
             options={"ordering": ["-created_at"]},
