@@ -32,9 +32,13 @@ def _push_chat_refresh(message, reason):
 def send_hosted_message(*, message, defer_on_pause=True):
     from services.channels.hosted_automation_service import (
         HostedAutomationPaused,
-        automation_pause_until,
+        hosted_ai_block_reason,
         message_is_automation,
-        record_hosted_send,
+    )
+    from services.channels.hosted_health_guard import (
+        finalize_hosted_send,
+        release_hosted_automation_reservation,
+        reserve_hosted_automation_send,
     )
     from services.channels.whatsapp_service import WhatsAppSendError
 
@@ -50,25 +54,16 @@ def send_hosted_message(*, message, defer_on_pause=True):
 
     raw_payload = message.raw_payload if isinstance(message.raw_payload, dict) else {}
     if raw_payload.get("shvya_ai"):
-        from services.channels.hosted_automation_service import hosted_ai_block_reason
-
-        reason = hosted_ai_block_reason(account=account, lead=message.lead) if message.lead_id else "lead_missing"
+        reason = (
+            hosted_ai_block_reason(account=account, lead=message.lead)
+            if message.lead_id
+            else "lead_missing"
+        )
         if reason:
             message.status = WhatsAppMessage.Status.FAILED
             message.error = f"AI send cancelled: {reason}"
             message.save(update_fields=["status", "error", "updated_at"])
             raise WhatsAppSendError(message.error)
-
-    if message_is_automation(message):
-        paused_until = automation_pause_until(account=account)
-        if paused_until:
-            if defer_on_pause:
-                raise HostedAutomationPaused(paused_until)
-            provider_error = WhatsAppWebGatewayError(
-                f"Hosted automation paused by Account Health until {paused_until.isoformat()}.",
-                status_code=503,
-            )
-            raise WhatsAppSendError(str(provider_error)) from provider_error
 
     media_url = None
     filename = None
@@ -81,6 +76,22 @@ def send_hosted_message(*, message, defer_on_pause=True):
         media_url = media_payload["url"]
         filename = media_payload.get("filename")
 
+    is_automation = message_is_automation(message)
+    reservation_acquired = False
+    if is_automation:
+        gate = reserve_hosted_automation_send(account=account)
+        blocked_until = gate.get("blocked_until")
+        if blocked_until:
+            if defer_on_pause:
+                raise HostedAutomationPaused(blocked_until)
+            provider_error = WhatsAppWebGatewayError(
+                f"Hosted automation paused by Account Health until {blocked_until.isoformat()}.",
+                status_code=503,
+            )
+            raise WhatsAppSendError(str(provider_error)) from provider_error
+        reservation_acquired = bool(gate.get("reserved"))
+
+    provider_confirmed = False
     try:
         response = WhatsAppWebClient().send_message(
             session_id=account.id,
@@ -90,6 +101,19 @@ def send_hosted_message(*, message, defer_on_pause=True):
             media_url=media_url,
             filename=filename,
         )
+
+        raw_id = response.get("messageId")
+        if not raw_id:
+            message.status = WhatsAppMessage.Status.FAILED
+            message.error = "Hosted WhatsApp gateway returned no message id."
+            message.save(update_fields=["status", "error", "updated_at"])
+            _push_chat_refresh(message, "failed")
+            raise WhatsAppSendError(message.error)
+
+        # Once the provider returns a message id the number has actually sent
+        # the message. Keep the reservation even if a later local DB write
+        # fails; the gateway callback/reconciliation will account for it.
+        provider_confirmed = True
     except WhatsAppWebGatewayError as exc:
         message.status = WhatsAppMessage.Status.FAILED
         message.error = str(exc)
@@ -111,14 +135,9 @@ def send_hosted_message(*, message, defer_on_pause=True):
             ) from exc
 
         raise WhatsAppSendError(str(exc)) from exc
-
-    raw_id = response.get("messageId")
-    if not raw_id:
-        message.status = WhatsAppMessage.Status.FAILED
-        message.error = "Hosted WhatsApp gateway returned no message id."
-        message.save(update_fields=["status", "error", "updated_at"])
-        _push_chat_refresh(message, "failed")
-        raise WhatsAppSendError(message.error)
+    finally:
+        if reservation_acquired and not provider_confirmed:
+            release_hosted_automation_reservation(account=account)
 
     existing_payload = (
         message.raw_payload if isinstance(message.raw_payload, dict) else {}
@@ -153,7 +172,7 @@ def send_hosted_message(*, message, defer_on_pause=True):
         ]
     )
     _push_chat_refresh(message, "sent")
-    record_hosted_send(account=account, message=message)
+    finalize_hosted_send(account=account, message=message)
 
     hosted_meta = existing_payload.get("shvya_hosted") or {}
     if hosted_meta.get("origin") == "agent" and message.lead_id:
