@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import logging
-from apps.ai_engagement.services.runtime_state import STATE_KEY, observe_message, contract, validate_response, state_revision
 import os
+import re
 from copy import deepcopy
 from dataclasses import replace
 from typing import Literal
@@ -22,6 +22,13 @@ from apps.ai_engagement.services.qualification_state import (
     apply_unambiguous_reply,
     requirements_for_lead,
     state_for_lead,
+)
+from apps.ai_engagement.services.runtime_state import (
+    STATE_KEY,
+    contract,
+    observe_message,
+    state_revision,
+    validate_response,
 )
 
 
@@ -84,7 +91,10 @@ def _prepare(state: EngagementGraphState) -> dict:
     qualification_state = state_for_lead(lead, requirements=requirements)
     lead_context = dict(context.lead or {})
     attributes = dict(lead_context.get("attributes") or {})
-    attributes[STATE_KEY] = observe_message(attributes.get(STATE_KEY), service._latest_inbound_text(context=context))
+    attributes[STATE_KEY] = observe_message(
+        attributes.get(STATE_KEY),
+        service._latest_inbound_text(context=context),
+    )
     lead_context["attributes"] = attributes
     context = replace(context, lead=lead_context)
 
@@ -101,6 +111,59 @@ def _prepare(state: EngagementGraphState) -> dict:
     }
 
 
+def _canonical_yes_no_reply(state: EngagementGraphState, requirements: list[dict]) -> str:
+    """Normalize natural yes/no wording only for an active Yes/No option question.
+
+    The qualification state machine deliberately accepts option values exactly.
+    Sandbox users also commonly answer a binary question with text such as
+    "YES, I RUN ADS". Treat that as the authored Yes option without broadening
+    matching for arbitrary multi-option questions.
+    """
+    raw_text = str(state.get("latest_text") or "").strip()
+    normalized = " ".join(raw_text.casefold().split())
+    if not normalized:
+        return raw_text
+
+    affirmative = bool(re.match(r"^(?:yes|yeah|yep)\b", normalized))
+    negative = bool(re.match(r"^(?:no|nope)\b", normalized))
+    if not affirmative and not negative:
+        return raw_text
+
+    qualification_state = state.get("qualification_state") or {}
+    active_id = str(
+        qualification_state.get("current_requirement_id")
+        or qualification_state.get("last_asked_requirement_id")
+        or ""
+    ).strip()
+    if not active_id:
+        return raw_text
+
+    requirement = next(
+        (
+            item
+            for item in requirements
+            if str(item.get("id") or "").strip() == active_id
+        ),
+        None,
+    )
+    if not isinstance(requirement, dict):
+        return raw_text
+
+    options = [item for item in requirement.get("options") or [] if isinstance(item, dict)]
+    if len(options) != 2:
+        return raw_text
+
+    by_value = {
+        str(item.get("value") or "").strip().casefold(): str(item.get("value") or "").strip()
+        for item in options
+        if str(item.get("value") or "").strip()
+    }
+    if set(by_value) != {"yes", "no"}:
+        return raw_text
+
+    return by_value["yes"] if affirmative else by_value["no"]
+
+
 def _deterministic_extract(state: EngagementGraphState) -> dict:
     """Handle high-confidence replies only against the persisted active question."""
     if state.get("caller_supplied_context"):
@@ -111,24 +174,24 @@ def _deterministic_extract(state: EngagementGraphState) -> dict:
     if not requirements:
         return {}
 
+    direct_text = _canonical_yes_no_reply(state, requirements)
     direct = apply_unambiguous_reply(
         lead=lead,
         requirements=requirements,
-        text=state.get("latest_text", ""),
+        text=direct_text,
         source_message_id=state.get("latest_message_id", ""),
     )
     qualification_state = direct["state"]
     updates: dict = {"qualification_state": qualification_state}
 
     direct_next = direct.get("next_requirement")
-    profile = state.get("profile") or {}
-    context = state["context"]
+    # Qualification sequencing is backend-owned. A configured questionnaire,
+    # bot language, engagement instructions, or CRM attribute definitions must
+    # never force a high-confidence A/B/Yes/No answer back through the provider
+    # just to discover the already-known next question. Doing so made Sandbox
+    # turns fail mid-flow when provider/schema validation had a transient problem.
     if (
-        not profile.get("communication", {}).get("custom_instructions")
-        and not profile.get("qualification", {}).get("raw")
-        and not profile.get("communication", {}).get("languages")
-        and not (context.pipeline or {}).get("attribute_definitions")
-        and direct.get("changed")
+        direct.get("changed")
         and direct.get("answer_status") == REQUIREMENT_ANSWERED
         and qualification_state.get("engagement_mode") == MODE_QUALIFICATION
         and isinstance(direct_next, dict)
@@ -136,9 +199,11 @@ def _deterministic_extract(state: EngagementGraphState) -> dict:
         and str(direct_next.get("question") or "").strip()
     ):
         from apps.ai_engagement.services.engagement import EngagementDecision
+
+        next_question = str(direct_next["question"]).strip()
         updates["direct_decision"] = EngagementDecision(
             should_engage=True,
-            message=str(direct_next["question"]).strip(),
+            message=f"Nice. {next_question}",
             file_document_id=None,
             crm_actions=[],
             reason="QUALIFICATION_NEXT",
@@ -206,6 +271,7 @@ def _retrieve_knowledge(state: EngagementGraphState) -> dict:
     context = replace(state["context"], knowledge=filtered)
 
     from apps.ai_engagement.services.file_sharing import FileSharingService
+
     file_candidates = FileSharingService().build_file_candidates(
         organization=organization,
         context=context,
@@ -297,14 +363,33 @@ def _validate_decision(state: EngagementGraphState) -> dict:
     )
     validated_file_id = _validated_file_document_id(decision=decision, context=state["context"])
     from apps.ai_engagement.services.qualification_state import project_answer_updates
-    projected = project_answer_updates(state=state.get("qualification_state") or {},
-        requirements=state.get("requirements") or [], updates=decision.qualification_updates,
-        messages=(state["context"].conversation or {}).get("messages", []))
-    runtime = contract(qualification=projected, requirements=state.get("requirements") or [],
-        saved=observe_message(((state["context"].lead or {}).get("attributes") or {}).get(STATE_KEY), state.get("latest_text", "")))
-    validate_response(decision=decision, runtime=runtime, requirements=state.get("requirements") or [])
-    decision = replace(decision, crm_actions=controlled_actions, file_document_id=validated_file_id,
-        backend_revision=state_revision(state["lead"]), flow_version=runtime["flow_version"])
+
+    projected = project_answer_updates(
+        state=state.get("qualification_state") or {},
+        requirements=state.get("requirements") or [],
+        updates=decision.qualification_updates,
+        messages=(state["context"].conversation or {}).get("messages", []),
+    )
+    runtime = contract(
+        qualification=projected,
+        requirements=state.get("requirements") or [],
+        saved=observe_message(
+            ((state["context"].lead or {}).get("attributes") or {}).get(STATE_KEY),
+            state.get("latest_text", ""),
+        ),
+    )
+    validate_response(
+        decision=decision,
+        runtime=runtime,
+        requirements=state.get("requirements") or [],
+    )
+    decision = replace(
+        decision,
+        crm_actions=controlled_actions,
+        file_document_id=validated_file_id,
+        backend_revision=state_revision(state["lead"]),
+        flow_version=runtime["flow_version"],
+    )
 
     logger.info(
         "ai_engagement_graph organization=%s lead=%s route=%s model=%s rag=%s/%s qualification=%s crm_actions=%s file=%s",
@@ -318,7 +403,11 @@ def _validate_decision(state: EngagementGraphState) -> dict:
         len(controlled_actions),
         validated_file_id,
     )
-    return {"decision": decision, "validation_errors": errors, "qualification_state": projected}
+    return {
+        "decision": decision,
+        "validation_errors": errors,
+        "qualification_state": projected,
+    }
 
 
 def build_engagement_graph():
@@ -360,12 +449,14 @@ def run_engagement_graph(
     knowledge_query: str | None = None,
     context=None,
 ):
-    final = ENGAGEMENT_GRAPH.invoke({
-        "service": service,
-        "legacy_engage": legacy_engage,
-        "organization": organization,
-        "lead": lead,
-        "requested_knowledge_query": str(knowledge_query or ""),
-        "supplied_context": context,
-    })
+    final = ENGAGEMENT_GRAPH.invoke(
+        {
+            "service": service,
+            "legacy_engage": legacy_engage,
+            "organization": organization,
+            "lead": lead,
+            "requested_knowledge_query": str(knowledge_query or ""),
+            "supplied_context": context,
+        }
+    )
     return final["decision"]
