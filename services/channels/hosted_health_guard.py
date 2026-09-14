@@ -12,6 +12,7 @@ from __future__ import annotations
 from datetime import timedelta
 
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
 
 from apps.channels.models import WhatsAppMessage
@@ -56,16 +57,17 @@ def _window_start(account, now):
 
 def _sent_messages(*, account):
     # History sync is observational data and must never consume the health
-    # budget. Realtime outbound rows include both SHVYA sends and messages sent
-    # directly from the linked WhatsApp / WhatsApp Business app.
-    return (
-        WhatsAppMessage.objects.filter(
-            organization_id=account.organization_id,
-            account_id=account.id,
-            direction=WhatsAppMessage.Direction.OUTBOUND,
-            status__in=_SENT_STATUSES,
-        )
-        .exclude(raw_payload__isHistory=True)
+    # budget. Realtime SHVYA/provider send payloads often have no isHistory key,
+    # so explicitly include missing/null history flags. A plain exclude() on a
+    # JSON key can drop rows where that key is absent, undercounting real sends.
+    return WhatsAppMessage.objects.filter(
+        organization_id=account.organization_id,
+        account_id=account.id,
+        direction=WhatsAppMessage.Direction.OUTBOUND,
+        status__in=_SENT_STATUSES,
+    ).filter(
+        Q(raw_payload__isHistory=False)
+        | Q(raw_payload__isHistory__isnull=True)
     )
 
 
