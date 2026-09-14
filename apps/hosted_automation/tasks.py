@@ -8,9 +8,9 @@ from apps.channels.models import WhatsAppMessage
 from apps.hosted_automation.models import HostedAutomationJob
 from services.channels.hosted_automation_service import (
     HostedAutomationPaused,
-    automation_pause_until,
     hosted_ai_block_reason,
 )
+from services.channels.hosted_health_guard import hosted_health_pause_until
 
 
 logger = logging.getLogger(__name__)
@@ -138,7 +138,10 @@ def process_hosted_ai_engagement_job_task(self, job_id):
         job.save(update_fields=["status", "completed_at", "result", "updated_at"])
         return {"status": "skipped", "reason": reason}
 
-    pause_until = automation_pause_until(account=job.account)
+    # Reconcile the durable health row with all realtime outbound messages from
+    # this linked number before generating AI text. This includes messages sent
+    # directly from WhatsApp/WhatsApp Business, not only SHVYA transport sends.
+    pause_until = hosted_health_pause_until(account=job.account)
     if pause_until:
         return _requeue_for_health(job, pause_until)
 
