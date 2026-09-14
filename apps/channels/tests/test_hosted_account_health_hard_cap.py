@@ -62,7 +62,9 @@ class HostedAccountHealthHardCapTests(TestCase):
                     body="Already sent",
                     message_type=WhatsAppMessage.MessageType.TEXT,
                     status=WhatsAppMessage.Status.SENT,
-                    raw_payload={"fromMe": True, "isHistory": False},
+                    # Real SHVYA gateway-send payloads frequently do not carry
+                    # an isHistory key at all. They must still count.
+                    raw_payload={"gateway_send": {"messageId": f"sent-{index}"}},
                 )
                 for index in range(count)
             ]
@@ -96,10 +98,11 @@ class HostedAccountHealthHardCapTests(TestCase):
         )
         self.assertFalse(message_is_hosted_automation(manual))
 
-    def test_reconciliation_repairs_inflated_sent_count(self):
+    def test_reconciliation_counts_rows_without_history_key_and_repairs_inflation(self):
         self._create_sent_messages(3)
         health = sync_hosted_health_from_messages(account=self.account)
         self.assertEqual(health.total_messages_sent, 3)
+        self.assertEqual(health.window_messages_sent, 3)
 
         # Reproduce the stale/inflated counter left by the older counting path.
         health.total_messages_sent = 252
