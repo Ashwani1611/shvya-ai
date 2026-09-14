@@ -1,32 +1,50 @@
 /*
- * SHVYA CRM — lead card visual-state restoration.
+ * SHVYA CRM — lead-card visual-state restoration.
  *
- * Loaded after shvya_crm_card_layout_fix.css so the stabilization layer keeps
- * owning geometry while these rules restore the intentional colour/state
- * treatments that were being flattened by its broad !important selectors.
+ * This file is intentionally loaded after shvya_crm_card_layout_fix.css.
+ * The layout layer owns geometry; this layer owns the visible card theme,
+ * coloured 3D depth and mini-stat state colours.
+ *
+ * Important: selectors here do not depend on :has() or on the JS-added
+ * html.shvya-crm-apple-v2 class. That keeps the theme stable during first
+ * paint, HTMX swaps, filter refreshes and partial re-renders.
  */
 
 :root {
     --crm-card-blue: #3b82f6;
-    --crm-card-blue-soft: rgba(59, 130, 246, 0.10);
-    --crm-card-blue-line: rgba(59, 130, 246, 0.22);
-    --crm-card-green-soft: rgba(16, 185, 129, 0.10);
-    --crm-card-green-line: rgba(16, 185, 129, 0.24);
-    --crm-card-orange-soft: rgba(249, 115, 22, 0.10);
-    --crm-card-orange-line: rgba(249, 115, 22, 0.24);
+    --crm-card-blue-deep: #2563eb;
+    --crm-card-blue-ink: #1e3a8a;
+    --crm-card-blue-fill: #eff6ff;
+    --crm-card-blue-line: rgba(59, 130, 246, 0.28);
+
+    --crm-card-green: #10b981;
+    --crm-card-green-deep: #047857;
+    --crm-card-green-ink: #065f46;
+    --crm-card-green-fill: #ecfdf5;
+    --crm-card-green-line: rgba(16, 185, 129, 0.30);
+
+    --crm-card-orange: #f97316;
+    --crm-card-orange-deep: #c2410c;
+    --crm-card-orange-ink: #9a3412;
+    --crm-card-orange-fill: #fff7ed;
+    --crm-card-orange-line: rgba(249, 115, 22, 0.30);
 }
 
 /* -------------------------------------------------------------------------
-   Lead-card depth / coloured 3D glow
+   Lead-card shell — restore the original coloured 3D depth.
    ------------------------------------------------------------------------- */
 
-html.shvya-crm-apple-v2 body .lead-card {
+body .crm-premium-page [data-lead-cards] > .lead-card {
     position: relative !important;
+    isolation: isolate !important;
+    border-left: 6px solid #3b82f6 !important;
+    background: #ffffff !important;
     box-shadow:
-        0 1px 0 rgba(255, 255, 255, 0.94) inset,
-        0 5px 15px rgba(59, 130, 246, 0.075),
-        0 18px 42px rgba(59, 130, 246, 0.045) !important;
-    transform: translateZ(0) !important;
+        inset 0 1px 0 rgba(255, 255, 255, 0.98),
+        0 2px 5px rgba(15, 23, 42, 0.035),
+        0 10px 24px rgba(59, 130, 246, 0.10),
+        0 24px 54px rgba(59, 130, 246, 0.075) !important;
+    transform: translateY(0) translateZ(0) !important;
     transition:
         transform 180ms ease,
         border-color 180ms ease,
@@ -34,177 +52,193 @@ html.shvya-crm-apple-v2 body .lead-card {
         background-color 180ms ease !important;
 }
 
-html.shvya-crm-apple-v2 body .lead-card:nth-of-type(5n + 1) {
+body .crm-premium-page [data-lead-cards] > .lead-card:nth-child(5n + 1) {
     box-shadow:
-        0 1px 0 rgba(255, 255, 255, 0.94) inset,
-        0 5px 16px rgba(59, 130, 246, 0.085),
-        0 20px 44px rgba(59, 130, 246, 0.050) !important;
+        inset 0 1px 0 rgba(255, 255, 255, 0.98),
+        0 2px 5px rgba(15, 23, 42, 0.035),
+        0 10px 24px rgba(59, 130, 246, 0.11),
+        0 26px 58px rgba(59, 130, 246, 0.085) !important;
 }
 
-html.shvya-crm-apple-v2 body .lead-card:nth-of-type(5n + 2) {
+body .crm-premium-page [data-lead-cards] > .lead-card:nth-child(5n + 2) {
     box-shadow:
-        0 1px 0 rgba(255, 255, 255, 0.94) inset,
-        0 5px 16px rgba(139, 92, 246, 0.080),
-        0 20px 44px rgba(139, 92, 246, 0.045) !important;
+        inset 0 1px 0 rgba(255, 255, 255, 0.98),
+        0 2px 5px rgba(15, 23, 42, 0.035),
+        0 10px 24px rgba(139, 92, 246, 0.105),
+        0 26px 58px rgba(139, 92, 246, 0.080) !important;
 }
 
-html.shvya-crm-apple-v2 body .lead-card:nth-of-type(5n + 3) {
+body .crm-premium-page [data-lead-cards] > .lead-card:nth-child(5n + 3) {
     box-shadow:
-        0 1px 0 rgba(255, 255, 255, 0.94) inset,
-        0 5px 16px rgba(6, 182, 212, 0.080),
-        0 20px 44px rgba(6, 182, 212, 0.045) !important;
+        inset 0 1px 0 rgba(255, 255, 255, 0.98),
+        0 2px 5px rgba(15, 23, 42, 0.035),
+        0 10px 24px rgba(6, 182, 212, 0.105),
+        0 26px 58px rgba(6, 182, 212, 0.080) !important;
 }
 
-html.shvya-crm-apple-v2 body .lead-card:nth-of-type(5n + 4) {
+body .crm-premium-page [data-lead-cards] > .lead-card:nth-child(5n + 4) {
     box-shadow:
-        0 1px 0 rgba(255, 255, 255, 0.94) inset,
-        0 5px 16px rgba(34, 197, 94, 0.075),
-        0 20px 44px rgba(34, 197, 94, 0.040) !important;
+        inset 0 1px 0 rgba(255, 255, 255, 0.98),
+        0 2px 5px rgba(15, 23, 42, 0.035),
+        0 10px 24px rgba(34, 197, 94, 0.095),
+        0 26px 58px rgba(34, 197, 94, 0.072) !important;
 }
 
-html.shvya-crm-apple-v2 body .lead-card:nth-of-type(5n + 5) {
+body .crm-premium-page [data-lead-cards] > .lead-card:nth-child(5n + 5) {
     box-shadow:
-        0 1px 0 rgba(255, 255, 255, 0.94) inset,
-        0 5px 16px rgba(245, 158, 11, 0.075),
-        0 20px 44px rgba(245, 158, 11, 0.040) !important;
+        inset 0 1px 0 rgba(255, 255, 255, 0.98),
+        0 2px 5px rgba(15, 23, 42, 0.035),
+        0 10px 24px rgba(245, 158, 11, 0.095),
+        0 26px 58px rgba(245, 158, 11, 0.072) !important;
 }
 
-html.shvya-crm-apple-v2 body .lead-card:hover {
-    transform: translateY(-2px) translateZ(0) !important;
+body .crm-premium-page [data-lead-cards] > .lead-card:hover {
+    transform: translateY(-3px) translateZ(0) !important;
+    border-left-color: #2563eb !important;
     box-shadow:
-        0 1px 0 rgba(255, 255, 255, 0.96) inset,
-        0 9px 24px rgba(59, 130, 246, 0.10),
-        0 24px 52px rgba(59, 130, 246, 0.060) !important;
+        inset 0 1px 0 rgba(255, 255, 255, 1),
+        0 4px 9px rgba(15, 23, 42, 0.04),
+        0 14px 30px rgba(59, 130, 246, 0.14),
+        0 32px 64px rgba(59, 130, 246, 0.10) !important;
 }
 
-html.shvya-crm-apple-v2 body .lead-card.crm-is-selected {
+body .crm-premium-page [data-lead-cards] > .lead-card.crm-is-selected {
     box-shadow:
-        0 0 0 4px var(--crm-final-focus),
-        0 7px 20px rgba(59, 130, 246, 0.10),
-        0 22px 48px rgba(59, 130, 246, 0.055) !important;
+        0 0 0 4px rgba(0, 113, 227, 0.14),
+        0 12px 28px rgba(59, 130, 246, 0.13),
+        0 30px 60px rgba(59, 130, 246, 0.09) !important;
 }
 
 /* -------------------------------------------------------------------------
-   Mini stats — restore the blue treatment flattened by the layout fix
+   Mini stat cards — visible blue theme for Summary + Last Activity.
+   We address them relative to the auto-follow-up element, so HTMX refreshes
+   cannot break the selectors and no parent :has() selector is required.
    ------------------------------------------------------------------------- */
 
-html.shvya-crm-apple-v2 body .lead-card > div:has(> .grid > [id^="lead-followup-control-"]) {
+body .crm-premium-page [id^="lead-followup-control-"] + button,
+body .crm-premium-page [id^="lead-followup-control-"] + button + div {
+    border: 1px solid var(--crm-card-blue-line) !important;
     background:
-        linear-gradient(180deg, rgba(248, 251, 255, 0.92), rgba(250, 250, 250, 0.96)) !important;
-}
-
-/* Conversation Summary + Last Activity stay blue. */
-html.shvya-crm-apple-v2 body .lead-card > div:has(> .grid > [id^="lead-followup-control-"]) > .grid > button,
-html.shvya-crm-apple-v2 body .lead-card > div:has(> .grid > [id^="lead-followup-control-"]) > .grid > div:not([id^="lead-followup-control-"]) {
-    border-color: var(--crm-card-blue-line) !important;
-    background:
-        radial-gradient(circle at 100% 0%, rgba(59, 130, 246, 0.12), transparent 48%),
-        linear-gradient(145deg, rgba(239, 246, 255, 0.96), rgba(248, 251, 255, 0.90)) !important;
+        radial-gradient(circle at 100% 0%, rgba(59, 130, 246, 0.18), transparent 52%),
+        linear-gradient(145deg, #eef6ff 0%, #f7fbff 100%) !important;
     box-shadow:
-        inset 0 1px 0 rgba(255, 255, 255, 0.92),
-        0 5px 14px rgba(59, 130, 246, 0.055) !important;
+        inset 0 1px 0 rgba(255, 255, 255, 0.96),
+        0 5px 14px rgba(59, 130, 246, 0.08),
+        0 10px 24px rgba(59, 130, 246, 0.045) !important;
 }
 
-html.shvya-crm-apple-v2 body .lead-card > div:has(> .grid > [id^="lead-followup-control-"]) > .grid > button:hover,
-html.shvya-crm-apple-v2 body .lead-card > div:has(> .grid > [id^="lead-followup-control-"]) > .grid > div:not([id^="lead-followup-control-"]):hover {
-    border-color: rgba(59, 130, 246, 0.32) !important;
+body .crm-premium-page [id^="lead-followup-control-"] + button:hover,
+body .crm-premium-page [id^="lead-followup-control-"] + button + div:hover {
+    border-color: rgba(59, 130, 246, 0.40) !important;
     background:
-        radial-gradient(circle at 100% 0%, rgba(59, 130, 246, 0.16), transparent 52%),
-        linear-gradient(145deg, rgba(235, 244, 255, 1), rgba(247, 250, 255, 0.96)) !important;
+        radial-gradient(circle at 100% 0%, rgba(59, 130, 246, 0.24), transparent 54%),
+        linear-gradient(145deg, #eaf4ff 0%, #f5faff 100%) !important;
     box-shadow:
-        inset 0 1px 0 rgba(255, 255, 255, 0.94),
-        0 8px 20px rgba(59, 130, 246, 0.085) !important;
+        inset 0 1px 0 rgba(255, 255, 255, 0.98),
+        0 8px 18px rgba(59, 130, 246, 0.11),
+        0 14px 28px rgba(59, 130, 246, 0.06) !important;
 }
 
-html.shvya-crm-apple-v2 body .lead-card > div:has(> .grid > [id^="lead-followup-control-"]) > .grid > button [class*="uppercase"],
-html.shvya-crm-apple-v2 body .lead-card > div:has(> .grid > [id^="lead-followup-control-"]) > .grid > div:not([id^="lead-followup-control-"]) [class*="uppercase"] {
-    color: #2563eb !important;
+body .crm-premium-page [id^="lead-followup-control-"] + button [class*="uppercase"],
+body .crm-premium-page [id^="lead-followup-control-"] + button + div [class*="uppercase"] {
+    color: var(--crm-card-blue-deep) !important;
 }
 
-html.shvya-crm-apple-v2 body .lead-card > div:has(> .grid > [id^="lead-followup-control-"]) > .grid > button > div i,
-html.shvya-crm-apple-v2 body .lead-card > div:has(> .grid > [id^="lead-followup-control-"]) > .grid > div:not([id^="lead-followup-control-"]) > div i {
+body .crm-premium-page [id^="lead-followup-control-"] + button i,
+body .crm-premium-page [id^="lead-followup-control-"] + button + div i {
     color: var(--crm-card-blue) !important;
 }
 
-html.shvya-crm-apple-v2 body .lead-card > div:has(> .grid > [id^="lead-followup-control-"]) > .grid > button p.text-sm,
-html.shvya-crm-apple-v2 body .lead-card > div:has(> .grid > [id^="lead-followup-control-"]) > .grid > div:not([id^="lead-followup-control-"]) p.text-sm {
+body .crm-premium-page [id^="lead-followup-control-"] + button p,
+body .crm-premium-page [id^="lead-followup-control-"] + button + div p {
     color: #334155 !important;
 }
 
 /* -------------------------------------------------------------------------
-   Auto Follow-up — state colours come from the existing server-rendered class
-   (blue = idle, emerald = active/paused state, orange = completed).
+   Auto Follow-up — explicit state hook rendered by the backend partial.
+   Initial loading state falls back to blue; HTMX then swaps in the state hook.
    ------------------------------------------------------------------------- */
 
-html.shvya-crm-apple-v2 body [id^="lead-followup-control-"] {
-    box-shadow:
-        inset 0 1px 0 rgba(255, 255, 255, 0.92),
-        0 5px 14px rgba(59, 130, 246, 0.055) !important;
-}
-
-html.shvya-crm-apple-v2 body [id^="lead-followup-control-"].bg-blue-50 {
-    border-color: var(--crm-card-blue-line) !important;
+body .crm-premium-page [id^="lead-followup-control-"] {
+    border: 1px solid var(--crm-card-blue-line) !important;
     background:
-        radial-gradient(circle at 100% 0%, rgba(59, 130, 246, 0.13), transparent 48%),
-        linear-gradient(145deg, rgba(239, 246, 255, 0.98), rgba(248, 251, 255, 0.92)) !important;
+        radial-gradient(circle at 100% 0%, rgba(59, 130, 246, 0.18), transparent 52%),
+        linear-gradient(145deg, #eef6ff 0%, #f7fbff 100%) !important;
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.96),
+        0 5px 14px rgba(59, 130, 246, 0.08),
+        0 10px 24px rgba(59, 130, 246, 0.045) !important;
 }
 
-html.shvya-crm-apple-v2 body [id^="lead-followup-control-"].bg-blue-50 [class*="uppercase"],
-html.shvya-crm-apple-v2 body [id^="lead-followup-control-"].bg-blue-50 > div:first-child i {
-    color: #2563eb !important;
+body .crm-premium-page [id^="lead-followup-control-"] [class*="uppercase"],
+body .crm-premium-page [id^="lead-followup-control-"] > div:first-child i {
+    color: var(--crm-card-blue-deep) !important;
 }
 
-html.shvya-crm-apple-v2 body [id^="lead-followup-control-"].bg-blue-50 p.text-sm,
-html.shvya-crm-apple-v2 body [id^="lead-followup-control-"].bg-blue-50 a.text-sm {
-    color: #1e3a8a !important;
+body .crm-premium-page [id^="lead-followup-control-"] p.text-sm,
+body .crm-premium-page [id^="lead-followup-control-"] a.text-sm {
+    color: var(--crm-card-blue-ink) !important;
 }
 
-html.shvya-crm-apple-v2 body [id^="lead-followup-control-"].bg-emerald-50 {
+body .crm-premium-page .shvya-followup-tile[data-followup-state="active"] {
     border-color: var(--crm-card-green-line) !important;
     background:
-        radial-gradient(circle at 100% 0%, rgba(16, 185, 129, 0.14), transparent 50%),
-        linear-gradient(145deg, rgba(236, 253, 245, 0.98), rgba(247, 254, 250, 0.94)) !important;
+        radial-gradient(circle at 100% 0%, rgba(16, 185, 129, 0.20), transparent 52%),
+        linear-gradient(145deg, #eafbf3 0%, #f5fdf9 100%) !important;
     box-shadow:
-        inset 0 1px 0 rgba(255, 255, 255, 0.92),
-        0 6px 16px rgba(16, 185, 129, 0.075) !important;
+        inset 0 1px 0 rgba(255, 255, 255, 0.96),
+        0 6px 16px rgba(16, 185, 129, 0.10),
+        0 12px 26px rgba(16, 185, 129, 0.055) !important;
 }
 
-html.shvya-crm-apple-v2 body [id^="lead-followup-control-"].bg-emerald-50 [class*="uppercase"],
-html.shvya-crm-apple-v2 body [id^="lead-followup-control-"].bg-emerald-50 > div:first-child i {
-    color: #047857 !important;
+body .crm-premium-page .shvya-followup-tile[data-followup-state="active"] [class*="uppercase"],
+body .crm-premium-page .shvya-followup-tile[data-followup-state="active"] > div:first-child i {
+    color: var(--crm-card-green-deep) !important;
 }
 
-html.shvya-crm-apple-v2 body [id^="lead-followup-control-"].bg-emerald-50 p.text-sm,
-html.shvya-crm-apple-v2 body [id^="lead-followup-control-"].bg-emerald-50 a.text-sm {
-    color: #065f46 !important;
+body .crm-premium-page .shvya-followup-tile[data-followup-state="active"] p.text-sm,
+body .crm-premium-page .shvya-followup-tile[data-followup-state="active"] a.text-sm {
+    color: var(--crm-card-green-ink) !important;
 }
 
-html.shvya-crm-apple-v2 body [id^="lead-followup-control-"].bg-orange-50 {
+body .crm-premium-page .shvya-followup-tile[data-followup-state="completed"] {
     border-color: var(--crm-card-orange-line) !important;
     background:
-        radial-gradient(circle at 100% 0%, rgba(249, 115, 22, 0.14), transparent 50%),
-        linear-gradient(145deg, rgba(255, 247, 237, 0.98), rgba(255, 251, 245, 0.95)) !important;
+        radial-gradient(circle at 100% 0%, rgba(249, 115, 22, 0.20), transparent 52%),
+        linear-gradient(145deg, #fff4e8 0%, #fffaf4 100%) !important;
     box-shadow:
-        inset 0 1px 0 rgba(255, 255, 255, 0.92),
-        0 6px 16px rgba(249, 115, 22, 0.075) !important;
+        inset 0 1px 0 rgba(255, 255, 255, 0.96),
+        0 6px 16px rgba(249, 115, 22, 0.10),
+        0 12px 26px rgba(249, 115, 22, 0.055) !important;
 }
 
-html.shvya-crm-apple-v2 body [id^="lead-followup-control-"].bg-orange-50 [class*="uppercase"],
-html.shvya-crm-apple-v2 body [id^="lead-followup-control-"].bg-orange-50 > div:first-child i {
-    color: #c2410c !important;
+body .crm-premium-page .shvya-followup-tile[data-followup-state="completed"] [class*="uppercase"],
+body .crm-premium-page .shvya-followup-tile[data-followup-state="completed"] > div:first-child i {
+    color: var(--crm-card-orange-deep) !important;
 }
 
-html.shvya-crm-apple-v2 body [id^="lead-followup-control-"].bg-orange-50 p.text-sm,
-html.shvya-crm-apple-v2 body [id^="lead-followup-control-"].bg-orange-50 a.text-sm {
-    color: #9a3412 !important;
+body .crm-premium-page .shvya-followup-tile[data-followup-state="completed"] p.text-sm,
+body .crm-premium-page .shvya-followup-tile[data-followup-state="completed"] a.text-sm {
+    color: var(--crm-card-orange-ink) !important;
+}
+
+/* The stabilizer neutralizes labels globally; explicit state hooks win here. */
+body .crm-premium-page .shvya-followup-tile[data-followup-state="idle"] [class*="uppercase"],
+body .crm-premium-page .shvya-followup-tile[data-followup-state="idle"] > div:first-child i {
+    color: var(--crm-card-blue-deep) !important;
+}
+
+body .crm-premium-page .shvya-followup-tile[data-followup-state="idle"] p.text-sm,
+body .crm-premium-page .shvya-followup-tile[data-followup-state="idle"] a.text-sm {
+    color: var(--crm-card-blue-ink) !important;
 }
 
 @media (prefers-reduced-motion: reduce) {
-    html.shvya-crm-apple-v2 body .lead-card {
+    body .crm-premium-page [data-lead-cards] > .lead-card {
         transition: none !important;
     }
 
-    html.shvya-crm-apple-v2 body .lead-card:hover {
+    body .crm-premium-page [data-lead-cards] > .lead-card:hover {
         transform: none !important;
     }
 }
