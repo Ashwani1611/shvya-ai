@@ -13,18 +13,42 @@ from apps.ai_engagement.services.ai_provider import AITextResult
 from apps.ai_engagement.services.context import AIContext
 from apps.ai_engagement.services.engagement import EngagementService, EngagementDecision, EngagementError
 from apps.ai_engagement.services.playground import PlaygroundService
+from apps.ai_engagement.services.runtime_state import observe_message
 from services.channels import whatsapp_service
 
 
 class OrganizationEngagementPolicyTests(SimpleTestCase):
-    def test_inbound_keywords_do_not_disable_lead(self):
-        for text in ['STOP', 'unsubscribe', 'no', 'not interested', 'Please do not contact me']:
+    def test_explicit_opt_out_disables_lead_but_negative_answers_do_not(self):
+        for text in [
+            'STOP',
+            'unsubscribe',
+            'opt out',
+            'remove me',
+            'Please do not contact me',
+            'stop messaging me',
+        ]:
+            lead = SimpleNamespace(ai_enabled=True, notes='', save=Mock())
+            whatsapp_service._apply_reply_intent(lead=lead, body=text)
+            self.assertFalse(lead.ai_enabled, text)
+            self.assertIn('opted out', lead.notes)
+            lead.save.assert_called_once()
+
+        for text in ['no', 'no thanks', 'not interested']:
             lead = SimpleNamespace(ai_enabled=True, notes='', save=Mock())
             whatsapp_service._apply_reply_intent(lead=lead, body=text)
             self.assertTrue(lead.ai_enabled, text)
 
-    def test_graph_does_not_silently_route_keywords(self):
-        for text in ['STOP', 'unsubscribe', 'no', 'thanks', 'hello']:
+    def test_runtime_marks_only_explicit_opt_out(self):
+        for text in ['STOP', 'unsubscribe', 'opt out', 'stop messaging me', 'Please do not contact me']:
+            state = observe_message({}, text)
+            self.assertEqual(state.get('conversation_mode'), 'opt_out', text)
+
+        for text in ['no', 'no thanks', 'not interested', 'maybe later']:
+            state = observe_message({}, text)
+            self.assertNotEqual(state.get('conversation_mode'), 'opt_out', text)
+
+    def test_graph_does_not_silently_route_ordinary_keywords(self):
+        for text in ['no', 'thanks', 'hello']:
             # dataclasses.replace requires the actual context type.
             context = AIContext(organization={}, lead={}, pipeline={}, stage={},
                                 contacts=[], attributes=[], conversation={},
@@ -34,18 +58,15 @@ class OrganizationEngagementPolicyTests(SimpleTestCase):
             self.assertEqual(result['route'], 'generate')
             self.assertNotIn('direct_decision', result)
 
-    def test_silence_requires_organization_rule_evidence(self):
+    def test_model_silence_is_rejected_even_with_authored_rule(self):
         service = EngagementService()
         for field in ['qualification_requirements', 'engagement_instructions']:
             rule = 'Do not reply when the lead says pause.'
             context = SimpleNamespace(organization={field: rule})
             decision = EngagementDecision(False, '', None, [], 'ORG_INSTRUCTION', 'test',
                 reason_code='ORG_INSTRUCTION', silence_rule={'field': field, 'quote': rule})
-            service._validate_engagement_policy(decision=decision, context=context)
-            for bad_context in [SimpleNamespace(organization={}),
-                                SimpleNamespace(organization={field: 'Be friendly.'})]:
-                with self.assertRaises(EngagementError):
-                    service._validate_engagement_policy(decision=decision, context=bad_context)
+            with self.assertRaises(EngagementError):
+                service._validate_engagement_policy(decision=decision, context=context)
 
     def test_legacy_no_action_cannot_authorize_silence(self):
         decision = EngagementDecision(False, '', None, [], 'NO_ACTION', 'test')
@@ -55,7 +76,7 @@ class OrganizationEngagementPolicyTests(SimpleTestCase):
 
 
 class PlaygroundEngagementPolicyTests(SimpleTestCase):
-    def run_turn(self, results, **instructions):
+    def run_turn(self, results, message='no', **instructions):
         provider = Mock()
         provider.generate_text.side_effect = [AITextResult(json.dumps(item), 'test') for item in results]
         info = Mock()
@@ -69,7 +90,7 @@ class PlaygroundEngagementPolicyTests(SimpleTestCase):
         service = PlaygroundService(provider=provider, org_info_service=info,
             embedding_service=Mock(), retrieval_service=retrieval)
         return service.run(organization=SimpleNamespace(id='org', name='Org'),
-                           session_id='test', message='no', history=[]), provider
+                           session_id='test', message=message, history=[]), provider
 
     def payload(self, engage=False, rule=None):
         return {'should_engage':engage, 'message':'How can I help?' if engage else '',
@@ -92,12 +113,25 @@ class PlaygroundEngagementPolicyTests(SimpleTestCase):
         self.assertEqual(result.model, 'sandbox-safe-fallback')
         self.assertIn('verified information', result.response)
 
-    def test_authored_silence_supported_in_both_ai_setup_fields(self):
+    def test_authored_model_silence_is_repaired_into_reply(self):
         for field in ['qualification_requirements', 'engagement_instructions']:
             rule = 'Do not reply to no.'
-            result, provider = self.run_turn([self.payload(rule={'field':field,'quote':rule})], **{field:rule})
-            self.assertFalse(result.should_engage)
-            provider.generate_text.assert_called_once()
+            result, provider = self.run_turn(
+                [
+                    self.payload(rule={'field':field,'quote':rule}),
+                    self.payload(True),
+                ],
+                **{field:rule},
+            )
+            self.assertTrue(result.should_engage)
+            self.assertEqual(provider.generate_text.call_count, 2)
+
+    def test_explicit_opt_out_is_backend_owned_and_skips_provider(self):
+        result, provider = self.run_turn([], message='STOP')
+        self.assertFalse(result.should_engage)
+        self.assertEqual(result.response, '')
+        self.assertEqual(result.model, 'deterministic-opt-out')
+        provider.generate_text.assert_not_called()
 
 
 def test_production_celery_startup_registers_both_inbound_paths():
