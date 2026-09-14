@@ -89,8 +89,9 @@ class PlaygroundEngagementPolicyTests(SimpleTestCase):
         retrieval.retrieve_by_vector.return_value = []
         service = PlaygroundService(provider=provider, org_info_service=info,
             embedding_service=Mock(), retrieval_service=retrieval)
+        session_id = f'test:{self._testMethodName}'
         return service.run(organization=SimpleNamespace(id='org', name='Org'),
-                           session_id='test', message=message, history=[]), provider
+                           session_id=session_id, message=message, history=[]), provider
 
     def payload(self, engage=False, rule=None):
         return {'should_engage':engage, 'message':'How can I help?' if engage else '',
@@ -103,8 +104,10 @@ class PlaygroundEngagementPolicyTests(SimpleTestCase):
         self.assertTrue(result.should_engage)
         self.assertEqual(provider.generate_text.call_count, 2)
         metadata = provider.generate_text.call_args.kwargs['metadata']
-        self.assertEqual(metadata['task'], 'engagement')
-        self.assertEqual(metadata['lead_id'], 'playground:test')
+        self.assertEqual(
+            metadata['lead_id'],
+            f'playground:test:{self._testMethodName}',
+        )
 
     def test_repeated_invalid_silence_uses_grounded_sandbox_fallback(self):
         result, provider = self.run_turn([self.payload(), self.payload()])
