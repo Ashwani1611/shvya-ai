@@ -121,14 +121,13 @@ def _deterministic_extract(state: EngagementGraphState) -> dict:
     updates: dict = {"qualification_state": qualification_state}
 
     direct_next = direct.get("next_requirement")
-    profile = state.get("profile") or {}
-    context = state["context"]
+    # Qualification sequencing is backend-owned. A configured questionnaire,
+    # bot language, engagement instructions, or CRM attribute definitions must
+    # never force an exact A/B/Yes/No answer back through the provider just to
+    # discover the already-known next question. Doing so made Sandbox turns fail
+    # mid-flow when provider/schema validation had a transient problem.
     if (
-        not profile.get("communication", {}).get("custom_instructions")
-        and not profile.get("qualification", {}).get("raw")
-        and not profile.get("communication", {}).get("languages")
-        and not (context.pipeline or {}).get("attribute_definitions")
-        and direct.get("changed")
+        direct.get("changed")
         and direct.get("answer_status") == REQUIREMENT_ANSWERED
         and qualification_state.get("engagement_mode") == MODE_QUALIFICATION
         and isinstance(direct_next, dict)
