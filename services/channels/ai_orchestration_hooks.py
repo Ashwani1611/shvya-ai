@@ -92,9 +92,26 @@ def install_ai_orchestration_hooks() -> None:
         return None
 
     def deterministic_reply_intent(*, lead, body):
-        """Never advance a CRM stage from a generic yes/interested keyword."""
+        """Own opt-out and negative intent in backend code, never in the LLM."""
         text = _normalized_text(body)
         if not text:
+            return
+
+        from apps.ai_engagement.services.runtime_state import is_explicit_opt_out
+
+        # A genuine stop request is an application permission change. Persist it
+        # before any AI task is queued so future inbound messages cannot silently
+        # re-enable engagement. Ordinary "no" / "not interested" replies remain
+        # valid qualification/conversation answers and do not disable AI.
+        if is_explicit_opt_out(text):
+            notes = lead.notes or ""
+            marker = "[WhatsApp] Lead opted out of AI engagement."
+            lead.ai_enabled = False
+            if marker not in notes:
+                lead.notes = f"{notes}\n{marker}".strip()
+                lead.save(update_fields=["ai_enabled", "notes", "updated_at"])
+            else:
+                lead.save(update_fields=["ai_enabled", "updated_at"])
             return
 
         # A normal negative answer may be a qualification answer (for example

@@ -8,6 +8,67 @@ import re
 STATE_KEY = "_shvya_ai_runtime"
 TERMINAL_REQUIREMENTS = {"answered", "not_applicable", "skipped"}
 
+# These are intentionally narrow customer-authored opt-out phrases. Ordinary
+# negative qualification answers such as "no" or "not interested" are NOT
+# opt-outs and must continue through the normal engagement/qualification flow.
+_EXPLICIT_OPT_OUT_EXACT = {
+    "stop",
+    "unsubscribe",
+    "opt out",
+    "opt-out",
+    "remove me",
+    "do not message me",
+    "don't message me",
+    "dont message me",
+    "stop messaging me",
+    "no more messages",
+    "do not contact me",
+    "don't contact me",
+    "dont contact me",
+    "please do not contact me",
+    "please don't contact me",
+    "please dont contact me",
+    "do not text me",
+    "don't text me",
+    "dont text me",
+}
+
+_EXPLICIT_OPT_OUT_CONTAINS = (
+    "please stop messaging",
+    "please do not message",
+    "please don't message",
+    "please dont message",
+    "please do not contact",
+    "please don't contact",
+    "please dont contact",
+    "stop contacting me",
+    "stop texting me",
+)
+
+
+def _normalized_intent_text(value) -> str:
+    return " ".join(
+        str(value or "")
+        .replace("’", "'")
+        .strip()
+        .casefold()
+        .split()
+    ).rstrip(".! ")
+
+
+def is_explicit_opt_out(value) -> bool:
+    """Return True only for clear customer requests to stop messaging.
+
+    This is a backend authorization decision. The model is never allowed to
+    create an opt-out from vague negativity or from an organization prompt.
+    """
+    normalized = _normalized_intent_text(value)
+    if not normalized:
+        return False
+    if normalized in _EXPLICIT_OPT_OUT_EXACT:
+        return True
+    return any(phrase in normalized for phrase in _EXPLICIT_OPT_OUT_CONTAINS)
+
 
 def _semantic_state(value):
     # Audit bookkeeping is allowed to change while a response is generated.
@@ -36,7 +97,7 @@ def response_hash(message):
 def observe_message(saved, text):
     """Conservative explicit intents; plain yes/no never reset a workflow."""
     result = deepcopy(saved or {})
-    normalized = " ".join(str(text).casefold().split()).rstrip(".! ")
+    normalized = _normalized_intent_text(text)
     if re.search(r"\bi (?:have )?already (?:booked|scheduled)\b", normalized):
         if result.get("booking_status") != "confirmed":
             result["booking_status"] = "user_reported"
@@ -48,7 +109,7 @@ def observe_message(saved, text):
         result["conversation_mode"] = "paused"
     elif normalized in {"continue", "resume", "let's continue"} and result.get("conversation_mode") == "paused":
         result["conversation_mode"] = result.pop("resume_mode", "conversation")
-    if normalized in {"stop", "unsubscribe", "do not contact me", "please do not contact me"}:
+    if is_explicit_opt_out(normalized):
         result["conversation_mode"] = "opt_out"
         result["active_interaction_status"] = "declined"
     if normalized in {"no", "no thanks"} and result.get("active_interaction") == "booking":
