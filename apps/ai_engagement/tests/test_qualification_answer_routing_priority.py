@@ -5,7 +5,8 @@ from unittest.mock import patch
 
 from django.test import TestCase
 
-from apps.ai_engagement.graph.evidence import SAFE_UNKNOWN_REPLY, check_grounding
+from apps.ai_engagement.graph import evidence as evidence_module
+from apps.ai_engagement.graph.evidence import SAFE_UNKNOWN_REPLY
 from apps.ai_engagement.graph.policy_actions import build_controlled_actions
 from apps.ai_engagement.graph.runtime_policy import get_runtime_policy
 from apps.ai_engagement.models import OrgInfo
@@ -362,7 +363,7 @@ class QualificationAnswerRoutingPriorityTests(TestCase):
             "apps.ai_engagement.graph.evidence.OpenAIProvider.generate_text",
             side_effect=AssertionError("grounding provider must not run"),
         ):
-            grounded = check_grounding(state)
+            grounded = evidence_module.check_grounding(state)
         self.assertTrue(grounded["grounding_approved"])
         self.assertTrue(grounded["qualification_answer_authoritative"])
         self.assertNotEqual(decision.message, SAFE_UNKNOWN_REPLY)
@@ -412,7 +413,8 @@ class QualificationAnswerRoutingPriorityTests(TestCase):
                 text='{"approved":false,"reason":"unsupported_fact"}',
                 model="test",
             ),
-        ):
-            grounded = check_grounding(state)
+        ) as grounding_provider:
+            grounded = evidence_module.check_grounding(state)
+        grounding_provider.assert_called_once()
         self.assertFalse(grounded["grounding_approved"])
         self.assertEqual(grounded["decision"].message, SAFE_UNKNOWN_REPLY)
