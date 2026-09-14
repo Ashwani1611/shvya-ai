@@ -50,9 +50,17 @@ class WhatsAppCoexistenceTests(TestCase):
     def test_connect_api_coexistence_card_routes_to_dedicated_flow(self):
         response = self.client.get(f"{reverse('whatsapp-connect-api')}?add=1")
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, reverse("whatsapp-connect-coexistence"))
+        coexistence_href = reverse("whatsapp-connect-coexistence")
+        hosted_href = reverse("whatsapp-connect-hosted")
+        self.assertContains(response, f'href="{coexistence_href}"')
+        self.assertNotContains(response, f'href="{hosted_href}"')
+        self.assertEqual(
+            response["Cache-Control"],
+            "no-store, no-cache, must-revalidate, max-age=0",
+        )
+        self.assertEqual(response["Pragma"], "no-cache")
 
-        coexistence = self.client.get(reverse("whatsapp-connect-coexistence"))
+        coexistence = self.client.get(coexistence_href)
         self.assertEqual(coexistence.status_code, 200)
         self.assertContains(coexistence, "whatsapp_business_app_onboarding")
         self.assertContains(coexistence, "FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING")
