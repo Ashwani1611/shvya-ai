@@ -21,6 +21,13 @@ def _unique_organization_qualified_stage(lead):
     if organization is None:
         return None
 
+    # The AI Sandbox uses an in-memory lead/organization so it can exercise the
+    # production qualification runtime without creating CRM rows. Cross-pipeline
+    # stage lookup only makes sense for a real Django model instance; passing the
+    # sandbox namespace into a UUID foreign-key lookup raises ValidationError.
+    if getattr(organization, "_meta", None) is None:
+        return None
+
     from apps.crm.models import Stage
 
     candidates = list(
