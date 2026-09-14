@@ -1,5 +1,6 @@
 """Dedicated UI endpoints for WhatsApp Business App Coexistence."""
 
+import json
 import logging
 
 from django.conf import settings
@@ -23,29 +24,69 @@ logger = logging.getLogger(__name__)
 
 
 def whatsapp_connect_api_entry_view(request):
-    """Keep the existing Connect API page but route its Coexistence CTA correctly."""
+    """Keep the Connect API page while routing its Coexistence CTA correctly."""
     response = connection_ui.whatsapp_connect_api_view(request)
     if (
         request.method == "GET"
         and getattr(response, "status_code", 500) == 200
-        and "text/html" in response.get("Content-Type", "").lower()
         and not getattr(response, "streaming", False)
     ):
+        # Be defensive around TemplateResponse-style responses. The underlying
+        # view currently returns a rendered HttpResponse, but explicitly
+        # rendering here keeps the route fix reliable if that changes later.
+        if hasattr(response, "render") and not getattr(response, "is_rendered", True):
+            response.render()
+
         try:
             html = response.content.decode(response.charset or "utf-8")
         except (AttributeError, UnicodeDecodeError):
             return response
+
         hosted_href = reverse("whatsapp-connect-hosted")
         coexistence_href = reverse("whatsapp-connect-coexistence")
         needle = f'href="{hosted_href}"'
         if needle in html:
-            # whatsapp_connect_api.html has exactly one Hosted href: the card
-            # currently labelled Coexistence. Rewriting that rendered link keeps
-            # Hosted Account navigation elsewhere completely independent.
+            # whatsapp_connect_api.html currently has exactly one Hosted href:
+            # the card labelled Coexistence. Rewrite it server-side so the
+            # browser receives the correct destination before any JS executes.
             html = html.replace(needle, f'href="{coexistence_href}"', 1)
-            response.content = html.encode(response.charset or "utf-8")
-            if response.has_header("Content-Length"):
-                response["Content-Length"] = str(len(response.content))
+
+        # Last-resort browser guard. This makes the CTA self-healing even if a
+        # future template refactor changes quoting/markup around the href while
+        # keeping the visible "Connect with coexistence" label.
+        marker = "data-shvya-coexistence-route-fix"
+        if marker not in html:
+            script = f"""
+<script {marker}>
+(function () {{
+    var target = {json.dumps(coexistence_href)};
+    var anchors = document.querySelectorAll('a');
+    for (var i = 0; i < anchors.length; i += 1) {{
+        var label = (anchors[i].textContent || '').trim().toLowerCase();
+        if (label.indexOf('connect with coexistence') !== -1) {{
+            anchors[i].setAttribute('href', target);
+            break;
+        }}
+    }}
+}}());
+</script>
+"""
+            lower = html.lower()
+            body_index = lower.rfind("</body>")
+            if body_index >= 0:
+                html = html[:body_index] + script + html[body_index:]
+            else:
+                html += script
+
+        response.content = html.encode(response.charset or "utf-8")
+        if response.has_header("Content-Length"):
+            response["Content-Length"] = str(len(response.content))
+
+        # This is an authenticated onboarding page whose routing can change as
+        # integrations evolve. Do not let browser/proxy caches keep an old CTA.
+        response["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        response["Pragma"] = "no-cache"
+
     return response
 
 
