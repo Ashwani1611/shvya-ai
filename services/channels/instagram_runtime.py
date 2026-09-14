@@ -14,6 +14,7 @@ Instagram OAuth endpoint by accident.
 from urllib.parse import urlencode
 
 from django.conf import settings
+from django.core import checks
 
 
 def _dedicated_credentials_required() -> bool:
@@ -64,6 +65,23 @@ def _build_authorize_url(*, app_id: str, redirect_uri: str, state: str) -> str:
         }
     )
     return f"{OAUTH_AUTHORIZE_URL}?{query}"
+
+
+@checks.register("instagram")
+def _instagram_runtime_check(app_configs, **kwargs):
+    del app_configs, kwargs
+    if not _dedicated_credentials_required() or _meta_credentials_available():
+        return []
+    return [
+        checks.Warning(
+            "Instagram Login is disabled because dedicated Instagram App credentials are missing.",
+            hint=(
+                "Set META_INSTAGRAM_APP_ID and META_INSTAGRAM_APP_SECRET from "
+                "Meta App Dashboard > Instagram API setup."
+            ),
+            id="channels.W002",
+        )
+    ]
 
 
 def install_instagram_runtime() -> None:
