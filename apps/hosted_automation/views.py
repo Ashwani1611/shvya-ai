@@ -20,6 +20,7 @@ from services.channels.hosted_automation_service import (
     set_health_enabled,
     update_hosted_whatsapp_step,
 )
+from services.channels.hosted_health_guard import sync_hosted_health_from_messages
 from services.followup_service import FollowupError, create_sequence, duplicate_sequence
 
 
@@ -244,6 +245,12 @@ def hosted_account_health(request, account_id):
         connection_type="hosted",
         is_active=True,
     )
+
+    # Reconcile against realtime outbound rows before reading or changing the
+    # switch. This includes messages sent directly from the linked WhatsApp app,
+    # so the visible 250-message window matches the actual connected number.
+    sync_hosted_health_from_messages(account=account)
+
     if request.method == "POST":
         enabled = str(request.POST.get("enabled", "")).lower() in {"1", "true", "yes", "on"}
         snapshot = set_health_enabled(account=account, enabled=enabled)
