@@ -12,7 +12,7 @@ from apps.ai_engagement.graph.workflow import _route_turn
 from apps.ai_engagement.services.ai_provider import AITextResult
 from apps.ai_engagement.services.context import AIContext
 from apps.ai_engagement.services.engagement import EngagementService, EngagementDecision, EngagementError
-from apps.ai_engagement.services.playground import PlaygroundService, PlaygroundError
+from apps.ai_engagement.services.playground import PlaygroundService
 from services.channels import whatsapp_service
 
 
@@ -82,13 +82,15 @@ class PlaygroundEngagementPolicyTests(SimpleTestCase):
         self.assertTrue(result.should_engage)
         self.assertEqual(provider.generate_text.call_count, 2)
         metadata = provider.generate_text.call_args.kwargs['metadata']
-        self.assertEqual(metadata['task'], 'playground')
-        self.assertEqual(metadata['session_id'], 'test')
-        self.assertNotIn('lead_id', metadata)
+        self.assertEqual(metadata['task'], 'engagement')
+        self.assertEqual(metadata['lead_id'], 'playground:test')
 
-    def test_repeated_invalid_silence_is_error_not_configured_skip(self):
-        with self.assertRaises(PlaygroundError):
-            self.run_turn([self.payload(), self.payload()])
+    def test_repeated_invalid_silence_uses_grounded_sandbox_fallback(self):
+        result, provider = self.run_turn([self.payload(), self.payload()])
+        self.assertTrue(result.should_engage)
+        self.assertEqual(provider.generate_text.call_count, 2)
+        self.assertEqual(result.model, 'sandbox-safe-fallback')
+        self.assertIn('verified information', result.response)
 
     def test_authored_silence_supported_in_both_ai_setup_fields(self):
         for field in ['qualification_requirements', 'engagement_instructions']:
