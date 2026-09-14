@@ -51,8 +51,8 @@ def _qualified_allowed(lead) -> bool:
 
 def _nonqualified_evidence_matches(*, organization, destination, latest_text: str) -> bool:
     if not latest_text:
-        # Keep direct/service-level executor callers backward-compatible. Live AI
-        # turns always have an inbound message and therefore use the strict path.
+        # Direct/service-level executor callers do not necessarily represent an
+        # inbound AI turn. Keep the executor's historical contract unchanged.
         return True
 
     from apps.ai_engagement.models import OrgInfo
@@ -114,6 +114,15 @@ def _filter_stage_actions(*, organization, lead, actions):
             # error rather than silently converting an invalid id to success.
             filtered.append(deepcopy(action))
             continue
+
+        # This guard exists for live inbound AI turns. The CRM executor is also
+        # a public deterministic service used directly by tests/admin/backend
+        # callers, which may have no inbound conversation at all. Do not change
+        # those callers' long-standing semantics.
+        if not latest_text:
+            filtered.append(deepcopy(action))
+            continue
+
         if str(destination.name or "").strip().casefold() == "qualified":
             if _qualified_allowed(lead):
                 filtered.append(deepcopy(action))
@@ -128,7 +137,11 @@ def _filter_stage_actions(*, organization, lead, actions):
 
 
 def install_stage_transition_evidence() -> None:
-    """Make the CRM executor the final evidence gate for AI stage transitions."""
+    """Make the CRM executor the final evidence gate for inbound AI stage moves.
+
+    Keep the executor method signature and direct-service behavior compatible;
+    filtering only becomes strict when the lead actually has inbound evidence.
+    """
     global _INSTALLED
     if _INSTALLED:
         return
@@ -137,7 +150,7 @@ def install_stage_transition_evidence() -> None:
 
     current_execute = CRMActionExecutor.execute
 
-    def execute(self, *, organization, lead, actions):
+    def execute(self, *, organization, lead, actions, actor=None):
         filtered = _filter_stage_actions(
             organization=organization,
             lead=lead,
@@ -148,6 +161,7 @@ def install_stage_transition_evidence() -> None:
             organization=organization,
             lead=lead,
             actions=filtered,
+            actor=actor,
         )
 
     CRMActionExecutor.execute = execute
