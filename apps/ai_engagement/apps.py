@@ -91,6 +91,14 @@ class AiEngagementConfig(AppConfig):
         )
         install_qualification_answer_routing_runtime()
 
+        # Qualification-specific grounding recovery is valid only while the turn
+        # actually carries an authored qualification flow. Ordinary business-fact
+        # replies must still pass through the standard hallucination gate.
+        from apps.ai_engagement.services.qualification_grounding_scope_guard import (
+            install_qualification_grounding_scope_guard,
+        )
+        install_qualification_grounding_scope_guard()
+
         # Qualified can only come from deterministic completed qualification;
         # never let a model-selected Qualified target become generic routing.
         from apps.ai_engagement.services.qualified_transition_guard import (
