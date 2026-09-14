@@ -3,6 +3,7 @@ from django.templatetags.static import static
 from django.urls import include, path
 from django.views.generic import RedirectView, TemplateView
 
+from apps.channels.instagram_webhook import instagram_webhook_view
 from apps.channels.webhook_security import whatsapp_webhook_secure_view
 from apps.integrations.views.meta_leads import meta_lead_webhook
 from apps.superadmin.views import admin_global_search
@@ -178,6 +179,11 @@ urlpatterns = [
         "webhooks/whatsapp/",
         whatsapp_webhook_secure_view,
         name="whatsapp-webhook",
+    ),
+    path(
+        "webhooks/instagram/",
+        instagram_webhook_view,
+        name="instagram-webhook",
     ),
 
     path(
