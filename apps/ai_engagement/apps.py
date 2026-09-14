@@ -111,6 +111,15 @@ class AiEngagementConfig(AppConfig):
         )
         install_langgraph_orchestration()
 
+        # Reply eligibility is backend-owned. The model may generate language,
+        # extraction and proposals, but it cannot suppress a valid inbound turn.
+        # Explicit opt-out remains deterministic and permission/transport guards
+        # continue to run outside the model.
+        from apps.ai_engagement.services.model_silence_guard import (
+            install_model_silence_guard,
+        )
+        install_model_silence_guard()
+
         # Natural conversation safeguards only. Qualification stage scope remains
         # owned by the core New Lead state machine and routing layers above.
         from apps.ai_engagement.services.natural_conversation_runtime import (
