@@ -113,6 +113,16 @@ class PlaygroundEngagementPolicyTests(SimpleTestCase):
         self.assertEqual(result.model, 'sandbox-safe-fallback')
         self.assertIn('verified information', result.response)
 
+    def test_paused_turn_still_acknowledges_customer(self):
+        result, provider = self.run_turn(
+            [self.payload(), self.payload()],
+            message='not now',
+        )
+        self.assertTrue(result.should_engage)
+        self.assertEqual(result.model, 'deterministic-paused-ack')
+        self.assertIn("continue whenever you're ready", result.response)
+        self.assertEqual(provider.generate_text.call_count, 2)
+
     def test_authored_model_silence_is_repaired_into_reply(self):
         for field in ['qualification_requirements', 'engagement_instructions']:
             rule = 'Do not reply to no.'
