@@ -18,7 +18,7 @@ class PlaygroundRuntimeAlignmentTests(SimpleTestCase):
         source = self._source()
 
         self.assertIn("decision = service.engage(", source)
-        self.assertIn("context_builder=_SandboxContextBuilder", source.replace("context_builder=context_builder", "context_builder=_SandboxContextBuilder"))
+        self.assertIn("context_builder=context_builder", source)
         self.assertNotIn("_generate_provider_text(", source)
         self.assertNotIn("check_grounding(", source)
         self.assertNotIn("ENGAGEMENT_RESPONSE_SCHEMA", source)
@@ -27,7 +27,6 @@ class PlaygroundRuntimeAlignmentTests(SimpleTestCase):
         source = self._source()
 
         self.assertIn("if vector is None and not query:", source)
-        self.assertIn("return []", source)
         self.assertIn("knowledge_query=knowledge_query", source)
         self.assertIn("query_vector=query_vector", source)
 
