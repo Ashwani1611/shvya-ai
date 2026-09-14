@@ -32,14 +32,18 @@ def complete_instagram_oauth_task(self, attempt_id):
     if attempt.status == InstagramOAuthAttempt.Status.FAILED:
         return {"status": "failed"}
 
+    account = None
     try:
         account = complete_oauth_attempt(attempt)
         if not account.webhook_subscribed:
             subscribe_account_webhooks(account)
         sync_account_conversations(account)
     except InstagramAPIError as exc:
-        account = InstagramAccount.objects.filter(organization=attempt.organization).first()
-        if account and attempt.status == InstagramOAuthAttempt.Status.CONNECTED:
+        # Once the OAuth exchange has committed a connected account, later
+        # subscription/sync failures must not roll the browser-facing state back
+        # to "OAuth failed". Keep the credential and let retries/reconciliation
+        # repair the downstream Meta setup.
+        if account and account.status == InstagramAccount.Status.CONNECTED:
             if exc.token_invalid or exc.status_code in (401, 403):
                 mark_account_error(account, exc)
             else:
