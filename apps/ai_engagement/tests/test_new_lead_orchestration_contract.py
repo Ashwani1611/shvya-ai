@@ -194,11 +194,11 @@ class QualificationStagePolicyTests(SimpleTestCase):
         action = {
             "type": "create_reminder",
             "title": "Call lead",
-            "description": "Call on 2026-09-14 at 6pm",
-            "due_at": "2026-09-14T18:00:00+05:30",
+            "description": "Call on 2036-09-14 at 6pm",
+            "due_at": "2036-09-14T18:00:00+05:30",
         }
         context = SimpleNamespace(
-            conversation={"messages": [{"id": "m1", "direction": "inbound", "body": "Please call me on 2026-09-14 at 6pm"}]},
+            conversation={"messages": [{"id": "m1", "direction": "inbound", "body": "Please call me on 2036-09-14 at 6pm"}]},
             pipeline={"attribute_definitions": []},
         )
         actions, _ = build_controlled_actions(
