@@ -10,7 +10,7 @@ from apps.ai_engagement.graph.evidence import SAFE_UNKNOWN_REPLY
 from apps.ai_engagement.graph.policy_actions import build_controlled_actions
 from apps.ai_engagement.graph.runtime_policy import get_runtime_policy
 from apps.ai_engagement.models import OrgInfo
-from apps.ai_engagement.services.ai_provider import AITextResult
+from apps.ai_engagement.services.ai_provider import AITextResult, OpenAIProvider
 from apps.ai_engagement.services.context import AIContextBuilder
 from apps.ai_engagement.services.crm_executor import CRMActionExecutor
 from apps.ai_engagement.services.engagement import EngagementDecision
@@ -360,10 +360,11 @@ class QualificationAnswerRoutingPriorityTests(TestCase):
             "runtime_policy": {},
         }
         with patch(
-            "apps.ai_engagement.graph.evidence.OpenAIProvider.generate_text",
+            "apps.ai_engagement.graph.evidence.OpenAIProvider",
             side_effect=AssertionError("grounding provider must not run"),
-        ):
+        ) as grounding_provider:
             grounded = evidence_module.check_grounding(state)
+        grounding_provider.assert_not_called()
         self.assertTrue(grounded["grounding_approved"])
         self.assertTrue(grounded["qualification_answer_authoritative"])
         self.assertNotEqual(decision.message, SAFE_UNKNOWN_REPLY)
@@ -407,13 +408,16 @@ class QualificationAnswerRoutingPriorityTests(TestCase):
             "latest_text": "What is the price of the unavailable plan?",
             "runtime_policy": {},
         }
-        # Keep the real constructor: a method-only mock still requires a key.
-        # Exercise both provider rejection and fail-closed configuration failure.
+        # Override the autouse fixture that replaces the provider with an
+        # always-approve mock. Keep the real constructor and mock only generation
+        # to cover rejection and missing credentials without network calls.
         for api_key in ("test-key-never-sent", ""):
             with self.subTest(provider_configured=bool(api_key)), override_settings(
                 OPENAI_API_KEY=api_key,
             ), patch(
-                "apps.ai_engagement.graph.evidence.OpenAIProvider.generate_text",
+                "apps.ai_engagement.graph.evidence.OpenAIProvider", OpenAIProvider,
+            ), patch.object(
+                OpenAIProvider, "generate_text",
                 return_value=AITextResult(
                     text='{"approved":false,"reason":"unsupported_fact"}',
                     model="test",
