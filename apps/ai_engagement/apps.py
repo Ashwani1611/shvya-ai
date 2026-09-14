@@ -136,6 +136,14 @@ class AiEngagementConfig(AppConfig):
         )
         install_transactional_turn_runtime()
 
+        # A state-changing turn already has one validated provider decision. Once
+        # CRM state is committed, reuse that response candidate and validate it
+        # against the committed state instead of making a second model call.
+        from apps.ai_engagement.services.transactional_decision_reuse import (
+            install_transactional_decision_reuse,
+        )
+        install_transactional_decision_reuse()
+
         from apps.ai_engagement.services.task_execution_failsoft import (
             install_task_execution_failsoft,
         )
