@@ -333,7 +333,7 @@
                 ? payload.response.trim()
                 : "";
             const assistantText = responseText ||
-                "Your organization’s AI Setup instructions requested no reply for this message.";
+                "No customer-facing reply was sent because a deterministic backend rule blocked this turn.";
 
             removePendingMessage();
             appendMessage("assistant", assistantText);
