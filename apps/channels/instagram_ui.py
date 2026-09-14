@@ -1,10 +1,14 @@
-"""Instagram professional account connection and chat views."""
+"""Instagram professional account connection and chat views.
+
+HTTP views stay thin: validate browser input, read tenant-scoped persisted state,
+and enqueue external Meta work in Celery.
+"""
 
 from __future__ import annotations
 
-from django.conf import settings
 from django.contrib import messages
 from django.core import signing
+from django.db import transaction
 from django.shortcuts import redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_GET, require_POST
@@ -12,13 +16,25 @@ from django.views.decorators.http import require_GET, require_POST
 from apps.crm.decorators import crm_login_required
 from services.channels.instagram_service import (
     InstagramAPIError,
+    account_sync_is_stale,
     build_authorize_url,
-    disconnect,
-    exchange_code_for_connection,
-    get_connection,
+    connection_dict,
+    create_oauth_attempt,
+    get_account,
     get_conversation,
+    instagram_app_id,
+    mark_conversation_read,
+    meta_credentials_available,
     list_conversations,
-    send_text_message,
+    queue_text_message,
+)
+
+from .instagram_models import InstagramAccount, InstagramOAuthAttempt
+from .instagram_tasks import (
+    complete_instagram_oauth_task,
+    disconnect_instagram_account_task,
+    send_instagram_message_task,
+    sync_instagram_account_task,
 )
 
 
@@ -26,44 +42,47 @@ OAUTH_STATE_SALT = "shvya-instagram-oauth"
 OAUTH_STATE_MAX_AGE_SECONDS = 15 * 60
 
 
-def _meta_credentials_available() -> bool:
-    return bool(
-        str(getattr(settings, "META_APP_ID", "") or "").strip()
-        and str(getattr(settings, "META_APP_SECRET", "") or "").strip()
-    )
-
-
 def _connection_context(organization):
-    try:
-        connection = get_connection(organization)
-        connection_error = ""
-    except InstagramAPIError as exc:
-        connection = None
-        connection_error = str(exc)
+    account = get_account(organization)
+    latest_attempt = InstagramOAuthAttempt.objects.filter(organization=organization).first()
     return {
-        "instagram_connection": connection,
-        "instagram_connected": bool(connection),
-        "instagram_connection_error": connection_error,
-        "instagram_meta_ready": _meta_credentials_available(),
+        "instagram_connection": connection_dict(account),
+        "instagram_connected": bool(account),
+        "instagram_connection_error": (
+            account.last_error
+            if account
+            else latest_attempt.error_message
+            if latest_attempt and latest_attempt.status == InstagramOAuthAttempt.Status.FAILED
+            else ""
+        ),
+        "instagram_meta_ready": meta_credentials_available(),
+        "instagram_oauth_pending": bool(
+            latest_attempt
+            and latest_attempt.status
+            in {
+                InstagramOAuthAttempt.Status.QUEUED,
+                InstagramOAuthAttempt.Status.PROCESSING,
+            }
+        ),
     }
 
 
 @crm_login_required
 @require_GET
 def instagram_connect_view(request):
-    context = _connection_context(request.crm_user.organization)
-    return render(request, "channels/instagram_connect.html", context)
+    return render(
+        request,
+        "channels/instagram_connect.html",
+        _connection_context(request.crm_user.organization),
+    )
 
 
 @crm_login_required
 @require_GET
 def instagram_oauth_start_view(request):
     user = request.crm_user
-    if not _meta_credentials_available():
-        messages.error(
-            request,
-            "Meta app credentials are not configured for Instagram yet.",
-        )
+    if not meta_credentials_available():
+        messages.error(request, "Meta app credentials are not configured for Instagram yet.")
         return redirect("crm-instagram-connect")
 
     redirect_uri = request.build_absolute_uri(reverse("crm-instagram-oauth-return"))
@@ -75,12 +94,13 @@ def instagram_oauth_start_view(request):
         salt=OAUTH_STATE_SALT,
         compress=True,
     )
-    authorize_url = build_authorize_url(
-        app_id=str(settings.META_APP_ID),
-        redirect_uri=redirect_uri,
-        state=state,
+    return redirect(
+        build_authorize_url(
+            app_id=instagram_app_id(),
+            redirect_uri=redirect_uri,
+            state=state,
+        )
     )
-    return redirect(authorize_url)
 
 
 @crm_login_required
@@ -89,12 +109,12 @@ def instagram_oauth_return_view(request):
     user = request.crm_user
     error = (request.GET.get("error") or "").strip()
     if error:
-        error_description = (
+        description = (
             request.GET.get("error_description")
             or request.GET.get("error_reason")
             or error
         )
-        messages.error(request, f"Instagram connection was cancelled: {error_description}")
+        messages.error(request, f"Instagram connection was cancelled: {description}")
         return redirect("crm-instagram-connect")
 
     state = (request.GET.get("state") or "").strip()
@@ -121,27 +141,32 @@ def instagram_oauth_return_view(request):
         return redirect("crm-instagram-connect")
 
     redirect_uri = request.build_absolute_uri(reverse("crm-instagram-oauth-return"))
-    try:
-        connection = exchange_code_for_connection(
-            organization=user.organization,
-            code=code,
-            redirect_uri=redirect_uri,
-            app_id=str(settings.META_APP_ID),
-            app_secret=str(settings.META_APP_SECRET),
-        )
-    except InstagramAPIError as exc:
-        messages.error(request, str(exc))
-        return redirect("crm-instagram-connect")
-
-    username = connection.get("username") or "Instagram"
-    messages.success(request, f"@{username} is now connected to SHVYA.")
-    return redirect("crm-instagram-chats")
+    attempt = create_oauth_attempt(
+        organization=user.organization,
+        user=user,
+        code=code,
+        redirect_uri=redirect_uri,
+    )
+    transaction.on_commit(
+        lambda attempt_id=str(attempt.id): complete_instagram_oauth_task.delay(attempt_id)
+    )
+    messages.success(
+        request,
+        "Instagram authorized. SHVYA is securely finishing the connection and syncing your inbox.",
+    )
+    return redirect("crm-instagram-connect")
 
 
 @crm_login_required
 @require_POST
 def instagram_disconnect_view(request):
-    disconnect(request.crm_user.organization)
+    account = get_account(request.crm_user.organization)
+    if account:
+        account.status = InstagramAccount.Status.DISCONNECTED
+        account.save(update_fields=["status", "updated_at"])
+        transaction.on_commit(
+            lambda account_id=str(account.id): disconnect_instagram_account_task.delay(account_id)
+        )
     messages.success(request, "Instagram was disconnected from this workspace.")
     return redirect("crm-instagram-connect")
 
@@ -161,25 +186,21 @@ def _conversation_search(conversations, query):
 
 def _chat_context(request, *, active_conversation=None):
     organization = request.crm_user.organization
-    connection = get_connection(organization)
-    if not connection:
+    account = get_account(organization)
+    if not account:
         return None
 
-    api_error = ""
-    try:
-        conversations = list_conversations(organization)
-    except InstagramAPIError as exc:
-        conversations = []
-        api_error = str(exc)
+    if account_sync_is_stale(account):
+        sync_instagram_account_task.delay(str(account.id))
 
     query = (request.GET.get("q") or "").strip()
-    conversations = _conversation_search(conversations, query)
+    conversations = _conversation_search(list_conversations(organization), query)
     return {
-        "instagram_connection": connection,
+        "instagram_connection": connection_dict(account),
         "conversations": conversations,
         "active_conversation": active_conversation,
         "search_query": query,
-        "instagram_api_error": api_error,
+        "instagram_api_error": account.last_error,
     }
 
 
@@ -199,6 +220,7 @@ def instagram_chat_detail_view(request, conversation_id):
     organization = request.crm_user.organization
     try:
         active_conversation = get_conversation(organization, conversation_id)
+        mark_conversation_read(organization, conversation_id)
     except InstagramAPIError as exc:
         messages.error(request, str(exc))
         return redirect("crm-instagram-chats")
@@ -214,21 +236,18 @@ def instagram_chat_detail_view(request, conversation_id):
 def instagram_send_message_view(request, conversation_id):
     organization = request.crm_user.organization
     body = (request.POST.get("body") or "").strip()
-    if not body:
-        messages.error(request, "Type a message before sending.")
-        return redirect("crm-instagram-chat-detail", conversation_id=conversation_id)
-
     try:
-        conversation = get_conversation(organization, conversation_id)
-        recipient_id = conversation.get("participant_id")
-        send_text_message(
+        queued = queue_text_message(
             organization,
-            recipient_id=recipient_id,
+            conversation_id=conversation_id,
             body=body,
         )
     except InstagramAPIError as exc:
         messages.error(request, str(exc))
     else:
-        messages.success(request, "Message sent on Instagram.")
+        transaction.on_commit(
+            lambda message_id=str(queued.id): send_instagram_message_task.delay(message_id)
+        )
+        messages.success(request, "Message queued for Instagram.")
 
     return redirect("crm-instagram-chat-detail", conversation_id=conversation_id)
