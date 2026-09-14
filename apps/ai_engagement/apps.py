@@ -139,6 +139,14 @@ class AiEngagementConfig(AppConfig):
         )
         install_engagement_failsoft()
 
+        # Fail-soft is allowed to recover provider/runtime errors, but it must not
+        # convert a normal customer turn into silence. Only deterministic opt-out
+        # remains a silent EngagementDecision at the service boundary.
+        from apps.ai_engagement.services.final_reply_guard import (
+            install_final_reply_guard,
+        )
+        install_final_reply_guard()
+
         # The executor is the final backend evidence gate for non-Qualified stage
         # moves; Qualified remains strictly tied to completed qualification.
         from apps.ai_engagement.services.stage_transition_evidence import (
