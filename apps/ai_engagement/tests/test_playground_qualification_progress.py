@@ -125,4 +125,4 @@ class PlaygroundQualificationProgressRegressionTests(SimpleTestCase):
 
         self.assertEqual(result.model, "deterministic")
         self.assertEqual(result.response, self.requirements[4]["question"])
-        self.assertEqual(self.provider.generate_text.call_count, 2)
+        self.assertEqual(self.provider.generate_text.call_count, 1)
