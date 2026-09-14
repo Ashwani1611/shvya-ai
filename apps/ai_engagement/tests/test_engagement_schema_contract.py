@@ -97,5 +97,5 @@ class PlaygroundStructuredOutputTests(SimpleTestCase):
         self.assertEqual(result.response, "Hello! How can I help?")
         kwargs = provider.generate_text.call_args.kwargs
         self.assertEqual(kwargs["response_schema"], ENGAGEMENT_RESPONSE_SCHEMA)
-        self.assertEqual(kwargs["metadata"]["task"], "playground")
+        self.assertEqual(kwargs["metadata"]["task"], "engagement")
         self.assertEqual(kwargs["metadata"]["phase"], "primary")
