@@ -1,14 +1,10 @@
 """Strict Account Health enforcement for Hosted WhatsApp.
 
 The hosted gateway can observe outbound messages that were sent directly from
-WhatsApp / WhatsApp Business as well as messages sent by SHVYA.  The original
-health counter only advanced on SHVYA transport sends, which meant automation
-could continue after the real connected number had already crossed the 250
-message protection threshold.
-
-This module reconciles the durable health row against successfully-sent,
-non-history outbound WhatsAppMessage rows and reserves automation slots before
-provider delivery so concurrent AI/follow-up work cannot overshoot the limit.
+WhatsApp / WhatsApp Business as well as messages sent by SHVYA. Account Health
+therefore reconciles against successful, non-history outbound WhatsAppMessage
+rows and reserves automation slots before provider delivery so concurrent AI,
+welcome, and follow-up work cannot overshoot the configured limit.
 """
 
 from __future__ import annotations
@@ -32,6 +28,23 @@ _SENT_STATUSES = (
     WhatsAppMessage.Status.READ,
 )
 
+_AUTOMATION_PAYLOAD_KEYS = (
+    "shvya_ai",
+    "shvya_auto_followup",
+    "shvya_welcome",
+)
+
+
+def message_is_hosted_automation(message) -> bool:
+    """Return True for every SHVYA-generated Hosted outbound automation.
+
+    Account Health must protect all automated sends, including the AI-generated
+    new-lead welcome path. Manual agent messages intentionally remain outside
+    the automation circuit breaker.
+    """
+    payload = message.raw_payload if isinstance(message.raw_payload, dict) else {}
+    return any(bool(payload.get(key)) for key in _AUTOMATION_PAYLOAD_KEYS)
+
 
 def _window_start(account, now):
     return (
@@ -42,8 +55,8 @@ def _window_start(account, now):
 
 
 def _sent_messages(*, account):
-    # History sync is observational data and must never consume today's health
-    # budget.  Realtime outbound rows include both SHVYA sends and messages sent
+    # History sync is observational data and must never consume the health
+    # budget. Realtime outbound rows include both SHVYA sends and messages sent
     # directly from the linked WhatsApp / WhatsApp Business app.
     return (
         WhatsAppMessage.objects.filter(
@@ -54,6 +67,34 @@ def _sent_messages(*, account):
         )
         .exclude(raw_payload__isHistory=True)
     )
+
+
+def _actual_counts(*, account, health):
+    sent = _sent_messages(account=account)
+    total = sent.count()
+    window = 0
+    if health.window_started_at:
+        window = sent.filter(created_at__gte=health.window_started_at).count()
+    return total, window
+
+
+def hosted_health_message_counts(*, account):
+    """Return exact successful-send counts for the Account Health UI.
+
+    The durable window counter can temporarily include a pre-provider
+    automation reservation to prevent concurrent message 251. That reservation
+    is intentionally not shown as a sent message. The UI therefore reads the
+    authoritative successful WhatsAppMessage rows instead of the reservation
+    counter.
+    """
+    health = sync_hosted_health_from_messages(account=account)
+    if health is None:
+        return {"total_messages_sent": 0, "window_messages_sent": 0}
+    total, window = _actual_counts(account=account, health=health)
+    return {
+        "total_messages_sent": total,
+        "window_messages_sent": window,
+    }
 
 
 def _locked_health(*, account, now):
@@ -75,14 +116,17 @@ def _reconcile_locked(*, account, health, now):
     if not health.window_started_at:
         health.window_started_at = _window_start(account, now)
 
-    sent = _sent_messages(account=account)
-    actual_total = sent.count()
-    actual_window = sent.filter(created_at__gte=health.window_started_at).count()
+    actual_total, actual_window = _actual_counts(account=account, health=health)
 
-    # Never reduce durable counters during normal reconciliation.  The window
-    # can temporarily be ahead of the database because an automation slot is
-    # reserved immediately before the provider call.
-    health.total_messages_sent = max(health.total_messages_sent, actual_total)
+    # total_messages_sent is a display/statistics counter, so repair it to the
+    # exact successful-send count. Older code could increment it separately and
+    # leave it permanently inflated because reconciliation only ever used max().
+    health.total_messages_sent = actual_total
+
+    # window_messages_sent also acts as the concurrency gate. Never reduce it
+    # during normal reconciliation because it can temporarily be one ahead of
+    # the database while an automation slot is reserved immediately before the
+    # provider call. Failed sends explicitly release that reservation.
     health.window_messages_sent = max(health.window_messages_sent, actual_window)
 
     if health.enabled and health.window_messages_sent >= RECOMMENDED_MESSAGING_LIMIT:
@@ -117,10 +161,9 @@ def hosted_health_pause_until(*, account):
 def reserve_hosted_automation_send(*, account):
     """Atomically reserve one automation send slot.
 
-    The reservation happens before the provider call.  This closes the race
-    where an AI reply and an auto-follow-up could both observe 249 and both send.
-    The 250th automated message is allowed; subsequent automation is paused for
-    the configured cooldown.
+    The reservation happens before the provider call. This closes the race
+    where two workers can both observe 249 and both send. The 250th automated
+    message is allowed; every later automation is paused for 12 hours.
     """
     now = timezone.now()
     health = _locked_health(account=account, now=now)
@@ -156,7 +199,7 @@ def release_hosted_automation_reservation(*, account):
     if health is None:
         return None
 
-    # Recompute successful sends first.  Then remove exactly one outstanding
+    # Recompute successful sends first. Then remove exactly one outstanding
     # reservation without dropping below the real sent-message count.
     sent = _sent_messages(account=account)
     actual_window = 0
