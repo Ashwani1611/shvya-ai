@@ -66,6 +66,34 @@ def _runtime_is_opted_out(*, lead, latest_text: str) -> bool:
     return is_explicit_opt_out(latest_text)
 
 
+def _persist_opt_out(*, lead) -> None:
+    """Persist the permission change even if a channel-specific hook was skipped."""
+    if not hasattr(lead, "ai_enabled"):
+        return
+
+    marker = "[WhatsApp] Lead opted out of AI engagement."
+    notes = str(getattr(lead, "notes", "") or "")
+    changed_notes = marker not in notes
+    lead.ai_enabled = False
+    if changed_notes and hasattr(lead, "notes"):
+        lead.notes = f"{notes}\n{marker}".strip()
+
+    save = getattr(lead, "save", None)
+    if not callable(save):
+        return
+
+    update_fields = ["ai_enabled"]
+    if changed_notes and hasattr(lead, "notes"):
+        update_fields.append("notes")
+    if hasattr(lead, "updated_at"):
+        update_fields.append("updated_at")
+    try:
+        save(update_fields=update_fields)
+    except TypeError:
+        # In-memory/test doubles may expose a simplified save() signature.
+        save()
+
+
 def _deterministic_opt_out_decision():
     from apps.ai_engagement.services.engagement import EngagementDecision
 
@@ -109,6 +137,7 @@ def install_model_silence_guard() -> None:
             context=context,
         )
         if _runtime_is_opted_out(lead=lead, latest_text=latest_text):
+            _persist_opt_out(lead=lead)
             return _deterministic_opt_out_decision()
 
         return original_engage(
