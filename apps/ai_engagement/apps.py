@@ -113,6 +113,37 @@ class AiEngagementConfig(AppConfig):
         )
         install_engagement_failsoft()
 
+        # The executor is the final backend evidence gate for non-Qualified stage
+        # moves; Qualified remains strictly tied to completed qualification.
+        from apps.ai_engagement.services.stage_transition_evidence import (
+            install_stage_transition_evidence,
+        )
+        install_stage_transition_evidence()
+
+        # Reliable existing CRM values can satisfy mapped qualification fields
+        # before generation, preventing duplicate questions and stale state.
+        from apps.ai_engagement.services.attribute_state_reconciliation import (
+            install_attribute_state_reconciliation,
+        )
+        install_attribute_state_reconciliation()
+
+        # Resolve attributes, qualification, stage and workflow mutations before
+        # the canonical task builds the final customer-facing response. Install
+        # this before task fail-soft so terminal generation recovery still wraps
+        # the complete transactional execution path.
+        from apps.ai_engagement.services.transactional_turn_runtime import (
+            install_transactional_turn_runtime,
+        )
+        install_transactional_turn_runtime()
+
+        # A state-changing turn already has one validated provider decision. Once
+        # CRM state is committed, reuse that response candidate and validate it
+        # against the committed state instead of making a second model call.
+        from apps.ai_engagement.services.transactional_decision_reuse import (
+            install_transactional_decision_reuse,
+        )
+        install_transactional_decision_reuse()
+
         from apps.ai_engagement.services.task_execution_failsoft import (
             install_task_execution_failsoft,
         )

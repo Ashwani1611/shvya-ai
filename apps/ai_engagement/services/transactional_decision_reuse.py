@@ -1,0 +1,171 @@
+from __future__ import annotations
+
+import logging
+from dataclasses import replace
+
+
+logger = logging.getLogger(__name__)
+_INSTALLED = False
+
+
+def install_transactional_decision_reuse() -> None:
+    """Reuse the single provider decision after deterministic CRM resolution.
+
+    The first engagement pass is the structured understanding/extraction pass. A
+    state-changing turn then commits attributes, qualification state, stage and
+    workflow actions before the canonical task continues. The canonical task must
+    not call the provider a second time merely because that state revision
+    changed; instead it reuses the already validated customer-response candidate
+    with side effects removed and validates/finalizes it against the committed
+    backend state before send.
+
+    This preserves the required execution order without doubling model cost or
+    creating inconsistent second-generation decisions for the same inbound turn.
+    """
+    global _INSTALLED
+    if _INSTALLED:
+        return
+
+    from apps.ai_engagement.services import transactional_turn_runtime as runtime
+    from apps.ai_engagement.services.runtime_state import state_revision
+
+    current_resolve = runtime._resolve_state_before_response
+
+    def resolve_state_before_response(
+        *,
+        organization,
+        lead,
+        source_message_id,
+        decision,
+        account_id=None,
+    ):
+        result = current_resolve(
+            organization=organization,
+            lead=lead,
+            source_message_id=source_message_id,
+            decision=decision,
+            account_id=account_id,
+        )
+        if not isinstance(result, dict) or not result.get("applied"):
+            return result
+
+        try:
+            lead.refresh_from_db(fields=["attributes", "pipeline", "stage"])
+            committed_revision = state_revision(lead)
+            final_candidate = replace(
+                decision,
+                # These mutations were already executed inside the lead row lock.
+                # The canonical finalize/send path must never execute them twice.
+                crm_actions=[],
+                qualification_updates=[],
+                backend_revision=committed_revision,
+            )
+            runtime._PRECOMPUTED_DECISION.set(
+                {
+                    "lead_id": str(lead.pk),
+                    "source_message_id": str(source_message_id or ""),
+                    "revision": committed_revision,
+                    "decision": final_candidate,
+                }
+            )
+        except Exception:
+            # Failing to populate this optimization must not hide a valid turn;
+            # the canonical path can still regenerate as its existing fallback.
+            logger.exception(
+                "Unable to reuse pre-resolved engagement decision for lead %s",
+                getattr(lead, "pk", ""),
+            )
+        return result
+
+    runtime._resolve_state_before_response = resolve_state_before_response
+
+    # A deterministic transition can intentionally land on a stage whose AI is
+    # disabled (for example Qualified or Human Handoff). That new stage must stop
+    # future turns, but it must not suppress the completion acknowledgement for
+    # the exact inbound message that caused the transition. Only bypass the stage
+    # gate for that one pre-resolved message; all other controls are rechecked.
+    from apps.ai_engagement.services.ai_permissions import AIPermissionService
+
+    current_permission_evaluate = AIPermissionService.evaluate
+
+    def evaluate_permission(self, *, organization, lead, latest_inbound=None):
+        permission = current_permission_evaluate(
+            self,
+            organization=organization,
+            lead=lead,
+            latest_inbound=latest_inbound,
+        )
+        if permission.allowed or permission.reason != "stage_ai_disabled":
+            return permission
+
+        cached = runtime._PRECOMPUTED_DECISION.get()
+        if not isinstance(cached, dict) or cached.get("lead_id") != str(getattr(lead, "pk", "")):
+            return permission
+
+        if latest_inbound is None:
+            latest_inbound = self._latest_inbound_message(
+                organization=organization,
+                lead=lead,
+            )
+        source_message_id = str(cached.get("source_message_id") or "")
+        if not source_message_id or str(getattr(latest_inbound, "pk", "") or "") != source_message_id:
+            return permission
+
+        # The original evaluator already verified organization + pipeline before
+        # reaching the stage gate. Re-check controls that normally come after it
+        # so this can never become a general permission bypass.
+        if not getattr(lead, "ai_enabled", True):
+            return self._decision(
+                allowed=False,
+                reason="lead_ai_disabled",
+                organization=organization,
+                lead=lead,
+            )
+        mapping_allowed, mapping_reason = self._conversation_uses_pipeline_number(
+            organization=organization,
+            lead=lead,
+            latest_message=latest_inbound,
+        )
+        if not mapping_allowed:
+            return self._decision(
+                allowed=False,
+                reason=mapping_reason,
+                organization=organization,
+                lead=lead,
+            )
+        return self._decision(
+            allowed=True,
+            reason="same_turn_stage_transition_finalization",
+            organization=organization,
+            lead=lead,
+        )
+
+    AIPermissionService.evaluate = evaluate_permission
+
+    # ContextVars survive until explicitly reset. Always clear the one-turn
+    # response candidate even when the canonical path exits early so a later
+    # inbound message on the same worker can never consume a stale decision.
+    from apps.ai_engagement import tasks as task_module
+
+    current_task_execute = task_module._execute_ai_engagement_response_impl
+
+    def execute_task(*, task, lead_id: str):
+        try:
+            return current_task_execute(task=task, lead_id=lead_id)
+        finally:
+            runtime._PRECOMPUTED_DECISION.set(None)
+
+    task_module._execute_ai_engagement_response_impl = execute_task
+
+    from apps.hosted_automation import execution as hosted_execution
+
+    current_hosted_execute = hosted_execution.execute_hosted_ai_engagement
+
+    def execute_hosted(*, task, job):
+        try:
+            return current_hosted_execute(task=task, job=job)
+        finally:
+            runtime._PRECOMPUTED_DECISION.set(None)
+
+    hosted_execution.execute_hosted_ai_engagement = execute_hosted
+    _INSTALLED = True
