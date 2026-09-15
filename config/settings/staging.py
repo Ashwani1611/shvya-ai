@@ -34,8 +34,9 @@ SESSION_COOKIE_SECURE = True
 CSRF_COOKIE_SECURE = True
 SECURE_SSL_REDIRECT = True
 
-# Safety switch for all staging outbound messaging transports. Production keeps
-# its existing behavior; staging defaults to blocked until explicitly enabled.
+# Environment-level safety controls available to outbound transports. Staging
+# should still use dedicated test credentials/accounts rather than production
+# Meta, payment, email, or other third-party credentials.
 OUTBOUND_MESSAGING_ENABLED = config(
     "OUTBOUND_MESSAGING_ENABLED",
     default=False,
