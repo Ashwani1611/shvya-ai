@@ -86,6 +86,22 @@ _PRICING_TERMS = {
     "enterprise",
 }
 
+_CAPABILITY_TERMS = {
+    "ai",
+    "automation",
+    "capture",
+    "crm",
+    "follow",
+    "integrations",
+    "lead",
+    "pipeline",
+    "qualification",
+    "tracking",
+    "whatsapp",
+    "workflow",
+    "workflows",
+}
+
 
 def _is_playground_state(state) -> bool:
     context = state.get("context")
@@ -105,8 +121,6 @@ def _has_interrupting_customer_intent(text: str) -> bool:
     if not raw:
         return False
 
-    # Reuse the production intent classifier so Sandbox recovery follows the
-    # same question/request/problem priority contract as live conversations.
     try:
         from apps.ai_engagement.services.conversation_priority_runtime import (
             _intent_kind,
@@ -115,12 +129,20 @@ def _has_interrupting_customer_intent(text: str) -> bool:
         if _intent_kind(raw) != "none":
             return True
     except Exception:
-        # Recovery must remain available even if the optional runtime patch is
-        # not installed yet in a bounded test/import context.
         pass
 
     normalized = " ".join(raw.casefold().split())
     return any(term in normalized for term in _INFORMATION_INTENT_TERMS)
+
+
+def _normalize_recovery_content(value: str) -> str:
+    """Normalize noisy whitespace without destroying useful document line breaks."""
+    raw = str(value or "")
+    lines = [" ".join(line.split()).strip() for line in raw.splitlines()]
+    lines = [line for line in lines if line]
+    if len(lines) > 1:
+        return "\n".join(lines)
+    return " ".join(raw.split()).strip()
 
 
 def _knowledge_chunks_for_recovery(state) -> list[dict]:
@@ -132,9 +154,6 @@ def _knowledge_chunks_for_recovery(state) -> list[dict]:
     if isinstance(context_chunks, list):
         chunks.extend(item for item in context_chunks if isinstance(item, dict))
 
-    # The graph applies a similarity threshold before generation. For direct
-    # pricing/product questions we still want an exact lexical match from a top-K
-    # retrieved chunk even if its semantic score landed just under that threshold.
     service = state.get("service")
     builder = getattr(service, "context_builder", None)
     last_knowledge = getattr(builder, "last_knowledge", None)
@@ -144,15 +163,15 @@ def _knowledge_chunks_for_recovery(state) -> list[dict]:
     deduped: list[dict] = []
     seen: set[str] = set()
     for item in chunks:
-        content = " ".join(str(item.get("content") or "").split()).strip()
+        content = _normalize_recovery_content(item.get("content") or "")
         if not content:
             continue
-        key = content.casefold()
+        key = " ".join(content.casefold().split())
         if key in seen:
             continue
         seen.add(key)
         deduped.append({**item, "content": content})
-        if len(deduped) >= 5:
+        if len(deduped) >= 8:
             break
     return deduped
 
@@ -165,8 +184,35 @@ def _tokenize(value: str) -> set[str]:
     }
 
 
+def _has_concrete_price_fact(value: str) -> bool:
+    text = str(value or "").strip()
+    lowered = text.casefold()
+    if not text:
+        return False
+    if re.search(
+        r"(?:₹|\$|€|£|\brs\.?\s*|\binr\s+|\busd\s+)\d[\d,]*(?:\.\d+)?",
+        text,
+        flags=re.IGNORECASE,
+    ):
+        return True
+    if re.search(
+        r"\b\d[\d,]*(?:\.\d+)?\s*(?:/\s*|per\s+)(?:day|week|month|mo|year|yr)\b",
+        lowered,
+    ):
+        return True
+    return any(
+        phrase in lowered
+        for phrase in (
+            "custom pricing",
+            "contact sales for pricing",
+            "free plan",
+            "free trial",
+        )
+    )
+
+
 def _grounded_knowledge_message(*, latest_text: str, chunks: list[dict]) -> str:
-    """Build a provider-free answer using only already retrieved knowledge text."""
+    """Build a concise provider-free answer from already retrieved knowledge."""
     if not chunks:
         return ""
 
@@ -175,8 +221,9 @@ def _grounded_knowledge_message(*, latest_text: str, chunks: list[dict]) -> str:
     pricing_intent = bool(query_tokens & _PRICING_TERMS) or any(
         term in normalized_query for term in _PRICING_TERMS
     )
+    feature_intent = "feature" in normalized_query or "features" in normalized_query
 
-    candidates: list[tuple[int, int, str]] = []
+    candidates: list[tuple[int, int, str, bool]] = []
     for chunk_index, chunk in enumerate(chunks):
         content = str(chunk.get("content") or "").strip()
         if not content:
@@ -193,69 +240,60 @@ def _grounded_knowledge_message(*, latest_text: str, chunks: list[dict]) -> str:
         for part_index, part in enumerate(parts):
             part_tokens = _tokenize(part)
             score = len(query_tokens & part_tokens) * 4
-            lowered = part.casefold()
+            concrete_price = _has_concrete_price_fact(part)
 
             if pricing_intent:
                 if part_tokens & _PRICING_TERMS:
-                    score += 8
-                if any(symbol in part for symbol in ("₹", "$", "€", "£")):
-                    score += 8
-                if re.search(r"\b\d+(?:[.,]\d+)?\s*(?:/\s*)?(?:month|mo|year|yr)\b", lowered):
-                    score += 6
-
-            # Top retrieved chunks remain useful for broad information questions
-            # such as "what is Shvya and its features" even when wording differs.
-            if score == 0 and chunk_index == 0 and not query_tokens:
-                score = 1
+                    score += 4
+                if concrete_price:
+                    score += 24
+            elif feature_intent and part_tokens & _CAPABILITY_TERMS:
+                score += 6
 
             if score > 0:
-                candidates.append((score, -(chunk_index * 100 + part_index), part))
+                candidates.append(
+                    (score, -(chunk_index * 100 + part_index), part, concrete_price)
+                )
+
+    if pricing_intent:
+        concrete = [item for item in candidates if item[3]]
+        if concrete:
+            candidates = concrete
+        else:
+            # A navigation label such as "Pricing" is not a pricing answer.
+            return ""
 
     candidates.sort(reverse=True)
 
     selected: list[str] = []
     total = 0
     seen_lines: set[str] = set()
-    for _score, _order, part in candidates:
+    max_total = 700 if pricing_intent else 900
+    max_items = 5 if pricing_intent else 6
+    for _score, _order, part, _concrete in candidates:
         key = part.casefold()
         if key in seen_lines:
             continue
         seen_lines.add(key)
-        remaining = 1200 - total
+        remaining = max_total - total
         if remaining <= 0:
             break
-        clipped = part[:remaining].strip()
+        clipped = part[: min(remaining, 320)].strip()
         if clipped:
             selected.append(clipped)
-            total += len(clipped) + 1
-        if len(selected) >= 6:
+            total += len(clipped) + 2
+        if len(selected) >= max_items:
             break
 
     if selected:
-        return " ".join(selected).strip()
+        separator = "\n" if pricing_intent else " "
+        return separator.join(selected).strip()
 
-    # If semantic retrieval returned knowledge but lexical matching found no
-    # useful sentence, use only the top chunk as a bounded grounded excerpt.
-    top = str(chunks[0].get("content") or "").strip()
-    return top[:1000].strip()
+    return ""
 
 
 def install_playground_graph_recovery() -> None:
-    """Keep production graph semantics while making Sandbox qualification fail-safe.
-
-    The Sandbox should normally exercise the same provider/validation path as a
-    real conversation. If that provider path fails after the backend has already
-    accepted a high-confidence qualification answer, the backend-selected next
-    question is authoritative and can be returned without another model call.
-
-    Customer questions/requests are different: intent-first routing is
-    authoritative. If generation fails on one of those turns, recover from the
-    already retrieved Connected Knowledge when possible. If no grounded knowledge
-    is available, let PlaygroundService use its organization-information fallback.
-
-    This recovery is intentionally scoped to Playground leads. Production
-    WhatsApp turns keep the pre-existing deterministic/provider routing contract.
-    """
+    """Keep production graph semantics while making Sandbox fail-safe and precise."""
 
     global _INSTALLED
     if _INSTALLED:
@@ -269,6 +307,7 @@ def install_playground_graph_recovery() -> None:
     )
 
     original_generate = workflow._generate
+    original_route_turn = workflow._route_turn
 
     def scoped_deterministic_extract(state):
         if state.get("caller_supplied_context"):
@@ -281,9 +320,6 @@ def install_playground_graph_recovery() -> None:
 
         direct_text = state.get("latest_text", "")
         if _is_playground_state(state):
-            # Sandbox users commonly answer a binary option with natural wording
-            # such as "YES, I RUN ADS". Restrict that normalization to Sandbox so
-            # production answer parsing remains unchanged.
             direct_text = workflow._canonical_yes_no_reply(state, requirements)
 
         direct = workflow.apply_unambiguous_reply(
@@ -295,9 +331,6 @@ def install_playground_graph_recovery() -> None:
         qualification_state = direct["state"]
         updates = {"qualification_state": qualification_state}
 
-        # Preserve the production direct-route contract that existed before the
-        # Sandbox fix. Configured instructions/language/attributes still use the
-        # provider in normal operation; only failures are recovered below.
         direct_next = direct.get("next_requirement")
         profile = state.get("profile") or {}
         context = state["context"]
@@ -324,6 +357,17 @@ def install_playground_graph_recovery() -> None:
                 model="deterministic",
             )
         return updates
+
+    def scoped_route_turn(state):
+        """Keep Sandbox RAG focused on the current customer information request."""
+        if _is_playground_state(state):
+            latest_text = str(state.get("latest_text") or "").strip()
+            if latest_text and _has_interrupting_customer_intent(latest_text):
+                return {
+                    "route": "rag",
+                    "retrieval_query": latest_text[:1800],
+                }
+        return original_route_turn(state)
 
     def playground_safe_generate(state):
         try:
@@ -366,9 +410,6 @@ def install_playground_graph_recovery() -> None:
                     getattr(state.get("lead"), "id", ""),
                     exc_info=True,
                 )
-                # No retrieved knowledge was available. Let PlaygroundService's
-                # organization-information fallback answer without replacing the
-                # customer request with a qualification question.
                 raise
 
             qualification_state = state.get("qualification_state") or {}
@@ -416,9 +457,8 @@ def install_playground_graph_recovery() -> None:
             raise
 
     workflow._deterministic_extract = scoped_deterministic_extract
+    workflow._route_turn = scoped_route_turn
     workflow._generate = playground_safe_generate
-    # The compiled graph stores node callables. Rebuild once so the scoped
-    # functions above are the ones invoked for subsequent engagement turns.
     workflow.ENGAGEMENT_GRAPH = workflow.build_engagement_graph()
 
     _INSTALLED = True
