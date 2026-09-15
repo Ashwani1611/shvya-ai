@@ -60,7 +60,7 @@ jobs:
               docker network connect "$STAGING_NETWORK" "$EDGE_NGINX_ID"
             fi
 
-            # Serve only ACME over HTTP while the staging certificate is repaired.
+            # Serve only ACME over HTTP while the staging certificate is checked/repaired.
             cat > "$PROD_DIR/nginx/conf.d/staging.conf" <<'NGINX_HTTP'
             server {
                 listen 80;
@@ -85,11 +85,11 @@ jobs:
             if [ -f "$CERT_DIR/fullchain.pem" ] && \
                openssl x509 -in "$CERT_DIR/fullchain.pem" -noout -checkhost "$STAGING_HOST" >/dev/null 2>&1; then
               cert_valid=1
-              echo "Existing staging certificate already matches $STAGING_HOST."
+              echo "Certificate file matches $STAGING_HOST."
             fi
 
             if [ "$cert_valid" -ne 1 ]; then
-              echo "Existing staging certificate is missing or does not match $STAGING_HOST; reissuing it."
+              echo "Staging certificate is missing or invalid; reissuing it."
               $EDGE_COMPOSE run --rm --entrypoint certbot certbot \
                 delete --cert-name "$STAGING_HOST" --non-interactive || true
               rm -rf "$CERT_ROOT/live/$STAGING_HOST" "$CERT_ROOT/archive/$STAGING_HOST"
@@ -158,7 +158,55 @@ jobs:
             $EDGE_COMPOSE exec -T nginx nginx -t
             $EDGE_COMPOSE exec -T nginx nginx -s reload
 
-            echo "Verifying staging HTTPS readiness..."
+            served_cert_matches() {
+              connect_target="$1"
+              echo | openssl s_client \
+                -connect "$connect_target" \
+                -servername "$STAGING_HOST" 2>/dev/null \
+                | openssl x509 -noout -checkhost "$STAGING_HOST" >/dev/null 2>&1
+            }
+
+            echo "Verifying the certificate actually served by local edge Nginx..."
+            if ! served_cert_matches "127.0.0.1:443"; then
+              echo "Local edge Nginx is not serving the staging certificate for SNI $STAGING_HOST."
+              echo "Loaded staging Nginx configuration:"
+              $EDGE_COMPOSE exec -T nginx nginx -T 2>&1 \
+                | grep -n -A40 -B5 "$STAGING_HOST" || true
+              exit 1
+            fi
+
+            curl --fail --silent --show-error --max-time 10 \
+              --resolve "$STAGING_HOST:443:127.0.0.1" \
+              "https://$STAGING_HOST/health/ready/" >/dev/null
+            echo "Local edge TLS/SNI and staging readiness are healthy."
+
+            DNS_V4="$(getent ahostsv4 "$STAGING_HOST" 2>/dev/null | awk '{print $1}' | sort -u || true)"
+            DNS_V6="$(getent ahostsv6 "$STAGING_HOST" 2>/dev/null | awk '{print $1}' | sort -u || true)"
+            VPS_V4="$(curl -4 --fail --silent --show-error --max-time 5 https://api.ipify.org 2>/dev/null || true)"
+
+            if [ -n "$VPS_V4" ] && ! printf '%s\n' "$DNS_V4" | grep -Fxq "$VPS_V4"; then
+              echo "Public DNS A record for $STAGING_HOST does not point to this VPS."
+              echo "Fix the staging DNS A record, then rerun Deploy Staging."
+              exit 1
+            fi
+
+            echo "Verifying public IPv4 HTTPS readiness..."
+            if ! curl -4 --fail --silent --show-error --max-time 10 \
+              "https://$STAGING_HOST/health/ready/" >/dev/null; then
+              echo "Public IPv4 reaches a TLS endpoint that is not serving the staging certificate/readiness response."
+              exit 1
+            fi
+
+            if [ -n "$DNS_V6" ]; then
+              echo "An IPv6 record exists; verifying public IPv6 HTTPS readiness..."
+              if ! curl -6 --fail --silent --show-error --max-time 10 \
+                "https://$STAGING_HOST/health/ready/" >/dev/null; then
+                echo "IPv4 is healthy but the staging AAAA/IPv6 path is broken. Remove or correct the AAAA record."
+                exit 1
+              fi
+            fi
+
+            echo "Verifying default public HTTPS readiness..."
             curl --fail --silent --show-error --max-time 10 \
               "https://$STAGING_HOST/health/ready/" >/dev/null
             echo "Staging TLS and public readiness are healthy."
