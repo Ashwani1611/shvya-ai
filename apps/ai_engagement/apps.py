@@ -211,3 +211,19 @@ class AiEngagementConfig(AppConfig):
             install_customer_chat_regressions,
         )
         install_customer_chat_regressions()
+
+        # Canonical architecture boundary. Install last so legacy compatibility
+        # shims feed one explicit contract: configuration -> evidence -> policy ->
+        # deterministic engines -> execution -> reconciled state -> final validator.
+        from apps.ai_engagement.services.canonical_architecture import (
+            install_canonical_ai_architecture,
+        )
+        install_canonical_ai_architecture()
+
+        # Pure policy previews and SimpleTestCase fixtures use non-persistent
+        # synthetic lead IDs. They must remain database-free while production
+        # UUID-backed CRM leads continue through reconciliation.
+        from apps.ai_engagement.services.canonical_architecture_compat import (
+            install_canonical_architecture_compat,
+        )
+        install_canonical_architecture_compat()
