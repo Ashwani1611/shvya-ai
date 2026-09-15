@@ -170,13 +170,22 @@ class AiEngagementConfig(AppConfig):
         )
         install_transactional_turn_runtime()
 
-        # A state-changing turn already has one validated provider decision. Once
-        # CRM state is committed, reuse that response candidate and validate it
-        # against the committed state instead of making a second model call.
+        # State-changing turns use a draft/action pass followed by a fresh final
+        # response generated from the committed backend state. The draft response
+        # is never reused as customer-facing text after mutations are persisted.
         from apps.ai_engagement.services.transactional_decision_reuse import (
             install_transactional_decision_reuse,
         )
         install_transactional_decision_reuse()
+
+        # The second pass is language-only in code, not just by prompt: strip any
+        # repeated CRM/qualification proposals before qualification validation so
+        # already-committed actions cannot be repaired, re-applied, or block the
+        # final post-state response.
+        from apps.ai_engagement.services.post_state_finalization_guard import (
+            install_post_state_finalization_guard,
+        )
+        install_post_state_finalization_guard()
 
         from apps.ai_engagement.services.task_execution_failsoft import (
             install_task_execution_failsoft,
