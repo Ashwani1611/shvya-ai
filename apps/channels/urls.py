@@ -46,7 +46,7 @@ urlpatterns = [
     # Hosted linked-device WhatsApp sessions (whatsapp-web.js gateway).
     path("connect/hosted/", hosted_manage_ui.whatsapp_connect_hosted_view, name="whatsapp-connect-hosted"),
     path("connect/hosted/sessions/", hosted_ui.hosted_session_create_view, name="whatsapp-hosted-session-create"),
-    path("connect/hosted/events/", hosted_chat_ui.hosted_gateway_event_view, name="whatsapp-hosted-session-events"),
+    path("connect/hosted/events/", hosted_chat_ui.hosted_gateway_event_view, name="whatsapp-hosted-gateway-event"),
     path("connect/hosted/media/<uuid:config_id>/", hosted_automation_views.hosted_followup_media, name="whatsapp-hosted-automation-media"),
     path("connect/hosted/<uuid:account_id>/health/", hosted_automation_views.hosted_account_health, name="whatsapp-hosted-account-health"),
     path("connect/hosted/<uuid:account_id>/status/", hosted_ui.hosted_session_status_view, name="whatsapp-hosted-session-status"),
