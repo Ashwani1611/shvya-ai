@@ -59,6 +59,14 @@ class AiEngagementConfig(AppConfig):
         )
         install_reminder_time_runtime()
 
+        # Preserve normal-conversation reminders and evidence-bound stage routing
+        # without restoring fuzzy qualification mapping or automatic completion
+        # stages. Qualification ownership lives in the contract below.
+        from apps.ai_engagement.services.crm_routing_reliability import (
+            install_crm_routing_reliability,
+        )
+        install_crm_routing_reliability()
+
         # Compile organization-authored qualification/stage policy for the shared
         # Hosted + Meta API runtime. Deterministic execution is owned by the
         # qualification execution contract installed below.
