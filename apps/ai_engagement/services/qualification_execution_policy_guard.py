@@ -84,6 +84,7 @@ def install_qualification_execution_policy_guard() -> None:
         return
 
     from apps.ai_engagement.services import transactional_turn_runtime as runtime
+    from apps.ai_engagement.services import qualification_execution_contract as contract_module
     from apps.ai_engagement.services.canonical_architecture import (
         ResponseActionValidator,
         StateReconciler,
@@ -156,6 +157,25 @@ def install_qualification_execution_policy_guard() -> None:
         return snapshot
 
     StateReconciler.build = build_snapshot
+
+    # Keep callers synchronized with the row that was locked and mutated by the
+    # pre-generation resolver. A stale in-memory Lead must never overwrite a
+    # just-persisted qualification answer on the next requirement transition.
+    current_pre_resolve = contract_module.resolve_before_generation
+
+    @wraps(current_pre_resolve)
+    def pre_resolve(*, organization, lead, source_message_id, account_id=None):
+        result = current_pre_resolve(
+            organization=organization,
+            lead=lead,
+            source_message_id=source_message_id,
+            account_id=account_id,
+        )
+        if isinstance(result, dict) and result.get("applied"):
+            lead.refresh_from_db(fields=["attributes", "pipeline", "stage"])
+        return result
+
+    contract_module.resolve_before_generation = pre_resolve
 
     def configured_completion_action(*, lead, qualification_state):
         if _norm(qualification_state.get("qualification_status")) != "completed":
