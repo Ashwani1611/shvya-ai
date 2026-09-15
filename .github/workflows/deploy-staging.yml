@@ -1,0 +1,248 @@
+name: Deploy Staging
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [staging]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: staging-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy staging to isolated Docker stack
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    environment: staging
+
+    steps:
+      - name: Deploy staging over SSH
+        uses: appleboy/ssh-action@v1.2.2
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          password: ${{ secrets.VPS_PASSWORD }}
+          port: ${{ secrets.VPS_PORT || 22 }}
+          script: |
+            set -eu
+
+            APP_DIR=/opt/shvya-ai-staging
+            PROD_DIR=/opt/shvya-ai
+            COMPOSE="docker compose -p shvya-staging --env-file .env.staging -f docker-compose.staging.yml"
+
+            echo "Preparing isolated staging checkout..."
+            if [ ! -d "$APP_DIR/.git" ]; then
+              rm -rf "$APP_DIR"
+              git clone --branch staging --single-branch https://github.com/Ashwani1611/shvya-ai.git "$APP_DIR"
+            fi
+
+            cd "$APP_DIR"
+            git fetch origin staging
+            git checkout staging
+            git reset --hard origin/staging
+
+            ensure_env_secret() {
+              key="$1"
+              current="$(sed -n "s/^${key}=//p" .env.staging | tail -n 1 | tr -d '\r')"
+              case "$current" in
+                ""|change-me-*) ;;
+                *) return ;;
+              esac
+              value="$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')"
+              if grep -q "^${key}=" .env.staging; then
+                sed -i "s|^${key}=.*$|${key}=${value}|" .env.staging
+              else
+                printf '\n%s=%s\n' "$key" "$value" >> .env.staging
+              fi
+              unset value
+              echo "Generated staging ${key}."
+            }
+
+            if [ ! -f .env.staging ]; then
+              cp .env.staging.example .env.staging
+              echo "Created .env.staging from the safe staging template."
+            fi
+
+            ensure_env_secret SECRET_KEY
+            ensure_env_secret DB_PASSWORD
+            ensure_env_secret META_VERIFY_TOKEN
+            ensure_env_secret WHATSAPP_WEB_GATEWAY_TOKEN
+            ensure_env_secret WHATSAPP_WEB_CALLBACK_TOKEN
+            chmod 600 .env.staging
+
+            mkdir -p "$APP_DIR/staticfiles" "$APP_DIR/media" "$APP_DIR/backups"
+
+            echo "Validating staging Compose configuration..."
+            $COMPOSE config --quiet
+
+            echo "Building staging containers..."
+            $COMPOSE build web ws worker ai_realtime_worker hosted_ai_worker beat whatsapp-web-gateway
+
+            echo "Starting isolated staging PostgreSQL and Redis..."
+            $COMPOSE up -d --wait db redis
+
+            echo "Applying staging migrations..."
+            $COMPOSE run --rm web python manage.py migrate --noinput
+
+            echo "Collecting staging static assets..."
+            $COMPOSE run --rm web python manage.py collectstatic --noinput
+
+            echo "Starting staging application services..."
+            $COMPOSE up -d --no-deps web ws worker ai_realtime_worker hosted_ai_worker beat
+            $COMPOSE up -d --wait --no-deps web
+            $COMPOSE up -d --wait --no-deps --force-recreate whatsapp-web-gateway
+
+            echo "Checking staging dependency readiness..."
+            ready=0
+            for attempt in $(seq 1 12); do
+              if curl --fail --silent --show-error --max-time 5 \
+                -H "Host: staging.shvya-ai.com" \
+                -H "X-Forwarded-Proto: https" \
+                http://127.0.0.1:8100/health/ready/ >/dev/null; then
+                ready=1
+                break
+              fi
+              sleep 2
+            done
+            if [ "$ready" -ne 1 ]; then
+              echo "Staging readiness check failed."
+              $COMPOSE ps
+              $COMPOSE logs --tail=150 web worker ai_realtime_worker hosted_ai_worker
+              exit 1
+            fi
+
+            echo "Configuring shared production Nginx edge for staging..."
+            if [ ! -d "$PROD_DIR" ]; then
+              echo "Production directory $PROD_DIR is missing."
+              exit 1
+            fi
+
+            EDGE_COMPOSE="docker compose -f $PROD_DIR/docker-compose.yml"
+
+            if ! $EDGE_COMPOSE ps --status running nginx | grep -q nginx; then
+              echo "Production Nginx container is not running."
+              exit 1
+            fi
+
+            if ! $EDGE_COMPOSE exec -T nginx getent hosts host.docker.internal >/dev/null 2>&1; then
+              echo "Production Nginx does not yet have host.docker.internal mapping."
+              echo "Merge/deploy the staging infrastructure change to main first."
+              exit 1
+            fi
+
+            cat > "$PROD_DIR/nginx/conf.d/staging.conf" <<'NGINX_HTTP'
+            server {
+                listen 80;
+                server_name staging.shvya-ai.com;
+
+                add_header X-Robots-Tag "noindex, nofollow, noarchive" always;
+
+                location /.well-known/acme-challenge/ {
+                    root /var/www/certbot;
+                }
+
+                location /ws/ {
+                    proxy_pass http://host.docker.internal:8101;
+                    proxy_http_version 1.1;
+                    proxy_set_header Upgrade $http_upgrade;
+                    proxy_set_header Connection "upgrade";
+                    proxy_set_header Host $host;
+                    proxy_set_header X-Real-IP $remote_addr;
+                    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                    proxy_set_header X-Forwarded-Proto http;
+                    proxy_read_timeout 3600s;
+                }
+
+                location / {
+                    proxy_pass http://host.docker.internal:8100;
+                    proxy_set_header Host $host;
+                    proxy_set_header X-Real-IP $remote_addr;
+                    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                    proxy_set_header X-Forwarded-Proto http;
+                }
+            }
+            NGINX_HTTP
+
+            $EDGE_COMPOSE exec -T nginx nginx -t
+            $EDGE_COMPOSE exec -T nginx nginx -s reload
+
+            CERT_DIR="$PROD_DIR/nginx/certbot/conf/live/staging.shvya-ai.com"
+            if [ ! -f "$CERT_DIR/fullchain.pem" ]; then
+              echo "Attempting Let's Encrypt certificate bootstrap for staging.shvya-ai.com..."
+              if $EDGE_COMPOSE run --rm --entrypoint certbot certbot \
+                certonly --webroot -w /var/www/certbot \
+                -d staging.shvya-ai.com \
+                --agree-tos --non-interactive --register-unsafely-without-email; then
+                echo "Staging TLS certificate issued."
+              else
+                echo "TLS bootstrap could not complete."
+                echo "The staging stack is healthy on localhost:8100, but public HTTPS needs DNS for staging.shvya-ai.com pointed at this VPS."
+              fi
+            fi
+
+            if [ -f "$CERT_DIR/fullchain.pem" ]; then
+              cat > "$PROD_DIR/nginx/conf.d/staging.conf" <<'NGINX_HTTPS'
+              server {
+                  listen 80;
+                  server_name staging.shvya-ai.com;
+
+                  location /.well-known/acme-challenge/ {
+                      root /var/www/certbot;
+                  }
+
+                  location / {
+                      return 301 https://$host$request_uri;
+                  }
+              }
+
+              server {
+                  listen 443 ssl;
+                  server_name staging.shvya-ai.com;
+
+                  ssl_certificate /etc/letsencrypt/live/staging.shvya-ai.com/fullchain.pem;
+                  ssl_certificate_key /etc/letsencrypt/live/staging.shvya-ai.com/privkey.pem;
+
+                  add_header X-Robots-Tag "noindex, nofollow, noarchive" always;
+                  client_max_body_size 20M;
+
+                  location /ws/ {
+                      proxy_pass http://host.docker.internal:8101;
+                      proxy_http_version 1.1;
+                      proxy_set_header Upgrade $http_upgrade;
+                      proxy_set_header Connection "upgrade";
+                      proxy_set_header Host $host;
+                      proxy_set_header X-Real-IP $remote_addr;
+                      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                      proxy_set_header X-Forwarded-Proto https;
+                      proxy_read_timeout 3600s;
+                  }
+
+                  location / {
+                      proxy_pass http://host.docker.internal:8100;
+                      proxy_set_header Host $host;
+                      proxy_set_header X-Real-IP $remote_addr;
+                      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                      proxy_set_header X-Forwarded-Proto https;
+                  }
+              }
+              NGINX_HTTPS
+
+              $EDGE_COMPOSE exec -T nginx nginx -t
+              $EDGE_COMPOSE exec -T nginx nginx -s reload
+
+              echo "Verifying public staging HTTPS endpoint..."
+              curl --fail --silent --show-error --max-time 10 \
+                https://staging.shvya-ai.com/health/ready/ >/dev/null
+            fi
+
+            echo "Staging service status:"
+            $COMPOSE ps
+            docker image prune -f
