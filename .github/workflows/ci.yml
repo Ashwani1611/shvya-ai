@@ -110,6 +110,11 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
 
+      - name: Prepare Compose environment files
+        run: |
+          cp .env.example .env
+          cp .env.staging.example .env.staging
+
       - name: Validate production Compose
         run: docker compose --env-file .env.example -f docker-compose.yml config --quiet
 
