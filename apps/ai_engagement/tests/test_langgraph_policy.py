@@ -161,7 +161,7 @@ class ControlledCRMActionTests(SimpleTestCase):
         self.assertEqual(result["evaluation"]["outcome"], "not_qualified")
         self.assertFalse(any(action["type"] == "pipeline_transition" for action in actions))
 
-    def test_evidence_backed_qualification_value_updates_matching_attribute(self):
+    def test_qualification_value_does_not_infer_attribute_without_explicit_mapping(self):
         decision = SimpleNamespace(
             qualification_updates=[
                 {
@@ -182,8 +182,7 @@ class ControlledCRMActionTests(SimpleTestCase):
             requirements=[{"id": "budget", "required": True}],
         )
 
-        attribute_action = next(action for action in actions if action["type"] == "attribute_updates")
-        self.assertEqual(attribute_action["updates"], [{"key": "budget", "value": "75k"}])
+        self.assertFalse(any(action["type"] == "attribute_updates" for action in actions))
 
     def test_unrequested_model_reminder_is_removed(self):
         decision = SimpleNamespace(
