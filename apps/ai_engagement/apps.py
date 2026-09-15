@@ -236,3 +236,10 @@ class AiEngagementConfig(AppConfig):
             install_qualification_execution_contract,
         )
         install_qualification_execution_contract()
+
+        # Natural-language qualification answers use the same exact mapping and
+        # configured completion-stage contract as deterministic option answers.
+        from apps.ai_engagement.services.qualification_execution_policy_guard import (
+            install_qualification_execution_policy_guard,
+        )
+        install_qualification_execution_policy_guard()
