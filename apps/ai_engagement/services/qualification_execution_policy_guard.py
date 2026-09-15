@@ -23,14 +23,14 @@ def _mapping_errors(config):
     ]
 
 
-def _contains_label(text: str, label: str) -> bool:
+def _contains_identifier(text: str, value: str) -> bool:
     text = str(text or "")
-    label = str(label or "").strip()
-    if not text or len(label) < 3:
+    value = str(value or "").strip()
+    if not text or len(value) < 3:
         return False
     return bool(
         re.search(
-            rf"(?<![A-Za-z0-9_]){re.escape(label)}(?![A-Za-z0-9_])",
+            rf"(?<![A-Za-z0-9_]){re.escape(value)}(?![A-Za-z0-9_])",
             text,
             flags=re.IGNORECASE,
         )
@@ -38,27 +38,33 @@ def _contains_label(text: str, label: str) -> bool:
 
 
 def _strip_protected_generated_text(message: str, state: dict) -> str:
-    labels = [
+    """Remove actual internal labels/IDs without censoring customer vocabulary."""
+    identifiers = [
         str(item).strip()
         for item in state.get("protected_configuration_labels") or []
         if str(item or "").strip()
     ]
-    if not labels:
+    if not identifiers:
         return str(message or "").strip()
 
-    # Response-plan controlled replies are assembled as generated language plus
-    # backend-authored content. Protect generated language only; exact configured
-    # question/options/final customer-facing values may pass through unchanged.
-    blocks = str(message or "").strip().split("\n\n")
+    text = str(message or "").strip()
+    response_plan = state.get("response_plan") if isinstance(state, dict) else None
+
+    # A response-plan reply contains generated language first and exact
+    # backend-authored customer content after the blank line. Never filter the
+    # authored question/options/final acknowledgement value.
+    blocks = text.split("\n\n")
     generated = blocks[0] if blocks else ""
-    suffix = blocks[1:] if len(blocks) > 1 else []
+    suffix = blocks[1:] if isinstance(response_plan, dict) and len(blocks) > 1 else []
+    if not isinstance(response_plan, dict):
+        generated = text
 
     parts = re.split(r"(?<=[.!?])\s+|\n+", generated)
     kept = [
         part.strip()
         for part in parts
         if part.strip()
-        and not any(_contains_label(part, label) for label in labels)
+        and not any(_contains_identifier(part, item) for item in identifiers)
     ]
     cleaned = " ".join(kept).strip()
     if suffix:
@@ -67,15 +73,12 @@ def _strip_protected_generated_text(message: str, state: dict) -> str:
 
 
 def install_qualification_execution_policy_guard() -> None:
-    """Make model-interpreted qualification turns obey the backend contract.
+    """Enforce the organization-configured qualification execution contract.
 
-    The model may interpret natural language, but it never chooses qualification
-    CRM attributes or completion stages. Exact organization configuration is
-    projected into deterministic backend actions before the transactional runtime
-    mutates state, and execution/configuration failures stay visible in reconciled
-    state.
+    Natural-language interpretation may come from the model, but qualification
+    attributes, completion, configured stage actions, execution results and final
+    response mode are backend-owned.
     """
-
     global _INSTALLED
     if _INSTALLED:
         return
@@ -87,7 +90,7 @@ def install_qualification_execution_policy_guard() -> None:
         StateReconciler,
         _QUALIFIED_CLAIM_RE,
     )
-    from apps.ai_engagement.services.engagement import EngagementError
+    from apps.ai_engagement.services.engagement import EngagementError, EngagementService
     from apps.ai_engagement.services.qualification_execution_contract import (
         _config,
         _norm,
@@ -96,8 +99,11 @@ def install_qualification_execution_policy_guard() -> None:
         _stage_success,
     )
 
-    # Reconciled state carries dynamic customer-output protection metadata derived
-    # from the organization's actual configuration/CRM schema.
+    # ------------------------------------------------------------------
+    # Reconciled output protection: IDs/keys/config section labels only.
+    # Display names such as "Budget" or configured stage names are ordinary
+    # customer/business vocabulary and must not be mistaken for secrets.
+    # ------------------------------------------------------------------
     current_build_snapshot = StateReconciler.build
 
     @wraps(current_build_snapshot)
@@ -123,47 +129,52 @@ def install_qualification_execution_policy_guard() -> None:
             organization=lead.organization,
             lead=lead,
         )
-        labels: set[str] = set()
+        protected: set[str] = {
+            "Acknowledgment message",
+            "Completion Message",
+            "Qualification Requirements",
+            "Attribute Mapped",
+            "Stage Shifting",
+        }
         for aliases in _SECTION_ALIASES.values():
-            labels.update(str(item).strip() for item in aliases if str(item).strip())
+            protected.update(
+                str(item).strip() for item in aliases if str(item).strip()
+            )
         for requirement in requirements:
             for key in ("id", "stable_id"):
                 value = str(requirement.get(key) or "").strip()
                 if value:
-                    labels.add(value)
-            labels.update(
+                    protected.add(value)
+            protected.update(
                 str(item).strip()
                 for item in requirement.get("legacy_ids") or []
                 if str(item or "").strip()
             )
-        for definition in AttributeDefinition.objects.filter(
-            organization=lead.organization
-        ).values("key", "name"):
-            labels.update(
-                str(definition.get(key) or "").strip()
-                for key in ("key", "name")
-                if str(definition.get(key) or "").strip()
-            )
-        labels.update(
-            str(name).strip()
-            for name in Stage.objects.filter(
+        protected.update(
+            str(key).strip()
+            for key in AttributeDefinition.objects.filter(
+                organization=lead.organization
+            ).values_list("key", flat=True)
+            if str(key or "").strip()
+        )
+        protected.update(
+            str(stage_id)
+            for stage_id in Stage.objects.filter(
                 pipeline__organization=lead.organization,
                 pipeline__is_active=True,
                 is_active=True,
-            ).values_list("name", flat=True)
-            if str(name or "").strip()
+            ).values_list("id", flat=True)
         )
         snapshot["protected_configuration_labels"] = sorted(
-            labels,
+            protected,
             key=lambda item: (-len(item), item.casefold()),
         )
         return snapshot
 
     StateReconciler.build = build_snapshot
 
-    # Keep the caller synchronized with the row mutated by pre-generation
-    # deterministic execution so later requirement selection cannot use stale
-    # attributes/stage state.
+    # Keep caller objects synchronized with rows changed by deterministic
+    # pre-generation execution.
     current_pre_resolve = contract_module.resolve_before_generation
 
     @wraps(current_pre_resolve)
@@ -180,6 +191,9 @@ def install_qualification_execution_policy_guard() -> None:
 
     contract_module.resolve_before_generation = pre_resolve
 
+    # ------------------------------------------------------------------
+    # Completion stage: exact organization Stage Shifting config only.
+    # ------------------------------------------------------------------
     def configured_completion_action(*, lead, qualification_state):
         if _norm(qualification_state.get("qualification_status")) != "completed":
             return None
@@ -199,10 +213,12 @@ def install_qualification_execution_policy_guard() -> None:
             "stage_shift": {"stage_id": str(target["id"])},
         }
 
-    # Completion stage authority comes only from the configured Stage Shifting
-    # rule. Qualification completion and transition success remain independent.
     runtime._qualified_action = configured_completion_action
 
+    # ------------------------------------------------------------------
+    # Model-interpreted qualification answers: discard model-selected attribute
+    # writes and rebuild exact requirement -> configured attribute actions.
+    # ------------------------------------------------------------------
     current_resolve = runtime._resolve_state_before_response
     reconciler = StateReconciler()
 
@@ -231,10 +247,6 @@ def install_qualification_execution_policy_guard() -> None:
                 organization=organization,
                 requirements=requirements,
             )
-
-            # Remove every model-selected qualification attribute write. Preserve
-            # unrelated contact/reminder/note actions, then rebuild only exact
-            # configured requirement -> attribute writes.
             actions = [
                 deepcopy(action)
                 for action in getattr(decision, "crm_actions", []) or []
@@ -251,14 +263,13 @@ def install_qualification_execution_policy_guard() -> None:
                     continue
                 requirement_id = str(requirement.get("id") or "")
                 attribute_key = config.get("mappings", {}).get(requirement_id)
-                if not attribute_key:
-                    continue
-                exact_updates.append(
-                    {
-                        "key": attribute_key,
-                        "value": update.get("value"),
-                    }
-                )
+                if attribute_key:
+                    exact_updates.append(
+                        {
+                            "key": attribute_key,
+                            "value": update.get("value"),
+                        }
+                    )
             if exact_updates:
                 by_key = {
                     str(item["key"]): item
@@ -281,7 +292,6 @@ def install_qualification_execution_policy_guard() -> None:
             decision=decision,
             account_id=account_id,
         )
-
         if (
             not isinstance(result, dict)
             or not result.get("applied")
@@ -294,9 +304,6 @@ def install_qualification_execution_policy_guard() -> None:
         if not errors or not isinstance(snapshot, dict):
             return result
 
-        # Invalid configured mappings are execution/configuration failures. Keep
-        # them in authoritative state; never substitute a semantically similar
-        # attribute and never treat them as stage evidence.
         execution_results = [
             deepcopy(item)
             for item in snapshot.get("execution_results") or []
@@ -315,10 +322,7 @@ def install_qualification_execution_policy_guard() -> None:
                 execution_results.append(error)
 
         lead.refresh_from_db(fields=["attributes", "pipeline", "stage"])
-        revised = {
-            **snapshot,
-            "execution_results": execution_results,
-        }
+        revised = {**snapshot, "execution_results": execution_results}
         plan = _plan_from_reconciled(
             lead=lead,
             source_message_id=source_message_id,
@@ -335,8 +339,70 @@ def install_qualification_execution_policy_guard() -> None:
 
     runtime._resolve_state_before_response = resolve
 
-    # Customer-facing stage/completion claims require reconciled DB evidence, and
-    # generated language may not expose internal configuration labels/identifiers.
+    # ------------------------------------------------------------------
+    # Ensure every persistent EngagementService path enters the same contract
+    # before the older service-internal direct-answer capture can run.
+    # ------------------------------------------------------------------
+    current_engage = EngagementService.engage
+
+    @wraps(current_engage)
+    def engage(
+        self,
+        *,
+        organization,
+        lead,
+        knowledge_query=None,
+        context=None,
+    ):
+        if (
+            getattr(organization, "_meta", None) is not None
+            and getattr(lead, "_meta", None) is not None
+            and getattr(lead, "pk", None) is not None
+        ):
+            try:
+                from apps.ai_engagement.services.ai_permissions import AIPermissionService
+
+                source = (
+                    lead.whatsapp_messages.filter(
+                        organization=organization,
+                        direction="inbound",
+                    )
+                    .order_by("-created_at", "-id")
+                    .first()
+                )
+                permission = (
+                    AIPermissionService().evaluate(
+                        organization=organization,
+                        lead=lead,
+                        latest_inbound=source,
+                    )
+                    if source is not None
+                    else None
+                )
+                if permission and permission.allowed and source is not None:
+                    contract_module.resolve_before_generation(
+                        organization=organization,
+                        lead=lead,
+                        source_message_id=source.pk,
+                        account_id=source.account_id,
+                    )
+            except Exception:
+                # The normal engagement path remains fail-soft; task-level
+                # execution records/logging will expose persistent failures.
+                pass
+        return current_engage(
+            self,
+            organization=organization,
+            lead=lead,
+            knowledge_query=knowledge_query,
+            context=context,
+        )
+
+    EngagementService.engage = engage
+
+    # ------------------------------------------------------------------
+    # Final customer output: verified stage claims + internal ID protection.
+    # ------------------------------------------------------------------
     current_validate = ResponseActionValidator.validate
 
     @wraps(current_validate)
