@@ -7,13 +7,20 @@ from apps.ai_engagement.services.attribute_state_reconciliation import (
 from apps.ai_engagement.services.organization_profile import compile_qualification_requirements
 from apps.ai_engagement.services.qualification_state import state_for_lead
 from apps.ai_engagement.tests.test_engagement_controls import AIEngagementControlTests
-from apps.crm.models import AttributeDefinition
+from apps.crm.models import AttributeDefinition, Stage
 
 
 class ExistingAttributeQualificationTests(TestCase):
     setUp = AIEngagementControlTests.setUp
 
     def test_explicitly_mapped_existing_attribute_satisfies_requirement_without_reasking(self):
+        completion_stage = Stage.objects.create(
+            pipeline=self.pipeline,
+            name="Existing CRM Complete",
+            display_order=97,
+            is_active=True,
+            ai_on=True,
+        )
         org_info, _ = OrgInfo.objects.get_or_create(organization=self.organization)
         org_info.qualification_requirements = (
             "[id: management] Where do you currently manage leads?\n"
@@ -27,7 +34,7 @@ class ExistingAttributeQualificationTests(TestCase):
             "## Attribute mapped\n"
             "management -> Lead Management Tool\n\n"
             "## Stage shifting\n"
-            "When all required qualification questions are answered, move to Qualified.\n"
+            "When all required qualification questions are answered, move to Existing CRM Complete.\n"
             "Acknowledgment message: \"Thanks, your details are complete.\""
         )
         org_info.ai_enabled = True
@@ -64,7 +71,7 @@ class ExistingAttributeQualificationTests(TestCase):
         self.assertEqual(state["qualification_status"], "completed")
 
         self.lead.refresh_from_db()
-        self.assertEqual(self.lead.stage_id, self.qualified.id)
+        self.assertEqual(self.lead.stage_id, completion_stage.id)
         stable = state_for_lead(self.lead, requirements=requirements)
         self.assertEqual(stable["qualification_status"], "completed")
 
