@@ -39,12 +39,18 @@ def install_qualification_execution_policy_guard() -> None:
         return
 
     from apps.ai_engagement.services import transactional_turn_runtime as runtime
-    from apps.ai_engagement.services.canonical_architecture import StateReconciler
+    from apps.ai_engagement.services.canonical_architecture import (
+        ResponseActionValidator,
+        StateReconciler,
+        _QUALIFIED_CLAIM_RE,
+    )
+    from apps.ai_engagement.services.engagement import EngagementError
     from apps.ai_engagement.services.qualification_execution_contract import (
         _config,
         _norm,
         _plan_from_reconciled,
         _requirement_ref,
+        _stage_success,
     )
 
     def configured_completion_action(*, lead, qualification_state):
@@ -203,4 +209,27 @@ def install_qualification_execution_policy_guard() -> None:
         return {**result, "reconciled_state": revised}
 
     runtime._resolve_state_before_response = resolve
+
+    # Qualification completion is never accepted as evidence that a configured
+    # CRM stage transition succeeded. A stage-movement claim needs the reconciled
+    # target stage plus a verified execution result.
+    current_validate = ResponseActionValidator.validate
+
+    @wraps(current_validate)
+    def validate(self, *, decision, reconciled_state):
+        validated = current_validate(
+            self,
+            decision=decision,
+            reconciled_state=reconciled_state,
+        )
+        state = reconciled_state if isinstance(reconciled_state, dict) else {}
+        message = str(getattr(validated, "message", "") or "")
+        if _QUALIFIED_CLAIM_RE.search(message) and not _stage_success(state):
+            if not isinstance(state.get("response_plan"), dict):
+                raise EngagementError(
+                    "Customer response claimed an unverified stage transition."
+                )
+        return validated
+
+    ResponseActionValidator.validate = validate
     _INSTALLED = True
