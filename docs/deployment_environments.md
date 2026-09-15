@@ -11,9 +11,9 @@ SHVYA AI uses two long-lived environments and short-lived feature/fix branches.
 | `feature/*`, `fix/*` | Development | local / PR CI | developer machine |
 
 Production and staging run separate PostgreSQL, Redis, Celery, media, static,
-and WhatsApp session storage. They share only the VPS and the edge Nginx
-container. Nginx is attached to the staging Docker network only for reverse
-proxy traffic.
+internal Nginx, and WhatsApp session storage. They share only the VPS and the
+public TLS edge. The public Nginx container is attached to the staging Docker
+network only so it can proxy to the isolated staging Nginx container.
 
 ## Normal release flow
 
@@ -38,12 +38,38 @@ Production keeps `/opt/shvya-ai/.env` and staging keeps
 `/opt/shvya-ai-staging/.env.staging`. Both files are ignored by Git.
 
 The staging deploy creates `.env.staging` automatically on first deploy from
-`.env.staging.example` and generates independent Django, database, webhook, and
-gateway secrets. Meta, OpenAI, SMTP, payment, and other third-party credentials
-must use sandbox/test accounts in staging when those integrations are tested.
+`.env.staging.example` and generates independent Django, database, webhook,
+gateway, and Basic Auth secrets. Meta, OpenAI, SMTP, payment, and other
+third-party credentials must use sandbox/test accounts in staging when those
+integrations are tested.
 
 Never point staging at the production PostgreSQL database, production Redis, or
 production WhatsApp/Instagram credentials.
+
+## Staging access and outbound safety
+
+The staging website is protected by HTTP Basic Auth in its private Nginx layer.
+The deployment generates a random password on first deploy and keeps the plain
+credential only in `/opt/shvya-ai-staging/.env.staging`. The generated
+`.staging.htpasswd` contains only the password hash and is ignored by Git.
+
+To retrieve the generated login while connected to the VPS:
+
+```bash
+sudo grep -E '^STAGING_BASIC_AUTH_(USER|PASSWORD)=' /opt/shvya-ai-staging/.env.staging
+```
+
+WhatsApp API, Hosted WhatsApp, and Instagram outbound transports have an
+additional application-level guard. In staging they are blocked by default.
+Outbound testing requires both:
+
+```env
+OUTBOUND_MESSAGING_ENABLED=True
+STAGING_ALLOWED_RECIPIENTS=919999999999,17841400000000000
+```
+
+Only explicitly allowlisted test recipients can be sent to in staging.
+Production is not affected by this staging-only guard.
 
 ## Database safety
 
@@ -61,15 +87,20 @@ before it becomes available to staging users.
 - `/health/live/` checks that the Django process can respond.
 - `/health/ready/` checks both PostgreSQL and Redis.
 
-Deployments use readiness checks before reporting success.
+Deployments use readiness checks before reporting success. Staging health probes
+are exempt from Basic Auth but expose only service health, not application data.
 
 ## DNS and TLS
 
 Create an `A` record for `staging.shvya-ai.com` pointing to the same VPS as the
-production dashboard. The staging deploy writes an isolated Nginx server block,
-adds `X-Robots-Tag: noindex, nofollow, noarchive`, and attempts to provision a
-Let's Encrypt certificate automatically. If DNS is not ready, the Docker stack
-still deploys but TLS provisioning waits until a later staging deploy.
+production dashboard. Before TLS exists, the public edge exposes only the ACME
+challenge and returns HTTP 503 for application traffic so Basic Auth credentials
+are never sent over plain HTTP. The staging deploy then provisions a Let's
+Encrypt certificate, redirects HTTP to HTTPS, adds
+`X-Robots-Tag: noindex, nofollow, noarchive`, and proxies HTTPS traffic to the
+private staging Nginx container. If DNS is not ready, the isolated Docker stack
+still deploys locally and TLS provisioning can be retried by rerunning the
+staging deploy.
 
 ## GitHub repository settings
 
