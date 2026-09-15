@@ -243,3 +243,10 @@ class AiEngagementConfig(AppConfig):
             install_qualification_execution_policy_guard,
         )
         install_qualification_execution_policy_guard()
+
+        # Preserve the strict configured contract without regressing legacy orgs,
+        # first-turn greetings, or backend-selected customer-facing questions.
+        from apps.ai_engagement.services.qualification_execution_regression_guard import (
+            install_qualification_execution_regression_guard,
+        )
+        install_qualification_execution_regression_guard()
