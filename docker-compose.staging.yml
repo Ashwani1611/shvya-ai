@@ -1,0 +1,242 @@
+services:
+  db:
+    image: pgvector/pgvector:pg17
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    expose:
+      - "5432"
+
+  redis:
+    image: redis:8-alpine
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    expose:
+      - "6379"
+
+  web:
+    build: .
+    restart: unless-stopped
+    env_file:
+      - .env.staging
+    environment:
+      APP_ENV: staging
+      DJANGO_SETTINGS_MODULE: config.settings.staging
+      DB_HOST: db
+      REDIS_URL: redis://redis:6379/0
+      CHANNEL_LAYER_REDIS_URL: redis://redis:6379/1
+    volumes:
+      - static_volume:/app/staticfiles
+      - media_volume:/app/media
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command:
+      - gunicorn
+      - config.wsgi:application
+      - --bind
+      - 0.0.0.0:8000
+      - --workers
+      - "2"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "python -c \"import http.client; c=http.client.HTTPConnection('127.0.0.1',8000,timeout=3); c.request('GET','/health/live/'); r=c.getresponse(); raise SystemExit(0 if r.status == 200 else 1)\"",
+        ]
+      interval: 5s
+      timeout: 4s
+      retries: 12
+      start_period: 10s
+    ports:
+      - "127.0.0.1:8100:8000"
+    expose:
+      - "8000"
+
+  ws:
+    build: .
+    restart: unless-stopped
+    env_file:
+      - .env.staging
+    environment:
+      APP_ENV: staging
+      DJANGO_SETTINGS_MODULE: config.settings.staging
+      DB_HOST: db
+      REDIS_URL: redis://redis:6379/0
+      CHANNEL_LAYER_REDIS_URL: redis://redis:6379/1
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command:
+      - daphne
+      - -b
+      - "0.0.0.0"
+      - -p
+      - "8001"
+      - config.asgi:application
+    ports:
+      - "127.0.0.1:8101:8001"
+    expose:
+      - "8001"
+
+  worker:
+    build: .
+    restart: unless-stopped
+    env_file:
+      - .env.staging
+    environment:
+      APP_ENV: staging
+      DJANGO_SETTINGS_MODULE: config.settings.staging
+      DB_HOST: db
+      REDIS_URL: redis://redis:6379/0
+      CHANNEL_LAYER_REDIS_URL: redis://redis:6379/1
+    volumes:
+      - media_volume:/app/media
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: ["celery", "-A", "config", "worker", "-l", "info"]
+
+  ai_realtime_worker:
+    build: .
+    restart: unless-stopped
+    env_file:
+      - .env.staging
+    environment:
+      APP_ENV: staging
+      DJANGO_SETTINGS_MODULE: config.settings.staging
+      DB_HOST: db
+      REDIS_URL: redis://redis:6379/0
+      CHANNEL_LAYER_REDIS_URL: redis://redis:6379/1
+    volumes:
+      - media_volume:/app/media
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command:
+      - celery
+      - -A
+      - config
+      - worker
+      - -l
+      - info
+      - -Q
+      - ai_realtime
+      - --concurrency=1
+      - --prefetch-multiplier=1
+
+  hosted_ai_worker:
+    build: .
+    restart: unless-stopped
+    env_file:
+      - .env.staging
+    environment:
+      APP_ENV: staging
+      DJANGO_SETTINGS_MODULE: config.settings.staging
+      DB_HOST: db
+      REDIS_URL: redis://redis:6379/0
+      CHANNEL_LAYER_REDIS_URL: redis://redis:6379/1
+    volumes:
+      - media_volume:/app/media
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command:
+      - celery
+      - -A
+      - config
+      - worker
+      - -l
+      - info
+      - -Q
+      - hosted_ai
+      - --concurrency=1
+      - --prefetch-multiplier=1
+
+  beat:
+    build: .
+    restart: unless-stopped
+    env_file:
+      - .env.staging
+    environment:
+      APP_ENV: staging
+      DJANGO_SETTINGS_MODULE: config.settings.staging
+      DB_HOST: db
+      REDIS_URL: redis://redis:6379/0
+      CHANNEL_LAYER_REDIS_URL: redis://redis:6379/1
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: ["celery", "-A", "config", "beat", "-l", "info"]
+
+  whatsapp-web-gateway:
+    build:
+      context: ./whatsapp_web_gateway
+    restart: unless-stopped
+    env_file:
+      - .env.staging
+    environment:
+      APP_ENV: staging
+      REDIS_URL: redis://redis:6379/0
+      WHATSAPP_WEB_SESSION_PATH: /data/wwebjs_auth
+      SHVYA_HOSTED_CALLBACK_URL: http://web:8000/dashboard/whatsapp/connect/hosted/events/
+    volumes:
+      - whatsapp_sessions:/data/wwebjs_auth
+    depends_on:
+      redis:
+        condition: service_healthy
+      web:
+        condition: service_healthy
+    expose:
+      - "3000"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "node -e \"fetch('http://127.0.0.1:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\"",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+volumes:
+  postgres_data:
+  static_volume:
+    driver: local
+    driver_opts:
+      type: none
+      device: /opt/shvya-ai-staging/staticfiles
+      o: bind
+  media_volume:
+    driver: local
+    driver_opts:
+      type: none
+      device: /opt/shvya-ai-staging/media
+      o: bind
+  whatsapp_sessions:
