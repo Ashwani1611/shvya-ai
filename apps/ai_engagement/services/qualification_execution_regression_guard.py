@@ -151,15 +151,73 @@ def install_qualification_execution_regression_guard() -> None:
 
     from apps.ai_engagement.services import qualification_execution_contract as contract
     from apps.ai_engagement.services import qualification_state as qs
+    from apps.ai_engagement.services import stage_transition_evidence as stage_evidence
     from apps.ai_engagement.services import transactional_turn_runtime as runtime
     from apps.ai_engagement.services.canonical_architecture import ResponseActionValidator
 
-    # Never consume the first greeting as an answer to Q1. A direct answer may be
-    # applied only to the requirement the backend actually recorded as asked.
+    # The generic stage-evidence guard protects model-proposed routing by matching
+    # the latest customer text to a stage rule. A qualification completion route
+    # is different: its evidence is the reconciled backend state. Allow exactly
+    # the configured completion target when all requirements are complete, while
+    # leaving every other model-proposed stage action under the existing guard.
+    current_stage_filter = stage_evidence._filter_stage_actions
+
+    @wraps(current_stage_filter)
+    def filter_stage_actions(*, organization, lead, actions):
+        filtered = current_stage_filter(
+            organization=organization,
+            lead=lead,
+            actions=actions,
+        )
+        candidates = [
+            deepcopy(action)
+            for action in actions or []
+            if isinstance(action, dict) and action.get("type") == "pipeline_transition"
+        ]
+        if not candidates or not _has_stage_policy(organization=organization):
+            return filtered
+
+        requirements = runtime._requirements_for_turn(
+            organization=organization,
+            lead=lead,
+        )
+        state = qs.state_for_lead(lead, requirements=requirements)
+        if str(state.get("qualification_status") or "").casefold() != "completed":
+            return filtered
+
+        config = contract._config(
+            organization=organization,
+            requirements=requirements,
+        )
+        if _mapping_errors(config):
+            return filtered
+        target = config.get("completion_stage")
+        target_id = str((target or {}).get("id") or "").strip()
+        if not target_id:
+            return filtered
+
+        for action in candidates:
+            stage_id = str((action.get("stage_shift") or {}).get("stage_id") or "").strip()
+            if stage_id == target_id and action not in filtered:
+                filtered.append(action)
+        return filtered
+
+    stage_evidence._filter_stage_actions = filter_stage_actions
+
+    # Never consume the first greeting as an answer to Q1. Also keep the
+    # pre-generation shortcut scoped to organizations that explicitly opted into
+    # the strict mapping/stage contract; legacy qualification flows continue on
+    # their existing transactional path unchanged.
     current_pre_resolve = contract.resolve_before_generation
 
     @wraps(current_pre_resolve)
     def resolve_before_generation(*, organization, lead, source_message_id, account_id=None):
+        if not (
+            _has_mapping_policy(organization=organization)
+            or _has_stage_policy(organization=organization)
+        ):
+            return {"applied": False, "reason": "legacy_qualification_contract"}
+
         requirements = runtime._requirements_for_turn(
             organization=organization,
             lead=lead,
