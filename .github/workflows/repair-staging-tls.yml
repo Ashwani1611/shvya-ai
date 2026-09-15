@@ -155,15 +155,50 @@ jobs:
             $EDGE_COMPOSE exec -T nginx nginx -t
             $EDGE_COMPOSE exec -T nginx nginx -s reload
 
-            FILE_FP="$(openssl x509 -in "$CERT_DIR/fullchain.pem" -noout -fingerprint -sha256 | cut -d= -f2)"
-            SERVED_FP="$(echo | openssl s_client -connect 127.0.0.1:443 -servername "$STAGING_HOST" 2>/dev/null \
-              | openssl x509 -noout -fingerprint -sha256 2>/dev/null | cut -d= -f2)"
+            cert_fp_file() {
+              openssl x509 -in "$CERT_DIR/fullchain.pem" -noout -fingerprint -sha256 | cut -d= -f2
+            }
+            cert_fp_mounted() {
+              $EDGE_COMPOSE exec -T nginx cat "/etc/letsencrypt/live/$STAGING_HOST/fullchain.pem" \
+                | openssl x509 -noout -fingerprint -sha256 | cut -d= -f2
+            }
+            cert_fp_served() {
+              echo | openssl s_client -connect 127.0.0.1:443 -servername "$STAGING_HOST" 2>/dev/null \
+                | openssl x509 -noout -fingerprint -sha256 2>/dev/null | cut -d= -f2
+            }
+
+            FILE_FP="$(cert_fp_file)"
+            MOUNTED_FP="$(cert_fp_mounted)"
+            SERVED_FP="$(cert_fp_served)"
+
+            if [ -z "$MOUNTED_FP" ] || [ "$FILE_FP" != "$MOUNTED_FP" ]; then
+              echo "The certificate mounted inside edge Nginx does not match the VPS staging certificate file."
+              exit 1
+            fi
 
             if [ -z "$SERVED_FP" ] || [ "$FILE_FP" != "$SERVED_FP" ]; then
-              echo "Local edge Nginx is not serving the certificate configured for $STAGING_HOST."
+              echo "Edge Nginx has the correct certificate mounted but is serving stale TLS state; restarting only the edge Nginx container."
+              docker restart "$EDGE_NGINX_ID" >/dev/null
+              sleep 2
+
+              EDGE_NGINX_ID="$($EDGE_COMPOSE ps -q nginx)"
+              if [ -z "$EDGE_NGINX_ID" ]; then
+                echo "Edge Nginx did not return after restart."
+                exit 1
+              fi
+              if ! docker inspect "$EDGE_NGINX_ID" --format '{{json .NetworkSettings.Networks}}' | grep -q "$STAGING_NETWORK"; then
+                docker network connect "$STAGING_NETWORK" "$EDGE_NGINX_ID"
+              fi
+              $EDGE_COMPOSE exec -T nginx nginx -t
+              SERVED_FP="$(cert_fp_served)"
+            fi
+
+            if [ -z "$SERVED_FP" ] || [ "$FILE_FP" != "$SERVED_FP" ]; then
+              echo "Port 443 still does not serve the expected staging certificate after edge restart."
+              echo "Containers publishing port 443:"
+              docker ps --format '{{.ID}} {{.Names}} {{.Ports}}' | grep -E '(^|[, ])0\.0\.0\.0:443->|\[::\]:443->|127\.0\.0\.1:443->' || true
               echo "Loaded staging Nginx configuration:"
-              $EDGE_COMPOSE exec -T nginx nginx -T 2>&1 \
-                | grep -n -A40 -B5 "$STAGING_HOST" || true
+              $EDGE_COMPOSE exec -T nginx nginx -T 2>&1 | grep -n -A40 -B5 "$STAGING_HOST" || true
               exit 1
             fi
 
