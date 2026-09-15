@@ -115,7 +115,10 @@ jobs:
             $COMPOSE up -d --no-deps web ws worker ai_realtime_worker hosted_ai_worker beat
             $COMPOSE up -d --wait --no-deps web
             $COMPOSE up -d --wait --no-deps --force-recreate whatsapp-web-gateway
-            $COMPOSE up -d --wait nginx
+            # web/ws are recreated above and may receive new Docker IPs. Recreate
+            # staging Nginx so its startup-time DNS resolution cannot retain stale
+            # upstream addresses from the previous containers.
+            $COMPOSE up -d --wait --force-recreate nginx
 
             echo "Checking staging dependency readiness through its private Nginx..."
             ready=0
