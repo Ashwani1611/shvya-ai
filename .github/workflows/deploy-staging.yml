@@ -76,14 +76,30 @@ jobs:
             ensure_env_secret META_VERIFY_TOKEN
             ensure_env_secret WHATSAPP_WEB_GATEWAY_TOKEN
             ensure_env_secret WHATSAPP_WEB_CALLBACK_TOKEN
+            ensure_env_secret STAGING_BASIC_AUTH_PASSWORD
             chmod 600 .env.staging
+
+            STAGING_BASIC_AUTH_USER="$(sed -n 's/^STAGING_BASIC_AUTH_USER=//p' .env.staging | tail -n 1 | tr -d '\r')"
+            STAGING_BASIC_AUTH_PASSWORD="$(sed -n 's/^STAGING_BASIC_AUTH_PASSWORD=//p' .env.staging | tail -n 1 | tr -d '\r')"
+            if [ -z "$STAGING_BASIC_AUTH_USER" ] || [ -z "$STAGING_BASIC_AUTH_PASSWORD" ]; then
+              echo "Staging Basic Auth credentials are missing."
+              exit 1
+            fi
+            if ! command -v openssl >/dev/null 2>&1; then
+              echo "openssl is required on the VPS to generate the staging Basic Auth file."
+              exit 1
+            fi
+            STAGING_BASIC_AUTH_HASH="$(openssl passwd -apr1 "$STAGING_BASIC_AUTH_PASSWORD")"
+            printf '%s:%s\n' "$STAGING_BASIC_AUTH_USER" "$STAGING_BASIC_AUTH_HASH" > .staging.htpasswd
+            chmod 644 .staging.htpasswd
+            unset STAGING_BASIC_AUTH_PASSWORD STAGING_BASIC_AUTH_HASH
 
             mkdir -p "$APP_DIR/staticfiles" "$APP_DIR/media" "$APP_DIR/backups"
 
             echo "Validating staging Compose configuration..."
             $COMPOSE config --quiet
 
-            echo "Building staging containers..."
+            echo "Building staging application containers..."
             $COMPOSE build web ws worker ai_realtime_worker hosted_ai_worker beat whatsapp-web-gateway
 
             echo "Starting isolated staging PostgreSQL and Redis..."
@@ -99,14 +115,14 @@ jobs:
             $COMPOSE up -d --no-deps web ws worker ai_realtime_worker hosted_ai_worker beat
             $COMPOSE up -d --wait --no-deps web
             $COMPOSE up -d --wait --no-deps --force-recreate whatsapp-web-gateway
+            $COMPOSE up -d --wait nginx
 
-            echo "Checking staging dependency readiness..."
+            echo "Checking staging dependency readiness through its private Nginx..."
             ready=0
             for attempt in $(seq 1 12); do
               if curl --fail --silent --show-error --max-time 5 \
                 -H "Host: staging.shvya-ai.com" \
-                -H "X-Forwarded-Proto: https" \
-                http://127.0.0.1:8100/health/ready/ >/dev/null; then
+                http://127.0.0.1:8180/health/ready/ >/dev/null; then
                 ready=1
                 break
               fi
@@ -115,7 +131,7 @@ jobs:
             if [ "$ready" -ne 1 ]; then
               echo "Staging readiness check failed."
               $COMPOSE ps
-              $COMPOSE logs --tail=150 web worker ai_realtime_worker hosted_ai_worker
+              $COMPOSE logs --tail=150 nginx web worker ai_realtime_worker hosted_ai_worker
               exit 1
             fi
 
@@ -143,14 +159,12 @@ jobs:
               docker network connect "$STAGING_NETWORK" "$EDGE_NGINX_ID"
             fi
 
+            # Before TLS exists, expose only the ACME challenge. Never send Basic
+            # Auth credentials or application traffic over plain HTTP.
             cat > "$PROD_DIR/nginx/conf.d/staging.conf" <<'NGINX_HTTP'
             server {
                 listen 80;
                 server_name staging.shvya-ai.com;
-
-                resolver 127.0.0.11 valid=30s ipv6=off;
-                set $staging_web http://shvya-staging-web:8000;
-                set $staging_ws http://shvya-staging-ws:8001;
 
                 add_header X-Robots-Tag "noindex, nofollow, noarchive" always;
 
@@ -158,24 +172,8 @@ jobs:
                     root /var/www/certbot;
                 }
 
-                location /ws/ {
-                    proxy_pass $staging_ws;
-                    proxy_http_version 1.1;
-                    proxy_set_header Upgrade $http_upgrade;
-                    proxy_set_header Connection "upgrade";
-                    proxy_set_header Host $host;
-                    proxy_set_header X-Real-IP $remote_addr;
-                    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-                    proxy_set_header X-Forwarded-Proto http;
-                    proxy_read_timeout 3600s;
-                }
-
                 location / {
-                    proxy_pass $staging_web;
-                    proxy_set_header Host $host;
-                    proxy_set_header X-Real-IP $remote_addr;
-                    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-                    proxy_set_header X-Forwarded-Proto http;
+                    return 503;
                 }
             }
             NGINX_HTTP
@@ -193,7 +191,7 @@ jobs:
                 echo "Staging TLS certificate issued."
               else
                 echo "TLS bootstrap could not complete."
-                echo "The staging stack is healthy, but public HTTPS requires the staging.shvya-ai.com DNS record to point at this VPS."
+                echo "The staging stack is healthy locally. Point staging.shvya-ai.com at this VPS, then rerun Deploy Staging."
               fi
             fi
 
@@ -220,14 +218,13 @@ jobs:
                   ssl_certificate_key /etc/letsencrypt/live/staging.shvya-ai.com/privkey.pem;
 
                   resolver 127.0.0.11 valid=30s ipv6=off;
-                  set $staging_web http://shvya-staging-web:8000;
-                  set $staging_ws http://shvya-staging-ws:8001;
+                  set $staging_proxy http://shvya-staging-nginx:80;
 
                   add_header X-Robots-Tag "noindex, nofollow, noarchive" always;
                   client_max_body_size 20M;
 
                   location /ws/ {
-                      proxy_pass $staging_ws;
+                      proxy_pass $staging_proxy;
                       proxy_http_version 1.1;
                       proxy_set_header Upgrade $http_upgrade;
                       proxy_set_header Connection "upgrade";
@@ -239,7 +236,7 @@ jobs:
                   }
 
                   location / {
-                      proxy_pass $staging_web;
+                      proxy_pass $staging_proxy;
                       proxy_set_header Host $host;
                       proxy_set_header X-Real-IP $remote_addr;
                       proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -251,7 +248,7 @@ jobs:
               $EDGE_COMPOSE exec -T nginx nginx -t
               $EDGE_COMPOSE exec -T nginx nginx -s reload
 
-              echo "Verifying public staging HTTPS endpoint..."
+              echo "Verifying public staging HTTPS readiness endpoint..."
               curl --fail --silent --show-error --max-time 10 \
                 https://staging.shvya-ai.com/health/ready/ >/dev/null
             fi
