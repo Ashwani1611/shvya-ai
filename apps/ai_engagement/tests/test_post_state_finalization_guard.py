@@ -2,9 +2,11 @@ import json
 
 from django.test import SimpleTestCase
 
-from apps.ai_engagement.services import transactional_turn_runtime as runtime
 from apps.ai_engagement.services.ai_provider import AITextResult
 from apps.ai_engagement.services.engagement import EngagementService
+from apps.ai_engagement.services.post_state_finalization_guard import (
+    _FINAL_LANGUAGE_ONLY,
+)
 
 
 class PostStateFinalizationGuardTests(SimpleTestCase):
@@ -34,17 +36,11 @@ class PostStateFinalizationGuardTests(SimpleTestCase):
         )
 
     def test_final_post_state_normalization_is_language_only(self):
-        token = runtime._PRECOMPUTED_DECISION.set(
-            {
-                "lead_id": "lead-1",
-                "source_message_id": "inbound-1",
-                "force_regenerate": True,
-            }
-        )
+        token = _FINAL_LANGUAGE_ONLY.set(True)
         try:
             decision = EngagementService()._normalize_result(result=self._result())
         finally:
-            runtime._PRECOMPUTED_DECISION.reset(token)
+            _FINAL_LANGUAGE_ONLY.reset(token)
 
         self.assertEqual(decision.crm_actions, [])
         self.assertEqual(decision.qualification_updates, [])
@@ -52,11 +48,11 @@ class PostStateFinalizationGuardTests(SimpleTestCase):
         self.assertEqual(decision.next_requirement_id, "what_occupation")
 
     def test_normal_generation_preserves_proposed_actions(self):
-        token = runtime._PRECOMPUTED_DECISION.set(None)
+        token = _FINAL_LANGUAGE_ONLY.set(False)
         try:
             decision = EngagementService()._normalize_result(result=self._result())
         finally:
-            runtime._PRECOMPUTED_DECISION.reset(token)
+            _FINAL_LANGUAGE_ONLY.reset(token)
 
         self.assertEqual(len(decision.crm_actions), 1)
         self.assertEqual(len(decision.qualification_updates), 1)
