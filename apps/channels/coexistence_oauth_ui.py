@@ -3,7 +3,7 @@
 The JavaScript SDK can currently enter Meta's FedCM path and return from
 ``FB.login`` without the exchangeable Login for Business authorization code.
 Coexistence needs that code server-side, so this module starts the OAuth dialog
-as a normal first-party redirect instead.  It intentionally reuses SHVYA's
+as a normal first-party redirect instead. It intentionally reuses SHVYA's
 existing Connect API direct-return URL so production Meta configuration does not
 need a second callback URI.
 """
@@ -22,6 +22,7 @@ from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_GET, require_http_methods
 
+from apps.channels.providers import whatsapp_embedded as embedded_provider
 from apps.crm.decorators import crm_login_required
 from services.channels.embedded_signup_service import EmbeddedSignupError
 from services.channels.whatsapp_coexistence_service import (
@@ -70,13 +71,6 @@ def _attempt(request, attempt_id):
     ).first()
 
 
-def _redirect_to_coexistence(message: str | None = None):
-    if message:
-        # Caller adds the message because this helper does not receive request.
-        pass
-    return redirect("whatsapp-connect-coexistence")
-
-
 @crm_login_required
 @require_GET
 def whatsapp_coexistence_direct_start_view(request):
@@ -101,7 +95,7 @@ def whatsapp_coexistence_direct_start_view(request):
         stage="coexistence_direct_oauth_started",
     )
     state = secrets.token_urlsafe(32)
-    # Reuse the already deployed/allow-listed direct OAuth callback URL.  The
+    # Reuse the already deployed/allow-listed direct OAuth callback URL. The
     # route dispatches back here only while this short-lived session marker is
     # present; ordinary Connect API callbacks continue to the existing view.
     redirect_uri = request.build_absolute_uri(
@@ -241,12 +235,15 @@ def whatsapp_coexistence_direct_return_view(request):
         )
 
     try:
-        account, warning, _sync_results = complete_coexistence_signup(
-            organization=user.organization,
-            code=code,
-            attempt=attempt,
-            redirect_uri=redirect_uri,
-        )
+        # complete_coexistence_signup keeps the legacy JS-SDK call signature,
+        # which passes an empty redirect URI. Bind the exact direct-OAuth URI in
+        # this request context so the provider repeats it during token exchange.
+        with embedded_provider.oauth_redirect_uri(redirect_uri):
+            account, warning, _sync_results = complete_coexistence_signup(
+                organization=user.organization,
+                code=code,
+                attempt=attempt,
+            )
     except EmbeddedSignupError as exc:
         if attempt:
             connection_ui._fail_attempt(
