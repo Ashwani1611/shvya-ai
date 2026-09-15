@@ -217,7 +217,7 @@ class AuthoredPolicyCRMIntegrationTests(TestCase):
         self.assertIn("Q3 -> Daily Leads", policy["crm"]["attribute_mapped"])
         self.assertTrue(any("Seller" in rule for rule in policy["crm"]["stage_shifting"]))
 
-    def test_five_answers_fill_mapped_attributes_then_move_qualified_and_write_short_note(self):
+    def test_five_answers_fill_mapped_attributes_and_write_short_note_without_magic_stage(self):
         _context, _policy, requirements, _profile = self._context_policy_requirements(
             message_id="start",
             body="Hi",
@@ -269,11 +269,11 @@ class AuthoredPolicyCRMIntegrationTests(TestCase):
                 actions=actions,
             )
             self.lead.refresh_from_db()
-
-            if index < 5:
-                self.assertEqual(self.lead.stage_id, self.new_lead.id)
-            else:
-                self.assertEqual(self.lead.stage_id, self.qualified.id)
+            # The policy builder owns explicit attribute rules and ordinary stage
+            # routing, but it must not invent a completion stage from the phrase
+            # "mark the lead qualified". Completion-stage execution belongs to
+            # the qualification execution contract and requires ##Stage shifting.
+            self.assertEqual(self.lead.stage_id, self.new_lead.id)
 
         self.lead.refresh_from_db()
         for key, value in expected.items():
