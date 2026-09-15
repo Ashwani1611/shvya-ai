@@ -62,17 +62,46 @@
   });
   const motion=matchMedia('(prefers-reduced-motion: reduce)');
   const bots=[...document.querySelectorAll('.shvya-bot')];
-  let frame=0,mouseX=0,mouseY=0;
-  function resetBots(){bots.forEach(bot=>['--rx','--ry','--eye-x','--eye-y'].forEach(name=>bot.style.removeProperty(name)));}
+  let frame=0;
+  const states=bots.map(bot=>({bot,x:0,y:0,tx:0,ty:0,scale:1,targetScale:1}));
+  function animate(){
+    frame=0;
+    if(motion.matches)return;
+    let moving=false;
+    states.forEach(s=>{
+      s.x+=(s.tx-s.x)*.13;s.y+=(s.ty-s.y)*.13;s.scale+=(s.targetScale-s.scale)*.13;
+      if(Math.abs(s.tx-s.x)+Math.abs(s.ty-s.y)+Math.abs(s.targetScale-s.scale)>.002)moving=true;
+      const size=s.bot.clientWidth;
+      s.bot.style.setProperty('--ry',`${s.x*21}deg`);
+      s.bot.style.setProperty('--rx',`${-s.y*16}deg`);
+      s.bot.style.setProperty('--rz',`${s.x*5}deg`);
+      s.bot.style.setProperty('--move-x',`${s.x*size*.025}px`);
+      s.bot.style.setProperty('--move-y',`${s.y*size*.025}px`);
+      s.bot.style.setProperty('--eye-x',`${s.x*size*.045}px`);
+      s.bot.style.setProperty('--eye-y',`${s.y*size*.035}px`);
+      s.bot.style.setProperty('--bot-scale',s.scale);
+    });
+    if(moving)frame=requestAnimationFrame(animate);
+  }
+  function schedule(){if(!frame&&!motion.matches)frame=requestAnimationFrame(animate);}
+  function reset(){states.forEach(s=>{s.tx=s.ty=0;s.targetScale=1;s.bot.classList.remove('is-curious');});schedule();}
   document.addEventListener('pointermove',event=>{
     if(motion.matches||event.pointerType==='touch')return;
-    mouseX=event.clientX;mouseY=event.clientY;
-    if(frame)return;
-    frame=requestAnimationFrame(()=>{
-      bots.forEach(bot=>{const r=bot.getBoundingClientRect();if(r.bottom<0||r.top>innerHeight)return;const x=Math.max(-1,Math.min(1,(mouseX-r.left-r.width/2)/260));const y=Math.max(-1,Math.min(1,(mouseY-r.top-r.height/2)/260));bot.style.setProperty('--ry',`${x*12}deg`);bot.style.setProperty('--rx',`${-y*9}deg`);bot.style.setProperty('--eye-x',`${x*r.width*.045}px`);bot.style.setProperty('--eye-y',`${y*r.width*.04}px`);});frame=0;
-    });
+    states.forEach(s=>{
+      const r=s.bot.getBoundingClientRect();
+      if(r.bottom<0||r.top>innerHeight)return;
+      s.tx=Math.max(-1,Math.min(1,(event.clientX-r.left-r.width/2)/180));
+      s.ty=Math.max(-1,Math.min(1,(event.clientY-r.top-r.height/2)/180));
+    });schedule();
   },{passive:true});
-  document.documentElement.addEventListener('pointerleave',resetBots);
-  window.addEventListener('blur',resetBots);
-  motion.addEventListener('change',resetBots);
+  states.forEach(s=>{
+    s.bot.addEventListener('pointerenter',()=>{if(motion.matches)return;s.targetScale=1.15;s.bot.classList.add('is-curious');schedule();});
+    s.bot.addEventListener('pointerleave',()=>{s.targetScale=1;s.bot.classList.remove('is-curious');schedule();});
+  });
+  document.documentElement.addEventListener('pointerleave',reset);
+  window.addEventListener('blur',reset);
+  motion.addEventListener('change',()=>{
+    if(frame)cancelAnimationFrame(frame);frame=0;
+    states.forEach(s=>{s.x=s.y=s.tx=s.ty=0;s.scale=s.targetScale=1;s.bot.removeAttribute('style');s.bot.classList.remove('is-curious');});
+  });
 })();
