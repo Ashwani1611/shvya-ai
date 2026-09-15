@@ -119,23 +119,28 @@ jobs:
               exit 1
             fi
 
-            echo "Configuring shared production Nginx edge for staging..."
+            echo "Connecting the existing production Nginx edge to the staging network..."
             if [ ! -d "$PROD_DIR" ]; then
               echo "Production directory $PROD_DIR is missing."
               exit 1
             fi
 
             EDGE_COMPOSE="docker compose -f $PROD_DIR/docker-compose.yml"
+            EDGE_NGINX_ID="$($EDGE_COMPOSE ps -q nginx)"
+            STAGING_NETWORK="shvya-staging_default"
 
-            if ! $EDGE_COMPOSE ps --status running nginx | grep -q nginx; then
+            if [ -z "$EDGE_NGINX_ID" ]; then
               echo "Production Nginx container is not running."
               exit 1
             fi
 
-            if ! $EDGE_COMPOSE exec -T nginx getent hosts host.docker.internal >/dev/null 2>&1; then
-              echo "Production Nginx does not yet have host.docker.internal mapping."
-              echo "Merge/deploy the staging infrastructure change to main first."
+            if ! docker network inspect "$STAGING_NETWORK" >/dev/null 2>&1; then
+              echo "Staging Docker network $STAGING_NETWORK does not exist."
               exit 1
+            fi
+
+            if ! docker inspect "$EDGE_NGINX_ID" --format '{{json .NetworkSettings.Networks}}' | grep -q 'shvya-staging_default'; then
+              docker network connect "$STAGING_NETWORK" "$EDGE_NGINX_ID"
             fi
 
             cat > "$PROD_DIR/nginx/conf.d/staging.conf" <<'NGINX_HTTP'
@@ -150,7 +155,7 @@ jobs:
                 }
 
                 location /ws/ {
-                    proxy_pass http://host.docker.internal:8101;
+                    proxy_pass http://shvya-staging-ws:8001;
                     proxy_http_version 1.1;
                     proxy_set_header Upgrade $http_upgrade;
                     proxy_set_header Connection "upgrade";
@@ -162,7 +167,7 @@ jobs:
                 }
 
                 location / {
-                    proxy_pass http://host.docker.internal:8100;
+                    proxy_pass http://shvya-staging-web:8000;
                     proxy_set_header Host $host;
                     proxy_set_header X-Real-IP $remote_addr;
                     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -184,7 +189,7 @@ jobs:
                 echo "Staging TLS certificate issued."
               else
                 echo "TLS bootstrap could not complete."
-                echo "The staging stack is healthy on localhost:8100, but public HTTPS needs DNS for staging.shvya-ai.com pointed at this VPS."
+                echo "The staging stack is healthy, but public HTTPS requires the staging.shvya-ai.com DNS record to point at this VPS."
               fi
             fi
 
@@ -214,7 +219,7 @@ jobs:
                   client_max_body_size 20M;
 
                   location /ws/ {
-                      proxy_pass http://host.docker.internal:8101;
+                      proxy_pass http://shvya-staging-ws:8001;
                       proxy_http_version 1.1;
                       proxy_set_header Upgrade $http_upgrade;
                       proxy_set_header Connection "upgrade";
@@ -226,7 +231,7 @@ jobs:
                   }
 
                   location / {
-                      proxy_pass http://host.docker.internal:8100;
+                      proxy_pass http://shvya-staging-web:8000;
                       proxy_set_header Host $host;
                       proxy_set_header X-Real-IP $remote_addr;
                       proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
