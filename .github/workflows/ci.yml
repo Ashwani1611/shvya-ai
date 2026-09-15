@@ -2,9 +2,9 @@ name: CI
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, staging]
   push:
-    branches: [main]
+    branches: [main, staging]
   workflow_dispatch:
 
 permissions:
@@ -109,6 +109,12 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
+
+      - name: Validate production Compose
+        run: docker compose --env-file .env.example -f docker-compose.yml config --quiet
+
+      - name: Validate staging Compose
+        run: docker compose --env-file .env.staging.example -f docker-compose.staging.yml config --quiet
 
       - name: Build application image
         run: docker build --tag shvya-ai:${{ github.sha }} .
