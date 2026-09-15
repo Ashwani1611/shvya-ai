@@ -69,3 +69,81 @@ class PlaygroundConnectedKnowledgeRecoveryTests(SimpleTestCase):
 
         self.assertIn("WhatsApp AI engagement", message)
         self.assertIn("lead qualification", message)
+
+    def test_pricing_prefers_concrete_prices_over_website_navigation(self):
+        chunks = [
+            {
+                "document_name": "Company website",
+                "content": (
+                    "SHVYA AI Features\nLead capture & qualification\nPricing\nLogin\n"
+                    "Start free\nProduct Suite\nUse Cases"
+                ),
+                "similarity": 0.82,
+            },
+            {
+                "document_name": "Pricing and plans",
+                "content": (
+                    "Starter plan is ₹999/month.\n"
+                    "Pro plan is ₹2,499/month.\n"
+                    "Enterprise uses custom pricing."
+                ),
+                "similarity": 0.58,
+            },
+        ]
+
+        message = _grounded_knowledge_message(
+            latest_text="give me price",
+            chunks=chunks,
+        )
+
+        self.assertIn("₹999/month", message)
+        self.assertIn("₹2,499/month", message)
+        self.assertNotIn("Login", message)
+        self.assertNotIn("Product Suite", message)
+
+    def test_generic_pricing_navigation_is_not_returned_as_an_answer(self):
+        chunks = [
+            {
+                "document_name": "Company website",
+                "content": "Features\nUse Cases\nPricing\nLogin\nCreate account",
+                "similarity": 0.91,
+            }
+        ]
+
+        message = _grounded_knowledge_message(
+            latest_text="and its pricing",
+            chunks=chunks,
+        )
+
+        self.assertEqual(message, "")
+
+    def test_recovery_preserves_knowledge_line_boundaries(self):
+        state = {
+            "context": SimpleNamespace(
+                knowledge=[
+                    {
+                        "content": (
+                            "SHVYA AI Features\n"
+                            "Lead capture & qualification\n"
+                            "AI follow-up\n"
+                            "WhatsApp CRM"
+                        ),
+                        "similarity": 0.75,
+                    }
+                ]
+            ),
+            "service": SimpleNamespace(
+                context_builder=SimpleNamespace(last_knowledge=[]),
+            ),
+        }
+
+        chunks = _knowledge_chunks_for_recovery(state)
+        message = _grounded_knowledge_message(
+            latest_text="what is shvya and its features",
+            chunks=chunks,
+        )
+
+        self.assertIn("\n", chunks[0]["content"])
+        self.assertIn("Lead capture & qualification", message)
+        self.assertIn("WhatsApp CRM", message)
+        self.assertLess(len(message), 500)
