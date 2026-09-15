@@ -300,8 +300,6 @@ class QualificationExecutionContractE2ETests(TestCase):
         self.assertNotIn("Acknowledgment message", outbound.body)
         self.assertNotIn(target.name, outbound.body)
 
-        # Re-running the same production task cannot repeat completion actions or
-        # create another acknowledgement/outbound response.
         with patch(
             "apps.ai_engagement.services.engagement.OpenAIProvider"
         ) as provider_cls:
@@ -370,12 +368,17 @@ class QualificationExecutionContractE2ETests(TestCase):
         state = state_for_lead(self.lead, requirements=requirements)
         self.assertEqual(state["qualification_status"], "completed")
         self.assertNotIn("primary_source", self.lead.attributes)
-        self.assertEqual(self.lead.stage_id, self.new_lead.id)
-        self.assertNotEqual(self.lead.stage_id, target.id)
+        # Attribute persistence and configured stage execution are independent
+        # results. A bad mapping must not silently choose another attribute, but
+        # it also must not cancel a valid deterministic completion-stage action.
+        self.assertEqual(self.lead.stage_id, target.id)
         self.assertTrue(any(
             item.get("code") == "unknown_attribute_mapping_reference"
             for item in result["execution_results"]
         ))
+        stage_result = result["response_plan"]["execution_results"]["stage_transition"]["result"]
+        self.assertTrue(stage_result["verified"])
+        self.assertEqual(stage_result["actual_stage_id"], str(target.id))
 
     def test_failed_stage_execution_is_reconciled_and_never_claimed_as_success(self):
         target = self._create_target_stage("Advisor Review")
