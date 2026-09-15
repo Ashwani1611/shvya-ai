@@ -1,0 +1,78 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Meet SHVYA AI — Your sales workflow, connected</title>
+<meta name="description" content="Explore SHVYA AI: AI Playbooks, Cadence, CRM, WhatsApp, Instagram and the tools that keep your sales conversations moving.">
+<link rel="icon" href="{% static 'images/shvya-logo.svg' %}" type="image/svg+xml">
+<link rel="stylesheet" href="{% static 'marketing/home-core.css' %}">
+<link rel="stylesheet" href="{% static 'marketing/home-responsive.css' %}">
+<link rel="stylesheet" href="{% static 'marketing/features.css' %}">
+<script src="{% static 'marketing/home.js' %}" defer></script>
+<script src="{% static 'marketing/features.js' %}" defer></script>
+</head>
+<body class="features-page">
+<a class="skip-link" href="#main">Skip to content</a>
+{% include 'marketing/home_header.html' %}
+<main id="main">
+<section class="f-hero f-wrap">
+  <div class="eyebrow"><span></span> A LITTLE INTELLIGENCE. A LOT MORE MOMENTUM.</div>
+  <h1>Meet <span class="inline-bot">{% include 'marketing/features_bot.html' %}</span> SHVYA AI.</h1>
+  <p class="hero-copy">Your sales process. With a mind of its own.<br>Capture the lead, understand the conversation, and keep the next step moving—all in one connected workspace.</p>
+  <div class="f-actions"><a class="f-button primary" href="{% url 'crm-signup' %}">Meet your sales workspace <span>↗</span></a><a class="f-button secondary" href="#film">Watch Shvya in action <span>▷</span></a></div>
+  <div class="hero-stage">
+    <span class="orbit-label label-one">A new lead. A clear next step.</span><span class="orbit-label label-two">Your knowledge. Your voice.</span>
+    <div class="hero-bot">{% include 'marketing/features_bot.html' %}</div>
+    <div class="orbit-label label-three"><span class="small-dot"></span> Built around your business</div>
+    <div class="stage-grid"></div>
+  </div>
+</section>
+<section class="f-wrap workspace-section" id="workspace">
+  <div class="section-top"><div><div class="eyebrow">ONE WORKSPACE. EVERY NEXT STEP.</div><h2>A place for every part<br>of your sales day.</h2></div><p>Explore the tools behind the sidebar.<br>One customer story, from first hello to follow-up.</p></div>
+  <div class="product-window">
+    <div class="window-top"><span class="window-dots">● ● ●</span><span>SHVYA AI / Product tour</span><span>ILLUSTRATIVE DEMO</span></div>
+    <div class="window-body"><div class="feature-tabs" role="tablist" aria-label="Explore Shvya features" aria-orientation="vertical">
+      <button role="tab" aria-selected="true" aria-controls="feature-panel" id="tab-crm" data-feature="crm"><span>◫</span> CRM</button>
+      <button role="tab" aria-selected="false" aria-controls="feature-panel" id="tab-sales" data-feature="sales" tabindex="-1"><span>✧</span> Sales Desk</button>
+      <button role="tab" aria-selected="false" aria-controls="feature-panel" id="tab-playbooks" data-feature="playbooks" tabindex="-1"><span>▤</span> Playbooks <small>AI</small></button>
+      <button role="tab" aria-selected="false" aria-controls="feature-panel" id="tab-cadence" data-feature="cadence" tabindex="-1"><span>≋</span> Cadence</button>
+      <button role="tab" aria-selected="false" aria-controls="feature-panel" id="tab-workflows" data-feature="workflows" tabindex="-1"><span>⌘</span> Workflows</button>
+      <button role="tab" aria-selected="false" aria-controls="feature-panel" id="tab-insights" data-feature="insights" tabindex="-1"><span>↗</span> Insights</button>
+      <button role="tab" aria-selected="false" aria-controls="feature-panel" id="tab-whatsapp" data-feature="whatsapp" tabindex="-1"><span>◉</span> WhatsApp</button>
+      <button role="tab" aria-selected="false" aria-controls="feature-panel" id="tab-instagram" data-feature="instagram" tabindex="-1"><span>◎</span> Instagram</button>
+      <button role="tab" aria-selected="false" aria-controls="feature-panel" id="tab-connect" data-feature="connect" tabindex="-1"><span>⊞</span> Connect Hub</button>
+      <button role="tab" aria-selected="false" aria-controls="feature-panel" id="tab-teams" data-feature="teams" tabindex="-1"><span>♧</span> Teams</button>
+      <button role="tab" aria-selected="false" aria-controls="feature-panel" id="tab-support" data-feature="support" tabindex="-1"><span>?</span> Help &amp; Support</button>
+    </div><div class="feature-panel" id="feature-panel" role="tabpanel" aria-labelledby="tab-crm" tabindex="0">
+      <div class="panel-heading"><span id="panel-kicker">CUSTOMER CONTEXT</span><span class="panel-bot">{% include 'marketing/features_bot.html' %}</span></div>
+      <h3 id="panel-title">Every lead. The whole story.</h3><p id="panel-description">Bring contacts, conversations, notes and pipeline stages together. Pick up the relationship without piecing it back together.</p>
+      <div id="panel-demo" class="panel-demo"><div class="demo-column"><span>NEW ENQUIRY</span><article><b>Website enquiry</b><p>Interested in a product demo</p><em>New lead</em></article></div><div class="demo-column"><span>QUALIFIED</span><article><b>WhatsApp conversation</b><p>Requirements captured</p><em>Ready for a call</em></article></div><div class="demo-column"><span>FOLLOW-UP</span><article><b>Proposal shared</b><p>Next action in one place</p><em>Reminder set</em></article></div></div>
+      <div id="panel-note" class="panel-note">Contacts · Lead timeline · Notes · Pipeline stages</div>
+    </div></div>
+  </div>
+</section>
+<section class="f-wrap story-split" id="conversations">
+  <div class="story-copy"><div class="eyebrow">CONVERSATIONS, WITH CONTEXT</div><h2>More than a message.<br>A relationship<br>in motion.</h2><p>Keep WhatsApp and Instagram conversations close to the customer record. Your team can see what was said, what matters, and where the conversation goes next.</p><a class="text-link" href="#workspace" data-select="whatsapp">Explore conversations <span>↗</span></a></div>
+  <div class="chat-scene"><div class="scene-bot">{% include 'marketing/features_bot.html' %}</div><div class="chat-card"><div class="chat-title"><span class="small-dot"></span> SHVYA / WhatsApp <small>EXAMPLE</small></div><div class="bubble incoming">Hi! Can you tell me more about your services?</div><div class="bubble outgoing">Of course. What are you looking to achieve?</div><div class="bubble incoming">We need a better way to follow up with our leads.</div><div class="context-note">✧ A conversation with context.<br><span>Customer history stays with the lead.</span></div><div class="chat-footer">One lead. One connected timeline.</div></div></div>
+</section>
+<section class="f-wrap" id="connected">
+  <div class="center-heading"><div class="eyebrow">LET THE WORK FLOW</div><h2>Many moving parts.<br>One sales rhythm.</h2><p>Connect the conversation, the knowledge, and the follow-up.<br>Your team stays focused on the moments that need a person.</p></div>
+  <div class="flow-track"><div><span>01</span><b>Capture</b><p>Bring the enquiry in.</p></div><div><span>02</span><b>Understand</b><p>Add business context.</p></div><div><span>03</span><b>Follow up</b><p>Keep the next step clear.</p></div><div><span>04</span><b>Move forward</b><p>Let your team close.</p></div></div>
+</section>
+<section class="f-wrap spotlight" id="playbook">
+  <div class="spotlight-head"><div class="eyebrow">01 / AI PLAYBOOK</div><span class="feature-pill">YOUR KNOWLEDGE, PUT TO WORK</span></div>
+  <div class="story-split"><div class="story-copy"><h2>Teach Shvya<br>your way of selling.</h2><p>Your business has its own voice. Give Shvya the company context, qualification requirements, instructions, documents, URLs and FAQs that help shape useful conversations.</p><div class="mini-list"><span>✓ Business context &amp; languages</span><span>✓ Qualification &amp; engagement instructions</span><span>✓ Knowledge sources &amp; FAQs</span></div></div>
+  <div class="playbook-scene"><div class="document-card"><span>▤ &nbsp; AI PLAYBOOK</span><h3>Sounds like your business.</h3><label>BUSINESS CONTEXT</label><p>What we offer. Who we help.</p><label>CONVERSATION STYLE</label><p>Helpful. Clear. Human.</p><label>QUALIFICATION</label><p>Understand the need before the next step.</p><div class="knowledge-chips"><span>Documents</span><span>Website</span><span>FAQs</span></div></div><div class="book-bot">{% include 'marketing/features_bot.html' %}</div></div></div>
+</section>
+<section class="f-wrap spotlight cadence-spotlight" id="cadence">
+  <div class="spotlight-head"><div class="eyebrow">02 / CADENCE</div><span class="feature-pill">THE RIGHT NEXT STEP, ON REPEAT</span></div>
+  <div class="story-split"><div class="story-copy"><h2>Good conversations<br>deserve a follow-up.</h2><p>Build reusable sequences with WhatsApp messages, emails and call reminders. Set the timing, connect the steps, and give your team a more consistent sales rhythm.</p><div class="mini-list"><span>✓ Ordered, reusable sequences</span><span>✓ Immediate, delayed &amp; scheduled steps</span><span>✓ Business-hour execution controls</span></div></div>
+  <div class="cadence-scene"><div class="sequence-label">NEW ENQUIRY FOLLOW-UP <small>EXAMPLE SEQUENCE</small></div><div class="sequence-step"><i>01</i><div><b>Start the conversation</b><p>WhatsApp · Immediately</p></div><span>◉</span></div><div class="sequence-step"><i>02</i><div><b>Share something useful</b><p>Email · After 1 day</p></div><span>✉</span></div><div class="sequence-step"><i>03</i><div><b>Make it personal</b><p>Call reminder · After 2 days</p></div><span>↗</span></div><p class="sequence-caption">Your sequence. Your timing.</p></div></div>
+</section>
+<section class="f-wrap jobs-section" id="jobs"><div class="section-top"><div><div class="eyebrow">GIVE THE WORK A DIRECTION</div><h2>A different job.<br>The same Shvya.</h2></div><p>Explore how the pieces fit together<br>at each stage of a sales conversation.</p></div><div class="job-tabs" role="tablist" aria-label="Sales scenarios"><button role="tab" aria-selected="true" id="job-0" aria-controls="job-panel" data-job="0">Welcome a lead</button><button role="tab" aria-selected="false" id="job-1" aria-controls="job-panel" data-job="1" tabindex="-1">Qualify interest</button><button role="tab" aria-selected="false" id="job-2" aria-controls="job-panel" data-job="2" tabindex="-1">Keep in touch</button><button role="tab" aria-selected="false" id="job-3" aria-controls="job-panel" data-job="3" tabindex="-1">Help the team close</button></div><div class="job-panel" id="job-panel" role="tabpanel" aria-labelledby="job-0" tabindex="0"><div class="job-bot">{% include 'marketing/features_bot.html' %}</div><div><span id="job-label" class="eyebrow">CRM + CONVERSATIONS</span><h3 id="job-title">Turn “hello” into a beginning.</h3><p id="job-copy">Bring the enquiry and the conversation into the same customer story, so the first reply starts with context.</p></div></div></section>
+<section class="f-wrap film-section" id="film"><div class="section-top"><div><div class="eyebrow">THE SHVYA STORY</div><h2>Your sales day.<br>Reimagined with Shvya.</h2></div><p>One enquiry. A connected journey.<br>Watch the 30-second product film.</p></div><video controls playsinline preload="none" poster="{% static 'marketing/shvya-film-poster.jpg' %}" aria-label="Shvya AI animated product walkthrough"><source src="{% static 'marketing/shvya-features-film.mp4' %}" type="video/mp4"><track kind="captions" src="{% static 'marketing/shvya-features-film.vtt' %}" srclang="en" label="English">Your browser does not support video. <a href="{% static 'marketing/shvya-features-film.mp4' %}">Download the product film</a>.</video><details class="film-transcript"><summary>Read the film transcript</summary><p>Meet Shvya AI. Every lead starts a story. Bring enquiries and conversations into your CRM. Give AI your business context with Playbooks. Keep the next step moving with Cadence. Your team takes the conversation forward. One connected sales workspace.</p></details></section>
+<section class="f-wrap final-cta"><div class="small-bot">{% include 'marketing/features_bot.html' %}</div><div class="eyebrow">LESS CHASING. MORE CONVERSATION.</div><h2>Give your next lead<br>a better next step.</h2><a href="{% url 'crm-signup' %}" class="f-button primary">Get started with Shvya <span>↗</span></a></section>
+</main>
+<footer class="feature-footer f-wrap"><a class="footer-brand" href="{% url 'home' %}"><img src="{% static 'images/shvya-logo.svg' %}" alt="" width="30" height="30"> SHVYA AI</a><span>© {% now 'Y' %} SHVYA AI</span><div><a href="{% url 'privacy_policy' %}">Privacy</a><a href="{% url 'terms_conditions' %}">Terms</a><a href="{% url 'home' %}">Back to home ↗</a></div></footer>
+</body></html>

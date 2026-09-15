@@ -13,10 +13,11 @@ from rest_framework_simplejwt.views import (
     TokenRefreshView,
 )
 
-from apps.core.views import HomeView, PricingView
+from apps.core.views import FeaturesView, HomeView, PricingView
 
 
 urlpatterns = [
+    path("features/", FeaturesView.as_view(), name="features"),
     path('dashboard/workflows/', include('apps.triggers.urls.web')),
     # =========================================================
     # Browser favicon
