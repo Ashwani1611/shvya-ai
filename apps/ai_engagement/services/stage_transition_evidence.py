@@ -42,17 +42,48 @@ def _destination_for_action(*, organization, action):
     )
 
 
-def _qualified_allowed(lead) -> bool:
-    from apps.ai_engagement.services.qualification_state import state_for_lead
+def _configured_completion_allowed(*, organization, lead, destination) -> bool:
+    """Allow the exact configured completion target from verified backend state.
 
-    state = state_for_lead(lead)
-    return str(state.get("qualification_status") or "").casefold() == "completed"
+    A qualification-completion rule is deterministic configuration, not a model
+    guess. Once the Qualification Engine says the configured requirements are
+    complete, the final customer answer does not need to mention the target stage
+    name. The target itself is still resolved and tenant-validated by the backend.
+    """
+    try:
+        from apps.ai_engagement.services import qualification_state as qs
+        from apps.ai_engagement.services.qualification_execution_contract import _config
+        from apps.ai_engagement.services.transactional_turn_runtime import (
+            _requirements_for_turn,
+        )
+
+        requirements = _requirements_for_turn(
+            organization=organization,
+            lead=lead,
+        )
+        if not requirements:
+            return False
+        state = qs.state_for_lead(lead, requirements=requirements)
+        if str(state.get("qualification_status") or "").casefold() != "completed":
+            return False
+
+        config = _config(
+            organization=organization,
+            requirements=requirements,
+        )
+        target = config.get("completion_stage")
+        return bool(
+            isinstance(target, dict)
+            and str(target.get("id") or "") == str(destination.id)
+        )
+    except Exception:
+        return False
 
 
 def _nonqualified_evidence_matches(*, organization, destination, latest_text: str) -> bool:
     if not latest_text:
         # Direct/service-level executor callers do not necessarily represent an
-        # inbound AI turn. Keep the executor's historical contract unchanged.
+        # inbound AI turn. Preserve the executor service contract for those calls.
         return True
 
     from apps.ai_engagement.models import OrgInfo
@@ -88,9 +119,8 @@ def _nonqualified_evidence_matches(*, organization, destination, latest_text: st
     if description and _strong_evidence_match(latest_text, description):
         return True
 
-    # Explicit destination intent is safe when the lead themselves names the
-    # configured destination. This preserves cases such as "I am a seller" for
-    # a Seller stage even when an admin has not authored a description yet.
+    # For ordinary model-proposed routing without a deterministic completion
+    # rule, require explicit destination evidence when no description/rule matches.
     from apps.ai_engagement.services.engagement_instruction_runtime import _tokens
 
     stage_tokens = _tokens(destination.name)
@@ -105,27 +135,30 @@ def _filter_stage_actions(*, organization, lead, actions):
         if not isinstance(action, dict) or action.get("type") != "pipeline_transition":
             filtered.append(deepcopy(action))
             continue
+
         destination = _destination_for_action(
             organization=organization,
             action=action,
         )
         if destination is None:
-            # Let the existing executor raise its organization/id validation
-            # error rather than silently converting an invalid id to success.
+            # Let the executor raise its normal tenant/id validation error.
             filtered.append(deepcopy(action))
             continue
 
-        # This guard exists for live inbound AI turns. The CRM executor is also
-        # a public deterministic service used directly by tests/admin/backend
-        # callers, which may have no inbound conversation at all. Do not change
-        # those callers' long-standing semantics.
+        # Deterministic qualification completion has its own backend evidence:
+        # completed qualification state + exact configured completion target.
+        if _configured_completion_allowed(
+            organization=organization,
+            lead=lead,
+            destination=destination,
+        ):
+            filtered.append(deepcopy(action))
+            continue
+
+        # Ordinary model-proposed stage movement still requires customer/config
+        # evidence. The completion exception above is intentionally narrow.
         if not latest_text:
             filtered.append(deepcopy(action))
-            continue
-
-        if str(destination.name or "").strip().casefold() == "qualified":
-            if _qualified_allowed(lead):
-                filtered.append(deepcopy(action))
             continue
         if _nonqualified_evidence_matches(
             organization=organization,
@@ -137,11 +170,7 @@ def _filter_stage_actions(*, organization, lead, actions):
 
 
 def install_stage_transition_evidence() -> None:
-    """Make the CRM executor the final evidence gate for inbound AI stage moves.
-
-    Keep the executor method signature and direct-service behavior compatible;
-    filtering only becomes strict when the lead actually has inbound evidence.
-    """
+    """Enforce evidence for model routing without blocking configured completion."""
     global _INSTALLED
     if _INSTALLED:
         return

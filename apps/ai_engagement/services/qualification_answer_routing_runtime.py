@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import re
 import sys
-from dataclasses import replace
 from typing import Any
 
 
@@ -101,6 +100,10 @@ _POSITIVE_BOOLEAN_RE = re.compile(
     r"\b(?:yes|yeah|yep|run|running|use|using|have|currently)\b",
     flags=re.IGNORECASE,
 )
+_OPTION_KEY_RE = re.compile(
+    r"^\s*(?:option\s+)?(?P<key>[a-z]|\d{1,2})\s*[\)\].:\-]?\s*$",
+    flags=re.IGNORECASE,
+)
 
 
 def _clean(value: Any) -> str:
@@ -166,7 +169,10 @@ def _range_for_option(value: str) -> tuple[float | None, float | None, bool, boo
     return None
 
 
-def _number_in_range(number: float, bounds: tuple[float | None, float | None, bool, bool]) -> bool:
+def _number_in_range(
+    number: float,
+    bounds: tuple[float | None, float | None, bool, bool],
+) -> bool:
     lower, upper, include_lower, include_upper = bounds
     if lower is not None and (number < lower or (number == lower and not include_lower)):
         return False
@@ -175,48 +181,61 @@ def _number_in_range(number: float, bounds: tuple[float | None, float | None, bo
     return True
 
 
-def _match_numeric_option(text: str, options: list[dict[str, str]]) -> str | None:
+def _match_key_option(text: str, options: list[dict[str, str]]) -> str | None:
+    match = _OPTION_KEY_RE.match(str(text or ""))
+    if match is None:
+        return None
+    supplied = match.group("key").casefold()
+    for index, option in enumerate(options, start=1):
+        key = str(option.get("key") or "").strip().casefold()
+        value = _clean(option.get("value"))
+        aliases = {key, str(index)}
+        if index <= 26:
+            aliases.add(chr(96 + index))
+        if supplied in aliases and value:
+            return value
+    return None
+
+
+def _numeric_option_candidates(text: str, options: list[dict[str, str]]) -> list[str]:
     number = _extract_number(text)
     if number is None:
-        return None
+        return []
+    return [
+        _clean(option.get("value"))
+        for option in options
+        if _range_for_option(_clean(option.get("value")))
+        and _number_in_range(number, _range_for_option(_clean(option.get("value"))))
+    ]
 
-    candidates: list[str] = []
-    normalized_text = _normalized(text)
-    for option in options:
-        value = _clean(option.get("value"))
-        bounds = _range_for_option(value)
-        if bounds and _number_in_range(number, bounds):
-            candidates.append(value)
 
+def _match_numeric_option(text: str, options: list[dict[str, str]]) -> str | None:
+    candidates = _numeric_option_candidates(text, options)
     if len(candidates) == 1:
         return candidates[0]
-
-    # Shared boundaries such as 30 in "10-30" and "30+" are ambiguous unless
-    # the lead explicitly used the authored plus form.
-    if len(candidates) > 1 and "+" in normalized_text:
+    if len(candidates) > 1 and "+" in _normalized(text):
         plus_candidates = [item for item in candidates if "+" in _normalized(item)]
         if len(plus_candidates) == 1:
             return plus_candidates[0]
     return None
 
 
-def _match_text_option(text: str, options: list[dict[str, str]]) -> str | None:
+def _text_option_candidates(text: str, options: list[dict[str, str]]) -> list[str]:
     normalized_text = _normalized(text)
     if not normalized_text:
-        return None
+        return []
 
-    # Normalize unicode dashes before exact authored-value matching.
     exact = [
         _clean(option.get("value"))
         for option in options
         if _normalized(option.get("value")) == normalized_text
     ]
-    if len(exact) == 1:
-        return exact[0]
+    if exact:
+        return list(dict.fromkeys(exact))
 
     input_tokens = _tokens(text)
     if not input_tokens:
-        return None
+        return []
 
     ranked: list[tuple[float, int, str]] = []
     for option in options:
@@ -228,19 +247,23 @@ def _match_text_option(text: str, options: list[dict[str, str]]) -> str | None:
         if not overlap:
             continue
         coverage = len(overlap) / len(option_tokens)
-        if coverage < 0.5 and len(option_tokens) > 1:
+        if len(option_tokens) > 1 and coverage < 0.5:
             continue
         ranked.append((coverage, len(overlap), value))
-
     ranked.sort(key=lambda item: (-item[0], -item[1], item[2]))
-    if not ranked:
-        return None
-    if len(ranked) > 1 and ranked[0][:2] == ranked[1][:2]:
-        return None
-    return ranked[0][2]
+    return list(dict.fromkeys(item[2] for item in ranked))
 
 
-def _match_boolean_option(text: str, question: str, options: list[dict[str, str]]) -> str | None:
+def _match_text_option(text: str, options: list[dict[str, str]]) -> str | None:
+    candidates = _text_option_candidates(text, options)
+    return candidates[0] if len(candidates) == 1 else None
+
+
+def _match_boolean_option(
+    text: str,
+    question: str,
+    options: list[dict[str, str]],
+) -> str | None:
     by_value = {
         _normalized(option.get("value")): _clean(option.get("value"))
         for option in options
@@ -266,61 +289,65 @@ def _match_boolean_option(text: str, question: str, options: list[dict[str, str]
     return None
 
 
+def _ambiguous_option_answer(
+    text: str,
+    question: str,
+    options: list[dict[str, str]],
+) -> bool:
+    """Return True only when the lead substantively selects multiple options."""
+    normalized_values = {
+        _normalized(option.get("value"))
+        for option in options
+        if _clean(option.get("value"))
+    }
+    if normalized_values == {"yes", "no"}:
+        normalized = _normalized(text)
+        positive = bool(re.search(r"\b(?:yes|yeah|yep)\b", normalized))
+        negative = bool(re.search(r"\b(?:no|nope)\b", normalized))
+        if positive and negative:
+            return True
+
+    numeric_candidates = _numeric_option_candidates(text, options)
+    if len(set(numeric_candidates)) > 1 and "+" not in _normalized(text):
+        return True
+
+    text_candidates = _text_option_candidates(text, options)
+    return len(set(text_candidates)) > 1
+
+
 def _enhanced_direct_classifier(original, state_module):
     def classify(*, text: str, question: str):
         classified = original(text=text, question=question)
-        if classified is not None:
+        if classified is not None and classified[0] == state_module.REQUIREMENT_ANSWERED:
             return classified
 
         raw_text = str(text or "").strip()
         if not raw_text or len(raw_text) > 240 or "\n" in raw_text:
-            return None
-        # A mixed informational question should stay on the normal engagement
-        # path so it can be answered as well as qualified by the model. This
-        # deterministic path is only for a clear answer to the active question.
+            return classified
+        # Mixed informational questions stay on the model/RAG path so one turn
+        # can answer the customer question and update qualification state.
         if "?" in raw_text:
-            return None
+            return classified
 
         options = state_module._question_options(question)
         if not options:
-            return None
+            return classified
 
         matched = (
-            _match_boolean_option(raw_text, question, options)
+            _match_key_option(raw_text, options)
+            or _match_boolean_option(raw_text, question, options)
             or _match_numeric_option(raw_text, options)
             or _match_text_option(raw_text, options)
         )
-        if matched is None:
-            return None
-        return (state_module.REQUIREMENT_ANSWERED, matched, "high")
+        if matched is not None:
+            return (state_module.REQUIREMENT_ANSWERED, matched, "high")
+
+        if _ambiguous_option_answer(raw_text, question, options):
+            return (state_module.REQUIREMENT_UNCLEAR, raw_text, "high")
+
+        return classified
 
     return classify
-
-
-def _semantic_attribute_score(original):
-    def score(definition: dict[str, Any], requirement: dict[str, Any]) -> float:
-        current = float(original(definition, requirement))
-        if current >= 75.0:
-            return current
-
-        requirement_tokens = _tokens(
-            f"{requirement.get('label') or ''} {requirement.get('question') or ''}"
-        )
-        definition_tokens = _tokens(
-            f"{definition.get('name') or ''} {definition.get('description') or ''}"
-        )
-        if not requirement_tokens or not definition_tokens:
-            return current
-
-        overlap = requirement_tokens & definition_tokens
-        coverage = len(overlap) / min(len(requirement_tokens), len(definition_tokens))
-        if len(overlap) >= 3 and coverage >= 0.5:
-            return max(current, 88.0)
-        if len(overlap) >= 2 and coverage >= 0.4:
-            return max(current, 82.0)
-        return current
-
-    return score
 
 
 def _latest_persisted_answer(state) -> tuple[str, dict[str, Any]] | None:
@@ -361,7 +388,7 @@ def _next_requirement(state, qualification_state: dict[str, Any]) -> dict[str, A
     )
 
 
-def _is_safe_deterministic_qualification_reply(state, persisted: dict[str, Any]) -> bool:
+def _is_safe_backend_question(state, persisted: dict[str, Any]) -> bool:
     decision = state.get("decision")
     if decision is None or str(getattr(decision, "model", "")) != "deterministic":
         return False
@@ -380,85 +407,23 @@ def _is_safe_deterministic_qualification_reply(state, persisted: dict[str, Any])
     return bool(question and message.endswith(question))
 
 
-def _qualification_safe_recovery(state, persisted: dict[str, Any]):
-    decision = state.get("decision")
-    if decision is None:
-        return None
-
-    next_item = _next_requirement(state, persisted)
-    if isinstance(next_item, dict) and str(next_item.get("question") or "").strip():
-        question = str(next_item["question"]).strip()
-        return replace(
-            decision,
-            should_engage=True,
-            message=f"Got it. {question}",
-            file_document_id=None,
-            qualification_updates=[],
-            next_requirement_id=str(next_item.get("id") or "") or None,
-            reason="QUALIFICATION_NEXT",
-            reason_code="QUALIFICATION_NEXT",
-            model="deterministic-recovery",
-        )
-
-    if str(persisted.get("qualification_status") or "").casefold() == "completed":
-        return replace(
-            decision,
-            should_engage=True,
-            message="Thanks — I’ve got the information I need.",
-            file_document_id=None,
-            qualification_updates=[],
-            next_requirement_id=None,
-            reason="NORMAL_CONVERSATION",
-            reason_code="NORMAL_CONVERSATION",
-            model="deterministic-recovery",
-        )
-    return None
-
-
 def _qualification_first_grounding(original):
     def check(state):
         persisted_answer = _latest_persisted_answer(state)
         if persisted_answer is not None:
             _, persisted = persisted_answer
-            # This reply contains only a generic acknowledgement plus the exact
-            # backend-selected authored question. Sending it to a second model
-            # for factual grounding can only introduce false rejection/fallback.
-            if _is_safe_deterministic_qualification_reply(state, persisted):
+            if _is_safe_backend_question(state, persisted):
                 return {
                     "grounding_approved": True,
                     "qualification_answer_authoritative": True,
                 }
-
-        result = original(state)
-        if persisted_answer is None or result.get("grounding_approved") is not False:
-            return result
-
-        _, persisted = persisted_answer
-        recovery = _qualification_safe_recovery(state, persisted)
-        if recovery is None:
-            return result
-        return {
-            "decision": recovery,
-            "grounding_approved": True,
-            "qualification_answer_authoritative": True,
-            "grounding_recovered": True,
-        }
+        return original(state)
 
     return check
 
 
 def install_qualification_answer_routing_runtime() -> None:
-    """Make active qualification answers authoritative before generic grounding.
-
-    This patch is intentionally narrow:
-    - deterministic matching is scoped to the persisted active requirement;
-    - natural option/range/boolean equivalents normalize to authored values;
-    - attribute descriptions can strengthen an otherwise weak mapping;
-    - a persisted qualification answer cannot be replaced by the generic
-      unknown-information fallback merely because a second grounding model
-      rejects the acknowledgement + next-question wording.
-    """
-
+    """Prioritize the active configured requirement without owning CRM state."""
     global _INSTALLED
     if _INSTALLED:
         return
@@ -470,20 +435,12 @@ def install_qualification_answer_routing_runtime() -> None:
         state_module,
     )
 
-    from apps.ai_engagement.services import qualification_crm_action_runtime as crm_runtime
-
-    crm_runtime._attribute_match_score = _semantic_attribute_score(
-        crm_runtime._attribute_match_score
-    )
-
     from apps.ai_engagement.graph import evidence as evidence_module
 
     evidence_module.check_grounding = _qualification_first_grounding(
         evidence_module.check_grounding
     )
 
-    # If a test/import loaded workflow unusually early, rebuild the compiled
-    # graph so its grounding node receives the patched function as well.
     workflow_name = "apps.ai_engagement.graph.workflow"
     workflow_module = sys.modules.get(workflow_name)
     if workflow_module is not None:

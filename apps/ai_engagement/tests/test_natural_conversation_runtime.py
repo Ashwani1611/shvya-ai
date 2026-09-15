@@ -51,8 +51,6 @@ class NaturalConversationRuntimeTests(TestCase):
         before = state_for_lead(self.lead)
         state = mark_in_progress(self.lead)
 
-        # The lifecycle may remain in_progress so existing answers are preserved,
-        # but qualification must stay paused outside New Lead.
         self.assertEqual(state["qualification_status"], before["qualification_status"])
         self.assertEqual(state["engagement_mode"], MODE_CONVERSATION)
 
@@ -119,7 +117,7 @@ class NaturalConversationRuntimeTests(TestCase):
             "first_genuine_inbound",
         )
 
-    def test_completed_new_lead_moves_directly_to_qualified_not_in_conversation(self):
+    def test_completed_new_lead_does_not_invent_completion_stage_without_config(self):
         in_conversation = self._stage("In Conversation", 20)
         requirement = {
             "id": "budget",
@@ -167,6 +165,8 @@ class NaturalConversationRuntimeTests(TestCase):
                     "raw_answer": "50000",
                 }
             },
+            # Historical state may still contain this legacy hint; it is not
+            # execution authority without an explicit Stage Shifting rule.
             "qualified_stage_id": str(self.qualified.id),
         }
         decision = SimpleNamespace(
@@ -197,19 +197,8 @@ class NaturalConversationRuntimeTests(TestCase):
             requirements=[requirement],
         )
 
-        transitions = [
-            action
-            for action in actions
-            if action.get("type") == "pipeline_transition"
-        ]
-        self.assertEqual(len(transitions), 1)
-        self.assertEqual(
-            transitions[0]["stage_shift"]["stage_id"],
-            str(self.qualified.id),
-        )
-        self.assertNotEqual(
-            transitions[0]["stage_shift"]["stage_id"],
-            str(in_conversation.id),
+        self.assertFalse(
+            any(action.get("type") == "pipeline_transition" for action in actions)
         )
 
     def test_failsoft_treats_cool_as_conversation_not_unknown_information(self):

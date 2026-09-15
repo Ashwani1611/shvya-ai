@@ -136,8 +136,14 @@ class MultiTurnTransportRecoveryTests(TestCase):
         )
         questions = ["Which city?", "What occupation?", "Which product?", "Which color?"]
         requirement_ids = ["which_city", "what_occupation", "which_product", "which_color"]
+        final_configured_ack = "Thanks, I have all the required details and can continue from here."
         OrgInfo.objects.update_or_create(organization=org, defaults={
-            "qualification_requirements": "\n".join(questions), "bot_languages": "English",
+            "qualification_requirements": "\n".join(questions),
+            "engagement_instructions": (
+                "Be concise and natural.\n"
+                f' Acknowledgment message: "{final_configured_ack}"'
+            ),
+            "bot_languages": "English",
         })
         replies = ["Hello", "Delhi", "Teacher", "Desk", "Blue", "Thank you"]
 
@@ -160,42 +166,35 @@ class MultiTurnTransportRecoveryTests(TestCase):
                     external_id=f"{transport}-turn-{index}", body=reply, status="received",
                     from_number=lead.phone, to_number=account.display_phone_number,
                 )
-                next_id = requirement_ids[index] if index < len(requirement_ids) else None
-                final_qualification_answer = index == len(requirement_ids)
-                response_message = (
-                    questions[index]
-                    if next_id
-                    else (
-                        "Thank you, I have all the required details."
-                        if final_qualification_answer
-                        else "How else can I help?"
-                    )
-                )
+
+                if index == 0:
+                    response_message = questions[0]
+                    next_id = requirement_ids[0]
+                elif 1 <= index < len(requirement_ids):
+                    response_message = f"{reply} gives me useful context for the next question."
+                    next_id = requirement_ids[index]
+                elif index == len(requirement_ids):
+                    response_message = f"{reply} completes the details I needed from you."
+                    next_id = None
+                else:
+                    response_message = "How else can I help?"
+                    next_id = None
+
                 expected = {
                     "should_engage": True,
                     "message": response_message,
-                    "file_document_id": None, "crm_actions": [],
-                    "qualification_updates": [{
-                        "requirement_id": requirement_ids[index - 1], "value": reply,
-                        "source_message_id": str(inbound.id), "evidence": reply,
-                    }] if 1 <= index <= len(requirement_ids) else [],
+                    "file_document_id": None,
+                    "crm_actions": [],
+                    # Deterministic active-answer routing owns these updates in
+                    # the production path. The model is language-only here.
+                    "qualification_updates": [],
                     "next_requirement_id": next_id,
                     "reason_code": "QUALIFICATION_NEXT" if next_id else "NORMAL_CONVERSATION",
                 }
-                # A semantic error after the third exchange must be repaired;
-                # it must not stop this turn or any subsequent inbound turn.
-                outputs = [expected]
-                if index == 3:
-                    outputs.insert(0, {**expected, "next_requirement_id": "which_product"})
-                # Qualification-answer turns are state-changing. The first
-                # provider decision proposes the update; after it is committed,
-                # the customer-facing response is freshly generated from the
-                # persisted state, so the mock must provide the final pass too.
-                if 1 <= index <= len(requirement_ids):
-                    outputs.append(expected)
                 provider.generate_text.side_effect = [
-                    AITextResult(json.dumps(output), "test") for output in outputs
+                    AITextResult(json.dumps(expected), "test")
                 ]
+
                 with self.captureOnCommitCallbacks(execute=True):
                     if transport == "hosted":
                         job = HostedAutomationJob.objects.create(
@@ -207,24 +206,38 @@ class MultiTurnTransportRecoveryTests(TestCase):
                         self.assertEqual(job.status, "completed", job.result)
                     else:
                         result = generate_ai_engagement_response.run(str(lead.id))
+
                 self.assertEqual(result["status"], "completed", result)
                 outbound = WhatsAppMessage.objects.get(pk=result["message_id"])
                 self.assertEqual(outbound.account_id, account.id)
-                expected_outbound_message = expected["message"]
+
                 if index == 0:
                     expected_outbound_message = (
                         f"Hi Test! Thanks for reaching out to Recovery {transport}.\n\n"
-                        f"{expected['message']}"
+                        f"{questions[0]}"
                     )
+                elif 1 <= index < len(requirement_ids):
+                    expected_outbound_message = (
+                        f"{response_message}\n\n{questions[index]}"
+                    )
+                elif index == len(requirement_ids):
+                    expected_outbound_message = (
+                        f"{response_message}\n\n{final_configured_ack}"
+                    )
+                else:
+                    expected_outbound_message = response_message
+
                 self.assertEqual(outbound.body, expected_outbound_message)
-                self.assertEqual(outbound.raw_payload["shvya_ai"]["source_inbound_message_id"], str(inbound.id))
+                self.assertEqual(
+                    outbound.raw_payload["shvya_ai"]["source_inbound_message_id"],
+                    str(inbound.id),
+                )
                 if transport == "api":
                     deliver(message=outbound)
 
-            self.assertEqual(provider.generate_text.call_count, 11)
-            # API replies use the generic sender task. Hosted replies are sent
-            # directly by the durable Hosted job so Account Health/pacing stays
-            # provider-specific and no process-global sender interception exists.
+            # Direct unambiguous qualification answers execute before generation;
+            # no LLM draft/action pass is required to make backend state real.
+            self.assertEqual(provider.generate_text.call_count, 6)
             self.assertEqual(api_send.call_count, 6 if transport == "api" else 0)
             self.assertEqual(hosted_send.call_count, 6 if transport == "hosted" else 0)
             self.assertEqual(lead.whatsapp_messages.filter(direction="outbound").count(), 6)
@@ -232,6 +245,7 @@ class MultiTurnTransportRecoveryTests(TestCase):
             self.assertTrue(lead.ai_enabled)
             state = state_for_lead(lead)
             self.assertEqual(state["requirement_states"]["which_product"]["value"], "Desk")
+            self.assertEqual(state["qualification_status"], "completed")
 
     def test_api_keeps_replying_after_third_turn_and_qualification(self):
         self._conversation("api")
