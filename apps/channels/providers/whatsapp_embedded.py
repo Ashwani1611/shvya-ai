@@ -4,9 +4,32 @@ These calls run after SHVYA has exchanged Meta's short-lived authorization code
 for a customer-scoped business token. They contain no CRM/database logic.
 """
 
+from contextlib import contextmanager
+from contextvars import ContextVar
+
 import requests
 
 from .whatsapp import GRAPH_API_BASE, REQUEST_TIMEOUT_SECONDS, WhatsAppAPIError
+
+
+_OAUTH_REDIRECT_URI = ContextVar("whatsapp_embedded_oauth_redirect_uri", default="")
+
+
+@contextmanager
+def oauth_redirect_uri(value):
+    """Temporarily bind the exact OAuth redirect URI for this request context.
+
+    The JS-SDK Embedded Signup path historically exchanges codes without an
+    explicit redirect URI. Direct Login for Business OAuth requires the token
+    exchange to repeat the exact URI used by the authorization dialog. Context
+    local storage keeps that value isolated across simultaneous tenant requests
+    without changing the long-standing service function signatures.
+    """
+    token = _OAUTH_REDIRECT_URI.set(str(value or "").strip())
+    try:
+        yield
+    finally:
+        _OAUTH_REDIRECT_URI.reset(token)
 
 
 def _get_json(url, *, params=None, headers=None, error_label):
@@ -49,15 +72,18 @@ def exchange_code_for_access_token(
     Direct Facebook Login for Business OAuth requires the token exchange to use
     the exact same ``redirect_uri`` used by the authorization dialog. The older
     JS-SDK path does not expose that URI, so ``redirect_uri`` remains optional
-    for backwards compatibility with already-issued JS-SDK codes.
+    for backwards compatibility with already-issued JS-SDK codes. Direct flows
+    can bind the URI with :func:`oauth_redirect_uri` when an existing service
+    still calls this helper with the legacy empty value.
     """
+    effective_redirect_uri = str(redirect_uri or "").strip() or _OAUTH_REDIRECT_URI.get()
     params = {
         "client_id": app_id,
         "client_secret": app_secret,
         "code": code,
     }
-    if redirect_uri:
-        params["redirect_uri"] = redirect_uri
+    if effective_redirect_uri:
+        params["redirect_uri"] = effective_redirect_uri
 
     payload = _get_json(
         f"{GRAPH_API_BASE}/oauth/access_token",
