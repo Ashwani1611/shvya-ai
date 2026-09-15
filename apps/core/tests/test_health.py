@@ -7,7 +7,7 @@ def test_liveness_endpoint_is_public(client):
     assert "environment" in payload
 
 
-def test_readiness_endpoint_checks_database_and_redis(client):
+def test_readiness_endpoint_checks_database_and_redis(client, db):
     response = client.get("/health/ready/")
 
     assert response.status_code == 200
