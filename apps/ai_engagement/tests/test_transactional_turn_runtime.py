@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 
-from apps.ai_engagement.models import OrgInfo
+from apps.ai_engagement.models import Document, OrgInfo
 from apps.ai_engagement.services.engagement import EngagementDecision
 from apps.ai_engagement.services.organization_profile import compile_qualification_requirements
 from apps.ai_engagement.services.qualification_state import (
@@ -10,6 +11,10 @@ from apps.ai_engagement.services.qualification_state import (
     state_for_lead,
 )
 from apps.ai_engagement.services.runtime_state import STATE_KEY
+from apps.ai_engagement.services.transactional_decision_reuse import (
+    _PRE_RESOLVED_FILE_KEY,
+    _PRE_RESOLVED_FILE_STATUS_KEY,
+)
 from apps.ai_engagement.services.transactional_turn_runtime import (
     _message_state_resolved,
     _requirements_for_turn,
@@ -57,6 +62,24 @@ class TransactionalTurnRuntimeTests(TestCase):
         )
         return requirements
 
+    def _document(self, *, active=True):
+        return Document.objects.create(
+            organization=self.organization,
+            name="SHVYA brochure",
+            source_key="shvya-brochure",
+            version=1,
+            file=SimpleUploadedFile(
+                "shvya-brochure.pdf",
+                b"verified brochure",
+                content_type="application/pdf",
+            ),
+            source_url="",
+            share_instruction="Share when the lead explicitly asks for the brochure.",
+            processing_status=Document.ProcessingStatus.COMPLETED,
+            processing_error="",
+            is_active=active,
+        )
+
     def test_final_answer_persists_attribute_then_qualifies_then_moves_stage_and_reminds_once(self):
         requirements = self._configure_single_requirement()
         inbound = self._inbound("txn-final")
@@ -102,6 +125,7 @@ class TransactionalTurnRuntimeTests(TestCase):
             decision=decision,
         )
         self.assertTrue(result["applied"])
+        self.assertTrue(result["final_response_requires_regeneration"])
 
         self.lead.refresh_from_db()
         state = state_for_lead(self.lead, requirements=requirements)
@@ -128,6 +152,82 @@ class TransactionalTurnRuntimeTests(TestCase):
         self.assertFalse(duplicate["applied"])
         self.assertEqual(duplicate["reason"], "state_already_resolved")
         self.assertEqual(LeadReminder.objects.filter(lead=self.lead).count(), 1)
+
+    def test_file_share_is_resolved_and_persisted_before_final_response(self):
+        inbound = self._inbound("txn-file")
+        inbound.body = "Please send me the brochure."
+        inbound.save(update_fields=["body"])
+        document = self._document()
+        decision = EngagementDecision(
+            should_engage=True,
+            message="Pre-state draft file reply.",
+            file_document_id=document.id,
+            crm_actions=[],
+            qualification_updates=[],
+            next_requirement_id=None,
+            reason="ANSWER_ORG_QUESTION",
+            reason_code="ANSWER_ORG_QUESTION",
+            model="draft-model",
+        )
+
+        result = _resolve_state_before_response(
+            organization=self.organization,
+            lead=self.lead,
+            source_message_id=inbound.id,
+            decision=decision,
+        )
+
+        self.assertTrue(result["applied"])
+        self.assertTrue(result["final_response_requires_regeneration"])
+        self.assertEqual(result["file_document_id"], document.id)
+        self.lead.refresh_from_db()
+        runtime = self.lead.attributes[STATE_KEY]
+        self.assertEqual(runtime[_PRE_RESOLVED_FILE_KEY], document.id)
+        self.assertEqual(
+            runtime[_PRE_RESOLVED_FILE_STATUS_KEY],
+            "resolved_pending_send",
+        )
+        self.assertIn("file_share", runtime["pre_resolved_actions"])
+        inbound.refresh_from_db()
+        processing = inbound.raw_payload["shvya_ai_processing"]
+        self.assertTrue(processing["state_resolved"])
+        self.assertEqual(processing["resolved_file_document_id"], document.id)
+        self.assertEqual(processing["file_share_status"], "resolved_pending_send")
+
+    def test_ineligible_file_fails_before_any_state_is_marked_resolved(self):
+        inbound = self._inbound("txn-file-ineligible")
+        inbound.body = "Send me that brochure."
+        inbound.save(update_fields=["body"])
+        document = self._document(active=False)
+        decision = EngagementDecision(
+            should_engage=True,
+            message="This must never be finalized.",
+            file_document_id=document.id,
+            crm_actions=[],
+            qualification_updates=[],
+            next_requirement_id=None,
+            reason="ANSWER_ORG_QUESTION",
+            reason_code="ANSWER_ORG_QUESTION",
+            model="draft-model",
+        )
+
+        with self.assertRaises(ValueError):
+            _resolve_state_before_response(
+                organization=self.organization,
+                lead=self.lead,
+                source_message_id=inbound.id,
+                decision=decision,
+            )
+
+        self.lead.refresh_from_db()
+        runtime = self.lead.attributes.get(STATE_KEY, {})
+        self.assertNotEqual(
+            str(runtime.get("pre_resolved_message_id") or ""),
+            str(inbound.id),
+        )
+        inbound.refresh_from_db()
+        processing = inbound.raw_payload.get("shvya_ai_processing", {})
+        self.assertFalse(processing.get("state_resolved"))
 
     def test_missing_required_answer_does_not_move_to_qualified(self):
         org_info, _ = OrgInfo.objects.get_or_create(organization=self.organization)
