@@ -228,5 +228,6 @@ class HostedFollowupMediaInboxTests(TestCase):
             send_hosted_message(message=message, defer_on_pause=True)
 
         message.refresh_from_db()
-        self.assertEqual(message.status, WhatsAppMessage.Status.FAILED)
+        self.assertEqual(message.status, WhatsAppMessage.Status.QUEUED)
+        self.assertIn("retry scheduled", message.error)
         self.assertIn("temporary gateway error", message.error)
