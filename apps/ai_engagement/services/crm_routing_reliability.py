@@ -3,8 +3,14 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from django.utils import timezone
+
 
 _INSTALLED = False
+_CALL_REQUEST_RE = re.compile(
+    r"\b(?:call\s+me|please\s+call|give\s+me\s+a\s+call|connect\s+with\s+me|speak\s+with\s+me)\b",
+    flags=re.IGNORECASE,
+)
 _STOP_TOKENS = {
     "a",
     "an",
@@ -106,7 +112,7 @@ def _latest_inbound(context) -> tuple[str, str]:
 
 
 def _ensure_datetime_reminder(controlled, latest_text):
-    """Create a deterministic reminder from a concrete customer date/time."""
+    """Create deterministic normal-conversation reminders without qualification logic."""
     if any(item.get("type") == "create_reminder" for item in controlled):
         return
     from apps.ai_engagement.services.qualification_crm_action_runtime import (
@@ -114,13 +120,19 @@ def _ensure_datetime_reminder(controlled, latest_text):
     )
 
     due_at = _parse_grounded_due_at(latest_text)
-    if not due_at:
+    if due_at:
+        description = "Lead provided a specific date/time for follow-up."
+    elif _CALL_REQUEST_RE.search(str(latest_text or "")):
+        due_at = timezone.now().isoformat()
+        description = "Lead explicitly requested a call or direct connection."
+    else:
         return
+
     controlled.append(
         {
             "type": "create_reminder",
             "title": "Follow up with lead",
-            "description": "Lead provided a specific date/time for follow-up.",
+            "description": description,
             "due_at": due_at,
         }
     )
@@ -130,8 +142,8 @@ def _allow_explicit_model_stage_move(controlled, *, decision, context, latest_te
     """Preserve ordinary evidence-bound stage routing outside qualification ownership.
 
     Qualification-completion stages are built by the backend execution contract.
-    This function only considers explicit model-proposed stage actions and leaves
-    the final tenant/evidence gate to ``stage_transition_evidence``.
+    This function only considers explicit model-proposed stage actions whose
+    configured destination meaning is supported by the customer's latest message.
     """
     if any(item.get("type") == "pipeline_transition" for item in controlled):
         return
@@ -160,15 +172,17 @@ def _allow_explicit_model_stage_move(controlled, *, decision, context, latest_te
         if not stage_id or destination is None or stage_id == current_stage_id:
             continue
 
-        description = _clean(destination.get("description"))
+        description_tokens = _tokens(destination.get("description"))
         destination_tokens = _tokens(destination.get("name"))
-        # A described stage can be proposed and is still checked by the executor
-        # evidence gate. Without a description, require the customer to name the
-        # destination explicitly before allowing the proposal into controlled
-        # actions.
-        if description or (
+        description_supported = bool(
+            description_tokens
+            and latest_tokens
+            and description_tokens.intersection(latest_tokens)
+        )
+        explicitly_named = bool(
             destination_tokens and destination_tokens.issubset(latest_tokens)
-        ):
+        )
+        if description_supported or explicitly_named:
             controlled.append(
                 {
                     "type": "pipeline_transition",
@@ -225,7 +239,7 @@ def install_crm_routing_reliability() -> None:
     extra = (
         "CRM ROUTING RELIABILITY\n"
         "- For normal conversation, when customer evidence clearly supports an available CRM stage, you may propose exactly one pipeline_transition using that available stage id. Backend validation remains authoritative.\n"
-        "- If the lead provides a concrete follow-up date and time, you may propose a reminder; the backend validates and executes it.\n"
+        "- If the lead provides a concrete follow-up date/time or explicitly asks to be called, the backend may create a reminder.\n"
         "- Qualification attributes, qualification completion, and qualification completion-stage routing are backend-owned and MUST NOT be inferred here."
     )
     if extra not in EngagementService.ENGAGEMENT_TASK_INSTRUCTIONS:
