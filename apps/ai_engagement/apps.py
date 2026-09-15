@@ -211,3 +211,11 @@ class AiEngagementConfig(AppConfig):
             install_customer_chat_regressions,
         )
         install_customer_chat_regressions()
+
+        # Canonical architecture boundary. Install last so legacy compatibility
+        # shims feed one explicit contract: configuration -> evidence -> policy ->
+        # deterministic engines -> execution -> reconciled state -> final validator.
+        from apps.ai_engagement.services.canonical_architecture import (
+            install_canonical_ai_architecture,
+        )
+        install_canonical_ai_architecture()
