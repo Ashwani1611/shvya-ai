@@ -10,7 +10,7 @@ from django.urls import reverse
 
 from apps.accounts.models import User
 from apps.accounts.session_utils import set_authenticated_user
-from apps.channels import coexistence_oauth_ui
+from apps.channels import coexistence_finish_ui, coexistence_oauth_ui
 from apps.channels.connection_attempts import WhatsAppConnectionAttempt
 from apps.channels.providers import whatsapp_embedded
 from apps.organizations.models import Organization
@@ -85,12 +85,18 @@ class WhatsAppCoexistenceDirectOAuthTests(TestCase):
         attempt = WhatsAppConnectionAttempt.objects.get(id=marker["attempt_id"])
         self.assertEqual(attempt.stage, "coexistence_direct_oauth_started")
 
+        decoded = coexistence_finish_ui._decode_signed_state(params["state"][0])
+        self.assertIsNotNone(decoded)
+        self.assertEqual(decoded["organization_id"], str(self.org.id))
+        self.assertEqual(decoded["attempt_id"], str(attempt.id))
+        self.assertEqual(decoded["redirect_uri"], expected_redirect)
+
     @override_settings(
         META_APP_ID="123456",
         META_APP_SECRET="meta-secret",
         META_WA_EMBEDDED_SIGNUP_CONFIG_ID="config-123",
     )
-    @patch("apps.channels.coexistence_oauth_ui.complete_coexistence_signup")
+    @patch("apps.channels.coexistence_finish_ui.complete_coexistence_signup")
     def test_shared_direct_return_dispatches_coexistence_and_uses_oauth_code(
         self,
         complete_signup,
@@ -110,11 +116,13 @@ class WhatsAppCoexistenceDirectOAuthTests(TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertEqual(
             response["Location"],
-            f"{reverse('whatsapp-accounts')}?connected=account-1",
+            f"{reverse('whatsapp-chats')}?connected=account-1&coexistence=1",
         )
         complete_signup.assert_called_once_with(
             organization=self.org,
             code="oauth-code",
+            waba_id="",
+            phone_number_id="",
             attempt=ANY,
         )
         attempt = complete_signup.call_args.kwargs["attempt"]
@@ -128,10 +136,60 @@ class WhatsAppCoexistenceDirectOAuthTests(TestCase):
         META_APP_SECRET="meta-secret",
         META_WA_EMBEDDED_SIGNUP_CONFIG_ID="config-123",
     )
-    @patch(
-        "apps.channels.coexistence_oauth_ui.embedded_oauth_ui.whatsapp_embedded_signup_direct_return_view"
+    @patch("apps.channels.coexistence_finish_ui.complete_coexistence_signup")
+    def test_finish_callback_survives_missing_session_marker_and_opens_inbox(
+        self,
+        complete_signup,
+    ):
+        """Meta Finish must work even if the old Django routing marker is gone."""
+        account = SimpleNamespace(id="account-2")
+        complete_signup.return_value = (
+            account,
+            "",
+            {"history": {"request_id": "history-1"}},
+        )
+
+        start = self.client.get(reverse("whatsapp-coexistence-direct-start"))
+        params = parse_qs(urlparse(start["Location"]).query)
+        state = params["state"][0]
+        marker = self.client.session[coexistence_oauth_ui._SESSION_KEY]
+        attempt_id = marker["attempt_id"]
+
+        session = self.client.session
+        session.pop(coexistence_oauth_ui._SESSION_KEY, None)
+        session.save()
+
+        response = self.client.get(
+            reverse("whatsapp-embedded-signup-direct-return"),
+            {"code": "finish-oauth-code", "state": state},
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(
+            response["Location"],
+            f"{reverse('whatsapp-chats')}?connected=account-2&coexistence=1",
+        )
+        complete_signup.assert_called_once_with(
+            organization=self.org,
+            code="finish-oauth-code",
+            waba_id="",
+            phone_number_id="",
+            attempt=ANY,
+        )
+        attempt = complete_signup.call_args.kwargs["attempt"]
+        self.assertEqual(str(attempt.id), attempt_id)
+        attempt.refresh_from_db()
+        self.assertTrue(attempt.code_received)
+
+    @override_settings(
+        META_APP_ID="123456",
+        META_APP_SECRET="meta-secret",
+        META_WA_EMBEDDED_SIGNUP_CONFIG_ID="config-123",
     )
-    def test_shared_return_preserves_normal_connect_api_without_coexistence_session(
+    @patch(
+        "apps.channels.coexistence_finish_ui.embedded_oauth_ui.whatsapp_embedded_signup_direct_return_view"
+    )
+    def test_shared_return_preserves_normal_connect_api_without_coexistence_state(
         self,
         standard_return,
     ):
