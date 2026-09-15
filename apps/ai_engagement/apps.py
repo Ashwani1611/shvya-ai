@@ -227,3 +227,12 @@ class AiEngagementConfig(AppConfig):
             install_canonical_architecture_compat,
         )
         install_canonical_architecture_compat()
+
+        # Final qualification execution contract. Install after the canonical
+        # architecture so answer resolution, exact configured mappings, CRM
+        # execution, state reconciliation and response-plan validation share one
+        # production path across API and Hosted/Coexistence WhatsApp.
+        from apps.ai_engagement.services.qualification_execution_contract import (
+            install_qualification_execution_contract,
+        )
+        install_qualification_execution_contract()
