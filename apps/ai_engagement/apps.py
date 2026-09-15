@@ -194,3 +194,11 @@ class AiEngagementConfig(AppConfig):
             install_first_inbound_welcome_runtime,
         )
         install_first_inbound_welcome_runtime()
+
+        # Last-mile regression guard for observed real customer conversations:
+        # noun-phrase information requests, short yes/no variants, internal Q-label
+        # leakage and whole-response quote wrappers must not break natural chat.
+        from apps.ai_engagement.services.customer_chat_regressions import (
+            install_customer_chat_regressions,
+        )
+        install_customer_chat_regressions()
