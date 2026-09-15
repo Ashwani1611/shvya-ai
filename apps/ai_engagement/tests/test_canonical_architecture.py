@@ -104,7 +104,7 @@ class CanonicalKnowledgeRetrievalTests(TestCase):
         self.assertEqual(results[0].distance, None)
 
     @patch(
-        "apps.ai_engagement.services.canonical_architecture.EmbeddingService.embed_text",
+        "apps.ai_engagement.services.embeddings.EmbeddingService.embed_text",
         side_effect=EmbeddingError("embedding provider unavailable"),
     )
     def test_context_builder_falls_back_to_verified_keyword_evidence(self, _embed):
