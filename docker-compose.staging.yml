@@ -29,6 +29,7 @@ services:
 
   web:
     build: .
+    container_name: shvya-staging-web
     restart: unless-stopped
     env_file:
       - .env.staging
@@ -70,6 +71,7 @@ services:
 
   ws:
     build: .
+    container_name: shvya-staging-ws
     restart: unless-stopped
     env_file:
       - .env.staging
