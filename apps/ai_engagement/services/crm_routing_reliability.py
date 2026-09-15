@@ -83,6 +83,15 @@ _TOKEN_ALIASES = {
     "meetings": "meeting",
     "calls": "call",
     "callbacks": "callback",
+    "qualified": "qualification",
+    "qualifies": "qualification",
+    "qualifying": "qualification",
+    "completed": "complete",
+    "completion": "complete",
+    "passes": "pass",
+    "passed": "pass",
+    "answered": "answer",
+    "questions": "question",
 }
 
 
@@ -152,7 +161,65 @@ def _available_stage_context(context):
     return allowed, current_stage_id
 
 
-def _stage_action_supported(*, action, context, runtime_policy, latest_text: str) -> bool:
+def _looks_like_qualification_completion(value: Any) -> bool:
+    """Identify completion semantics without depending on any stage display name."""
+    tokens = _tokens(value)
+    has_qualification = "qualification" in tokens
+    has_terminal_signal = bool(
+        tokens & {"complete", "pass", "answer", "required"}
+    )
+    return has_qualification and has_terminal_signal
+
+
+def _is_qualification_completion_destination(
+    *,
+    destination,
+    runtime_policy,
+    qualification_state,
+) -> bool:
+    """Reserve qualification-completion destinations for the backend contract.
+
+    Legacy state may still expose a historical completion-stage id. It is used
+    only as a deny-list hint here, never as execution authority. The generic
+    boundary also recognizes authored completion semantics in stage descriptions
+    and Stage Shifting rules, so no particular stage name is hardcoded.
+    """
+    stage_id = str(destination.get("id") or "").strip()
+    reserved_ids = {
+        str((qualification_state or {}).get(key) or "").strip()
+        for key in ("qualified_stage_id", "completion_stage_id")
+        if str((qualification_state or {}).get(key) or "").strip()
+    }
+    if stage_id and stage_id in reserved_ids:
+        return True
+
+    description = _clean(destination.get("description"))
+    if description and _looks_like_qualification_completion(description):
+        return True
+
+    from apps.ai_engagement.services.engagement_instruction_runtime import (
+        _stage_rule_references_destination,
+    )
+
+    rules = ((runtime_policy or {}).get("crm") or {}).get("stage_shifting") or []
+    for rule in rules:
+        if not isinstance(rule, str):
+            continue
+        if not _stage_rule_references_destination(rule, destination):
+            continue
+        if _looks_like_qualification_completion(rule):
+            return True
+    return False
+
+
+def _stage_action_supported(
+    *,
+    action,
+    context,
+    runtime_policy,
+    qualification_state,
+    latest_text: str,
+) -> bool:
     if not isinstance(action, dict) or action.get("type") != "pipeline_transition":
         return False
     shift = action.get("stage_shift")
@@ -164,6 +231,13 @@ def _stage_action_supported(*, action, context, runtime_policy, latest_text: str
     allowed, current_stage_id = _available_stage_context(context)
     destination = allowed.get(stage_id)
     if not stage_id or destination is None or stage_id == current_stage_id:
+        return False
+
+    if _is_qualification_completion_destination(
+        destination=destination,
+        runtime_policy=runtime_policy,
+        qualification_state=qualification_state,
+    ):
         return False
 
     from apps.ai_engagement.services.engagement_instruction_runtime import (
@@ -189,7 +263,14 @@ def _stage_action_supported(*, action, context, runtime_policy, latest_text: str
     return bool(destination_tokens and destination_tokens.issubset(latest_tokens))
 
 
-def _sanitize_existing_stage_actions(controlled, *, context, runtime_policy, latest_text):
+def _sanitize_existing_stage_actions(
+    controlled,
+    *,
+    context,
+    runtime_policy,
+    qualification_state,
+    latest_text,
+):
     """Remove legacy/model stage proposals lacking current customer/config evidence."""
     sanitized = []
     for action in controlled or []:
@@ -200,6 +281,7 @@ def _sanitize_existing_stage_actions(controlled, *, context, runtime_policy, lat
             action=action,
             context=context,
             runtime_policy=runtime_policy,
+            qualification_state=qualification_state,
             latest_text=latest_text,
         ):
             sanitized.append(action)
@@ -212,6 +294,7 @@ def _allow_explicit_model_stage_move(
     decision,
     context,
     runtime_policy,
+    qualification_state,
     latest_text,
 ):
     """Preserve only evidence-backed ordinary stage routing.
@@ -226,6 +309,7 @@ def _allow_explicit_model_stage_move(
             action=action,
             context=context,
             runtime_policy=runtime_policy,
+            qualification_state=qualification_state,
             latest_text=latest_text,
         ):
             shift = action.get("stage_shift") or {}
@@ -253,6 +337,7 @@ def _wrap_controlled_actions(current_builder):
             controlled,
             context=context,
             runtime_policy=runtime_policy,
+            qualification_state=qualification_state,
             latest_text=latest_text,
         )
         _allow_explicit_model_stage_move(
@@ -260,6 +345,7 @@ def _wrap_controlled_actions(current_builder):
             decision=decision,
             context=context,
             runtime_policy=runtime_policy,
+            qualification_state=qualification_state,
             latest_text=latest_text,
         )
         _ensure_datetime_reminder(controlled, latest_text)
