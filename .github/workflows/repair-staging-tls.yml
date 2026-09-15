@@ -209,7 +209,7 @@ jobs:
             echo "Local edge TLS/SNI and staging readiness are healthy."
 
             DNS_V4="$(getent ahostsv4 "$STAGING_HOST" 2>/dev/null | awk '{print $1}' | sort -u || true)"
-            DNS_V6="$(getent ahostsv6 "$STAGING_HOST" 2>/dev/null | awk '{print $1}' | sort -u || true)"
+            DNS_V6="$(getent ahostsv6 "$STAGING_HOST" 2>/dev/null | awk '$1 ~ /:/ && $1 !~ /^::ffff:/ {print $1}' | sort -u || true)"
             VPS_V4="$(curl --noproxy '*' -4 --fail --silent --show-error --max-time 5 https://api.ipify.org 2>/dev/null || true)"
 
             if [ -n "$VPS_V4" ] && ! printf '%s\n' "$DNS_V4" | grep -Fxq "$VPS_V4"; then
