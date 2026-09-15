@@ -13,7 +13,7 @@ from apps.channels.providers.whatsapp_web import (
 
 _INSTALLED = False
 _ORIGINAL_SEND = None
-TRANSIENT_AUTOMATION_RETRY_SECONDS = 60
+TRANSIENT_AUTOMATION_RETRY_SECONDS = 15
 
 
 def _push_chat_refresh(message, reason):
@@ -115,25 +115,24 @@ def send_hosted_message(*, message, defer_on_pause=True):
         # fails; the gateway callback/reconciliation will account for it.
         provider_confirmed = True
     except WhatsAppWebGatewayError as exc:
-        message.status = WhatsAppMessage.Status.FAILED
-        message.error = str(exc)
-        message.save(update_fields=["status", "error", "updated_at"])
-        _push_chat_refresh(message, "failed")
+        transient = exc.status_code is None or exc.status_code >= 500
 
-        # A temporary gateway/network outage must not permanently pause a
-        # Hosted Auto Follow-up just because the step has zero user retries.
-        # The existing HostedAutomationPaused path reschedules the same
-        # execution/state after a short delay. Keep AI jobs on their existing
-        # delivery semantics because they retain a specific generated message.
-        if (
-            defer_on_pause
-            and raw_payload.get("shvya_auto_followup")
-            and (exc.status_code is None or exc.status_code >= 500)
-        ):
+        # AI, welcome, and follow-up automation must survive temporary Hosted
+        # gateway/network failures. Keep the exact generated message queued and
+        # let the durable automation job retry it shortly instead of marking the
+        # conversation permanently failed after one transient provider error.
+        if defer_on_pause and is_automation and transient:
+            message.error = f"Temporary Hosted gateway failure; retry scheduled: {exc}"
+            message.save(update_fields=["error", "updated_at"])
+            _push_chat_refresh(message, "retrying")
             raise HostedAutomationPaused(
                 timezone.now() + timedelta(seconds=TRANSIENT_AUTOMATION_RETRY_SECONDS)
             ) from exc
 
+        message.status = WhatsAppMessage.Status.FAILED
+        message.error = str(exc)
+        message.save(update_fields=["status", "error", "updated_at"])
+        _push_chat_refresh(message, "failed")
         raise WhatsAppSendError(str(exc)) from exc
     finally:
         if reservation_acquired and not provider_confirmed:
