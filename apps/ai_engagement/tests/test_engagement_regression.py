@@ -124,13 +124,17 @@ class ChannelQualificationRegressionTests(TestCase):
                 inbound.save(update_fields=['body'])
                 provider = Mock()
                 provider.generate_text.return_value = AITextResult(json.dumps({
-                    'should_engage': True, 'message': requirements[1]['question'], 'file_document_id': None,
+                    'should_engage': True,
+                    'message': 'Owning a business gives us useful context for the next question.',
+                    'file_document_id': None,
                     'crm_actions': [], 'next_requirement_id': requirements[1]['id'],
                     'qualification_updates': [], 'reason_code': 'QUALIFICATION_NEXT'}), 'test')
                 service = EngagementService(provider=provider)
                 with patch('apps.ai_engagement.services.engagement.EngagementGenerationLock') as lock:
                     lock.return_value.acquire.return_value = True
                     decision = service.engage(organization=self.organization, lead=self.lead)
+                self.assertIn('Owning a business gives us useful context', decision.message)
+                self.assertIn(requirements[1]['question'].splitlines()[0], decision.message)
                 with transaction.atomic():
                     locked = Lead.objects.select_for_update().get(pk=self.lead.pk)
                     self.assertTrue(_persist_engagement_answers(locked, decision, inbound.pk))
@@ -160,4 +164,3 @@ class ChannelQualificationRegressionTests(TestCase):
             self.assertTrue(_persist_engagement_answers(self.lead, decision, inbound.pk))
         self.lead.refresh_from_db()
         self.assertEqual(self.lead.attributes[STATE_KEY]['conversation_mode'], 'paused')
-

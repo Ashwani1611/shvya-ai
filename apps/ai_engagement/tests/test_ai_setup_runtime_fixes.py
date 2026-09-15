@@ -253,7 +253,17 @@ class StageTransitionPolicyTests(SimpleTestCase):
             qualification_state={"requirement_states": {}},
             requirements=[],
         )
-        self.assertFalse(any(item["type"] == "pipeline_transition" for item in actions))
+        transitions = [
+            item
+            for item in actions
+            if item.get("type") == "pipeline_transition"
+        ]
+        self.assertFalse(any(
+            (item.get("stage_shift") or {}).get("stage_id") == "qualified-stage"
+            for item in transitions
+        ))
+        # The same inbound can still legitimately trigger an unrelated ordinary
+        # stage rule; the assertion above is specifically about completion bypass.
 
 
 class KnowledgeRoutingTests(SimpleTestCase):

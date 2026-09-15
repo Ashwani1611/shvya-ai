@@ -11,12 +11,7 @@ _TERMINAL = {"answered", "skipped", "not_applicable"}
 
 
 def _is_persistent_model_instance(value) -> bool:
-    """Return whether value is a saved Django model instance.
-
-    EngagementService is intentionally usable with lightweight objects in pure
-    generation/unit contexts. Reconciliation is a database concern and must not
-    turn those contexts into implicit ORM operations.
-    """
+    """Return whether value is a saved Django model instance."""
     return bool(
         value is not None
         and getattr(value, "_meta", None) is not None
@@ -25,17 +20,19 @@ def _is_persistent_model_instance(value) -> bool:
 
 
 def reconcile_lead_qualification_from_attributes(*, organization, lead):
-    """Use reliable existing CRM values to satisfy mapped requirements once.
+    """Reconcile existing CRM values only through explicit configured mappings.
 
-    Mapping reuses the same conservative description/name/options scorer used by
-    live qualification CRM routing. Ambiguous mappings are ignored. Existing
-    answered state is never overwritten.
+    This utility intentionally has no semantic/fuzzy attribute matcher. A CRM
+    value can satisfy a requirement only when AI Brain configuration explicitly
+    maps that requirement to that attribute. Completion-stage execution likewise
+    uses the configured Stage Shifting rule rather than a magic stage name.
+    Existing answered state is never overwritten.
     """
     from apps.ai_engagement.models import OrgInfo
-    from apps.ai_engagement.services.crm_routing_reliability import _best_attribute_key
     from apps.ai_engagement.services.organization_profile import compile_org_ai_profile
     from apps.ai_engagement.services import qualification_state as state_module
-    from apps.crm.models import AttributeDefinition, Lead
+    from apps.ai_engagement.services.qualification_execution_contract import _config
+    from apps.crm.models import Lead
 
     if not _is_persistent_model_instance(organization) or not _is_persistent_model_instance(lead):
         return None
@@ -59,15 +56,14 @@ def reconcile_lead_qualification_from_attributes(*, organization, lead):
         if not requirements:
             return state_module.state_for_lead(locked, requirements=[])
 
-        definitions = list(
-            AttributeDefinition.objects.filter(organization=organization)
-            .order_by("display_order", "name", "key")
-            .values("key", "name", "field_type", "description", "options")
+        contract_config = _config(
+            organization=organization,
+            requirements=requirements,
         )
+        mappings = contract_config.get("mappings") or {}
         attributes = deepcopy(locked.attributes) if isinstance(locked.attributes, dict) else {}
         state = state_module.state_for_lead(locked, requirements=requirements)
         states = deepcopy(state.get("requirement_states") or {})
-        used: set[str] = set()
         changed = False
 
         for requirement in sorted(
@@ -80,18 +76,14 @@ def reconcile_lead_qualification_from_attributes(*, organization, lead):
             existing = states.get(requirement_id) or {}
             if str(existing.get("status") or "").casefold() in _TERMINAL:
                 continue
-            key = _best_attribute_key(
-                requirement=requirement,
-                definitions=definitions,
-                used=used,
-            )
+
+            key = str(mappings.get(requirement_id) or "").strip()
             if not key:
                 continue
             value = attributes.get(key)
             if value is None or (isinstance(value, str) and not value.strip()):
                 continue
 
-            used.add(key)
             now = timezone.now().isoformat()
             states[requirement_id] = {
                 **state_module._requirement_state(existing),
@@ -139,27 +131,31 @@ def reconcile_lead_qualification_from_attributes(*, organization, lead):
         locked.refresh_from_db(fields=["attributes", "pipeline", "stage"])
         normalized = state_module.state_for_lead(locked, requirements=requirements)
 
-        if normalized.get("qualification_status") == state_module.STATUS_COMPLETED:
-            qualified_stage_id = str(normalized.get("qualified_stage_id") or "").strip()
-            if qualified_stage_id:
-                from apps.ai_engagement.services.crm_executor import CRMActionExecutor
+        target = contract_config.get("completion_stage")
+        if (
+            normalized.get("qualification_status") == state_module.STATUS_COMPLETED
+            and isinstance(target, dict)
+            and target.get("id") is not None
+        ):
+            from apps.ai_engagement.services.crm_executor import CRMActionExecutor
 
-                CRMActionExecutor().execute(
-                    organization=organization,
-                    lead=locked,
-                    actions=[
-                        {
-                            "type": "pipeline_transition",
-                            "stage_shift": {"stage_id": qualified_stage_id},
-                        }
-                    ],
-                )
-                locked.refresh_from_db(fields=["attributes", "pipeline", "stage"])
-                normalized = state_module.state_for_lead(locked, requirements=requirements)
+            CRMActionExecutor().execute(
+                organization=organization,
+                lead=locked,
+                actions=[
+                    {
+                        "type": "pipeline_transition",
+                        "stage_shift": {"stage_id": str(target["id"])},
+                    }
+                ],
+            )
+            locked.refresh_from_db(fields=["attributes", "pipeline", "stage"])
+            normalized = state_module.state_for_lead(locked, requirements=requirements)
         return normalized
 
 
 def install_attribute_state_reconciliation() -> None:
+    """Optional pre-generation reconciliation for explicitly mapped CRM values."""
     global _INSTALLED
     if _INSTALLED:
         return

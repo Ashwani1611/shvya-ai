@@ -9,7 +9,6 @@ from apps.ai_engagement.graph.policy_actions import build_controlled_actions
 from apps.ai_engagement.graph.runtime_policy import get_runtime_policy
 from apps.ai_engagement.models import OrgInfo
 from apps.ai_engagement.services.context import AIContextBuilder
-from apps.ai_engagement.services.crm_executor import CRMActionExecutor
 from apps.ai_engagement.services.organization_profile import (
     compile_org_ai_profile_from_context,
     compile_qualification_requirements,
@@ -24,6 +23,8 @@ from apps.organizations.models import Organization
 
 
 class QualificationRoutingReliabilityTests(TestCase):
+    """Legacy policy builders must not own qualification CRM side effects."""
+
     def setUp(self):
         self.organization = Organization.objects.create(name="Routing Reliability Org")
         self.sales = Pipeline.objects.create(
@@ -40,8 +41,6 @@ class QualificationRoutingReliabilityTests(TestCase):
             is_active=True,
         )
         self.qualified = self.qualified_pipeline.stages.get(name="Qualified")
-        # Cross-pipeline fallback must never choose arbitrarily. Make this test
-        # organization intentionally have one unambiguous active external target.
         Stage.objects.filter(
             pipeline__organization=self.organization,
             name__iexact="Qualified",
@@ -66,7 +65,7 @@ class QualificationRoutingReliabilityTests(TestCase):
             key="lead_system_answer",
             description=(
                 "Where the lead currently manages leads, for example WhatsApp, "
-                "Excel/Sheets, CRM, or multiple places. Fill this from that qualification answer."
+                "Excel/Sheets, CRM, or multiple places."
             ),
             field_type=AttributeDefinition.FieldType.TEXT,
         )
@@ -104,7 +103,7 @@ class QualificationRoutingReliabilityTests(TestCase):
         )
         return context, runtime_policy
 
-    def test_backend_captured_answer_uses_description_and_moves_cross_pipeline_qualified(self):
+    def test_backend_captured_answer_does_not_infer_attribute_or_completion_stage(self):
         requirements = self._requirements()
         requirement = requirements[0]
         record_last_asked_requirement(
@@ -123,7 +122,7 @@ class QualificationRoutingReliabilityTests(TestCase):
 
         self.lead.refresh_from_db()
         qualification_state = state_for_lead(self.lead, requirements=requirements)
-        self.assertEqual(qualification_state["qualified_stage_id"], str(self.qualified.id))
+        self.assertFalse(str(qualification_state.get("qualified_stage_id") or "").strip())
         context, runtime_policy = self._context_and_policy(
             message_id="final-answer",
             body="B",
@@ -138,29 +137,13 @@ class QualificationRoutingReliabilityTests(TestCase):
             requirements=requirements,
         )
 
-        attribute_action = next(
-            item for item in actions if item.get("type") == "attribute_updates"
-        )
-        self.assertEqual(
-            attribute_action["updates"],
-            [{"key": "lead_system_answer", "value": "Excel/Sheets"}],
-        )
-        transition = next(
-            item for item in actions if item.get("type") == "pipeline_transition"
-        )
-        self.assertEqual(transition["stage_shift"]["stage_id"], str(self.qualified.id))
-
-        CRMActionExecutor().execute(
-            organization=self.organization,
-            lead=self.lead,
-            actions=actions,
-        )
+        self.assertFalse(any(item.get("type") == "attribute_updates" for item in actions))
+        self.assertFalse(any(item.get("type") == "pipeline_transition" for item in actions))
         self.lead.refresh_from_db()
-        self.assertEqual(self.lead.attributes["lead_system_answer"], "Excel/Sheets")
-        self.assertEqual(self.lead.pipeline_id, self.qualified_pipeline.id)
-        self.assertEqual(self.lead.stage_id, self.qualified.id)
+        self.assertNotIn("lead_system_answer", self.lead.attributes)
+        self.assertEqual(self.lead.stage_id, self.new_lead.id)
 
-    def test_model_captured_natural_answer_projects_before_attribute_and_qualified_actions(self):
+    def test_model_captured_natural_answer_does_not_project_legacy_qualification_side_effects(self):
         requirements = self._requirements()
         requirement = requirements[0]
         record_last_asked_requirement(
@@ -184,7 +167,7 @@ class QualificationRoutingReliabilityTests(TestCase):
             crm_actions=[],
         )
 
-        actions, result = build_controlled_actions(
+        actions, _result = build_controlled_actions(
             decision=decision,
             context=context,
             runtime_policy=runtime_policy,
@@ -192,19 +175,8 @@ class QualificationRoutingReliabilityTests(TestCase):
             requirements=requirements,
         )
 
-        attribute_action = next(
-            item for item in actions if item.get("type") == "attribute_updates"
-        )
-        self.assertEqual(
-            attribute_action["updates"],
-            [{"key": "lead_system_answer", "value": "Excel/Sheets"}],
-        )
-        transition = next(
-            item for item in actions if item.get("type") == "pipeline_transition"
-        )
-        self.assertEqual(transition["stage_shift"]["stage_id"], str(self.qualified.id))
-        projected = result["projected_qualification_state"]
-        self.assertTrue(projected["all_requirements_answered"])
+        self.assertFalse(any(item.get("type") == "attribute_updates" for item in actions))
+        self.assertFalse(any(item.get("type") == "pipeline_transition" for item in actions))
 
 
 class ConversationRoutingReliabilityTests(SimpleTestCase):
