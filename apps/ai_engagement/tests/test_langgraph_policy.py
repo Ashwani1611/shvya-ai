@@ -84,6 +84,8 @@ class ControlledCRMActionTests(SimpleTestCase):
                     "updated_at": None,
                 }
             },
+            # Historical state can still carry this legacy hint, but it is not
+            # execution authority without an explicit Stage Shifting rule.
             "qualified_stage_id": "qualified-stage-id",
         }
 
@@ -105,7 +107,7 @@ class ControlledCRMActionTests(SimpleTestCase):
             },
         )
 
-    def test_model_cannot_choose_stage_and_python_adds_qualified_stage(self):
+    def test_model_cannot_choose_stage_and_python_does_not_invent_completion_stage(self):
         decision = SimpleNamespace(
             qualification_updates=[
                 {
@@ -133,13 +135,7 @@ class ControlledCRMActionTests(SimpleTestCase):
 
         self.assertEqual(result["evaluation"]["outcome"], "qualified")
         self.assertNotIn("model-chosen-stage", str(actions))
-        self.assertIn(
-            {
-                "type": "pipeline_transition",
-                "stage_shift": {"stage_id": "qualified-stage-id"},
-            },
-            actions,
-        )
+        self.assertFalse(any(action["type"] == "pipeline_transition" for action in actions))
 
     def test_failed_required_condition_does_not_advance_stage(self):
         decision = SimpleNamespace(
