@@ -45,7 +45,16 @@ class ChannelsConfig(AppConfig):
         from services.channels.whatsapp_coexistence_runtime import (
             install_whatsapp_coexistence_runtime,
         )
+        from services.channels.whatsapp_coexistence_partner_runtime import (
+            install_whatsapp_coexistence_partner_runtime,
+        )
+        from services.channels.whatsapp_coexistence_asset_resolution import (
+            install_whatsapp_coexistence_asset_resolution,
+        )
         from services.channels.instagram_runtime import install_instagram_runtime
+        from services.channels.staging_outbound_safety import (
+            install_staging_outbound_safety,
+        )
 
         install_instagram_runtime()
         install_whatsapp_phone_registration()
@@ -53,6 +62,15 @@ class ChannelsConfig(AppConfig):
         install_hosted_whatsapp_transport()
         install_whatsapp_failure_diagnostics()
         install_whatsapp_api_runtime()
-        # Install last so the Coexistence extension sits behind the existing
-        # webhook signature verification and standard API message runtime.
+        # Install Coexistence asset recovery before request handling. Meta's
+        # WhatsApp Business App onboarding event can omit phone_number_id even
+        # after a successful selection; the wrapper resolves the unique
+        # is_on_biz_app candidate without changing normal Connect API behavior.
+        install_whatsapp_coexistence_asset_resolution()
+        # Install Coexistence handling last so both layers sit behind existing
+        # webhook signature verification and standard API message processing.
         install_whatsapp_coexistence_runtime()
+        install_whatsapp_coexistence_partner_runtime()
+        # This must be the final transport wrapper. Production is unchanged;
+        # staging can only send to explicitly allowlisted test recipients.
+        install_staging_outbound_safety()

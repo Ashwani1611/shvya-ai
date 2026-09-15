@@ -3,6 +3,8 @@ from decouple import config
 from .base import *  # noqa
 
 
+APP_ENV = "production"
+
 INSTALLED_APPS = [
     *INSTALLED_APPS,
     "django.contrib.postgres",
