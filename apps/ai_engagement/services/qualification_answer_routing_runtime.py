@@ -247,8 +247,6 @@ def _match_text_option(text: str, options: list[dict[str, str]]) -> str | None:
         if not overlap:
             continue
         coverage = len(overlap) / len(option_tokens)
-        # Natural-language equivalents must be clear, not merely share a generic
-        # word with one configured option.
         if len(option_tokens) > 1 and coverage < 0.5:
             continue
         ranked.append((coverage, len(overlap), value))
@@ -256,7 +254,12 @@ def _match_text_option(text: str, options: list[dict[str, str]]) -> str | None:
     ranked.sort(key=lambda item: (-item[0], -item[1], item[2]))
     if not ranked:
         return None
-    if len(ranked) > 1 and ranked[0][:2] == ranked[1][:2]:
+
+    # If the message substantively matches more than one configured option, the
+    # answer is ambiguous by product contract. Do not choose the highest fuzzy
+    # score; require clarification against the active requirement's options.
+    candidate_values = {item[2] for item in ranked}
+    if len(candidate_values) > 1:
         return None
     return ranked[0][2]
 
@@ -423,8 +426,6 @@ def install_qualification_answer_routing_runtime() -> None:
         evidence_module.check_grounding
     )
 
-    # If workflow was imported before AppConfig.ready(), rebuild it so the graph
-    # points at the patched grounding function.
     workflow_name = "apps.ai_engagement.graph.workflow"
     workflow_module = sys.modules.get(workflow_name)
     if workflow_module is not None:
