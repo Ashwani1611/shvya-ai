@@ -318,23 +318,20 @@ def _ambiguous_option_answer(
 def _enhanced_direct_classifier(original, state_module):
     def classify(*, text: str, question: str):
         classified = original(text=text, question=question)
-        if classified is not None:
+        if classified is not None and classified[0] == state_module.REQUIREMENT_ANSWERED:
             return classified
 
         raw_text = str(text or "").strip()
         if not raw_text or len(raw_text) > 240 or "\n" in raw_text:
-            return None
+            return classified
         # Mixed informational questions stay on the model/RAG path so one turn
         # can answer the customer question and update qualification state.
         if "?" in raw_text:
-            return None
+            return classified
 
         options = state_module._question_options(question)
         if not options:
-            return None
-
-        if _ambiguous_option_answer(raw_text, question, options):
-            return (state_module.REQUIREMENT_UNCLEAR, raw_text, "high")
+            return classified
 
         matched = (
             _match_key_option(raw_text, options)
@@ -342,9 +339,13 @@ def _enhanced_direct_classifier(original, state_module):
             or _match_numeric_option(raw_text, options)
             or _match_text_option(raw_text, options)
         )
-        if matched is None:
-            return None
-        return (state_module.REQUIREMENT_ANSWERED, matched, "high")
+        if matched is not None:
+            return (state_module.REQUIREMENT_ANSWERED, matched, "high")
+
+        if _ambiguous_option_answer(raw_text, question, options):
+            return (state_module.REQUIREMENT_UNCLEAR, raw_text, "high")
+
+        return classified
 
     return classify
 
