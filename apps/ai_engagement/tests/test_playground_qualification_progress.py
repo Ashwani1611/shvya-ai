@@ -143,6 +143,7 @@ class PlaygroundQualificationProgressRegressionTests(SimpleTestCase):
         messages = (
             "price of plan",
             "what all pack shvya offer?",
+            "what is shvya and its features",
             "pricer coif npcs",
         )
 
