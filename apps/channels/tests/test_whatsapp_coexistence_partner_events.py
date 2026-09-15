@@ -29,17 +29,12 @@ class WhatsAppCoexistencePartnerEventTests(TestCase):
     )
     def test_top_level_history_event_activates_history_import(self, history_sync):
         history_sync.return_value = [object(), object()]
-        data = {
-            "id": "waba-123",
-            "metadata": {
-                "phone_number_id": "phone-123",
-                "display_phone_number": "+919999999999",
-            },
-            "history": [],
-        }
+        # Some partner envelopes put the WABA only on the outer `id` and omit
+        # phone metadata from the initial history event. That must still route.
+        data = {"history": []}
 
         handled = process_partner_coexistence_event(
-            {"id": "delivery-1", "event": "history", "data": data}
+            {"id": "waba-123", "event": "history", "data": data}
         )
 
         self.assertTrue(handled)
