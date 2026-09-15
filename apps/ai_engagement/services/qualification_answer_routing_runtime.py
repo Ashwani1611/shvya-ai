@@ -197,45 +197,45 @@ def _match_key_option(text: str, options: list[dict[str, str]]) -> str | None:
     return None
 
 
-def _match_numeric_option(text: str, options: list[dict[str, str]]) -> str | None:
+def _numeric_option_candidates(text: str, options: list[dict[str, str]]) -> list[str]:
     number = _extract_number(text)
     if number is None:
-        return None
+        return []
+    return [
+        _clean(option.get("value"))
+        for option in options
+        if _range_for_option(_clean(option.get("value")))
+        and _number_in_range(number, _range_for_option(_clean(option.get("value"))))
+    ]
 
-    candidates: list[str] = []
-    normalized_text = _normalized(text)
-    for option in options:
-        value = _clean(option.get("value"))
-        bounds = _range_for_option(value)
-        if bounds and _number_in_range(number, bounds):
-            candidates.append(value)
 
+def _match_numeric_option(text: str, options: list[dict[str, str]]) -> str | None:
+    candidates = _numeric_option_candidates(text, options)
     if len(candidates) == 1:
         return candidates[0]
-
-    if len(candidates) > 1 and "+" in normalized_text:
+    if len(candidates) > 1 and "+" in _normalized(text):
         plus_candidates = [item for item in candidates if "+" in _normalized(item)]
         if len(plus_candidates) == 1:
             return plus_candidates[0]
     return None
 
 
-def _match_text_option(text: str, options: list[dict[str, str]]) -> str | None:
+def _text_option_candidates(text: str, options: list[dict[str, str]]) -> list[str]:
     normalized_text = _normalized(text)
     if not normalized_text:
-        return None
+        return []
 
     exact = [
         _clean(option.get("value"))
         for option in options
         if _normalized(option.get("value")) == normalized_text
     ]
-    if len(exact) == 1:
-        return exact[0]
+    if exact:
+        return list(dict.fromkeys(exact))
 
     input_tokens = _tokens(text)
     if not input_tokens:
-        return None
+        return []
 
     ranked: list[tuple[float, int, str]] = []
     for option in options:
@@ -250,18 +250,13 @@ def _match_text_option(text: str, options: list[dict[str, str]]) -> str | None:
         if len(option_tokens) > 1 and coverage < 0.5:
             continue
         ranked.append((coverage, len(overlap), value))
-
     ranked.sort(key=lambda item: (-item[0], -item[1], item[2]))
-    if not ranked:
-        return None
+    return list(dict.fromkeys(item[2] for item in ranked))
 
-    # If the message substantively matches more than one configured option, the
-    # answer is ambiguous by product contract. Do not choose the highest fuzzy
-    # score; require clarification against the active requirement's options.
-    candidate_values = {item[2] for item in ranked}
-    if len(candidate_values) > 1:
-        return None
-    return ranked[0][2]
+
+def _match_text_option(text: str, options: list[dict[str, str]]) -> str | None:
+    candidates = _text_option_candidates(text, options)
+    return candidates[0] if len(candidates) == 1 else None
 
 
 def _match_boolean_option(
@@ -294,6 +289,32 @@ def _match_boolean_option(
     return None
 
 
+def _ambiguous_option_answer(
+    text: str,
+    question: str,
+    options: list[dict[str, str]],
+) -> bool:
+    """Return True only when the lead substantively selects multiple options."""
+    normalized_values = {
+        _normalized(option.get("value"))
+        for option in options
+        if _clean(option.get("value"))
+    }
+    if normalized_values == {"yes", "no"}:
+        normalized = _normalized(text)
+        positive = bool(re.search(r"\b(?:yes|yeah|yep)\b", normalized))
+        negative = bool(re.search(r"\b(?:no|nope)\b", normalized))
+        if positive and negative:
+            return True
+
+    numeric_candidates = _numeric_option_candidates(text, options)
+    if len(set(numeric_candidates)) > 1 and "+" not in _normalized(text):
+        return True
+
+    text_candidates = _text_option_candidates(text, options)
+    return len(set(text_candidates)) > 1
+
+
 def _enhanced_direct_classifier(original, state_module):
     def classify(*, text: str, question: str):
         classified = original(text=text, question=question)
@@ -303,14 +324,17 @@ def _enhanced_direct_classifier(original, state_module):
         raw_text = str(text or "").strip()
         if not raw_text or len(raw_text) > 240 or "\n" in raw_text:
             return None
-        # Mixed informational questions stay on the model/RAG path so the same
-        # turn can both answer the customer and update qualification state.
+        # Mixed informational questions stay on the model/RAG path so one turn
+        # can answer the customer question and update qualification state.
         if "?" in raw_text:
             return None
 
         options = state_module._question_options(question)
         if not options:
             return None
+
+        if _ambiguous_option_answer(raw_text, question, options):
+            return (state_module.REQUIREMENT_UNCLEAR, raw_text, "high")
 
         matched = (
             _match_key_option(raw_text, options)
@@ -387,9 +411,6 @@ def _qualification_first_grounding(original):
         persisted_answer = _latest_persisted_answer(state)
         if persisted_answer is not None:
             _, persisted = persisted_answer
-            # A deterministic backend-selected configured question is not an
-            # organization factual claim and must not be diverted to generic RAG
-            # rejection. Mixed/model-generated turns still use normal grounding.
             if _is_safe_backend_question(state, persisted):
                 return {
                     "grounding_approved": True,
@@ -401,14 +422,7 @@ def _qualification_first_grounding(original):
 
 
 def install_qualification_answer_routing_runtime() -> None:
-    """Prioritize the active configured requirement without owning CRM state.
-
-    This runtime only improves deterministic recognition of the current asked
-    requirement and protects backend-authored next-question text from irrelevant
-    RAG rejection. It deliberately does not choose attributes, completion stages,
-    workflow actions, or customer completion messages.
-    """
-
+    """Prioritize the active configured requirement without owning CRM state."""
     global _INSTALLED
     if _INSTALLED:
         return
