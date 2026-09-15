@@ -21,7 +21,7 @@
 <footer class="footer">
   <div class="wrap">
     <div class="footer-grid">
-      <div class="footer-brand"><a href="{% url 'home' %}" class="brand"><img class="brand-logo" src="{% static 'images/shvya-logo.svg' %}" alt="SHVYA AI logo"><span class="brand-name"><span>SHVYA</span><span>AI</span></span></a><p>AI-powered CRM, product, and digital-system workflows for teams that want more clarity, automation, and consistent execution.</p></div>
+      <div class="footer-brand"><a href="{% url 'home' %}" class="brand"><img class="brand-logo" src="{% static 'images/shvya-brand-2026.png' %}" alt="SHVYA AI logo"><span class="brand-name"><span>SHVYA</span><span>AI</span></span></a><p>AI-powered CRM, product, and digital-system workflows for teams that want more clarity, automation, and consistent execution.</p></div>
       <div><h4>Product</h4><div class="footer-links"><a href="{% url 'home' %}#features">SHVYA AI</a><a href="{% url 'product_suite' %}">Product Suite</a><a href="{% url 'home' %}#integrations">Integrations</a><a href="{% url 'pricing' %}">Pricing</a></div></div>
       <div><h4>Explore</h4><div class="footer-links"><a href="{% url 'services' %}">SHVYA Services</a><a href="{% url 'home' %}#industries">Use Cases</a><a href="{% url 'home' %}#proof">Why SHVYA</a><a href="{% url 'home' %}#faq">FAQ</a></div></div>
       <div><h4>Account</h4><div class="footer-links">{% if crm_user %}<a href="{% url 'crm-dashboard' %}">Dashboard</a><a href="{% url 'crm-profile' %}">Profile</a><a href="{% url 'crm-logout' %}">Logout</a>{% else %}<a href="{% url 'crm-login' %}">Login</a><a href="{% url 'crm-signup' %}">Create account</a>{% endif %}</div></div>

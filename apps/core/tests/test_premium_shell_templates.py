@@ -16,4 +16,4 @@ def test_premium_shell_hides_settings_from_sidebar_payload():
 
     assert "item.label !== 'Settings'" in template
     assert "shvya-premium-shell" in template
-    assert "shvya-sidebar-logo.svg" in template
+    assert "shvya-brand-2026.png" in template
