@@ -250,8 +250,44 @@ jobs:
               $EDGE_COMPOSE exec -T nginx nginx -t
               $EDGE_COMPOSE exec -T nginx nginx -s reload
 
-              echo "Verifying public staging HTTPS readiness endpoint..."
-              curl --fail --silent --show-error --max-time 10 \
+              cert_fp_file() {
+                openssl x509 -in "$CERT_DIR/fullchain.pem" -noout -fingerprint -sha256 | cut -d= -f2
+              }
+              cert_fp_served() {
+                echo | openssl s_client -connect 127.0.0.1:443 -servername staging.shvya-ai.com 2>/dev/null \
+                  | openssl x509 -noout -fingerprint -sha256 2>/dev/null | cut -d= -f2
+              }
+
+              FILE_FP="$(cert_fp_file)"
+              SERVED_FP="$(cert_fp_served)"
+              if [ -z "$SERVED_FP" ] || [ "$FILE_FP" != "$SERVED_FP" ]; then
+                echo "Edge Nginx is serving stale staging TLS state; restarting only the edge Nginx container."
+                docker restart "$EDGE_NGINX_ID" >/dev/null
+                sleep 2
+                EDGE_NGINX_ID="$($EDGE_COMPOSE ps -q nginx)"
+                if [ -z "$EDGE_NGINX_ID" ]; then
+                  echo "Edge Nginx did not return after restart."
+                  exit 1
+                fi
+                if ! docker inspect "$EDGE_NGINX_ID" --format '{{json .NetworkSettings.Networks}}' | grep -q "$STAGING_NETWORK"; then
+                  docker network connect "$STAGING_NETWORK" "$EDGE_NGINX_ID"
+                fi
+                $EDGE_COMPOSE exec -T nginx nginx -t
+                SERVED_FP="$(cert_fp_served)"
+              fi
+
+              if [ -z "$SERVED_FP" ] || [ "$FILE_FP" != "$SERVED_FP" ]; then
+                echo "Edge Nginx still is not serving the expected staging certificate."
+                exit 1
+              fi
+
+              echo "Verifying local staging HTTPS readiness through the corrected edge..."
+              curl --noproxy '*' --fail --silent --show-error --max-time 10 \
+                --resolve "staging.shvya-ai.com:443:127.0.0.1" \
+                https://staging.shvya-ai.com/health/ready/ >/dev/null
+
+              echo "Verifying public staging IPv4 HTTPS readiness endpoint..."
+              curl --noproxy '*' -4 --fail --silent --show-error --max-time 10 \
                 https://staging.shvya-ai.com/health/ready/ >/dev/null
             fi
 
