@@ -21,6 +21,7 @@ jobs:
       github.event_name == 'workflow_dispatch' ||
       github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
+    environment: production
 
     steps:
       - name: Deploy over SSH
@@ -78,6 +79,14 @@ jobs:
 
             echo "Ensuring database and Redis are healthy..."
             docker compose up -d --wait db redis
+
+            echo "Creating a production database backup before migrations..."
+            mkdir -p /opt/shvya-ai/backups
+            BACKUP_FILE="/opt/shvya-ai/backups/shvya-prod-$(date -u +%Y%m%dT%H%M%SZ).sql"
+            docker compose exec -T db sh -c 'pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB"' > "$BACKUP_FILE"
+            test -s "$BACKUP_FILE"
+            gzip "$BACKUP_FILE"
+            find /opt/shvya-ai/backups -type f -name 'shvya-prod-*.sql.gz' -mtime +14 -delete
 
             echo "Applying database migrations before replacing the live web container..."
             docker compose run --rm web python manage.py migrate --noinput
@@ -148,22 +157,23 @@ jobs:
               exit 1
             fi
 
-            echo "Verifying Django through the host port with the production Host header..."
+            echo "Verifying Django dependency readiness through the host port..."
             ready=0
             for attempt in $(seq 1 10); do
               if curl --fail --silent --show-error --max-time 3 \
                 -H "Host: dashboard.shvya-ai.com" \
-                http://127.0.0.1:8000/ >/dev/null; then
+                -H "X-Forwarded-Proto: https" \
+                http://127.0.0.1:8000/health/ready/ >/dev/null; then
                 ready=1
-                echo "Django host endpoint is ready."
+                echo "Django dependency readiness check passed."
                 break
               fi
-              echo "Waiting for Django host endpoint... attempt ${attempt}/10"
+              echo "Waiting for Django readiness... attempt ${attempt}/10"
               sleep 2
             done
 
             if [ "$ready" -ne 1 ]; then
-              echo "Django host endpoint failed readiness verification."
+              echo "Django readiness verification failed."
               docker compose ps
               docker compose logs --tail=150 web
               exit 1
@@ -171,6 +181,14 @@ jobs:
 
             echo "Keeping Nginx running and ensuring edge services exist..."
             docker compose up -d --no-deps nginx certbot
+
+            echo "Reattaching Nginx to staging network when staging exists..."
+            if docker network inspect shvya-staging_default >/dev/null 2>&1; then
+              NGINX_ID="$(docker compose ps -q nginx)"
+              if [ -n "$NGINX_ID" ] && ! docker inspect "$NGINX_ID" --format '{{json .NetworkSettings.Networks}}' | grep -q 'shvya-staging_default'; then
+                docker network connect shvya-staging_default "$NGINX_ID" || true
+              fi
+            fi
 
             echo "Testing and gracefully reloading Nginx..."
             docker compose exec -T nginx nginx -t
@@ -180,9 +198,9 @@ jobs:
             public_ready=0
             for attempt in $(seq 1 10); do
               if curl --fail --silent --show-error --max-time 5 \
-                https://dashboard.shvya-ai.com/ >/dev/null; then
+                https://dashboard.shvya-ai.com/health/ready/ >/dev/null; then
                 public_ready=1
-                echo "Public HTTPS endpoint is ready."
+                echo "Public HTTPS readiness endpoint is healthy."
                 break
               fi
               echo "Waiting for public HTTPS endpoint... attempt ${attempt}/10"

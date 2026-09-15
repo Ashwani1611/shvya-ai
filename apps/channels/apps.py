@@ -52,6 +52,9 @@ class ChannelsConfig(AppConfig):
             install_whatsapp_coexistence_asset_resolution,
         )
         from services.channels.instagram_runtime import install_instagram_runtime
+        from services.channels.staging_outbound_safety import (
+            install_staging_outbound_safety,
+        )
 
         install_instagram_runtime()
         install_whatsapp_phone_registration()
@@ -68,3 +71,6 @@ class ChannelsConfig(AppConfig):
         # webhook signature verification and standard API message processing.
         install_whatsapp_coexistence_runtime()
         install_whatsapp_coexistence_partner_runtime()
+        # This must be the final transport wrapper. Production is unchanged;
+        # staging can only send to explicitly allowlisted test recipients.
+        install_staging_outbound_safety()

@@ -2,9 +2,9 @@ name: CI
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, staging]
   push:
-    branches: [main]
+    branches: [main, staging]
   workflow_dispatch:
 
 permissions:
@@ -12,7 +12,7 @@ permissions:
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 env:
   PYTHON_VERSION: "3.13"
@@ -109,6 +109,17 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
+
+      - name: Prepare Compose environment files
+        run: |
+          cp .env.example .env
+          cp .env.staging.example .env.staging
+
+      - name: Validate production Compose
+        run: docker compose --env-file .env.example -f docker-compose.yml config --quiet
+
+      - name: Validate staging Compose
+        run: docker compose --env-file .env.staging.example -f docker-compose.staging.yml config --quiet
 
       - name: Build application image
         run: docker build --tag shvya-ai:${{ github.sha }} .
