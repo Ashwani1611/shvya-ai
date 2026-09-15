@@ -72,6 +72,54 @@ def _strip_protected_generated_text(message: str, state: dict) -> str:
     return cleaned
 
 
+def _strip_unverified_stage_claim(message: str, state: dict) -> str:
+    """Remove generated claims about a configured stage move that did not execute."""
+    if _stage_success_for_state(state):
+        return str(message or "").strip()
+
+    plan = state.get("response_plan") if isinstance(state, dict) else None
+    execution = plan.get("execution_results") if isinstance(plan, dict) else None
+    stage_info = execution.get("stage_transition") if isinstance(execution, dict) else None
+    target_id = str(stage_info.get("target_stage_id") or "") if isinstance(stage_info, dict) else ""
+    if not target_id:
+        return str(message or "").strip()
+
+    try:
+        from apps.crm.models import Stage
+
+        target_name = Stage.objects.filter(pk=target_id).values_list("name", flat=True).first()
+    except Exception:
+        target_name = None
+    target_name = str(target_name or "").strip()
+    if not target_name:
+        return str(message or "").strip()
+
+    text = str(message or "").strip()
+    blocks = text.split("\n\n")
+    generated = blocks[0] if blocks else ""
+    suffix = blocks[1:]
+    parts = re.split(r"(?<=[.!?])\s+|\n+", generated)
+    kept = [
+        part.strip()
+        for part in parts
+        if part.strip() and not _contains_identifier(part, target_name)
+    ]
+    cleaned = " ".join(kept).strip()
+    if suffix:
+        return "\n\n".join([cleaned, *suffix]).strip()
+    return cleaned
+
+
+def _stage_success_for_state(state: dict) -> bool:
+    """Late-bound wrapper so the output helper can use the installed contract check."""
+    try:
+        from apps.ai_engagement.services.qualification_execution_contract import _stage_success
+
+        return bool(_stage_success(state))
+    except Exception:
+        return False
+
+
 def install_qualification_execution_policy_guard() -> None:
     """Enforce the organization-configured qualification execution contract.
 
@@ -217,7 +265,7 @@ def install_qualification_execution_policy_guard() -> None:
 
     # ------------------------------------------------------------------
     # Model-interpreted qualification answers: discard model-selected attribute
-    # writes and rebuild exact requirement -> configured attribute actions.
+    # and stage writes, then rebuild only exact configured backend actions.
     # ------------------------------------------------------------------
     current_resolve = runtime._resolve_state_before_response
     reconciler = StateReconciler()
@@ -251,7 +299,7 @@ def install_qualification_execution_policy_guard() -> None:
                 deepcopy(action)
                 for action in getattr(decision, "crm_actions", []) or []
                 if isinstance(action, dict)
-                and action.get("type") != "attribute_updates"
+                and action.get("type") not in {"attribute_updates", "pipeline_transition"}
             ]
             exact_updates = []
             for update in qualification_updates:
@@ -419,6 +467,7 @@ def install_qualification_execution_policy_guard() -> None:
                 raise EngagementError(
                     "Customer response claimed an unverified stage transition."
                 )
+        message = _strip_unverified_stage_claim(message, state)
         protected = _strip_protected_generated_text(message, state)
         if not protected and message:
             raise EngagementError(
