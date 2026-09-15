@@ -13,7 +13,7 @@ from apps.crm.models import AttributeDefinition
 class ExistingAttributeQualificationTests(TestCase):
     setUp = AIEngagementControlTests.setUp
 
-    def test_existing_attribute_description_satisfies_requirement_without_reasking(self):
+    def test_explicitly_mapped_existing_attribute_satisfies_requirement_without_reasking(self):
         org_info, _ = OrgInfo.objects.get_or_create(organization=self.organization)
         org_info.qualification_requirements = (
             "[id: management] Where do you currently manage leads?\n"
@@ -22,17 +22,21 @@ class ExistingAttributeQualificationTests(TestCase):
             "C. CRM\n"
             "D. Multiple places"
         )
-        org_info.engagement_instructions = "Ask only unanswered qualification questions."
+        org_info.engagement_instructions = (
+            "Ask only unanswered qualification questions.\n\n"
+            "## Attribute mapped\n"
+            "management -> Lead Management Tool\n\n"
+            "## Stage shifting\n"
+            "When all required qualification questions are answered, move to Qualified.\n"
+            "Acknowledgment message: \"Thanks, your details are complete.\""
+        )
         org_info.ai_enabled = True
         org_info.save()
         AttributeDefinition.objects.create(
             organization=self.organization,
             name="Lead Management Tool",
             key="lead_management_tool",
-            description=(
-                "Where the lead currently manages leads. This stores the answer "
-                "to the lead-management qualification requirement."
-            ),
+            description="Stored lead-management answer.",
             field_type=AttributeDefinition.FieldType.TEXT,
         )
         attributes = dict(self.lead.attributes or {})
@@ -64,9 +68,10 @@ class ExistingAttributeQualificationTests(TestCase):
         stable = state_for_lead(self.lead, requirements=requirements)
         self.assertEqual(stable["qualification_status"], "completed")
 
-    def test_ambiguous_attribute_mapping_is_not_used(self):
+    def test_unmapped_existing_attributes_are_not_inferred_semantically(self):
         org_info, _ = OrgInfo.objects.get_or_create(organization=self.organization)
         org_info.qualification_requirements = "What is your requirement?"
+        org_info.engagement_instructions = "Do not infer CRM mappings."
         org_info.ai_enabled = True
         org_info.save()
         for index in (1, 2):
