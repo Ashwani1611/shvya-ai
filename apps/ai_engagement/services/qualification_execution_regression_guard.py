@@ -43,13 +43,13 @@ def _persist_reconciled_stage(*, lead, source_message_id, result, requirements, 
     """Make a configured completion stage authoritative before final generation.
 
     This is deliberately a readback/reconciliation step, not a model-side stage
-    decision.  It only runs when the backend qualification state is complete and
+    decision. It only runs when the backend qualification state is complete and
     the organization has one resolved completion target.
     """
+    from apps.ai_engagement.services import qualification_execution_contract as contract
     from apps.ai_engagement.services import qualification_state as qs
     from apps.ai_engagement.services.canonical_architecture import StateReconciler
     from apps.ai_engagement.services.crm_executor import CRMActionExecutor
-    from apps.ai_engagement.services import qualification_execution_contract as contract
 
     state = qs.state_for_lead(lead, requirements=requirements)
     if str(state.get("qualification_status") or "").casefold() != "completed":
@@ -139,13 +139,11 @@ def _persist_reconciled_stage(*, lead, source_message_id, result, requirements, 
 
 
 def install_qualification_execution_regression_guard() -> None:
-    """Compatibility guard for the final qualification execution contract.
+    """Keep the strict contract compatible with established organizations.
 
-    The new contract is authoritative only after an actual requirement was asked,
-    and only replaces legacy attribute/stage behavior when the organization has
-    explicitly configured the corresponding AI Brain policy section.  This keeps
-    existing organizations working while configured organizations use the strict
-    mapping/stage contract.
+    The new contract is authoritative only after a requirement was actually
+    asked, and only replaces legacy attribute/stage behavior when the organization
+    explicitly configured the corresponding AI Brain policy section.
     """
     global _INSTALLED
     if _INSTALLED:
@@ -155,12 +153,9 @@ def install_qualification_execution_regression_guard() -> None:
     from apps.ai_engagement.services import qualification_state as qs
     from apps.ai_engagement.services import transactional_turn_runtime as runtime
     from apps.ai_engagement.services.canonical_architecture import ResponseActionValidator
-    from apps.ai_engagement.services.engagement_instruction_policy import section_lines
-    from apps.ai_engagement.models import OrgInfo
 
-    # ---------------------------------------------------------------
-    # 1. Never consume the first greeting as an answer to Q1.
-    # ---------------------------------------------------------------
+    # Never consume the first greeting as an answer to Q1. A direct answer may be
+    # applied only to the requirement the backend actually recorded as asked.
     current_pre_resolve = contract.resolve_before_generation
 
     @wraps(current_pre_resolve)
@@ -201,10 +196,8 @@ def install_qualification_execution_regression_guard() -> None:
 
     contract.resolve_before_generation = resolve_before_generation
 
-    # ---------------------------------------------------------------
-    # 2. Explicit configured completion stage wins; legacy orgs keep the
-    #    existing Qualified transition until they configure Stage shifting.
-    # ---------------------------------------------------------------
+    # Explicit configured completion stage wins. Organizations without a Stage
+    # shifting policy retain the existing deterministic Qualified transition.
     configured_completion_action = runtime._qualified_action
 
     def completion_action(*, lead, qualification_state):
@@ -217,8 +210,8 @@ def install_qualification_execution_regression_guard() -> None:
         if str(qualification_state.get("qualification_status") or "").casefold() != "completed":
             return None
         if _has_stage_policy(organization=lead.organization):
-            # Explicit but unresolved/invalid policy fails closed. Never silently
-            # substitute Qualified for a configured organization stage.
+            # Explicit but invalid/unresolved configuration fails closed instead
+            # of silently substituting the legacy Qualified stage.
             return None
         if qs.normalize_stage_name(getattr(getattr(lead, "stage", None), "name", "")) != "new lead":
             return None
@@ -232,11 +225,9 @@ def install_qualification_execution_regression_guard() -> None:
 
     runtime._qualified_action = completion_action
 
-    # ---------------------------------------------------------------
-    # 3. Strict exact qualification->attribute projection applies when the
-    #    organization authored Attribute mapped. Existing orgs without that
-    #    section keep the already validated legacy CRM actions.
-    # ---------------------------------------------------------------
+    # Strict exact requirement->attribute projection applies when Attribute
+    # mapped exists. Existing organizations without that section keep already
+    # validated CRM actions instead of losing their attributes during rollout.
     policy_resolve = runtime._resolve_state_before_response
     pre_policy_resolve = getattr(policy_resolve, "__wrapped__", None)
 
@@ -279,11 +270,9 @@ def install_qualification_execution_regression_guard() -> None:
 
     runtime._resolve_state_before_response = resolve
 
-    # ---------------------------------------------------------------
-    # 4. Internal-label filtering is scoped to backend response-plan turns.
-    #    Without a response plan the normal backend-selected question is valid
-    #    customer content and must not be mistaken for a leaked config label.
-    # ---------------------------------------------------------------
+    # Internal-label filtering is only meaningful on backend response-plan turns.
+    # Without a plan, the normal backend-selected next question is valid customer
+    # content and must not be mistaken for leaked configuration.
     policy_validate = ResponseActionValidator.validate
     pre_policy_validate = getattr(policy_validate, "__wrapped__", None)
 
