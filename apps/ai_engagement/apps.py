@@ -53,58 +53,33 @@ class AiEngagementConfig(AppConfig):
         )
         install_ai_setup_runtime_compat()
 
-        # Bridge qualification answers into deterministic CRM writes.
-        from apps.ai_engagement.services.qualification_crm_action_runtime import (
-            install_qualification_crm_action_runtime,
-        )
-        install_qualification_crm_action_runtime()
-
-        # Accept normal grounded date/time language without inventing a time.
+        # Reminder extraction is independent of qualification mapping authority.
         from apps.ai_engagement.services.reminder_time_runtime import (
             install_reminder_time_runtime,
         )
         install_reminder_time_runtime()
 
-        from apps.ai_engagement.services.crm_routing_reliability import (
-            install_crm_routing_reliability,
-        )
-        install_crm_routing_reliability()
-
-        from apps.ai_engagement.services.crm_action_projection_fix import (
-            install_crm_action_projection_fix,
-        )
-        install_crm_action_projection_fix()
-
-        # Compile ##Qualification criteria / ##Stage shifting /
-        # ##Attribute mapped into shared Hosted + Meta API backend policy.
+        # Compile organization-authored qualification/stage policy for the shared
+        # Hosted + Meta API runtime. Deterministic execution is owned by the
+        # qualification execution contract installed below.
         from apps.ai_engagement.services.engagement_instruction_runtime import (
             install_engagement_instruction_runtime,
         )
         install_engagement_instruction_runtime()
 
-        # Install the grounding scope boundary before the qualification routing
-        # wrapper is created. This guarantees every wrapper reference, including
-        # early imports held by tests/workflows, sees the scoped helper.
+        # Install the grounding scope boundary before qualification routing.
         from apps.ai_engagement.services.qualification_grounding_scope_guard import (
             install_qualification_grounding_scope_guard,
         )
         install_qualification_grounding_scope_guard()
 
-        # Active qualification answers are resolved against the persisted current
-        # requirement before generic knowledge/grounding fallback. This also
-        # normalizes authored option ranges and strengthens description-based
-        # attribute mapping without changing organization-specific flows.
+        # Normalize direct answers only against the persisted active requirement
+        # before generic knowledge handling. This runtime must not choose CRM
+        # attributes or completion stages.
         from apps.ai_engagement.services.qualification_answer_routing_runtime import (
             install_qualification_answer_routing_runtime,
         )
         install_qualification_answer_routing_runtime()
-
-        # Qualified can only come from deterministic completed qualification;
-        # never let a model-selected Qualified target become generic routing.
-        from apps.ai_engagement.services.qualified_transition_guard import (
-            install_qualified_transition_guard,
-        )
-        install_qualified_transition_guard()
 
         from apps.ai_engagement.services.langgraph_orchestration import (
             install_langgraph_orchestration,
@@ -120,8 +95,8 @@ class AiEngagementConfig(AppConfig):
         )
         install_model_silence_guard()
 
-        # Natural conversation safeguards only. Qualification stage scope remains
-        # owned by the core New Lead state machine and routing layers above.
+        # Natural conversation safeguards only. Qualification execution remains
+        # owned by the explicit backend contract below.
         from apps.ai_engagement.services.natural_conversation_runtime import (
             install_natural_conversation_runtime,
         )
@@ -147,41 +122,28 @@ class AiEngagementConfig(AppConfig):
         )
         install_final_reply_guard()
 
-        # The executor is the final backend evidence gate for non-Qualified stage
-        # moves; Qualified remains strictly tied to completed qualification.
+        # Final evidence gate for ordinary model-proposed stage moves. Configured
+        # deterministic qualification-completion transitions are separately
+        # authorized by backend completion state and target-stage configuration.
         from apps.ai_engagement.services.stage_transition_evidence import (
             install_stage_transition_evidence,
         )
         install_stage_transition_evidence()
 
-        # Reliable existing CRM values can satisfy mapped qualification fields
-        # before generation, preventing duplicate questions and stale state.
-        from apps.ai_engagement.services.attribute_state_reconciliation import (
-            install_attribute_state_reconciliation,
-        )
-        install_attribute_state_reconciliation()
-
-        # Resolve attributes, qualification, stage and workflow mutations before
-        # the canonical task builds the final customer-facing response. Install
-        # this before task fail-soft so terminal generation recovery still wraps
-        # the complete transactional execution path.
+        # Resolve state-changing actions before the final customer response.
         from apps.ai_engagement.services.transactional_turn_runtime import (
             install_transactional_turn_runtime,
         )
         install_transactional_turn_runtime()
 
         # State-changing turns use a draft/action pass followed by a fresh final
-        # response generated from the committed backend state. The draft response
-        # is never reused as customer-facing text after mutations are persisted.
+        # response generated from committed backend state.
         from apps.ai_engagement.services.transactional_decision_reuse import (
             install_transactional_decision_reuse,
         )
         install_transactional_decision_reuse()
 
-        # The second pass is language-only in code, not just by prompt: strip any
-        # repeated CRM/qualification proposals before qualification validation so
-        # already-committed actions cannot be repaired, re-applied, or block the
-        # final post-state response.
+        # The second pass is language-only in code, not just by prompt.
         from apps.ai_engagement.services.post_state_finalization_guard import (
             install_post_state_finalization_guard,
         )
@@ -197,56 +159,45 @@ class AiEngagementConfig(AppConfig):
         )
         install_ai_orchestration_hooks()
 
-        # The first customer-facing WhatsApp reply must always greet once before
-        # presenting the backend-selected first qualification requirement.
+        # The first customer-facing WhatsApp reply greets once before presenting
+        # the backend-selected first qualification requirement.
         from apps.ai_engagement.services.first_inbound_welcome_runtime import (
             install_first_inbound_welcome_runtime,
         )
         install_first_inbound_welcome_runtime()
 
-        # Last-mile regression guard for observed real customer conversations:
-        # noun-phrase information requests, short yes/no variants, internal Q-label
-        # leakage and whole-response quote wrappers must not break natural chat.
+        # Last-mile customer-chat cleanup remains language-only and may not own
+        # qualification state, mappings, or stage transitions.
         from apps.ai_engagement.services.customer_chat_regressions import (
             install_customer_chat_regressions,
         )
         install_customer_chat_regressions()
 
-        # Canonical architecture boundary. Install last so legacy compatibility
-        # shims feed one explicit contract: configuration -> evidence -> policy ->
-        # deterministic engines -> execution -> reconciled state -> final validator.
+        # Canonical architecture boundary: configuration -> evidence -> policy ->
+        # deterministic engines -> execution -> reconciled state -> validator.
         from apps.ai_engagement.services.canonical_architecture import (
             install_canonical_ai_architecture,
         )
         install_canonical_ai_architecture()
 
         # Pure policy previews and SimpleTestCase fixtures use non-persistent
-        # synthetic lead IDs. They must remain database-free while production
-        # UUID-backed CRM leads continue through reconciliation.
+        # synthetic lead IDs. Production UUID-backed CRM leads still reconcile.
         from apps.ai_engagement.services.canonical_architecture_compat import (
             install_canonical_architecture_compat,
         )
         install_canonical_architecture_compat()
 
-        # Final qualification execution contract. Install after the canonical
-        # architecture so answer resolution, exact configured mappings, CRM
-        # execution, state reconciliation and response-plan validation share one
-        # production path across API and Hosted/Coexistence WhatsApp.
+        # Authoritative qualification execution contract. This owns active-answer
+        # resolution, exact configured mapping, completion actions, reconciliation
+        # and backend response plans for API and Hosted/Coexistence WhatsApp.
         from apps.ai_engagement.services.qualification_execution_contract import (
             install_qualification_execution_contract,
         )
         install_qualification_execution_contract()
 
-        # Natural-language qualification answers use the same exact mapping and
-        # configured completion-stage contract as deterministic option answers.
+        # Model-interpreted qualification answers must resolve through the same
+        # exact configured mapping/completion contract as deterministic answers.
         from apps.ai_engagement.services.qualification_execution_policy_guard import (
             install_qualification_execution_policy_guard,
         )
         install_qualification_execution_policy_guard()
-
-        # Preserve the strict configured contract without regressing legacy orgs,
-        # first-turn greetings, or backend-selected customer-facing questions.
-        from apps.ai_engagement.services.qualification_execution_regression_guard import (
-            install_qualification_execution_regression_guard,
-        )
-        install_qualification_execution_regression_guard()
