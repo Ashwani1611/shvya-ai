@@ -219,3 +219,11 @@ class AiEngagementConfig(AppConfig):
             install_canonical_ai_architecture,
         )
         install_canonical_ai_architecture()
+
+        # Pure policy previews and SimpleTestCase fixtures use non-persistent
+        # synthetic lead IDs. They must remain database-free while production
+        # UUID-backed CRM leads continue through reconciliation.
+        from apps.ai_engagement.services.canonical_architecture_compat import (
+            install_canonical_architecture_compat,
+        )
+        install_canonical_architecture_compat()
