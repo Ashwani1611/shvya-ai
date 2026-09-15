@@ -1072,3 +1072,49 @@
 .features-page .f-hero>.eyebrow {
   width:auto;
 }
+/* Supplied Shvya mascot: separate eyes keep the original face free of double pupils. */
+.shvya-bot { isolation:isolate; filter:drop-shadow(0 15px 22px #2c90ff25); will-change:transform; transform:perspective(700px) translate3d(var(--move-x,0px),var(--move-y,0px),0) rotateY(var(--ry,0deg)) rotateX(var(--rx,0deg)) rotateZ(var(--rz,0deg)) scale(var(--bot-scale,1)); transition:filter .25s ease; }
+.shvya-bot img { border-radius:0; box-shadow:none; position:relative; z-index:1; }
+.bot-face { left:25%; top:36%; width:23%; height:17%; background:none; box-shadow:none; gap:25%; rotate:22deg; z-index:2; border-radius:0; }
+.bot-eye { flex:0 0 25%; width:25%; height:88%; border-radius:80%; background:linear-gradient(100deg,#76bbff 0%,#183457 17%,#0d1629 50%,#14213a 100%); box-shadow:inset 1px 0 2px #b1d5ff,1px 1px 2px #b8cdf8; transform-origin:center; animation:orb-blink 5.7s infinite; }
+.bot-eye:last-child { translate:0 8%; }
+.bot-aura { position:absolute; inset:12%; z-index:0; border-radius:50%; background:radial-gradient(circle,#9addff20,transparent 70%); opacity:.3; transition:opacity .3s,scale .3s; }
+.shvya-bot.is-curious { filter:drop-shadow(0 15px 30px #5faeff65) drop-shadow(12px 0 22px #b589fb40); }
+.shvya-bot.is-curious .bot-aura { opacity:1; scale:1.4; }
+.shvya-bot.is-curious .bot-eye { animation-duration:3.7s; }
+.hero-bot { width:265px; left:calc(50% - 132.5px); top:22px; }
+.inline-bot { width:75px; }
+.scene-bot { width:120px; top:-63px; right:0; }
+.book-bot { width:140px; right:-20px; bottom:-35px; }
+.panel-bot { width:52px; }
+.small-bot { width:92px; }
+.window-dots { display:flex; gap:8px; align-items:center; letter-spacing:0; }
+.window-dots i { display:block; width:11px; height:11px; border-radius:50%; background:#ff5f57; }
+.window-dots i:nth-child(2) { background:#ffbd2e; }
+.window-dots i:nth-child(3) { background:#28c840; }
+.sales-scene { background:linear-gradient(145deg,#18293b,#111b28); border:1px solid #334a65; border-radius:16px; padding:25px; position:relative; }
+.sales-top { display:flex; justify-content:space-between; gap:15px; font-size:12px; letter-spacing:.08em; color:#aec8e3; margin-bottom:25px; }
+.sales-top small { font-size:10px; color:#7f97b0; }
+.sales-item { padding:20px; background:#1d2d40; border:1px solid #354b63; border-radius:10px; margin-top:14px; }
+.sales-item h3 { font-weight:500; font-size:18px; margin-top:12px; }
+.sales-item p { color:#a5b8cd; font-size:14px; margin:9px 0 18px; }
+.signal { color:#afcaff; font-size:10px; letter-spacing:.1em; }
+.signal-warm { color:#ffd1a0; }
+.sales-next { font-size:12px; color:#99cdd5; }
+.sales-bot { position:absolute; width:115px; right:-30px; bottom:-40px; animation:float 5s ease-in-out infinite; }
+.workflow-scene { display:flex; flex-direction:column; align-items:center; padding:20px; }
+.workflow-scene>.eyebrow { margin-bottom:28px; }
+.workflow-node { border:1px solid #456357; border-radius:9px; background:#192c25; padding:20px 24px; width:90%; max-width:340px; display:flex; gap:20px; align-items:center; box-shadow:0 10px 30px #0002; }
+.workflow-node small { color:#94c5b4; font-size:10px; letter-spacing:.1em; }
+.workflow-node b { font-weight:500; font-size:16px; }
+.workflow-node.condition { background:#26233c; border-color:#56506f; }
+.workflow-node.condition small { color:#bcb1f4; }
+.workflow-line { display:block; width:1px; height:34px; background:linear-gradient(#6dbb9d,#afa0ec); position:relative; }
+.workflow-line:after { content:''; position:absolute; left:-3px; width:7px; height:7px; border-radius:50%; background:#adf3dc; animation:flow-pulse 2s ease-in-out infinite; }
+.workflow-scene>p { font-size:13px; color:#9bb4aa; margin-top:24px; }
+@keyframes orb-blink { 0%,42%,46%,100% { scale:1 1; } 44% { scale:1 .07; } }
+@keyframes flow-pulse { from { top:0; opacity:0; } 35% { opacity:1; } to { top:29px; opacity:0; } }
+@media(min-width:1000px) { .workflow-spotlight .story-copy { order:2; } }
+@media(max-width:800px) { .hero-bot { width:210px; left:calc(50% - 105px); top:28px; } .inline-bot { width:54px; } .sales-scene { margin-right:14px; } }
+@media(max-width:500px) { .inline-bot { width:42px; } .sales-top { flex-wrap:wrap; } .sales-bot { right:-20px; width:100px; } .workflow-node { width:100%; padding:17px; } }
+@media(prefers-reduced-motion:reduce) { .shvya-bot { will-change:auto; } .bot-eye,.workflow-line:after { animation:none!important; } }
