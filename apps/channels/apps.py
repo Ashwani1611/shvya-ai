@@ -48,6 +48,9 @@ class ChannelsConfig(AppConfig):
         from services.channels.whatsapp_coexistence_partner_runtime import (
             install_whatsapp_coexistence_partner_runtime,
         )
+        from services.channels.whatsapp_coexistence_asset_resolution import (
+            install_whatsapp_coexistence_asset_resolution,
+        )
         from services.channels.instagram_runtime import install_instagram_runtime
 
         install_instagram_runtime()
@@ -56,6 +59,11 @@ class ChannelsConfig(AppConfig):
         install_hosted_whatsapp_transport()
         install_whatsapp_failure_diagnostics()
         install_whatsapp_api_runtime()
+        # Install Coexistence asset recovery before request handling. Meta's
+        # WhatsApp Business App onboarding event can omit phone_number_id even
+        # after a successful selection; the wrapper resolves the unique
+        # is_on_biz_app candidate without changing normal Connect API behavior.
+        install_whatsapp_coexistence_asset_resolution()
         # Install Coexistence handling last so both layers sit behind existing
         # webhook signature verification and standard API message processing.
         install_whatsapp_coexistence_runtime()
