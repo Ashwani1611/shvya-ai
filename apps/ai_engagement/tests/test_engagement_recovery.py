@@ -187,6 +187,12 @@ class MultiTurnTransportRecoveryTests(TestCase):
                 outputs = [expected]
                 if index == 3:
                     outputs.insert(0, {**expected, "next_requirement_id": "which_product"})
+                # Qualification-answer turns are state-changing. The first
+                # provider decision proposes the update; after it is committed,
+                # the customer-facing response is freshly generated from the
+                # persisted state, so the mock must provide the final pass too.
+                if 1 <= index <= len(requirement_ids):
+                    outputs.append(expected)
                 provider.generate_text.side_effect = [
                     AITextResult(json.dumps(output), "test") for output in outputs
                 ]
@@ -215,7 +221,7 @@ class MultiTurnTransportRecoveryTests(TestCase):
                 if transport == "api":
                     deliver(message=outbound)
 
-            self.assertEqual(provider.generate_text.call_count, 7)
+            self.assertEqual(provider.generate_text.call_count, 11)
             # API replies use the generic sender task. Hosted replies are sent
             # directly by the durable Hosted job so Account Health/pacing stays
             # provider-specific and no process-global sender interception exists.
