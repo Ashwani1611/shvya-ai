@@ -46,10 +46,9 @@ def _strip_protected_generated_text(message: str, state: dict) -> str:
     if not labels:
         return str(message or "").strip()
 
-    # Response-plan controlled qualification replies are assembled as:
-    # generated acknowledgement + blank line + backend-authored content. Protect
-    # only the generated acknowledgement; configured question/options/final value
-    # must pass through exactly as authored.
+    # Response-plan controlled replies are assembled as generated language plus
+    # backend-authored content. Protect generated language only; exact configured
+    # question/options/final customer-facing values may pass through unchanged.
     blocks = str(message or "").strip().split("\n\n")
     generated = blocks[0] if blocks else ""
     suffix = blocks[1:] if len(blocks) > 1 else []
@@ -68,15 +67,13 @@ def _strip_protected_generated_text(message: str, state: dict) -> str:
 
 
 def install_qualification_execution_policy_guard() -> None:
-    """Make model-interpreted qualification turns obey the same CRM contract.
+    """Make model-interpreted qualification turns obey the backend contract.
 
-    High-confidence option/yes-no answers are pre-resolved by
-    qualification_execution_contract. Natural-language answers can still reach
-    the legacy transactional resolver through an LLM qualification update. This
-    guard removes fuzzy qualification attribute actions from that route, rebuilds
-    them only from explicit configured mappings, and makes completion stage
-    execution use the configured Stage Shifting rule rather than a canonical
-    stage name.
+    The model may interpret natural language, but it never chooses qualification
+    CRM attributes or completion stages. Exact organization configuration is
+    projected into deterministic backend actions before the transactional runtime
+    mutates state, and execution/configuration failures stay visible in reconciled
+    state.
     """
 
     global _INSTALLED
@@ -99,13 +96,19 @@ def install_qualification_execution_policy_guard() -> None:
         _stage_success,
     )
 
-    # Reconciled state carries dynamic customer-output protection metadata. This
-    # is derived from the organization configuration/CRM schema, not from one
-    # organization's current labels.
+    # Reconciled state carries dynamic customer-output protection metadata derived
+    # from the organization's actual configuration/CRM schema.
     current_build_snapshot = StateReconciler.build
 
     @wraps(current_build_snapshot)
-    def build_snapshot(self, *, lead, source_message_id, execution_results=None, structured_decision=None):
+    def build_snapshot(
+        self,
+        *,
+        lead,
+        source_message_id,
+        execution_results=None,
+        structured_decision=None,
+    ):
         snapshot = current_build_snapshot(
             self,
             lead=lead,
@@ -158,9 +161,9 @@ def install_qualification_execution_policy_guard() -> None:
 
     StateReconciler.build = build_snapshot
 
-    # Keep callers synchronized with the row that was locked and mutated by the
-    # pre-generation resolver. A stale in-memory Lead must never overwrite a
-    # just-persisted qualification answer on the next requirement transition.
+    # Keep the caller synchronized with the row mutated by pre-generation
+    # deterministic execution so later requirement selection cannot use stale
+    # attributes/stage state.
     current_pre_resolve = contract_module.resolve_before_generation
 
     @wraps(current_pre_resolve)
@@ -188,8 +191,6 @@ def install_qualification_execution_policy_guard() -> None:
             organization=lead.organization,
             requirements=requirements,
         )
-        if _mapping_errors(config):
-            return None
         target = config.get("completion_stage")
         if not isinstance(target, dict) or target.get("id") is None:
             return None
@@ -198,8 +199,8 @@ def install_qualification_execution_policy_guard() -> None:
             "stage_shift": {"stage_id": str(target["id"])},
         }
 
-    # The completion action is now configuration-owned. Qualification completion
-    # and a successful stage transition remain separate pieces of backend state.
+    # Completion stage authority comes only from the configured Stage Shifting
+    # rule. Qualification completion and transition success remain independent.
     runtime._qualified_action = configured_completion_action
 
     current_resolve = runtime._resolve_state_before_response
@@ -231,9 +232,9 @@ def install_qualification_execution_policy_guard() -> None:
                 requirements=requirements,
             )
 
-            # Never let a model/fuzzy runtime choose a qualification attribute.
-            # Keep unrelated workflow/contact/reminder actions, then project only
-            # exact configured requirement -> attribute bindings.
+            # Remove every model-selected qualification attribute write. Preserve
+            # unrelated contact/reminder/note actions, then rebuild only exact
+            # configured requirement -> attribute writes.
             actions = [
                 deepcopy(action)
                 for action in getattr(decision, "crm_actions", []) or []
@@ -241,24 +242,23 @@ def install_qualification_execution_policy_guard() -> None:
                 and action.get("type") != "attribute_updates"
             ]
             exact_updates = []
-            if not _mapping_errors(config):
-                for update in qualification_updates:
-                    requirement = _requirement_ref(
-                        str(update.get("requirement_id") or ""),
-                        requirements,
-                    )
-                    if requirement is None:
-                        continue
-                    requirement_id = str(requirement.get("id") or "")
-                    attribute_key = config.get("mappings", {}).get(requirement_id)
-                    if not attribute_key:
-                        continue
-                    exact_updates.append(
-                        {
-                            "key": attribute_key,
-                            "value": update.get("value"),
-                        }
-                    )
+            for update in qualification_updates:
+                requirement = _requirement_ref(
+                    str(update.get("requirement_id") or ""),
+                    requirements,
+                )
+                if requirement is None:
+                    continue
+                requirement_id = str(requirement.get("id") or "")
+                attribute_key = config.get("mappings", {}).get(requirement_id)
+                if not attribute_key:
+                    continue
+                exact_updates.append(
+                    {
+                        "key": attribute_key,
+                        "value": update.get("value"),
+                    }
+                )
             if exact_updates:
                 by_key = {
                     str(item["key"]): item
@@ -294,8 +294,9 @@ def install_qualification_execution_policy_guard() -> None:
         if not errors or not isinstance(snapshot, dict):
             return result
 
-        # Surface invalid configured mappings in the authoritative execution
-        # record. Do not silently substitute another attribute.
+        # Invalid configured mappings are execution/configuration failures. Keep
+        # them in authoritative state; never substitute a semantically similar
+        # attribute and never treat them as stage evidence.
         execution_results = [
             deepcopy(item)
             for item in snapshot.get("execution_results") or []
@@ -334,9 +335,8 @@ def install_qualification_execution_policy_guard() -> None:
 
     runtime._resolve_state_before_response = resolve
 
-    # Qualification completion is never accepted as evidence that a configured
-    # CRM stage transition succeeded. A stage-movement claim needs the reconciled
-    # target stage plus a verified execution result.
+    # Customer-facing stage/completion claims require reconciled DB evidence, and
+    # generated language may not expose internal configuration labels/identifiers.
     current_validate = ResponseActionValidator.validate
 
     @wraps(current_validate)
