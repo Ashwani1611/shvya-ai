@@ -38,7 +38,14 @@ class TransactionalTurnRuntimeTests(TestCase):
             "D. Multiple places\n"
             "All questions are required"
         )
-        org_info.engagement_instructions = "Reply naturally and concisely."
+        org_info.engagement_instructions = (
+            "Reply naturally and concisely.\n\n"
+            "## Attribute mapped\n"
+            "lead_system -> Lead Management Tool\n\n"
+            "## Stage shifting\n"
+            "When all required qualification questions are answered, move to Qualified.\n"
+            "Acknowledgment message: \"Thanks, your qualification details are complete.\""
+        )
         org_info.bot_languages = "English"
         org_info.ai_enabled = True
         org_info.save()
