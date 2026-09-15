@@ -6,6 +6,7 @@ from apps.hosted_automation import views as hosted_automation_views
 from . import api_account_repair_ui
 from . import ai_reply_status_ui
 from . import api_account_ui
+from . import coexistence_oauth_ui
 from . import coexistence_ui
 from . import connection_ui
 from . import embedded_oauth_ui
@@ -34,8 +35,13 @@ urlpatterns = [
     path("connect/api/attempt-event/", connection_ui.whatsapp_connection_attempt_event_view, name="whatsapp-connection-attempt-event"),
     path("connect/api/embedded-signup/", connection_ui.whatsapp_embedded_signup_callback_view, name="whatsapp-embedded-signup-callback"),
     path("connect/api/direct/start/", embedded_oauth_ui.whatsapp_embedded_signup_direct_start_view, name="whatsapp-embedded-signup-direct-start"),
-    path("connect/api/direct/return/", embedded_oauth_ui.whatsapp_embedded_signup_direct_return_view, name="whatsapp-embedded-signup-direct-return"),
+    # The callback URI stays unchanged so existing Meta OAuth allow-listing keeps
+    # working. A short-lived session marker dispatches Coexistence returns to the
+    # Coexistence completion service; ordinary Connect API returns are delegated
+    # to the original direct OAuth view.
+    path("connect/api/direct/return/", coexistence_oauth_ui.whatsapp_embedded_signup_direct_return_dispatch_view, name="whatsapp-embedded-signup-direct-return"),
     path("connect/coexistence/", coexistence_ui.whatsapp_connect_coexistence_view, name="whatsapp-connect-coexistence"),
+    path("connect/coexistence/direct/start/", coexistence_oauth_ui.whatsapp_coexistence_direct_start_view, name="whatsapp-coexistence-direct-start"),
     path("connect/coexistence/embedded-signup/", coexistence_ui.whatsapp_coexistence_callback_view, name="whatsapp-coexistence-callback"),
 
     # Hosted linked-device WhatsApp sessions (whatsapp-web.js gateway).

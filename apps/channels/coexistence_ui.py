@@ -23,6 +23,76 @@ from .connection_attempts import WhatsAppConnectionAttempt
 logger = logging.getLogger(__name__)
 
 
+def _install_coexistence_direct_oauth_launcher(response):
+    """Replace the visible JS-SDK launcher with SHVYA's direct OAuth route.
+
+    The existing template is kept as a backwards-compatible fallback, including
+    its Embedded Signup event listener and POST callback. On current browsers the
+    visible button is cloned after render, which removes the old ``FB.login``
+    click listener and navigates to the first-party direct OAuth start endpoint.
+    This avoids the Meta/FedCM path that can finish Login for Business without
+    returning ``authResponse.code`` to the JavaScript SDK.
+    """
+    content_type = response.get("Content-Type", "")
+    if "text/html" not in content_type.lower() or getattr(response, "streaming", False):
+        return response
+
+    try:
+        html = response.content.decode(response.charset or "utf-8")
+    except (AttributeError, UnicodeDecodeError):
+        return response
+
+    marker = "data-shvya-coexistence-direct-oauth"
+    if marker in html:
+        return response
+
+    direct_start = reverse("whatsapp-coexistence-direct-start")
+    script = f"""
+<script {marker}>
+(function () {{
+    function installDirectCoexistenceOAuth() {{
+        var current = document.getElementById("coexistence-connect-btn");
+        if (!current || current.dataset.shvyaDirectOauth === "1") return;
+
+        // cloneNode deliberately drops the legacy FB.login click listener while
+        // preserving the Apple-style button markup/classes already on the page.
+        var button = current.cloneNode(true);
+        button.dataset.shvyaDirectOauth = "1";
+        current.replaceWith(button);
+
+        var label = button.querySelector("span");
+        button.disabled = false;
+        if (label) label.textContent = "Connect existing WhatsApp";
+
+        button.addEventListener("click", function () {{
+            if (button.disabled) return;
+            button.disabled = true;
+            if (label) label.textContent = "Opening Meta…";
+            window.location.assign({json.dumps(direct_start)});
+        }});
+    }}
+
+    if (document.readyState === "loading") {{
+        document.addEventListener("DOMContentLoaded", installDirectCoexistenceOAuth, {{once: true}});
+    }} else {{
+        installDirectCoexistenceOAuth();
+    }}
+}}());
+</script>
+"""
+    lower = html.lower()
+    body_index = lower.rfind("</body>")
+    if body_index >= 0:
+        html = html[:body_index] + script + html[body_index:]
+    else:
+        html += script
+
+    response.content = html.encode(response.charset or "utf-8")
+    if response.has_header("Content-Length"):
+        response["Content-Length"] = str(len(response.content))
+    return response
+
+
 def whatsapp_connect_api_entry_view(request):
     """Keep the Connect API page while routing its Coexistence CTA correctly."""
     response = connection_ui.whatsapp_connect_api_view(request)
@@ -111,7 +181,11 @@ def whatsapp_connect_coexistence_view(request):
             ),
         },
     )
-    return connection_ui._add_meta_resource_hints(response)
+    response = connection_ui._add_meta_resource_hints(response)
+    response = _install_coexistence_direct_oauth_launcher(response)
+    response["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response["Pragma"] = "no-cache"
+    return response
 
 
 @crm_login_required
