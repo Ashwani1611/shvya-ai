@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from copy import deepcopy
 from dataclasses import replace
 from functools import wraps
@@ -20,6 +21,50 @@ def _mapping_errors(config):
         for item in config.get("errors") or []
         if isinstance(item, dict) and item.get("code") in _MAPPING_ERROR_CODES
     ]
+
+
+def _contains_label(text: str, label: str) -> bool:
+    text = str(text or "")
+    label = str(label or "").strip()
+    if not text or len(label) < 3:
+        return False
+    return bool(
+        re.search(
+            rf"(?<![A-Za-z0-9_]){re.escape(label)}(?![A-Za-z0-9_])",
+            text,
+            flags=re.IGNORECASE,
+        )
+    )
+
+
+def _strip_protected_generated_text(message: str, state: dict) -> str:
+    labels = [
+        str(item).strip()
+        for item in state.get("protected_configuration_labels") or []
+        if str(item or "").strip()
+    ]
+    if not labels:
+        return str(message or "").strip()
+
+    # Response-plan controlled qualification replies are assembled as:
+    # generated acknowledgement + blank line + backend-authored content. Protect
+    # only the generated acknowledgement; configured question/options/final value
+    # must pass through exactly as authored.
+    blocks = str(message or "").strip().split("\n\n")
+    generated = blocks[0] if blocks else ""
+    suffix = blocks[1:] if len(blocks) > 1 else []
+
+    parts = re.split(r"(?<=[.!?])\s+|\n+", generated)
+    kept = [
+        part.strip()
+        for part in parts
+        if part.strip()
+        and not any(_contains_label(part, label) for label in labels)
+    ]
+    cleaned = " ".join(kept).strip()
+    if suffix:
+        return "\n\n".join([cleaned, *suffix]).strip()
+    return cleaned
 
 
 def install_qualification_execution_policy_guard() -> None:
@@ -52,6 +97,65 @@ def install_qualification_execution_policy_guard() -> None:
         _requirement_ref,
         _stage_success,
     )
+
+    # Reconciled state carries dynamic customer-output protection metadata. This
+    # is derived from the organization configuration/CRM schema, not from one
+    # organization's current labels.
+    current_build_snapshot = StateReconciler.build
+
+    @wraps(current_build_snapshot)
+    def build_snapshot(self, *, lead, source_message_id, execution_results=None, structured_decision=None):
+        snapshot = current_build_snapshot(
+            self,
+            lead=lead,
+            source_message_id=source_message_id,
+            execution_results=execution_results,
+            structured_decision=structured_decision,
+        )
+        from apps.ai_engagement.services.engagement_instruction_policy import _SECTION_ALIASES
+        from apps.crm.models import AttributeDefinition, Stage
+
+        requirements = runtime._requirements_for_turn(
+            organization=lead.organization,
+            lead=lead,
+        )
+        labels: set[str] = set()
+        for aliases in _SECTION_ALIASES.values():
+            labels.update(str(item).strip() for item in aliases if str(item).strip())
+        for requirement in requirements:
+            for key in ("id", "stable_id"):
+                value = str(requirement.get(key) or "").strip()
+                if value:
+                    labels.add(value)
+            labels.update(
+                str(item).strip()
+                for item in requirement.get("legacy_ids") or []
+                if str(item or "").strip()
+            )
+        for definition in AttributeDefinition.objects.filter(
+            organization=lead.organization
+        ).values("key", "name"):
+            labels.update(
+                str(definition.get(key) or "").strip()
+                for key in ("key", "name")
+                if str(definition.get(key) or "").strip()
+            )
+        labels.update(
+            str(name).strip()
+            for name in Stage.objects.filter(
+                pipeline__organization=lead.organization,
+                pipeline__is_active=True,
+                is_active=True,
+            ).values_list("name", flat=True)
+            if str(name or "").strip()
+        )
+        snapshot["protected_configuration_labels"] = sorted(
+            labels,
+            key=lambda item: (-len(item), item.casefold()),
+        )
+        return snapshot
+
+    StateReconciler.build = build_snapshot
 
     def configured_completion_action(*, lead, qualification_state):
         if _norm(qualification_state.get("qualification_status")) != "completed":
@@ -229,7 +333,12 @@ def install_qualification_execution_policy_guard() -> None:
                 raise EngagementError(
                     "Customer response claimed an unverified stage transition."
                 )
-        return validated
+        protected = _strip_protected_generated_text(message, state)
+        if not protected and message:
+            raise EngagementError(
+                "Customer response exposed internal AI Brain/CRM configuration."
+            )
+        return replace(validated, message=protected)
 
     ResponseActionValidator.validate = validate
     _INSTALLED = True
