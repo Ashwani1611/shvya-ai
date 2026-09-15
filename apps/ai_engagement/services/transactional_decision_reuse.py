@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import uuid
 from contextvars import ContextVar
 from copy import deepcopy
 from dataclasses import replace
@@ -293,6 +294,15 @@ def install_transactional_decision_reuse() -> None:
         lead_data = context.lead if isinstance(context.lead, dict) else {}
         lead_id = str(lead_data.get("id") or "").strip()
         if not lead_id:
+            return raw
+
+        # Playground and lower-level orchestration tests use synthetic lead IDs
+        # (for example ``lead-1``). Operational state is database-backed and must
+        # only be queried for a real Lead UUID; synthetic contexts still receive
+        # the normal generation payload without being treated as CRM rows.
+        try:
+            uuid.UUID(lead_id)
+        except (AttributeError, TypeError, ValueError):
             return raw
 
         from apps.crm.models import LeadReminder
