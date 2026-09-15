@@ -12,7 +12,6 @@ from apps.ai_engagement.graph.runtime_policy import get_runtime_policy
 from apps.ai_engagement.models import OrgInfo
 from apps.ai_engagement.services.ai_provider import AITextResult, OpenAIProvider
 from apps.ai_engagement.services.context import AIContextBuilder
-from apps.ai_engagement.services.crm_executor import CRMActionExecutor
 from apps.ai_engagement.services.engagement import EngagementDecision
 from apps.ai_engagement.services.organization_profile import (
     compile_org_ai_profile_from_context,
@@ -22,7 +21,6 @@ from apps.ai_engagement.services.qualification_state import (
     REQUIREMENT_ANSWERED,
     apply_unambiguous_reply,
     record_last_asked_requirement,
-    state_for_lead,
 )
 from apps.crm.models import AttributeDefinition, Lead, Pipeline
 from apps.organizations.models import Organization
@@ -122,7 +120,7 @@ class QualificationAnswerRoutingPriorityTests(TestCase):
                 )
                 self.assertEqual(state["next_requirement_id"], requirements[1]["id"])
 
-    def test_natural_numeric_answer_normalizes_and_persists_described_attribute(self):
+    def test_natural_numeric_answer_normalizes_without_fuzzy_attribute_inference(self):
         requirements = self._requirements(
             "How many leads do you typically receive per day?\n"
             "A. 0-10\n"
@@ -158,7 +156,6 @@ class QualificationAnswerRoutingPriorityTests(TestCase):
         )
 
         lead.refresh_from_db()
-        qualification_state = state_for_lead(lead, requirements=requirements)
         context, runtime_policy = self._context_and_policy(
             lead=lead,
             message_id="natural-20",
@@ -168,24 +165,12 @@ class QualificationAnswerRoutingPriorityTests(TestCase):
             decision=SimpleNamespace(qualification_updates=[], crm_actions=[]),
             context=context,
             runtime_policy=runtime_policy,
-            qualification_state=qualification_state,
+            qualification_state=result["state"],
             requirements=requirements,
         )
-        attribute_action = next(
-            item for item in actions if item.get("type") == "attribute_updates"
-        )
-        self.assertIn(
-            {"key": "leads_per_day", "value": "10-30"},
-            attribute_action["updates"],
-        )
-
-        CRMActionExecutor().execute(
-            organization=self.organization,
-            lead=lead,
-            actions=[attribute_action],
-        )
+        self.assertFalse(any(item.get("type") == "attribute_updates" for item in actions))
         lead.refresh_from_db()
-        self.assertEqual(lead.attributes["leads_per_day"], "10-30")
+        self.assertNotIn("leads_per_day", lead.attributes)
 
     def test_natural_yes_and_option_keyword_are_active_question_answers(self):
         yes_requirements = self._requirements(
@@ -241,7 +226,7 @@ class QualificationAnswerRoutingPriorityTests(TestCase):
             "WhatsApp chats",
         )
 
-    def test_completed_natural_answer_persists_attribute_and_qualified_stage(self):
+    def test_completed_natural_answer_does_not_infer_attribute_or_magic_stage(self):
         requirements = self._requirements(
             "How many leads do you typically receive per day?\n"
             "A. 0-10\n"
@@ -271,7 +256,6 @@ class QualificationAnswerRoutingPriorityTests(TestCase):
         self.assertEqual(result["state"]["qualification_status"], "completed")
 
         lead.refresh_from_db()
-        qualification_state = state_for_lead(lead, requirements=requirements)
         context, runtime_policy = self._context_and_policy(
             lead=lead,
             message_id="final-natural",
@@ -281,20 +265,16 @@ class QualificationAnswerRoutingPriorityTests(TestCase):
             decision=SimpleNamespace(qualification_updates=[], crm_actions=[]),
             context=context,
             runtime_policy=runtime_policy,
-            qualification_state=qualification_state,
+            qualification_state=result["state"],
             requirements=requirements,
         )
-        CRMActionExecutor().execute(
-            organization=self.organization,
-            lead=lead,
-            actions=actions,
-        )
+        self.assertFalse(any(item.get("type") == "attribute_updates" for item in actions))
+        self.assertFalse(any(item.get("type") == "pipeline_transition" for item in actions))
         lead.refresh_from_db()
-        self.assertEqual(lead.attributes["leads_per_day"], "10-30")
-        self.assertEqual(lead.stage_id, self.qualified.id)
-        final_state = state_for_lead(lead, requirements=requirements)
-        self.assertEqual(final_state["qualification_status"], "completed")
-        self.assertTrue(final_state["qualification_completed"])
+        self.assertNotIn("leads_per_day", lead.attributes)
+        self.assertEqual(lead.stage_id, self.new_lead.id)
+        self.assertEqual(result["state"]["qualification_status"], "completed")
+        self.assertTrue(result["state"]["qualification_completed"])
 
     def test_deterministic_qualification_reply_never_reaches_generic_grounding_fallback(self):
         requirements = self._requirements(
@@ -408,9 +388,6 @@ class QualificationAnswerRoutingPriorityTests(TestCase):
             "latest_text": "What is the price of the unavailable plan?",
             "runtime_policy": {},
         }
-        # Override the autouse fixture that replaces the provider with an
-        # always-approve mock. Keep the real constructor and mock only generation
-        # to cover rejection and missing credentials without network calls.
         for api_key in ("test-key-never-sent", ""):
             with self.subTest(provider_configured=bool(api_key)), override_settings(
                 OPENAI_API_KEY=api_key,

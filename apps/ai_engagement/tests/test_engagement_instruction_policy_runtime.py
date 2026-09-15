@@ -21,7 +21,7 @@ from apps.ai_engagement.services.qualification_state import (
     state_for_lead,
 )
 from apps.ai_engagement.services.reminder_time_runtime import parse_grounded_due_at
-from apps.crm.models import AttributeDefinition, Lead, LeadNote, Pipeline, Stage
+from apps.crm.models import AttributeDefinition, Lead, Pipeline, Stage
 from apps.organizations.models import Organization
 
 
@@ -217,7 +217,7 @@ class AuthoredPolicyCRMIntegrationTests(TestCase):
         self.assertIn("Q3 -> Daily Leads", policy["crm"]["attribute_mapped"])
         self.assertTrue(any("Seller" in rule for rule in policy["crm"]["stage_shifting"]))
 
-    def test_five_answers_fill_mapped_attributes_then_move_qualified_and_write_short_note(self):
+    def test_five_answers_fill_explicit_mappings_without_magic_completion_side_effects(self):
         _context, _policy, requirements, _profile = self._context_policy_requirements(
             message_id="start",
             body="Hi",
@@ -269,27 +269,13 @@ class AuthoredPolicyCRMIntegrationTests(TestCase):
                 actions=actions,
             )
             self.lead.refresh_from_db()
-
-            if index < 5:
-                self.assertEqual(self.lead.stage_id, self.new_lead.id)
-            else:
-                self.assertEqual(self.lead.stage_id, self.qualified.id)
+            # Explicit mapping may be projected by authored policy, but completion
+            # stage and summary-note side effects belong to the execution contract.
+            self.assertEqual(self.lead.stage_id, self.new_lead.id)
 
         self.lead.refresh_from_db()
         for key, value in expected.items():
             self.assertEqual(self.lead.attributes.get(key), value)
-
-        notes = list(
-            LeadNote.objects.filter(
-                lead=self.lead,
-                note_type="system",
-                note__startswith="<AI Qualification Summary",
-            )
-        )
-        self.assertEqual(len(notes), 1)
-        self.assertLessEqual(len(notes[0].note), 500)
-        self.assertIn("30+", notes[0].note)
-        self.assertIn("Referrals", notes[0].note)
 
     def test_non_new_stage_can_shift_cross_pipeline_from_authored_stage_rule(self):
         self.lead.stage = self.follow_up

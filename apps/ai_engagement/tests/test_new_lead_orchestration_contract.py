@@ -163,7 +163,7 @@ class QualificationStagePolicyTests(SimpleTestCase):
         self.assertFalse(any(item["type"] == "pipeline_transition" for item in actions))
         self.assertEqual(result["evaluation"]["outcome"], "in_progress")
 
-    def test_qualification_answer_maps_to_matching_named_attribute(self):
+    def test_qualification_answer_does_not_semantically_guess_attribute_mapping(self):
         context = SimpleNamespace(
             conversation={"messages": [{"id": "m1", "direction": "inbound", "body": "Slow replies"}]},
             pipeline={"attribute_definitions": [{"key": "biggest_challenge", "name": "Biggest challenge", "field_type": "text"}]},
@@ -187,8 +187,7 @@ class QualificationStagePolicyTests(SimpleTestCase):
             qualification_state=state,
             requirements=[{"id": "challenge", "required": True}],
         )
-        attribute = next(item for item in actions if item["type"] == "attribute_updates")
-        self.assertEqual(attribute["updates"], [{"key": "biggest_challenge", "value": "Slow replies"}])
+        self.assertFalse(any(item["type"] == "attribute_updates" for item in actions))
 
     def test_grounded_reminder_is_kept_without_qualification(self):
         action = {
@@ -240,13 +239,13 @@ class ExplicitGuidedFileCandidateTests(TestCase):
             stage={},
             contacts=[],
             attributes=[],
+            conversation_summary=None,
+            qualification_notes=[],
+            knowledge=[],
             conversation={
                 "message_count": 1,
                 "messages": [{"id": "m1", "direction": "inbound", "body": "Please send me your brochure"}],
             },
-            conversation_summary=None,
-            qualification_notes=[],
-            knowledge=[],
         )
         candidates = FileSharingService().build_file_candidates(organization=organization, context=context)
         self.assertEqual([item["document_id"] for item in candidates], [document.id])

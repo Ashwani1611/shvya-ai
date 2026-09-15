@@ -21,7 +21,7 @@ from apps.ai_engagement.services.transactional_turn_runtime import (
     _resolve_state_before_response,
 )
 from apps.ai_engagement.tests.test_engagement_controls import AIEngagementControlTests
-from apps.crm.models import AttributeDefinition, LeadReminder
+from apps.crm.models import AttributeDefinition, LeadReminder, Stage
 
 
 class TransactionalTurnRuntimeTests(TestCase):
@@ -29,6 +29,13 @@ class TransactionalTurnRuntimeTests(TestCase):
     _inbound = AIEngagementControlTests._inbound
 
     def _configure_single_requirement(self):
+        self.completion_stage = Stage.objects.create(
+            pipeline=self.pipeline,
+            name="Qualification Complete",
+            display_order=95,
+            is_active=True,
+            ai_on=True,
+        )
         org_info, _ = OrgInfo.objects.get_or_create(organization=self.organization)
         org_info.qualification_requirements = (
             "[id: lead_system] Where do you currently manage leads?\n"
@@ -38,7 +45,14 @@ class TransactionalTurnRuntimeTests(TestCase):
             "D. Multiple places\n"
             "All questions are required"
         )
-        org_info.engagement_instructions = "Reply naturally and concisely."
+        org_info.engagement_instructions = (
+            "Reply naturally and concisely.\n\n"
+            "## Attribute mapped\n"
+            "lead_system -> Lead Management Tool\n\n"
+            "## Stage shifting\n"
+            "When all required qualification questions are answered, move to Qualification Complete.\n"
+            "Acknowledgment message: \"Thanks, your qualification details are complete.\""
+        )
         org_info.bot_languages = "English"
         org_info.ai_enabled = True
         org_info.save()
@@ -131,7 +145,7 @@ class TransactionalTurnRuntimeTests(TestCase):
         state = state_for_lead(self.lead, requirements=requirements)
         self.assertEqual(self.lead.attributes["lead_management_tool"], "Multiple places")
         self.assertEqual(state["qualification_status"], "completed")
-        self.assertEqual(self.lead.stage_id, self.qualified.id)
+        self.assertEqual(self.lead.stage_id, self.completion_stage.id)
         self.assertEqual(LeadReminder.objects.filter(lead=self.lead).count(), 1)
         self.assertEqual(
             self.lead.attributes[STATE_KEY]["pre_resolved_message_id"],
@@ -141,8 +155,6 @@ class TransactionalTurnRuntimeTests(TestCase):
             _message_state_resolved(lead=self.lead, source_message_id=inbound.id)
         )
 
-        # A duplicate inbound event/task cannot execute the same state mutations
-        # a second time.
         duplicate = _resolve_state_before_response(
             organization=self.organization,
             lead=self.lead,
@@ -348,8 +360,6 @@ Q1 -> Challenge
         before = state_for_lead(self.lead, requirements=requirements)
         self.assertEqual(before["qualification_status"], "completed")
 
-        # A later ordinary conversation turn has no qualification update and must
-        # not reopen the completed flow.
         later = self._inbound("txn-later")
         later.body = "What happens next?"
         later.save(update_fields=["body"])
@@ -373,4 +383,4 @@ Q1 -> Challenge
         self.lead.refresh_from_db()
         after = state_for_lead(self.lead, requirements=requirements)
         self.assertEqual(after["qualification_status"], "completed")
-        self.assertEqual(self.lead.stage_id, self.qualified.id)
+        self.assertEqual(self.lead.stage_id, self.completion_stage.id)
