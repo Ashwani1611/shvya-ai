@@ -25,12 +25,24 @@ _INSTALLED = False
 _PARTNER_EVENTS = {"history", "smb_app_state_sync", "smb_message_echoes"}
 
 
-def _account_for_partner_event(data):
-    if not isinstance(data, dict):
+def _account_for_partner_event(payload, data):
+    if not isinstance(payload, dict) or not isinstance(data, dict):
         return None
     metadata = data.get("metadata") or {}
-    phone_number_id = str(metadata.get("phone_number_id") or "").strip()
-    waba_id = str(data.get("id") or "").strip()
+    phone_number_id = str(
+        metadata.get("phone_number_id")
+        or data.get("phone_number_id")
+        or ""
+    ).strip()
+    # Partner webhook variants put the WABA on either the outer envelope or the
+    # data object. Accept both; phone_number_id remains the strongest router.
+    waba_id = str(
+        data.get("waba_id")
+        or data.get("id")
+        or payload.get("waba_id")
+        or payload.get("id")
+        or ""
+    ).strip()
 
     accounts = WhatsAppAccount.objects.filter(
         connection_type=WhatsAppAccount.ConnectionType.API,
@@ -57,14 +69,14 @@ def process_partner_coexistence_event(payload):
     if not isinstance(data, dict):
         return True
 
-    account = _account_for_partner_event(data)
+    account = _account_for_partner_event(payload, data)
     if account is None:
         metadata = data.get("metadata") or {}
         logger.warning(
             "Partner Coexistence event has no connected SHVYA account: event=%s phone=%s waba=%s",
             event,
-            metadata.get("phone_number_id"),
-            data.get("id"),
+            metadata.get("phone_number_id") or data.get("phone_number_id"),
+            data.get("waba_id") or data.get("id") or payload.get("waba_id") or payload.get("id"),
         )
         return True
 
