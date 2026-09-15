@@ -18,3 +18,7 @@ class HomeView(CRMUserContextMixin, TemplateView):
 
 class PricingView(CRMUserContextMixin, TemplateView):
     template_name = "pricing.html"
+
+
+class FeaturesView(CRMUserContextMixin, TemplateView):
+    template_name = "features.html"
