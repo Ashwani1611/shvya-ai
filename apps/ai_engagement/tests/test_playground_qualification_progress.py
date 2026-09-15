@@ -1,11 +1,12 @@
 import json
 from types import SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 from django.core.cache import cache
 from django.test import SimpleTestCase
 
 from apps.ai_engagement.services.ai_provider import AITextResult
+from apps.ai_engagement.services.engagement import EngagementDecision
 from apps.ai_engagement.services.organization_profile import (
     compile_qualification_requirements,
 )
@@ -137,3 +138,39 @@ class PlaygroundQualificationProgressRegressionTests(SimpleTestCase):
         )
 
         self._assert_q5_recovery(result)
+
+    def test_information_intent_uses_grounded_fallback_instead_of_repeating_q1(self):
+        messages = (
+            "price of plan",
+            "what all pack shvya offer?",
+            "pricer coif npcs",
+        )
+
+        for index, message in enumerate(messages, start=1):
+            with self.subTest(message=message):
+                self.provider.generate_text.side_effect = RuntimeError(
+                    "simulated provider/schema failure on information request"
+                )
+                fallback = EngagementDecision(
+                    should_engage=True,
+                    message="Verified plan information fallback.",
+                    file_document_id=None,
+                    crm_actions=[],
+                    reason="ANSWER_ORG_QUESTION",
+                    reason_code="ANSWER_ORG_QUESTION",
+                    model="deterministic-fallback",
+                )
+                with patch.object(
+                    self.service,
+                    "_fallback_decision",
+                    return_value=fallback,
+                ) as fallback_decision:
+                    result = self.service.run(
+                        organization=self.organization,
+                        session_id=f"info-intent-{index}",
+                        message=message,
+                    )
+
+                fallback_decision.assert_called_once()
+                self.assertIn("Verified plan information fallback.", result.response)
+                self.assertNotIn(self.requirements[0]["question"], result.response)
