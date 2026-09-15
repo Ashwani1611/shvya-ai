@@ -138,55 +138,101 @@ def _ensure_datetime_reminder(controlled, latest_text):
     )
 
 
-def _allow_explicit_model_stage_move(controlled, *, decision, context, latest_text):
-    """Preserve ordinary evidence-bound stage routing outside qualification ownership.
-
-    Qualification-completion stages are built by the backend execution contract.
-    This function only considers explicit model-proposed stage actions whose
-    configured destination meaning is supported by the customer's latest message.
-    """
-    if any(item.get("type") == "pipeline_transition" for item in controlled):
-        return
+def _available_stage_context(context):
     pipeline = getattr(context, "pipeline", None)
     stage = getattr(context, "stage", None)
     if not isinstance(pipeline, dict):
-        return
-    current_stage_id = str(stage.get("id") or "") if isinstance(stage, dict) else ""
+        return {}, ""
     allowed = {
         str(item.get("id")): item
         for item in pipeline.get("available_stages") or []
         if isinstance(item, dict) and item.get("id") is not None
     }
+    current_stage_id = str(stage.get("id") or "") if isinstance(stage, dict) else ""
+    return allowed, current_stage_id
+
+
+def _stage_action_supported(*, action, context, runtime_policy, latest_text: str) -> bool:
+    if not isinstance(action, dict) or action.get("type") != "pipeline_transition":
+        return False
+    shift = action.get("stage_shift")
+    stage_id = (
+        str(shift.get("stage_id") or "").strip()
+        if isinstance(shift, dict)
+        else ""
+    )
+    allowed, current_stage_id = _available_stage_context(context)
+    destination = allowed.get(stage_id)
+    if not stage_id or destination is None or stage_id == current_stage_id:
+        return False
+
+    from apps.ai_engagement.services.engagement_instruction_runtime import (
+        _condition_part,
+        _stage_rule_references_destination,
+        _strong_evidence_match,
+    )
+
+    rules = ((runtime_policy or {}).get("crm") or {}).get("stage_shifting") or []
+    for rule in rules:
+        if not isinstance(rule, str) or not _stage_rule_references_destination(rule, destination):
+            continue
+        condition = _condition_part(rule, destination)
+        if condition and _strong_evidence_match(latest_text, condition):
+            return True
+
+    description = _clean(destination.get("description"))
+    if description and _strong_evidence_match(latest_text, description):
+        return True
+
     latest_tokens = _tokens(latest_text)
+    destination_tokens = _tokens(destination.get("name"))
+    return bool(destination_tokens and destination_tokens.issubset(latest_tokens))
 
-    for action in getattr(decision, "crm_actions", []) or []:
+
+def _sanitize_existing_stage_actions(controlled, *, context, runtime_policy, latest_text):
+    """Remove legacy/model stage proposals lacking current customer/config evidence."""
+    sanitized = []
+    for action in controlled or []:
         if not isinstance(action, dict) or action.get("type") != "pipeline_transition":
+            sanitized.append(action)
             continue
-        shift = action.get("stage_shift")
-        stage_id = (
-            str(shift.get("stage_id") or "").strip()
-            if isinstance(shift, dict)
-            else ""
-        )
-        destination = allowed.get(stage_id)
-        if not stage_id or destination is None or stage_id == current_stage_id:
-            continue
+        if _stage_action_supported(
+            action=action,
+            context=context,
+            runtime_policy=runtime_policy,
+            latest_text=latest_text,
+        ):
+            sanitized.append(action)
+    return sanitized
 
-        description_tokens = _tokens(destination.get("description"))
-        destination_tokens = _tokens(destination.get("name"))
-        description_supported = bool(
-            description_tokens
-            and latest_tokens
-            and description_tokens.intersection(latest_tokens)
-        )
-        explicitly_named = bool(
-            destination_tokens and destination_tokens.issubset(latest_tokens)
-        )
-        if description_supported or explicitly_named:
+
+def _allow_explicit_model_stage_move(
+    controlled,
+    *,
+    decision,
+    context,
+    runtime_policy,
+    latest_text,
+):
+    """Preserve only evidence-backed ordinary stage routing.
+
+    Qualification-completion stages are not owned by this policy builder. They
+    are constructed later by the deterministic qualification execution contract.
+    """
+    if any(item.get("type") == "pipeline_transition" for item in controlled):
+        return
+    for action in getattr(decision, "crm_actions", []) or []:
+        if _stage_action_supported(
+            action=action,
+            context=context,
+            runtime_policy=runtime_policy,
+            latest_text=latest_text,
+        ):
+            shift = action.get("stage_shift") or {}
             controlled.append(
                 {
                     "type": "pipeline_transition",
-                    "stage_shift": {"stage_id": stage_id},
+                    "stage_shift": {"stage_id": str(shift.get("stage_id") or "")},
                 }
             )
             return
@@ -203,11 +249,17 @@ def _wrap_controlled_actions(current_builder):
         )
         controlled = [dict(item) for item in controlled]
         _latest_message_id, latest_text = _latest_inbound(context)
-
+        controlled = _sanitize_existing_stage_actions(
+            controlled,
+            context=context,
+            runtime_policy=runtime_policy,
+            latest_text=latest_text,
+        )
         _allow_explicit_model_stage_move(
             controlled,
             decision=decision,
             context=context,
+            runtime_policy=runtime_policy,
             latest_text=latest_text,
         )
         _ensure_datetime_reminder(controlled, latest_text)
