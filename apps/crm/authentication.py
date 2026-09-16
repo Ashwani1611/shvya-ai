@@ -8,11 +8,16 @@ from rest_framework.exceptions import AuthenticationFailed
 
 from apps.accounts.session_utils import (
     get_session_store,
+    invalidate_authenticated_session,
     save_session_cookie,
     set_authenticated_user,
 )
 
 from apps.crm.constants import CRM_SESSION_AREA
+from apps.organizations.access import (
+    crm_user_is_authorized,
+    organization_is_active,
+)
 from apps.organizations.models import APIKey
 
 logger = logging.getLogger(__name__)
@@ -65,6 +70,11 @@ class SHVYAAPIKeyAuthentication(
                 "Invalid SHVYA API key."
             )
 
+        if not organization_is_active(api_key.organization):
+            raise AuthenticationFailed(
+                "Organization account is disabled."
+            )
+
         if (
             api_key.expires_at
             and api_key.expires_at <= timezone.now()
@@ -96,6 +106,7 @@ class SHVYAAPIKeyAuthentication(
         request,
     ):
         return self.keyword
+
 
 def get_crm_session(request):
     """
@@ -170,6 +181,7 @@ def get_crm_authenticated_user(request):
         user = backend.get_user(user_id)
 
         if user is None:
+            invalidate_authenticated_session(session)
             return None
 
         # ----------------------------------------------------
@@ -178,9 +190,13 @@ def get_crm_authenticated_user(request):
 
         session_hash = session.get("_auth_user_hash")
 
-        if session_hash:
-            if not user.get_session_auth_hash() == session_hash:
-                return None
+        if not session_hash or user.get_session_auth_hash() != session_hash:
+            invalidate_authenticated_session(session)
+            return None
+
+        if not crm_user_is_authorized(user):
+            invalidate_authenticated_session(session)
+            return None
 
         return user
 
@@ -472,7 +488,7 @@ def crm_login_view(request):
     return response
 
 
-    # ============================================================
+# ============================================================
 # CRM PROFILE
 # ============================================================
 
@@ -514,5 +530,4 @@ def crm_profile_view(request):
 # entire session rather than clearing individual keys, which is
 # the stronger/correct approach — an earlier, weaker duplicate of
 # this view previously lived here unused and has been removed.
-
 
