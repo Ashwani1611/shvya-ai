@@ -21,7 +21,6 @@ from services.crm_activity_service import (
     record_reminder_completed,
     record_note_added,
     record_call_logged,
-    record_lead_updated,
 )
 
 from services.crm.lead_import_service import (

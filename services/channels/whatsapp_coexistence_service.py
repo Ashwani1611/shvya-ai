@@ -8,7 +8,6 @@ then exposes contact/history synchronization plus Business-App message echoes.
 """
 
 import logging
-from typing import Iterable
 
 import requests
 from django.conf import settings

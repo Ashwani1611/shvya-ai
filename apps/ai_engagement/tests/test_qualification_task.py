@@ -5,7 +5,6 @@ from unittest.mock import patch
 from django.test import TestCase
 
 from apps.ai_engagement.models import (
-    InternalConversationSummary,
     OrgInfo,
 )
 from apps.ai_engagement.services.ai_provider import (

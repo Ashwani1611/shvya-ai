@@ -10,7 +10,6 @@ from apps.copilot.models import CopilotLeadFlag
 from apps.crm.decorators import crm_login_required
 from apps.crm.models import Lead, Stage
 from services.copilot_service import (
-    FLAG_DEFINITIONS,
     active_flags_for_user,
     ensure_fresh_cache,
     flag_payload,

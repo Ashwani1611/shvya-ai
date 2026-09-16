@@ -18,14 +18,12 @@ from decouple import config
 from django.core.cache import cache
 from django.core.signing import TimestampSigner
 from django.db import transaction
-from django.db.models import Q
 from django.urls import reverse
 from django.utils import timezone
 
 from apps.channels.models import WhatsAppAccount, WhatsAppMessage
 from apps.followups.models import (
     FollowupExecution,
-    FollowupSequence,
     FollowupStep,
     LeadSequenceState,
 )

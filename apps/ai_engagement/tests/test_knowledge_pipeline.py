@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 
 from django.test import TestCase
 
 from apps.ai_engagement.models import (
-    Chunk,
     Document,
     KnowledgeSource,
 )

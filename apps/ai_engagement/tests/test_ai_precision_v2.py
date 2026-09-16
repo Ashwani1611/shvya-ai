@@ -6,7 +6,6 @@ from unittest.mock import Mock, patch
 
 from django.test import SimpleTestCase, TestCase, override_settings
 
-from apps.ai_engagement.models import OrgInfo
 from apps.ai_engagement.services.ai_provider import OpenAIProvider
 from apps.ai_engagement.services.engagement import EngagementService
 from apps.ai_engagement.services.organization_profile import (
