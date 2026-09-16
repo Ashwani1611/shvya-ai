@@ -5,7 +5,6 @@ on:
     workflows: ["CI"]
     types: [completed]
     branches: [main]
-  workflow_dispatch:
 
 permissions:
   contents: read
@@ -17,9 +16,7 @@ concurrency:
 jobs:
   deploy:
     name: Deploy to production VPS
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      github.event.workflow_run.conclusion == 'success'
+    if: github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     environment: production
 
@@ -35,7 +32,9 @@ jobs:
             set -e
             cd /opt/shvya-ai
 
-            DEPLOY_SHA="${{ github.event.workflow_run.head_sha || github.sha }}"
+            # Production deploys are CI-only. This SHA is the exact main
+            # commit validated by the successful CI workflow_run trigger.
+            DEPLOY_SHA="${{ github.event.workflow_run.head_sha }}"
             if [ -z "$DEPLOY_SHA" ]; then
               echo "Deployment SHA is missing."
               exit 1
