@@ -32,6 +32,8 @@ jobs:
             set -e
             cd /opt/shvya-ai
 
+            # Production deploys are CI-only. This SHA is the exact main
+            # commit validated by the successful CI workflow_run trigger.
             DEPLOY_SHA="${{ github.event.workflow_run.head_sha }}"
             if [ -z "$DEPLOY_SHA" ]; then
               echo "Deployment SHA is missing."
