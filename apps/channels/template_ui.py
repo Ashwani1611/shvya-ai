@@ -308,7 +308,8 @@ def template_submit(request, template_id):
         )
     except TemplateError as exc:
         return JsonResponse(
-            {"error": str(exc), "meta_error_code": exc.meta_error_code}, status=400
+            {"error": str(exc), "meta_error_code": exc.meta_error_code},
+            status=exc.status_code or 400,
         )
     return JsonResponse(
         {"ok": True, "status": template.status, "meta_template_id": template.meta_template_id}
@@ -328,7 +329,8 @@ def template_sync(request):
         summary = sync_templates(organization=user.organization, account=account)
     except TemplateError as exc:
         return JsonResponse(
-            {"error": str(exc), "meta_error_code": exc.meta_error_code}, status=502
+            {"error": str(exc), "meta_error_code": exc.meta_error_code},
+            status=exc.status_code or 502,
         )
     return JsonResponse({"ok": True, **summary})
 
@@ -361,7 +363,8 @@ def template_delete(request, template_id):
         delete_template(template=template)
     except TemplateError as exc:
         return JsonResponse(
-            {"error": str(exc), "meta_error_code": exc.meta_error_code}, status=502
+            {"error": str(exc), "meta_error_code": exc.meta_error_code},
+            status=exc.status_code or 502,
         )
     return JsonResponse({"ok": True})
 
