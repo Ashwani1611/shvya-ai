@@ -1,0 +1,237 @@
+name: Repair Staging TLS
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [staging]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: staging-deploy
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    name: Repair staging TLS and verify public readiness
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    environment: staging
+
+    steps:
+      - name: Repair staging certificate over SSH
+        uses: appleboy/ssh-action@v1.2.2
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          password: ${{ secrets.VPS_PASSWORD }}
+          port: ${{ secrets.VPS_PORT || 22 }}
+          command_timeout: 10m
+          script: |
+            set -eu
+
+            PROD_DIR=/opt/shvya-ai
+            STAGING_HOST=staging.shvya-ai.com
+            STAGING_NETWORK=shvya-staging_default
+            EDGE_COMPOSE="docker compose -f $PROD_DIR/docker-compose.yml"
+            CERT_ROOT="$PROD_DIR/nginx/certbot/conf"
+            CERT_DIR="$CERT_ROOT/live/$STAGING_HOST"
+
+            if [ ! -d "$PROD_DIR" ]; then
+              echo "Production edge directory $PROD_DIR is missing."
+              exit 1
+            fi
+            if ! docker network inspect "$STAGING_NETWORK" >/dev/null 2>&1; then
+              echo "Staging Docker network $STAGING_NETWORK is missing."
+              exit 1
+            fi
+
+            EDGE_NGINX_ID="$($EDGE_COMPOSE ps -q nginx)"
+            if [ -z "$EDGE_NGINX_ID" ]; then
+              echo "Production Nginx edge is not running."
+              exit 1
+            fi
+            if ! docker inspect "$EDGE_NGINX_ID" --format '{{json .NetworkSettings.Networks}}' | grep -q "$STAGING_NETWORK"; then
+              docker network connect "$STAGING_NETWORK" "$EDGE_NGINX_ID"
+            fi
+
+            cat > "$PROD_DIR/nginx/conf.d/staging.conf" <<'NGINX_HTTP'
+            server {
+                listen 80;
+                server_name staging.shvya-ai.com;
+
+                add_header X-Robots-Tag "noindex, nofollow, noarchive" always;
+
+                location /.well-known/acme-challenge/ {
+                    root /var/www/certbot;
+                }
+
+                location / {
+                    return 503;
+                }
+            }
+            NGINX_HTTP
+
+            $EDGE_COMPOSE exec -T nginx nginx -t
+            $EDGE_COMPOSE exec -T nginx nginx -s reload
+
+            cert_file_matches_host() {
+              [ -f "$CERT_DIR/fullchain.pem" ] && \
+                openssl x509 -in "$CERT_DIR/fullchain.pem" -noout -checkhost "$STAGING_HOST" 2>/dev/null \
+                | grep -q "does match certificate"
+            }
+
+            if ! cert_file_matches_host; then
+              echo "Staging certificate is missing or invalid; reissuing it."
+              $EDGE_COMPOSE run --rm --entrypoint certbot certbot \
+                delete --cert-name "$STAGING_HOST" --non-interactive || true
+              rm -rf "$CERT_ROOT/live/$STAGING_HOST" "$CERT_ROOT/archive/$STAGING_HOST"
+              rm -f "$CERT_ROOT/renewal/$STAGING_HOST.conf"
+
+              $EDGE_COMPOSE run --rm --entrypoint certbot certbot \
+                certonly --webroot -w /var/www/certbot \
+                -d "$STAGING_HOST" --cert-name "$STAGING_HOST" \
+                --agree-tos --non-interactive --register-unsafely-without-email
+            fi
+
+            if ! cert_file_matches_host; then
+              echo "A valid certificate for $STAGING_HOST was not produced."
+              exit 1
+            fi
+
+            cat > "$PROD_DIR/nginx/conf.d/staging.conf" <<'NGINX_HTTPS'
+            server {
+                listen 80;
+                server_name staging.shvya-ai.com;
+
+                location /.well-known/acme-challenge/ {
+                    root /var/www/certbot;
+                }
+
+                location / {
+                    return 301 https://$host$request_uri;
+                }
+            }
+
+            server {
+                listen 443 ssl;
+                server_name staging.shvya-ai.com;
+
+                ssl_certificate /etc/letsencrypt/live/staging.shvya-ai.com/fullchain.pem;
+                ssl_certificate_key /etc/letsencrypt/live/staging.shvya-ai.com/privkey.pem;
+
+                resolver 127.0.0.11 valid=30s ipv6=off;
+                set $staging_proxy http://shvya-staging-nginx:80;
+
+                client_max_body_size 20M;
+
+                location /ws/ {
+                    proxy_pass $staging_proxy;
+                    proxy_http_version 1.1;
+                    proxy_set_header Upgrade $http_upgrade;
+                    proxy_set_header Connection "upgrade";
+                    proxy_set_header Host $host;
+                    proxy_set_header X-Real-IP $remote_addr;
+                    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                    proxy_set_header X-Forwarded-Proto https;
+                    proxy_read_timeout 3600s;
+                }
+
+                location / {
+                    proxy_pass $staging_proxy;
+                    proxy_set_header Host $host;
+                    proxy_set_header X-Real-IP $remote_addr;
+                    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                    proxy_set_header X-Forwarded-Proto https;
+                }
+            }
+            NGINX_HTTPS
+
+            $EDGE_COMPOSE exec -T nginx nginx -t
+            $EDGE_COMPOSE exec -T nginx nginx -s reload
+
+            cert_fp_file() {
+              openssl x509 -in "$CERT_DIR/fullchain.pem" -noout -fingerprint -sha256 | cut -d= -f2
+            }
+            cert_fp_mounted() {
+              $EDGE_COMPOSE exec -T nginx cat "/etc/letsencrypt/live/$STAGING_HOST/fullchain.pem" \
+                | openssl x509 -noout -fingerprint -sha256 | cut -d= -f2
+            }
+            cert_fp_served() {
+              echo | openssl s_client -connect 127.0.0.1:443 -servername "$STAGING_HOST" 2>/dev/null \
+                | openssl x509 -noout -fingerprint -sha256 2>/dev/null | cut -d= -f2
+            }
+
+            FILE_FP="$(cert_fp_file)"
+            MOUNTED_FP="$(cert_fp_mounted)"
+            SERVED_FP="$(cert_fp_served)"
+
+            if [ -z "$MOUNTED_FP" ] || [ "$FILE_FP" != "$MOUNTED_FP" ]; then
+              echo "The certificate mounted inside edge Nginx does not match the VPS staging certificate file."
+              exit 1
+            fi
+
+            if [ -z "$SERVED_FP" ] || [ "$FILE_FP" != "$SERVED_FP" ]; then
+              echo "Edge Nginx has the correct certificate mounted but is serving stale TLS state; restarting only the edge Nginx container."
+              docker restart "$EDGE_NGINX_ID" >/dev/null
+              sleep 2
+
+              EDGE_NGINX_ID="$($EDGE_COMPOSE ps -q nginx)"
+              if [ -z "$EDGE_NGINX_ID" ]; then
+                echo "Edge Nginx did not return after restart."
+                exit 1
+              fi
+              if ! docker inspect "$EDGE_NGINX_ID" --format '{{json .NetworkSettings.Networks}}' | grep -q "$STAGING_NETWORK"; then
+                docker network connect "$STAGING_NETWORK" "$EDGE_NGINX_ID"
+              fi
+              $EDGE_COMPOSE exec -T nginx nginx -t
+              SERVED_FP="$(cert_fp_served)"
+            fi
+
+            if [ -z "$SERVED_FP" ] || [ "$FILE_FP" != "$SERVED_FP" ]; then
+              echo "Port 443 still does not serve the expected staging certificate after edge restart."
+              echo "Containers publishing port 443:"
+              docker ps --format '{{.ID}} {{.Names}} {{.Ports}}' | grep -E '(^|[, ])0\.0\.0\.0:443->|\[::\]:443->|127\.0\.0\.1:443->' || true
+              echo "Loaded staging Nginx configuration:"
+              $EDGE_COMPOSE exec -T nginx nginx -T 2>&1 | grep -n -A40 -B5 "$STAGING_HOST" || true
+              exit 1
+            fi
+
+            echo "Local edge is serving the expected staging certificate."
+            curl --noproxy '*' --fail --silent --show-error --max-time 10 \
+              --resolve "$STAGING_HOST:443:127.0.0.1" \
+              "https://$STAGING_HOST/health/ready/" >/dev/null
+            echo "Local edge TLS/SNI and staging readiness are healthy."
+
+            DNS_V4="$(getent ahostsv4 "$STAGING_HOST" 2>/dev/null | awk '{print $1}' | sort -u || true)"
+            DNS_V6="$(getent ahostsv6 "$STAGING_HOST" 2>/dev/null | awk '$1 ~ /:/ && $1 !~ /^::ffff:/ {print $1}' | sort -u || true)"
+            VPS_V4="$(curl --noproxy '*' -4 --fail --silent --show-error --max-time 5 https://api.ipify.org 2>/dev/null || true)"
+
+            if [ -n "$VPS_V4" ] && ! printf '%s\n' "$DNS_V4" | grep -Fxq "$VPS_V4"; then
+              echo "Public DNS A record for $STAGING_HOST does not point to this VPS."
+              echo "Fix the staging DNS A record, then rerun Deploy Staging."
+              exit 1
+            fi
+
+            echo "Verifying public IPv4 HTTPS readiness..."
+            curl --noproxy '*' -4 --fail --silent --show-error --max-time 10 \
+              "https://$STAGING_HOST/health/ready/" >/dev/null
+
+            if [ -n "$DNS_V6" ]; then
+              echo "An IPv6 record exists; verifying public IPv6 HTTPS readiness..."
+              if ! curl --noproxy '*' -6 --fail --silent --show-error --max-time 10 \
+                "https://$STAGING_HOST/health/ready/" >/dev/null; then
+                echo "IPv4 is healthy but the staging AAAA/IPv6 path is broken. Remove or correct the AAAA record."
+                exit 1
+              fi
+            fi
+
+            echo "Verifying default public HTTPS readiness..."
+            curl --noproxy '*' --fail --silent --show-error --max-time 10 \
+              "https://$STAGING_HOST/health/ready/" >/dev/null
+            echo "Staging TLS and public readiness are healthy."
