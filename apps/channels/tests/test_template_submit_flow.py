@@ -1,3 +1,4 @@
+import json
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -6,6 +7,7 @@ from django.test import SimpleTestCase, TestCase
 
 from apps.channels.models import WhatsAppAccount, WhatsAppTemplate
 from apps.channels.template_action_ui import _preserve_action, _refresh_pending_templates
+from apps.channels.template_ui import _inline_script_json, _render_editor
 from apps.organizations.models import Organization
 
 
@@ -25,6 +27,57 @@ class TemplateActionPreserverTests(SimpleTestCase):
         self.assertIn("actionValue.name = 'action'", html)
         self.assertIn("actionValue.value = button.value", html)
         self.assertIn("event.submitter.value", html)
+
+
+class TemplatePlaceholderSerializationTests(SimpleTestCase):
+    def setUp(self):
+        self.payload = [
+            {
+                "key": "custom_note",
+                "label": '</script><script>window.SH_VYA_XSS = true</script>',
+                "description": 'Quotes " and apostrophes \' plus & and > stay data.',
+                "example": "line\u2028separator\u2029value",
+            }
+        ]
+
+    def test_inline_placeholder_json_blocks_script_breakout_and_round_trips(self):
+        encoded = _inline_script_json(self.payload)
+
+        self.assertNotIn("</script>", encoded.lower())
+        self.assertNotIn("<script", encoded.lower())
+        self.assertIn("\\u003C/script\\u003E", encoded)
+        self.assertIn("\\u003Cscript\\u003E", encoded)
+        self.assertIn("\\u0026", encoded)
+        self.assertEqual(json.loads(encoded), self.payload)
+
+    @patch("apps.channels.template_ui.render")
+    @patch("apps.channels.template_ui._accounts", return_value=[])
+    @patch("apps.channels.template_ui.available_placeholders")
+    def test_editor_context_uses_safe_placeholder_json(
+        self,
+        available_placeholders,
+        _accounts,
+        render,
+    ):
+        available_placeholders.return_value = self.payload
+        render.return_value = HttpResponse("ok")
+
+        response = _render_editor(
+            SimpleNamespace(),
+            SimpleNamespace(
+                organization=SimpleNamespace(name="Tenant")
+            ),
+            values={},
+            template=None,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        context = render.call_args.args[2]
+        encoded = context["placeholders_json"]
+        self.assertNotIn("</script>", encoded.lower())
+        self.assertEqual(json.loads(encoded), self.payload)
+        available_placeholders.assert_called_once()
+        _accounts.assert_called_once()
 
 
 class PendingTemplateRefreshTests(TestCase):

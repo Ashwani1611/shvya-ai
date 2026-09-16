@@ -25,6 +25,20 @@ from .models import WhatsAppAccount, WhatsAppTemplate
 from .template_models import WhatsAppTemplateMetadata
 
 
+_INLINE_SCRIPT_JSON_ESCAPES = {
+    ord("<"): "\\u003C",
+    ord(">"): "\\u003E",
+    ord("&"): "\\u0026",
+    ord("\u2028"): "\\u2028",
+    ord("\u2029"): "\\u2029",
+}
+
+
+def _inline_script_json(value):
+    """Serialize JSON without allowing data to terminate an HTML script block."""
+    return json.dumps(value).translate(_INLINE_SCRIPT_JSON_ESCAPES)
+
+
 def _admin(user):
     return views_flat._admin_required(user)
 
@@ -271,7 +285,7 @@ def _render_editor(request, user, *, values, template):
             "formats": WhatsAppTemplate.Format.choices,
             "attachments": WhatsAppTemplate.AttachmentType.choices,
             "placeholders": placeholders,
-            "placeholders_json": json.dumps(placeholders),
+            "placeholders_json": _inline_script_json(placeholders),
             "buttons_json": values.get("buttons_json") or "[]",
             "carousel_json": values.get("carousel_json") or "{}",
             "media_state": media_state,
