@@ -599,7 +599,10 @@ def _validate_office_archive(
 
     except KnowledgeFileSecurityError:
         raise
-    except (zipfile.BadZipFile, LargeZipFile) as exc:
+    except (
+        zipfile.BadZipFile,
+        zipfile.LargeZipFile,
+    ) as exc:
         raise KnowledgeFileSecurityError(
             f"The uploaded {extension} file is not a valid Office archive."
         ) from exc
