@@ -25,6 +25,20 @@ from .models import WhatsAppAccount, WhatsAppTemplate
 from .template_models import WhatsAppTemplateMetadata
 
 
+_INLINE_SCRIPT_JSON_ESCAPES = {
+    ord("<"): "\\u003C",
+    ord(">"): "\\u003E",
+    ord("&"): "\\u0026",
+    ord("\u2028"): "\\u2028",
+    ord("\u2029"): "\\u2029",
+}
+
+
+def _inline_script_json(value):
+    """Serialize JSON without allowing data to terminate an HTML script block."""
+    return json.dumps(value).translate(_INLINE_SCRIPT_JSON_ESCAPES)
+
+
 def _admin(user):
     return views_flat._admin_required(user)
 
@@ -271,7 +285,7 @@ def _render_editor(request, user, *, values, template):
             "formats": WhatsAppTemplate.Format.choices,
             "attachments": WhatsAppTemplate.AttachmentType.choices,
             "placeholders": placeholders,
-            "placeholders_json": json.dumps(placeholders),
+            "placeholders_json": _inline_script_json(placeholders),
             "buttons_json": values.get("buttons_json") or "[]",
             "carousel_json": values.get("carousel_json") or "{}",
             "media_state": media_state,
@@ -294,8 +308,7 @@ def template_submit(request, template_id):
         )
     except TemplateError as exc:
         return JsonResponse(
-            {"error": str(exc), "meta_error_code": exc.meta_error_code},
-            status=exc.status_code or 400,
+            {"error": str(exc), "meta_error_code": exc.meta_error_code}, status=400
         )
     return JsonResponse(
         {"ok": True, "status": template.status, "meta_template_id": template.meta_template_id}
@@ -315,8 +328,7 @@ def template_sync(request):
         summary = sync_templates(organization=user.organization, account=account)
     except TemplateError as exc:
         return JsonResponse(
-            {"error": str(exc), "meta_error_code": exc.meta_error_code},
-            status=exc.status_code or 502,
+            {"error": str(exc), "meta_error_code": exc.meta_error_code}, status=502
         )
     return JsonResponse({"ok": True, **summary})
 
@@ -349,8 +361,7 @@ def template_delete(request, template_id):
         delete_template(template=template)
     except TemplateError as exc:
         return JsonResponse(
-            {"error": str(exc), "meta_error_code": exc.meta_error_code},
-            status=exc.status_code or 502,
+            {"error": str(exc), "meta_error_code": exc.meta_error_code}, status=502
         )
     return JsonResponse({"ok": True})
 
