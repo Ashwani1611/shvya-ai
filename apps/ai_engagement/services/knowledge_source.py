@@ -335,7 +335,7 @@ class KnowledgeSourceService:
         Process an existing uploaded Document using the existing
         KnowledgeIngestionService.
 
-        The stored file is validated again immediately before parsing as a
+        Stored files are validated again immediately before parsing as a
         defense-in-depth check against stale or tampered storage objects.
 
         Returns:
@@ -352,16 +352,12 @@ class KnowledgeSourceService:
                 "Document must belong to an organization."
             )
 
-        if not document.file:
-            raise KnowledgeSourceServiceError(
-                "Document does not contain an uploaded file."
-            )
-
         try:
-            validate_knowledge_file(
-                document.file,
-                filename=Path(document.file.name).name,
-            )
+            if document.file:
+                validate_knowledge_file(
+                    document.file,
+                    filename=Path(document.file.name).name,
+                )
 
             return self.ingestion_service.ingest_document(
                 document,
