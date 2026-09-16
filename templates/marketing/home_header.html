@@ -11,14 +11,10 @@
         <div class="nav-dropdown-menu"><a href="{% url 'features' %}#workspace">Explore all features</a><a href="{% url 'features' %}#playbook">AI Playbook</a><a href="{% url 'features' %}#cadence">Cadence</a><a href="{% url 'features' %}#sales-desk">Sales Desk</a><a href="{% url 'features' %}#workflows">Workflows</a><a href="{% url 'features' %}#conversations">Customer conversations</a></div>
       </div>
       <div class="nav-dropdown">
-        <a href="{% url 'home' %}#industries" class="nav-link">Use Cases <svg class="icon-sm" viewBox="0 0 24 24"><path d="m7 10 5 5 5-5"/></svg></a>
-        <div class="nav-dropdown-menu"><a href="{% url 'home' %}#industries">Real estate</a><a href="{% url 'home' %}#industries">Education</a><a href="{% url 'home' %}#industries">Fitness &amp; wellness</a><a href="{% url 'home' %}#industries">B2B sales</a></div>
-      </div>
-      <div class="nav-dropdown">
         <a href="{% url 'home' %}#ecosystem" class="nav-link">Explore <svg class="icon-sm" viewBox="0 0 24 24"><path d="m7 10 5 5 5-5"/></svg></a>
-        <div class="nav-dropdown-menu"><a href="{% url 'services' %}">SHVYA Services</a><a href="{% url 'product_suite' %}">SHVYA Product Suite</a></div>
+        <div class="nav-dropdown-menu"><a href="{% url 'services' %}">SHVYA Services</a><a href="{% url 'product_suite' %}">SHVYA Product Suite</a><a href="{% url 'home' %}#integrations">Integrations</a><a href="{% url 'docs' %}">Documentation</a></div>
       </div>
-      <a href="{% url 'home' %}#proof" class="nav-link">Why SHVYA</a><a href="{% url 'home' %}#faq" class="nav-link">FAQ</a><a href="{% url 'pricing' %}" class="nav-link">Pricing</a>
+      <a href="{% url 'home' %}#proof" class="nav-link">Why SHVYA</a><a href="{% url 'docs' %}" class="nav-link">Docs</a><a href="{% url 'pricing' %}" class="nav-link">Pricing</a>
     </nav>
     <div class="nav-actions">
       {% if crm_user %}
@@ -35,10 +31,10 @@
         </div>
       </div>
       {% else %}
-      <a href="{% url 'crm-login' %}" class="nav-login">Login</a><a href="{% url 'crm-signup' %}" class="btn btn-primary">Start free</a>
+      <a href="{% url 'crm-login' %}" class="nav-login">Login</a><a href="{% url 'book_call' %}" class="btn btn-primary">Book a call</a>
       {% endif %}
       <button class="menu-btn" id="menuBtn" type="button" aria-label="Open navigation" aria-expanded="false"><svg class="icon" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
     </div>
   </div>
-  <div class="mobile-nav" id="mobileNav"><a href="{% url 'features' %}">Features <span>â†’</span></a><a href="{% url 'home' %}#industries">Use Cases <span>â†’</span></a><a href="{% url 'services' %}">SHVYA Services <span>â†’</span></a><a href="{% url 'product_suite' %}">SHVYA Product Suite <span>â†’</span></a><a href="{% url 'home' %}#proof">Why SHVYA <span>â†’</span></a><a href="{% url 'home' %}#faq">FAQ <span>â†’</span></a><a href="{% url 'pricing' %}">Pricing <span>â†’</span></a>{% if not crm_user %}<div class="mobile-actions"><a href="{% url 'crm-login' %}" class="btn btn-secondary">Login</a><a href="{% url 'crm-signup' %}" class="btn btn-primary">Start free</a></div>{% endif %}</div>
+  <div class="mobile-nav" id="mobileNav"><a href="{% url 'features' %}">Features <span>-></span></a><a href="{% url 'services' %}">SHVYA Services <span>-></span></a><a href="{% url 'product_suite' %}">SHVYA Product Suite <span>-></span></a><a href="{% url 'docs' %}">Documentation <span>-></span></a><a href="{% url 'home' %}#integrations">Integrations <span>-></span></a><a href="{% url 'pricing' %}">Pricing <span>-></span></a>{% if not crm_user %}<div class="mobile-actions"><a href="{% url 'crm-login' %}" class="btn btn-secondary">Login</a><a href="{% url 'book_call' %}" class="btn btn-primary">Book a call</a></div>{% endif %}</div>
 </header>
