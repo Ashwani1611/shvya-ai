@@ -54,7 +54,12 @@ jobs:
           replace_once(path, old, new, "qualification CRM header")
 
           path = "apps/ai_engagement/tests/test_knowledge_pipeline.py"
-          replace_once(path, '        document = Document.objects.create(\n            organization=self.organization,\n            name="Example",\n            source_key="https://example.com",\n', '        Document.objects.create(\n            organization=self.organization,\n            name="Example",\n            source_key="https://example.com",\n', "knowledge pipeline unused Example document")
+          regex_once(
+              path,
+              r'(def test_url_embedding_error_is_wrapped\([\s\S]*?\n\s*)document = Document\.objects\.create\(',
+              r'\1Document.objects.create(',
+              "knowledge pipeline unused embedding document",
+          )
 
           path = "apps/channels/views_flat.py"
           replace_once(path, '    unread_count    = sum(1 for l in all_conversations if getattr(l, "unread_count", 0) > 0)\n    needs_reply_cnt = sum(1 for l in all_conversations if getattr(l, "last_msg_direction", "") == "inbound")\n    failed_cnt      = sum(1 for l in all_conversations if getattr(l, "last_msg_status", "") == "failed")\n', '    unread_count    = sum(1 for conversation in all_conversations if getattr(conversation, "unread_count", 0) > 0)\n    needs_reply_cnt = sum(1 for conversation in all_conversations if getattr(conversation, "last_msg_direction", "") == "inbound")\n    failed_cnt      = sum(1 for conversation in all_conversations if getattr(conversation, "last_msg_status", "") == "failed")\n', "channel badge counters")
