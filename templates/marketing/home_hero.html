@@ -8,7 +8,7 @@
       {% if crm_user %}
       <a href="{% url 'crm-dashboard' %}" class="btn btn-primary">Open dashboard <svg class="icon-sm" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a><a href="#features" class="btn btn-secondary">Explore features</a>
       {% else %}
-      <a href="{% url 'crm-signup' %}" class="btn btn-primary">Start free <svg class="icon-sm" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a><a href="{% url 'crm-login' %}" class="btn btn-secondary">Already have an account?</a>
+      <a href="{% url 'book_call' %}" class="btn btn-primary">Book your sales session <svg class="icon-sm" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a><a href="{% url 'docs' %}" class="btn btn-secondary">View documentation</a>
       {% endif %}
     </div>
     <div class="hero-note reveal">Built for teams that want faster follow-up without adding more manual work.</div>
