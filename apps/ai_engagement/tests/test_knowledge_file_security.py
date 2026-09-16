@@ -9,7 +9,6 @@ from django.test import SimpleTestCase, TestCase
 from docx import Document as DocxDocument
 from openpyxl import Workbook
 from pypdf import PdfWriter
-from rest_framework import serializers
 
 from apps.ai_engagement.models import Document
 from apps.ai_engagement.serializers.document import DocumentUploadSerializer
