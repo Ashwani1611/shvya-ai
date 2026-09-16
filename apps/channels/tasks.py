@@ -317,6 +317,32 @@ def send_whatsapp_message_task(self, message_id):
 # ============================================================
 
 
+def _mark_bulk_recipient_failed(*, recipient_id, message_id, reason):
+    """Persist one terminal bulk-recipient failure without replacing its message."""
+    from apps.channels.models import BulkMessageRecipient
+
+    with transaction.atomic():
+        recipient = (
+            BulkMessageRecipient.objects.select_for_update()
+            .filter(id=recipient_id)
+            .first()
+        )
+        if recipient is None or recipient.message_id != message_id:
+            return
+        if recipient.status == BulkMessageRecipient.Status.SENT:
+            return
+
+        recipient.status = BulkMessageRecipient.Status.FAILED
+        recipient.skip_reason = str(reason)[:200]
+        recipient.save(
+            update_fields=[
+                "status",
+                "skip_reason",
+                "updated_at",
+            ]
+        )
+
+
 @shared_task(
     bind=True,
     max_retries=2,
@@ -324,16 +350,19 @@ def send_whatsapp_message_task(self, message_id):
     rate_limit="10/s",
 )
 def send_bulk_recipient_task(self, recipient_id):
-    """
-    Sends WhatsApp message to a single BulkMessageRecipient.
+    """Send one durable WhatsApp message for one campaign recipient.
 
-    rate_limit="10/s" throttles this across ALL workers processing
-    this task type -- this is the mechanism that keeps a bulk
-    campaign from blowing past Meta's messaging throughput limits,
-    since individual recipient sends are dispatched all at once by
-    send_bulk_campaign_task but only drained at 10/second.
+    The recipient row is the idempotency boundary. A short row-locking
+    transaction creates and attaches at most one WhatsAppMessage, then claims
+    that message before the provider request. Retries always reuse the attached
+    message instead of creating another outbound row.
+
+    Explicit Meta 5xx responses are retried with the same message. Network
+    errors with no HTTP response are intentionally terminal for bulk sends:
+    Meta may already have accepted the request, so blindly retrying an unknown
+    outcome can deliver the campaign message twice to the customer.
     """
-    from apps.channels.models import BulkMessageRecipient
+    from apps.channels.models import BulkMessageRecipient, WhatsAppMessage
     from apps.channels.providers.whatsapp import WhatsAppAPIError
     from services.channels.bulk_service import is_within_24h_window
     from services.channels.whatsapp_service import (
@@ -343,15 +372,158 @@ def send_bulk_recipient_task(self, recipient_id):
     )
 
     try:
-        recipient = (
-            BulkMessageRecipient.objects.select_related(
-                "campaign",
-                "campaign__account",
-                "lead",
-            ).get(
-                id=recipient_id,
+        with transaction.atomic():
+            recipient = (
+                BulkMessageRecipient.objects.select_for_update()
+                .select_related(
+                    "campaign",
+                    "campaign__account",
+                    "lead",
+                )
+                .get(id=recipient_id)
             )
-        )
+            campaign = recipient.campaign
+            lead = recipient.lead
+
+            if recipient.status == BulkMessageRecipient.Status.SENT:
+                return {
+                    "status": "skipped",
+                    "reason": "already_sent",
+                    "recipient_id": str(recipient_id),
+                }
+
+            if recipient.status in (
+                BulkMessageRecipient.Status.FAILED,
+                BulkMessageRecipient.Status.SKIPPED,
+            ):
+                return {
+                    "status": "skipped",
+                    "reason": "recipient_terminal",
+                    "recipient_id": str(recipient_id),
+                }
+
+            if (
+                not is_within_24h_window(lead=lead)
+                and not campaign.template_name
+            ):
+                recipient.status = BulkMessageRecipient.Status.SKIPPED
+                recipient.skip_reason = (
+                    "Outside 24h messaging window and no template configured."
+                )
+                recipient.save(
+                    update_fields=[
+                        "status",
+                        "skip_reason",
+                        "updated_at",
+                    ]
+                )
+                return {
+                    "status": "skipped",
+                    "reason": "outside_24h_window",
+                    "recipient_id": str(recipient_id),
+                }
+
+            if recipient.message_id:
+                message = (
+                    WhatsAppMessage.objects.select_for_update()
+                    .select_related("account")
+                    .get(id=recipient.message_id)
+                )
+            else:
+                message = queue_outbound_message(
+                    organization=campaign.organization,
+                    account=campaign.account,
+                    to_number=lead.phone,
+                    body=campaign.body,
+                    lead=lead,
+                )
+                recipient.message = message
+                recipient.skip_reason = ""
+                recipient.save(
+                    update_fields=[
+                        "message",
+                        "skip_reason",
+                        "updated_at",
+                    ]
+                )
+
+            if message.status in (
+                WhatsAppMessage.Status.SENT,
+                WhatsAppMessage.Status.DELIVERED,
+                WhatsAppMessage.Status.READ,
+            ):
+                recipient.status = BulkMessageRecipient.Status.SENT
+                recipient.skip_reason = ""
+                recipient.save(
+                    update_fields=[
+                        "status",
+                        "skip_reason",
+                        "updated_at",
+                    ]
+                )
+                return {
+                    "status": "skipped",
+                    "reason": "message_already_sent",
+                    "recipient_id": str(recipient_id),
+                    "message_id": str(message.id),
+                }
+
+            if message.status == _WHATSAPP_SENDING_STATUS:
+                return {
+                    "status": "skipped",
+                    "reason": "already_in_flight",
+                    "recipient_id": str(recipient_id),
+                    "message_id": str(message.id),
+                }
+
+            if message.status == WhatsAppMessage.Status.FAILED:
+                recipient.status = BulkMessageRecipient.Status.FAILED
+                recipient.skip_reason = (
+                    message.error or "Attached WhatsApp message already failed."
+                )[:200]
+                recipient.save(
+                    update_fields=[
+                        "status",
+                        "skip_reason",
+                        "updated_at",
+                    ]
+                )
+                return {
+                    "status": "failed",
+                    "reason": "message_already_failed",
+                    "recipient_id": str(recipient_id),
+                    "message_id": str(message.id),
+                }
+
+            if message.status != WhatsAppMessage.Status.QUEUED:
+                recipient.status = BulkMessageRecipient.Status.FAILED
+                recipient.skip_reason = (
+                    f"Attached WhatsApp message has non-sendable status: "
+                    f"{message.status}"
+                )[:200]
+                recipient.save(
+                    update_fields=[
+                        "status",
+                        "skip_reason",
+                        "updated_at",
+                    ]
+                )
+                return {
+                    "status": "failed",
+                    "reason": "message_not_sendable",
+                    "recipient_id": str(recipient_id),
+                    "message_id": str(message.id),
+                }
+
+            message.status = _WHATSAPP_SENDING_STATUS
+            message.error = ""
+            message.save(
+                update_fields=[
+                    "status",
+                    "error",
+                    "updated_at",
+                ]
+            )
 
     except BulkMessageRecipient.DoesNotExist:
         logger.warning(
@@ -360,89 +532,106 @@ def send_bulk_recipient_task(self, recipient_id):
         )
         return
 
-    campaign = recipient.campaign
-    lead = recipient.lead
-
-    if (
-        not is_within_24h_window(lead=lead)
-        and not campaign.template_name
-    ):
-        recipient.status = (
-            BulkMessageRecipient.Status.SKIPPED
-        )
-        recipient.skip_reason = (
-            "Outside 24h messaging window and no template configured."
-        )
-        recipient.save(
-            update_fields=[
-                "status",
-                "skip_reason",
-                "updated_at",
-            ]
-        )
-        return
-
-    message = queue_outbound_message(
-        organization=campaign.organization,
-        account=campaign.account,
-        to_number=lead.phone,
-        body=campaign.body,
-        lead=lead,
-    )
-
-    recipient.message = message
-    recipient.save(
-        update_fields=[
-            "message",
-            "updated_at",
-        ]
-    )
-
+    # Provider I/O must happen after the recipient/message claim commits.
     try:
-
-        send_outbound_message(
-            message=message,
-        )
+        send_outbound_message(message=message)
 
     except WhatsAppSendError as exc:
-
         original = exc.__cause__
 
-        if isinstance(
-            original,
-            WhatsAppAPIError,
-        ) and (
-            original.status_code is None
-            or original.status_code >= 500
+        # An explicit Meta 5xx response can be retried. Requeue only the same
+        # durable message attached to this recipient; never create a replacement.
+        if (
+            isinstance(original, WhatsAppAPIError)
+            and original.status_code is not None
+            and original.status_code >= 500
         ):
-            raise self.retry(
-                exc=exc
+            _requeue_whatsapp_message_after_transient_failure(
+                message_id=message.id
+            )
+            logger.warning(
+                "send_bulk_recipient_task: Meta 5xx for recipient %s; "
+                "retrying the same message %s",
+                recipient_id,
+                message.id,
+            )
+            raise self.retry(exc=exc)
+
+        if (
+            isinstance(original, WhatsAppAPIError)
+            and original.status_code is None
+        ):
+            failure_reason = (
+                "Delivery outcome unknown after WhatsApp network failure; "
+                "not retried automatically to avoid a duplicate bulk send."
+            )
+            failure_code = "delivery_outcome_unknown"
+        else:
+            failure_reason = str(exc)
+            failure_code = "permanent_send_failure"
+
+        _persist_whatsapp_message_failure(
+            message_id=message.id,
+            error=failure_reason,
+        )
+        _mark_bulk_recipient_failed(
+            recipient_id=recipient_id,
+            message_id=message.id,
+            reason=failure_reason,
+        )
+        logger.error(
+            "send_bulk_recipient_task: terminal failure for recipient %s "
+            "message %s: %s",
+            recipient_id,
+            message.id,
+            failure_reason,
+        )
+        return {
+            "status": "failed",
+            "reason": failure_code,
+            "recipient_id": str(recipient_id),
+            "message_id": str(message.id),
+            "error": failure_reason,
+        }
+
+    except Exception as exc:
+        _persist_whatsapp_message_failure(
+            message_id=message.id,
+            error=exc,
+        )
+        _mark_bulk_recipient_failed(
+            recipient_id=recipient_id,
+            message_id=message.id,
+            reason=exc,
+        )
+        logger.exception(
+            "send_bulk_recipient_task: unexpected failure for recipient %s",
+            recipient_id,
+        )
+        raise
+
+    with transaction.atomic():
+        recipient = (
+            BulkMessageRecipient.objects.select_for_update()
+            .filter(id=recipient_id)
+            .first()
+        )
+        if recipient is not None and recipient.message_id == message.id:
+            recipient.status = BulkMessageRecipient.Status.SENT
+            recipient.skip_reason = ""
+            recipient.save(
+                update_fields=[
+                    "status",
+                    "skip_reason",
+                    "updated_at",
+                ]
             )
 
-        recipient.status = (
-            BulkMessageRecipient.Status.FAILED
-        )
-        recipient.skip_reason = str(
-            exc
-        )
-        recipient.save(
-            update_fields=[
-                "status",
-                "skip_reason",
-                "updated_at",
-            ]
-        )
-        return
-
-    recipient.status = (
-        BulkMessageRecipient.Status.SENT
-    )
-    recipient.save(
-        update_fields=[
-            "status",
-            "updated_at",
-        ]
-    )
+    return {
+        "status": "sent",
+        "recipient_id": str(recipient_id),
+        "message_id": str(message.id),
+    }
 
 
 @shared_task
