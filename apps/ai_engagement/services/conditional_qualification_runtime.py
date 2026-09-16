@@ -423,8 +423,6 @@ def install_conditional_qualification_runtime() -> None:
 
     state_module._ACK_ONLY = set(state_module._ACK_ONLY) | _RECOVERY_PHRASES
 
-    original_missing = state_module._missing_ids
-
     def missing_ids(requirements, requirement_states):
         states = _apply_eligibility(requirements, requirement_states)
         missing: list[str] = []

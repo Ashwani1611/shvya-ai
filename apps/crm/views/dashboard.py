@@ -1602,13 +1602,6 @@ def lead_import_destination_save(
         [],
     )
 
-    attribute_definitions = (
-        AttributeDefinition.objects
-        .filter(
-            organization=user.organization,
-        )
-    )
-
     new_lead_count = 0
     existing_lead_count = 0
     invalid_phone_count = 0
@@ -1883,22 +1876,6 @@ def lead_import_review_modal(
             "Invalid destination stage.",
             status=400,
         )
-
-    # --------------------------------------------------------
-    # EXISTING ATTRIBUTE DEFINITIONS
-    # --------------------------------------------------------
-
-    attribute_definitions = (
-        AttributeDefinition.objects
-        .filter(
-            organization=user.organization,
-        )
-    )
-
-    attribute_by_key = {
-        attribute.key: attribute
-        for attribute in attribute_definitions
-    }
 
     # --------------------------------------------------------
     # CHECK EACH ROW
@@ -2350,7 +2327,7 @@ def lead_import_execute(
         # NEW LEAD
         # ----------------------------------------------------
 
-        lead = create_lead(
+        create_lead(
             organization=user.organization,
             pipeline=pipeline,
             stage=stage,
@@ -2881,8 +2858,6 @@ def lead_table_partial(
 
     user = request.crm_user
 
-    organization = user.organization
-
     pipeline_id = request.GET.get(
         "pipeline"
     )
@@ -3115,14 +3090,6 @@ def lead_stage_delete(
     user = request.crm_user
 
     organization = user.organization
-
-    pipeline_id = (
-        request.POST.get(
-            "pipeline",
-            "",
-        )
-        .strip()
-    )
 
     active_stage_id = (
         request.POST.get(

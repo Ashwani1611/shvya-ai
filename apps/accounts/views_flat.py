@@ -19,10 +19,6 @@ from django.utils.http import urlsafe_base64_decode, urlsafe_base64_encode
 from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework.throttling import ScopedRateThrottle
 
-class ThrottledTokenObtainPairView(TokenObtainPairView):
-    throttle_classes = [ScopedRateThrottle]
-    throttle_scope = "jwt_login"
-    
 from apps.core.ratelimit import ratelimit
 from apps.organizations.models import Organization
 
@@ -33,6 +29,11 @@ from .session_utils import (
     save_session_cookie,
     set_authenticated_user,
 )
+
+
+class ThrottledTokenObtainPairView(TokenObtainPairView):
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "jwt_login"
 
 # ============================================================
 # PUBLIC CRM SIGNUP
@@ -239,7 +240,7 @@ def crm_signup_view(request):
                 is_active=True,
             )
 
-            user = User.objects.create_user(
+            User.objects.create_user(
                 email=email,
                 organization=organization,
                 password=password,

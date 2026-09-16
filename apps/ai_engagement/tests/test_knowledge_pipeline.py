@@ -456,7 +456,7 @@ class KnowledgePipelineServiceTests(TestCase):
     ):
         source = self.create_url_source()
 
-        document = Document.objects.create(
+        Document.objects.create(
             organization=self.organization,
             name="Example",
             source_key="https://example.com",
