@@ -21,4 +21,5 @@ exclude_lines = [
 ]
 
 [tool.ruff.lint]
+select = ["E4", "E7", "E9", "F"]
 ignore = ["RUF012"]
