@@ -3,7 +3,10 @@ from __future__ import annotations
 from rest_framework import serializers
 
 from apps.ai_engagement.models import Document, KnowledgeSource
-from apps.ai_engagement.services.knowledge import KnowledgeIngestionService
+from apps.ai_engagement.services.knowledge_file_security import (
+    KnowledgeFileSecurityError,
+    validate_knowledge_file,
+)
 
 
 # ============================================================
@@ -42,10 +45,11 @@ class DocumentSerializer(serializers.ModelSerializer):
 
 class DocumentUploadSerializer(serializers.Serializer):
     """
-    Validates a new file upload before a Document is created.
+    Validate a new knowledge file before a Document is created.
 
-    Only validates the request payload — creating the Document
-    record and kicking off ingestion happens in the view.
+    Validation is content-aware and does not trust the client-provided
+    Content-Type header. Creating the Document record and queueing ingestion
+    still happens in the view.
     """
 
     file = serializers.FileField()
@@ -63,20 +67,15 @@ class DocumentUploadSerializer(serializers.Serializer):
     )
 
     def validate_file(self, value):
-
-        extension = (
-            "." + value.name.rsplit(".", 1)[-1].lower()
-            if "." in value.name
-            else ""
-        )
-
-        supported = KnowledgeIngestionService.SUPPORTED_FILE_EXTENSIONS
-
-        if extension not in supported:
-            raise serializers.ValidationError(
-                f"Unsupported file type: {extension or 'unknown'}. "
-                f"Supported types: {', '.join(sorted(supported))}."
+        try:
+            validate_knowledge_file(
+                value,
+                filename=value.name,
             )
+        except KnowledgeFileSecurityError as exc:
+            raise serializers.ValidationError(
+                str(exc)
+            ) from exc
 
         return value
 
