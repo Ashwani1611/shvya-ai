@@ -99,7 +99,7 @@ class WhatsAppCoexistenceDirectOAuthTests(TestCase):
     @override_settings(
         META_APP_ID="123456",
         META_APP_SECRET="meta-secret",
-        META_WA_EMEDDED_SIGNUP_CONFIG_ID="config-123",
+        META_WA_EMBEDDED_SIGNUP_CONFIG_ID="config-123",
     )
     @patch("apps.channels.coexistence_phone_selection_ui._complete_with_token")
     @patch("apps.channels.coexistence_phone_selection_ui.coexistence_service._resolve_signup_assets")
