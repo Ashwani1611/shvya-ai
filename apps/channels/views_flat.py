@@ -1069,9 +1069,9 @@ def _chat_sidebar_context(request, user):
         lead.initials = _lead_initials(lead)
 
     # Tab badge counts (always from all, not filtered)
-    unread_count    = sum(1 for l in all_conversations if getattr(l, "unread_count", 0) > 0)
-    needs_reply_cnt = sum(1 for l in all_conversations if getattr(l, "last_msg_direction", "") == "inbound")
-    failed_cnt      = sum(1 for l in all_conversations if getattr(l, "last_msg_status", "") == "failed")
+    unread_count    = sum(1 for conversation in all_conversations if getattr(conversation, "unread_count", 0) > 0)
+    needs_reply_cnt = sum(1 for conversation in all_conversations if getattr(conversation, "last_msg_direction", "") == "inbound")
+    failed_cnt      = sum(1 for conversation in all_conversations if getattr(conversation, "last_msg_status", "") == "failed")
 
     return {
         "conversations": conversations,

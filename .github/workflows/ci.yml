@@ -75,12 +75,19 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements-dev.txt
 
-      - name: Ruff critical lint
-        run: ruff check . --select=F821
+      - name: Ruff lint
+        id: ruff
+        run: |
+          set -o pipefail
+          ruff check . 2>&1 | tee ruff-output.log
 
-      - name: Ruff full lint report
-        continue-on-error: true
-        run: ruff check .
+      - name: Upload Ruff failure log
+        if: steps.ruff.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ruff-failure-log
+          path: ruff-output.log
+          if-no-files-found: error
 
       - name: Check for missing migrations
         run: python manage.py makemigrations --check --dry-run --settings=config.settings.testing
@@ -89,12 +96,13 @@ jobs:
         run: python manage.py check --settings=config.settings.testing
 
       - name: Run tests with coverage
+        id: pytest
         run: |
           set -o pipefail
           pytest --cov 2>&1 | tee pytest-output.log
 
       - name: Upload pytest failure log
-        if: failure()
+        if: steps.pytest.outcome == 'failure'
         uses: actions/upload-artifact@v4
         with:
           name: pytest-failure-log

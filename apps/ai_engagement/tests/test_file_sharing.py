@@ -9,7 +9,6 @@ from django.test import TestCase
 from apps.ai_engagement.models import (
     Chunk,
     Document,
-    InternalConversationSummary,
     OrgInfo,
 )
 from apps.ai_engagement.services.ai_provider import (

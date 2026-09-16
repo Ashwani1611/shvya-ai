@@ -7,7 +7,6 @@ from django.test import SimpleTestCase
 from apps.ai_engagement.graph.policy_actions import (
     build_controlled_actions,
     evaluate_condition,
-    evaluate_qualification,
 )
 from apps.ai_engagement.graph.runtime_policy import compile_runtime_policy
 from apps.ai_engagement.graph.workflow import ENGAGEMENT_GRAPH

@@ -1,13 +1,13 @@
-from .org_info import OrgInfo
-from .knowledge import KnowledgeSource
-from .document import Document
-from .chunk import Chunk
+from .org_info import OrgInfo as OrgInfo
+from .knowledge import KnowledgeSource as KnowledgeSource
+from .document import Document as Document
+from .chunk import Chunk as Chunk
 from .internal_conversation_summary import (
-    InternalConversationSummary,
+    InternalConversationSummary as InternalConversationSummary,
 )
-from .faq import FAQ
+from .faq import FAQ as FAQ
 from .credit import (
-    AICreditReservation,
-    AICreditTransaction,
-    AICreditWallet,
+    AICreditReservation as AICreditReservation,
+    AICreditTransaction as AICreditTransaction,
+    AICreditWallet as AICreditWallet,
 )

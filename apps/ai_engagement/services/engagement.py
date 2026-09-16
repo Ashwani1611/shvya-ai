@@ -7,7 +7,6 @@ import logging
 from pathlib import Path
 from apps.ai_engagement.services.runtime_state import STATE_KEY, contract, validate_response, state_revision, response_hash
 
-BACKEND_OPERATING_POLICY = (Path(__file__).resolve().parent.parent / "prompts" / "backend_operating_policy.md").read_text(encoding="utf-8")
 from dataclasses import dataclass, field
 from typing import Any
 from redis.exceptions import RedisError
@@ -53,6 +52,8 @@ from apps.ai_engagement.services.qualification_state import (
     project_answer_updates,
 )
 
+
+BACKEND_OPERATING_POLICY = (Path(__file__).resolve().parent.parent / "prompts" / "backend_operating_policy.md").read_text(encoding="utf-8")
 
 class EngagementError(Exception):
     """Raised when AI Engagement cannot safely produce a decision."""

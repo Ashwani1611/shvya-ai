@@ -79,7 +79,7 @@ def get_overview_metrics(*, organization, pipeline_ids=None, date_from=None, dat
     all-time overview exactly as before.
     """
     from apps.channels.models import WhatsAppAccount, WhatsAppMessage
-    from apps.followups.models import FollowupExecution, FollowupStep
+    from apps.followups.models import FollowupStep
 
     leads = _scope_leads(
         organization=organization,
@@ -241,7 +241,6 @@ def get_ai_welcome_trend(*, organization, date_from, date_to, pipeline_ids=None)
 
 def get_automation_flow_trend(*, organization, date_from, date_to, step_type, pipeline_ids=None):
     """Daily sent follow-up executions grouped by sequence name."""
-    from apps.followups.models import FollowupExecution
 
     executions = _sent_executions(organization=organization, pipeline_ids=pipeline_ids,
                                   date_from=date_from, date_to=date_to).filter(step__step_type=step_type)

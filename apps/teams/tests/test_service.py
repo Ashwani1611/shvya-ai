@@ -2,7 +2,7 @@ import pytest
 
 from apps.accounts.models import User
 from apps.organizations.models import Organization
-from apps.teams.models import Team, TeamMembership
+from apps.teams.models import TeamMembership
 from services.teams.team_service import (
     CrossOrganizationMembershipError,
     DuplicateMembershipError,

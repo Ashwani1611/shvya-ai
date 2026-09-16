@@ -12,10 +12,10 @@ from apps.accounts.session_utils import (
     set_authenticated_user,
 )
 
-logger = logging.getLogger(__name__)
-
 from apps.crm.constants import CRM_SESSION_AREA
 from apps.organizations.models import APIKey
+
+logger = logging.getLogger(__name__)
 
 
 class APIKeyPrincipal:

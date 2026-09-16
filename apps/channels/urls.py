@@ -11,7 +11,6 @@ from . import coexistence_phone_selection_ui
 from . import coexistence_ui
 from . import connection_ui
 from . import embedded_oauth_ui
-from . import hosted_attachment_ui
 from . import hosted_chat_ui
 from . import hosted_manage_ui
 from . import hosted_send_ui
