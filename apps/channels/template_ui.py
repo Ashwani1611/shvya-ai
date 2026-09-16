@@ -1,5 +1,6 @@
 """Tenant-safe UI endpoints for WhatsApp Message Template management."""
 
+import base64
 import json
 
 from django.contrib import messages
@@ -25,18 +26,23 @@ from .models import WhatsAppAccount, WhatsAppTemplate
 from .template_models import WhatsAppTemplateMetadata
 
 
-_INLINE_SCRIPT_JSON_ESCAPES = {
-    ord("<"): "\\u003C",
-    ord(">"): "\\u003E",
-    ord("&"): "\\u0026",
-    ord("\u2028"): "\\u2028",
-    ord("\u2029"): "\\u2029",
-}
-
-
 def _inline_script_json(value):
-    """Serialize JSON without allowing data to terminate an HTML script block."""
-    return json.dumps(value).translate(_INLINE_SCRIPT_JSON_ESCAPES)
+    """Return JSON as an inline-script-safe JavaScript expression.
+
+    The editor template inserts this expression with ``|safe``. Tenant data
+    must therefore never be emitted as raw JSON, because ``</script>`` ends an
+    HTML script element even when it appears inside JavaScript data. Encoding
+    the serialized JSON as Base64 confines all dynamic bytes to an inert ASCII
+    alphabet; the browser reconstructs the original object with ``atob`` and
+    ``JSON.parse``.
+    """
+    payload = json.dumps(
+        value,
+        ensure_ascii=True,
+        separators=(",", ":"),
+    ).encode("ascii")
+    encoded = base64.b64encode(payload).decode("ascii")
+    return f'JSON.parse(atob("{encoded}"))'
 
 
 def _admin(user):

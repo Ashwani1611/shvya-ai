@@ -1,3 +1,4 @@
+import base64
 import json
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -40,15 +41,25 @@ class TemplatePlaceholderSerializationTests(SimpleTestCase):
             }
         ]
 
+    def _decode_expression(self, expression):
+        prefix = 'JSON.parse(atob("'
+        suffix = '"))'
+        self.assertTrue(expression.startswith(prefix))
+        self.assertTrue(expression.endswith(suffix))
+        encoded = expression[len(prefix) : -len(suffix)]
+        payload = base64.b64decode(encoded).decode("ascii")
+        return json.loads(payload)
+
     def test_inline_placeholder_json_blocks_script_breakout_and_round_trips(self):
         encoded = _inline_script_json(self.payload)
 
         self.assertNotIn("</script>", encoded.lower())
         self.assertNotIn("<script", encoded.lower())
-        self.assertIn("\\u003C/script\\u003E", encoded)
-        self.assertIn("\\u003Cscript\\u003E", encoded)
-        self.assertIn("\\u0026", encoded)
-        self.assertEqual(json.loads(encoded), self.payload)
+        self.assertNotIn("<", encoded)
+        self.assertNotIn(">", encoded)
+        self.assertNotIn("&", encoded)
+        self.assertNotIn("SH_VYA_XSS", encoded)
+        self.assertEqual(self._decode_expression(encoded), self.payload)
 
     @patch("apps.channels.template_ui.render")
     @patch("apps.channels.template_ui._accounts", return_value=[])
@@ -75,7 +86,8 @@ class TemplatePlaceholderSerializationTests(SimpleTestCase):
         context = render.call_args.args[2]
         encoded = context["placeholders_json"]
         self.assertNotIn("</script>", encoded.lower())
-        self.assertEqual(json.loads(encoded), self.payload)
+        self.assertNotIn("SH_VYA_XSS", encoded)
+        self.assertEqual(self._decode_expression(encoded), self.payload)
         available_placeholders.assert_called_once()
         _accounts.assert_called_once()
 
