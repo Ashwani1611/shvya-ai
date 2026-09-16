@@ -14,6 +14,11 @@ from apps.ai_engagement.services.knowledge import (
     KnowledgeExtractionError,
     KnowledgeIngestionService,
 )
+from apps.ai_engagement.services.knowledge_file_security import (
+    KnowledgeFileSecurityError,
+    validate_knowledge_file,
+    validate_organization_knowledge_quota,
+)
 
 
 class KnowledgeSourceServiceError(Exception):
@@ -130,6 +135,10 @@ class KnowledgeSourceService:
         Create an organization-owned FILE KnowledgeSource and
         its next Document version.
 
+        Security validation happens before storage. The organization row is
+        locked while the aggregate storage quota is checked so concurrent
+        uploads cannot race past the quota.
+
         The Document starts as PENDING and inactive. Celery
         ingestion is responsible for processing and publishing
         the completed version.
@@ -154,20 +163,15 @@ class KnowledgeSourceService:
                 "Uploaded file must have a filename."
             )
 
-        extension = (
-            Path(filename)
-            .suffix
-            .lower()
-            .strip()
-        )
-
-        if (
-            extension
-            not in self.ingestion_service.SUPPORTED_FILE_EXTENSIONS
-        ):
-            raise KnowledgeSourceServiceError(
-                f"Unsupported file type: {extension}"
+        try:
+            inspection = validate_knowledge_file(
+                uploaded_file,
+                filename=filename,
             )
+        except KnowledgeFileSecurityError as exc:
+            raise KnowledgeSourceServiceError(
+                str(exc)
+            ) from exc
 
         source_name = (
             name or filename
@@ -178,11 +182,29 @@ class KnowledgeSourceService:
 
         with transaction.atomic():
 
+            organization_model = organization.__class__
+
+            locked_organization = (
+                organization_model.objects
+                .select_for_update()
+                .get(pk=organization.pk)
+            )
+
+            try:
+                validate_organization_knowledge_quota(
+                    organization=locked_organization,
+                    incoming_size=inspection.size,
+                )
+            except KnowledgeFileSecurityError as exc:
+                raise KnowledgeSourceServiceError(
+                    str(exc)
+                ) from exc
+
             latest_document = (
                 Document.objects
                 .select_for_update()
                 .filter(
-                    organization=organization,
+                    organization=locked_organization,
                     source_key=filename,
                 )
                 .order_by(
@@ -198,7 +220,7 @@ class KnowledgeSourceService:
             )
 
             source = KnowledgeSource.objects.create(
-                organization=organization,
+                organization=locked_organization,
                 source_type=KnowledgeSource.SourceType.FILE,
                 name=source_name,
                 url="",
@@ -206,7 +228,7 @@ class KnowledgeSourceService:
             )
 
             document = Document.objects.create(
-                organization=organization,
+                organization=locked_organization,
                 name=source_name,
                 source_key=filename,
                 version=next_version,
@@ -313,6 +335,9 @@ class KnowledgeSourceService:
         Process an existing uploaded Document using the existing
         KnowledgeIngestionService.
 
+        The stored file is validated again immediately before parsing as a
+        defense-in-depth check against stale or tampered storage objects.
+
         Returns:
             Number of chunks created.
         """
@@ -327,12 +352,25 @@ class KnowledgeSourceService:
                 "Document must belong to an organization."
             )
 
+        if not document.file:
+            raise KnowledgeSourceServiceError(
+                "Document does not contain an uploaded file."
+            )
+
         try:
+            validate_knowledge_file(
+                document.file,
+                filename=Path(document.file.name).name,
+            )
+
             return self.ingestion_service.ingest_document(
                 document,
             )
 
-        except KnowledgeExtractionError as exc:
+        except (
+            KnowledgeExtractionError,
+            KnowledgeFileSecurityError,
+        ) as exc:
             raise KnowledgeSourceServiceError(
                 str(exc)
             ) from exc
@@ -506,17 +544,15 @@ class KnowledgeSourceService:
             source=source,
         )
 
-        if source.is_active:
-            return source
+        if not source.is_active:
+            source.is_active = True
 
-        source.is_active = True
-
-        source.save(
-            update_fields=[
-                "is_active",
-                "updated_at",
-            ]
-        )
+            source.save(
+                update_fields=[
+                    "is_active",
+                    "updated_at",
+                ]
+            )
 
         return source
 
