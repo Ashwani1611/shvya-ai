@@ -237,3 +237,27 @@ def clear_authenticated_user(session):
     )
 
     session.modified = True
+
+
+def invalidate_authenticated_session(session):
+    """Clear and persist authentication state for a dedicated SHVYA session.
+
+    Runtime authorization still fails closed even if the backing session row
+    disappears concurrently. Persisting the cleared auth keys prevents a stale
+    browser cookie from repeatedly presenting an otherwise valid CRM identity
+    after the user or organization has been disabled.
+    """
+
+    clear_authenticated_user(session)
+
+    if session.session_key is None:
+        return
+
+    try:
+        session.save(
+            must_create=False,
+        )
+    except Exception:
+        # The row may already be expired/deleted. The current request remains
+        # unauthorized, and the stale cookie cannot recreate auth state.
+        return

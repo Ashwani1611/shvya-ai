@@ -35,6 +35,9 @@ from django.contrib.auth import (
 )
 from django.contrib.sessions.backends.db import SessionStore
 
+from apps.accounts.session_utils import invalidate_authenticated_session
+from apps.organizations.access import crm_user_is_authorized
+
 CRM_SESSION_COOKIE_NAME = "shvya_crm_sessionid"
 
 
@@ -69,10 +72,9 @@ def _parse_cookies(scope):
 def _get_crm_user(session_key):
     """
     Same validation as SHVYAAreaAuthenticationMiddleware's
-    dashboard branch: session must exist, resolve to an active,
-    non-superuser account, and its stored auth hash must still
-    match the user (so a changed/reset password invalidates
-    existing sessions here too).
+    dashboard branch: session must exist, resolve to an active CRM
+    user in an active organization, and its stored auth hash must
+    still match the user.
     """
 
     User = get_user_model()
@@ -103,12 +105,15 @@ def _get_crm_user(session_key):
         )
 
     except User.DoesNotExist:
+        invalidate_authenticated_session(session)
         return None
 
     if not session_hash or session_hash != user.get_session_auth_hash():
+        invalidate_authenticated_session(session)
         return None
 
-    if not user.is_active or user.is_superuser:
+    if not crm_user_is_authorized(user):
+        invalidate_authenticated_session(session)
         return None
 
     return user

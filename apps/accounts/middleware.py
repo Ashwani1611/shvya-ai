@@ -6,7 +6,12 @@ from django.contrib.auth import (
 )
 from django.contrib.auth.models import AnonymousUser
 
-from .session_utils import get_session_store
+from apps.organizations.access import crm_user_is_authorized
+
+from .session_utils import (
+    get_session_store,
+    invalidate_authenticated_session,
+)
 
 User = get_user_model()
 
@@ -121,7 +126,9 @@ class SHVYAAreaAuthenticationMiddleware:
 
         try:
 
-            user = User.objects.get(
+            user = User.objects.select_related(
+                "organization",
+            ).get(
                 pk=user_id,
             )
 
@@ -168,14 +175,7 @@ class SHVYAAreaAuthenticationMiddleware:
 
         elif area == "dashboard":
 
-            if not user.is_active:
-                self._clear_invalid_session(
-                    session,
-                )
-
-                return
-
-            if user.is_superuser:
+            if not crm_user_is_authorized(user):
                 self._clear_invalid_session(
                     session,
                 )
@@ -193,20 +193,4 @@ class SHVYAAreaAuthenticationMiddleware:
 
     @staticmethod
     def _clear_invalid_session(session):
-
-        session.pop(
-            SESSION_KEY,
-            None,
-        )
-
-        session.pop(
-            BACKEND_SESSION_KEY,
-            None,
-        )
-
-        session.pop(
-            HASH_SESSION_KEY,
-            None,
-        )
-
-        session.modified = True
+        invalidate_authenticated_session(session)
