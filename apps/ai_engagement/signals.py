@@ -132,3 +132,13 @@ def maintain_qualification_state_from_whatsapp(sender, instance, **kwargs):
         return
 
     mark_in_progress(lead)
+
+
+# Install the fail-closed public-URL boundary from the app-ready import path.
+# This protects every existing KnowledgeIngestionService caller, including
+# asynchronous URL ingestion tasks, without introducing a second fetch path.
+from apps.ai_engagement.services.knowledge_url_security import (  # noqa: E402
+    install_knowledge_url_security,
+)
+
+install_knowledge_url_security()
