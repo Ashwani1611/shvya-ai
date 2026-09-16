@@ -1,0 +1,287 @@
+name: Ruff Targeted Cleanup
+
+on:
+  push:
+    branches: [ci/enforce-full-ruff]
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v7
+        with:
+          ref: ci/enforce-full-ruff
+
+      - name: Apply targeted lint fixes
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          def load(path):
+              return Path(path).read_text(encoding="utf-8")
+
+          def save(path, text):
+              Path(path).write_text(text, encoding="utf-8")
+
+          def replace_once(text, old, new, label):
+              count = text.count(old)
+              if count != 1:
+                  raise RuntimeError(f"{label}: expected 1 match, found {count}")
+              return text.replace(old, new, 1)
+
+          # Keep all imports before the JWT view class and drop an unused signup local.
+          path = "apps/accounts/views_flat.py"
+          text = load(path)
+          pattern = (
+              r"\nclass ThrottledTokenObtainPairView\(TokenObtainPairView\):\n"
+              r"    throttle_classes = \[ScopedRateThrottle\]\n"
+              r"    throttle_scope = \"jwt_login\"\n[ \t]*\n"
+          )
+          text, count = re.subn(pattern, "\n", text, count=1)
+          if count != 1:
+              raise RuntimeError("accounts JWT class: expected 1 match")
+          session_import = """from .session_utils import (
+              delete_session_cookie,
+              get_session_store,
+              save_session_cookie,
+              set_authenticated_user,
+          )
+          """
+          class_block = """
+
+          class ThrottledTokenObtainPairView(TokenObtainPairView):
+              throttle_classes = [ScopedRateThrottle]
+              throttle_scope = "jwt_login"
+          """
+          text = replace_once(text, session_import, session_import + class_block, "accounts class insertion")
+          text = replace_once(
+              text,
+              "            user = User.objects.create_user(\n",
+              "            User.objects.create_user(\n",
+              "accounts unused signup user",
+          )
+          save(path, text)
+
+          # Remove an unused compatibility snapshot.
+          path = "apps/ai_engagement/services/conditional_qualification_runtime.py"
+          text = load(path)
+          text = replace_once(
+              text,
+              "    original_missing = state_module._missing_ids\n\n",
+              "",
+              "conditional qualification unused original_missing",
+          )
+          save(path, text)
+
+          # Move the backend policy load below all imports.
+          path = "apps/ai_engagement/services/engagement.py"
+          text = load(path)
+          policy_line = (
+              'BACKEND_OPERATING_POLICY = (Path(__file__).resolve().parent.parent / "prompts" / '
+              '"backend_operating_policy.md").read_text(encoding="utf-8")\n'
+          )
+          text = replace_once(text, policy_line, "", "engagement policy move remove")
+          marker = "\n\nclass EngagementError(Exception):"
+          text = replace_once(
+              text,
+              marker,
+              "\n\n" + policy_line.rstrip("\n") + marker,
+              "engagement policy move insert",
+          )
+          save(path, text)
+
+          # Replace a local lambda with a named nested function.
+          path = "apps/ai_engagement/services/qualification.py"
+          text = load(path)
+          text = replace_once(
+              text,
+              '                normalize_question = lambda value: re.sub(r"\\W+", " ", str(value).casefold()).strip()\n',
+              '                def normalize_question(value):\n                    return re.sub(r"\\W+", " ", str(value).casefold()).strip()\n',
+              "qualification normalize_question",
+          )
+          save(path, text)
+
+          # Restore the module docstring to the real module-docstring position.
+          path = "apps/ai_engagement/services/qualification_crm_action_runtime.py"
+          text = load(path)
+          old_header = '''from __future__ import annotations
+
+"""Deprecated qualification CRM bridge.
+
+Qualification attribute mapping and completion-stage execution are no longer
+implemented here. The authoritative path is
+``qualification_execution_contract`` + ``qualification_execution_policy_guard``.
+
+A small reminder-time compatibility symbol remains because normal-conversation
+runtime modules historically imported it from this module. It delegates to the
+standalone reminder parser and has no qualification authority.
+"""
+
+from apps.ai_engagement.services.reminder_time_runtime import parse_grounded_due_at
+'''
+          new_header = '''"""Deprecated qualification CRM bridge.
+
+Qualification attribute mapping and completion-stage execution are no longer
+implemented here. The authoritative path is
+``qualification_execution_contract`` + ``qualification_execution_policy_guard``.
+
+A small reminder-time compatibility symbol remains because normal-conversation
+runtime modules historically imported it from this module. It delegates to the
+standalone reminder parser and has no qualification authority.
+"""
+
+from __future__ import annotations
+
+from apps.ai_engagement.services.reminder_time_runtime import parse_grounded_due_at
+'''
+          text = replace_once(text, old_header, new_header, "qualification CRM module header")
+          save(path, text)
+
+          # The fixture row only needs to exist; the local variable is unused.
+          path = "apps/ai_engagement/tests/test_knowledge_pipeline.py"
+          text = load(path)
+          text = replace_once(
+              text,
+              "        document = Document.objects.create(\n",
+              "        Document.objects.create(\n",
+              "knowledge pipeline unused document",
+          )
+          save(path, text)
+
+          # Use an unambiguous comprehension variable for conversation counters.
+          path = "apps/channels/views_flat.py"
+          text = load(path)
+          old_counts = '''    unread_count    = sum(1 for l in all_conversations if getattr(l, "unread_count", 0) > 0)
+    needs_reply_cnt = sum(1 for l in all_conversations if getattr(l, "last_msg_direction", "") == "inbound")
+    failed_cnt      = sum(1 for l in all_conversations if getattr(l, "last_msg_status", "") == "failed")
+'''
+          new_counts = '''    unread_count    = sum(1 for conversation in all_conversations if getattr(conversation, "unread_count", 0) > 0)
+    needs_reply_cnt = sum(1 for conversation in all_conversations if getattr(conversation, "last_msg_direction", "") == "inbound")
+    failed_cnt      = sum(1 for conversation in all_conversations if getattr(conversation, "last_msg_status", "") == "failed")
+'''
+          text = replace_once(text, old_counts, new_counts, "channel badge counters")
+          save(path, text)
+
+          # Logger initialization must follow every import.
+          path = "apps/crm/authentication.py"
+          text = load(path)
+          old_logger = '''
+logger = logging.getLogger(__name__)
+
+from apps.crm.constants import CRM_SESSION_AREA
+from apps.organizations.models import APIKey
+'''
+          new_logger = '''
+from apps.crm.constants import CRM_SESSION_AREA
+from apps.organizations.models import APIKey
+
+logger = logging.getLogger(__name__)
+'''
+          text = replace_once(text, old_logger, new_logger, "CRM authentication logger")
+          save(path, text)
+
+          # Remove dead import-preview queries/locals without changing CRM behavior.
+          path = "apps/crm/views/dashboard.py"
+          text = load(path)
+          first_dead_query = '''    attribute_definitions = (
+        AttributeDefinition.objects
+        .filter(
+            organization=user.organization,
+        )
+    )
+
+'''
+          text = replace_once(text, first_dead_query, "", "dashboard review unused attributes")
+          second_dead_section = '''    # --------------------------------------------------------
+    # EXISTING ATTRIBUTE DEFINITIONS
+    # --------------------------------------------------------
+
+    attribute_definitions = (
+        AttributeDefinition.objects
+        .filter(
+            organization=user.organization,
+        )
+    )
+
+    attribute_by_key = {
+        attribute.key: attribute
+        for attribute in attribute_definitions
+    }
+
+'''
+          text = replace_once(text, second_dead_section, "", "dashboard existing attribute dead section")
+          text = replace_once(
+              text,
+              "        lead = create_lead(\n            organization=user.organization,\n",
+              "        create_lead(\n            organization=user.organization,\n",
+              "dashboard unused created lead",
+          )
+          lead_table_old = '''def lead_table_partial(
+    request
+):
+
+    user = request.crm_user
+
+    organization = user.organization
+
+    pipeline_id = request.GET.get(
+'''
+          lead_table_new = '''def lead_table_partial(
+    request
+):
+
+    user = request.crm_user
+
+    pipeline_id = request.GET.get(
+'''
+          text = replace_once(text, lead_table_old, lead_table_new, "lead table unused organization")
+          delete_stage_old = '''def lead_stage_delete(
+    request,
+    stage_id,
+):
+
+    user = request.crm_user
+
+    organization = user.organization
+
+    pipeline_id = (
+        request.POST.get(
+            "pipeline",
+            "",
+        )
+        .strip()
+    )
+
+    active_stage_id = (
+'''
+          delete_stage_new = '''def lead_stage_delete(
+    request,
+    stage_id,
+):
+
+    user = request.crm_user
+
+    organization = user.organization
+
+    active_stage_id = (
+'''
+          text = replace_once(text, delete_stage_old, delete_stage_new, "delete stage unused pipeline")
+          save(path, text)
+          PY
+
+      - name: Commit targeted fixes
+        run: |
+          if git diff --quiet; then
+            echo "No targeted changes to commit."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps
+          git commit -m "Fix Ruff baseline violations"
+          git push origin HEAD:ci/enforce-full-ruff
