@@ -1,0 +1,79 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="Shvya AI documentation for sales cadence, AI playbooks, workflows, integrations, measurement and troubleshooting.">
+<title>Documentation - SHVYA AI</title>
+<link rel="icon" type="image/png" href="{% static 'images/shvya-brand-2026.png' %}">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{% static 'marketing/home-core.css' %}">
+<link rel="stylesheet" href="{% static 'marketing/home-responsive.css' %}">
+<link rel="stylesheet" href="{% static 'marketing/docs-booking.css' %}">
+</head>
+<body class="docs-page">
+{% include "marketing/home_header.html" %}
+<main class="docs-shell">
+  <aside class="docs-sidebar">
+    <a class="docs-brand" href="{% url 'docs' %}">SHVYA Docs</a>
+    <form class="docs-search" method="get" action="{% url 'docs' %}">
+      <input type="search" name="q" value="{{ query }}" placeholder="Search documentation">
+      <button type="submit">Search</button>
+    </form>
+    <nav aria-label="Documentation topics">
+      {% for slug, title in topics %}
+      <a href="{% url 'docs' %}?topic={{ slug }}" class="{% if slug == topic_slug %}active{% endif %}">{{ title }}</a>
+      {% endfor %}
+    </nav>
+  </aside>
+
+  <section class="docs-content">
+    <div class="eyebrow">Documentation</div>
+    <h1>{{ topic.title }}</h1>
+    <p class="docs-intro">{{ topic.intro }}</p>
+
+    {% if query %}
+    <div class="docs-results">
+      <h2>Search results</h2>
+      {% for slug, title, intro in filtered_topics %}
+      <a href="{% url 'docs' %}?topic={{ slug }}{% if query %}&q={{ query|urlencode }}{% endif %}">
+        <strong>{{ title }}</strong>
+        <span>{{ intro }}</span>
+      </a>
+      {% empty %}
+      <p>No matching documentation topic found. Try cadence, playbooks, workflows or integrations.</p>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    {% for heading, items in topic.sections %}
+    <section class="docs-section">
+      <h2>{{ heading }}</h2>
+      {% if items|length == 1 %}
+      <p>{{ items.0 }}</p>
+      {% else %}
+      <ol>
+        {% for item in items %}
+        <li>{{ item }}</li>
+        {% endfor %}
+      </ol>
+      {% endif %}
+    </section>
+    {% endfor %}
+
+    <div class="docs-next">
+      <div>
+        <strong>Need this mapped to your business?</strong>
+        <p>Book a focused Shvya AI session and walk through your exact lead sources, follow-up rhythm and WhatsApp flow.</p>
+      </div>
+      <a class="btn btn-primary" href="{% url 'book_call' %}?interest={{ topic.title|urlencode }}">Book a call</a>
+    </div>
+  </section>
+</main>
+{% include "marketing/home_footer.html" %}
+<script src="{% static 'marketing/home.js' %}" defer></script>
+</body>
+</html>
