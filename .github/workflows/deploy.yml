@@ -35,10 +35,34 @@ jobs:
             set -e
             cd /opt/shvya-ai
 
-            echo "Updating source code..."
-            git fetch origin main
+            DEPLOY_SHA="${{ github.event.workflow_run.head_sha || github.sha }}"
+            if [ -z "$DEPLOY_SHA" ]; then
+              echo "Deployment SHA is missing."
+              exit 1
+            fi
+
+            echo "Fetching production branch for deployment SHA validation..."
+            git fetch --no-tags origin main
+
+            if ! git cat-file -e "${DEPLOY_SHA}^{commit}" 2>/dev/null; then
+              echo "Deployment SHA ${DEPLOY_SHA} is not available in the production repository."
+              exit 1
+            fi
+
+            if ! git merge-base --is-ancestor "$DEPLOY_SHA" origin/main; then
+              echo "Refusing deployment: ${DEPLOY_SHA} is not part of origin/main."
+              exit 1
+            fi
+
+            echo "Deploying exact validated commit: ${DEPLOY_SHA}"
             git checkout main
-            git reset --hard origin/main
+            git reset --hard "$DEPLOY_SHA"
+
+            ACTUAL_SHA="$(git rev-parse HEAD)"
+            if [ "$ACTUAL_SHA" != "$DEPLOY_SHA" ]; then
+              echo "Deployment checkout mismatch: expected ${DEPLOY_SHA}, got ${ACTUAL_SHA}."
+              exit 1
+            fi
 
             if [ ! -f .env ]; then
               echo "Production .env file is missing."
