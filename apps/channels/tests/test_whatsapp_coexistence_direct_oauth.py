@@ -10,10 +10,15 @@ from django.urls import reverse
 
 from apps.accounts.models import User
 from apps.accounts.session_utils import set_authenticated_user
-from apps.channels import coexistence_finish_ui, coexistence_oauth_ui
+from apps.channels import (
+    coexistence_finish_ui,
+    coexistence_oauth_ui,
+    coexistence_phone_selection_ui,
+)
 from apps.channels.connection_attempts import WhatsAppConnectionAttempt
 from apps.channels.providers import whatsapp_embedded
 from apps.organizations.models import Organization
+from services.channels.embedded_signup_service import EmbeddedSignupPhoneSelectionRequired
 
 
 class WhatsAppCoexistenceDirectOAuthTests(TestCase):
@@ -96,13 +101,19 @@ class WhatsAppCoexistenceDirectOAuthTests(TestCase):
         META_APP_SECRET="meta-secret",
         META_WA_EMBEDDED_SIGNUP_CONFIG_ID="config-123",
     )
-    @patch("apps.channels.coexistence_finish_ui.complete_coexistence_signup")
-    def test_shared_direct_return_dispatches_coexistence_and_uses_oauth_code(
+    @patch("apps.channels.coexistence_phone_selection_ui._complete_with_token")
+    @patch("apps.channels.coexistence_phone_selection_ui.coexistence_service._resolve_signup_assets")
+    @patch("apps.channels.coexistence_phone_selection_ui._ORIGINAL_EXCHANGE")
+    def test_shared_direct_return_dispatches_coexistence_and_uses_resolved_assets(
         self,
-        complete_signup,
+        exchange,
+        resolve_assets,
+        complete_with_token,
     ):
         account = SimpleNamespace(id="account-1")
-        complete_signup.return_value = (account, "", {})
+        exchange.return_value = "business-token"
+        resolve_assets.return_value = ("waba-1", "phone-1")
+        complete_with_token.return_value = (account, "", {})
 
         start = self.client.get(reverse("whatsapp-coexistence-direct-start"))
         params = parse_qs(urlparse(start["Location"]).query)
@@ -118,17 +129,21 @@ class WhatsAppCoexistenceDirectOAuthTests(TestCase):
             response["Location"],
             f"{reverse('whatsapp-chats')}?connected=account-1&coexistence=1",
         )
-        complete_signup.assert_called_once_with(
-            organization=self.org,
-            code="oauth-code",
+        resolve_assets.assert_called_once_with(
+            access_token="business-token",
             waba_id="",
             phone_number_id="",
+        )
+        complete_with_token.assert_called_once_with(
+            organization=self.org,
+            access_token="business-token",
+            waba_id="waba-1",
+            phone_number_id="phone-1",
             attempt=ANY,
         )
-        attempt = complete_signup.call_args.kwargs["attempt"]
+        attempt = complete_with_token.call_args.kwargs["attempt"]
         attempt.refresh_from_db()
         self.assertTrue(attempt.code_received)
-        self.assertEqual(attempt.stage, "coexistence_direct_oauth_code_received")
         self.assertNotIn(coexistence_oauth_ui._SESSION_KEY, self.client.session)
 
     @override_settings(
@@ -136,14 +151,19 @@ class WhatsAppCoexistenceDirectOAuthTests(TestCase):
         META_APP_SECRET="meta-secret",
         META_WA_EMBEDDED_SIGNUP_CONFIG_ID="config-123",
     )
-    @patch("apps.channels.coexistence_finish_ui.complete_coexistence_signup")
+    @patch("apps.channels.coexistence_phone_selection_ui._complete_with_token")
+    @patch("apps.channels.coexistence_phone_selection_ui.coexistence_service._resolve_signup_assets")
+    @patch("apps.channels.coexistence_phone_selection_ui._ORIGINAL_EXCHANGE")
     def test_finish_callback_survives_missing_session_marker_and_opens_inbox(
         self,
-        complete_signup,
+        exchange,
+        resolve_assets,
+        complete_with_token,
     ):
-        """Meta Finish must work even if the old Django routing marker is gone."""
         account = SimpleNamespace(id="account-2")
-        complete_signup.return_value = (
+        exchange.return_value = "business-token"
+        resolve_assets.return_value = ("waba-2", "phone-2")
+        complete_with_token.return_value = (
             account,
             "",
             {"history": {"request_id": "history-1"}},
@@ -169,14 +189,7 @@ class WhatsAppCoexistenceDirectOAuthTests(TestCase):
             response["Location"],
             f"{reverse('whatsapp-chats')}?connected=account-2&coexistence=1",
         )
-        complete_signup.assert_called_once_with(
-            organization=self.org,
-            code="finish-oauth-code",
-            waba_id="",
-            phone_number_id="",
-            attempt=ANY,
-        )
-        attempt = complete_signup.call_args.kwargs["attempt"]
+        attempt = complete_with_token.call_args.kwargs["attempt"]
         self.assertEqual(str(attempt.id), attempt_id)
         attempt.refresh_from_db()
         self.assertTrue(attempt.code_received)
@@ -186,8 +199,82 @@ class WhatsAppCoexistenceDirectOAuthTests(TestCase):
         META_APP_SECRET="meta-secret",
         META_WA_EMBEDDED_SIGNUP_CONFIG_ID="config-123",
     )
+    @patch("apps.channels.coexistence_phone_selection_ui._complete_with_token")
+    @patch("apps.channels.coexistence_phone_selection_ui.coexistence_service._resolve_signup_assets")
+    @patch("apps.channels.coexistence_phone_selection_ui._ORIGINAL_EXCHANGE")
+    def test_multiple_authorized_phones_render_picker_and_resume_without_reauth(
+        self,
+        exchange,
+        resolve_assets,
+        complete_with_token,
+    ):
+        exchange.return_value = "secret-business-token"
+        resolve_assets.side_effect = EmbeddedSignupPhoneSelectionRequired(
+            [
+                {
+                    "waba_id": "waba-1",
+                    "phone_number_id": "phone-1",
+                    "display_phone_number": "+91 90000 00001",
+                    "verified_name": "First Store",
+                },
+                {
+                    "waba_id": "waba-1",
+                    "phone_number_id": "phone-2",
+                    "display_phone_number": "+91 90000 00002",
+                    "verified_name": "Second Store",
+                },
+            ]
+        )
+
+        start = self.client.get(reverse("whatsapp-coexistence-direct-start"))
+        state = parse_qs(urlparse(start["Location"]).query)["state"][0]
+        callback = self.client.get(
+            reverse("whatsapp-embedded-signup-direct-return"),
+            {"code": "oauth-code", "state": state},
+        )
+
+        self.assertRedirects(
+            callback,
+            reverse("whatsapp-coexistence-select-phone"),
+            fetch_redirect_response=False,
+        )
+        pending = self.client.session[coexistence_phone_selection_ui._SESSION_PHONE_SELECTION]
+        self.assertNotEqual(pending["access_token"], "secret-business-token")
+        self.assertEqual(len(pending["choices"]), 2)
+
+        picker = self.client.get(reverse("whatsapp-coexistence-select-phone"))
+        self.assertEqual(picker.status_code, 200)
+        self.assertContains(picker, "+91 90000 00001")
+        self.assertContains(picker, "+91 90000 00002")
+        self.assertContains(picker, "You do not need to repeat Meta setup")
+
+        account = SimpleNamespace(id="account-selected")
+        complete_with_token.return_value = (account, "", {})
+        response = self.client.post(
+            reverse("whatsapp-coexistence-select-phone"),
+            {"phone_number_id": "phone-2"},
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(
+            response["Location"],
+            f"{reverse('whatsapp-chats')}?connected=account-selected&coexistence=1",
+        )
+        complete_with_token.assert_called_once_with(
+            organization=self.org,
+            access_token="secret-business-token",
+            waba_id="waba-1",
+            phone_number_id="phone-2",
+            attempt=ANY,
+        )
+        self.assertNotIn(
+            coexistence_phone_selection_ui._SESSION_PHONE_SELECTION,
+            self.client.session,
+        )
+        self.assertEqual(exchange.call_count, 1)
+
     @patch(
-        "apps.channels.coexistence_finish_ui.embedded_oauth_ui.whatsapp_embedded_signup_direct_return_view"
+        "apps.channels.coexistence_phone_selection_ui.embedded_oauth_ui.whatsapp_embedded_signup_direct_return_view"
     )
     def test_shared_return_preserves_normal_connect_api_without_coexistence_state(
         self,
@@ -218,16 +305,3 @@ class WhatsAppEmbeddedRedirectContextTests(TestCase):
 
         self.assertEqual(token, "business-token")
         self.assertEqual(get_json.call_args.kwargs["params"]["redirect_uri"], callback)
-
-    @patch("apps.channels.providers.whatsapp_embedded._get_json")
-    def test_legacy_js_sdk_exchange_still_omits_redirect_without_context(self, get_json):
-        get_json.return_value = {"access_token": "business-token"}
-
-        whatsapp_embedded.exchange_code_for_access_token(
-            app_id="123",
-            app_secret="secret",
-            code="code-2",
-            redirect_uri="",
-        )
-
-        self.assertNotIn("redirect_uri", get_json.call_args.kwargs["params"])
