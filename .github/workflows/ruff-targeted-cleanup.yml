@@ -32,6 +32,19 @@ jobs:
               if count != 1: raise RuntimeError(f"{label}: expected 1 match, found {count}")
               p.write_text(updated, encoding="utf-8")
 
+          def replace_in_crm_view_once(path, function_name, old, new, label):
+              p = Path(path)
+              text = p.read_text(encoding="utf-8")
+              start = text.index(f"def {function_name}(")
+              next_view = text.find("\n@crm_login_required", start + 1)
+              end = len(text) if next_view == -1 else next_view
+              section = text[start:end]
+              count = section.count(old)
+              if count != 1:
+                  raise RuntimeError(f"{label}: expected 1 match in {function_name}, found {count}")
+              section = section.replace(old, new, 1)
+              p.write_text(text[:start] + section + text[end:], encoding="utf-8")
+
           path = "apps/accounts/views_flat.py"
           regex_once(path, r'\nclass ThrottledTokenObtainPairView\(TokenObtainPairView\):\n    throttle_classes = \[ScopedRateThrottle\]\n    throttle_scope = "jwt_login"\n[ \t]*\n', '\n', "accounts JWT class removal")
           session_import = 'from .session_utils import (\n    delete_session_cookie,\n    get_session_store,\n    save_session_cookie,\n    set_authenticated_user,\n)\n'
@@ -68,11 +81,15 @@ jobs:
           replace_once(path, '\nlogger = logging.getLogger(__name__)\n\nfrom apps.crm.constants import CRM_SESSION_AREA\nfrom apps.organizations.models import APIKey\n', '\nfrom apps.crm.constants import CRM_SESSION_AREA\nfrom apps.organizations.models import APIKey\n\nlogger = logging.getLogger(__name__)\n', "CRM logger placement")
 
           path = "apps/crm/views/dashboard.py"
-          replace_once(path, '    attribute_definitions = (\n        AttributeDefinition.objects\n        .filter(\n            organization=user.organization,\n        )\n    )\n\n', '', "dashboard first dead attribute query")
-          replace_once(path, '    # --------------------------------------------------------\n    # EXISTING ATTRIBUTE DEFINITIONS\n    # --------------------------------------------------------\n\n    attribute_definitions = (\n        AttributeDefinition.objects\n        .filter(\n            organization=user.organization,\n        )\n    )\n\n    attribute_by_key = {\n        attribute.key: attribute\n        for attribute in attribute_definitions\n    }\n\n', '', "dashboard dead attribute section")
-          replace_once(path, '        lead = create_lead(\n            organization=user.organization,\n', '        create_lead(\n            organization=user.organization,\n', "dashboard unused lead")
-          replace_once(path, 'def lead_table_partial(\n    request\n):\n\n    user = request.crm_user\n\n    organization = user.organization\n\n    pipeline_id = request.GET.get(\n', 'def lead_table_partial(\n    request\n):\n\n    user = request.crm_user\n\n    pipeline_id = request.GET.get(\n', "lead table unused organization")
-          replace_once(path, 'def lead_stage_delete(\n    request,\n    stage_id,\n):\n\n    user = request.crm_user\n\n    organization = user.organization\n\n    pipeline_id = (\n        request.POST.get(\n            "pipeline",\n            "",\n        )\n        .strip()\n    )\n\n    active_stage_id = (\n', 'def lead_stage_delete(\n    request,\n    stage_id,\n):\n\n    user = request.crm_user\n\n    organization = user.organization\n\n    active_stage_id = (\n', "delete stage unused pipeline")
+          attribute_query = '    attribute_definitions = (\n        AttributeDefinition.objects\n        .filter(\n            organization=user.organization,\n        )\n    )\n\n'
+          replace_in_crm_view_once(path, "lead_import_destination_save", attribute_query, '', "destination-save dead attribute query")
+
+          dead_attribute_section = '    # --------------------------------------------------------\n    # EXISTING ATTRIBUTE DEFINITIONS\n    # --------------------------------------------------------\n\n    attribute_definitions = (\n        AttributeDefinition.objects\n        .filter(\n            organization=user.organization,\n        )\n    )\n\n    attribute_by_key = {\n        attribute.key: attribute\n        for attribute in attribute_definitions\n    }\n\n'
+          replace_in_crm_view_once(path, "lead_import_review_modal", dead_attribute_section, '', "review-modal dead attribute section")
+          replace_in_crm_view_once(path, "lead_import_execute", '        lead = create_lead(\n            organization=user.organization,\n', '        create_lead(\n            organization=user.organization,\n', "execute unused lead")
+          replace_in_crm_view_once(path, "lead_table_partial", '    organization = user.organization\n\n', '', "lead-table unused organization")
+          unused_pipeline = '    pipeline_id = (\n        request.POST.get(\n            "pipeline",\n            "",\n        )\n        .strip()\n    )\n\n'
+          replace_in_crm_view_once(path, "lead_stage_delete", unused_pipeline, '', "stage-delete unused pipeline")
           PY
 
       - name: Commit targeted fixes
