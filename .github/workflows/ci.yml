@@ -76,12 +76,13 @@ jobs:
           pip install -r requirements-dev.txt
 
       - name: Ruff lint
+        id: ruff
         run: |
           set -o pipefail
           ruff check . 2>&1 | tee ruff-output.log
 
       - name: Upload Ruff failure log
-        if: failure()
+        if: steps.ruff.outcome == 'failure'
         uses: actions/upload-artifact@v4
         with:
           name: ruff-failure-log
@@ -95,12 +96,13 @@ jobs:
         run: python manage.py check --settings=config.settings.testing
 
       - name: Run tests with coverage
+        id: pytest
         run: |
           set -o pipefail
           pytest --cov 2>&1 | tee pytest-output.log
 
       - name: Upload pytest failure log
-        if: failure()
+        if: steps.pytest.outcome == 'failure'
         uses: actions/upload-artifact@v4
         with:
           name: pytest-failure-log
