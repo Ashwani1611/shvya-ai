@@ -13,7 +13,7 @@ from apps.channels.models import (
 )
 from apps.channels.providers.whatsapp import WhatsAppAPIError
 from apps.channels.tasks import send_bulk_recipient_task
-from apps.crm.models import Lead, Pipeline, Stage
+from apps.crm.models import Lead, Pipeline
 from apps.organizations.models import Organization
 
 
@@ -28,11 +28,10 @@ class BulkWhatsAppRetryIdempotencyTests(TransactionTestCase):
             organization=self.organization,
             name="Sales",
         )
-        self.stage = Stage.objects.create(
-            pipeline=self.pipeline,
-            name="Contacted",
-            display_order=1,
-        )
+        # Pipeline creation installs SHVYA's required system stages. Reuse one
+        # instead of hard-coding a display_order that can collide with them.
+        self.stage = self.pipeline.stages.order_by("display_order", "name").first()
+        self.assertIsNotNone(self.stage)
         self.lead = Lead.objects.create(
             organization=self.organization,
             pipeline=self.pipeline,
