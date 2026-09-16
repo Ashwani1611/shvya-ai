@@ -17,6 +17,12 @@ from django.db import transaction
 
 logger = logging.getLogger(__name__)
 
+# Internal transient state used only while the provider request is in flight.
+# It is intentionally not a user-selectable model choice. Persisting the claim
+# before the network call prevents concurrent workers from sending the same
+# queued row while keeping the external HTTP request outside a DB transaction.
+_WHATSAPP_SENDING_STATUS = "sending"
+
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=30)
 def sync_whatsapp_templates_task(self, account_id):
@@ -65,6 +71,67 @@ def sync_whatsapp_templates_task(self, account_id):
 # ============================================================
 
 
+def _requeue_whatsapp_message_after_transient_failure(*, message_id):
+    """Return an in-flight/failed message to QUEUED before Celery retries it."""
+    from apps.channels.models import WhatsAppMessage
+
+    with transaction.atomic():
+        message = (
+            WhatsAppMessage.objects.select_for_update()
+            .filter(id=message_id)
+            .first()
+        )
+        if message is None:
+            return
+        if message.status in (
+            WhatsAppMessage.Status.SENT,
+            WhatsAppMessage.Status.DELIVERED,
+            WhatsAppMessage.Status.READ,
+        ):
+            return
+
+        message.status = WhatsAppMessage.Status.QUEUED
+        message.error = ""
+        message.save(
+            update_fields=[
+                "status",
+                "error",
+                "updated_at",
+            ]
+        )
+
+
+def _persist_whatsapp_message_failure(*, message_id, error):
+    """Persist a terminal failure outside the provider-call transaction."""
+    from apps.channels.models import WhatsAppMessage
+
+    with transaction.atomic():
+        message = (
+            WhatsAppMessage.objects.select_for_update()
+            .filter(id=message_id)
+            .first()
+        )
+        if message is None:
+            return
+        if message.status in (
+            WhatsAppMessage.Status.SENT,
+            WhatsAppMessage.Status.DELIVERED,
+            WhatsAppMessage.Status.READ,
+        ):
+            return
+
+        update_fields = []
+        if message.status != WhatsAppMessage.Status.FAILED:
+            message.status = WhatsAppMessage.Status.FAILED
+            update_fields.append("status")
+        if not message.error:
+            message.error = str(error)[:1000]
+            update_fields.append("error")
+        if update_fields:
+            update_fields.append("updated_at")
+            message.save(update_fields=update_fields)
+
+
 @shared_task(
     bind=True,
     max_retries=3,
@@ -77,12 +144,15 @@ def send_whatsapp_message_task(self, message_id):
     Idempotency:
         - SENT, DELIVERED, and READ messages are never sent again.
         - Only QUEUED messages are eligible to enter the send path.
-        - select_for_update() prevents concurrent workers from
-          processing the same WhatsAppMessage row at the same time.
+        - A short select_for_update() transaction atomically claims a
+          QUEUED row as the internal ``sending`` state.
+        - The provider HTTP request runs only after that transaction commits,
+          so no database row lock is held while waiting on Meta/Hosted.
 
     Retries:
-        - Network failures and Meta 5xx responses are retried.
-        - Meta 4xx responses are treated as permanent failures.
+        - Network failures and Meta 5xx responses are returned to QUEUED
+          before Celery retries them.
+        - Meta 4xx and other permanent failures remain durably FAILED.
     """
     from apps.channels.models import WhatsAppMessage
     from apps.channels.providers.whatsapp import WhatsAppAPIError
@@ -92,28 +162,19 @@ def send_whatsapp_message_task(self, message_id):
     )
 
     # --------------------------------------------------------
-    # RESOLVE + LOCK MESSAGE
+    # RESOLVE + CLAIM MESSAGE
     # --------------------------------------------------------
+    # Keep this transaction deliberately short. The external provider call
+    # happens below, after commit, so a slow Meta/Hosted request cannot hold a
+    # PostgreSQL row lock or roll back a failure status written by the sender.
 
     try:
         with transaction.atomic():
-
             message = (
-                WhatsAppMessage.objects
-                .select_for_update()
+                WhatsAppMessage.objects.select_for_update()
                 .select_related("account")
-                .get(
-                    id=message_id,
-                )
+                .get(id=message_id)
             )
-
-            # ------------------------------------------------
-            # IDEMPOTENCY GUARD
-            # ------------------------------------------------
-            #
-            # A previously successful Meta send must never be
-            # submitted to Meta again.
-            #
 
             if message.status in (
                 WhatsAppMessage.Status.SENT,
@@ -125,46 +186,29 @@ def send_whatsapp_message_task(self, message_id):
                     "message %s already sent; skipping duplicate send",
                     message_id,
                 )
-
                 return {
                     "status": "skipped",
                     "reason": "already_sent",
-                    "message_id": str(
-                        message_id
-                    ),
+                    "message_id": str(message_id),
                 }
 
-            # ------------------------------------------------
-            # ONLY QUEUED MESSAGES MAY BE SENT
-            # ------------------------------------------------
-
-            if (
-                message.status
-                != WhatsAppMessage.Status.QUEUED
-            ):
+            if message.status != WhatsAppMessage.Status.QUEUED:
                 logger.info(
                     "send_whatsapp_message_task: "
                     "message %s has status %s; skipping send",
                     message_id,
                     message.status,
                 )
-
                 return {
                     "status": "skipped",
                     "reason": "message_not_queued",
-                    "message_id": str(
-                        message_id
-                    ),
+                    "message_id": str(message_id),
                 }
 
-            # ------------------------------------------------
-            # HOSTED AI TRANSPORT ISOLATION
-            # ------------------------------------------------
             # Hosted AI creates the same durable WhatsAppMessage row, but its
             # delivery is owned by HostedAutomationJob. Suppress only the AI
             # finalizer's canonical sender call. Hosted agent/manual messages
             # must keep flowing through the provider-aware canonical task.
-
             payload = (
                 message.raw_payload
                 if isinstance(message.raw_payload, dict)
@@ -186,20 +230,15 @@ def send_whatsapp_message_task(self, message_id):
                     "message_id": str(message_id),
                 }
 
-            # ------------------------------------------------
-            # SEND TO META / PROVIDER-AWARE HOSTED TRANSPORT
-            # ------------------------------------------------
-
-            send_outbound_message(
-                message=message,
+            message.status = _WHATSAPP_SENDING_STATUS
+            message.error = ""
+            message.save(
+                update_fields=[
+                    "status",
+                    "error",
+                    "updated_at",
+                ]
             )
-
-            return {
-                "status": "sent",
-                "message_id": str(
-                    message_id
-                ),
-            }
 
     except WhatsAppMessage.DoesNotExist:
         logger.warning(
@@ -208,62 +247,69 @@ def send_whatsapp_message_task(self, message_id):
         )
         return
 
+    # --------------------------------------------------------
+    # PROVIDER CALL -- NO DATABASE TRANSACTION / ROW LOCK
+    # --------------------------------------------------------
+
+    try:
+        send_outbound_message(message=message)
     except WhatsAppSendError as exc:
         original = exc.__cause__
 
-        # ----------------------------------------------------
-        # TRANSIENT FAILURE
-        # ----------------------------------------------------
-        #
-        # Network failure or Meta 5xx can succeed on retry.
-        #
-
-        if isinstance(
-            original,
-            WhatsAppAPIError,
-        ) and (
+        if isinstance(original, WhatsAppAPIError) and (
             original.status_code is None
             or original.status_code >= 500
         ):
+            _requeue_whatsapp_message_after_transient_failure(
+                message_id=message_id
+            )
             logger.warning(
                 "send_whatsapp_message_task: "
                 "transient failure for message %s; retrying: %s",
                 message_id,
                 exc,
             )
-
             raise self.retry(
                 exc=exc,
                 countdown=30,
             )
 
-        # ----------------------------------------------------
-        # PERMANENT FAILURE
-        # ----------------------------------------------------
-
+        _persist_whatsapp_message_failure(
+            message_id=message_id,
+            error=exc,
+        )
         logger.error(
             "send_whatsapp_message_task: "
             "permanent failure for message %s: %s "
             "(meta response: %s)",
             message_id,
             exc,
-            getattr(
-                original,
-                "response_body",
-                None,
-            ),
+            getattr(original, "response_body", None),
         )
-
         return {
             "status": "failed",
             "reason": "permanent_send_failure",
-            "message_id": str(
-                message_id
-            ),
-            "error": str(
-                exc
-            ),
+            "message_id": str(message_id),
+            "error": str(exc),
         }
+    except Exception as exc:
+        # Defensive terminalization for programming/provider-wrapper failures.
+        # Without this, an unexpected exception after the claim could leave the
+        # message indefinitely in the internal in-flight state.
+        _persist_whatsapp_message_failure(
+            message_id=message_id,
+            error=exc,
+        )
+        logger.exception(
+            "send_whatsapp_message_task: unexpected failure for message %s",
+            message_id,
+        )
+        raise
+
+    return {
+        "status": "sent",
+        "message_id": str(message_id),
+    }
 
 
 # ============================================================
