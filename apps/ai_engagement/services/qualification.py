@@ -261,7 +261,8 @@ class QualificationService:
                     or not isinstance(question, str) or not question.strip()
                     or question not in ordered[index - 1]["body"]):
                     raise ValueError("Qualification answer lacks its preceding question")
-                normalize_question = lambda value: re.sub(r"\W+", " ", str(value).casefold()).strip()
+                def normalize_question(value):
+                    return re.sub(r"\W+", " ", str(value).casefold()).strip()
                 configured_question = normalize_question(requirement.get("question", ""))
                 tracked = (source.get("qualification_state", {}).get("requirement_states", {})
                            .get(requirement_id, {}))

@@ -1,13 +1,12 @@
 """Shared lead filtering used by CRM, WhatsApp inbox, and reminders."""
 
 from datetime import date, timedelta
-from urllib.parse import urlencode
 
 from django.db.models import DateTimeField, F, OuterRef, Q, Subquery
 from django.db.models.functions import Coalesce
 from django.utils import timezone
 
-from apps.crm.models import AttributeDefinition, Lead, Pipeline, Stage
+from apps.crm.models import AttributeDefinition, Lead, Stage
 from apps.crm.models.activity import LeadActivity
 
 

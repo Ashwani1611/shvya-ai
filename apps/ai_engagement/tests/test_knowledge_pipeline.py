@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 
 from django.test import TestCase
 
 from apps.ai_engagement.models import (
-    Chunk,
     Document,
     KnowledgeSource,
 )
@@ -457,7 +456,7 @@ class KnowledgePipelineServiceTests(TestCase):
     ):
         source = self.create_url_source()
 
-        document = Document.objects.create(
+        Document.objects.create(
             organization=self.organization,
             name="Example",
             source_key="https://example.com",
