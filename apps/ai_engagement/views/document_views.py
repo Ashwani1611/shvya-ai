@@ -5,6 +5,7 @@ import logging
 from django.db import transaction
 from django.shortcuts import get_object_or_404
 from rest_framework import status
+from rest_framework.exceptions import ValidationError
 from rest_framework.parsers import (
     FormParser,
     JSONParser,
@@ -23,6 +24,10 @@ from apps.ai_engagement.serializers.document import (
     DocumentUploadSerializer,
     KnowledgeSourceCreateSerializer,
     KnowledgeSourceSerializer,
+)
+from apps.ai_engagement.services.knowledge_file_security import (
+    KnowledgeFileSecurityError,
+    validate_organization_knowledge_quota,
 )
 from apps.ai_engagement.services.knowledge_source import (
     KnowledgeSourceService,
@@ -141,11 +146,33 @@ class DocumentListAPIView(APIView):
 
         with transaction.atomic():
 
+            organization_model = (
+                request.user.organization.__class__
+            )
+
+            locked_organization = (
+                organization_model.objects
+                .select_for_update()
+                .get(pk=request.user.organization.pk)
+            )
+
+            try:
+                validate_organization_knowledge_quota(
+                    organization=locked_organization,
+                    incoming_size=int(uploaded_file.size),
+                )
+            except KnowledgeFileSecurityError as exc:
+                raise ValidationError(
+                    {
+                        "file": [str(exc)],
+                    }
+                ) from exc
+
             latest_document = (
                 Document.objects
                 .select_for_update()
                 .filter(
-                    organization=request.user.organization,
+                    organization=locked_organization,
                     source_key=source_key,
                 )
                 .order_by(
@@ -161,7 +188,7 @@ class DocumentListAPIView(APIView):
             )
 
             document = Document.objects.create(
-                organization=request.user.organization,
+                organization=locked_organization,
                 name=name,
                 source_key=source_key,
                 version=next_version,
@@ -176,7 +203,7 @@ class DocumentListAPIView(APIView):
             transaction.on_commit(
                 lambda document_id=document.id,
                 organization_id=(
-                    request.user.organization.id
+                    locked_organization.id
                 ): ingest_and_index_document.delay(
                     document_id=document_id,
                     organization_id=organization_id,
