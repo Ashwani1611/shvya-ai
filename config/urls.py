@@ -14,7 +14,7 @@ from rest_framework_simplejwt.views import (
     TokenRefreshView,
 )
 
-from apps.core.views import FeaturesView, HomeView, PricingView
+from apps.core.views import BookCallView, DocumentationView, FeaturesView, HomeView, PricingView
 
 
 urlpatterns = [
@@ -211,6 +211,21 @@ urlpatterns = [
         "pricing/",
         PricingView.as_view(),
         name="pricing",
+    ),
+    path(
+        "docs/",
+        DocumentationView.as_view(),
+        name="docs",
+    ),
+    path(
+        "book-a-call/",
+        BookCallView.as_view(),
+        name="book_call",
+    ),
+    path(
+        "book/",
+        RedirectView.as_view(pattern_name="book_call", permanent=False),
+        name="book",
     ),
     path(
         "services/",
