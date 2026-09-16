@@ -1,0 +1,71 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="Book a Shvya AI sales automation walkthrough for your business.">
+<title>Book a Call - SHVYA AI</title>
+<link rel="icon" type="image/png" href="{% static 'images/shvya-brand-2026.png' %}">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{% static 'marketing/home-core.css' %}">
+<link rel="stylesheet" href="{% static 'marketing/home-responsive.css' %}">
+<link rel="stylesheet" href="{% static 'marketing/docs-booking.css' %}">
+</head>
+<body class="booking-page">
+{% include "marketing/home_header.html" %}
+<main class="booking-shell">
+  <section class="booking-copy">
+    <div class="eyebrow">Book a sales session</div>
+    <h1>See how Shvya AI can recover leads and move deals faster.</h1>
+    <p>Share your business details and preferred time. The Shvya team will review your request and contact you to schedule the walkthrough.</p>
+    <div class="booking-proof">
+      <span>Official Meta Business Partner</span>
+      <span>WhatsApp Business workflows</span>
+      <span>Cadence, AI playbooks and connected sales actions</span>
+    </div>
+  </section>
+
+  <section class="booking-card" aria-label="Book a call form">
+    {% if request.GET.submitted %}
+    <div class="booking-success">
+      <h2>Your request is saved.</h2>
+      <p>Reference: {{ request.GET.ref }}</p>
+      <p>Our team will contact you using the phone or email you shared.</p>
+      <a class="btn btn-secondary" href="{% url 'docs' %}">View documentation</a>
+    </div>
+    {% else %}
+    <form method="post" action="{% url 'book_call' %}" novalidate>
+      {% csrf_token %}
+      {{ form.website }}
+      {{ form.interest }}
+      <div class="form-grid">
+        <label>Name {{ form.name }}</label>
+        <label>Phone {{ form.phone }}</label>
+      </div>
+      <label>Email {{ form.email }}</label>
+      <label>Company {{ form.company }}</label>
+      <div class="form-grid">
+        <label>Preferred date {{ form.preferred_date }}</label>
+        <label>Preferred time {{ form.preferred_time }}</label>
+      </div>
+      <label>What do you want Shvya to solve? {{ form.goal }}</label>
+      <label class="check-row">{{ form.consent }} <span>{{ form.consent.label }}</span></label>
+      {% if form.errors %}
+      <div class="form-errors">
+        Please check the highlighted details and submit again.
+        {{ form.non_field_errors }}
+      </div>
+      {% endif %}
+      <button class="btn btn-primary booking-submit" type="submit">Request session</button>
+      <p class="booking-note">This creates a session request. Your booking is confirmed after the team contacts you.</p>
+    </form>
+    {% endif %}
+  </section>
+</main>
+{% include "marketing/home_footer.html" %}
+<script src="{% static 'marketing/home.js' %}" defer></script>
+</body>
+</html>
