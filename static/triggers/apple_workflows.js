@@ -63,8 +63,35 @@
     });
   };
 
+  /* Keep keyboard interaction on the existing tabs: click remains the only
+     path to the dashboard's view/history handlers. No parallel view state. */
+  const tabs = [...root.querySelectorAll('.st-tabs [role="tab"]')];
+  const enhanceAccessibility = () => {
+    tabs.forEach(tab => { tab.tabIndex = tab.getAttribute('aria-selected') === 'true' ? 0 : -1; });
+    root.querySelectorAll('.st-table-wrap').forEach(wrap => {
+      wrap.tabIndex = 0;
+      wrap.setAttribute('role', 'region');
+      wrap.setAttribute('aria-label', wrap.closest('#st-history-panel') ? 'Workflow run history' : 'Workflow list');
+    });
+  };
+  tabs.forEach((tab, index) => {
+    tab.addEventListener('click', enhanceAccessibility);
+    tab.addEventListener('keydown', event => {
+      let next;
+      if (event.key === 'ArrowRight') next = (index + 1) % tabs.length;
+      else if (event.key === 'ArrowLeft') next = (index + tabs.length - 1) % tabs.length;
+      else if (event.key === 'Home') next = 0;
+      else if (event.key === 'End') next = tabs.length - 1;
+      else return;
+      event.preventDefault();
+      tabs[next].click();
+      tabs[next].focus();
+    });
+  });
+
   releaseLegacyMobileShell();
   normalizeCopy();
+  enhanceAccessibility();
 
   let queued = false;
   const observer = new MutationObserver((mutations) => {
@@ -74,6 +101,7 @@
       queued = false;
       releaseLegacyMobileShell();
       normalizeCopy();
+      enhanceAccessibility();
     });
   });
   observer.observe(root, { childList: true, subtree: true });
