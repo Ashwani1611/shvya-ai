@@ -82,6 +82,13 @@ def _patch_context_builder() -> None:
             )
         except TenantScopeError as exc:
             _record_tenant_failure(exc)
+            # Keep the pre-Phase-4 public error contract for a mismatched lead.
+            # TenantGuard still fails closed first and the internal trace retains
+            # the safe tenant code without exposing foreign organization details.
+            if exc.object_type == "lead":
+                raise context_module.AIContextError(
+                    "Lead does not belong to this organization."
+                ) from exc
             raise context_module.AIContextError(exc.code) from exc
 
         token = _ACTIVE_PROFILE.set(profile)
@@ -163,6 +170,7 @@ def _patch_crm_executor() -> None:
         organization = kwargs.get("organization")
         lead = kwargs.get("lead")
         actions = kwargs.get("actions")
+        current_action = None
         try:
             guard = TenantGuard(organization)
             guard.validate_current_lead_context(lead)
@@ -172,12 +180,25 @@ def _patch_crm_executor() -> None:
                 # Preserve the canonical executor's existing schema error wording.
                 return original(self, *args, **kwargs)
             for action in normalized:
+                current_action = action
                 guard.validate_crm_action(
                     lead=lead,
                     action=action,
                 )
         except TenantScopeError as exc:
             _record_tenant_failure(exc)
+            # The canonical executor already used a tenant-safe, non-disclosing
+            # stage error. Preserve that public contract while TenantGuard still
+            # blocks the foreign target before any mutation service is reached.
+            if (
+                isinstance(current_action, dict)
+                and current_action.get("type") == "pipeline_transition"
+                and exc.object_type in {"pipeline", "stage"}
+            ):
+                raise executor_module.CRMActionExecutionError(
+                    "Requested stage does not belong to an active "
+                    "pipeline in this organization."
+                ) from exc
             raise executor_module.CRMActionExecutionError(exc.code) from exc
         return original(self, *args, **kwargs)
 
@@ -279,7 +300,12 @@ def _patch_file_sharing() -> None:
             return documents
         except TenantScopeError as exc:
             _record_tenant_failure(exc)
-            raise sharing_module.FileSharingError(exc.code) from exc
+            # Preserve the canonical non-disclosing eligibility contract. The
+            # tenant mismatch remains available in internal trace metadata.
+            raise sharing_module.FileSharingError(
+                "AI selected a document that is not an eligible "
+                "organization-owned file."
+            ) from exc
 
     sharing_module.FileSharingService.get_eligible_documents = get_eligible_documents
 
