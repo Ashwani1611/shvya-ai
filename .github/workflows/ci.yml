@@ -99,7 +99,7 @@ jobs:
         id: pytest
         run: |
           set -o pipefail
-          pytest --cov 2>&1 | tee pytest-output.log
+          pytest --cov --cov-fail-under=60 2>&1 | tee pytest-output.log
 
       - name: Upload pytest failure log
         if: steps.pytest.outcome == 'failure'
