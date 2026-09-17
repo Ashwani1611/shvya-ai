@@ -246,7 +246,7 @@ html.shvya-page-workflows #smart-triggers .st-columns { display: grid; grid-temp
 html.shvya-page-workflows #smart-triggers .st-columns > label { margin: 0 !important; }
 html.shvya-page-workflows #smart-triggers .st-condition .st-columns > .st-icon-button { grid-column: 2; justify-self: end; }
 html.shvya-page-workflows #smart-triggers select[multiple] { min-height: 128px !important; }
-html.shvya-page-workflows #smart-triggers textarea { min-height: 144px; resize: vertical; }
+html.shvya-page-workflows #smart-triggers.st textarea { min-height: 144px !important; resize: vertical; }
 html.shvya-page-workflows #smart-triggers .st-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0; }
 html.shvya-page-workflows #smart-triggers .st-chip { min-height: 32px; padding: 5px 9px; border: 1px solid #d5e5fa; border-radius: 8px; background: #f6faff; color: #0060bd; font-size: 12px; }
 html.shvya-page-workflows #smart-triggers :is(.st-info, .st-warn) { padding: 13px 14px; border-radius: 10px; font-size: 13px !important; line-height: 1.6; }
@@ -299,9 +299,9 @@ html.shvya-page-workflows #smart-triggers .st-danger:hover { background: #932019
     html.shvya-page-workflows #smart-triggers .st-editor-heading { flex-direction: row; }
 }
 @media (prefers-reduced-motion: reduce) {
-    html.shvya-page-workflows #smart-triggers *,
-    html.shvya-page-workflows #smart-triggers *::before,
-    html.shvya-page-workflows #smart-triggers *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+    html.shvya-page-workflows #smart-triggers.st *,
+    html.shvya-page-workflows #smart-triggers.st *::before,
+    html.shvya-page-workflows #smart-triggers.st *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }
 @media (prefers-contrast: more) {
     html.shvya-page-workflows #smart-triggers { --st-muted: #3f3f46; --st-line: #9898a1; --st-line-strong: #767680; }
