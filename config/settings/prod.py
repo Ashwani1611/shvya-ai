@@ -1,3 +1,5 @@
+from urllib.parse import urlsplit, urlunsplit
+
 from decouple import config
 
 from .base import *  # noqa
@@ -10,6 +12,75 @@ INSTALLED_APPS = [
     "django.contrib.postgres",
     "apps.hosted_automation",
 ]
+
+
+def _redis_db_url(base_url, db_index):
+    """Reuse the configured Redis server while isolating logical keyspaces."""
+    parsed = urlsplit(str(base_url or ""))
+    if parsed.scheme not in {"redis", "rediss"} or not parsed.netloc:
+        raise ValueError(
+            "REDIS_URL must be a redis:// or rediss:// URL when production "
+            "Redis DB URLs are derived automatically."
+        )
+    return urlunsplit(
+        (
+            parsed.scheme,
+            parsed.netloc,
+            f"/{int(db_index)}",
+            parsed.query,
+            parsed.fragment,
+        )
+    )
+
+
+def _isolated_celery_url(setting_name, db_index):
+    """Migrate legacy shared-/0 Celery URLs while preserving real overrides."""
+    configured = str(config(setting_name, default="") or "").strip()
+    base_url = str(REDIS_URL or "").strip()
+
+    # Older SHVYA deployments commonly set CELERY_* to exactly REDIS_URL (/0).
+    # Treat that as the legacy shared-keyspace configuration and migrate it to
+    # the dedicated DB automatically. A genuinely different endpoint/backend
+    # remains an explicit operator override and is preserved.
+    if configured and configured != base_url:
+        return configured
+    return _redis_db_url(base_url, db_index)
+
+
+# Keep independent Redis logical databases for unrelated runtime concerns.
+# This prevents cache flushes or key maintenance from touching Celery broker
+# state, result metadata, or Channels pub/sub keys. Cache/Channels URLs remain
+# directly overrideable. Celery also preserves genuinely distinct legacy
+# overrides while automatically migrating the old shared REDIS_URL value.
+CACHE_REDIS_URL = config(
+    "CACHE_REDIS_URL",
+    default=_redis_db_url(REDIS_URL, 0),
+)
+CHANNEL_LAYER_REDIS_URL = config(
+    "CHANNEL_LAYER_REDIS_URL",
+    default=_redis_db_url(REDIS_URL, 1),
+)
+CELERY_BROKER_URL = _isolated_celery_url("CELERY_BROKER_URL", 2)
+CELERY_RESULT_BACKEND = _isolated_celery_url("CELERY_RESULT_BACKEND", 3)
+
+CACHES = {
+    **CACHES,
+    "default": {
+        **CACHES["default"],
+        "LOCATION": CACHE_REDIS_URL,
+    },
+}
+
+CHANNEL_LAYERS = {
+    **CHANNEL_LAYERS,
+    "default": {
+        **CHANNEL_LAYERS["default"],
+        "CONFIG": {
+            **CHANNEL_LAYERS["default"]["CONFIG"],
+            "hosts": [CHANNEL_LAYER_REDIS_URL],
+        },
+    },
+}
 
 # The whatsapp-web.js gateway fetches short-lived signed follow-up media and
 # posts authenticated session/message callbacks to Gunicorn over the private
