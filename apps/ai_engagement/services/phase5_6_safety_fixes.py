@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import re
 from copy import deepcopy
 from functools import wraps
@@ -57,6 +56,22 @@ def _bounded_confidence(value: Any) -> float:
     return max(0.0, min(parsed, 1.0))
 
 
+def _fresh_lead(*, organization, lead):
+    from apps.ai_engagement.services.structured_memory import StructuredMemoryScopeError
+    from apps.crm.models import Lead
+
+    fresh = (
+        Lead.objects.select_related("organization", "pipeline", "stage")
+        .filter(pk=lead.pk, organization_id=organization.id)
+        .first()
+    )
+    if fresh is None:
+        raise StructuredMemoryScopeError(
+            "Lead is outside the active organization scope."
+        )
+    return fresh
+
+
 def _canonical_backend_facts(*, organization, lead):
     """Return same-tenant CRM/qualification facts that memory must not duplicate.
 
@@ -75,6 +90,9 @@ def _canonical_backend_facts(*, organization, lead):
     from apps.ai_engagement.services.tenant_guard import TenantGuard
 
     TenantGuard(organization).validate_current_lead_context(lead)
+    fresh = _fresh_lead(organization=organization, lead=lead)
+    TenantGuard(organization).validate_current_lead_context(fresh)
+
     profile = get_organization_ai_runtime_profile(
         organization=organization,
         lead=lead,
@@ -88,7 +106,7 @@ def _canonical_backend_facts(*, organization, lead):
         if isinstance(item, Mapping) and str(item.get("key") or "").strip()
     }
 
-    lead_attributes = getattr(lead, "attributes", None) or {}
+    lead_attributes = getattr(fresh, "attributes", None) or {}
     canonical: dict[str, dict[str, Any]] = {}
     now = timezone.now().isoformat()
     for key in definition_keys:
@@ -104,31 +122,48 @@ def _canonical_backend_facts(*, organization, lead):
         }
 
     requirements = requirements_for_lead(
-        lead,
+        fresh,
         profile.configured_requirements(),
     )
-    state = state_for_lead(lead, requirements=requirements)
+    state = state_for_lead(fresh, requirements=requirements)
     mappings: dict[str, str] = {}
     if requirements:
-        try:
-            from apps.ai_engagement.services.qualification_execution_contract import (
-                _config,
-            )
+        cache_key = "_shvya_memory_requirement_mappings"
+        cached = getattr(lead, cache_key, None)
+        if (
+            isinstance(cached, Mapping)
+            and cached.get("profile_revision") == profile.revision
+            and isinstance(cached.get("mappings"), Mapping)
+        ):
+            mappings = dict(cached["mappings"])
+        else:
+            try:
+                from apps.ai_engagement.services.qualification_execution_contract import (
+                    _config,
+                )
 
-            config = _config(
-                organization=organization,
-                requirements=requirements,
-            )
-            mappings = {
-                str(key): str(value)
-                for key, value in (config.get("mappings") or {}).items()
-                if key and value
-            }
-        except Exception:
-            # Mapping discovery is an optimization for reusing canonical CRM
-            # attributes. Failure must not weaken tenant isolation or make memory
-            # authoritative over qualification state.
-            mappings = {}
+                config = _config(
+                    organization=organization,
+                    requirements=requirements,
+                )
+                mappings = {
+                    str(key): str(value)
+                    for key, value in (config.get("mappings") or {}).items()
+                    if key and value
+                }
+                setattr(
+                    lead,
+                    cache_key,
+                    {
+                        "profile_revision": profile.revision,
+                        "mappings": dict(mappings),
+                    },
+                )
+            except Exception:
+                # Mapping discovery is an optimization for reusing canonical CRM
+                # attributes. Failure must not weaken tenant isolation or make
+                # memory authoritative over qualification state.
+                mappings = {}
 
     for requirement_id, item in (state.get("requirement_states") or {}).items():
         if not isinstance(item, Mapping):
@@ -326,7 +361,7 @@ def _install_structured_memory_guard() -> None:
             passthrough.append(prepared)
 
         if passthrough:
-            snapshot, mutations = original_merge(
+            _, mutations = original_merge(
                 self,
                 organization=organization,
                 lead=lead,
@@ -335,11 +370,6 @@ def _install_structured_memory_guard() -> None:
                 source_type=source_type,
             )
         else:
-            snapshot = original_load(
-                self,
-                organization=organization,
-                lead=lead,
-            )
             mutations = []
 
         _remove_persisted_canonical_facts(
