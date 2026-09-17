@@ -200,20 +200,26 @@ class Phase7PlannerProvenanceTests(TestCase):
             },
         )
 
+        raw_decision = SimpleNamespace(
+            crm_actions=[
+                {
+                    "type": "add_note",
+                    "note": "Lead requested pricing and a callback.",
+                }
+            ],
+            file_document_id=None,
+            reason_code="NORMAL_CONVERSATION",
+        )
         try:
             plan = ActionPlanner().plan(
                 organization=self.organization,
                 lead=self.lead,
-                decision=SimpleNamespace(
-                    crm_actions=[
-                        {
-                            "type": "add_note",
-                            "note": "Lead requested pricing and a callback.",
-                        }
-                    ],
-                    file_document_id=None,
-                    reason_code="NORMAL_CONVERSATION",
-                ),
+                decision=raw_decision,
+            )
+            replay_plan = ActionPlanner().plan(
+                organization=self.organization,
+                lead=self.lead,
+                decision=raw_decision,
             )
         finally:
             trace_service._CURRENT.reset(trace_token)
@@ -227,8 +233,15 @@ class Phase7PlannerProvenanceTests(TestCase):
         self.assertEqual(plan.source_policy, "DIRECT_QUESTION_THEN_QUALIFY")
         self.assertEqual(plan.policy_outcome, "ANSWER_THEN_QUALIFY")
         self.assertEqual(plan.evidence_references[1]["source_id"], "org:pricing")
-        self.assertEqual(plan.actions[0].validation_status, STATUS_ACCEPTED)
+        action_types = [action.action_type for action in plan.actions]
+        self.assertIn("ADD_NOTE", action_types)
+        self.assertIn("HUMAN_HANDOFF", action_types)
+        self.assertTrue(all(action.validation_status == STATUS_ACCEPTED for action in plan.actions))
         self.assertEqual(plan.actions[0].source_evidence[0]["message_id"], str(inbound.id))
+        self.assertEqual(
+            [action.idempotency_key for action in plan.actions],
+            [action.idempotency_key for action in replay_plan.actions],
+        )
 
 
 class DeterministicGroundingBudgetTests(TestCase):
