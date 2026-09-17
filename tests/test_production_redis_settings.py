@@ -11,6 +11,8 @@ REDIS_OVERRIDE_KEYS = (
     "CELERY_RESULT_BACKEND",
 )
 
+BASE_REDIS_URL = "redis://redis.example:6379/9"
+
 
 def _load_prod_redis_settings(*, overrides=None):
     env = os.environ.copy()
@@ -19,7 +21,7 @@ def _load_prod_redis_settings(*, overrides=None):
             "SECRET_KEY": "redis-settings-test-secret",
             "DEBUG": "False",
             "ALLOWED_HOSTS": "localhost",
-            "REDIS_URL": "redis://redis.example:6379/9",
+            "REDIS_URL": BASE_REDIS_URL,
         }
     )
     for key in REDIS_OVERRIDE_KEYS:
@@ -56,6 +58,18 @@ def test_production_redis_defaults_use_separate_logical_databases():
         "broker": "redis://redis.example:6379/2",
         "results": "redis://redis.example:6379/3",
     }
+
+
+def test_legacy_shared_celery_urls_are_automatically_migrated():
+    values = _load_prod_redis_settings(
+        overrides={
+            "CELERY_BROKER_URL": BASE_REDIS_URL,
+            "CELERY_RESULT_BACKEND": BASE_REDIS_URL,
+        }
+    )
+
+    assert values["broker"] == "redis://redis.example:6379/2"
+    assert values["results"] == "redis://redis.example:6379/3"
 
 
 def test_production_redis_explicit_overrides_are_preserved():
