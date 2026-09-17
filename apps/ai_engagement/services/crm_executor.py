@@ -59,9 +59,6 @@ class CRMActionExecutor:
         if lead.organization_id != organization.id:
             raise CRMActionExecutionError("Lead does not belong to this organization.")
 
-        # Phase 7 proposal boundary. The synthetic decision intentionally
-        # contains only CRM actions because files/handoff remain separate
-        # existing engagement/delivery capabilities.
         plan = ActionPlanner().plan(
             organization=organization,
             lead=lead,
@@ -93,10 +90,9 @@ class CRMActionExecutor:
                 .get(id=lead.id, organization=organization)
             )
 
-            # Current-state revalidation happens after planning and immediately
-            # before side effects, under the canonical lead lock.
             if locked_lead.organization_id != organization.id:
                 raise CRMActionExecutionError("Lead tenant changed before execution.")
+            self._revalidate_plan_state(plan=plan, lead=locked_lead)
 
             for action in normalized_actions:
                 action_type = action["type"]
@@ -146,6 +142,25 @@ class CRMActionExecutor:
                         f"Unsupported CRM action type: {action_type!r}."
                     )
         return results
+
+    @staticmethod
+    def _revalidate_plan_state(*, plan, lead: Lead) -> None:
+        """Reject stale transition plans before any CRM side effect is executed."""
+        for proposal in plan.accepted_actions:
+            if proposal.executor_action_type != "pipeline_transition":
+                continue
+            snapshot = proposal.state_snapshot or {}
+            planned_pipeline_id = snapshot.get("pipeline_id")
+            planned_stage_id = snapshot.get("stage_id")
+            current_pipeline_id = str(lead.pipeline_id) if lead.pipeline_id else None
+            current_stage_id = str(lead.stage_id) if lead.stage_id else None
+            if (
+                planned_pipeline_id != current_pipeline_id
+                or planned_stage_id != current_stage_id
+            ):
+                raise CRMActionExecutionError(
+                    "Action plan is stale because the lead pipeline/stage changed before execution."
+                )
 
     def _execute_attribute_updates(
         self,
