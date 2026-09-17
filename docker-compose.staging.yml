@@ -58,7 +58,7 @@ services:
       test:
         [
           "CMD-SHELL",
-          "python -c \"import http.client; c=http.client.HTTPConnection('127.0.0.1',8000,timeout=3); c.request('GET','/health/live/',headers={'Host':'staging.shvya-ai.com','X-Forwarded-Proto':'https'}); r=c.getresponse(); raise SystemExit(0 if r.status == 200 else 1)\"",
+          "python -c \"import http.client; c=http.client.HTTPConnection('127.0.0.1',8000,timeout=3); c.request('GET','/health/ready/',headers={'Host':'staging.shvya-ai.com','X-Forwarded-Proto':'https'}); r=c.getresponse(); raise SystemExit(0 if r.status == 200 else 1)\"",
         ]
       interval: 5s
       timeout: 4s
