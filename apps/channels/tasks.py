@@ -232,7 +232,10 @@ def send_whatsapp_message_task(self, message_id):
                 }
 
             if "shvya_workflow" in payload:
-                from services.triggers.actions import workflow_message_block_reason
+                from services.triggers.actions import (
+                    defer_workflow_message_for_health,
+                    workflow_message_block_reason,
+                )
 
                 reason = workflow_message_block_reason(message)
                 if reason:
@@ -240,6 +243,8 @@ def send_whatsapp_message_task(self, message_id):
                     message.error = f"Workflow send cancelled: {reason}"
                     message.save(update_fields=["status", "error", "updated_at"])
                     return {"status": "skipped", "reason": reason, "message_id": str(message_id)}
+                if defer_workflow_message_for_health(message):
+                    return {"status": "deferred", "reason": "account_health", "message_id": str(message_id)}
 
             message.status = _WHATSAPP_SENDING_STATUS
             message.error = ""
@@ -269,6 +274,11 @@ def send_whatsapp_message_task(self, message_id):
 
         if "shvya_workflow" in payload and isinstance(original, WhatsAppAPIError):
             from apps.triggers.models import TriggerRun
+            from services.triggers.actions import defer_workflow_message_for_health
+
+            if original.status_code == 503 and defer_workflow_message_for_health(message):
+                _requeue_whatsapp_message_after_transient_failure(message_id=message_id)
+                return {"status": "deferred", "reason": "account_health", "message_id": str(message_id)}
 
             # A timeout may follow a successful provider send. Never resend an
             # uncertain workflow automatically. Explicit 5xx responses retain

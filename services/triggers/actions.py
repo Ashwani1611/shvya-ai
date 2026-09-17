@@ -95,7 +95,7 @@ def workflow_message_block_reason(message):
         return "Workflow delivery is no longer pending."
     if (not message.account.is_active or message.account.status != "connected"
             or message.account.connection_type not in (WhatsAppAccount.ConnectionType.API, WhatsAppAccount.ConnectionType.coexisted)):
-        return "The selected WhatsApp API account is no longer connected."
+        return "The selected WhatsApp account is no longer connected."
     if message.account.connection_type == WhatsAppAccount.ConnectionType.API and not WhatsAppMessage.objects.filter(
         organization_id=message.organization_id, lead_id=message.lead_id,
         account_id=message.account_id, direction="inbound",
@@ -103,6 +103,27 @@ def workflow_message_block_reason(message):
     ).exists():
         return "WhatsApp reply window expired. Use an approved-template Cadence sequence."
     return ""
+
+
+def defer_workflow_message_for_health(message):
+    """Keep the same queued send until the existing Hosted health pause ends."""
+    if message.account.connection_type != WhatsAppAccount.ConnectionType.coexisted:
+        return False
+    from services.channels.hosted_health_guard import hosted_health_pause_until
+
+    until = hosted_health_pause_until(account=message.account)
+    if not until:
+        return False
+    metadata = (message.raw_payload or {}).get("shvya_workflow") or {}
+    return bool(TriggerRun.objects.filter(
+        id=metadata.get("run_id"), message_id=message.pk,
+        lead_id=message.lead_id, rule__organization_id=message.organization_id,
+        rule__enabled=True, rule__organization__is_active=True,
+        status__in=["queued", "dispatching"],
+    ).update(
+        status="queued", due_at=until, finished_at=None,
+        detail="Waiting for the selected Hosted account's Account Health pause to end.",
+    ))
 
 
 @transaction.atomic
