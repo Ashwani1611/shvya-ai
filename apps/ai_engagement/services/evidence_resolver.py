@@ -103,14 +103,14 @@ _SENSITIVE_SPECS: dict[Intent, tuple[str, tuple[str, ...]]] = {
     ),
 }
 
-_PRODUCT_SPEC = ("product_or_service", ("business_information", "services"))
+_PRODUCT_SPEC = ("product_or_service", ("about", "services", "products", "business_information"))
 
 
 class EvidenceResolver:
     """Resolve the only evidence a customer-facing answer may rely on.
 
     The resolver is deterministic, organization-scoped, transport-neutral and
-    performs no LLM calls.  Sensitive company facts are never inferred from a
+    performs no LLM calls. Sensitive company facts are never inferred from a
     customer message, prior assistant text, another tenant, or general model
     knowledge.
     """
@@ -255,18 +255,32 @@ class EvidenceResolver:
             lead=lead,
         ).as_dict()
         business_facts = profile.get("business_facts") or {}
+        business_information = profile.get("business_information") or {}
+        configured_information = (
+            business_information.get("configured")
+            if isinstance(business_information, Mapping)
+            else {}
+        ) or {}
         items: list[EvidenceItem] = []
         for key in keys:
-            value = business_facts.get(key)
+            value = business_facts.get(key) if isinstance(business_facts, Mapping) else None
+            source_area = "business_facts"
+            if not self._meaningful(value):
+                if key == "about" and isinstance(business_information, Mapping):
+                    value = business_information.get("about")
+                    source_area = "business_information"
+                elif isinstance(configured_information, Mapping):
+                    value = configured_information.get(key)
+                    source_area = "business_information.configured"
             if not self._meaningful(value):
                 continue
             items.append(
                 EvidenceItem(
-                    source_id=f"organization_settings:{key}",
+                    source_id=f"organization_profile:{source_area}:{key}",
                     source_type="organization_runtime_profile",
                     content=self._serialize(value),
                     score=1.0,
-                    metadata={"field": key},
+                    metadata={"field": key, "area": source_area},
                 )
             )
             if len(items) >= self.MAX_ITEMS:
