@@ -4,7 +4,7 @@ import hashlib
 import json
 import time
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Mapping
 
 from apps.ai_engagement.services.crm_actions import (
     CRMActionSchemaError,
@@ -16,7 +16,7 @@ from apps.ai_engagement.services.organization_runtime_profile import (
 from apps.ai_engagement.services.tenant_guard import TenantGuard, TenantScopeError
 
 
-PLAN_VERSION = "phase7.v1"
+PLAN_VERSION = "phase7.v2"
 
 STATUS_ACCEPTED = "ACCEPTED"
 STATUS_REJECTED = "REJECTED"
@@ -90,6 +90,10 @@ class ActionPlan:
     source_message_id: str | None
     policy_outcome: str
     plan_reason: str
+    source_intent: str = ""
+    source_policy: str = ""
+    evidence_references: tuple[dict[str, Any], ...] = ()
+    memory_references: tuple[dict[str, Any], ...] = ()
     plan_version: str = PLAN_VERSION
     planning_latency_ms: float = 0.0
 
@@ -127,6 +131,10 @@ class ActionPlan:
             "source_message_id": self.source_message_id,
             "policy_outcome": self.policy_outcome,
             "plan_reason": self.plan_reason,
+            "source_intent": self.source_intent,
+            "source_policy": self.source_policy,
+            "evidence_references": [dict(item) for item in self.evidence_references],
+            "memory_references": [dict(item) for item in self.memory_references],
             "plan_version": self.plan_version,
             "planning_latency_ms": self.planning_latency_ms,
         }
@@ -150,6 +158,8 @@ class ActionPlanner:
         source_intent: str = "",
         source_policy: str = "",
         policy_outcome: str = "",
+        source_evidence: list[dict[str, Any]] | tuple[dict[str, Any], ...] | None = None,
+        source_memory: list[dict[str, Any]] | tuple[dict[str, Any], ...] | None = None,
     ) -> ActionPlan:
         started = time.perf_counter()
         guard = TenantGuard(organization)
@@ -167,7 +177,11 @@ class ActionPlanner:
             if source_message is not None
             else None
         )
-        evidence = self._evidence(source_message=source_message)
+        evidence = self._evidence(
+            source_message=source_message,
+            source_evidence=source_evidence,
+        )
+        memory_references = self._memory(source_memory)
         state_snapshot = {
             "pipeline_id": str(getattr(lead, "pipeline_id", "") or "") or None,
             "stage_id": str(getattr(lead, "stage_id", "") or "") or None,
@@ -315,6 +329,10 @@ class ActionPlanner:
             source_message_id=source_message_id,
             policy_outcome=policy_outcome or str(getattr(decision, "reason_code", "") or ""),
             plan_reason="Deterministic normalization and tenant-safe validation of engagement side effects.",
+            source_intent=str(source_intent or ""),
+            source_policy=str(source_policy or ""),
+            evidence_references=tuple(evidence),
+            memory_references=tuple(memory_references),
             planning_latency_ms=round(latency_ms, 3),
         )
 
@@ -353,9 +371,6 @@ class ActionPlanner:
                 raise ValueError("UNKNOWN_ATTRIBUTE")
 
         elif action_type == "create_reminder":
-            # crm_actions schema already requires a valid ISO-8601 datetime.
-            # Relative/ambiguous dates therefore never reach the planner as an
-            # executable action.
             if not str(action.get("due_at") or "").strip():
                 raise ValueError("REMINDER_TIME_REQUIRED")
 
@@ -472,14 +487,56 @@ class ActionPlanner:
         )
 
     @staticmethod
-    def _evidence(*, source_message) -> list[dict[str, Any]]:
-        if source_message is None:
-            return []
-        body = str(getattr(source_message, "body", "") or "").strip()
-        return [
-            {
-                "source": "customer_message",
-                "message_id": str(getattr(source_message, "id", "")),
-                "text": body[:2000],
+    def _evidence(*, source_message, source_evidence=None) -> list[dict[str, Any]]:
+        result: list[dict[str, Any]] = []
+        if source_message is not None:
+            body = str(getattr(source_message, "body", "") or "").strip()
+            result.append(
+                {
+                    "source": "customer_message",
+                    "message_id": str(getattr(source_message, "id", "")),
+                    "text": body[:2000],
+                }
+            )
+        for item in source_evidence or ():
+            if not isinstance(item, Mapping):
+                continue
+            bounded = {
+                key: item.get(key)
+                for key in (
+                    "category",
+                    "question_type",
+                    "source_id",
+                    "source_type",
+                    "score",
+                    "metadata",
+                )
+                if item.get(key) is not None
             }
-        ]
+            if bounded and bounded not in result:
+                result.append(bounded)
+            if len(result) >= 10:
+                break
+        return result
+
+    @staticmethod
+    def _memory(source_memory=None) -> list[dict[str, Any]]:
+        result: list[dict[str, Any]] = []
+        for item in source_memory or ():
+            if not isinstance(item, Mapping):
+                continue
+            bounded = {
+                key: item.get(key)
+                for key in (
+                    "key",
+                    "confidence",
+                    "source_message_id",
+                    "source_type",
+                )
+                if item.get(key) is not None
+            }
+            if bounded:
+                result.append(bounded)
+            if len(result) >= 20:
+                break
+        return result
