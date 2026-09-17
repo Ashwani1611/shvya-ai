@@ -40,10 +40,12 @@ class WhatsAppInboundIdempotencyTests(TransactionTestCase):
             raw_payload={"id": external_id, "body": body},
         )
 
+    @patch("services.channels.whatsapp_service.resolve_pipeline", return_value=None)
     @patch("services.channels.realtime.queue_message_publish")
     def test_sequential_duplicate_reuses_canonical_row_without_overwrite(
         self,
         queue_message_publish,
+        _resolve_pipeline,
     ):
         first = self._inbound(
             external_id="wamid-idempotency-sequential",
@@ -57,12 +59,15 @@ class WhatsAppInboundIdempotencyTests(TransactionTestCase):
         first.refresh_from_db()
         self.assertEqual(first.pk, duplicate.pk)
         self.assertEqual(first.body, "Original delivery")
+        # Runtime layers are allowed to append SHVYA diagnostics to raw_payload;
+        # a duplicate Meta delivery must not replace the canonical provider data.
         self.assertEqual(
-            first.raw_payload,
-            {
-                "id": "wamid-idempotency-sequential",
-                "body": "Original delivery",
-            },
+            first.raw_payload["id"],
+            "wamid-idempotency-sequential",
+        )
+        self.assertEqual(
+            first.raw_payload["body"],
+            "Original delivery",
         )
         self.assertEqual(
             WhatsAppMessage.objects.filter(
@@ -125,6 +130,10 @@ class WhatsAppInboundIdempotencyTests(TransactionTestCase):
                 close_old_connections()
 
         with (
+            patch(
+                "services.channels.whatsapp_service.resolve_pipeline",
+                return_value=None,
+            ),
             patch.object(
                 QuerySet,
                 "get",
