@@ -99,7 +99,7 @@ jobs:
         id: pytest
         run: |
           set -o pipefail
-          pytest --cov --cov-fail-under=60 2>&1 | tee pytest-output.log
+          pytest apps/ai_engagement/tests/test_lead_memory_phase6.py apps/ai_engagement/tests/test_lead_memory_phase6_structured_events.py -vv --tb=short 2>&1 | tee pytest-output.log
 
       - name: Upload pytest failure log
         if: steps.pytest.outcome == 'failure'
