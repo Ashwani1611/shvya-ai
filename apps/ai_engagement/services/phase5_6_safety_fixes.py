@@ -8,6 +8,11 @@ from typing import Any, Mapping
 from django.db import transaction
 from django.utils import timezone
 
+from apps.ai_engagement.services.grounding_validation import (
+    is_social_only_reply,
+    matches_verified_evidence,
+)
+
 
 _INSTALLED = False
 
@@ -24,22 +29,13 @@ _SOURCE_AUTHORITY = {
 
 _WORKING_HOURS_RE = re.compile(
     r"\b(?:working\s+hours?|business\s+hours?|office\s+hours?|opening\s+hours?|"
-    r"open(?:ing)?|clos(?:e|ing)|timings?|hours?)\b",
+    r"closing\s+hours?|timings?|hours?|when\s+do\s+you\s+(?:open|close)|"
+    r"what\s+time\s+do\s+you\s+(?:open|close))\b",
     re.I,
 )
-
-_RISKY_REPLY_RE = re.compile(
-    r"(?:\d|₹|\$|€|£|%|https?://|www\.|\b(?:price|pricing|cost|fee|fees|refund|"
-    r"policy|discount|offer|available|availability|slot|appointment|address|location|"
-    r"open|close|hours?|timing|guarantee|promise|booked|scheduled|confirmed|callback|"
-    r"call\s+you)\b)",
-    re.I,
-)
-
-_LITERAL_RE = re.compile(
-    r"(?:https?://\S+|www\.\S+|[\w.+-]+@[\w.-]+\.\w+|"
-    r"(?:₹|\$|€|£)\s*\d[\d,]*(?:\.\d+)?(?:\s*/\s*[A-Za-z]+)?|"
-    r"\b\d{1,4}(?::\d{2})?\s*(?:am|pm)?\b|\b\d+(?:\.\d+)?%\b)",
+_LIVE_SLOT_RE = re.compile(
+    r"\b(?:slots?|appointments?|bookings?|book\s+(?:a|an|the)|free\s+at|available\s+at)\b"
+    r"|अपॉइंटमेंट|अपॉइंटमेंट|स्लॉट|बुकिंग",
     re.I,
 )
 
@@ -73,12 +69,7 @@ def _fresh_lead(*, organization, lead):
 
 
 def _canonical_backend_facts(*, organization, lead):
-    """Return same-tenant CRM/qualification facts that memory must not duplicate.
-
-    Organization-defined CRM attributes and validated qualification state remain
-    canonical truth. Structured memory may expose them to the prompt for
-    continuity, but it does not persist a second competing copy.
-    """
+    """Expose canonical CRM/qualification facts without persisting a rival copy."""
     from apps.ai_engagement.services.organization_runtime_profile import (
         get_organization_ai_runtime_profile,
     )
@@ -160,9 +151,7 @@ def _canonical_backend_facts(*, organization, lead):
                     },
                 )
             except Exception:
-                # Mapping discovery is an optimization for reusing canonical CRM
-                # attributes. Failure must not weaken tenant isolation or make
-                # memory authoritative over qualification state.
+                # Failure must not make memory authoritative over CRM state.
                 mappings = {}
 
     for requirement_id, item in (state.get("requirement_states") or {}).items():
@@ -396,7 +385,9 @@ def _install_structured_memory_guard() -> None:
 
 
 def _working_hours_question(question: str) -> bool:
-    return bool(_WORKING_HOURS_RE.search(str(question or "")))
+    text = str(question or "")
+    # "Open appointment slots" is live availability, not opening hours.
+    return bool(_WORKING_HOURS_RE.search(text)) and not bool(_LIVE_SLOT_RE.search(text))
 
 
 def _install_live_availability_guard() -> None:
@@ -417,10 +408,7 @@ def _install_live_availability_guard() -> None:
         intent_decision=None,
         structured_memory=None,
     ):
-        # Preserve Phase 4's fail-closed tenant boundary even when Phase 5 can
-        # answer deterministically without consulting the original resolver.
         TenantGuard(organization).validate_lead(lead)
-
         intents = set()
         if isinstance(intent_decision, IntentDecision):
             intents = {
@@ -428,8 +416,6 @@ def _install_live_availability_guard() -> None:
                 *intent_decision.secondary_intents,
             }
         if Intent.AVAILABILITY_QUESTION in intents and not _working_hours_question(question):
-            # Specific appointment/slot availability is dynamic. Static working
-            # hours, organization settings and KB text cannot confirm a live slot.
             return evidence_module.EvidenceResolution(
                 category=evidence_module.GroundingCategory.NO_VERIFIED_EVIDENCE,
                 information_class=evidence_module.InformationClass.UNKNOWN,
@@ -454,70 +440,14 @@ def _install_live_availability_guard() -> None:
     resolver_cls.resolve = resolve
 
 
-def _normalized(value: Any) -> str:
-    return " ".join(str(value or "").casefold().split())
-
-
-def _literal_set(value: Any) -> set[str]:
-    return {
-        _normalized(match.group(0)).strip(".,;:!?()[]{}")
-        for match in _LITERAL_RE.finditer(str(value or ""))
-        if _normalized(match.group(0)).strip(".,;:!?()[]{}")
-    }
-
-
 def _extractive_evidence_match(decision, resolution) -> bool:
-    if resolution is None or not getattr(resolution, "verified", False):
-        return False
-    if getattr(decision, "crm_actions", None) or getattr(decision, "qualification_updates", None):
-        return False
-    if getattr(decision, "file_document_id", None) is not None:
-        return False
-    reply = _normalized(getattr(decision, "message", ""))
-    if not reply:
-        return False
-    contents = [
-        str(getattr(item, "content", "") or "").strip()
-        for item in getattr(resolution, "evidence", ()) or ()
-        if str(getattr(item, "content", "") or "").strip()
-    ]
-    if not contents:
-        return False
-    for content in contents:
-        normalized_content = _normalized(content)
-        if len(normalized_content) >= 4 and (
-            normalized_content in reply or reply in normalized_content
-        ):
-            return True
-    evidence_literals = set()
-    for content in contents:
-        evidence_literals.update(_literal_set(content))
-    reply_literals = _literal_set(getattr(decision, "message", ""))
-    if reply_literals and reply_literals.issubset(evidence_literals):
-        question_type = str(getattr(resolution, "question_type", "") or "")
-        return question_type in {"pricing", "working_hours"}
-    return False
+    return matches_verified_evidence(
+        decision, resolution, allow_scalar_price_template=True,
+    )
 
 
 def _low_risk_normal_reply(decision, resolution) -> bool:
-    if str(getattr(decision, "reason_code", "") or "") != "NORMAL_CONVERSATION":
-        return False
-    if getattr(decision, "crm_actions", None) or getattr(decision, "qualification_updates", None):
-        return False
-    if getattr(decision, "file_document_id", None) is not None:
-        return False
-    if resolution is not None:
-        if getattr(resolution, "sensitive", False):
-            return False
-        if str(getattr(resolution, "question_type", "") or "") not in {
-            "",
-            "not_evidence_bound",
-        }:
-            return False
-    message = str(getattr(decision, "message", "") or "").strip()
-    if not message or len(message) > 500:
-        return False
-    return not bool(_RISKY_REPLY_RE.search(message))
+    return is_social_only_reply(decision, resolution)
 
 
 def _install_grounding_cost_guard() -> None:
@@ -541,7 +471,6 @@ def _install_grounding_cost_guard() -> None:
             )
         except Exception:
             resolution = None
-
         if _extractive_evidence_match(decision, resolution):
             return {
                 "grounding_approved": True,

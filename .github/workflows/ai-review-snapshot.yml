@@ -1,0 +1,34 @@
+name: AI review source snapshot
+
+on:
+  push:
+    branches: [fix/ai-phases-1-11-validated]
+    paths: [.github/workflows/ai-review-snapshot.yml]
+
+permissions:
+  contents: read
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Export clean database test runtimes, never application data
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p qa-kit
+          docker run --rm --entrypoint bash pgvector/pgvector:pg17 -ec '
+            files="usr/lib/postgresql/17 usr/share/postgresql/17"
+            libs=$(ldd /usr/lib/postgresql/17/bin/postgres /usr/lib/postgresql/17/bin/initdb /usr/lib/postgresql/17/bin/pg_ctl /usr/lib/postgresql/17/bin/psql /usr/lib/postgresql/17/lib/vector.so | awk "/=> \\// {print \$3}" | sort -u | grep -Ev "/(libc|libm|libpthread|libdl|librt|libresolv)\\.so" | sed "s@^/@@")
+            tar --dereference -czf - -C / $files $libs
+          ' > qa-kit/postgres.tar.gz
+          docker run --rm --entrypoint bash redis:8-bookworm -ec '
+            libs=$(ldd /usr/local/bin/redis-server /usr/local/bin/redis-cli | awk "/=> \\// {print \$3}" | sort -u | grep -Ev "/(libc|libm|libpthread|libdl|librt|libresolv)\\.so" | sed "s@^/@@")
+            tar --dereference -czf - -C / usr/local/bin/redis-server usr/local/bin/redis-cli $libs
+          ' > qa-kit/redis.tar.gz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ai-review-db-kit
+          path: qa-kit/
+          retention-days: 1
+          if-no-files-found: error

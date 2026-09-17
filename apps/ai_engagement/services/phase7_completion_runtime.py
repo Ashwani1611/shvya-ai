@@ -1,40 +1,13 @@
 from __future__ import annotations
 
-import re
 from functools import wraps
 from types import SimpleNamespace
 from typing import Any, Mapping
 
+from apps.ai_engagement.services.grounding_validation import matches_verified_evidence
+
 
 _INSTALLED = False
-_WORD_RE = re.compile(r"[a-z0-9]+", re.I)
-_STOP_WORDS = {
-    "a",
-    "an",
-    "and",
-    "are",
-    "as",
-    "at",
-    "be",
-    "for",
-    "from",
-    "has",
-    "have",
-    "i",
-    "in",
-    "is",
-    "it",
-    "of",
-    "on",
-    "our",
-    "the",
-    "this",
-    "to",
-    "we",
-    "with",
-    "you",
-    "your",
-}
 
 
 def _policy_turn(*, organization, lead) -> dict[str, Any] | None:
@@ -55,6 +28,12 @@ def _policy_turn(*, organization, lead) -> dict[str, Any] | None:
 
 def _source_message(*, organization, lead, turn, supplied=None):
     if supplied is not None:
+        # Metadata-only callers remain valid for pure planning. Real messages
+        # must pass the tenant boundary before their body becomes plan evidence.
+        if hasattr(supplied, "organization_id"):
+            from apps.ai_engagement.services.tenant_guard import TenantGuard
+
+            TenantGuard(organization).validate_message(supplied, lead=lead)
         return supplied
     source_id = str((turn or {}).get("source_message_id") or "").strip()
     if not source_id:
@@ -108,14 +87,14 @@ def _policy_values(turn) -> tuple[str, str]:
     return source, str(outcome or "").strip()
 
 
-def _trace_evidence_refs() -> list[dict[str, Any]]:
+def _trace_evidence_refs(*, organization) -> list[dict[str, Any]]:
     try:
         from apps.ai_engagement.services.trace_service import current
 
         buffer = current()
     except Exception:
         buffer = None
-    if buffer is None:
+    if buffer is None or str(buffer.organization_id) != str(organization.id):
         return []
     grounding = buffer.data.get("grounding")
     grounding = grounding if isinstance(grounding, Mapping) else {}
@@ -177,15 +156,7 @@ def _memory_refs(*, organization, lead) -> list[dict[str, Any]]:
 
 
 def _decision_for_planning(decision, turn):
-    """Add a proposal-only safe fallback when structured intent requests a call.
-
-    A call request with a grounded date but no grounded time cannot legally become
-    CREATE_REMINDER because inventing a due time would violate the reminder
-    schema. In that case Phase 7 still needs a structured proposal boundary, so
-    the planner emits its existing non-executing HUMAN_HANDOFF proposal while the
-    source intent/policy retain that this was a CALL_REQUEST. The executor sees no
-    new mutation action from this fallback.
-    """
+    """Preserve a call request without inventing a reminder time or booking."""
     intents = set(_intent_values(turn))
     if "CALL_REQUEST" not in intents:
         return decision
@@ -245,7 +216,7 @@ def _install_planner_provenance_bridge() -> None:
             source_evidence=(
                 source_evidence
                 if source_evidence is not None
-                else _trace_evidence_refs()
+                else _trace_evidence_refs(organization=organization)
             ),
             source_memory=(
                 source_memory
@@ -257,49 +228,8 @@ def _install_planner_provenance_bridge() -> None:
     ActionPlanner.plan = plan
 
 
-def _normalized_tokens(value: Any) -> set[str]:
-    return {
-        token.casefold()
-        for token in _WORD_RE.findall(str(value or ""))
-        if len(token) > 2 and token.casefold() not in _STOP_WORDS
-    }
-
-
 def _deterministically_supported_reply(decision, resolution) -> bool:
-    if resolution is None or not getattr(resolution, "verified", False):
-        return False
-    if getattr(decision, "crm_actions", None) or getattr(decision, "qualification_updates", None):
-        return False
-    if getattr(decision, "file_document_id", None) is not None:
-        return False
-    question_type = str(getattr(resolution, "question_type", "") or "")
-    if question_type not in {
-        "pricing",
-        "policy",
-        "location",
-        "working_hours",
-        "product_or_service",
-    }:
-        return False
-    contents = [
-        str(getattr(item, "content", "") or "").strip()
-        for item in (getattr(resolution, "evidence", ()) or ())
-        if str(getattr(item, "content", "") or "").strip()
-    ]
-    if not contents:
-        return False
-    reply_tokens = _normalized_tokens(getattr(decision, "message", ""))
-    if not reply_tokens:
-        return False
-    evidence_tokens: set[str] = set()
-    for content in contents:
-        evidence_tokens.update(_normalized_tokens(content))
-    if not evidence_tokens:
-        return False
-    # Deterministic bypass is intentionally strict. Every meaningful reply token
-    # must already occur in same-tenant verified evidence. Any paraphrase or
-    # unsupported claim remains on the existing verifier path.
-    return reply_tokens.issubset(evidence_tokens)
+    return matches_verified_evidence(decision, resolution)
 
 
 def _install_grounding_budget_guard() -> None:
@@ -333,8 +263,8 @@ def _install_grounding_budget_guard() -> None:
 
     evidence_graph.check_grounding = check_grounding
     workflow.check_grounding = check_grounding
-    # LangGraph captures node callables when compiled, so rebind the one existing
-    # canonical graph after replacing the evidence node. This is not a new graph.
+    # LangGraph captures node callables when compiled. Rebuild only the existing
+    # canonical graph so it receives the final installed evidence guard.
     workflow.ENGAGEMENT_GRAPH = workflow.build_engagement_graph()
 
 

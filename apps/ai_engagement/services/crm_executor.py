@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from copy import deepcopy
 from datetime import datetime
 from types import SimpleNamespace
 from typing import Any
@@ -9,7 +10,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from apps.ai_engagement.services.action_plan_trace import trace_action_plan
-from apps.ai_engagement.services.action_planner import ActionPlanner
+from apps.ai_engagement.services.action_planner import ActionPlanner, EXECUTOR_ACTION_TYPES
 from apps.ai_engagement.services.crm_actions import (
     CRMActionSchemaError,
     validate_crm_actions,
@@ -36,12 +37,11 @@ class CRMActionExecutionError(Exception):
 
 
 class CRMActionExecutor:
-    """Deterministic executor for AI-requested CRM actions.
+    """Canonical mutation boundary for validated, tenant-scoped AI proposals.
 
-    Phase 7 keeps planning and execution separate. ``execute`` first sends the
-    incoming canonical action vocabulary through ``ActionPlanner``. The planner
-    performs only read/validation work; this executor remains the mutation
-    boundary and re-validates current state under a transaction/row lock.
+    CRM writes and their durable receipts commit together under the same lead
+    row lock. A replay returns the original result without repeating a mutation.
+    Explicit non-AI backend calls without a source retain their existing contract.
     """
 
     def execute(
@@ -59,6 +59,10 @@ class CRMActionExecutor:
             raise CRMActionExecutionError("Lead is required.")
         if lead.organization_id != organization.id:
             raise CRMActionExecutionError("Lead does not belong to this organization.")
+        if actor is not None and getattr(actor, "organization_id", organization.id) not in {
+            None, organization.id,
+        }:
+            raise CRMActionExecutionError("Actor does not belong to this organization.")
 
         plan = ActionPlanner().plan(
             organization=organization,
@@ -83,6 +87,15 @@ class CRMActionExecutor:
             normalized_actions = validate_crm_actions(plan.executor_actions)
         except CRMActionSchemaError as exc:
             raise CRMActionExecutionError(f"Invalid CRM actions: {exc}") from exc
+        if not normalized_actions:
+            return []
+
+        source = self._validated_source(organization=organization, lead=lead, plan=plan)
+        proposals = [
+            proposal for proposal in plan.accepted_actions
+            if proposal.executor_action_type in EXECUTOR_ACTION_TYPES
+        ]
+        from apps.ai_engagement.models import CRMActionReceipt
 
         results = []
         with transaction.atomic():
@@ -91,59 +104,111 @@ class CRMActionExecutor:
                 .select_related("organization", "pipeline", "stage")
                 .get(id=lead.id, organization=organization)
             )
-
             if locked_lead.organization_id != organization.id:
                 raise CRMActionExecutionError("Lead tenant changed before execution.")
             self._revalidate_plan_state(plan=plan, lead=locked_lead)
+            if source is not None:
+                # Evaluate against current database state, not the state at
+                # generation time. Transport-specific delivery guards stay intact.
+                from apps.ai_engagement.services.ai_permissions import AIPermissionService
 
-            for action in normalized_actions:
+                permission = AIPermissionService().evaluate(
+                    organization=organization, lead=locked_lead, latest_inbound=source,
+                )
+                if not permission.allowed:
+                    raise CRMActionExecutionError(f"AI action permission denied: {permission.reason}.")
+
+            for action, proposal in zip(normalized_actions, proposals, strict=True):
+                receipt_scope = None
+                if source is not None:
+                    receipt_scope = {
+                        "organization": organization,
+                        "lead": locked_lead,
+                        "source_inbound_message_id": source.id,
+                        "idempotency_key": proposal.idempotency_key,
+                    }
+                    receipt = CRMActionReceipt.objects.filter(**receipt_scope).first()
+                    if receipt is not None:
+                        results.append(deepcopy(receipt.result))
+                        self._record_replay(proposal)
+                        continue
                 action_type = action["type"]
                 if action_type == "attribute_updates":
                     results.append(
                         self._execute_attribute_updates(
-                            organization=organization,
-                            lead=locked_lead,
-                            action=action,
+                            organization=organization, lead=locked_lead, action=action,
                         )
                     )
                 elif action_type == "pipeline_transition":
                     results.append(
                         self._execute_pipeline_transition(
-                            organization=organization,
-                            lead=locked_lead,
-                            action=action,
-                            actor=actor,
+                            organization=organization, lead=locked_lead, action=action, actor=actor,
                         )
                     )
                 elif action_type == "add_note":
                     results.append(
-                        self._execute_add_note(
-                            lead=locked_lead,
-                            action=action,
-                            actor=actor,
-                        )
+                        self._execute_add_note(lead=locked_lead, action=action, actor=actor)
                     )
                 elif action_type == "create_reminder":
                     results.append(
-                        self._execute_create_reminder(
-                            lead=locked_lead,
-                            action=action,
-                            actor=actor,
-                        )
+                        self._execute_create_reminder(lead=locked_lead, action=action, actor=actor)
                     )
                 elif action_type == "contact_updates":
                     results.append(
                         self._execute_contact_updates(
-                            organization=organization,
-                            lead=locked_lead,
-                            action=action,
+                            organization=organization, lead=locked_lead, action=action,
                         )
                     )
                 else:
-                    raise CRMActionExecutionError(
-                        f"Unsupported CRM action type: {action_type!r}."
+                    raise CRMActionExecutionError(f"Unsupported CRM action type: {action_type!r}.")
+                if receipt_scope is not None:
+                    # Do not catch persistence errors here: a missing receipt
+                    # must roll back the action, never allow an unsafe retry.
+                    CRMActionReceipt.objects.create(
+                        **receipt_scope, action_type=proposal.action_type,
+                        result=deepcopy(results[-1]),
                     )
         return results
+
+    @staticmethod
+    def _validated_source(*, organization, lead, plan):
+        from apps.ai_engagement.services.phase7_completion_runtime import _policy_turn
+        from apps.ai_engagement.services.trace_service import current
+        from apps.ai_engagement.services.tenant_guard import TenantGuard
+        from apps.channels.models import WhatsAppMessage
+
+        source_id = plan.source_message_id
+        if not source_id:
+            trace = current()
+            in_ai_turn = _policy_turn(organization=organization, lead=lead) is not None or (
+                trace is not None and str(trace.organization_id) == str(organization.id)
+            )
+            if in_ai_turn:
+                raise CRMActionExecutionError("AI actions require a valid source inbound message.")
+            return None
+        try:
+            source = WhatsAppMessage.objects.select_related("account", "lead").filter(
+                pk=source_id, organization=organization, lead=lead, direction="inbound",
+            ).first()
+        except (ValueError, DjangoValidationError) as exc:
+            raise CRMActionExecutionError("Invalid AI action source message.") from exc
+        if source is None:
+            raise CRMActionExecutionError("AI action source is outside organization/lead scope.")
+        TenantGuard(organization).validate_message(source, lead=lead)
+        return source
+
+    @staticmethod
+    def _record_replay(proposal):
+        try:
+            from apps.ai_engagement.services.trace_service import append
+
+            append("crm_actions", "replays", {
+                "action_type": proposal.action_type,
+                "idempotency_key": proposal.idempotency_key,
+                "status": "existing_committed_result",
+            })
+        except Exception:
+            pass
 
     @staticmethod
     def _revalidate_plan_state(*, plan, lead: Lead) -> None:
@@ -165,72 +230,47 @@ class CRMActionExecutor:
                 )
 
     def _execute_attribute_updates(
-        self,
-        *,
-        organization,
-        lead: Lead,
-        action: dict[str, Any],
+        self, *, organization, lead: Lead, action: dict[str, Any],
     ) -> dict[str, Any]:
         updates = action["updates"]
         requested_values = {item["key"]: item["value"] for item in updates}
         allowed_keys = set(
-            AttributeDefinition.objects.filter(organization=organization).values_list(
-                "key", flat=True
-            )
+            AttributeDefinition.objects.filter(organization=organization).values_list("key", flat=True)
         )
         invalid_keys = sorted(set(requested_values) - allowed_keys)
         if invalid_keys:
             raise CRMActionExecutionError(f"Unknown attribute keys: {invalid_keys}.")
         try:
-            update_lead_attribute_values(
-                organization=organization,
-                lead=lead,
-                values=requested_values,
-            )
+            update_lead_attribute_values(organization=organization, lead=lead, values=requested_values)
         except DjangoValidationError as exc:
             raise CRMActionExecutionError("Lead attribute update failed.") from exc
         return {
-            "type": "attribute_updates",
-            "status": "executed",
+            "type": "attribute_updates", "status": "executed",
             "keys": list(requested_values.keys()),
         }
 
     def _execute_pipeline_transition(
-        self,
-        *,
-        organization,
-        lead: Lead,
-        action: dict[str, Any],
-        actor=None,
+        self, *, organization, lead: Lead, action: dict[str, Any], actor=None,
     ) -> dict[str, Any]:
         stage_id = action["stage_shift"]["stage_id"]
         stage = (
             Stage.objects.select_related("pipeline")
             .filter(
-                id=stage_id,
-                pipeline__organization=organization,
-                pipeline__is_active=True,
-                is_active=True,
-            )
-            .first()
+                id=stage_id, pipeline__organization=organization,
+                pipeline__is_active=True, is_active=True,
+            ).first()
         )
         if stage is None:
             raise CRMActionExecutionError(
                 "Requested stage does not belong to an active pipeline in this organization."
             )
-
         old_pipeline_id = str(lead.pipeline_id) if lead.pipeline_id else None
         old_stage_id = str(lead.stage_id) if lead.stage_id else None
         try:
             if stage.pipeline_id == lead.pipeline_id:
                 move_lead_to_stage(lead=lead, stage=stage, actor=actor)
             else:
-                move_lead_to_pipeline_stage(
-                    lead=lead,
-                    pipeline=stage.pipeline,
-                    stage=stage,
-                    actor=actor,
-                )
+                move_lead_to_pipeline_stage(lead=lead, pipeline=stage.pipeline, stage=stage, actor=actor)
         except LeadTransitionError as exc:
             raise CRMActionExecutionError(str(exc)) from exc
 
@@ -239,55 +279,30 @@ class CRMActionExecutor:
             from apps.ai_engagement.services.qualification import QualificationService
 
             note = QualificationService().append_backend_completion_summary(
-                organization=organization,
-                lead=lead,
-                created_by=actor,
+                organization=organization, lead=lead, created_by=actor,
             )
             qualification_note_id = str(note.id) if note is not None else None
-
         return {
             "type": "pipeline_transition",
             "status": (
-                "no_op"
-                if old_pipeline_id == str(stage.pipeline_id)
-                and old_stage_id == str(stage.id)
-                else "executed"
+                "no_op" if old_pipeline_id == str(stage.pipeline_id)
+                and old_stage_id == str(stage.id) else "executed"
             ),
-            "pipeline_id": str(stage.pipeline_id),
-            "stage_id": str(stage.id),
+            "pipeline_id": str(stage.pipeline_id), "stage_id": str(stage.id),
             "qualification_note_id": qualification_note_id,
         }
 
-    def _execute_add_note(
-        self,
-        *,
-        lead: Lead,
-        action: dict[str, Any],
-        actor=None,
-    ) -> dict[str, Any]:
+    def _execute_add_note(self, *, lead: Lead, action: dict[str, Any], actor=None) -> dict[str, Any]:
         try:
             note = LeadNote.objects.create(
-                lead=lead,
-                created_by=actor,
-                note=action["note"],
-                note_type="system",
+                lead=lead, created_by=actor, note=action["note"], note_type="system",
             )
             record_note_added(lead=lead, actor=actor, note=note)
         except Exception as exc:
             raise CRMActionExecutionError("CRM note creation failed.") from exc
-        return {
-            "type": "add_note",
-            "status": "executed",
-            "note_id": str(note.id),
-        }
+        return {"type": "add_note", "status": "executed", "note_id": str(note.id)}
 
-    def _execute_create_reminder(
-        self,
-        *,
-        lead: Lead,
-        action: dict[str, Any],
-        actor=None,
-    ) -> dict[str, Any]:
+    def _execute_create_reminder(self, *, lead: Lead, action: dict[str, Any], actor=None) -> dict[str, Any]:
         due_at_raw = action["due_at"]
         try:
             due_at = datetime.fromisoformat(due_at_raw)
@@ -298,49 +313,27 @@ class CRMActionExecutor:
         assigned_to = lead.pipeline.owner if lead.pipeline else None
         try:
             reminder = LeadReminder.objects.create(
-                lead=lead,
-                assigned_to=assigned_to,
-                title=action["title"],
-                description=action["description"],
-                due_at=due_at,
-                status="pending",
+                lead=lead, assigned_to=assigned_to, title=action["title"],
+                description=action["description"], due_at=due_at, status="pending",
             )
             record_reminder_created(lead=lead, actor=actor, reminder=reminder)
         except Exception as exc:
             raise CRMActionExecutionError("CRM reminder creation failed.") from exc
-        return {
-            "type": "create_reminder",
-            "status": "executed",
-            "reminder_id": str(reminder.id),
-        }
+        return {"type": "create_reminder", "status": "executed", "reminder_id": str(reminder.id)}
 
     def _execute_contact_updates(
-        self,
-        *,
-        organization,
-        lead: Lead,
-        action: dict[str, Any],
+        self, *, organization, lead: Lead, action: dict[str, Any],
     ) -> dict[str, Any]:
         updated_contacts = []
         for update in action["updates"]:
-            contact = (
-                LeadContact.objects.filter(
-                    id=update["contact_id"],
-                    lead=lead,
-                    lead__organization=organization,
-                ).first()
-            )
+            contact = LeadContact.objects.filter(
+                id=update["contact_id"], lead=lead, lead__organization=organization,
+            ).first()
             if contact is None:
-                raise CRMActionExecutionError(
-                    "Requested contact does not belong to this lead."
-                )
+                raise CRMActionExecutionError("Requested contact does not belong to this lead.")
             contact.channel = update["channel"]
             contact.handle = update["handle"]
             contact.full_clean()
             contact.save(update_fields=["channel", "handle"])
             updated_contacts.append(str(contact.id))
-        return {
-            "type": "contact_updates",
-            "status": "executed",
-            "contact_ids": updated_contacts,
-        }
+        return {"type": "contact_updates", "status": "executed", "contact_ids": updated_contacts}
