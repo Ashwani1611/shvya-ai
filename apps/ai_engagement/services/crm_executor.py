@@ -8,6 +8,7 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
 from django.utils import timezone
 
+from apps.ai_engagement.services.action_plan_trace import trace_action_plan
 from apps.ai_engagement.services.action_planner import ActionPlanner
 from apps.ai_engagement.services.crm_actions import (
     CRMActionSchemaError,
@@ -69,6 +70,7 @@ class CRMActionExecutor:
             ),
             source_message=source_message,
         )
+        trace_action_plan(plan)
         if plan.rejected_actions:
             reason_codes = sorted(
                 {proposal.reason_code or "ACTION_REJECTED" for proposal in plan.rejected_actions}
