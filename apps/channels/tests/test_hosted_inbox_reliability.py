@@ -19,7 +19,7 @@ from services.channels.hosted_chat_service import (
     mark_hosted_chat_read,
 )
 from services.channels.hosted_message_content import repair_content_after_gateway_event
-from services.channels.hosted_whatsapp_service import create_hosted_account
+from services.channels.hosted_whatsapp_service import create_hosted_account, update_session_settings
 
 
 class HostedInboxReliabilityTests(TestCase):
@@ -184,6 +184,7 @@ class HostedInboxReliabilityTests(TestCase):
         self.assertFalse(Lead.objects.filter(organization=self.org).exists())
 
     def test_profile_name_is_saved_before_welcome_and_not_sent_twice(self):
+        update_session_settings(account=self.account, payload={"auto_lead_creation": True})
         observed = []
         def welcome(lead):
             observed.append(Lead.objects.get(pk=lead.pk).name)
@@ -200,7 +201,10 @@ class HostedInboxReliabilityTests(TestCase):
             organization=self.org, pipeline=self.pipeline, stage=self.stage,
             name="Curated Name", phone=self.phone, lead_source="manual",
         )
-        qualified = Stage.objects.create(pipeline=self.pipeline, name="Qualified", display_order=9)
+        qualified, _ = Stage.objects.get_or_create(
+            pipeline=self.pipeline, name="Qualified", is_active=True,
+            defaults={"display_order": 9},
+        )
         lead.stage = qualified
         lead.save(update_fields=["stage", "updated_at"])
         row = self.snapshot()["conversations"][0]

@@ -140,7 +140,9 @@ def repair_gateway_message_content(*, message, payload, historical=False):
     current_payload = dict(_payload(message))
     incoming = {key: value for key, value in payload.items() if value is not None}
     merged = {**current_payload, **incoming}
-    merged["isHistory"] = bool(current_payload.get("isHistory")) if historical else False
+    # Keep explicit live provenance when replaying history, but recover the
+    # history flag on legacy rows that never recorded their source.
+    merged["isHistory"] = bool(current_payload.get("isHistory", historical)) if historical else False
 
     update_fields = []
     if merged != current_payload:

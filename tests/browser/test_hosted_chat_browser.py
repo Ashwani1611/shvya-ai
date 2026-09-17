@@ -47,7 +47,17 @@ def inbox(browser):
     template = (ROOT / "templates/channels/hosted_whatsapp_chats.html").read_text()
     engine = Engine(
         loaders=[("django.template.loaders.locmem.Loader", {
-            "base.html": '<!doctype html><html><head><meta name="viewport" content="width=device-width"></head><body>{% block content %}{% endblock %}</body></html>',
+            # Mirror base_legacy.html's sidebar-adjacent flex column and main
+            # viewport. Without these parents the thread grows with its messages
+            # rather than scrolling, so scroll-anchor assertions are meaningless.
+            "base.html": '''<!doctype html><html><head><meta charset="utf-8">
+                <meta name="viewport" content="width=device-width">
+                <style>html,body{margin:0;height:100%}*{box-sizing:border-box}</style>
+                </head><body><aside id="app-sidebar"></aside>
+                <div style="display:flex;flex-direction:column;overflow:hidden">
+                <header style="flex-shrink:0"></header>
+                <main>{% block content %}{% endblock %}</main>
+                </div></body></html>''',
             "chat.html": template,
         })],
         libraries={"static": "django.templatetags.static"},
@@ -89,13 +99,13 @@ def inbox(browser):
             rows[0]["unread"] = 0
             request.fulfill(json={"ok": True, "marked_read": 2})
         elif url.path.endswith("hosted_whatsapp_chat.js"):
-            request.fulfill(body=(ROOT / "static/js/hosted_whatsapp_chat.js").read_text(), content_type="application/javascript")
+            request.fulfill(body=(ROOT / "static/js/hosted_whatsapp_chat.js").read_text(), content_type="application/javascript; charset=utf-8")
         elif url.path.endswith("hosted_whatsapp_chat.css"):
-            request.fulfill(body=(ROOT / "static/css/hosted_whatsapp_chat.css").read_text(), content_type="text/css")
+            request.fulfill(body=(ROOT / "static/css/hosted_whatsapp_chat.css").read_text(), content_type="text/css; charset=utf-8")
         elif url.path == "/video.mp4":
             request.fulfill(status=204)
         else:
-            request.fulfill(body=html, content_type="text/html")
+            request.fulfill(body=html, content_type="text/html; charset=utf-8")
 
     page.route("**/*", route)
     page.route_web_socket("**/ws/**", lambda socket: control.update(socket=socket))
@@ -116,7 +126,7 @@ def test_hidden_empty_panel_does_not_occupy_open_thread_or_draw_green_line(inbox
     assert page.locator("#thread-empty").evaluate("el => getComputedStyle(el).borderBottomWidth") == "0px"
     expect(page.locator("#chat-form")).to_be_visible()
     box = page.locator("#thread-scroll").bounding_box()
-    assert box["height"] > 300
+    assert 300 < box["height"] < page.viewport_size["height"]
 
 
 def test_slow_old_chat_response_cannot_overwrite_latest_selection(inbox):
