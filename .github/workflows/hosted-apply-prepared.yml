@@ -1,0 +1,75 @@
+name: Prepare reviewed hosted fixes
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/hosted-transfer/**'
+      - '.github/workflows/hosted-apply-prepared.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  prepare:
+    if: github.repository == 'Ashwani1611/shvya-ai' && github.event.pull_request.number == 274 && github.head_ref == 'fix/hosted-whatsapp-chat-reliability' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - name: Verify and apply exact prepared source patch
+        run: |
+          python - <<'PY'
+          import base64, hashlib, lzma, pathlib
+          data = ''.join(pathlib.Path(f'.github/hosted-transfer/part-{i}').read_text().strip() for i in range(5))
+          data = data.replace('Wj6MVvFRYYv8', 'Wj6MVvFRYv8', 1)
+          patch = lzma.decompress(base64.b64decode(data, validate=True))
+          assert hashlib.sha256(patch).hexdigest() == '9886ebd2dadc2b9019c9771c6faeecf33b4fb830221db1ce88c921fbbae20628'
+          pathlib.Path('/tmp/hosted-fix.patch').write_bytes(patch)
+          PY
+          git apply --check /tmp/hosted-fix.patch
+          git apply /tmp/hosted-fix.patch
+          rm -rf .github/hosted-transfer
+          rm .github/workflows/hosted-apply-prepared.yml .github/workflows/hosted-audit-snapshot.yml
+          git diff --check
+          node --check static/js/hosted_whatsapp_chat.js
+          node --test whatsapp_web_gateway/tests/hosted-sync.test.js
+          python -m compileall -q apps/channels services/channels tests/browser
+      - name: Store reviewed Git objects without updating any branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python - <<'PY'
+          import json, os, pathlib, subprocess, urllib.request
+          def git(*args):
+              return subprocess.check_output(['git', *args], text=True).strip()
+          def post(path, body):
+              request = urllib.request.Request('https://api.github.com/repos/Ashwani1611/shvya-ai/' + path, data=json.dumps(body).encode(), headers={'Authorization': 'Bearer ' + os.environ['GH_TOKEN'], 'Accept': 'application/vnd.github+json', 'Content-Type': 'application/json'}, method='POST')
+              with urllib.request.urlopen(request, timeout=60) as response:
+                  return json.load(response)
+          parent = git('rev-parse', 'HEAD')
+          subprocess.run(['git', 'add', '-A'], check=True)
+          entries = []
+          for line in git('diff', '--cached', '--name-status').splitlines():
+              status, path = line.split('\t')
+              item = {'path': path, 'mode': '100644', 'type': 'blob'}
+              if status == 'D':
+                  item['sha'] = None
+              else:
+                  item['content'] = pathlib.Path(path).read_text()
+              entries.append(item)
+          tree = post('git/trees', {'base_tree': git('rev-parse', 'HEAD^{tree}'), 'tree': entries})
+          assert tree['sha'] == git('write-tree'), 'Remote tree did not match verified local source'
+          commit = post('git/commits', {'message': 'Fix hosted WhatsApp synchronization, race-safe inbox, stages and read receipts', 'tree': tree['sha'], 'parents': [parent]})
+          result = {'parent': parent, 'tree': tree['sha'], 'commit': commit['sha'], 'changed_paths': [entry['path'] for entry in entries]}
+          pathlib.Path('/tmp/hosted-prepared-result.json').write_text(json.dumps(result, indent=2))
+          print(json.dumps(result, indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hosted-prepared-result
+          path: /tmp/hosted-prepared-result.json
+          retention-days: 1
+          if-no-files-found: error
