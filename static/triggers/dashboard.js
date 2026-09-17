@@ -24,7 +24,7 @@
   const label = (text, html) => {
     let id = html.match(/\bid="([^"]+)"/)?.[1];
     if (!id) { id = 'st-field-' + (++labelNumber); html = html.replace(/^<(input|select|textarea)/, `<$1 id="${id}"`); }
-    return `<label for="${id}">${text}</label>${html}`;
+    return `<div class="st-field"><label for="${id}">${text}</label>${html}</div>`;
   };
   const select = (id, items, value) => `<select id="${id}" required>${options(items, value)}</select>`;
   const input = (id, value='', type='text', extra='') => `<input id="${id}" type="${type}" value="${esc(value)}" ${extra}>`;
@@ -68,13 +68,13 @@
       $('st-rule-list').querySelector('[data-new]')?.addEventListener('click',()=>openEditor()); return;
     }
     const canOrder = admin && !q && filter === 'all';
-    $('st-rule-list').innerHTML = `<div class="st-table-wrap"><table><thead><tr><th>Order</th><th>Rule name</th><th>When</th><th>Then</th><th>Enabled</th><th>Actions</th></tr></thead><tbody>${shown.map(r=>`<tr data-id="${r.id}" draggable="${canOrder}"><td><div class="st-order"><span title="Drag to reorder">⠿</span>${canOrder ? `<button class="st-icon-button" data-move="-1" aria-label="Move ${esc(r.name)} up" ${rules.indexOf(r)===0?'disabled':''}>↑</button><button class="st-icon-button" data-move="1" aria-label="Move ${esc(r.name)} down" ${rules.indexOf(r)===rules.length-1?'disabled':''}>↓</button>` : rules.indexOf(r)+1}</div></td><td><strong>${esc(r.name)}</strong><p>${r.conditions.attributes.length ? `${r.conditions.attributes.length} attribute condition(s)` : 'No attribute conditions'}</p></td><td>${esc(cat.triggers[r.trigger_type])}<p>${esc(scopeSummary(r.conditions))}</p></td><td>${esc(cat.actions[r.action_type])}<p>${esc(actionSummary(r))}</p></td><td><button class="st-switch" role="switch" aria-label="Enable ${esc(r.name)}" aria-checked="${r.enabled}" data-toggle ${admin?'':'disabled'}><span></span></button></td><td><div class="st-row-actions"><button class="st-icon-button" data-edit aria-label="${admin?'Edit':'View'} ${esc(r.name)}">${admin?'✎':'↗'}</button>${admin?`<button class="st-icon-button" data-delete aria-label="Delete ${esc(r.name)}">×</button>`:''}</div></td></tr>`).join('')}</tbody></table></div>`;
+    $('st-rule-list').innerHTML = `<div class="st-table-wrap"><table><thead><tr><th>Order</th><th>Rule name</th><th>When</th><th>Then</th><th>Enabled</th><th>Actions</th></tr></thead><tbody>${shown.map(r=>`<tr data-id="${r.id}" draggable="${canOrder}"><td><div class="st-order"><span title="Drag to reorder">⠿</span>${canOrder ? `<button class="st-icon-button" data-move="-1" aria-label="Move ${esc(r.name)} up" ${rules.indexOf(r)===0?'disabled':''}>↑</button><button class="st-icon-button" data-move="1" aria-label="Move ${esc(r.name)} down" ${rules.indexOf(r)===rules.length-1?'disabled':''}>↓</button>` : rules.indexOf(r)+1}</div></td><td><strong>${esc(r.name)}</strong><p>${(r.conditions.sources||[]).length ? 'Source: '+esc(r.conditions.sources.map(s=>cat.sources?.[s]||s).join(', '))+' · ' : ''}${r.conditions.attributes.length ? `${r.conditions.attributes.length} attribute condition(s)` : 'No attribute conditions'}</p></td><td>${esc(cat.triggers[r.trigger_type])}<p>${esc(scopeSummary(r.conditions))}</p></td><td>${esc(cat.actions[r.action_type])}<p>${esc(actionSummary(r))}</p></td><td><button class="st-switch" role="switch" aria-label="Enable ${esc(r.name)}" aria-checked="${r.enabled}" data-toggle ${admin?'':'disabled'}><span></span></button></td><td><div class="st-row-actions"><button class="st-icon-button" data-edit aria-label="${admin?'Edit':'View'} ${esc(r.name)}">${admin?'✎':'↗'}</button>${admin?`<button class="st-icon-button" data-delete aria-label="Delete ${esc(r.name)}">×</button>`:''}</div></td></tr>`).join('')}</tbody></table></div>`;
     let dragId;
     $('st-rule-list').querySelectorAll('tr[data-id]').forEach(row=>{
       const rule=rules.find(r=>r.id===row.dataset.id);
       row.querySelector('[data-edit]').onclick=()=>openEditor(rule);
       row.querySelector('[data-delete]')?.addEventListener('click',()=>{deleting=rule; $('st-confirm-text').textContent=rule.name; $('st-confirm').showModal();});
-      row.querySelector('[data-toggle]').onclick=async e=>{e.currentTarget.disabled=true; try{await api(`rules/${rule.id}/`,'PUT',{...rule,enabled:!rule.enabled}); await load();}catch(err){notice(err.message);renderList();}};
+      row.querySelector('[data-toggle]').onclick=async e=>{e.currentTarget.disabled=true; try{await api(`rules/${rule.id}/`,'PUT',{enabled:!rule.enabled}); await load();}catch(err){notice(err.message);renderList();}};
       row.querySelectorAll('[data-move]').forEach(b=>b.onclick=()=>{const ids=rules.map(r=>r.id),i=ids.indexOf(rule.id),j=i+Number(b.dataset.move); [ids[i],ids[j]]=[ids[j],ids[i]];saveOrder(ids);});
       row.ondragstart=e=>{if(!canOrder){e.preventDefault();return;}dragId=rule.id;row.classList.add('st-dragging');e.dataTransfer.setData('text/plain',rule.id);};
       row.ondragend=()=>row.classList.remove('st-dragging'); row.ondragover=e=>{if(canOrder)e.preventDefault();};
@@ -90,27 +90,37 @@
     $('st-name').value=draft.name;$('st-enabled').checked=draft.enabled;
     $('st-trigger').innerHTML=option('','Choose a trigger',draft.trigger_type)+Object.entries(cat.triggers).map(([k,v])=>option(k,v,draft.trigger_type)).join('');
     $('st-action').innerHTML=option('','Choose an action',draft.action_type)+Object.entries(cat.actions).map(([k,v])=>option(k,v,draft.action_type)).join('');
-    renderTrigger();renderScopes();renderConditions();renderAction();summary();$('st-name').focus();
+    renderTrigger();renderScopes();renderSources();renderConditions();renderAction();summary();$('st-name').focus();
   }
   function renderTrigger(){
     const c=draft.conditions,kind=draft.trigger_type; $('st-trigger-help').textContent=help[kind]||'Select the event your rule should listen for.';
     let html='';
     if(['no_response','stage_idle'].includes(kind))html=durationFields(c,'c',1);
     if(kind==='keyword')html=label('Keywords',input('c-keywords',(c.keywords||[]).join(', '),'text','maxlength="500" required placeholder="interested, quote, price"'))+'<p class="st-hint">Up to 50 keywords separated by commas. Matches are case-insensitive.</p>';
-    if(kind==='sequence_ended')html=label('Sequences',`<select id="c-sequences" multiple required size="4">${cat.sequences.map(s=>`<option value="${s.id}" ${(c.sequences||[]).includes(s.id)?'selected':''}>${esc(s.name)}</option>`).join('')}</select>`)+`<p class="st-hint">${cat.sequences.length?'Choose one or more. Ctrl / ⌘ selects multiple.':'Create a sequence in Auto Follow-ups first.'}</p>`;
+    if(kind==='sequence_ended') {
+      const selected=c.sequences?.length?c.sequences:[''];
+      html=selected.map((id,i)=>`<div class="st-sequence-choice">${label(i?'Additional sequence':'Sequence',`<select id="c-sequences${i?'-'+i:''}" data-trigger-sequence required>${options(cat.sequences,id)}</select>`)}${i?`<button type="button" class="st-icon-button" data-remove-sequence="${i}" aria-label="Remove additional sequence">×</button>`:''}</div>`).join('')+
+        `<p class="st-hint">${cat.sequences.length?'Runs when any selected sequence completes. Pipeline filters are optional.':'No active sequences available. Create a sequence in Cadence first.'}</p><button type="button" class="st-link" id="c-add-sequence" ${cat.sequences.length?'':'disabled'}>＋ Add another sequence</button>`;
+    }
     if(kind==='call_logged')html=label('Call status',`<select id="c-call-status" required>${option('','Select status',c.call_status)}${Object.entries(cat.call_statuses).map(([k,v])=>option(k,v,c.call_status)).join('')}</select>`);
     $('st-trigger-extra').innerHTML=html;
+    $('c-add-sequence')?.addEventListener('click',()=>{readDraft();draft.conditions.sequences.push('');dirty=true;renderTrigger();});
+    $('st-trigger-extra').querySelectorAll('[data-remove-sequence]').forEach(button=>button.onclick=()=>{readDraft();draft.conditions.sequences.splice(Number(button.dataset.removeSequence),1);dirty=true;renderTrigger();});
   }
   function renderScopes(){
     $('st-scopes').innerHTML=draft.conditions.scopes.map((s,i)=>`<div class="st-scope" data-scope="${i}"><div class="st-scope-head"><select aria-label="Pipeline ${i+1}" data-pipeline required>${options(cat.pipelines,s.pipeline)}</select><button type="button" class="st-icon-button" data-remove-scope aria-label="Remove pipeline group">×</button></div><div class="st-stage-options">${s.pipeline?cat.stages.filter(x=>x.pipeline_id===s.pipeline).map(stage=>`<label class="st-check"><input type="checkbox" value="${stage.id}" ${s.stages.includes(stage.id)?'checked':''}>${esc(stage.name)}</label>`).join(''):'<p class="st-hint">Choose a pipeline to see its stages.</p>'}</div></div>`).join('');
     $('st-scopes').querySelectorAll('[data-scope]').forEach(el=>{const i=Number(el.dataset.scope);el.querySelector('[data-pipeline]').onchange=e=>{draft.conditions.scopes[i]={pipeline:e.target.value,stages:[]};dirty=true;renderScopes();summary();};el.querySelector('[data-remove-scope]').onclick=()=>{draft.conditions.scopes.splice(i,1);dirty=true;renderScopes();summary();};el.querySelectorAll('input').forEach(x=>x.onchange=()=>{draft.conditions.scopes[i].stages=[...el.querySelectorAll('input:checked')].map(y=>y.value);dirty=true;summary();});});
+  }
+  function renderSources(){
+    $('st-sources').innerHTML=Object.entries(cat.sources||{}).map(([key,name])=>`<label class="st-check"><input type="checkbox" value="${esc(key)}" ${(draft.conditions.sources||[]).includes(key)?'checked':''}>${esc(name)}</label>`).join('');
+    $('st-sources').onchange=()=>{draft.conditions.sources=[...$('st-sources').querySelectorAll('input:checked')].map(el=>el.value);dirty=true;summary();};
   }
   function renderConditions(){
     $('st-conditions').innerHTML=draft.conditions.attributes.map((c,i)=>`<div class="st-condition" data-condition="${i}"><div class="st-columns">${label('Attribute',`<select data-key required>${options(cat.attributes,c.key,'name','key')}</select>`)}${label('Match',`<select data-match>${option('equals','Equals',c.match)}${option('contains','Contains',c.match)}</select>`)}<button type="button" class="st-icon-button" data-remove-condition aria-label="Remove condition">×</button></div>${label('Values',`<input data-values value="${esc(c.values.join(', '))}" required placeholder="Separate alternatives with commas">`)}</div>`).join('');
     $('st-conditions').querySelectorAll('[data-condition]').forEach(el=>{const i=Number(el.dataset.condition);el.querySelector('[data-remove-condition]').onclick=()=>{readConditions();draft.conditions.attributes.splice(i,1);dirty=true;renderConditions();summary();};});
   }
   function readConditions(){ $('st-conditions').querySelectorAll('[data-condition]').forEach(el=>{draft.conditions.attributes[Number(el.dataset.condition)]={key:el.querySelector('[data-key]').value,match:el.querySelector('[data-match]').value,values:el.querySelector('[data-values]').value.split(',').map(v=>v.trim()).filter(Boolean)};}); }
-  function chips(){return `<div class="st-chips">${['lead_name','lead_first_name','phone','email','org_name','user_name','pipeline_name','stage_name','lead_source',...cat.attributes.map(a=>a.key)].map(k=>`<button class="st-chip" type="button" data-variable="${esc(k)}">＋ ${esc(k)}</button>`).join('')}</div>`;}
+  function chips(){return `<div class="st-chips" aria-label="Personalization fields">${['lead_name','lead_first_name','phone','email','org_name','user_name','pipeline_name','stage_name','lead_source',...cat.attributes.map(a=>a.key)].map(k=>`<button class="st-chip" type="button" data-variable="${esc(k)}">＋ ${esc(k)}</button>`).join('')}</div>`;}
   function renderAction(){
     const a=draft.action,kind=draft.action_type;let html='';
     if(kind==='start_sequence')html=label('Auto Follow-up sequence',select('a-sequence',cat.sequences,a.sequence))+`<label class="st-check"><input type="checkbox" id="a-replace" ${a.replace?'checked':''}>Replace any assigned sequence</label><p class="st-info">${cat.sequences.length?'Uses your existing sequence steps, sender, and scheduling settings.':'Create a sequence in Auto Follow-ups before choosing this action.'}</p>`;
@@ -124,10 +134,10 @@
     if(kind==='reminder')html=durationFields(a)+label('Note (optional)',`<textarea id="a-note" maxlength="2000" placeholder="e.g. Follow up on the pricing discussion">${esc(a.note)}</textarea>`)+`<label class="st-check"><input id="a-overwrite" type="checkbox" ${a.overwrite?'checked':''}>Overwrite an existing pending reminder</label>`;
     if(['message','email'].includes(kind)){
       if(kind==='email')html='<p class="st-info">Send to: lead’s CRM email address. Uses the same sender-readiness setting as Auto Follow-ups.</p>'+label('Subject',input('a-subject',a.subject,'text','maxlength="255" required'));
-      else html=label('WhatsApp API number',`<select id="a-account" required>${option('','Select connected number',a.account)}${cat.accounts.map(x=>option(x.id,`${x.business_name} ${x.display_phone_number}`,a.account)).join('')}</select>`);
+      else html=label('WhatsApp number',`<select id="a-account" required>${option('','Select connected number',a.account)}${cat.accounts.map(x=>option(x.id,`${x.business_name} ${x.display_phone_number}`,a.account)).join('')}</select>`);
       html+=label(kind==='email'?'Email body':'Message',`<textarea id="a-body" maxlength="20000" required placeholder="Hi {{lead_first_name}}, …">${esc(a.body)}</textarea>`)+chips();
       if(kind==='message'){
-        html+='<p class="st-info">Free-text messages use Shvya’s WhatsApp API and require a reply from the lead within the last 24 hours. For approved templates, use a follow-up sequence.</p>';
+        html+='<p class="st-info">Uses the selected account’s existing transport. API messages require a reply within 24 hours; Hosted messages respect Account Health. For approved templates, use a Cadence sequence.</p>';
         html+=label('Send at',`<select id="a-schedule">${option('relative','Relative to when the trigger fires',a.schedule||'relative')}${option('fixed','Fixed time · next occurrence',a.schedule)}${option('attribute','From a lead’s date-time attribute',a.schedule)}</select>`);
         if(a.schedule==='fixed')html+=label(`Time of day (${esc(cat.timezone)})`,input('a-time',a.time,'time','required'));
         else if(a.schedule==='attribute')html+=label('Date-time attribute',`<select id="a-date-attribute" required>${options(cat.attributes.filter(x=>x.field_type==='datetime'),a.date_attribute,'name','key')}</select>`);
@@ -150,9 +160,10 @@
   function readDraft(){
     draft.name=$('st-name').value;draft.enabled=$('st-enabled').checked;readConditions();readAction();
     const c=draft.conditions;
+    c.sources=[...$('st-sources').querySelectorAll('input:checked')].map(el=>el.value);
     if($('c-duration')){c.duration=Number($('c-duration').value);c.unit=$('c-unit').value;}
     if($('c-keywords'))c.keywords=$('c-keywords').value.split(',').map(x=>x.trim()).filter(Boolean);
-    if($('c-sequences'))c.sequences=[...$('c-sequences').selectedOptions].map(o=>o.value);
+    if($('c-sequences'))c.sequences=[...root.querySelectorAll('[data-trigger-sequence]')].map(el=>el.value);
     if($('c-call-status'))c.call_status=$('c-call-status').value;
   }
   function summary(){
@@ -161,7 +172,7 @@
   }
   function closeEditor(){if(dirty&&!window.confirm('Discard your unsaved changes?'))return;dirty=false;$('st-editor').hidden=true;$('st-home').hidden=false;}
   $('st-new')?.addEventListener('click',()=>openEditor());$('st-back').onclick=closeEditor;$('st-cancel').onclick=closeEditor;
-  $('st-trigger').onchange=()=>{readDraft();draft.trigger_type=$('st-trigger').value;draft.conditions={scopes:draft.conditions.scopes,attributes:draft.conditions.attributes};dirty=true;renderTrigger();summary();};
+  $('st-trigger').onchange=()=>{readDraft();draft.trigger_type=$('st-trigger').value;draft.conditions={scopes:draft.conditions.scopes,attributes:draft.conditions.attributes,sources:draft.conditions.sources};if(draft.trigger_type==='sequence_ended')draft.conditions.scopes=draft.conditions.scopes.filter(s=>s.pipeline);dirty=true;renderTrigger();renderScopes();summary();};
   $('st-action').onchange=()=>{draft.action_type=$('st-action').value;draft.action={};dirty=true;renderAction();summary();};
   $('st-add-scope').onclick=()=>{draft.conditions.scopes.push({pipeline:'',stages:[]});dirty=true;renderScopes();};
   $('st-add-condition').onclick=()=>{readConditions();draft.conditions.attributes.push({key:'',match:'equals',values:[]});dirty=true;renderConditions();};

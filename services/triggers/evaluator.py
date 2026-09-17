@@ -1,5 +1,6 @@
 """Durable, ordered event evaluation. Mutations serialize on the lead row."""
 
+import logging
 from contextvars import ContextVar
 from datetime import timedelta
 
@@ -8,6 +9,8 @@ from django.utils import timezone
 
 from apps.crm.models import Lead
 from apps.triggers.models import SmartTrigger, TriggerEvent, TriggerRun
+
+logger = logging.getLogger(__name__)
 
 causal_rules = ContextVar("smart_trigger_causal_rules", default=())
 
@@ -33,7 +36,8 @@ def timer_valid(event, lead):
             latest
             and str(latest.id) == event.payload.get("sent_event")
             and not WhatsAppMessage.objects.filter(
-                lead=lead, direction="inbound", created_at__gte=latest.created_at
+                lead=lead, organization_id=lead.organization_id,
+                direction="inbound", created_at__gte=latest.created_at
             ).exists()
         )
     return True
@@ -41,6 +45,8 @@ def timer_valid(event, lead):
 
 def matches(rule, lead, payload):
     c = rule.conditions
+    if c.get("sources") and getattr(lead, "lead_source", None) not in c["sources"]:
+        return False
     scopes = c.get("scopes", [])
     if scopes and not any(
         str(lead.pipeline_id) == s["pipeline"] and str(lead.stage_id) in s["stages"]
@@ -92,6 +98,7 @@ def emit(lead, kind, key, payload=None):
                     "pipeline": str(lead.pipeline_id),
                     "stage": str(lead.stage_id),
                     "attributes": lead.attributes or {},
+                    "lead_source": lead.lead_source,
                 },
                 **(payload or {}),
             },
@@ -130,6 +137,10 @@ def evaluate(event_id):
                 pipeline_id=snapshot["pipeline"],
                 stage_id=snapshot["stage"],
                 attributes=snapshot["attributes"],
+                # Read the authoritative creation origin after any existing
+                # inbound-source normalization in the committing transaction.
+                # Never substitute a custom SOURCE attribute or channel guess.
+                lead_source=lead.lead_source,
             )
             if snapshot and event.kind not in ("stage_idle", "no_response")
             else lead
@@ -165,49 +176,59 @@ def evaluate(event_id):
 
 
 def scan_timers():
-    """Durable timer identities fire once per stage entry or unanswered outbound."""
+    """One invalid saved timer must not starve other organizations' workflows."""
+    for rule in SmartTrigger.objects.filter(
+        enabled=True, organization__is_active=True,
+        trigger_type__in=["stage_idle", "no_response"]
+    ).iterator():
+        try:
+            _scan_timer(rule)
+        except Exception:
+            logger.exception("Workflow timer scan failed: %s", rule.id)
+
+
+def _scan_timer(rule):
+    """Durable identities fire once per stage entry or unanswered outbound."""
     from apps.channels.models import WhatsAppMessage
 
-    for rule in SmartTrigger.objects.filter(
-        enabled=True, trigger_type__in=["stage_idle", "no_response"]
-    ).iterator():
-        cutoff = timezone.now() - delta(rule.conditions)
-        leads = Lead.objects.filter(organization_id=rule.organization_id)
+    cutoff = timezone.now() - delta(rule.conditions)
+    leads = Lead.objects.filter(organization_id=rule.organization_id)
+    if rule.trigger_type == "stage_idle":
+        leads = leads.filter(stage_entered_at__lte=cutoff)
+    for lead in leads.iterator():
+        if not matches(rule, lead, {}):
+            continue
         if rule.trigger_type == "stage_idle":
-            leads = leads.filter(stage_entered_at__lte=cutoff)
-        for lead in leads.iterator():
-            if not matches(rule, lead, {}):
-                continue
-            if rule.trigger_type == "stage_idle":
-                entry = lead.stage_entered_at.isoformat()
+            entry = lead.stage_entered_at.isoformat()
+            emit(
+                lead,
+                "stage_idle",
+                f"idle:{rule.id}:{lead.id}:{entry}",
+                {"rule": str(rule.id), "entry": entry},
+            )
+        else:
+            message = (
+                TriggerEvent.objects.filter(
+                    lead=lead,
+                    organization_id=lead.organization_id,
+                    kind="outbound_sent",
+                )
+                .order_by("-created_at")
+                .first()
+            )
+            if (
+                message
+                and message.created_at <= cutoff
+                and not WhatsAppMessage.objects.filter(
+                    lead=lead,
+                    organization_id=lead.organization_id,
+                    direction="inbound",
+                    created_at__gte=message.created_at,
+                ).exists()
+            ):
                 emit(
                     lead,
-                    "stage_idle",
-                    f"idle:{rule.id}:{lead.id}:{entry}",
-                    {"rule": str(rule.id), "entry": entry},
+                    "no_response",
+                    f"no-response:{rule.id}:{message.id}",
+                    {"rule": str(rule.id), "sent_event": str(message.id)},
                 )
-            else:
-                message = (
-                    TriggerEvent.objects.filter(
-                        lead=lead,
-                        organization_id=lead.organization_id,
-                        kind="outbound_sent",
-                    )
-                    .order_by("-created_at")
-                    .first()
-                )
-                if (
-                    message
-                    and message.created_at <= cutoff
-                    and not WhatsAppMessage.objects.filter(
-                        lead=lead,
-                        direction="inbound",
-                        created_at__gte=message.created_at,
-                    ).exists()
-                ):
-                    emit(
-                        lead,
-                        "no_response",
-                        f"no-response:{rule.id}:{message.id}",
-                        {"rule": str(rule.id), "sent_event": str(message.id)},
-                    )

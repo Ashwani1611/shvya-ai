@@ -9,13 +9,14 @@ from services.triggers.actions import _apply, deliver_email
 
 class WorkflowConnectedEmailTests(SimpleTestCase):
     def _lead(self):
-        organization = SimpleNamespace(name="Acme")
+        organization = SimpleNamespace(id="org-1", name="Acme", is_active=True)
         lead = SimpleNamespace(
             name="Jane Doe",
             phone="",
             email="jane@example.com",
             lead_source="",
             organization=organization,
+            organization_id="org-1",
             pipeline_id=None,
             stage_id=None,
             attributes={},
@@ -33,10 +34,11 @@ class WorkflowConnectedEmailTests(SimpleTestCase):
     def test_delivery_uses_connected_organization_mailbox(self, objects, send_email):
         organization, lead = self._lead()
         run = SimpleNamespace(
-            id="run-1",
+            id="run-1", pk="run-1",
+            event=SimpleNamespace(organization_id="org-1", kind="lead_created"),
             action={"subject": "Hello {{lead_name}}", "body": "Welcome to {{org_name}}"},
             rule=SimpleNamespace(
-                enabled=True,
+                enabled=True, organization_id="org-1",
                 created_by=SimpleNamespace(name="Owner", email="owner@example.com"),
             ),
             lead=lead,
@@ -58,4 +60,5 @@ class WorkflowConnectedEmailTests(SimpleTestCase):
             headers={"Message-ID": "<smart-trigger-run-1@shvya-ai.com>"},
         )
         self.assertEqual(run.status, "completed")
-        run.save.assert_called_once()
+        objects.filter.assert_any_call(pk="run-1", status="sending")
+        self.assertEqual(objects.filter.return_value.update.call_args.kwargs["status"], "completed")
