@@ -1,755 +1,314 @@
-/* Workflows — Apple-inspired visual layer.
-   This file loads after the legacy Smart Triggers stylesheet and only changes
-   presentation. Workflow API, ordering, editor, and rule execution stay intact. */
-
-html.shvya-page-workflows #smart-triggers.st {
+/* Workflows: one module-owned presentation layer, not another shell patch.
+   Keep the existing API/editor hooks and leave every other module untouched. */
+html.shvya-page-workflows #smart-triggers {
     --st-blue: #0071e3;
     --st-ink: #1d1d1f;
-    --st-muted: #6e6e73;
-    --st-line: rgba(15, 23, 42, .085);
-    --st-line-strong: rgba(15, 23, 42, .14);
-    --st-surface: rgba(255, 255, 255, .94);
-    --st-soft: #f7f7f9;
-    --st-blue-soft: rgba(0, 113, 227, .075);
-    --st-green: #248a3d;
-    --st-red: #d92d20;
-    width: min(100%, 1600px);
-    max-width: 1600px;
-    margin: 0 auto;
-    color: var(--st-ink);
-    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", Inter, system-ui, sans-serif;
-}
-
-html.shvya-page-workflows #smart-triggers * {
-    box-sizing: border-box;
-}
-
-html.shvya-page-workflows #smart-triggers h1,
-html.shvya-page-workflows #smart-triggers h2,
-html.shvya-page-workflows #smart-triggers h3,
-html.shvya-page-workflows #smart-triggers strong {
-    color: var(--st-ink);
-}
-
-html.shvya-page-workflows #smart-triggers p {
-    color: var(--st-muted);
-}
-
-/* Remove the old page-specific sidebar implementation. The global premium
-   shell owns desktop collapse and the mobile drawer. */
-html.shvya-page-workflows #st-mobile-nav,
-html.shvya-page-workflows #st-nav-backdrop {
-    display: none !important;
-}
-
-/* Page intro */
-html.shvya-page-workflows #smart-triggers .st-heading {
-    min-height: 112px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 24px;
-    margin: 0 0 20px !important;
-    padding: 24px 26px !important;
-    border: 1px solid rgba(255, 255, 255, .8) !important;
-    border-radius: 24px !important;
-    background:
-        radial-gradient(circle at 88% -35%, rgba(0, 113, 227, .09), transparent 42%),
-        rgba(255, 255, 255, .9) !important;
-    box-shadow: 0 14px 42px rgba(15, 23, 42, .055) !important;
-    backdrop-filter: blur(24px) saturate(145%);
-    -webkit-backdrop-filter: blur(24px) saturate(145%);
-}
-
-html.shvya-page-workflows #smart-triggers .st-heading h1 {
-    margin: 6px 0 4px !important;
-    font-size: clamp(24px, 2.2vw, 31px) !important;
-    line-height: 1.08;
-    font-weight: 720 !important;
-    letter-spacing: -.038em !important;
-}
-
-html.shvya-page-workflows #smart-triggers .st-heading p {
-    max-width: 680px;
-    margin: 4px 0 0 !important;
-    font-size: 13px;
-    line-height: 1.5;
-}
-
-html.shvya-page-workflows #smart-triggers .st-eyebrow {
-    color: var(--st-blue) !important;
-    font-size: 10px !important;
-    font-weight: 720 !important;
-    letter-spacing: .105em !important;
-}
-
-/* Controls */
-html.shvya-page-workflows #smart-triggers button {
-    min-height: 38px;
-    border: 1px solid var(--st-line-strong) !important;
-    border-radius: 999px !important;
-    background: rgba(255, 255, 255, .9) !important;
-    color: var(--st-ink) !important;
-    box-shadow: none !important;
-    font-weight: 600;
-    transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease, box-shadow 140ms ease !important;
-}
-
-html.shvya-page-workflows #smart-triggers button:hover {
-    transform: none !important;
-    border-color: rgba(0, 113, 227, .24) !important;
-    background: #fff !important;
-}
-
-html.shvya-page-workflows #smart-triggers button:focus-visible,
-html.shvya-page-workflows #smart-triggers input:focus-visible,
-html.shvya-page-workflows #smart-triggers select:focus-visible,
-html.shvya-page-workflows #smart-triggers textarea:focus-visible,
-html.shvya-page-workflows #smart-triggers summary:focus-visible {
-    outline: none !important;
-    box-shadow: 0 0 0 4px rgba(0, 113, 227, .11) !important;
-}
-
-html.shvya-page-workflows #smart-triggers .st-primary {
-    min-height: 42px;
-    padding: 10px 18px !important;
-    border-color: var(--st-blue) !important;
-    background: var(--st-blue) !important;
-    color: #fff !important;
-}
-
-html.shvya-page-workflows #smart-triggers .st-primary:hover {
-    border-color: #0077ed !important;
-    background: #0077ed !important;
-    color: #fff !important;
-}
-
-html.shvya-page-workflows #smart-triggers .st-link {
-    min-height: auto;
-    padding: 5px 0 !important;
-    border: 0 !important;
-    border-radius: 0 !important;
-    background: transparent !important;
-    color: var(--st-blue) !important;
-    font-size: 12.5px;
-}
-
-html.shvya-page-workflows #smart-triggers .st-link:hover {
-    background: transparent !important;
-    color: #005ec4 !important;
-}
-
-html.shvya-page-workflows #smart-triggers input:not([type="checkbox"]),
-html.shvya-page-workflows #smart-triggers select,
-html.shvya-page-workflows #smart-triggers textarea {
-    min-height: 42px !important;
+    --st-muted: #626269;
+    --st-line: #e5e5e9;
+    --st-line-strong: #c6c6cc;
+    --st-soft: #f5f5f7;
+    --st-blue-soft: #edf5ff;
+    --st-green: #19713e;
+    --sw-text: var(--st-ink);
+    --sw-muted: var(--st-muted);
     width: 100%;
-    padding: 10px 12px !important;
-    border: 1px solid var(--st-line-strong) !important;
-    border-radius: 12px !important;
-    background: #fbfbfd !important;
-    color: var(--st-ink) !important;
-    box-shadow: none !important;
-    outline: none !important;
-}
-
-html.shvya-page-workflows #smart-triggers input::placeholder,
-html.shvya-page-workflows #smart-triggers textarea::placeholder {
-    color: #98989d !important;
-    opacity: 1;
-}
-
-html.shvya-page-workflows #smart-triggers input:not([type="checkbox"]):focus,
-html.shvya-page-workflows #smart-triggers select:focus,
-html.shvya-page-workflows #smart-triggers textarea:focus {
-    border-color: rgba(0, 113, 227, .62) !important;
-    background: #fff !important;
-    box-shadow: 0 0 0 4px var(--st-blue-soft) !important;
-}
-
-html.shvya-page-workflows #smart-triggers select[multiple] {
-    min-height: 118px !important;
-}
-
-html.shvya-page-workflows #smart-triggers textarea {
-    min-height: 132px !important;
+    max-width: 1440px;
+    margin: 0 auto;
+    padding-bottom: 28px;
+    color: var(--st-ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 14px;
     line-height: 1.5;
-    resize: vertical;
+    color-scheme: light;
 }
+html.shvya-page-workflows #smart-triggers *,
+html.shvya-page-workflows #smart-triggers *::before,
+html.shvya-page-workflows #smart-triggers *::after { box-sizing: border-box; }
+html.shvya-page-workflows #smart-triggers [hidden],
+html.shvya-page-workflows #st-mobile-nav,
+html.shvya-page-workflows #st-nav-backdrop { display: none !important; }
 
-/* Overview metrics */
-html.shvya-page-workflows #smart-triggers .st-stats {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 12px;
-    margin-bottom: 22px;
-}
-
-html.shvya-page-workflows #smart-triggers .st-stats > div {
-    min-height: 92px;
-    padding: 18px !important;
-    border: 1px solid var(--st-line) !important;
-    border-radius: 20px !important;
-    background: var(--st-surface) !important;
-    box-shadow: 0 7px 24px rgba(15, 23, 42, .035) !important;
-}
-
-html.shvya-page-workflows #smart-triggers .st-stat-icon {
-    width: 42px;
-    height: 42px;
-    border-radius: 13px;
-    background: rgba(0, 113, 227, .08) !important;
-    color: var(--st-blue) !important;
-    font-size: 20px;
-}
-
-html.shvya-page-workflows #smart-triggers .st-stat-icon.st-green {
-    background: rgba(36, 138, 61, .09) !important;
-    color: var(--st-green) !important;
-}
-
-html.shvya-page-workflows #smart-triggers .st-stat-icon.st-purple {
-    background: rgba(95, 61, 196, .075) !important;
-    color: #6e5ac7 !important;
-}
-
-html.shvya-page-workflows #smart-triggers .st-stats strong {
-    font-size: 20px;
-    font-weight: 680;
-    letter-spacing: -.025em;
-}
-
-html.shvya-page-workflows #smart-triggers .st-stats span:not(.st-stat-icon) {
-    color: var(--st-muted);
-    font-size: 11.5px;
-}
-
-/* Tabs */
-html.shvya-page-workflows #smart-triggers .st-tabs {
-    width: fit-content;
-    display: inline-flex;
-    gap: 4px;
-    margin: 0 0 12px;
-    padding: 4px;
-    border: 1px solid var(--st-line) !important;
-    border-radius: 999px;
-    background: rgba(235, 235, 240, .72);
-}
-
-html.shvya-page-workflows #smart-triggers .st-tabs button {
-    min-height: 34px;
-    padding: 7px 14px !important;
-    border: 0 !important;
-    border-radius: 999px !important;
-    background: transparent !important;
-    color: var(--st-muted) !important;
-    font-size: 12px;
-}
-
-html.shvya-page-workflows #smart-triggers .st-tabs button[aria-selected="true"] {
-    background: #fff !important;
-    color: var(--st-ink) !important;
-    box-shadow: 0 1px 4px rgba(15, 23, 42, .08) !important;
-}
-
-/* Rules and history */
-html.shvya-page-workflows #smart-triggers .st-panel {
-    overflow: hidden;
-    border: 1px solid var(--st-line) !important;
-    border-radius: 22px !important;
-    background: var(--st-surface) !important;
-    box-shadow: 0 8px 28px rgba(15, 23, 42, .04) !important;
-}
-
-html.shvya-page-workflows #smart-triggers .st-toolbar {
-    gap: 10px;
-    padding: 16px 18px 10px;
-}
-
-html.shvya-page-workflows #smart-triggers .st-search {
-    max-width: 520px;
-    gap: 8px;
-}
-
-html.shvya-page-workflows #smart-triggers .st-search span {
-    color: #86868b;
-    font-size: 20px;
-}
-
-html.shvya-page-workflows #smart-triggers .st-search input {
-    height: 38px !important;
-    min-height: 38px !important;
+/* The template owns this page's heading. Do not show a second injected hero.
+   The shared script can mark the native title as a duplicate: restore it here. */
+html.shvya-page-workflows #app-sidebar + div > main > .shvya-page-hero { display: none !important; }
+html.shvya-page-workflows #smart-triggers .st-heading .shvya-legacy-page-heading { display: block !important; }
+html.shvya-page-workflows #app-sidebar + div > main {
+    padding: 36px clamp(20px, 3vw, 48px) 48px !important;
     background: #f5f5f7 !important;
+    scroll-padding-block: 24px 96px;
 }
-
-html.shvya-page-workflows #smart-triggers .st-toolbar select {
-    width: auto;
-    min-width: 146px;
-    height: 38px !important;
-    min-height: 38px !important;
-    background: #fff !important;
+html.shvya-page-workflows #app-sidebar + div > header {
+    background: #fafafb !important;
+    box-shadow: none !important;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
 }
-
-html.shvya-page-workflows #smart-triggers .st-caption {
-    margin: 0 !important;
-    padding: 0 18px 14px;
-    color: #86868b !important;
-    font-size: 11px;
-    line-height: 1.5;
-}
-
-html.shvya-page-workflows #smart-triggers .st-table-wrap {
-    overflow: auto;
-    scrollbar-width: thin;
-    scrollbar-color: rgba(110, 110, 115, .25) transparent;
-}
-
-html.shvya-page-workflows #smart-triggers table {
-    min-width: 900px;
-    border-collapse: separate;
-    border-spacing: 0;
-}
-
-html.shvya-page-workflows #smart-triggers th {
-    padding: 11px 16px;
-    border-block: 1px solid var(--st-line) !important;
-    background: #f7f7f9 !important;
-    color: #86868b !important;
-    font-size: 9.5px;
-    font-weight: 720;
-    letter-spacing: .075em;
-}
-
-html.shvya-page-workflows #smart-triggers td {
-    padding: 16px;
-    border-bottom: 1px solid rgba(15, 23, 42, .055) !important;
-    color: #3a3a3c;
-    font-size: 12.5px;
-    vertical-align: middle;
-}
-
-html.shvya-page-workflows #smart-triggers tbody tr {
-    background: rgba(255, 255, 255, .72);
-    transition: background-color 120ms ease;
-}
-
-html.shvya-page-workflows #smart-triggers tbody tr:hover {
-    background: rgba(0, 113, 227, .025) !important;
-}
-
-html.shvya-page-workflows #smart-triggers td strong {
-    font-size: 13px;
-    font-weight: 650;
-}
-
-html.shvya-page-workflows #smart-triggers td p {
-    max-width: 300px;
-    margin: 4px 0 0;
-    color: #86868b !important;
-    font-size: 10.5px;
-    line-height: 1.4;
-}
-
-html.shvya-page-workflows #smart-triggers .st-row-actions,
-html.shvya-page-workflows #smart-triggers .st-order {
-    gap: 3px;
-}
-
-html.shvya-page-workflows #smart-triggers .st-icon-button {
-    width: 31px;
-    height: 31px;
-    min-height: 31px;
-    padding: 0 !important;
-    border: 0 !important;
-    border-radius: 9px !important;
-    background: transparent !important;
-    color: #6e6e73 !important;
-    font-size: 15px;
-}
-
-html.shvya-page-workflows #smart-triggers .st-icon-button:hover {
-    background: #f2f2f4 !important;
-    color: var(--st-blue) !important;
-}
-
-html.shvya-page-workflows #smart-triggers .st-switch {
-    width: 40px !important;
-    min-width: 40px !important;
-    height: 24px !important;
-    min-height: 24px !important;
-    padding: 3px !important;
-    border: 0 !important;
-    border-radius: 999px !important;
-    background: #d2d2d7 !important;
-}
-
-html.shvya-page-workflows #smart-triggers .st-switch span {
-    width: 18px;
-    height: 18px;
-    border-radius: 999px;
-    background: #fff;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, .22);
-}
-
-html.shvya-page-workflows #smart-triggers .st-switch[aria-checked="true"] {
-    justify-content: flex-end;
-    background: #34c759 !important;
-}
-
-html.shvya-page-workflows #smart-triggers .st-empty {
-    padding: 56px 24px;
-}
-
-html.shvya-page-workflows #smart-triggers .st-empty .st-empty-icon {
-    width: 64px;
-    height: 64px;
-    margin-bottom: 16px;
-    border-radius: 20px;
-    background: var(--st-blue-soft) !important;
-    color: var(--st-blue) !important;
-    font-size: 30px;
-}
-
-html.shvya-page-workflows #smart-triggers .st-empty h2 {
-    font-size: 19px;
-    font-weight: 670;
-    letter-spacing: -.025em;
-}
-
-html.shvya-page-workflows #smart-triggers .st-help {
-    margin-top: 14px;
-    padding: 15px 4px;
-    border: 0;
-    color: var(--st-muted);
-}
-
-html.shvya-page-workflows #smart-triggers .st-help summary {
-    color: #3a3a3c;
-    font-size: 12px;
-    font-weight: 650;
-}
-
-html.shvya-page-workflows #smart-triggers .st-help p {
-    max-width: 1050px;
-    font-size: 11.5px;
-    line-height: 1.55;
-}
-
-/* Editor */
-html.shvya-page-workflows #smart-triggers #st-editor .st-heading {
-    min-height: 92px;
-}
-
-html.shvya-page-workflows #smart-triggers .st-name {
-    margin-bottom: 14px;
-    padding: 18px 20px;
-}
-
-html.shvya-page-workflows #smart-triggers .st-builder {
-    grid-template-columns: minmax(0, 1fr) 34px minmax(0, 1fr);
-    gap: 0;
-    align-items: stretch;
-}
-
-html.shvya-page-workflows #smart-triggers .st-card {
-    min-height: 100%;
-    padding: 20px;
-}
-
-html.shvya-page-workflows #smart-triggers .st-card-title {
-    margin-bottom: 17px;
-    padding-bottom: 15px;
-    border-bottom-color: var(--st-line) !important;
-}
-
-html.shvya-page-workflows #smart-triggers .st-card-title h2 {
-    font-size: 16px;
-    font-weight: 680;
-}
-
-html.shvya-page-workflows #smart-triggers .st-card-title p {
-    font-size: 11px;
-}
-
-html.shvya-page-workflows #smart-triggers .st-step {
-    width: 34px;
-    height: 34px;
-    border-radius: 11px;
-    background: var(--st-blue-soft) !important;
-    color: var(--st-blue) !important;
-}
-
-html.shvya-page-workflows #smart-triggers .st-step-action {
-    background: rgba(36, 138, 61, .08) !important;
-    color: var(--st-green) !important;
-}
-
-html.shvya-page-workflows #smart-triggers .st-flow-arrow {
+html.shvya-page-workflows #smart-triggers :is(h1, h2, h3, strong) { color: var(--st-ink); }
+html.shvya-page-workflows #smart-triggers p { color: var(--st-muted); }
+html.shvya-page-workflows #smart-triggers .st-heading {
     display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 24px;
+    margin: 0 0 28px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+}
+html.shvya-page-workflows #smart-triggers .st-heading h1 {
+    margin: 7px 0 6px;
+    font-size: clamp(30px, 3vw, 40px);
+    font-weight: 650;
+    letter-spacing: -.045em;
+    line-height: 1.15;
+}
+html.shvya-page-workflows #smart-triggers .st-heading p { margin: 0; font-size: 15px; }
+html.shvya-page-workflows #smart-triggers .st-eyebrow {
+    color: var(--st-muted);
+    font-size: 10px;
+    font-weight: 650;
+    letter-spacing: .12em;
+}
+html.shvya-page-workflows #smart-triggers svg { width: 21px; height: 21px; flex-shrink: 0; }
+
+/* Controls: stable hit targets, explicit focus, no moving hover effects. */
+html.shvya-page-workflows #smart-triggers button {
+    min-height: 40px;
+    padding: 9px 15px;
+    border: 1px solid var(--st-line-strong);
+    border-radius: 10px;
+    background: #fff;
+    color: var(--st-ink);
+    box-shadow: none;
+    font-weight: 550;
+    cursor: pointer;
+    transition: background-color 140ms ease, border-color 140ms ease !important;
+}
+html.shvya-page-workflows #smart-triggers button:hover {
+    background: #f0f0f3;
+    border-color: #a7a7af;
+    transform: none !important;
+}
+html.shvya-page-workflows #smart-triggers button:disabled { opacity: .5; cursor: not-allowed; }
+html.shvya-page-workflows #smart-triggers .st-primary {
+    display: inline-flex;
     align-items: center;
     justify-content: center;
-    padding-top: 0;
-    color: #86868b;
-    font-size: 19px;
-}
-
-html.shvya-page-workflows #smart-triggers .st-section-label {
-    margin-top: 20px;
-    padding-top: 17px;
-    border-top-color: var(--st-line) !important;
-}
-
-html.shvya-page-workflows #smart-triggers .st-scope,
-html.shvya-page-workflows #smart-triggers .st-condition {
-    margin: 9px 0;
-    padding: 11px;
-    border: 1px solid var(--st-line) !important;
-    border-radius: 14px !important;
-    background: #f8f8fa !important;
-}
-
-html.shvya-page-workflows #smart-triggers .st-stage-options {
-    gap: 6px;
-}
-
-html.shvya-page-workflows #smart-triggers .st-stage-options .st-check {
-    padding: 6px 9px !important;
-    border: 1px solid var(--st-line) !important;
-    border-radius: 999px !important;
-    background: #fff !important;
-    color: #3a3a3c;
-}
-
-html.shvya-page-workflows #smart-triggers input[type="checkbox"] {
-    accent-color: var(--st-blue);
-}
-
-html.shvya-page-workflows #smart-triggers .st-chip {
-    min-height: 29px;
-    padding: 5px 9px !important;
-    border: 1px solid rgba(0, 113, 227, .12) !important;
-    border-radius: 999px !important;
-    background: rgba(0, 113, 227, .055) !important;
-    color: #0066cc !important;
-    font-size: 10px;
-    font-weight: 600;
-}
-
-html.shvya-page-workflows #smart-triggers .st-chip:hover {
-    background: rgba(0, 113, 227, .09) !important;
-}
-
-html.shvya-page-workflows #smart-triggers .st-info,
-html.shvya-page-workflows #smart-triggers .st-warn {
-    padding: 11px 12px;
+    gap: 7px;
+    min-height: 44px;
+    padding: 11px 19px;
+    border-color: var(--st-blue);
     border-radius: 12px;
-    font-size: 11px !important;
-    line-height: 1.5;
+    background: var(--st-blue);
+    color: #fff;
+    white-space: nowrap;
 }
-
-html.shvya-page-workflows #smart-triggers .st-info {
-    background: rgba(0, 113, 227, .055) !important;
-    color: #4c5c68 !important;
+html.shvya-page-workflows #smart-triggers .st-primary:hover { background: #0063c7; border-color: #0063c7; }
+html.shvya-page-workflows #smart-triggers .st-link {
+    padding: 6px 0;
+    border: 0;
+    background: transparent;
+    color: #0066cc;
+    font-size: 13px;
 }
-
-html.shvya-page-workflows #smart-triggers .st-warn {
-    background: rgba(255, 159, 10, .08) !important;
-    color: #805500 !important;
+html.shvya-page-workflows #smart-triggers .st-link:hover { background: transparent; text-decoration: underline; }
+html.shvya-page-workflows #smart-triggers :is(input:not([type="checkbox"]), select, textarea) {
+    width: 100%;
+    min-height: 44px !important;
+    padding: 10px 12px !important;
+    border: 1px solid var(--st-line-strong) !important;
+    border-radius: 10px !important;
+    background: #fff !important;
+    color: var(--st-ink) !important;
+    box-shadow: none !important;
+    font: inherit;
 }
-
-html.shvya-page-workflows #smart-triggers .st-summary {
-    margin-top: 14px;
-    padding: 17px 20px;
-    border: 1px solid var(--st-line) !important;
-    border-radius: 18px !important;
-    background: rgba(0, 113, 227, .035) !important;
+html.shvya-page-workflows #smart-triggers :is(input, textarea)::placeholder { color: #707078; opacity: 1; }
+html.shvya-page-workflows #smart-triggers :is(button, input, select, textarea, summary, [tabindex]):focus-visible {
+    outline: 2px solid var(--st-blue) !important;
+    outline-offset: 3px;
     box-shadow: none !important;
 }
+html.shvya-page-workflows #smart-triggers input[type="checkbox"] { width: 17px; height: 17px; accent-color: var(--st-blue); }
 
-html.shvya-page-workflows #smart-triggers .st-summary p {
-    color: #3a3a3c !important;
+/* One quiet overview strip, with real counts supplied by dashboard.js. */
+html.shvya-page-workflows #smart-triggers .st-stats {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1.3fr;
+    gap: 0;
+    margin-bottom: 28px;
+    padding: 20px 0;
+    border: 1px solid var(--st-line);
+    border-radius: 16px;
+    background: #fff;
 }
-
-html.shvya-page-workflows #smart-triggers .st-form-footer {
-    position: sticky;
-    bottom: 12px;
-    z-index: 8;
-    margin: 14px 0 0;
-    padding: 10px 12px 10px 16px;
-    border: 1px solid rgba(255, 255, 255, .76);
-    border-radius: 17px;
-    background: rgba(248, 248, 250, .9);
-    box-shadow: 0 10px 30px rgba(15, 23, 42, .08);
-    backdrop-filter: blur(22px) saturate(145%);
-    -webkit-backdrop-filter: blur(22px) saturate(145%);
+html.shvya-page-workflows #smart-triggers .st-stats > div {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    min-width: 0;
+    padding: 0 24px;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
 }
-
-html.shvya-page-workflows #smart-triggers .st-form-footer p {
-    margin: 0;
-    font-size: 10.5px;
+html.shvya-page-workflows #smart-triggers .st-stats > div + div { border-left: 1px solid var(--st-line); }
+html.shvya-page-workflows #smart-triggers .st-stat-icon {
+    display: grid;
+    place-items: center;
+    width: 40px;
+    height: 40px;
+    flex-shrink: 0;
+    border-radius: 11px;
+    color: #53535c;
+    background: var(--st-soft);
 }
+html.shvya-page-workflows #smart-triggers .st-stat-icon.st-green { color: var(--st-green); background: #eef7f0; }
+html.shvya-page-workflows #smart-triggers .st-stats strong { display: block; margin: 0; font-size: 24px; font-weight: 620; letter-spacing: -.025em; font-variant-numeric: tabular-nums; }
+html.shvya-page-workflows #smart-triggers .st-stats > div:last-child strong { font-size: 15px; letter-spacing: -.01em; }
+html.shvya-page-workflows #smart-triggers .st-stats span:not(.st-stat-icon) { color: var(--st-muted); font-size: 12px; }
 
-html.shvya-page-workflows #smart-triggers .st-error,
-html.shvya-page-workflows #smart-triggers #st-notice {
-    border: 1px solid rgba(217, 45, 32, .12) !important;
-    border-radius: 14px;
-    background: rgba(255, 59, 48, .07) !important;
-    color: #b42318 !important;
-    font-size: 12px;
+/* Segmented views and the workflow collection. */
+html.shvya-page-workflows #smart-triggers .st-tabs {
+    display: inline-flex;
+    width: fit-content;
+    gap: 3px;
+    margin: 0 0 16px;
+    padding: 4px;
+    border: 1px solid #dfdfe4;
+    border-radius: 12px;
+    background: #eaeaec;
 }
+html.shvya-page-workflows #smart-triggers .st-tabs button { min-height: 34px; padding: 6px 19px; border: 0; border-radius: 8px; background: transparent; color: var(--st-muted); font-size: 13px; }
+html.shvya-page-workflows #smart-triggers .st-tabs button[aria-selected="true"] { color: var(--st-ink); background: #fff; box-shadow: 0 1px 4px #00000012; }
+html.shvya-page-workflows #smart-triggers .st-panel { overflow: hidden; border: 1px solid var(--st-line); border-radius: 16px; background: #fff; box-shadow: 0 2px 5px #1d1d1f03; }
+html.shvya-page-workflows #smart-triggers .st-toolbar { display: flex; gap: 12px; align-items: center; justify-content: space-between; padding: 20px 22px 12px; }
+html.shvya-page-workflows #smart-triggers .st-toolbar h2 { font-size: 17px; }
+html.shvya-page-workflows #smart-triggers .st-toolbar p { font-size: 13px; }
+html.shvya-page-workflows #smart-triggers .st-search { position: relative; display: flex; flex: 1; max-width: 440px; min-width: 0; }
+html.shvya-page-workflows #smart-triggers .st-search svg { position: absolute; left: 13px; top: 12px; width: 19px; height: 19px; color: var(--st-muted); pointer-events: none; }
+html.shvya-page-workflows #smart-triggers .st-search input { padding-left: 41px !important; background: #fafafb !important; }
+html.shvya-page-workflows #smart-triggers .st-toolbar select { width: auto; min-width: 148px; }
+html.shvya-page-workflows #smart-triggers .st-caption { margin: 0; padding: 0 22px 18px; font-size: 12px; }
+html.shvya-page-workflows #smart-triggers .st-caption > span { margin-right: 5px; }
+html.shvya-page-workflows #smart-triggers .st-caption strong { font-weight: 550; }
+html.shvya-page-workflows #smart-triggers .st-table-wrap { overflow: auto; scrollbar-width: thin; }
+html.shvya-page-workflows #smart-triggers table { min-width: 850px; width: 100%; text-align: left; border-collapse: separate; border-spacing: 0; }
+html.shvya-page-workflows #smart-triggers th { padding: 13px 18px; border-block: 1px solid var(--st-line); background: #fafafb; color: var(--st-muted); font-size: 12px; font-weight: 550; text-transform: none; letter-spacing: 0; }
+html.shvya-page-workflows #smart-triggers td { padding: 22px 18px; border-bottom: 1px solid #eeeef1; color: #333338; font-size: 13px; vertical-align: middle; overflow-wrap: anywhere; }
+html.shvya-page-workflows #smart-triggers tbody tr { background: #fff; }
+html.shvya-page-workflows #smart-triggers tbody tr:hover { background: #fafbfe; }
+html.shvya-page-workflows #smart-triggers tbody tr:last-child td { border-bottom: 0; }
+html.shvya-page-workflows #smart-triggers td strong { font-size: 14px; font-weight: 600; }
+html.shvya-page-workflows #smart-triggers td p { max-width: 280px; margin: 5px 0 0; font-size: 12px; line-height: 1.5; }
+html.shvya-page-workflows #smart-triggers :is(.st-order, .st-row-actions) { display: flex; align-items: center; gap: 2px; }
+html.shvya-page-workflows #smart-triggers .st-order > span { color: #75757e; cursor: grab; }
+html.shvya-page-workflows #smart-triggers .st-icon-button { display: inline-grid; place-items: center; width: 34px; height: 36px; min-height: 36px; padding: 0; border: 0; border-radius: 8px; background: transparent; color: #5a5a64; font-size: 18px; }
+html.shvya-page-workflows #smart-triggers .st-icon-button:hover { background: #eeeef2; color: #0066cc; }
+html.shvya-page-workflows #smart-triggers .st-switch { display: flex; align-items: center; width: 44px; min-width: 44px; height: 28px; min-height: 28px; padding: 3px; border: 1px solid #b5b5be; border-radius: 99px; background: #c6c6ce; }
+html.shvya-page-workflows #smart-triggers .st-switch span { display: block; width: 20px; height: 20px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px #0003; }
+html.shvya-page-workflows #smart-triggers .st-switch[aria-checked="true"] { justify-content: flex-end; background: var(--st-blue); border-color: var(--st-blue); }
+html.shvya-page-workflows #smart-triggers .st-empty { padding: 60px 24px; text-align: center; }
+html.shvya-page-workflows #smart-triggers .st-empty .st-empty-icon { width: 60px; height: 60px; margin: 0 auto 20px; border-radius: 17px; color: #0066cc; background: var(--st-blue-soft); font-size: 30px; }
+html.shvya-page-workflows #smart-triggers .st-empty h2 { font-size: 22px; font-weight: 600; letter-spacing: -.025em; }
+html.shvya-page-workflows #smart-triggers .st-empty p { max-width: 410px; margin: 10px auto 24px; }
+html.shvya-page-workflows #smart-triggers .st-help { margin: 14px 0 0; padding: 12px 3px; }
+html.shvya-page-workflows #smart-triggers .st-help summary { width: fit-content; padding: 6px 0; color: var(--st-muted); font-size: 13px; cursor: pointer; }
+html.shvya-page-workflows #smart-triggers .st-help p { max-width: 1040px; font-size: 13px; }
 
-html.shvya-page-workflows #smart-triggers .st-badge {
-    padding: 4px 8px;
-    border-radius: 999px;
-    background: #f0f0f2;
-    color: #5a5a5f;
-    font-size: 10px;
+/* Editor: the same two-step form, with stronger hierarchy and calm surfaces. */
+html.shvya-page-workflows #smart-triggers .st-editor-heading h1 { font-size: 30px; }
+html.shvya-page-workflows #smart-triggers fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
+html.shvya-page-workflows #smart-triggers .st-name { padding: 22px 24px 16px; margin-bottom: 20px; }
+html.shvya-page-workflows #smart-triggers label:not(.st-check):not(.st-search) { display: block; font-size: 13px; font-weight: 550; margin: 16px 0 8px; }
+html.shvya-page-workflows #smart-triggers .st-name small { display: block; margin-top: 6px; font-size: 12px; color: var(--st-muted); text-align: right; }
+html.shvya-page-workflows #smart-triggers .st-builder { display: grid; grid-template-columns: minmax(0, 1fr) 40px minmax(0, 1fr); align-items: start; }
+html.shvya-page-workflows #smart-triggers .st-card { min-width: 0; padding: 24px; }
+html.shvya-page-workflows #smart-triggers .st-card-title { display: flex; align-items: center; gap: 13px; padding-bottom: 20px; margin-bottom: 20px; border-bottom: 1px solid var(--st-line); }
+html.shvya-page-workflows #smart-triggers .st-card-title h2 { margin: 0; font-size: 19px; font-weight: 600; letter-spacing: -.025em; }
+html.shvya-page-workflows #smart-triggers .st-card-title p { margin: 3px 0 0; font-size: 12px; }
+html.shvya-page-workflows #smart-triggers .st-step { display: grid; place-items: center; width: 42px; height: 42px; flex-shrink: 0; border: 1px solid #dfdfE5; border-radius: 12px; background: #f7f7f9; color: #52525d; font-size: 13px; font-weight: 600; }
+html.shvya-page-workflows #smart-triggers .st-step-action { color: #0066cc; border-color: #d9e9ff; background: var(--st-blue-soft); }
+html.shvya-page-workflows #smart-triggers .st-flow-arrow { padding-top: 42px; color: #777781; font-size: 22px; text-align: center; }
+html.shvya-page-workflows #smart-triggers .st-section-label { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--st-line); }
+html.shvya-page-workflows #smart-triggers .st-section-label h3 { font-size: 14px; font-weight: 600; }
+html.shvya-page-workflows #smart-triggers .st-muted { color: var(--st-muted); font-size: 12px; }
+html.shvya-page-workflows #smart-triggers .st-hint { font-size: 12px !important; line-height: 1.65; }
+html.shvya-page-workflows #smart-triggers :is(.st-scope, .st-condition) { margin: 12px 0; padding: 14px; border: 1px solid var(--st-line); border-radius: 12px; background: #fafafb; }
+html.shvya-page-workflows #smart-triggers .st-scope-head { display: flex; align-items: center; gap: 8px; }
+html.shvya-page-workflows #smart-triggers .st-stage-options { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 12px; }
+html.shvya-page-workflows #smart-triggers .st-check { display: flex !important; align-items: center; gap: 9px; margin: 12px 0 !important; font-size: 13px !important; font-weight: 400 !important; }
+html.shvya-page-workflows #smart-triggers .st-stage-options .st-check { min-height: 36px; margin: 0 !important; padding: 6px 10px; border: 1px solid var(--st-line-strong); border-radius: 8px; background: #fff; font-size: 12px !important; }
+html.shvya-page-workflows #smart-triggers .st-stage-options .st-check:has(input:checked) { border-color: #9ac5f4; background: var(--st-blue-soft); }
+html.shvya-page-workflows #smart-triggers .st-columns { display: grid; grid-template-columns: minmax(90px, .65fr) minmax(0, 1fr); align-items: center; gap: 10px 14px; }
+html.shvya-page-workflows #smart-triggers .st-columns > label { margin: 0 !important; }
+html.shvya-page-workflows #smart-triggers .st-condition .st-columns > .st-icon-button { grid-column: 2; justify-self: end; }
+html.shvya-page-workflows #smart-triggers select[multiple] { min-height: 128px !important; }
+html.shvya-page-workflows #smart-triggers textarea { min-height: 144px; resize: vertical; }
+html.shvya-page-workflows #smart-triggers .st-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0; }
+html.shvya-page-workflows #smart-triggers .st-chip { min-height: 32px; padding: 5px 9px; border: 1px solid #d5e5fa; border-radius: 8px; background: #f6faff; color: #0060bd; font-size: 12px; }
+html.shvya-page-workflows #smart-triggers :is(.st-info, .st-warn) { padding: 13px 14px; border-radius: 10px; font-size: 13px !important; line-height: 1.6; }
+html.shvya-page-workflows #smart-triggers .st-info { background: #f2f6fb; color: #415871 !important; }
+html.shvya-page-workflows #smart-triggers .st-warn { background: #fff6e7; color: #85520a !important; }
+html.shvya-page-workflows #smart-triggers .st-summary { display: flex; align-items: center; justify-content: space-between; gap: 24px; margin-top: 20px; padding: 22px 24px; border: 1px solid #d9e5f5; border-radius: 14px; background: #f0f5fc; }
+html.shvya-page-workflows #smart-triggers .st-summary p { max-width: 750px; margin: 6px 0 0; color: #333e51 !important; font-size: 14px; overflow-wrap: anywhere; }
+html.shvya-page-workflows #smart-triggers .st-summary .st-check { white-space: normal; flex-shrink: 0; }
+html.shvya-page-workflows #smart-triggers .st-form-footer { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin: 20px 0 0; padding: 16px 0 0; border-top: 1px solid var(--st-line); }
+html.shvya-page-workflows #smart-triggers .st-form-footer p { font-size: 13px; }
+html.shvya-page-workflows #smart-triggers :is(.st-error, #st-notice) { margin: 16px 0; padding: 14px 18px; border: 1px solid #f3c5c1; border-radius: 12px; background: #fff2f0; color: #a52b21; }
+html.shvya-page-workflows #smart-triggers .st-required { color: #b3261e; }
+html.shvya-page-workflows #smart-triggers .st-badge { display: inline-block; padding: 5px 10px; border-radius: 7px; background: #f0f0f4; color: #575761; font-size: 12px; text-transform: capitalize; white-space: nowrap; }
+html.shvya-page-workflows #smart-triggers .st-badge.completed { background: #edf7ef; color: #23653c; }
+html.shvya-page-workflows #smart-triggers :is(.st-badge.failed, .st-badge.blocked, .st-badge.needs_review) { background: #fff4e7; color: #88520a; }
+html.shvya-page-workflows #smart-triggers .st-dragging { opacity: .45; }
+
+/* Native confirmation dialog retains focus management and Escape support. */
+html.shvya-page-workflows #smart-triggers dialog { width: min(440px, calc(100vw - 32px)); max-height: calc(100dvh - 48px); overflow: auto; margin: auto; padding: 26px; border: 1px solid var(--st-line); border-radius: 20px; background: #fff; color: var(--st-ink); box-shadow: 0 24px 80px #1d1d1f33; }
+html.shvya-page-workflows #smart-triggers dialog::backdrop { background: #15151e5c; }
+html.shvya-page-workflows #smart-triggers dialog h2 { font-size: 22px; font-weight: 600; letter-spacing: -.025em; }
+html.shvya-page-workflows #smart-triggers dialog p { margin: 12px 0; overflow-wrap: anywhere; }
+html.shvya-page-workflows #smart-triggers .st-dialog-actions { display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap; margin-top: 24px; }
+html.shvya-page-workflows #smart-triggers .st-danger { background: #b3261e; border-color: #b3261e; color: #fff; }
+html.shvya-page-workflows #smart-triggers .st-danger:hover { background: #932019; border-color: #932019; }
+
+@media (max-width: 1100px) {
+    html.shvya-page-workflows #smart-triggers .st-builder { grid-template-columns: 1fr; gap: 18px; }
+    html.shvya-page-workflows #smart-triggers .st-flow-arrow { display: none; }
+    html.shvya-page-workflows #smart-triggers .st-stats > div { padding-inline: 16px; }
 }
-
-/* Confirmation modal */
-html.shvya-page-workflows #smart-triggers dialog {
-    width: min(430px, calc(100vw - 32px));
-    max-width: 430px;
-    padding: 24px;
-    border: 1px solid rgba(255, 255, 255, .72) !important;
-    border-radius: 22px !important;
-    background: rgba(255, 255, 255, .96) !important;
-    box-shadow: 0 28px 88px rgba(0, 0, 0, .2) !important;
-    color: var(--st-ink);
-}
-
-html.shvya-page-workflows #smart-triggers dialog::backdrop {
-    background: rgba(20, 20, 22, .28) !important;
-    backdrop-filter: blur(18px);
-    -webkit-backdrop-filter: blur(18px);
-}
-
-html.shvya-page-workflows #smart-triggers dialog h2 {
-    font-size: 19px;
-    font-weight: 700;
-    letter-spacing: -.025em;
-}
-
-html.shvya-page-workflows #smart-triggers .st-dialog-actions {
-    margin-top: 20px;
-}
-
-html.shvya-page-workflows #smart-triggers .st-danger {
-    border-color: rgba(217, 45, 32, .12) !important;
-    background: rgba(217, 45, 32, .08) !important;
-    color: #b42318 !important;
-}
-
-html.shvya-page-workflows #smart-triggers .st-danger:hover {
-    border-color: rgba(217, 45, 32, .18) !important;
-    background: rgba(217, 45, 32, .12) !important;
-}
-
-html.shvya-page-workflows #smart-triggers .st-dragging {
-    opacity: .55;
-}
-
-@media (max-width: 1000px) {
-    html.shvya-page-workflows #smart-triggers .st-stats {
-        grid-template-columns: 1fr 1fr;
-    }
-
-    html.shvya-page-workflows #smart-triggers .st-stats > div:last-child {
-        grid-column: 1 / -1;
-    }
-
-    html.shvya-page-workflows #smart-triggers .st-builder {
-        grid-template-columns: 1fr;
-        gap: 12px;
-    }
-
-    html.shvya-page-workflows #smart-triggers .st-flow-arrow {
-        display: none;
-    }
-}
-
 @media (max-width: 720px) {
-    html.shvya-page-workflows #smart-triggers .st-heading {
-        min-height: 0;
-        align-items: flex-start;
-        flex-direction: column;
-        gap: 14px;
-        padding: 19px !important;
-        border-radius: 20px !important;
-    }
-
-    html.shvya-page-workflows #smart-triggers .st-heading .st-primary {
-        width: 100%;
-    }
-
-    html.shvya-page-workflows #smart-triggers .st-stats {
-        grid-template-columns: 1fr;
-    }
-
-    html.shvya-page-workflows #smart-triggers .st-stats > div:last-child {
-        grid-column: auto;
-    }
-
-    html.shvya-page-workflows #smart-triggers .st-tabs {
-        width: 100%;
-    }
-
-    html.shvya-page-workflows #smart-triggers .st-tabs button {
-        flex: 1;
-    }
-
-    html.shvya-page-workflows #smart-triggers .st-toolbar {
-        align-items: stretch;
-        flex-direction: column;
-        padding: 14px;
-    }
-
-    html.shvya-page-workflows #smart-triggers .st-search {
-        max-width: none;
-        width: 100%;
-    }
-
-    html.shvya-page-workflows #smart-triggers .st-toolbar select {
-        width: 100%;
-    }
-
-    html.shvya-page-workflows #smart-triggers .st-caption {
-        padding-inline: 14px;
-    }
-
-    html.shvya-page-workflows #smart-triggers .st-card,
-    html.shvya-page-workflows #smart-triggers .st-name {
-        padding: 15px;
-    }
-
-    html.shvya-page-workflows #smart-triggers .st-columns,
-    html.shvya-page-workflows #smart-triggers .st-condition .st-columns {
-        grid-template-columns: 1fr;
-    }
-
-    html.shvya-page-workflows #smart-triggers .st-condition .st-icon-button {
-        justify-self: end;
-    }
-
-    html.shvya-page-workflows #smart-triggers .st-summary {
-        flex-direction: column;
-        gap: 8px;
-    }
-
-    html.shvya-page-workflows #smart-triggers .st-form-footer {
-        bottom: 8px;
-        gap: 10px;
-    }
-
-    html.shvya-page-workflows #smart-triggers .st-form-footer p {
-        display: none;
-    }
+    html.shvya-page-workflows #app-sidebar + div > main { padding: 24px 16px 36px !important; }
+    html.shvya-page-workflows #smart-triggers .st-heading { align-items: flex-start; flex-direction: column; gap: 18px; margin-bottom: 22px; }
+    html.shvya-page-workflows #smart-triggers .st-heading .st-primary { width: 100%; }
+    html.shvya-page-workflows #smart-triggers .st-stats { grid-template-columns: 1fr 1fr; margin-bottom: 22px; padding: 16px 0 0; }
+    html.shvya-page-workflows #smart-triggers .st-stats > div { gap: 10px; }
+    html.shvya-page-workflows #smart-triggers .st-stats > div:last-child { grid-column: 1 / -1; margin-top: 16px; padding: 14px 16px; border-left: 0; border-top: 1px solid var(--st-line); }
+    html.shvya-page-workflows #smart-triggers .st-stats strong { font-size: 21px; }
+    html.shvya-page-workflows #smart-triggers .st-tabs { display: flex; width: 100%; }
+    html.shvya-page-workflows #smart-triggers .st-tabs button { flex: 1; }
+    html.shvya-page-workflows #smart-triggers .st-toolbar { align-items: stretch; flex-direction: column; padding: 16px; }
+    html.shvya-page-workflows #smart-triggers .st-search { max-width: none; width: 100%; }
+    html.shvya-page-workflows #smart-triggers .st-toolbar select { width: 100%; }
+    html.shvya-page-workflows #smart-triggers .st-caption { padding: 0 16px 16px; }
+    html.shvya-page-workflows #smart-triggers :is(.st-card, .st-name) { padding: 18px; }
+    html.shvya-page-workflows #smart-triggers .st-summary { flex-direction: column; align-items: flex-start; padding: 18px; gap: 8px; }
+    html.shvya-page-workflows #smart-triggers .st-form-footer { align-items: stretch; flex-direction: column; gap: 10px; }
+    html.shvya-page-workflows #smart-triggers .st-form-footer p { margin: 0; }
+    html.shvya-page-workflows #smart-triggers .st-editor-heading { flex-direction: row; }
 }
-
 @media (prefers-reduced-motion: reduce) {
     html.shvya-page-workflows #smart-triggers *,
     html.shvya-page-workflows #smart-triggers *::before,
-    html.shvya-page-workflows #smart-triggers *::after {
-        transition-duration: .01ms !important;
-        scroll-behavior: auto !important;
-    }
+    html.shvya-page-workflows #smart-triggers *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+}
+@media (prefers-contrast: more) {
+    html.shvya-page-workflows #smart-triggers { --st-muted: #3f3f46; --st-line: #9898a1; --st-line-strong: #767680; }
+}
+@media (forced-colors: active) {
+    html.shvya-page-workflows #smart-triggers .st-switch { border: 2px solid ButtonText; }
+    html.shvya-page-workflows #smart-triggers .st-switch[aria-checked="true"] { border-color: Highlight; }
+    html.shvya-page-workflows #smart-triggers .st-switch span { background: ButtonText; }
+    html.shvya-page-workflows #smart-triggers .st-tabs button[aria-selected="true"] { outline: 2px solid Highlight; }
 }
