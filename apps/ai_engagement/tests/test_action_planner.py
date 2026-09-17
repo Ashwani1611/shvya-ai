@@ -153,12 +153,17 @@ class ActionPlannerTests(TestCase):
         self.assertEqual(plan.actions[0].validation_status, STATUS_REJECTED)
 
     def test_inactive_stage_rejected(self):
-        inactive_stage = Stage.objects.create(
+        inactive_stage = Stage.objects.filter(
             pipeline=self.pipeline,
             name="Nurturing",
-            display_order=90,
-            is_active=True,
-        )
+        ).first()
+        if inactive_stage is None:
+            inactive_stage = Stage.objects.create(
+                pipeline=self.pipeline,
+                name="Planner Inactive",
+                display_order=90,
+                is_active=True,
+            )
         inactive_stage.is_active = False
         inactive_stage.save(update_fields=["is_active"])
         inactive_stage.refresh_from_db()
