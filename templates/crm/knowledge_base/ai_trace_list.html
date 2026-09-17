@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}SHVYA AI - AI Activity{% endblock %}
+{% block header %}AI Activity{% endblock %}
+{% block content %}
+<div class="max-w-7xl mx-auto space-y-5">
+  <div class="flex items-start justify-between gap-4">
+    <div>
+      <h2 class="text-xl font-semibold text-gray-900">AI Activity</h2>
+      <p class="mt-1 text-sm text-gray-500">Trace customer turns from inbound message through AI decision, CRM actions and delivery.</p>
+    </div>
+    <a href="{% url 'crm-knowledge-base-ai-setup' %}" class="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 shadow-sm">AI Brain</a>
+  </div>
+  <form method="get" class="grid grid-cols-1 gap-3 rounded-2xl border border-gray-200 bg-white p-4 md:grid-cols-5">
+    <input type="date" name="date" value="{{ filters.date }}" class="rounded-lg border-gray-200 text-sm">
+    <select name="pipeline" class="rounded-lg border-gray-200 text-sm">
+      <option value="">All pipelines</option>
+      {% for pipeline in pipelines %}<option value="{{ pipeline.id }}" {% if filters.pipeline == pipeline.id|stringformat:'s' %}selected{% endif %}>{{ pipeline.name }}</option>{% endfor %}
+    </select>
+    <select name="status" class="rounded-lg border-gray-200 text-sm">
+      <option value="">All statuses</option>
+      {% for value,label in status_choices %}<option value="{{ value }}" {% if filters.status == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
+    </select>
+    <select name="connection_type" class="rounded-lg border-gray-200 text-sm">
+      <option value="">All connections</option>
+      {% for value in connection_types %}<option value="{{ value }}" {% if filters.connection_type == value %}selected{% endif %}>{{ value|upper }}</option>{% endfor %}
+    </select>
+    <div class="flex gap-2">
+      <input name="q" value="{{ filters.q }}" placeholder="Lead" class="min-w-0 flex-1 rounded-lg border-gray-200 text-sm">
+      <button class="rounded-lg bg-gray-900 px-3 py-2 text-sm font-semibold text-white">Filter</button>
+    </div>
+  </form>
+  <div class="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
+    <div class="overflow-x-auto">
+      <table class="min-w-full divide-y divide-gray-100 text-sm">
+        <thead class="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500">
+          <tr><th class="px-4 py-3">Time</th><th class="px-4 py-3">Lead</th><th class="px-4 py-3">Pipeline / Stage</th><th class="px-4 py-3">Connection</th><th class="px-4 py-3">Incoming</th><th class="px-4 py-3">Response</th><th class="px-4 py-3">Status</th><th class="px-4 py-3">Reason</th><th class="px-4 py-3">Path / Model</th><th class="px-4 py-3">Latency</th></tr>
+        </thead>
+        <tbody class="divide-y divide-gray-100">
+          {% for trace in traces %}
+          <tr class="hover:bg-gray-50">
+            <td class="whitespace-nowrap px-4 py-3"><a class="font-medium text-gray-900" href="{% url 'crm-ai-trace-detail' trace.id %}">{{ trace.started_at|date:"d M H:i:s" }}</a></td>
+            <td class="px-4 py-3">{{ trace.lead.name|default:"—" }}</td>
+            <td class="px-4 py-3 text-xs">{{ trace.pipeline_id|default:"—" }}<br><span class="text-gray-500">{{ trace.stage_id|default:"—" }}</span></td>
+            <td class="px-4 py-3">{{ trace.connection_type|upper|default:"—" }}</td>
+            <td class="max-w-xs truncate px-4 py-3 text-gray-600">{{ trace.incoming_message_preview|default:"—" }}</td>
+            <td class="max-w-xs truncate px-4 py-3 text-gray-600">{{ trace.response_preview|default:"—" }}</td>
+            <td class="px-4 py-3">{{ trace.status }}</td>
+            <td class="px-4 py-3 text-xs text-gray-500">{{ trace.reason_code|default:"—" }}</td>
+            <td class="px-4 py-3 text-xs">{{ trace.execution_path|default:"—" }}{% if trace.model_name %}<br><span class="text-gray-500">{{ trace.model_name }}</span>{% endif %}</td>
+            <td class="px-4 py-3">{% if trace.total_ms != None %}{{ trace.total_ms }} ms{% else %}—{% endif %}</td>
+          </tr>
+          {% empty %}<tr><td colspan="10" class="px-4 py-10 text-center text-gray-500">No AI traces match these filters.</td></tr>{% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

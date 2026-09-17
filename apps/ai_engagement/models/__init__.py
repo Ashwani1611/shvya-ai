@@ -11,3 +11,4 @@ from .credit import (
     AICreditTransaction as AICreditTransaction,
     AICreditWallet as AICreditWallet,
 )
+from .trace import AITrace as AITrace

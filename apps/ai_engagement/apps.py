@@ -209,3 +209,11 @@ class AiEngagementConfig(AppConfig):
             install_qualification_execution_policy_guard,
         )
         install_qualification_execution_policy_guard()
+
+        # Phase 1 observability is installed last so it observes the final shared
+        # API/Coexistence and Hosted runtime without becoming policy authority.
+        from . import trace_signals  # noqa: F401
+        from apps.ai_engagement.services.ai_trace_runtime import (
+            install_ai_trace_runtime,
+        )
+        install_ai_trace_runtime()
