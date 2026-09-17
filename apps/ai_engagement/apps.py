@@ -210,6 +210,14 @@ class AiEngagementConfig(AppConfig):
         )
         install_qualification_execution_policy_guard()
 
+        # Phase 4 centralizes organization-owned runtime configuration and adds a
+        # fail-closed tenant-validation boundary without replacing canonical
+        # query filters, mutation services, transports, or Phase 1-3 behavior.
+        from apps.ai_engagement.services.phase4_runtime import (
+            install_phase4_runtime,
+        )
+        install_phase4_runtime()
+
         # Phase 3 conversation strategy is deterministic and transport-neutral.
         # It consumes Phase 2 IntentDecision plus the post-validation qualification
         # state, then constrains the existing engagement generator without becoming
@@ -218,6 +226,16 @@ class AiEngagementConfig(AppConfig):
             install_conversation_policy_runtime,
         )
         install_conversation_policy_runtime()
+
+        # Phase 5 resolves the permitted evidence source for factual answers and
+        # Phase 6 persists versioned, tenant-keyed lead facts with provenance and
+        # confidence-aware conflict handling. Install after Phase 3 so the runtime
+        # can consume its IntentDecision/policy turn, but before Phase 1 so all
+        # grounding and memory mutations are captured by the final trace wrapper.
+        from apps.ai_engagement.services.phase5_6_runtime import (
+            install_phase5_6_runtime,
+        )
+        install_phase5_6_runtime()
 
         # Phase 1 observability is installed last so it observes the final shared
         # API/Coexistence and Hosted runtime without becoming policy authority.

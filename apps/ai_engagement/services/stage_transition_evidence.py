@@ -82,9 +82,7 @@ def _configured_completion_allowed(*, organization, lead, destination) -> bool:
 
 def _nonqualified_evidence_matches(*, organization, destination, latest_text: str) -> bool:
     if not latest_text:
-        # Direct/service-level executor callers do not necessarily represent an
-        # inbound AI turn. Preserve the executor service contract for those calls.
-        return True
+        return False
 
     from apps.ai_engagement.models import OrgInfo
     from apps.ai_engagement.services.engagement_instruction_policy import (
@@ -156,10 +154,7 @@ def _filter_stage_actions(*, organization, lead, actions):
             continue
 
         # Ordinary model-proposed stage movement still requires customer/config
-        # evidence. The completion exception above is intentionally narrow.
-        if not latest_text:
-            filtered.append(deepcopy(action))
-            continue
+        # evidence. Missing inbound evidence must fail closed for a real AI turn.
         if _nonqualified_evidence_matches(
             organization=organization,
             destination=destination,
@@ -169,8 +164,28 @@ def _filter_stage_actions(*, organization, lead, actions):
     return filtered
 
 
+def _inside_ai_turn(*, organization) -> bool:
+    """Return True only inside the production API/Hosted AI execution boundary.
+
+    AI Trace installs last and keeps a ContextVar buffer active for the whole
+    customer turn even when persistence of the diagnostic row fails.  That makes
+    it a transport-neutral execution-scope marker without coupling authorization
+    to the database trace row itself.
+    """
+    try:
+        from apps.ai_engagement.services.trace_service import current
+
+        trace = current()
+    except Exception:
+        return False
+    return bool(
+        trace is not None
+        and str(getattr(trace, "organization_id", "") or "") == str(organization.id)
+    )
+
+
 def install_stage_transition_evidence() -> None:
-    """Enforce evidence for model routing without blocking configured completion."""
+    """Enforce evidence for AI routing without changing the CRM service contract."""
     global _INSTALLED
     if _INSTALLED:
         return
@@ -180,16 +195,21 @@ def install_stage_transition_evidence() -> None:
     current_execute = CRMActionExecutor.execute
 
     def execute(self, *, organization, lead, actions, actor=None):
-        filtered = _filter_stage_actions(
-            organization=organization,
-            lead=lead,
-            actions=actions,
-        )
+        # The executor is also a deterministic backend service and is used by
+        # non-AI code/tests. Tenant ownership and schema validation belong there;
+        # model-evidence filtering belongs only to an actual API/Hosted AI turn.
+        effective_actions = actions
+        if _inside_ai_turn(organization=organization):
+            effective_actions = _filter_stage_actions(
+                organization=organization,
+                lead=lead,
+                actions=actions,
+            )
         return current_execute(
             self,
             organization=organization,
             lead=lead,
-            actions=filtered,
+            actions=effective_actions,
             actor=actor,
         )
 
