@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}SHVYA AI - AI Trace{% endblock %}
+{% block header %}AI Trace{% endblock %}
+{% block content %}
+<div class="max-w-5xl mx-auto space-y-5">
+  <div class="flex items-start justify-between gap-4">
+    <div><a href="{% url 'crm-ai-trace-list' %}" class="text-sm text-gray-500">← AI Activity</a><h2 class="mt-2 text-xl font-semibold text-gray-900">What happened during this AI turn?</h2><p class="mt-1 text-sm text-gray-500">{{ trace.started_at }} · {{ trace.connection_type|upper }} · {{ trace.status }}</p></div>
+    <div class="rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-700">{{ trace.reason_code|default:"No reason code" }}</div>
+  </div>
+  {% include "crm/knowledge_base/_ai_trace_section.html" with number="1" title="Incoming Message" value=input %}
+  {% include "crm/knowledge_base/_ai_trace_section.html" with number="2" title="AI Permission" value=permission %}
+  {% include "crm/knowledge_base/_ai_trace_section.html" with number="3" title="Intent" value=intent %}
+  {% include "crm/knowledge_base/_ai_trace_section.html" with number="4" title="Qualification" value=qualification %}
+  {% include "crm/knowledge_base/_ai_trace_section.html" with number="5" title="Knowledge Retrieval" value=rag %}
+  {% include "crm/knowledge_base/_ai_trace_section.html" with number="6" title="AI Decision" value=generation %}
+  {% include "crm/knowledge_base/_ai_trace_section.html" with number="7" title="CRM Actions" value=crm_actions %}
+  {% include "crm/knowledge_base/_ai_trace_section.html" with number="8" title="Response" value=trace.response_preview %}
+  {% include "crm/knowledge_base/_ai_trace_section.html" with number="9" title="Finalization" value=finalization %}
+  {% include "crm/knowledge_base/_ai_trace_section.html" with number="10" title="Delivery" value=delivery %}
+  <section class="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm"><div class="border-b border-gray-100 px-5 py-4"><h3 class="text-sm font-semibold text-gray-900">11. Performance / Tokens</h3></div><div class="space-y-3 p-5"><pre class="whitespace-pre-wrap break-words rounded-xl bg-gray-50 p-4 text-xs leading-6 text-gray-700">{{ performance }}</pre><pre class="whitespace-pre-wrap break-words rounded-xl bg-gray-50 p-4 text-xs leading-6 text-gray-700">{{ provider_usage|default:'Provider usage unavailable in current provider result.' }}</pre><p class="text-xs text-gray-500">Total: {% if trace.total_ms != None %}{{ trace.total_ms }} ms{% else %}Unavailable{% endif %}</p></div></section>
+  {% include "crm/knowledge_base/_ai_trace_section.html" with number="12" title="Errors" value=error %}
+</div>
+{% endblock %}

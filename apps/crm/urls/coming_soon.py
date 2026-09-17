@@ -4,6 +4,11 @@ from django.views.generic import RedirectView
 from apps.channels import instagram_ui
 from apps.core.coming_soon import coming_soon
 from apps.crm.views.ai_setup import ai_setup_view
+from apps.crm.views.ai_trace import (
+    ai_trace_detail_api,
+    ai_trace_detail_view,
+    ai_trace_list_view,
+)
 from apps.crm.views.faq import faq_view
 
 
@@ -71,6 +76,21 @@ coming_soon_urlpatterns = [
         "playbooks/ai-setup/",
         ai_setup_view,
         name="crm-knowledge-base-ai-setup",
+    ),
+    path(
+        "playbooks/ai-setup/activity/",
+        ai_trace_list_view,
+        name="crm-ai-trace-list",
+    ),
+    path(
+        "playbooks/ai-setup/activity/<uuid:trace_id>/",
+        ai_trace_detail_view,
+        name="crm-ai-trace-detail",
+    ),
+    path(
+        "playbooks/ai-setup/activity/<uuid:trace_id>/api/",
+        ai_trace_detail_api,
+        name="crm-ai-trace-detail-api",
     ),
     path(
         "playbooks/faq/",
