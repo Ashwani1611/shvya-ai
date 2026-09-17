@@ -33,11 +33,25 @@ def _redis_db_url(base_url, db_index):
     )
 
 
+def _isolated_celery_url(setting_name, db_index):
+    """Migrate legacy shared-/0 Celery URLs while preserving real overrides."""
+    configured = str(config(setting_name, default="") or "").strip()
+    base_url = str(REDIS_URL or "").strip()
+
+    # Older SHVYA deployments commonly set CELERY_* to exactly REDIS_URL (/0).
+    # Treat that as the legacy shared-keyspace configuration and migrate it to
+    # the dedicated DB automatically. A genuinely different endpoint/backend
+    # remains an explicit operator override and is preserved.
+    if configured and configured != base_url:
+        return configured
+    return _redis_db_url(base_url, db_index)
+
+
 # Keep independent Redis logical databases for unrelated runtime concerns.
 # This prevents cache flushes or key maintenance from touching Celery broker
-# state, result metadata, or Channels pub/sub keys. Every URL remains
-# individually overrideable so a future deployment can move any concern to a
-# fully separate Redis instance without changing code.
+# state, result metadata, or Channels pub/sub keys. Cache/Channels URLs remain
+# directly overrideable. Celery also preserves genuinely distinct legacy
+# overrides while automatically migrating the old shared REDIS_URL value.
 CACHE_REDIS_URL = config(
     "CACHE_REDIS_URL",
     default=_redis_db_url(REDIS_URL, 0),
@@ -46,14 +60,8 @@ CHANNEL_LAYER_REDIS_URL = config(
     "CHANNEL_LAYER_REDIS_URL",
     default=_redis_db_url(REDIS_URL, 1),
 )
-CELERY_BROKER_URL = config(
-    "CELERY_BROKER_URL",
-    default=_redis_db_url(REDIS_URL, 2),
-)
-CELERY_RESULT_BACKEND = config(
-    "CELERY_RESULT_BACKEND",
-    default=_redis_db_url(REDIS_URL, 3),
-)
+CELERY_BROKER_URL = _isolated_celery_url("CELERY_BROKER_URL", 2)
+CELERY_RESULT_BACKEND = _isolated_celery_url("CELERY_RESULT_BACKEND", 3)
 
 CACHES = {
     **CACHES,
