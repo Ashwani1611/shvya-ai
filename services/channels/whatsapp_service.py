@@ -412,30 +412,44 @@ def handle_inbound_message(
     # --------------------------------------------------------
     # CREATE INBOUND MESSAGE
     # --------------------------------------------------------
+    # The fast lookup above avoids unnecessary CRM work on ordinary webhook
+    # retries. It is not sufficient for true concurrency, though: two workers
+    # can both observe "missing" before either inserts. The unique external_id
+    # constraint is the durable authority, so the final insert must use
+    # get_or_create. Django handles the losing unique-key insert inside a
+    # savepoint and returns the row committed by the winner instead of leaking
+    # IntegrityError to Meta.
 
-    message = (
-        WhatsAppMessage.objects.create(
-            organization=organization,
-            account=account,
-            lead=lead,
-            direction=(
-                WhatsAppMessage.Direction.INBOUND
-            ),
+    message_defaults = {
+        "organization": organization,
+        "account": account,
+        "lead": lead,
+        "direction": WhatsAppMessage.Direction.INBOUND,
+        "from_number": from_number,
+        "to_number": to_number,
+        "body": body,
+        "message_type": WhatsAppMessage.MessageType.TEXT,
+        "media_payload": {},
+        "status": WhatsAppMessage.Status.RECEIVED,
+        "raw_payload": raw_payload,
+        "is_read": False,
+    }
+
+    if external_id:
+        message, created = WhatsAppMessage.objects.get_or_create(
             external_id=external_id,
-            from_number=from_number,
-            to_number=to_number,
-            body=body,
-            message_type=(
-                WhatsAppMessage.MessageType.TEXT
-            ),
-            media_payload={},
-            status=(
-                WhatsAppMessage.Status.RECEIVED
-            ),
-            raw_payload=raw_payload,
-            is_read=False,
+            defaults=message_defaults,
         )
-    )
+        if not created:
+            return message
+    else:
+        # Preserve the existing behavior for malformed/legacy callers that do
+        # not provide a provider message ID. Meta's normal inbound payloads do
+        # provide one, and only those can participate in durable idempotency.
+        message = WhatsAppMessage.objects.create(
+            external_id=external_id,
+            **message_defaults,
+        )
 
     # The inbox is socket-driven; publishing must happen only after this
     # transaction commits, otherwise a connected browser can fetch a row that
