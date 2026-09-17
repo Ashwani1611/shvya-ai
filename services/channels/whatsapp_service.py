@@ -608,7 +608,7 @@ def handle_status_update(
             ai_metadata
         )
 
-    for key in ("shvya_welcome", "shvya_auto_followup"):
+    for key in ("shvya_welcome", "shvya_auto_followup", "shvya_workflow"):
         if key in existing_payload:
             final_payload = dict(final_payload)
             final_payload[key] = existing_payload[key]
@@ -1313,7 +1313,7 @@ def send_outbound_message(
         )
 
     # --------------------------------------------------------
-    for key in ("shvya_welcome", "shvya_auto_followup"):
+    for key in ("shvya_welcome", "shvya_auto_followup", "shvya_workflow"):
         if key in existing_payload:
             final_payload = dict(final_payload)
             final_payload[key] = existing_payload[key]

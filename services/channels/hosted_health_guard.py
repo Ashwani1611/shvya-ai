@@ -33,6 +33,7 @@ _AUTOMATION_PAYLOAD_KEYS = (
     "shvya_ai",
     "shvya_auto_followup",
     "shvya_welcome",
+    "shvya_workflow",
 )
 
 

@@ -95,4 +95,4 @@ class WorkflowsPresentationTests(TestCase):
             self.assertIn(setting, self.css)
         self.assertIn(":focus-visible", self.css)
         for asset in ("apple_workflows.css", "apple_workflows.js"):
-            self.assertIn("triggers/" + asset + "' %}?v=20260918-1", self.html)
+            self.assertIn("triggers/" + asset + "' %}?v=20260918-2", self.html)

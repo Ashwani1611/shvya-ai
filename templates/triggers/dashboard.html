@@ -4,7 +4,7 @@
 {% block header %}Workflows{% endblock %}
 {% block content %}
 <link rel="stylesheet" href="{% static 'triggers/dashboard.css' %}?v=1">
-<link rel="stylesheet" href="{% static 'triggers/apple_workflows.css' %}?v=20260918-1">
+<link rel="stylesheet" href="{% static 'triggers/apple_workflows.css' %}?v=20260918-2">
 {{ trigger_catalog|json_script:"trigger-catalog" }}
 <div id="smart-triggers" class="st" data-admin="{{ trigger_admin|yesno:'true,false' }}" data-api="{% url 'crm-smart-triggers' %}">
   {# Preserve the legacy script's hooks; the shared shell owns navigation. #}
@@ -15,9 +15,9 @@
   <section id="st-home" aria-labelledby="st-page-title">
     <div class="st-heading">
       <div class="st-intro">
-        <span class="st-eyebrow">AUTOMATION, CONNECTED</span>
+        <span class="st-eyebrow st-module-label"><span aria-hidden="true"></span>AUTOMATION</span>
         <h1 id="st-page-title">Workflows</h1>
-        <p>The right action. At the right moment.</p>
+        <p>Connect triggers and actions that keep every lead moving.</p>
       </div>
       {% if trigger_admin %}<button type="button" class="st-primary" id="st-new"><span aria-hidden="true">＋</span> Create workflow</button>{% endif %}
     </div>
@@ -62,7 +62,7 @@
             <div class="st-card-title"><span class="st-step" aria-hidden="true">01</span><div><h2>When this happens</h2><p>The event that starts your workflow</p></div></div>
             <label for="st-trigger">Trigger <span class="st-required">*</span></label><select id="st-trigger" required aria-describedby="st-trigger-help"></select><p id="st-trigger-help" class="st-hint"></p><div id="st-trigger-extra"></div>
             <div class="st-section-label"><h3>Pipeline &amp; stages</h3><button type="button" id="st-add-scope" class="st-link">＋ Add pipeline</button></div><p class="st-hint">Match any of these pipeline and stage groups.</p><div id="st-scopes"></div>
-            <div class="st-section-label"><h3>Attribute conditions <span class="st-muted">Optional</span></h3><button type="button" id="st-add-condition" class="st-link">＋ Add condition</button></div><p class="st-hint">All conditions below must match.</p><div id="st-conditions"></div>
+            <div class="st-section-label"><h3>Attribute conditions <span class="st-muted">Optional</span></h3><button type="button" id="st-add-condition" class="st-link">＋ Add condition</button></div><p class="st-hint">All conditions below must match.</p><section class="st-source-condition" aria-labelledby="st-source-title"><div class="st-section-label"><h3 id="st-source-title">Source <span class="st-muted">Lead creation origin</span></h3><span class="st-muted">Built-in</span></div><p class="st-hint" id="st-source-help">Match the source recorded when the lead was created. Leave all unchecked for any source. This is not a custom CRM attribute.</p><div id="st-sources" aria-describedby="st-source-help"></div></section><div id="st-conditions"></div>
           </section>
           <div class="st-flow-arrow" aria-hidden="true">→</div>
           <section class="st-panel st-card"><div class="st-card-title"><span class="st-step st-step-action" aria-hidden="true">02</span><div><h2>Then do this</h2><p>One clear action for your lead</p></div></div><label for="st-action">Action <span class="st-required">*</span></label><select id="st-action" required></select><div id="st-action-fields"></div></section>
@@ -75,6 +75,6 @@
   </section>
   <dialog id="st-confirm" aria-labelledby="st-confirm-title" aria-describedby="st-confirm-text st-confirm-help"><h2 id="st-confirm-title">Delete workflow?</h2><p id="st-confirm-text"></p><p id="st-confirm-help">Its run history will also be removed. Completed CRM actions will remain.</p><div class="st-dialog-actions"><button type="button" id="st-delete-cancel" autofocus>Keep workflow</button><button type="button" id="st-delete-confirm" class="st-danger">Delete workflow</button></div></dialog>
 </div>
-<script src="{% static 'triggers/dashboard.js' %}?v=1" defer></script>
-<script src="{% static 'triggers/apple_workflows.js' %}?v=20260918-1" defer></script>
+<script src="{% static 'triggers/dashboard.js' %}?v=20260918-2" defer></script>
+<script src="{% static 'triggers/apple_workflows.js' %}?v=20260918-2" defer></script>
 {% endblock %}

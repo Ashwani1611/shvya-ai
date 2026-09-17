@@ -10,7 +10,7 @@ from django.db import transaction
 from django.db.models import Max
 
 from apps.channels.models import WhatsAppAccount
-from apps.crm.models import AttributeDefinition, LeadCall, Pipeline, Stage
+from apps.crm.models import AttributeDefinition, Lead, LeadCall, Pipeline, Stage
 from apps.followups.models import FollowupSequence
 from apps.organizations.models import Organization
 from apps.triggers.constants import ACTIONS, TRIGGERS
@@ -21,10 +21,16 @@ def fail(message):
     raise ValidationError(message)
 
 
+def source_choices():
+    """The built-in creation origin is not a tenant-editable custom attribute."""
+    return dict(Lead._meta.get_field("lead_source").choices)
+
+
 def catalog(org):
     return {
         "triggers": TRIGGERS,
         "actions": ACTIONS,
+        "sources": source_choices(),
         "pipelines": list(
             Pipeline.objects.filter(organization=org, is_active=True).values(
                 "id", "name"
@@ -36,7 +42,9 @@ def catalog(org):
             ).values("id", "pipeline_id", "name")
         ),
         "sequences": list(
-            FollowupSequence.objects.filter(organization=org, is_active=True).values(
+            FollowupSequence.objects.filter(
+                organization=org, is_active=True, whatsapp_account__organization=org
+            ).values(
                 "id", "name"
             )
         ),
@@ -47,7 +55,8 @@ def catalog(org):
         ),
         "accounts": list(
             WhatsAppAccount.objects.filter(
-                organization=org, is_active=True, status="connected"
+                organization=org, is_active=True, status="connected",
+                connection_type__in=[WhatsAppAccount.ConnectionType.API, WhatsAppAccount.ConnectionType.coexisted],
             ).values("id", "business_name", "display_phone_number")
         ),
         "call_statuses": dict(LeadCall._meta.get_field("status").choices),
@@ -157,6 +166,17 @@ def validate(org, data):
         ],
         "attributes": [],
     }
+    sources = c.get("sources", [])
+    allowed_sources = source_choices()
+    if (
+        not isinstance(sources, list)
+        or len(sources) > len(allowed_sources)
+        or not all(isinstance(value, str) and value in allowed_sources for value in sources)
+    ):
+        fail("Choose valid lead creation sources.")
+    # Omitting an unrestricted source filter preserves existing fingerprints.
+    if sources:
+        clean_c["sources"] = sorted(set(sources))
     conditions = c.get("attributes", [])
     if not isinstance(conditions, list) or len(conditions) > 50:
         fail("Use at most 50 attribute conditions.")
@@ -202,12 +222,13 @@ def validate(org, data):
         clean_c["call_status"] = c["call_status"]
 
     def sequences(ids):
-        if not isinstance(ids, list) or not ids:
-            fail("Choose a sequence.")
+        if not isinstance(ids, list) or not ids or len(ids) > 100:
+            fail("Choose between 1 and 100 sequences.")
         ids = sorted({str(x) for x in ids})
         try:
             count = FollowupSequence.objects.filter(
-                organization=org, is_active=True, id__in=ids
+                organization=org, is_active=True, id__in=ids,
+                whatsapp_account__organization=org,
             ).count()
         except (ValidationError, ValueError):
             fail("Invalid sequence.")
@@ -266,19 +287,21 @@ def validate(org, data):
                     id=a.get("account"),
                     is_active=True,
                     status="connected",
+                    connection_type__in=[WhatsAppAccount.ConnectionType.API, WhatsAppAccount.ConnectionType.coexisted],
                 ).exists()
             except (ValidationError, ValueError):
                 valid = False
             if not valid:
-                fail("Select a connected WhatsApp account.")
+                fail("Select a connected WhatsApp account from your organization.")
             clean_a.update(account=str(a["account"]), schedule=a.get("schedule"))
             if a.get("schedule") == "relative":
                 clean_a.update(duration(a))
             elif a.get("schedule") == "fixed":
                 try:
-                    clean_a["time"] = time.fromisoformat(a.get("time", "")).strftime(
-                        "%H:%M"
-                    )
+                    clock = time.fromisoformat(a.get("time", ""))
+                    if clock.tzinfo is not None:
+                        raise ValueError
+                    clean_a["time"] = clock.strftime("%H:%M")
                 except (ValueError, TypeError):
                     fail("Choose a time of day.")
             elif a.get("schedule") == "attribute":
@@ -315,12 +338,25 @@ def save_rule(user, data, rule_id=None):
     if user.role != "admin":
         fail("Only admins can edit rules.")
     Organization.objects.select_for_update().get(id=user.organization_id)
-    values = validate(user.organization, data)
     rule = (
         SmartTrigger.objects.get(id=rule_id, organization=user.organization)
         if rule_id
         else None
     )
+    if rule and isinstance(data, dict) and set(data) == {"enabled"}:
+        if not isinstance(data["enabled"], bool):
+            fail("Enabled must be true or false.")
+        if data["enabled"]:
+            # Re-enable only a valid workflow, but always permit a safe stop.
+            validate(user.organization, {
+                "name": rule.name, "enabled": True,
+                "trigger_type": rule.trigger_type, "conditions": rule.conditions,
+                "action_type": rule.action_type, "action": rule.action,
+            })
+        rule.enabled = data["enabled"]
+        rule.save(update_fields=["enabled", "updated_at"])
+        return rule
+    values = validate(user.organization, data)
     duplicate = SmartTrigger.objects.filter(
         organization=user.organization, fingerprint=values["fingerprint"]
     )

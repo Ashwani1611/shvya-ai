@@ -54,7 +54,9 @@ def lead_event(sender, instance, created, raw=False, **kwargs):
 
 @receiver(pre_save, sender=LeadSequenceState)
 def capture_sequence(sender, instance, raw=False, **kwargs):
-    if not raw:
+    fields = kwargs.get("update_fields")
+    instance._trigger_sequence_status_saved = fields is None or "status" in fields
+    if not raw and instance._trigger_sequence_status_saved:
         instance._trigger_old_status = (
             sender.objects.filter(id=instance.id)
             .values_list("status", flat=True)
@@ -66,7 +68,10 @@ def capture_sequence(sender, instance, raw=False, **kwargs):
 def sequence_event(sender, instance, raw=False, **kwargs):
     if (
         not raw
+        and getattr(instance, "_trigger_sequence_status_saved", True)
         and instance.status == "completed"
+        and instance.organization_id == instance.lead.organization_id
+        and instance.sequence.organization_id == instance.organization_id
         and getattr(instance, "_trigger_old_status", None) != "completed"
     ):
         emit(
@@ -79,12 +84,20 @@ def sequence_event(sender, instance, raw=False, **kwargs):
 
 @receiver(post_save, sender=WhatsAppMessage)
 def message_event(sender, instance, created, raw=False, **kwargs):
+    payload = instance.raw_payload if isinstance(instance.raw_payload, dict) else {}
+    if raw or payload.get("isHistory") is True:
+        return
+    fields = kwargs.get("update_fields")
+    status_written = created or fields is None or "status" in fields
     if (
+        status_written
+        and
         not raw
         and instance.lead_id
         and instance.direction == "outbound"
         and instance.status in ("sent", "delivered", "read")
         and instance.organization_id == instance.lead.organization_id
+        and instance.account.organization_id == instance.organization_id
     ):
         # This identity is persisted at the first successful send, rather than
         # at queue creation; delivery/read receipts cannot reset the clock.
@@ -100,6 +113,7 @@ def message_event(sender, instance, created, raw=False, **kwargs):
         and instance.lead_id
         and instance.direction == "inbound"
         and instance.organization_id == instance.lead.organization_id
+        and instance.account.organization_id == instance.organization_id
     ):
         emit(
             instance.lead, "keyword", f"message:{instance.id}", {"body": instance.body}
