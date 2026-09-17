@@ -102,6 +102,10 @@ jobs:
             echo "Building staging application containers..."
             $COMPOSE build web ws worker ai_realtime_worker hosted_ai_worker beat whatsapp-web-gateway
 
+            echo "Preparing writable staging bind mounts for the non-root runtime user..."
+            $COMPOSE run --rm --no-deps --user 0 web sh -c \
+              'mkdir -p /app/staticfiles /app/media && chown -R 10001:10001 /app/staticfiles /app/media'
+
             echo "Starting isolated staging PostgreSQL and Redis..."
             $COMPOSE up -d --wait db redis
 
@@ -114,6 +118,18 @@ jobs:
             echo "Starting staging application services..."
             $COMPOSE up -d --no-deps web ws worker ai_realtime_worker hosted_ai_worker beat
             $COMPOSE up -d --wait --no-deps web
+
+            echo "Verifying staging Python application services run as the non-root app user..."
+            for service in web ws worker ai_realtime_worker hosted_ai_worker beat; do
+              uid="$($COMPOSE exec -T "$service" id -u)"
+              gid="$($COMPOSE exec -T "$service" id -g)"
+              if [ "$uid" != "10001" ] || [ "$gid" != "10001" ]; then
+                echo "${service} is running as unexpected uid:gid ${uid}:${gid}."
+                $COMPOSE ps
+                exit 1
+              fi
+            done
+
             $COMPOSE up -d --wait --no-deps --force-recreate whatsapp-web-gateway
             # web/ws are recreated above and may receive new Docker IPs. Recreate
             # staging Nginx so its startup-time DNS resolution cannot retain stale
