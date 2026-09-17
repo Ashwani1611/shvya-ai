@@ -437,6 +437,11 @@ def _persist_gateway_message(*, account, payload, historical=False):
         return None
 
     external_id = f"wweb:{raw_message_id}"
+    existing = WhatsAppMessage.objects.filter(external_id=external_id).first()
+    if existing and (
+        existing.account_id != account.pk or existing.organization_id != account.organization_id
+    ):
+        return None
     is_group = bool(payload.get("isGroup"))
     is_outbound = bool(payload.get("fromMe"))
     account_number = normalize_whatsapp_number(
@@ -492,6 +497,12 @@ def _persist_gateway_message(*, account, payload, historical=False):
         )
     )
 
+    from services.channels.hosted_contact_sync import _contact_name, _should_replace
+
+    contact_name = "" if is_group else _contact_name(payload, peer)
+    if lead and contact_name and _should_replace(lead, peer) and lead.name != contact_name:
+        lead.name = contact_name
+        lead.save(update_fields=["name", "updated_at"])
     settings = get_session_settings(account=account)
     pipeline = get_pipeline_for_account(account=account)
     # The existing-chat snapshot protects history import only. Once WhatsApp
@@ -499,7 +510,8 @@ def _persist_gateway_message(*, account, payload, historical=False):
     # be eligible for normal Lead creation and AI automation, even if the
     # number was present when the Hosted session was first connected.
     if (
-        not is_outbound
+        not is_group
+        and not is_outbound
         and not historical
         and not lead
         and peer
@@ -513,7 +525,7 @@ def _persist_gateway_message(*, account, payload, historical=False):
                     organization=account.organization,
                     pipeline=pipeline,
                     stage=stage,
-                    name=payload.get("contactName") or peer,
+                    name=contact_name or peer,
                     phone=peer,
                     lead_source="whatsapp",
                 )
@@ -522,6 +534,16 @@ def _persist_gateway_message(*, account, payload, historical=False):
                     organization=account.organization,
                     phone=peer,
                 ).first()
+
+    history_is_read = True
+    if historical and payload.get("isUnread") is True:
+        from apps.channels.models import HostedChatReadState
+
+        occurred_at = _message_timestamp(payload)
+        history_is_read = bool(occurred_at and HostedChatReadState.objects.filter(
+            account=account, chat_key__in=[peer, chat_id, str(payload.get("rawChatId") or "")],
+            read_through_at__gte=occurred_at,
+        ).exists())
 
     defaults = {
         "organization": account.organization,
@@ -543,13 +565,20 @@ def _persist_gateway_message(*, account, payload, historical=False):
             "ignoredExistingChat": ignored_existing_chat,
             "leadCreationMessage": bool(_created),
         },
-        "is_read": True if is_outbound or historical else False,
+        "is_read": True if is_outbound else (history_is_read if historical else False),
     }
     message, created = WhatsAppMessage.objects.get_or_create(
         external_id=external_id,
         defaults=defaults,
     )
     if not created:
+        if message.account_id != account.pk or message.organization_id != account.organization_id:
+            return None
+        if (historical and not is_outbound and isinstance(payload.get("isUnread"), bool)
+                and isinstance(message.raw_payload, dict) and message.raw_payload.get("isHistory")
+                and message.is_read != history_is_read):
+            message.is_read = history_is_read
+            message.save(update_fields=["is_read", "updated_at"])
         return message
 
     occurred_at = _message_timestamp(payload)
@@ -642,9 +671,14 @@ def handle_gateway_event(*, payload):
             account=account,
             external_id=external_id,
         ).first()
-        if message:
-            message.status = mapped
-            message.raw_payload = payload
+        if message and message.direction == WhatsAppMessage.Direction.OUTBOUND:
+            ranks = {"queued": 0, "failed": 0, "sent": 1, "delivered": 2, "read": 3}
+            if ranks.get(mapped, 0) >= ranks.get(message.status, 0):
+                message.status = mapped
+            # ACKs are partial events. Never erase identity, event time, media,
+            # AI provenance or history/live markers with an ACK payload.
+            raw = message.raw_payload if isinstance(message.raw_payload, dict) else {}
+            message.raw_payload = {**raw, "lastAck": payload}
             message.save(update_fields=["status", "raw_payload", "updated_at"])
         return message
 

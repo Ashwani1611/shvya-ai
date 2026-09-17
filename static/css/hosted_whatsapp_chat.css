@@ -171,7 +171,7 @@ body.hosted-chat-page .hosted-chat-shell a:hover{transform:none!important}
 .hosted-media-download{display:inline-flex;align-items:center;gap:4px;margin-top:4px;color:#54656f;font-size:10px;text-decoration:none}
 .voice-card{min-width:235px;display:flex;align-items:center;gap:9px;padding:5px 1px 2px}.voice-icon{width:32px;height:32px;display:inline-flex;align-items:center;justify-content:center;border-radius:999px;background:rgba(0,0,0,.07);color:#374151;font-size:16px}.voice-meta{min-width:0;flex:1}.voice-title{color:#334155;font-size:12px;font-weight:600}.voice-line{height:3px;margin-top:5px;border-radius:3px;background:rgba(100,116,139,.3)}
 .thread-no-messages{margin:64px auto 0;max-width:350px;border-radius:10px;background:rgba(255,255,255,.84);padding:15px 18px;text-align:center;color:#667781;box-shadow:0 1px 5px rgba(15,23,42,.06)}
-.hosted-thread-empty{display:flex;flex:1 1 auto;min-height:0;flex-direction:column;align-items:center;justify-content:center;background:#f0f2f5;color:#667781;border-bottom:5px solid #25d366}
+.hosted-thread-empty{display:flex;flex:1 1 auto;min-height:0;flex-direction:column;align-items:center;justify-content:center;background:#f0f2f5;color:#667781;border-bottom:0}
 
 .chat-compose{position:relative;flex:0 0 auto;min-height:62px;display:flex;align-items:center;gap:8px;padding:7px 11px;border-top:1px solid #d9dde0;background:var(--wa-panel)}
 .chat-icon-button{width:36px;height:42px;flex:0 0 36px;border-radius:999px;font-size:23px}
@@ -189,3 +189,12 @@ body.hosted-chat-page .hosted-chat-shell a:hover{transform:none!important}
     .hosted-chat-shell{grid-template-columns:1fr;border:0;border-radius:0;box-shadow:none}.hosted-chat-list{display:flex}.hosted-thread{display:none}.hosted-chat-shell.has-chat .hosted-chat-list{display:none}.hosted-chat-shell.has-chat .hosted-thread{display:flex}.bubble{max-width:88%}.hosted-thread-bg{padding:12px 10px 16px}
 }
 @media(prefers-reduced-motion:reduce){body.hosted-chat-page .hosted-chat-shell *{transition:none!important}}
+
+/* Component layouts must never override the utility hidden state. */
+#hosted-chat-app .hidden, #hosted-chat-app [hidden]{display:none!important}
+#hosted-chat-app .hosted-stage{display:inline-flex;max-width:100%;margin-top:5px;padding:2px 7px;border-radius:5px;background:#edf1f7;color:#475569;font-size:10px;font-weight:600;line-height:1.4;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#hosted-chat-app .thread-loading,#hosted-chat-app .thread-error{text-align:center;padding:24px;color:#667781}
+#hosted-chat-app .thread-error button{text-decoration:underline;margin-left:6px}
+#hosted-chat-app .hosted-load-older{display:block;margin:0 auto 14px;padding:7px 12px;border:0;border-radius:14px;background:rgba(255,255,255,.92);color:#475569;font-size:12px;cursor:pointer}
+#hosted-chat-app .hosted-load-older:disabled{cursor:wait;opacity:.7}
+#hosted-chat-app .hosted-thread-bg{overflow-anchor:none;scroll-behavior:auto}

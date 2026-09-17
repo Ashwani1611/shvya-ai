@@ -6,6 +6,7 @@
 
   const dataUrl = app.dataset.dataUrl;
   const sendUrl = app.dataset.sendUrl;
+  const readUrl = app.dataset.readUrl;
   const accountId = app.dataset.accountId;
   const list = document.getElementById('conversation-list');
   const search = document.getElementById('chat-search');
@@ -29,7 +30,18 @@
     seq: 0,
     busy: false,
     pending: false,
-    lastRefresh: Date.now(),
+    lastRefresh: 0,
+    accountStatus: app.dataset.accountStatus || 'connected',
+    messages: new Map(),
+    nextBefore: '',
+    olderLoaded: false,
+    olderBusy: false,
+    readSignature: '',
+    readBusy: false,
+    stopped: false,
+    unavailable: false,
+    socketSeen: 0,
+    stickToBottom: true,
     threadLoaded: Boolean(initial.get('chat')),
   };
 
@@ -38,6 +50,8 @@
   let socket = null;
   let reconnectTimer = null;
   let reconnectDelay = 1200;
+  let controller = null;
+  let olderController = null;
 
   const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
@@ -61,11 +75,22 @@
     }).format(date);
   };
 
-  function setLive(online) {
+  function setLive() {
     if (!liveStatus) return;
+    let label = 'Connecting';
+    let online = false;
+    if (state.unavailable) label = 'Account unavailable';
+    else if (navigator.onLine === false) label = 'Offline';
+    else if (state.accountStatus === 'disconnected' || state.accountStatus === 'failed') label = 'WhatsApp disconnected';
+    else if (state.accountStatus !== 'connected') label = 'Connecting WhatsApp';
+    else if (socket && socket.readyState === WebSocket.OPEN && Date.now() - state.socketSeen < 65000) {
+      label = 'Live'; online = true;
+    } else if (state.lastRefresh && Date.now() - state.lastRefresh < 30000) {
+      label = 'Connected · polling'; online = true;
+    } else if (state.lastRefresh) label = 'Reconnecting';
     liveStatus.classList.toggle('is-offline', !online);
-    const label = liveStatus.querySelector('[data-live-label]');
-    if (label) label.textContent = online ? 'Live' : 'Reconnecting';
+    const text = liveStatus.querySelector('[data-live-label]');
+    if (text) text.textContent = label;
   }
 
   function updateUrl() {
@@ -154,10 +179,12 @@
     const phone = row.phone && row.phone !== row.name
       ? `<div class="hosted-conversation-phone">${esc(row.phone)}</div>`
       : '';
+    const stage = row.stage_name
+      ? `<span class="hosted-stage" title="Lead stage: ${esc(row.stage_name)}">${esc(row.stage_name)}</span>` : '';
     const unread = row.unread
       ? `<span class="hosted-unread">${Number(row.unread) || 0}</span>`
       : '';
-    return `<div class="hosted-conversation-inner"><div class="hosted-conversation-avatar">${esc(initial)}</div><div class="hosted-conversation-content"><div class="hosted-conversation-top"><div class="hosted-conversation-name">${esc(name)}</div><div class="hosted-conversation-time">${esc(fmtList(row.last_at))}</div></div>${phone}<div class="flex items-center justify-between gap-2"><div class="hosted-conversation-preview">${esc(conversationPreview(row))}</div>${unread}</div></div></div>`;
+    return `<div class="hosted-conversation-inner"><div class="hosted-conversation-avatar">${esc(initial)}</div><div class="hosted-conversation-content"><div class="hosted-conversation-top"><div class="hosted-conversation-name">${esc(name)}</div><div class="hosted-conversation-time">${esc(fmtList(row.last_at))}</div></div>${phone}<div class="flex items-center justify-between gap-2"><div class="hosted-conversation-preview">${esc(conversationPreview(row))}</div>${unread}</div>${stage}</div></div>`;
   }
 
   function renderList(data) {
@@ -190,7 +217,7 @@
         node.className = 'hosted-conversation';
         node.dataset.chatKey = key;
       }
-      const signature = JSON.stringify([row.name, row.phone, row.last_message, row.last_at, row.unread, state.selected === key]);
+      const signature = JSON.stringify([row.name, row.phone, row.last_message, row.last_at, row.unread, row.stage_name, row.lead_id, state.selected === key]);
       if (node.dataset.signature !== signature) {
         node.classList.toggle('active', state.selected === key);
         node.href = `?chat=${encodeURIComponent(key)}${state.query ? '&q=' + encodeURIComponent(state.query) : ''}`;
@@ -208,59 +235,63 @@
   function bubbleSignature(message) {
     return JSON.stringify([
       message.direction, message.body, message.message_type, message.message_type_label,
-      message.status, message.created_at, message.media_url, message.media_download_url, message.filename
+      message.created_at, message.media_url, message.media_download_url, message.filename
     ]);
   }
 
   function updateBubble(node, message) {
     const outbound = message.direction === 'outbound';
     const signature = bubbleSignature(message);
-    if (node.dataset.signature === signature) return;
-    node.className = `bubble ${outbound ? 'out' : 'in'}`;
-    node.innerHTML = `${messageContent(message)}<span class="bubble-time">${esc(fmtBubble(message.created_at))}${statusHtml(message)}</span>`;
-    node.dataset.signature = signature;
-    node.dataset.mediaEnhanced = '1';
+    if (node.dataset.signature !== signature) {
+      node.className = `bubble ${outbound ? 'out' : 'in'}`;
+      node.innerHTML = `${messageContent(message)}<span class="bubble-time"></span>`;
+      node.dataset.signature = signature;
+      node.dataset.mediaEnhanced = '1';
+    }
+    // A delivery tick must not recreate an image, interrupt audio/video, or
+    // change the scroll anchor. Only the small timestamp/status node changes.
+    const time = node.querySelector('.bubble-time');
+    const timeHtml = `${esc(fmtBubble(message.created_at))}${statusHtml(message)}`;
+    if (time && time.innerHTML !== timeHtml) time.innerHTML = timeHtml;
+    node.dataset.createdAt = message.created_at || '';
   }
 
-  function renderThread(data) {
-    state.selected = data.selected_chat || state.selected || '';
-    const hasChat = Boolean(state.selected);
+  function showThread(hasChat) {
     app.classList.toggle('has-chat', hasChat);
     header?.classList.toggle('hidden', !hasChat);
     thread?.classList.toggle('hidden', !hasChat);
     form?.classList.toggle('hidden', !hasChat);
     empty?.classList.toggle('hidden', hasChat);
-    if (!hasChat) return;
+    if (form?.elements.body) form.elements.body.disabled = !hasChat;
+  }
 
+  function renderThread(data, { older = false } = {}) {
+    state.selected = data.selected_chat || '';
+    const hasChat = Boolean(state.selected);
+    showThread(hasChat);
+    if (!hasChat) return;
     const selectedName = data.selected_name || state.selected;
-    if (threadName && threadName.textContent !== selectedName) threadName.textContent = selectedName;
-    if (threadKey && threadKey.textContent !== state.selected) threadKey.textContent = state.selected;
+    if (threadName) threadName.textContent = selectedName;
+    if (threadKey) threadKey.textContent = state.selected;
     if (threadAvatar) threadAvatar.textContent = selectedName.trim().charAt(0).toUpperCase() || '?';
     if (chatInput) chatInput.value = state.selected;
-
-    const stick = nearBottom();
+    const stick = !older && (nearBottom() || !state.threadLoaded);
     const savedTop = thread.scrollTop;
-    const messages = data.thread || [];
-
-    if (!messages.length) {
-      const optimistic = thread.querySelector('[data-optimistic="1"]');
-      if (!optimistic && thread.dataset.empty !== '1') {
-        thread.innerHTML = '<div class="thread-no-messages"><i class="ti ti-message-circle text-xl"></i><div class="mt-2 text-sm font-semibold">No messages yet</div><div class="mt-1 text-xs">New messages appear here live.</div></div>';
-        thread.dataset.empty = '1';
-      }
-      return;
-    }
-
-    delete thread.dataset.empty;
-    thread.querySelectorAll('.thread-no-messages').forEach(node => node.remove());
     const oldHeight = thread.scrollHeight;
+    for (const message of data.thread || []) {
+      if (message.id) state.messages.set(String(message.id), message);
+    }
+    const messages = Array.from(state.messages.values()).sort((a, b) =>
+      String(a.created_at).localeCompare(String(b.created_at)) || String(a.id).localeCompare(String(b.id))
+    );
+    if (older || !state.olderLoaded) state.nextBefore = data.next_before || '';
+    if (older) state.olderLoaded = true;
+    thread.querySelectorAll('.thread-no-messages,.thread-loading,.thread-error,.hosted-load-older').forEach(node => node.remove());
     const existing = new Map();
     thread.querySelectorAll('.bubble[data-message-id]').forEach(node => existing.set(node.dataset.messageId, node));
-
     let cursor = thread.firstElementChild;
-    messages.forEach(message => {
-      const id = String(message.id || '');
-      if (!id) return;
+    for (const message of messages) {
+      const id = String(message.id);
       let node = existing.get(id);
       if (!node) {
         node = document.createElement('div');
@@ -272,18 +303,55 @@
       if (node !== cursor) thread.insertBefore(node, cursor);
       cursor = node.nextElementSibling;
       existing.delete(id);
-    });
-
+    }
+    // Preserve only local sends not yet returned by the server. Older loaded
+    // messages live in the keyed map instead of disappearing on each refresh.
     existing.forEach(node => {
       if (node.dataset.optimistic !== '1') node.remove();
     });
+    if (state.nextBefore) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'hosted-load-older';
+      button.textContent = state.olderBusy ? 'Loading earlier messages…' : 'Load earlier messages';
+      button.disabled = state.olderBusy;
+      button.addEventListener('click', loadOlder);
+      thread.prepend(button);
+    }
+    if (!messages.length && !thread.querySelector('[data-optimistic="1"]')) {
+      thread.innerHTML = '<div class="thread-no-messages">No messages yet. New messages appear here live.</div>';
+    }
+    if (older) thread.scrollTop = savedTop + (thread.scrollHeight - oldHeight);
+    else if (stick) thread.scrollTop = thread.scrollHeight;
+    else thread.scrollTop = savedTop;
+    state.threadLoaded = true;
+    state.stickToBottom = stick;
+    if (!older && stick) acknowledgeRead(data);
+  }
 
-    if (stick || !state.threadLoaded) {
-      thread.scrollTop = thread.scrollHeight;
-      state.threadLoaded = true;
-    } else {
-      const delta = thread.scrollHeight - oldHeight;
-      thread.scrollTop = savedTop + Math.min(0, delta);
+  async function acknowledgeRead(data) {
+    if (!readUrl || !data.read_token || document.visibilityState !== 'visible' || state.readBusy) return;
+    const row = (data.conversations || []).find(item => item.key === state.selected);
+    if (!row || !Number(row.unread)) return;
+    const last = (data.thread || []).at(-1);
+    const signature = `${state.selected}:${last?.id || ''}:${row.unread}`;
+    if (state.readSignature === signature) return;
+    state.readBusy = true;
+    const readController = new AbortController();
+    const timeout = setTimeout(() => readController.abort(), 12000);
+    try {
+      const response = await fetch(readUrl, {
+        method: 'POST', headers: { 'X-CSRFToken': csrf, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: data.read_token }), signal: readController.signal,
+      });
+      if (!response.ok) throw new Error('Read receipt could not be saved');
+      state.readSignature = signature;
+      scheduleRefresh(100);
+    } catch (_) {
+      // Leave the real badge unchanged; the next successful snapshot retries.
+    } finally {
+      clearTimeout(timeout);
+      state.readBusy = false;
     }
   }
 
@@ -302,37 +370,101 @@
     return node;
   }
 
-  async function refresh({ updateHistory = false } = {}) {
-    if (state.busy) {
-      state.pending = true;
-      return;
+  async function refresh({ force = false } = {}) {
+    if (state.stopped || state.unavailable) return;
+    if (force) {
+      controller?.abort();
+      state.seq += 1;
+      state.busy = false;
+      state.pending = false;
     }
+    if (state.busy) { state.pending = true; return; }
     state.busy = true;
     const seq = ++state.seq;
+    const selected = state.selected;
+    const query = state.query;
     const params = new URLSearchParams();
-    if (state.selected) params.set('chat', state.selected);
-    if (state.query) params.set('q', state.query);
-
+    if (selected) params.set('chat', selected);
+    if (query) params.set('q', query);
+    const request = new AbortController();
+    controller = request;
+    const timeout = setTimeout(() => request.abort(), 12000);
     try {
-      const response = await fetch(`${dataUrl}?${params.toString()}`, {
-        headers: { 'X-Requested-With': 'XMLHttpRequest' },
-        cache: 'no-store'
+      const response = await fetch(`${dataUrl}?${params}`, {
+        headers: { 'X-Requested-With': 'XMLHttpRequest' }, cache: 'no-store', signal: request.signal,
       });
-      if (!response.ok) throw new Error('Could not refresh hosted chats');
+      if ([401, 403, 404].includes(response.status)) state.unavailable = true;
+      if (!response.ok) throw new Error('Could not refresh chats. Please retry.');
       const data = await response.json();
-      if (seq !== state.seq) return;
-      renderList(data);
+      if (seq !== state.seq || selected !== state.selected || query !== state.query || state.stopped) return;
+      state.accountStatus = data.account_status || state.accountStatus;
       renderThread(data);
+      renderList(data);
       state.lastRefresh = Date.now();
-      if (updateHistory) updateUrl();
+      updateUrl();
     } catch (error) {
-      console.warn(error.message);
-    } finally {
-      if (seq === state.seq) state.busy = false;
-      if (state.pending) {
-        state.pending = false;
-        scheduleRefresh(70);
+      if (seq !== state.seq || state.stopped) return;
+      if (selected && !state.threadLoaded) {
+        thread.innerHTML = '<div class="thread-error" role="status">Messages could not load. <button type="button" data-chat-retry>Retry</button></div>';
       }
+    } finally {
+      clearTimeout(timeout);
+      if (seq === state.seq) {
+        state.busy = false;
+        controller = null;
+        setLive();
+        if (state.pending) { state.pending = false; scheduleRefresh(100); }
+      }
+    }
+  }
+
+  function selectChat(next, name = '') {
+    olderController?.abort();
+    state.olderBusy = false;
+    state.selected = next;
+    state.threadLoaded = false;
+    state.messages.clear();
+    state.nextBefore = '';
+    state.olderLoaded = false;
+    state.readSignature = '';
+    state.stickToBottom = true;
+    thread.innerHTML = next ? '<div class="thread-loading" role="status">Loading messages…</div>' : '';
+    showThread(Boolean(next));
+    if (threadName) threadName.textContent = name || next;
+    if (threadKey) threadKey.textContent = next;
+    if (threadAvatar) threadAvatar.textContent = (name || next).trim().charAt(0).toUpperCase();
+    if (chatInput) chatInput.value = next;
+    list.querySelectorAll('[data-chat-key]').forEach(node => node.classList.toggle('active', node.dataset.chatKey === next));
+    updateUrl();
+    refresh({ force: true });
+  }
+
+  async function loadOlder() {
+    if (!state.selected || !state.nextBefore || state.olderBusy || state.stopped) return;
+    state.olderBusy = true;
+    const selected = state.selected;
+    const before = state.nextBefore;
+    const params = new URLSearchParams({ chat: selected, before, q: state.query });
+    const request = new AbortController();
+    olderController = request;
+    const timeout = setTimeout(() => request.abort(), 12000);
+    const button = thread.querySelector('.hosted-load-older');
+    if (button) { button.disabled = true; button.textContent = 'Loading earlier messages…'; }
+    try {
+      const response = await fetch(`${dataUrl}?${params}`, {
+        headers: { 'X-Requested-With': 'XMLHttpRequest' }, cache: 'no-store', signal: request.signal,
+      });
+      if (!response.ok) throw new Error('Earlier messages could not load');
+      const data = await response.json();
+      if (selected !== state.selected || olderController !== request || state.stopped) return;
+      state.olderBusy = false;
+      renderThread(data, { older: true });
+    } catch (_) {
+      if (selected === state.selected && button) button.textContent = 'Retry loading earlier messages';
+    } finally {
+      clearTimeout(timeout);
+      if (olderController === request) { state.olderBusy = false; olderController = null; }
+      if (button) button.disabled = false;
     }
   }
 
@@ -341,123 +473,132 @@
     if (!link) return;
     event.preventDefault();
     const next = link.dataset.chatKey || '';
-    if (state.selected === next) return;
-    state.selected = next;
-    state.threadLoaded = false;
-    updateUrl();
-    refresh();
+    if (state.selected === next && state.threadLoaded) { showThread(true); return; }
+    selectChat(next, link.querySelector('.hosted-conversation-name')?.textContent || next);
   });
+  thread?.addEventListener('click', event => {
+    if (event.target.closest('[data-chat-retry]')) refresh({ force: true });
+  });
+  thread?.addEventListener('scroll', () => {
+    state.stickToBottom = nearBottom();
+    if (thread.scrollTop < 70 && state.threadLoaded) loadOlder();
+  }, { passive: true });
+  const settleMedia = () => { if (state.stickToBottom) thread.scrollTop = thread.scrollHeight; };
+  thread?.addEventListener('load', settleMedia, true);
+  thread?.addEventListener('loadedmetadata', settleMedia, true);
 
   search?.addEventListener('input', () => {
     clearTimeout(searchTimer);
     searchTimer = setTimeout(() => {
       state.query = search.value.trim();
-      state.selected = '';
-      state.threadLoaded = false;
-      app.classList.remove('has-chat');
-      updateUrl();
-      refresh();
+      selectChat('');
     }, 220);
   });
-
   mobileBack?.addEventListener('click', () => app.classList.remove('has-chat'));
 
   form?.addEventListener('submit', async event => {
     event.preventDefault();
     const body = form.elements.body.value.trim();
-    if (!body || !state.selected) return;
+    const chat = state.selected;
+    if (!body || !chat || !state.threadLoaded || state.unavailable) return;
     const button = form.querySelector('button[type=submit]');
+    if (button.disabled) return;
     button.disabled = true;
     form.elements.body.value = '';
     const optimistic = appendOptimistic(body);
-
+    const request = new AbortController();
+    const timeout = setTimeout(() => request.abort(), 20000);
     try {
       const response = await fetch(sendUrl, {
-        method: 'POST',
-        headers: { 'X-CSRFToken': csrf, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chat: state.selected, body })
+        method: 'POST', headers: { 'X-CSRFToken': csrf, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chat, body }), signal: request.signal,
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || 'Could not send message');
       const realId = String(result.message?.id || '');
       if (optimistic && realId) {
         optimistic.dataset.messageId = realId;
-        optimistic.removeAttribute('data-optimistic');
-        optimistic.classList.remove('optimistic');
+        // Retain the optimistic node until its persisted message arrives.
       }
       scheduleRefresh(55);
     } catch (error) {
       if (optimistic) optimistic.remove();
-      form.elements.body.value = body;
-      alert(error.message);
+      if (state.selected === chat) form.elements.body.value = body;
+      alert(error.name === 'AbortError' ? 'Delivery confirmation timed out. Check the conversation before sending again.' : error.message);
       scheduleRefresh(100);
     } finally {
+      clearTimeout(timeout);
       button.disabled = false;
-      form.elements.body.focus();
+      if (state.selected === chat) form.elements.body.focus();
     }
   });
 
   function scheduleRefresh(delay = 80) {
-    clearTimeout(refreshTimer);
-    refreshTimer = setTimeout(() => refresh(), delay);
+    // Throttle rather than indefinitely postponing under a busy message stream.
+    if (refreshTimer || state.stopped || state.unavailable) return;
+    refreshTimer = setTimeout(() => { refreshTimer = null; refresh(); }, delay);
+  }
+
+  function reconnect() {
+    if (state.stopped || state.unavailable || reconnectTimer) return;
+    reconnectTimer = setTimeout(() => {
+      reconnectTimer = null; connectSocket();
+    }, reconnectDelay + Math.floor(Math.random() * 500));
+    reconnectDelay = Math.min(reconnectDelay * 1.7, 30000);
   }
 
   function connectSocket() {
-    clearTimeout(reconnectTimer);
-    if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) return;
+    if (state.stopped || state.unavailable || navigator.onLine === false) return;
+    if (socket && [WebSocket.OPEN, WebSocket.CONNECTING].includes(socket.readyState)) return;
+    clearTimeout(reconnectTimer); reconnectTimer = null;
     try {
       const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-      socket = new WebSocket(`${proto}://${location.host}/ws/whatsapp/hosted/${accountId}/`);
-      socket.onopen = () => {
+      const current = new WebSocket(`${proto}://${location.host}/ws/whatsapp/hosted/${accountId}/`);
+      socket = current;
+      current.onopen = () => {
+        if (socket !== current) return;
         reconnectDelay = 1200;
-        setLive(true);
+        state.socketSeen = Date.now();
+        setLive(); scheduleRefresh(100);
       };
-      socket.onmessage = event => {
+      current.onmessage = event => {
+        if (socket !== current) return;
+        state.socketSeen = Date.now();
         try {
           const data = JSON.parse(event.data);
-          if (data.kind === 'refresh') scheduleRefresh(data.reason === 'status' ? 110 : 45);
+          if (data.kind === 'refresh') scheduleRefresh(data.reason === 'status' ? 150 : 80);
         } catch (_) {}
       };
-      socket.onclose = () => {
+      current.onclose = event => {
+        if (socket !== current) return;
         socket = null;
-        setLive(false);
-        reconnectTimer = setTimeout(connectSocket, reconnectDelay);
-        reconnectDelay = Math.min(reconnectDelay * 1.6, 6000);
+        if ([4001, 4003].includes(event.code)) state.unavailable = true;
+        setLive(); reconnect();
       };
-      socket.onerror = () => { try { socket.close(); } catch (_) {} };
-    } catch (_) {
-      socket = null;
-      setLive(false);
-      reconnectTimer = setTimeout(connectSocket, reconnectDelay);
-      reconnectDelay = Math.min(reconnectDelay * 1.6, 6000);
-    }
+      current.onerror = () => { try { current.close(); } catch (_) {} };
+    } catch (_) { socket = null; setLive(); reconnect(); }
   }
 
   connectSocket();
-
-  // WebSocket is primary. Polling is only a quiet consistency fallback.
-  setInterval(() => {
-    if (document.visibilityState !== 'visible' || state.busy) return;
-    const healthy = socket && socket.readyState === WebSocket.OPEN;
-    const staleFor = Date.now() - state.lastRefresh;
-    if ((healthy && staleFor > 30000) || (!healthy && staleFor > 4500)) refresh();
+  const pollTimer = setInterval(() => {
+    if (state.stopped || state.unavailable || document.visibilityState !== 'visible') return;
+    if (socket?.readyState === WebSocket.OPEN && Date.now() - state.socketSeen > 65000) socket.close();
+    const healthy = socket?.readyState === WebSocket.OPEN;
+    if (!state.busy && Date.now() - state.lastRefresh > (healthy ? 15000 : 5000)) refresh();
+    setLive();
   }, 2200);
-
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') {
-      connectSocket();
-      if (Date.now() - state.lastRefresh > 4000) scheduleRefresh(100);
-    }
+    if (document.visibilityState === 'visible') { connectSocket(); scheduleRefresh(100); }
   });
   window.addEventListener('online', () => { connectSocket(); scheduleRefresh(100); });
+  window.addEventListener('offline', setLive);
   window.addEventListener('beforeunload', () => {
-    clearTimeout(reconnectTimer);
-    clearTimeout(refreshTimer);
+    state.stopped = true;
+    clearInterval(pollTimer);
+    clearTimeout(reconnectTimer); clearTimeout(refreshTimer); clearTimeout(searchTimer);
+    controller?.abort(); olderController?.abort();
     if (socket) socket.close();
   });
-
-  if (thread && !thread.classList.contains('hidden')) {
-    thread.scrollTop = thread.scrollHeight;
-    state.threadLoaded = true;
-  }
+  if (thread && !thread.classList.contains('hidden')) thread.scrollTop = thread.scrollHeight;
+  refresh();
 })();

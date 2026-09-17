@@ -9,12 +9,19 @@ that canonical identity.
 
 from __future__ import annotations
 
+import math
+
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
+from django.core import signing
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import Case, Count, F, Q, TextField, Value, When, Window
+from django.db.models.fields.json import KeyTextTransform
+from django.db.models.functions import Coalesce, NullIf, RowNumber
+from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 
-from apps.channels.models import WhatsAppMessage
+from apps.channels.models import HostedChatReadState, WhatsAppMessage
 from apps.crm.models import Lead
 from services.channels.hosted_whatsapp_service import (
     handle_gateway_event as legacy_handle_gateway_event,
@@ -22,9 +29,10 @@ from services.channels.hosted_whatsapp_service import (
 )
 
 
-MAX_CONVERSATION_SCAN = 20000
-MAX_CONVERSATIONS = 250
-MAX_THREAD_MESSAGES = 1000
+MAX_CONVERSATIONS = 1000
+MAX_THREAD_MESSAGES = 60
+PAGE_SALT = "hosted-chat-page-v1"
+READ_SALT = "hosted-chat-read-v1"
 
 
 def _payload(message):
@@ -76,7 +84,7 @@ def _message_sort_key(message):
         timestamp = float(_payload(message).get("timestamp") or 0)
     except (TypeError, ValueError):
         timestamp = 0
-    if timestamp <= 0:
+    if not math.isfinite(timestamp) or timestamp <= 0:
         timestamp = message.created_at.timestamp()
     return timestamp, str(message.id)
 
@@ -117,7 +125,8 @@ def chat_name_for_message(message):
     payload = _payload(message)
     key = chat_key_for_message(message)
     return (
-        _raw_id(payload.get("contactName"))
+        _raw_id(payload.get("profileName"))
+        or _raw_id(payload.get("contactName"))
         or _raw_id(payload.get("chatName"))
         or (message.lead.name if message.lead else "")
         or _phone_from_value(payload.get("peerPhone"))
@@ -259,7 +268,8 @@ def queue_hosted_chat_refresh(*, account_id, reason="message", chat_key=""):
             account_id=account_id,
             reason=reason,
             chat_key=chat_key,
-        )
+        ),
+        robust=True,
     )
 
 
@@ -277,7 +287,11 @@ def handle_hosted_gateway_event(*, payload):
                 continue
             message = (
                 WhatsAppMessage.objects.select_related("account", "lead")
-                .filter(external_id=f"wweb:{item['messageId']}")
+                .filter(
+                    external_id=f"wweb:{item['messageId']}",
+                    account_id=payload.get("sessionId"),
+                    account__is_active=True,
+                )
                 .first()
             )
             if message:
@@ -315,7 +329,10 @@ def handle_hosted_gateway_event(*, payload):
             queue_hosted_chat_refresh(account_id=session_id, reason="status")
         return result
 
-    if event in {"history_complete", "history_failed"}:
+    if event in {
+        "history_complete", "history_failed", "ready", "running", "connecting",
+        "authenticated", "syncing", "disconnected", "logout", "auth_failure", "failed",
+    }:
         session_id = payload.get("sessionId")
         if session_id:
             queue_hosted_chat_refresh(account_id=session_id, reason=event)
@@ -404,8 +421,8 @@ def _selected_thread_queryset(account, selected, raw_chat_ids=None):
 
     if selected.startswith("+"):
         lookup = (
-            Q(from_number=selected)
-            | Q(to_number=selected)
+            Q(direction=WhatsAppMessage.Direction.INBOUND, from_number=selected)
+            | Q(direction=WhatsAppMessage.Direction.OUTBOUND, to_number=selected)
             | Q(raw_payload__peerPhone=selected)
             | Q(raw_payload__peerKey=selected)
         )
@@ -416,26 +433,68 @@ def _selected_thread_queryset(account, selected, raw_chat_ids=None):
 
     if "@" in selected:
         return base.filter(
-            Q(from_number=selected)
-            | Q(to_number=selected)
+            Q(direction=WhatsAppMessage.Direction.INBOUND, from_number=selected)
+            | Q(direction=WhatsAppMessage.Direction.OUTBOUND, to_number=selected)
             | Q(raw_payload__peerKey=selected)
             | Q(raw_payload__rawChatId=selected)
             | Q(raw_payload__chatId=selected)
         )
 
-    return base
+    return base.none()
 
 
-def build_hosted_chat_snapshot(*, account, selected_chat="", query=""):
-    """Build a WhatsApp-like conversation list and complete selected thread."""
-    recent_messages = list(
-        WhatsAppMessage.objects.filter(
-            organization=account.organization,
-            account=account,
+def _conversation_heads(account):
+    """One representative per identity/name, with exact SQL unread counts.
+
+    Windowing replaces the truncated 20,000-message Python scan. Retaining a
+    representative for older names and LID identities preserves alias repair
+    and name search without materializing every message in a busy inbox.
+    """
+    def text(key):
+        return Coalesce(
+            NullIf(KeyTextTransform(key, "raw_payload"), Value("")),
+            Value(""), output_field=TextField(),
         )
-        .select_related("lead", "account")
-        .order_by("-created_at")[:MAX_CONVERSATION_SCAN]
+
+    base = WhatsAppMessage.objects.filter(
+        organization_id=account.organization_id, account=account,
+    ).annotate(
+        _peer=Case(
+            When(direction=WhatsAppMessage.Direction.INBOUND, then=F("from_number")),
+            default=F("to_number"), output_field=TextField(),
+        ),
+        _raw=Coalesce(
+            NullIf(text("rawChatId"), Value("")), text("chatId"),
+            output_field=TextField(),
+        ),
+        _contact=Coalesce(
+            NullIf(text("profileName"), Value("")),
+            NullIf(text("contactName"), Value("")), text("chatName"),
+            output_field=TextField(),
+        ),
+        _phone=text("peerPhone"), _key=text("peerKey"),
     )
+    partition = [F(key) for key in ("_peer", "_raw", "_contact", "_phone", "_key")]
+    return base.annotate(
+        _chat_rank=Window(
+            RowNumber(), partition_by=partition,
+            order_by=[F("created_at").desc(), F("id").desc()],
+        ),
+        _unread=Window(
+            Count("id", filter=Q(direction=WhatsAppMessage.Direction.INBOUND, is_read=False)),
+            partition_by=partition,
+        ),
+    ).filter(_chat_rank=1).select_related("lead", "lead__stage", "account").defer(
+        "media_payload", "error",
+    ).order_by("-created_at", "-id")
+
+
+def build_hosted_chat_snapshot(
+    *, account, selected_chat="", query="", before="", auto_select=True,
+):
+    """Read the inbox and a keyset-paginated thread; never change read state."""
+    snapshot_at = timezone.now()
+    recent_messages = list(_conversation_heads(account))
     recent_messages.sort(key=_message_sort_key, reverse=True)
 
     aliases = _conversation_aliases(recent_messages)
@@ -489,38 +548,71 @@ def build_hosted_chat_snapshot(*, account, selected_chat="", query=""):
             if candidate_quality > current_quality:
                 row["name"] = name
 
-        if message.direction == WhatsAppMessage.Direction.INBOUND and not message.is_read:
-            conversations[key]["unread"] += 1
+        conversations[key]["unread"] += message._unread
+
+    # The current CRM row, not message-time snapshots, owns stage/name data.
+    phones = {row["phone"] for row in conversations.values() if row["phone"]}
+    leads = {
+        lead.phone: lead for lead in Lead.objects.filter(
+            organization_id=account.organization_id, phone__in=phones,
+        ).select_related("stage")
+    }
+    for row in conversations.values():
+        lead = None if row["is_group"] else leads.get(row["phone"])
+        row["lead_id"] = str(lead.pk) if lead else ""
+        row["stage_name"] = lead.stage.name if lead and lead.stage_id else ""
+        if lead and _name_quality(lead.name, phone=lead.phone, key=row["key"]) > 1:
+            row["name"] = lead.name
 
     rows = [row for row in conversations.values() if _search_matches(row, query)]
     rows = rows[:MAX_CONVERSATIONS]
 
     selected = str(selected_chat or "").strip()
     selected = aliases.get(selected, selected)
-    if not selected and rows:
+    if auto_select and not selected and rows:
         selected = rows[0]["key"]
 
     thread = []
+    has_more = False
+    next_before = ""
+    read_token = ""
     if selected:
         selected_raw_ids = [
             raw_id
             for raw_id, canonical in aliases.items()
             if canonical == selected
         ]
-        candidates = list(
-            _selected_thread_queryset(
-                account,
-                selected,
-                raw_chat_ids=selected_raw_ids,
-            )
-            .order_by("-created_at")[:MAX_THREAD_MESSAGES]
-        )
-        thread = [
-            message
-            for message in candidates
-            if _canonical_chat_key(message, aliases) == selected
-        ]
-        thread.sort(key=_message_sort_key)
+        candidates = _selected_thread_queryset(account, selected, raw_chat_ids=selected_raw_ids)
+        if before:
+            try:
+                cursor = signing.loads(before, salt=PAGE_SALT, max_age=86400)
+                if cursor["account"] != str(account.pk) or cursor["chat"] != selected:
+                    raise ValueError("Cursor belongs to a different chat.")
+                cutoff = parse_datetime(cursor["at"])
+                if cutoff is None:
+                    raise ValueError("Invalid chat cursor.")
+                candidates = candidates.filter(
+                    Q(created_at__lt=cutoff) | Q(created_at=cutoff, id__lt=cursor["id"])
+                )
+            except (signing.BadSignature, KeyError, TypeError, ValueError) as exc:
+                raise ValueError("Invalid or expired chat cursor.") from exc
+        page = list(candidates.order_by("-created_at", "-id")[:MAX_THREAD_MESSAGES + 1])
+        has_more = len(page) > MAX_THREAD_MESSAGES
+        thread = page[:MAX_THREAD_MESSAGES]
+        if has_more and thread:
+            oldest = thread[-1]
+            next_before = signing.dumps({
+                "account": str(account.pk), "chat": selected,
+                "at": oldest.created_at.isoformat(), "id": str(oldest.pk),
+            }, salt=PAGE_SALT, compress=True)
+        if thread and not before:
+            newest = thread[0]
+            read_token = signing.dumps({
+                "account": str(account.pk), "organization": str(account.organization_id),
+                "chat": selected, "raw_ids": selected_raw_ids,
+                "at": newest.created_at.isoformat(), "observed": snapshot_at.isoformat(),
+            }, salt=READ_SALT, compress=True)
+        thread.reverse()
 
     selected_row = conversations.get(selected, {})
     selected_name = selected_row.get("name") or selected
@@ -531,6 +623,9 @@ def build_hosted_chat_snapshot(*, account, selected_chat="", query=""):
         "selected_name": selected_name,
         "thread": thread,
         "total_conversations": len(conversations),
+        "has_more": has_more,
+        "next_before": next_before,
+        "read_token": read_token,
     }
 
 
@@ -543,6 +638,9 @@ def serialize_hosted_chat_snapshot(snapshot):
         "selected_chat": snapshot["selected_chat"],
         "selected_name": snapshot["selected_name"],
         "total_conversations": snapshot["total_conversations"],
+        "has_more": snapshot.get("has_more", False),
+        "next_before": snapshot.get("next_before", ""),
+        "read_token": snapshot.get("read_token", ""),
         "thread": [
             {
                 "id": str(message.id),
@@ -557,3 +655,40 @@ def serialize_hosted_chat_snapshot(snapshot):
             for message in snapshot["thread"]
         ],
     }
+
+
+@transaction.atomic
+def mark_hosted_chat_read(*, account, token):
+    """Acknowledge only the signed snapshot actually rendered in this account.
+
+    A newer inbound arriving while the browser renders the response remains
+    unread, even when WhatsApp timestamps arrive out of order or in one second.
+    """
+    try:
+        data = signing.loads(token, salt=READ_SALT, max_age=300)
+        if (data["account"] != str(account.pk)
+                or data["organization"] != str(account.organization_id)):
+            raise ValueError("Wrong account.")
+        at = parse_datetime(data["at"])
+        observed = parse_datetime(data["observed"])
+        if at is None or observed is None:
+            raise ValueError("Invalid read boundary.")
+        chat = data["chat"]
+        raw_ids = data["raw_ids"]
+    except (signing.BadSignature, KeyError, TypeError, ValueError) as exc:
+        raise ValueError("Invalid or expired read receipt.") from exc
+
+    for key in sorted(set([chat, *raw_ids])):
+        state, _ = HostedChatReadState.objects.select_for_update().get_or_create(
+            account=account, chat_key=key, defaults={"read_through_at": at},
+        )
+        if state.read_through_at < at:
+            state.read_through_at = at
+            state.save(update_fields=["read_through_at", "updated_at"])
+    count = _selected_thread_queryset(account, chat, raw_chat_ids=raw_ids).filter(
+        direction=WhatsAppMessage.Direction.INBOUND, is_read=False,
+        created_at__lte=at, updated_at__lte=observed,
+    ).update(is_read=True)
+    if count:
+        queue_hosted_chat_refresh(account_id=account.pk, reason="read", chat_key=chat)
+    return count

@@ -25,6 +25,7 @@ from apps.organizations.features import is_hosted_account_enabled
 from services.channels.hosted_chat_service import (
     build_hosted_chat_snapshot,
     handle_hosted_gateway_event,
+    mark_hosted_chat_read,
     queue_hosted_chat_refresh,
     serialize_hosted_chat_snapshot,
 )
@@ -181,7 +182,9 @@ def _serialize_snapshot(snapshot, account):
 
 
 def _repair_live_status(account):
-    """Reconcile a restored gateway session before rendering the inbox."""
+    """Repair a stale disconnected row, not every healthy page navigation."""
+    if account.status == WhatsAppAccount.Status.CONNECTED:
+        return
     try:
         result = WhatsAppWebClient().get_session(session_id=account.id)
     except WhatsAppWebGatewayError:
@@ -211,28 +214,6 @@ def _request_history_refresh(account):
     return True
 
 
-def _mark_thread_read(snapshot):
-    thread = snapshot.get("thread") or []
-    if not thread:
-        return
-    ids = [
-        message.id
-        for message in thread
-        if (
-            message.direction == WhatsAppMessage.Direction.INBOUND
-            and not message.is_read
-        )
-    ]
-    if ids:
-        WhatsAppMessage.objects.filter(id__in=ids).update(is_read=True)
-    selected = snapshot.get("selected_chat")
-    if selected:
-        for row in snapshot.get("conversations") or []:
-            if row.get("key") == selected:
-                row["unread"] = 0
-                break
-
-
 @crm_login_required
 @require_GET
 def hosted_session_chats_view(request, account_id):
@@ -247,10 +228,10 @@ def hosted_session_chats_view(request, account_id):
         account=account,
         selected_chat=requested_chat,
         query=request.GET.get("q", ""),
+        auto_select=False,
     )
     _apply_inbox_policy(snapshot, requested_chat=requested_chat)
     decorate_hosted_chat_snapshot(snapshot)
-    _mark_thread_read(snapshot)
 
     return render(
         request,
@@ -275,14 +256,18 @@ def hosted_session_chats_data_view(request, account_id):
         raise Http404
 
     requested_chat = request.GET.get("chat", "")
-    snapshot = build_hosted_chat_snapshot(
-        account=account,
-        selected_chat=requested_chat,
-        query=request.GET.get("q", ""),
-    )
+    try:
+        snapshot = build_hosted_chat_snapshot(
+            account=account,
+            selected_chat=requested_chat,
+            query=request.GET.get("q", ""),
+            before=request.GET.get("before", ""),
+            auto_select=False,
+        )
+    except ValueError as exc:
+        return JsonResponse({"ok": False, "error": str(exc)}, status=400)
     _apply_inbox_policy(snapshot, requested_chat=requested_chat)
     decorate_hosted_chat_snapshot(snapshot)
-    _mark_thread_read(snapshot)
     payload = _serialize_snapshot(snapshot, account)
     payload.update(
         {
@@ -292,6 +277,20 @@ def hosted_session_chats_data_view(request, account_id):
         }
     )
     return JsonResponse(payload)
+
+
+@crm_login_required
+@require_POST
+def hosted_session_chat_read_view(request, account_id):
+    account = _hosted_account(request, account_id)
+    if not account:
+        raise Http404
+    data = _payload(request)
+    try:
+        count = mark_hosted_chat_read(account=account, token=data.get("token", ""))
+    except (ValueError, AttributeError) as exc:
+        return JsonResponse({"ok": False, "error": str(exc)}, status=400)
+    return JsonResponse({"ok": True, "marked_read": count})
 
 
 @crm_login_required
