@@ -14,6 +14,16 @@ from apps.ai_engagement.services.intent_runtime import install_intent_runtime
 # observability to record the resulting IntentDecision without owning policy.
 install_intent_runtime()
 
+# Complete the Phase 7 planner boundary only after the canonical Phase 2-6
+# runtimes and grounding guards have been installed by AppConfig.ready(). The
+# bridge reuses their bounded turn/trace state, adds no LLM call, and preserves
+# CRMActionExecutor as the sole mutation authority.
+from apps.ai_engagement.services.phase7_completion_runtime import (  # noqa: E402
+    install_phase7_completion_runtime,
+)
+
+install_phase7_completion_runtime()
+
 
 @receiver(post_save, sender=WhatsAppMessage, dispatch_uid="ai_trace_delivery_status")
 def update_ai_trace_delivery(sender, instance, **kwargs):
