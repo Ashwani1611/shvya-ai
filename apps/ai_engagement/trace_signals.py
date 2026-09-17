@@ -6,7 +6,16 @@ from django.dispatch import receiver
 
 from apps.channels.models import WhatsAppMessage
 from apps.ai_engagement.services.intent_runtime import install_intent_runtime
+from apps.ai_engagement.services.phase5_6_safety_fixes import (
+    install_phase5_6_safety_fixes,
+)
 
+
+# Phase 5/6 audit safeguards stay inside the canonical shared runtime. They
+# tighten evidence authority, reuse backend-owned CRM/qualification truth for
+# memory, and skip the second grounding model call only on provably low-risk or
+# extractively grounded replies. No transport-specific reasoning path is added.
+install_phase5_6_safety_fixes()
 
 # Phase 2 customer-message understanding is installed immediately before the
 # Phase 1 trace runtime wraps the shared context builder. This keeps one Intent
