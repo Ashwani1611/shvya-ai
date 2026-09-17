@@ -55,6 +55,56 @@ def scheduled_at(action, lead, reference):
     return due
 
 
+def run_block_reason(run, lead):
+    """Recheck cancellation and tenant boundaries at the execution boundary."""
+    if (run.rule.organization_id != lead.organization_id
+            or run.event.organization_id != lead.organization_id):
+        return "Workflow data does not belong to the lead organization."
+    if not lead.organization.is_active:
+        return "Organization is inactive."
+    if not run.rule.enabled:
+        return "Workflow is disabled."
+    if not timer_valid(run.event, lead):
+        return "Timer cancelled by newer lead activity."
+    return ""
+
+
+def workflow_message_block_reason(message):
+    """No provider call here; used by every retry of a tagged workflow send."""
+    payload = message.raw_payload if isinstance(message.raw_payload, dict) else {}
+    metadata = payload.get("shvya_workflow")
+    if not isinstance(metadata, dict):
+        return "Invalid workflow delivery metadata."
+    try:
+        run = TriggerRun.objects.select_related(
+            "rule", "event", "lead__organization", "lead__pipeline", "lead__stage"
+        ).filter(id=metadata.get("run_id"), message_id=message.pk).first()
+    except (ValueError, ValidationError):
+        return "Invalid workflow delivery reference."
+    if run is None:
+        return "Workflow was deleted or its delivery reference is unavailable."
+    if (run.lead_id != message.lead_id
+            or run.rule.organization_id != message.organization_id
+            or message.account.organization_id != message.organization_id
+            or str(message.account_id) != str(run.action.get("account"))):
+        return "Workflow sender or lead does not match the queued message."
+    reason = run_block_reason(run, run.lead)
+    if reason:
+        return reason
+    if run.status not in ("queued", "dispatching"):
+        return "Workflow delivery is no longer pending."
+    if (not message.account.is_active or message.account.status != "connected"
+            or message.account.connection_type != WhatsAppAccount.ConnectionType.API):
+        return "The selected WhatsApp API account is no longer connected."
+    if not WhatsAppMessage.objects.filter(
+        organization_id=message.organization_id, lead_id=message.lead_id,
+        account_id=message.account_id, direction="inbound",
+        created_at__gte=timezone.now() - timedelta(hours=24),
+    ).exists():
+        return "WhatsApp reply window expired. Use an approved-template Cadence sequence."
+    return ""
+
+
 @transaction.atomic
 def execute(run_id):
     initial = TriggerRun.objects.get(id=run_id)
@@ -65,15 +115,14 @@ def execute(run_id):
     )
     run = (
         TriggerRun.objects.select_for_update(of=("self",))
-        .select_related("rule", "rule__created_by")
+        .select_related("rule", "rule__created_by", "event")
         .get(id=run_id)
     )
     if run.status not in ("pending", "scheduled") or run.due_at > timezone.now():
         return
-    if not run.rule.enabled or not lead.organization.is_active:
-        run.status, run.detail = "skipped", "Rule is disabled."
-    elif not timer_valid(run.event, lead):
-        run.status, run.detail = "skipped", "Timer cancelled by newer lead activity."
+    reason = run_block_reason(run, lead)
+    if reason:
+        run.status, run.detail = "skipped", reason
     else:
         try:
             # Roll back partial CRM work if an action fails.
@@ -100,8 +149,10 @@ def execute(run_id):
                 "failed",
                 "The action could not complete. Contact an administrator with this run ID.",
             )
-    if run.status not in ("pending", "scheduled"):
-        run.finished_at = timezone.now()
+    run.finished_at = (
+        None if run.status in ("pending", "scheduled", "queued", "email_ready")
+        else timezone.now()
+    )
     run.save()
 
 
@@ -109,6 +160,8 @@ def _apply(run, lead):
     a, kind = run.action, run.action_type
     actor = run.rule.created_by
     org = lead.organization
+    if actor and (actor.organization_id != lead.organization_id or not actor.is_active):
+        actor = None
     if kind == "start_sequence":
         if (
             not a["replace"]
@@ -180,15 +233,16 @@ def _apply(run, lead):
             assigned_to=actor,
             title=run.rule.name[:200],
             description=_render_text(a["note"], lead, actor),
-            due_at=run.created_at + delta(a),
+            due_at=run.event.created_at + delta(a),
         )
     elif kind == "message":
         if run.status == "pending":
-            run.due_at = scheduled_at(a, lead, run.created_at)
+            run.due_at = scheduled_at(a, lead, run.event.created_at)
             run.status = "scheduled"
             return
         account = WhatsAppAccount.objects.get(
-            id=a["account"], organization=org, is_active=True, status="connected"
+            id=a["account"], organization=org, is_active=True, status="connected",
+            connection_type=WhatsAppAccount.ConnectionType.API,
         )
         # SHVYA's API transport supports free text only in the active 24h window.
         if not WhatsAppMessage.objects.filter(
@@ -212,6 +266,11 @@ def _apply(run, lead):
             to_number=lead.phone,
             body=_render_text(a["body"], lead, actor),
         )
+        run.message.raw_payload = {
+            **(run.message.raw_payload or {}),
+            "shvya_workflow": {"run_id": str(run.id)},
+        }
+        run.message.save(update_fields=["raw_payload", "updated_at"])
         run.status, run.detail = "queued", "Queued through the WhatsApp API."
         return
     elif kind == "email":
@@ -234,12 +293,18 @@ def deliver_email(run_id):
         status="sending"
     ):
         return
-    run = TriggerRun.objects.select_related(
-        "lead__organization", "lead__pipeline", "lead__stage", "rule__created_by"
-    ).get(id=run_id)
     try:
-        if not run.rule.enabled:
-            run.status, run.detail = "skipped", "Rule is disabled."
+        run = TriggerRun.objects.select_related(
+            "lead__organization", "lead__pipeline", "lead__stage", "rule__created_by", "event"
+        ).get(id=run_id)
+    except TriggerRun.DoesNotExist:
+        return
+    try:
+        reason = run_block_reason(run, run.lead)
+        if reason:
+            run.status, run.detail = "skipped", reason
+        elif not run.lead.email:
+            run.status, run.detail = "skipped", "Lead has no email address."
         else:
             subject = (
                 _render_text(run.action["subject"], run.lead, run.rule.created_by)
@@ -247,13 +312,15 @@ def deliver_email(run_id):
                 .replace("\n", " ")
             )
             body = _render_text(run.action["body"], run.lead, run.rule.created_by)
-            send_organization_email(
+            sent = send_organization_email(
                 organization=run.lead.organization,
                 to=run.lead.email,
                 subject=subject,
                 text_body=body,
                 headers={"Message-ID": f"<smart-trigger-{run.id}@shvya-ai.com>"},
             )
+            if sent == 0:
+                raise EmailConfigurationError("The connected mailbox did not send the email.")
             run.status = "completed"
     except EmailConfigurationError as exc:
         run.status, run.detail = "failed", str(exc)[:1000]
