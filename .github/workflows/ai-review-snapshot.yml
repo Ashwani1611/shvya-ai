@@ -15,11 +15,18 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - name: Package only tracked source at the checked-out commit
-        run: git archive --format=zip --output=review-source.zip HEAD
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+      - name: Package tracked source and pinned test dependencies
+        run: |
+          git archive --format=zip --output=review-source.zip HEAD
+          python -m pip download -r requirements-dev.txt --dest wheelhouse
       - uses: actions/upload-artifact@v4
         with:
-          name: ai-review-source
-          path: review-source.zip
+          name: ai-review-kit
+          path: |
+            review-source.zip
+            wheelhouse/
           retention-days: 1
           if-no-files-found: error
