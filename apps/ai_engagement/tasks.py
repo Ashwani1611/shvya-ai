@@ -166,6 +166,12 @@ def dispatch_bump_ups():
             latest = locked_lead.whatsapp_messages.order_by("-created_at", "-id").first()
             if latest is None or latest.id != recent[0].id:
                 continue
+            from services.channels.hosted_whatsapp_service import account_ai_block_reason
+
+            if account_ai_block_reason(
+                account=account, lead=locked_lead, bump_up_number=len(bump_messages) + 1,
+            ):
+                continue
             outbound = queue_outbound_message(
                 organization=locked_lead.organization,
                 account=account,

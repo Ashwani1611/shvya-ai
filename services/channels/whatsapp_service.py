@@ -366,48 +366,31 @@ def handle_inbound_message(
     # RESOLVE / CREATE LEAD
     # --------------------------------------------------------
 
-    lead = None
+    from services.channels.hosted_whatsapp_service import get_session_settings
 
-    pipeline = resolve_pipeline(
-        organization=organization,
-        # Meta's phone_number_id is an opaque resource ID, not a phone.
-        # Prefer the account number even for older callers passing that ID.
-        to_number=account.display_phone_number or to_number,
-    )
-
-    if pipeline:
-
-        stage = _first_stage(
-            pipeline
+    # OFF prevents creation, not receipt of messages or attachment to an
+    # existing CRM lead. Never reassign an existing lead's pipeline/stage.
+    lead = Lead.objects.filter(
+        organization=organization, phone=normalized_lead_phone,
+    ).first()
+    controls = get_session_settings(account=account)
+    if lead is None and controls["auto_lead_creation"]:
+        pipeline = resolve_pipeline(
+            organization=organization,
+            to_number=account.display_phone_number or to_number,
         )
-
+        stage = _first_stage(pipeline) if pipeline else None
         if stage:
-
             try:
-
                 lead, _created = upsert_lead(
-                    organization=organization,
-                    pipeline=pipeline,
-                    stage=stage,
-                    name=from_number,
-                    phone=normalized_lead_phone,
+                    organization=organization, pipeline=pipeline, stage=stage,
+                    name=from_number, phone=normalized_lead_phone,
                     lead_source="whatsapp_api",
                 )
-
             except DjangoValidationError:
-
-                # Lead already exists under a different
-                # pipeline/stage. Do not fight the existing
-                # CRM assignment.
-
-                lead = (
-                    Lead.objects
-                    .filter(
-                        organization=organization,
-                        phone=normalized_lead_phone,
-                    )
-                    .first()
-                )
+                lead = Lead.objects.filter(
+                    organization=organization, phone=normalized_lead_phone,
+                ).first()
 
     # --------------------------------------------------------
     # CREATE INBOUND MESSAGE
@@ -1151,6 +1134,21 @@ def send_outbound_message(
         raise WhatsAppSendError(
             "WhatsApp account is not connected."
         )
+
+    payload = message.raw_payload if isinstance(message.raw_payload, dict) else {}
+    ai_metadata = payload.get("shvya_ai") or {}
+    if ai_metadata:
+        from services.channels.hosted_whatsapp_service import account_ai_block_reason
+
+        reason = account_ai_block_reason(
+            account=account, lead=message.lead,
+            bump_up_number=(ai_metadata.get("number", 1) if ai_metadata.get("origin") == "bump_up" else None),
+        )
+        if reason:
+            message.status = WhatsAppMessage.Status.FAILED
+            message.error = f"AI send cancelled: {reason}"
+            message.save(update_fields=["status", "error", "updated_at"])
+            raise WhatsAppSendError(message.error)
 
     client = WhatsAppClient(
         phone_number_id=account.phone_number_id,
