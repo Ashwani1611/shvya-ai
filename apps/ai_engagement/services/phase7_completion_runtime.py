@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 from functools import wraps
+from types import SimpleNamespace
 from typing import Any, Mapping
 
 
@@ -72,15 +73,20 @@ def _source_message(*, organization, lead, turn, supplied=None):
         return None
 
 
-def _intent_label(turn) -> str:
+def _intent_values(turn) -> tuple[str, ...]:
     decision = (turn or {}).get("intent_decision")
-    primary = getattr(getattr(decision, "primary_intent", None), "value", "")
+    primary = str(
+        getattr(getattr(decision, "primary_intent", None), "value", "") or ""
+    ).strip()
     secondary = [
         str(getattr(item, "value", item) or "").strip()
         for item in (getattr(decision, "secondary_intents", ()) or ())
     ]
-    values = [str(primary or "").strip(), *secondary]
-    return "+".join(item for item in values if item)
+    return tuple(item for item in (primary, *secondary) if item)
+
+
+def _intent_label(turn) -> str:
+    return "+".join(_intent_values(turn))
 
 
 def _policy_values(turn) -> tuple[str, str]:
@@ -170,6 +176,35 @@ def _memory_refs(*, organization, lead) -> list[dict[str, Any]]:
     return refs
 
 
+def _decision_for_planning(decision, turn):
+    """Add a proposal-only safe fallback when structured intent requests a call.
+
+    A call request with a grounded date but no grounded time cannot legally become
+    CREATE_REMINDER because inventing a due time would violate the reminder
+    schema. In that case Phase 7 still needs a structured proposal boundary, so
+    the planner emits its existing non-executing HUMAN_HANDOFF proposal while the
+    source intent/policy retain that this was a CALL_REQUEST. The executor sees no
+    new mutation action from this fallback.
+    """
+    intents = set(_intent_values(turn))
+    if "CALL_REQUEST" not in intents:
+        return decision
+    actions = [
+        dict(item)
+        for item in (getattr(decision, "crm_actions", None) or [])
+        if isinstance(item, Mapping)
+    ]
+    if any(item.get("type") == "create_reminder" for item in actions):
+        return decision
+    if str(getattr(decision, "reason_code", "") or "").upper() == "HUMAN_HANDOFF":
+        return decision
+    return SimpleNamespace(
+        crm_actions=actions,
+        file_document_id=getattr(decision, "file_document_id", None),
+        reason_code="HUMAN_HANDOFF",
+    )
+
+
 def _install_planner_provenance_bridge() -> None:
     from apps.ai_engagement.services.action_planner import ActionPlanner
 
@@ -197,11 +232,12 @@ def _install_planner_provenance_bridge() -> None:
             supplied=source_message,
         )
         inferred_policy, inferred_outcome = _policy_values(turn)
+        planning_decision = _decision_for_planning(decision, turn)
         return original(
             self,
             organization=organization,
             lead=lead,
-            decision=decision,
+            decision=planning_decision,
             source_message=message,
             source_intent=source_intent or _intent_label(turn),
             source_policy=source_policy or inferred_policy,
@@ -313,5 +349,6 @@ def install_phase7_completion_runtime() -> None:
 
 __all__ = [
     "install_phase7_completion_runtime",
+    "_decision_for_planning",
     "_deterministically_supported_reply",
 ]
