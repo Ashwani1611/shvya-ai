@@ -42,6 +42,14 @@ jobs:
           PY
           git diff --binary "$SOURCE_BASE" "$SOURCE_HEAD" > /tmp/workflows.patch
           git apply --3way --index /tmp/workflows.patch
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('services/triggers/evaluator.py')
+          original = p.read_bytes()
+          normalized = original.replace(b'\r\n', b'\n')
+          assert original.decode().splitlines() == normalized.decode().splitlines()
+          p.write_bytes(normalized)
+          PY
           node --check static/triggers/dashboard.js
           python -m compileall -q services/triggers apps/triggers apps/channels/tasks.py
           rm .github/workflows/workflows-promote-patch.yml
