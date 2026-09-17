@@ -1,0 +1,17 @@
+<section class="section opportunity" id="calculator">
+  <div class="calculator-wrap">
+    <div class="calculator-intro"><div class="eyebrow centered">Opportunity calculator</div><h2 class="section-title">You paid for the enquiry. What if the follow-up won the sale?</h2><p class="section-copy">For founders, SME owners and entrepreneurs: put your own numbers to the enquiries that go quiet. Explore what a consistent follow-up process could be worth to your business.</p></div>
+    <div class="calc-shell">
+      <div class="calc-panel">
+        <div class="field"><label for="businessExample">Start with an example like your business</label><select id="businessExample" style="width:100%;padding:14px;border:1px solid #d7dfdf;border-radius:12px;background:#141719;color:#f5f5f3"><option value="services">Services &amp; agencies</option><option value="education">Coaching &amp; education</option><option value="retail">Retail &amp; D2C</option><option value="b2b">B2B &amp; manufacturing</option><option value="property">Real estate</option></select><p id="businessContext" class="calc-note">A prospect asks for a quote, then goes quiet. A timely follow-up can restart the conversation.</p><p class="calc-note">Example assumptions only. Replace them with your own business numbers.</p></div>
+        <div class="field-row">
+          <div class="field"><label for="leadCount">Enquiries you receive each month</label><input type="number" id="leadCount" min="0" step="10" value="500"></div>
+          <div class="field"><label for="dealValue">Average value of one sale (₹)</label><input type="number" id="dealValue" min="0" step="500" value="10000"></div>
+        </div>
+        <div class="field"><div class="range-head"><label for="recoveryRate">Share of all enquiries you could recover</label><span class="range-value" id="recoveryLabel">5%</span></div><input type="range" id="recoveryRate" min="0" max="100" value="5"></div>
+        <div class="field"><div class="range-head"><label for="closeRate">Recovered enquiries that become sales</label><span class="range-value" id="closeLabel">20%</span></div><input type="range" id="closeRate" min="0" max="100" value="20"></div>
+      </div>
+      <div class="calc-result" aria-live="polite" aria-atomic="true"><div class="calc-kicker">Illustrative monthly opportunity</div><div class="calc-big" id="monthlyValue">₹50,000</div><div class="calc-small"><span id="calcExplanation">500 enquiries × 5% recovered = 25 conversations. At a 20% close rate, that is 5 potential sales × ₹10,000.</span></div><div class="calc-divider"></div><div class="calc-kicker">Illustrative annual opportunity</div><div class="annual" id="annualValue">₹6,00,000</div><a id="calcBooking" class="button" style="margin-top:24px" href="{% url 'book_call' %}?interest=Follow-up%20opportunity">Discuss my numbers with SHVYA</a><div class="calc-note">Scenario estimate, not a revenue or performance guarantee. This is potential sales value before costs, not profit. Annual value assumes the same results for 12 months. Actual outcomes depend on lead quality, response timing, sales process, pricing, team execution and many other factors.</div></div>
+    </div>
+  </div>
+</section>

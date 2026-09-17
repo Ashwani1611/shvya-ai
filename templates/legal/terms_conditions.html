@@ -1,9 +1,6 @@
-{% extends "legal/base_legal.html" %}
-{% block title %}Terms & Conditions — SHVYA AI{% endblock %}
-{% block page_title %}Terms & Conditions{% endblock %}
-{% block updated_date %}02/09/2026{% endblock %}
-
-{% block content %}
+{% extends "marketing/dark_base.html" %}
+{% block title %}terms conditions — SHVYA AI{% endblock %}
+{% block content %}<header><a class="brand" href="/"><img src="/static/marketing/dark/logo.png" alt=""/><img class="wordmark" src="/static/marketing/dark/wordmark.png" alt="SHVYA AI"/></a><nav><a href="/features/">Features</a><a href="/pricing/">Pricing</a><details class="nav-dropdown"><summary>SHVYA ecosystem <span>⌄</span></summary><div><a href="/services/">SHVYA Services ↗</a><a href="/product-suite/">SHVYA Product Suite ↗</a><a href="/#integrations">Integrations ↗</a></div></details><a href="/docs/">Documentation</a></nav><div class="header-actions"><a class="button small" href="/book-a-call/">Book a call <span>↗</span></a><details class="mobile-menu"><summary aria-label="Open navigation">☰</summary><div><a href="/features/">Features ↗</a><a href="/pricing/">Pricing ↗</a><a href="/services/">SHVYA Services ↗</a><a href="/product-suite/">SHVYA Product Suite ↗</a><a href="/#integrations">Integrations ↗</a><a href="/docs/">Documentation ↗</a></div></details></div></header><main class="legal-layout"><aside><p class="eyebrow">SHVYA / LEGAL</p><a class="" href="/privacy-policy/">Privacy Policy</a><a class="active" href="/terms-conditions/">Terms &amp; Conditions</a><a class="" href="/cookie-policy/">Cookie Policy</a><a class="" href="/refund-policy/">Refund Policy</a></aside><article class="legal-content"><p class="eyebrow">TECJNANAM ACADEMY LLP / SHVYA</p><h1>Terms &amp; Conditions</h1><p class="legal-date">Last updated: 02/09/2026</p><div>
 <p><strong>Operated by:</strong> Tecjnanam Academy LLP &nbsp;|&nbsp; <strong>Brand:</strong> Shvya</p>
 <p>By accessing, purchasing, deploying, or using any Shvya product or service, you agree to the following Terms & Conditions. Please read them carefully.</p>
 
@@ -54,12 +51,12 @@
 <p>Shvya does not offer recurring monthly subscription plans unless explicitly stated.</p>
 
 <h2>6. Refund Policy</h2>
-<p>Refunds are governed strictly by Shvya's <a class="inline-link" href="{% url 'refund_policy' %}">Refund Policy</a>. In summary:</p>
+<p>Refunds are governed strictly by Shvya's <a class="inline-link" href="/refund-policy/">Refund Policy</a>. In summary:</p>
 <ul>
   <li>Refunds are only available within the first 7 days after deployment.</li>
   <li>After the 7-day window, no refunds will be issued under any circumstances.</li>
   <li>Setup/deployment fees and custom work fees are non-refundable.</li>
-  <li>Refund requests must be emailed to shvyaai@gmail.com.</li>
+  <li>Refund requests must be emailed to <a href="mailto:shvyaai@gmail.com">shvyaai@gmail.com</a>.</li>
 </ul>
 
 <h2>7. Cancellation Policy</h2>
@@ -74,7 +71,7 @@
 <p>All Shvya products, code, UI/UX designs, branding, features, documentation, logos, and intellectual property are exclusively owned by Tecjnanam Academy LLP. Users are not allowed to copy, modify, resell, clone, reverse engineer, reproduce, or distribute any part of Shvya's proprietary software or materials. Violations may result in legal action.</p>
 
 <h2>9. User Data & Privacy</h2>
-<p>Your data is handled as per our <a class="inline-link" href="{% url 'privacy_policy' %}">Privacy Policy</a>. Shvya may collect necessary user data such as contact details, usage data, feedback, system logs, and inquiry data. Data is used to provide, improve, and support the services.</p>
+<p>Your data is handled as per our <a class="inline-link" href="/privacy-policy/">Privacy Policy</a>. Shvya may collect necessary user data such as contact details, usage data, feedback, system logs, and inquiry data. Data is used to provide, improve, and support the services.</p>
 
 <h2>10. Support & Issue Resolution</h2>
 <p>Shvya provides technical support based on the product and service purchased. Support covers bug fixes, technical guidance, system navigation help, and issue diagnosis.</p>
@@ -99,8 +96,8 @@
 
 <div class="contact-box">
   <h3>16. Contact Information</h3>
-  <p style="margin-bottom:4px;">Email: shvyaai@gmail.com</p>
-  <p style="margin-bottom:4px;">Website: <a class="legal-site-link" href="https://shvya-ai.com/">https://shvya-ai.com/</a></p>
-  <p style="margin-bottom:0;">Phone: +91-8700274739 (optional)</p>
+  <p>Email: <a href="mailto:shvyaai@gmail.com">shvyaai@gmail.com</a></p>
+  <p>Website: <a class="legal-site-link" href="https://shvya-ai.com/">https://shvya-ai.com/</a></p>
+  <p>Phone: +91-8700274739</p>
 </div>
-{% endblock %}
+</div><a class="text-link" href="/">← Back to Shvya AI</a></article></main><footer class="site-footer"><div class="footer-intro"><a class="brand" href="/"><img src="/static/marketing/dark/logo.png" alt=""/><img class="wordmark" src="/static/marketing/dark/wordmark.png" alt="SHVYA AI"/></a><p>More conversations.<br/>More possibilities.</p><a href="mailto:shvyaai@gmail.com">shvyaai@gmail.com</a></div><div class="footer-column"><h3>Explore Shvya</h3><a href="/features/">Features</a><a href="/pricing/">Pricing</a><a href="/services/">SHVYA Services</a><a href="/product-suite/">SHVYA Product Suite</a></div><div class="footer-column"><h3>Resources</h3><a href="/docs/">Documentation</a><a href="/#integrations">Integrations</a><a href="/book-a-call/">Book a call</a><a href="/dashboard/">Dashboard ↗</a></div><div class="footer-column"><h3>Legal</h3><a href="/privacy-policy/">Privacy Policy</a><a href="/terms-conditions/">Terms &amp; Conditions</a><a href="/cookie-policy/">Cookie Policy</a><a href="/refund-policy/">Refund Policy</a></div><div class="footer-bottom"><small>© 2026 Shvya AI · Tecjnanam Academy LLP</small><span>Built for the way India does business.</span></div></footer>{% endblock %}
