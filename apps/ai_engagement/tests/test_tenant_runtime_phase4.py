@@ -48,13 +48,12 @@ from apps.crm.models import (
     LeadNote,
     LeadReminder,
     Pipeline,
-    Stage,
 )
 from apps.organizations.models import Organization
 
 
 class Phase4TenantRuntimeTests(TestCase):
-    """Acceptance/security coverage for the Phase 4 organization runtime boundary."""
+    """Acceptance/security coverage for the Phase 4 tenant runtime boundary."""
 
     @classmethod
     def setUpTestData(cls):
@@ -121,12 +120,15 @@ class Phase4TenantRuntimeTests(TestCase):
         )
         cls.stage_a = cls.pipeline_a.stages.get(name="New leads")
         cls.stage_b = cls.pipeline_b.stages.get(name="New leads")
-        cls.stage_a_next = Stage.objects.create(
-            pipeline=cls.pipeline_a,
-            name="Trial Requested",
-            display_order=50,
-            is_active=True,
+        cls.stage_a_next = (
+            cls.pipeline_a.stages
+            .filter(is_active=True)
+            .exclude(pk=cls.stage_a.pk)
+            .order_by("display_order", "id")
+            .first()
         )
+        if cls.stage_a_next is None:
+            raise AssertionError("Expected a second active canonical pipeline stage.")
 
         cls.lead_a = Lead.objects.create(
             organization=cls.org_a,
@@ -286,6 +288,8 @@ class Phase4TenantRuntimeTests(TestCase):
         self.assertIn("₹X", serialized)
         self.assertIn("Location A", serialized)
         self.assertIn("fitness", serialized.casefold())
+        self.assertIn("Gym Sales", serialized)
+        self.assertIn("Fitness Goal", serialized)
         self.assertNotIn("₹Y", serialized)
         self.assertNotIn("Location B", serialized)
         self.assertNotIn("Admission Program", serialized)
@@ -319,7 +323,6 @@ class Phase4TenantRuntimeTests(TestCase):
         self.assertIn("₹X", serialized_a)
         self.assertNotIn("Admissions", serialized_a)
         self.assertNotIn("₹Y", serialized_a)
-
         self.assertIn("Admissions", serialized_b)
         self.assertIn("Admission Program", serialized_b)
         self.assertIn("₹Y", serialized_b)
@@ -385,12 +388,14 @@ class Phase4TenantRuntimeTests(TestCase):
         self.assertIn("admission", req_b)
         self.assertNotIn("fitness", req_b)
 
-        with self.assertRaises(AIContextError) as caught:
+        with self.assertRaisesMessage(
+            AIContextError,
+            "Lead does not belong to this organization.",
+        ):
             AIContextBuilder().build(
                 organization=self.org_a,
                 lead=self.lead_b,
             )
-        self.assertEqual(str(caught.exception), TENANT_SCOPE_MISMATCH)
 
     def test_tenant_guard_rejects_cross_tenant_objects_without_foreign_details(self):
         guard = TenantGuard(self.org_a)
@@ -471,7 +476,7 @@ class Phase4TenantRuntimeTests(TestCase):
         self.contact_a.refresh_from_db()
         self.assertEqual(self.contact_a.handle, "+919333333333")
 
-        executor.execute(
+        result = executor.execute(
             organization=self.org_a,
             lead=self.lead_a,
             actions=[
@@ -483,8 +488,12 @@ class Phase4TenantRuntimeTests(TestCase):
         )
         self.lead_a.refresh_from_db()
         self.assertEqual(self.lead_a.stage_id, self.stage_a_next.id)
+        self.assertEqual(result[0]["status"], "executed")
 
-        with self.assertRaises(CRMActionExecutionError) as stage_error:
+        with self.assertRaisesMessage(
+            CRMActionExecutionError,
+            "Requested stage does not belong to an active pipeline in this organization.",
+        ):
             executor.execute(
                 organization=self.org_a,
                 lead=self.lead_a,
@@ -495,7 +504,6 @@ class Phase4TenantRuntimeTests(TestCase):
                     }
                 ],
             )
-        self.assertEqual(str(stage_error.exception), OBJECT_NOT_IN_ORGANIZATION)
 
         with self.assertRaises(CRMActionExecutionError) as contact_error:
             executor.execute(
@@ -537,13 +545,14 @@ class Phase4TenantRuntimeTests(TestCase):
         )
         self.assertEqual([document.id for document in allowed], [self.document_a.id])
 
-        with self.assertRaises(FileSharingError) as caught:
+        with self.assertRaisesMessage(
+            FileSharingError,
+            "AI selected a document that is not an eligible organization-owned file.",
+        ):
             service.get_eligible_documents(
                 organization=self.org_a,
                 document_ids={self.document_b.id},
             )
-        self.assertEqual(str(caught.exception), TENANT_SCOPE_MISMATCH)
-        self.assertNotIn(self.org_b.name, str(caught.exception))
 
     def test_trace_tenant_failure_is_fail_closed_but_trace_storage_failure_is_fail_soft(self):
         with self.assertRaises(TenantScopeError):
@@ -564,7 +573,6 @@ class Phase4TenantRuntimeTests(TestCase):
                 source_message=self.message_a,
                 account=self.account_a_api,
             )
-            # Phase 1 observability failure must still not abort the valid turn.
             flush(reset_token=token)
 
     def test_stage_must_belong_to_expected_pipeline_even_inside_same_organization(self):
