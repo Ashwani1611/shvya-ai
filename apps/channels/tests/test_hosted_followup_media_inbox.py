@@ -203,6 +203,33 @@ class HostedFollowupMediaInboxTests(TestCase):
         send_message,
         _pause,
     ):
+        # A real scheduler-owned message has a scoped execution. Keep that
+        # contract here so this test reaches the intended transient transport
+        # failure instead of the final account-control safety gate.
+        from apps.crm.models import Lead
+        from apps.followups.models import FollowupExecution, FollowupSequence, FollowupStep
+        from services.channels.hosted_whatsapp_service import update_session_settings
+        from services.followup_service import assign_sequence
+
+        update_session_settings(account=self.account, payload={
+            "auto_follow_up": True, "business_hours_start": "00:00", "business_hours_end": "00:00",
+        })
+        lead = Lead.objects.create(
+            organization=self.org, pipeline=self.pipeline, stage=self.pipeline.stages.first(),
+            name="Follow-up customer", phone="+919877776666",
+        )
+        sequence = FollowupSequence.objects.create(
+            organization=self.org, name="Gateway retry", whatsapp_account=self.account, created_by=self.user,
+        )
+        step = FollowupStep.objects.create(
+            sequence=sequence, position=1, step_type=FollowupStep.StepType.WHATSAPP,
+            schedule_type=FollowupStep.ScheduleType.IMMEDIATE,
+        )
+        state = assign_sequence(lead=lead, sequence=sequence, actor=self.user)
+        execution = FollowupExecution.objects.create(
+            organization=self.org, state=state, lead=lead, sequence=sequence, step=step,
+            scheduled_for=state.upcoming_send_at, status=FollowupExecution.Status.PROCESSING,
+        )
         send_message.side_effect = WhatsAppWebGatewayError(
             "temporary gateway error",
             status_code=502,
@@ -219,13 +246,20 @@ class HostedFollowupMediaInboxTests(TestCase):
             raw_payload={
                 "shvya_auto_followup": {
                     "provider": "hosted",
-                    "sequence_id": "test-sequence",
+                    "sequence_id": str(sequence.pk),
+                    "execution_id": str(execution.pk),
                 }
             },
         )
 
+        message.lead = lead
+        message.save(update_fields=["lead", "updated_at"])
+        execution.whatsapp_message = message
+        execution.save(update_fields=["whatsapp_message", "updated_at"])
+
         with self.assertRaises(HostedAutomationPaused):
             send_hosted_message(message=message, defer_on_pause=True)
+        send_message.assert_called_once()
 
         message.refresh_from_db()
         self.assertEqual(message.status, WhatsAppMessage.Status.QUEUED)

@@ -42,6 +42,9 @@ def _default_settings_for_account(account):
     # Hosted linked-device sessions remain opt-in for automatic replies.
     if account.connection_type == WhatsAppAccount.ConnectionType.API:
         defaults["ai_auto_reply"] = True
+        # Existing API numbers created leads before the gear existed. Preserve
+        # that default only until a customer explicitly saves their preference.
+        defaults["auto_lead_creation"] = True
         # Before pipeline gears existed, API follow-up business hours and
         # conversation delay lived in AutoFollowupSettings. Use those values as
         # the initial defaults until this specific API number is saved through
@@ -213,12 +216,18 @@ def ensure_session_settings(*, account):
 
 
 def get_session_settings(*, account):
-    org_settings = account.organization.settings or {}
+    # Worker-held account/organization instances can outlive a settings save.
+    # Read persisted controls, never a cached related object's JSON snapshot.
+    org_settings = Organization.objects.filter(pk=account.organization_id).values_list(
+        "settings", flat=True
+    ).first() or {}
     sessions = org_settings.get("hosted_whatsapp", {}).get("sessions", {})
     settings = {
         **_default_settings_for_account(account),
         **deepcopy(sessions.get(str(account.id), {})),
     }
+    for key in ("ai_auto_reply", "auto_lead_creation", "bump_up_messages", "auto_follow_up"):
+        settings[key] = _as_bool(settings[key])
     pipeline = get_pipeline_for_account(account=account)
     if pipeline:
         # Pipeline.ai_enabled is the single source of truth used by Knowledge
@@ -258,6 +267,8 @@ def update_session_settings(*, account, payload):
         **_default_settings_for_account(account),
         **sessions.get(str(account.id), {}),
     }
+
+    previous_settings = deepcopy(current)
 
     for key in (
         "ai_auto_reply",
@@ -347,6 +358,24 @@ def update_session_settings(*, account, payload):
             defaults={"enabled": True},
         )
 
+    timing_keys = {
+        "auto_follow_up", "business_hours_start", "business_hours_end",
+        "active_conversation_delay_value", "active_conversation_delay_unit",
+    }
+    if any(current[key] != previous_settings[key] for key in timing_keys):
+        from services.followup_service import reschedule_account_followups
+
+        # Never acquire state locks while holding the organization-settings lock.
+        # A running sender owns its state until completion; subsequent work sees
+        # the newly committed controls, without restarting completed steps.
+        transaction.on_commit(
+            lambda account_id=account.pk, organization_id=organization.pk,
+            previous=deepcopy(previous_settings): reschedule_account_followups(
+                account_id=account_id, organization_id=organization_id,
+                previous_settings=previous,
+            ),
+            robust=True,
+        )
     return deepcopy(current)
 
 
@@ -678,3 +707,44 @@ def queued_messages(*, account):
         direction=WhatsAppMessage.Direction.OUTBOUND,
         status=WhatsAppMessage.Status.QUEUED,
     ).select_related("lead").order_by("created_at")
+
+
+def account_ai_block_reason(*, account, lead, bump_up_number=None):
+    """Evaluate live account controls at queue/send time for either provider."""
+    from apps.ai_engagement.models import OrgInfo
+    from apps.ai_engagement.services.ai_permissions import AIPermissionService
+
+    account = WhatsAppAccount.objects.select_related("organization").filter(
+        pk=account.pk, organization_id=account.organization_id,
+    ).first()
+    if account is None or not account.is_active:
+        return "whatsapp_account_inactive"
+    if account.status != WhatsAppAccount.Status.CONNECTED:
+        return "whatsapp_account_not_connected"
+    if lead is None:
+        return "lead_missing"
+    lead = Lead.objects.select_related("organization", "pipeline", "stage").filter(
+        pk=lead.pk, organization_id=account.organization_id,
+    ).first()
+    if lead is None:
+        return "lead_organization_mismatch"
+    decision = AIPermissionService().evaluate(organization=lead.organization, lead=lead)
+    if not decision.allowed:
+        return decision.reason
+    controls = get_session_settings(account=account)
+    if not controls["ai_auto_reply"]:
+        return "ai_auto_reply_disabled"
+    if bump_up_number is not None:
+        if not controls["bump_up_messages"]:
+            return "bump_up_messages_disabled"
+        org_info = OrgInfo.objects.filter(organization_id=account.organization_id).first()
+        if not org_info or not org_info.bump_up_enabled:
+            return "organization_bump_up_disabled"
+        try:
+            number = int(bump_up_number)
+            limit = min(int(org_info.bump_up_count), int(controls["bump_up_count"]))
+        except (TypeError, ValueError):
+            return "invalid_bump_up_count"
+        if number < 1 or number > limit:
+            return "bump_up_limit_reached"
+    return ""

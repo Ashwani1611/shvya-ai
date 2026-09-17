@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import mimetypes
-from datetime import datetime, timedelta, timezone as datetime_timezone
+from datetime import timedelta
 from pathlib import Path
 from urllib.parse import quote
 
@@ -595,30 +595,12 @@ def register_hosted_manual_outbound(*, account, lead, at=None):
 
 def _hosted_business_hours_due(*, state, account, due):
     from services.channels.hosted_whatsapp_service import get_session_settings
-    from services.followup_service import _org_zone
+    from services.followup_service import _move_into_business_hours
 
-    settings = get_session_settings(account=account)
-    try:
-        start_time = datetime.strptime(settings["business_hours_start"], "%H:%M").time()
-        end_time = datetime.strptime(settings["business_hours_end"], "%H:%M").time()
-    except (KeyError, TypeError, ValueError):
-        return due
-    zone = _org_zone(state.organization)
-    local_due = due.astimezone(zone)
-    start = datetime.combine(local_due.date(), start_time, tzinfo=zone)
-    end = datetime.combine(local_due.date(), end_time, tzinfo=zone)
-    if start_time < end_time:
-        if local_due < start:
-            return start.astimezone(datetime_timezone.utc)
-        if local_due >= end:
-            return datetime.combine(
-                local_due.date() + timedelta(days=1), start_time, tzinfo=zone
-            ).astimezone(datetime_timezone.utc)
-        return due
-    # Overnight window, e.g. 20:00 to 06:00.
-    if local_due.time() >= start_time or local_due.time() < end_time:
-        return due
-    return start.astimezone(datetime_timezone.utc)
+    return _move_into_business_hours(
+        organization=state.organization, due=due,
+        automation_settings=get_session_settings(account=account),
+    )
 
 
 def _defer_state(state, when):
@@ -653,11 +635,10 @@ def process_hosted_due_state(state_id):
         _create_reminder_step,
         _handle_failure,
         _mark_skipped_and_advance,
-        _move_into_business_hours,
+        live_followup_due,
         _repeat_or_advance,
         _send_email_step,
         _set_next_step,
-        get_auto_followup_settings,
     )
 
     state = (
@@ -690,19 +671,14 @@ def process_hosted_due_state(state_id):
         return False
     if not state.lead_auto_followup_enabled or not state.sequence.is_active:
         return False
-    if not get_auto_followup_settings(state.organization).enabled:
-        return False
 
     from services.channels.hosted_whatsapp_service import get_session_settings
 
     session_settings = get_session_settings(account=account)
-    if not session_settings.get("auto_follow_up", True):
-        _defer_state(state, timezone.now() + timedelta(minutes=5))
-        return False
-
     now = timezone.now()
-    if state.paused_until and state.paused_until > now:
-        _defer_state(state, state.paused_until)
+    adjusted = live_followup_due(state, automation_settings=session_settings, now=now)
+    if adjusted > now:
+        _defer_state(state, max(state.upcoming_send_at or adjusted, adjusted))
         return False
     health_pause = automation_pause_until(account=account)
     if health_pause:
@@ -719,12 +695,6 @@ def process_hosted_due_state(state_id):
         _set_next_step(state, reference=now)
         return False
     if state.upcoming_send_at and state.upcoming_send_at > now:
-        return False
-
-    adjusted = _move_into_business_hours(organization=state.organization, due=now)
-    adjusted = _hosted_business_hours_due(state=state, account=account, due=adjusted)
-    if adjusted > now:
-        _defer_state(state, adjusted)
         return False
 
     step = state.next_step
@@ -790,27 +760,38 @@ def process_hosted_due_state(state_id):
                 "filename": hosted.attachment_original_name,
             }
 
-        message = WhatsAppMessage.objects.create(
-            organization=state.organization,
-            account=account,
-            lead=state.lead,
-            direction=WhatsAppMessage.Direction.OUTBOUND,
-            from_number=account.display_phone_number or account.phone_number_id,
-            to_number=state.lead.phone,
-            body=body,
-            message_type=message_type,
-            media_payload=media_payload,
-            status=WhatsAppMessage.Status.QUEUED,
-            raw_payload={
-                "shvya_auto_followup": {
-                    "provider": "hosted",
-                    "sequence_id": str(state.sequence_id),
-                    "step_id": str(step.id),
-                    "execution_id": str(execution.id),
-                    "content_hash": content_hash,
-                }
-            },
-        )
+        message = execution.whatsapp_message
+        if message is not None and (
+            message.account_id != account.pk or message.lead_id != state.lead_id
+            or message.organization_id != state.organization_id
+        ):
+            if message.status == WhatsAppMessage.Status.QUEUED:
+                message.status = WhatsAppMessage.Status.FAILED
+                message.error = "Follow-up sender changed before delivery."
+                message.save(update_fields=["status", "error", "updated_at"])
+            message = None
+        if message is None or message.status != WhatsAppMessage.Status.QUEUED:
+            message = WhatsAppMessage.objects.create(
+                organization=state.organization,
+                account=account,
+                lead=state.lead,
+                direction=WhatsAppMessage.Direction.OUTBOUND,
+                from_number=account.display_phone_number or account.phone_number_id,
+                to_number=state.lead.phone,
+                body=body,
+                message_type=message_type,
+                media_payload=media_payload,
+                status=WhatsAppMessage.Status.QUEUED,
+                raw_payload={
+                    "shvya_auto_followup": {
+                        "provider": "hosted",
+                        "sequence_id": str(state.sequence_id),
+                        "step_id": str(step.id),
+                        "execution_id": str(execution.id),
+                        "content_hash": content_hash,
+                    }
+                },
+            )
         execution.whatsapp_message = message
         execution.save(update_fields=["whatsapp_message", "updated_at"])
 
@@ -853,7 +834,7 @@ def dispatch_one_hosted_due_state():
         return {"status": "locked"}
     try:
         now = timezone.now()
-        state_id = (
+        state_ids = list(
             LeadSequenceState.objects.filter(
                 status=LeadSequenceState.Status.ACTIVE,
                 lead_auto_followup_enabled=True,
@@ -861,19 +842,17 @@ def dispatch_one_hosted_due_state():
                 sequence__whatsapp_account__connection_type=HOSTED_CONNECTION_TYPE,
                 upcoming_send_at__isnull=False,
                 upcoming_send_at__lte=now,
-                organization__auto_followup_settings__enabled=True,
             )
             .order_by("upcoming_send_at", "assigned_at")
             .values_list("id", flat=True)
-            .first()
+            [:50]
         )
-        if not state_id:
+        if not state_ids:
             return {"status": "idle"}
-        processed = process_hosted_due_state(state_id)
-        return {
-            "status": "processed" if processed else "deferred",
-            "state_id": str(state_id),
-        }
+        for state_id in state_ids:
+            if process_hosted_due_state(state_id):
+                return {"status": "processed", "state_id": str(state_id)}
+        return {"status": "deferred", "state_id": str(state_ids[0])}
     finally:
         cache.delete(HOSTED_FOLLOWUP_LOCK)
 
@@ -884,7 +863,7 @@ def dispatch_one_api_due_state():
         return {"status": "locked"}
     try:
         now = timezone.now()
-        state_id = (
+        state_ids = list(
             LeadSequenceState.objects.filter(
                 status=LeadSequenceState.Status.ACTIVE,
                 lead_auto_followup_enabled=True,
@@ -892,21 +871,19 @@ def dispatch_one_api_due_state():
                 sequence__whatsapp_account__connection_type="api",
                 upcoming_send_at__isnull=False,
                 upcoming_send_at__lte=now,
-                organization__auto_followup_settings__enabled=True,
             )
             .order_by("upcoming_send_at", "assigned_at")
             .values_list("id", flat=True)
-            .first()
+            [:50]
         )
-        if not state_id:
+        if not state_ids:
             return {"status": "idle"}
         from services.followup_service import process_due_state
 
-        processed = process_due_state(state_id)
-        return {
-            "status": "processed" if processed else "deferred",
-            "state_id": str(state_id),
-        }
+        for state_id in state_ids:
+            if process_due_state(state_id):
+                return {"status": "processed", "state_id": str(state_id)}
+        return {"status": "deferred", "state_id": str(state_ids[0])}
     finally:
         cache.delete(API_FOLLOWUP_LOCK)
 
