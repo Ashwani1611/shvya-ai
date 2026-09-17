@@ -123,6 +123,8 @@ class AccountControlsMixin:
         )
 
     def outbound(self, ai=None):
+        if ai is not None and not self.lead.whatsapp_messages.filter(direction="inbound").exists():
+            self.inbound(self.lead.phone, "source-for-outbound")
         message = queue_outbound_message(
             organization=self.org, account=self.account, lead=self.lead,
             to_number=self.lead.phone, body="Hello from the team",
@@ -211,8 +213,22 @@ class AccountControlsMixin:
     def test_lowered_bump_limit_blocks_already_queued_extra_bump(self):
         message = self.outbound({"origin": "bump_up", "number": 3})
         self.save_settings(bump_up_count=1)
-        with self.assertRaises(WhatsAppSendError):
+        with self.assertRaisesMessage(WhatsAppSendError, "bump_up_limit_reached"):
             send_outbound_message(message=message)
+
+    def test_ai_message_sends_when_all_current_controls_allow_it(self):
+        message = self.outbound({"origin": "engagement"})
+        with patch(
+            "apps.channels.providers.whatsapp.WhatsAppClient.send_text_message",
+            return_value={"messages": [{"id": "enabled-api"}]},
+        ) as meta, patch(
+            "services.channels.hosted_whatsapp_transport.WhatsAppWebClient.send_message",
+            return_value={"messageId": "enabled-hosted"},
+        ) as hosted, patch("services.channels.hosted_whatsapp_transport._push_chat_refresh"):
+            send_outbound_message(message=message)
+        (hosted if self.provider == "hosted" else meta).assert_called_once()
+        message.refresh_from_db()
+        self.assertEqual(message.status, WhatsAppMessage.Status.SENT)
 
     def test_manual_message_is_not_disabled_by_automation_switches(self):
         message = self.outbound()
@@ -328,6 +344,26 @@ class APIAccountControlsTests(AccountControlsMixin, TestCase):
 
 class HostedAccountControlsTests(AccountControlsMixin, TestCase):
     provider = "hosted"
+
+    def test_queued_followup_checks_switch_again_at_transport_boundary(self):
+        from services.channels.hosted_automation_service import HostedAutomationPaused
+        from services.channels.hosted_whatsapp_transport import send_hosted_message
+
+        sequence, step, state = self.sequence()
+        message = self.outbound()
+        message.raw_payload = {"shvya_auto_followup": {"provider": "hosted", "sequence_id": str(sequence.pk)}}
+        message.save(update_fields=["raw_payload", "updated_at"])
+        FollowupExecution.objects.create(
+            organization=self.org, state=state, lead=self.lead, sequence=sequence, step=step,
+            scheduled_for=self.now, status=FollowupExecution.Status.PENDING, whatsapp_message=message,
+        )
+        self.save_settings(auto_follow_up=False)
+        with patch("services.channels.hosted_whatsapp_transport.WhatsAppWebClient.send_message") as gateway:
+            with self.assertRaises(HostedAutomationPaused):
+                send_hosted_message(message=message)
+            gateway.assert_not_called()
+        message.refresh_from_db()
+        self.assertEqual(message.status, WhatsAppMessage.Status.QUEUED)
 
     def test_canonical_sender_does_not_strand_hosted_bump_messages(self):
         from apps.channels.tasks import send_whatsapp_message_task

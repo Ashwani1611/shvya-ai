@@ -217,6 +217,7 @@ def send_whatsapp_message_task(self, message_id):
             if (
                 message.account.connection_type == "hosted"
                 and payload.get("shvya_ai")
+                and payload["shvya_ai"].get("origin") != "bump_up"
             ):
                 logger.info(
                     "send_whatsapp_message_task: "

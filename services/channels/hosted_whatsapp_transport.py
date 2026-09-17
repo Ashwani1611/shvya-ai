@@ -59,11 +59,32 @@ def send_hosted_message(*, message, defer_on_pause=True):
             if message.lead_id
             else "lead_missing"
         )
+        if not reason:
+            from services.channels.hosted_whatsapp_service import account_ai_block_reason
+
+            ai_metadata = raw_payload["shvya_ai"]
+            reason = account_ai_block_reason(
+                account=account, lead=message.lead,
+                bump_up_number=(ai_metadata.get("number", 1) if ai_metadata.get("origin") == "bump_up" else None),
+            )
         if reason:
             message.status = WhatsAppMessage.Status.FAILED
             message.error = f"AI send cancelled: {reason}"
             message.save(update_fields=["status", "error", "updated_at"])
             raise WhatsAppSendError(message.error)
+
+    if raw_payload.get("shvya_auto_followup"):
+        from services.followup_service import live_followup_due
+
+        execution = message.followup_executions.select_related(
+            "state__organization", "state__lead__pipeline",
+            "state__sequence__whatsapp_account",
+        ).filter(organization_id=message.organization_id).first()
+        if execution is None:
+            raise WhatsAppSendError("Follow-up execution is missing.")
+        eligible_at = live_followup_due(execution.state)
+        if eligible_at > timezone.now():
+            raise HostedAutomationPaused(eligible_at)
 
     media_url = None
     filename = None
