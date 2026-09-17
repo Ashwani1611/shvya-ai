@@ -237,6 +237,16 @@ class AiEngagementConfig(AppConfig):
         )
         install_phase5_6_runtime()
 
+        # Tighten the canonical Phase 5/6 runtime without creating a parallel AI
+        # path: live slot availability requires live evidence; backend-owned CRM
+        # and validated qualification facts outrank memory inference; and the
+        # second grounding model call is skipped only for provably low-risk or
+        # extractively evidence-matched replies.
+        from apps.ai_engagement.services.phase5_6_safety_fixes import (
+            install_phase5_6_safety_fixes,
+        )
+        install_phase5_6_safety_fixes()
+
         # Phase 1 observability is installed last so it observes the final shared
         # API/Coexistence and Hosted runtime without becoming policy authority.
         from . import trace_signals  # noqa: F401
