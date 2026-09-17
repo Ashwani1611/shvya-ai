@@ -5,6 +5,14 @@ from django.db.models.signals import post_save
 from django.dispatch import receiver
 
 from apps.channels.models import WhatsAppMessage
+from apps.ai_engagement.services.intent_runtime import install_intent_runtime
+
+
+# Phase 2 customer-message understanding is installed immediately before the
+# Phase 1 trace runtime wraps the shared context builder. This keeps one Intent
+# Engine for Meta API, Coexistence and Hosted WhatsApp while allowing Phase 1
+# observability to record the resulting IntentDecision without owning policy.
+install_intent_runtime()
 
 
 @receiver(post_save, sender=WhatsAppMessage, dispatch_uid="ai_trace_delivery_status")
