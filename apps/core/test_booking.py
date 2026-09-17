@@ -75,3 +75,8 @@ class BookingTests(TestCase):
         with patch("apps.superadmin.bac_views.render") as render:
             bac_list(request)
             self.assertEqual(render.call_args.args[2]["page_obj"].paginator.count, 1)
+
+    def test_permanent_lead_deletion_removes_owned_booking_data(self):
+        booking = save_booking(self.data)
+        booking.lead.delete()
+        self.assertFalse(MarketingBookingRequest.objects.exists())

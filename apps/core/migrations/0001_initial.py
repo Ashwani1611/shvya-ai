@@ -31,7 +31,7 @@ class Migration(migrations.Migration):
                 ('status', models.CharField(default='new', max_length=32)),
                 ('created_at', models.DateTimeField(auto_now_add=True)),
                 ('updated_at', models.DateTimeField(auto_now=True)),
-                ('lead', models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='call_requests', to='crm.lead')),
+                ('lead', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='call_requests', to='crm.lead')),
             ],
             options={
                 'verbose_name': 'BAC request',

@@ -7,7 +7,7 @@ class MarketingBookingRequest(models.Model):
     """Public request for a Shvya AI sales walkthrough."""
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    lead = models.ForeignKey("crm.Lead", on_delete=models.PROTECT, related_name="call_requests")
+    lead = models.ForeignKey("crm.Lead", on_delete=models.CASCADE, related_name="call_requests")
     name = models.CharField(max_length=100)
     email = models.EmailField(max_length=200)
     phone = models.CharField(max_length=32)
