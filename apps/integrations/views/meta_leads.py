@@ -146,7 +146,10 @@ def _normalise_meta_phone(value):
 
 
 def _phone_is_crm_compatible(value):
-    return bool(str(value or "").startswith("+") and len(re.sub(r"\D", "", str(value))) >= 8)
+    return bool(
+        str(value or "").startswith("+")
+        and len(re.sub(r"\D", "", str(value))) >= 8
+    )
 
 
 def _phone_like_field(fields):
@@ -158,13 +161,6 @@ def _phone_like_field(fields):
             value = str(value or "").strip()
             if value:
                 return value
-    return ""
-
-
-def _fallback_phone_from_leadgen_id(leadgen_id):
-    digits = re.sub(r"\D", "", str(leadgen_id or ""))
-    if len(digits) >= 8:
-        return f"+{digits[:31]}"
     return ""
 
 
@@ -288,20 +284,17 @@ def meta_lead_webhook(request):
                 phone_warning = ""
 
                 if not _phone_is_crm_compatible(phone):
-                    phone = _normalise_meta_phone(_phone_like_field(fields))
-                    if phone:
-                        phone_warning = "Phone was recovered from another phone-like Meta field."
-
-                if not _phone_is_crm_compatible(phone):
-                    phone = _fallback_phone_from_leadgen_id(leadgen_id)
-                    phone_warning = (
-                        "Meta did not provide a CRM-compatible phone value; "
-                        "used Meta lead ID as fallback phone so the lead is still traceable."
-                    )
+                    recovered_phone = _normalise_meta_phone(_phone_like_field(fields))
+                    if _phone_is_crm_compatible(recovered_phone):
+                        phone = recovered_phone
+                        phone_warning = (
+                            "Phone was recovered from another phone-like Meta field."
+                        )
 
                 if not _phone_is_crm_compatible(phone):
                     logger.warning(
-                        "Meta lead %s has no CRM-compatible phone. Available fields: %s",
+                        "Skipping Meta lead %s because Meta did not provide a "
+                        "CRM-compatible phone. Available fields: %s",
                         leadgen_id,
                         ", ".join(sorted(fields)),
                     )
