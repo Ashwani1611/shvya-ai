@@ -1,0 +1,22 @@
+name: Workflows audit fixture
+on:
+  push:
+    branches: [fix/workflows-runtime-source-editor]
+permissions:
+  contents: read
+jobs:
+  fixture:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Export tracked source only
+        run: |
+          mkdir -p /tmp/workflows-fixture
+          git archive HEAD | tar -x -C /tmp/workflows-fixture
+      - uses: actions/upload-artifact@v4
+        with:
+          name: workflows-source-fixture
+          path: /tmp/workflows-fixture/
+          retention-days: 1
