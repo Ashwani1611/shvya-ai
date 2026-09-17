@@ -3,7 +3,7 @@ name: Validate WhatsApp controls repair
 on:
   push:
     branches: [fix/whatsapp-account-controls-20260918]
-    paths: [.repair/whatsapp_controls.py, .github/workflows/repair-whatsapp-controls.yml, apps/channels/tests/test_account_settings_controls.py]
+    paths: ['.repair/**', .github/workflows/repair-whatsapp-controls.yml, apps/channels/tests/test_account_settings_controls.py]
 
 permissions:
   contents: write
@@ -54,7 +54,7 @@ jobs:
           python-version: '3.13'
           cache: pip
       - name: Apply reviewed source edits
-        run: python .repair/whatsapp_controls.py
+        run: python .repair/whatsapp_controls_refinement.py
       - name: Install test dependencies
         run: pip install -r requirements-dev.txt
       - name: Validate source and schema
@@ -80,7 +80,7 @@ jobs:
             /tmp/whatsapp-controls-tests.log
       - name: Commit validated application changes and remove repair tooling
         run: |
-          git rm .github/workflows/repair-whatsapp-controls.yml .repair/whatsapp_controls.py
-          git add services/channels/hosted_whatsapp_service.py services/channels/whatsapp_service.py services/channels/hosted_whatsapp_transport.py services/channels/hosted_automation_service.py services/followup_service.py apps/channels/tasks.py apps/ai_engagement/tasks.py apps/channels/tests/test_account_settings_controls.py
+          git rm .github/workflows/repair-whatsapp-controls.yml .repair/whatsapp_controls.py .repair/whatsapp_controls_refinement.py
+          git add services/channels/hosted_whatsapp_service.py services/channels/whatsapp_service.py services/channels/hosted_whatsapp_transport.py services/channels/hosted_automation_service.py services/followup_service.py apps/channels/tasks.py apps/ai_engagement/tasks.py apps/channels/tests/test_account_settings_controls.py apps/channels/tests/test_hosted_followup_media_inbox.py
           git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m 'fix: enforce WhatsApp account controls and live follow-up timing'
           git push origin HEAD:refs/heads/fix/whatsapp-account-controls-20260918
