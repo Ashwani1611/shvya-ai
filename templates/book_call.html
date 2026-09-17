@@ -29,10 +29,10 @@
   </section>
 
   <section class="booking-card" aria-label="Book a call form">
-    {% if request.GET.submitted %}
+    {% if booking_reference %}
     <div class="booking-success">
       <h2>Your request is saved.</h2>
-      <p>Reference: {{ request.GET.ref }}</p>
+      <p>Reference: {{ booking_reference }}</p>
       <p>Our team will contact you using the phone or email you shared.</p>
       <a class="btn btn-secondary" href="{% url 'docs' %}">View documentation</a>
     </div>
@@ -57,6 +57,7 @@
       <div class="form-errors">
         Please check the highlighted details and submit again.
         {{ form.non_field_errors }}
+        {% for field in form %}{% for error in field.errors %}<p>{{ field.label }}: {{ error }}</p>{% endfor %}{% endfor %}
       </div>
       {% endif %}
       <button class="btn btn-primary booking-submit" type="submit">Request session</button>

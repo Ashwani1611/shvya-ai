@@ -1,4 +1,5 @@
 from datetime import timedelta
+import re
 
 from django import forms
 from django.utils import timezone
@@ -35,6 +36,15 @@ class MarketingBookingForm(forms.Form):
         if value:
             raise forms.ValidationError("Invalid submission.")
         return value
+
+    def clean_phone(self):
+        value = self.cleaned_data["phone"].strip()
+        digits = re.sub(r"[\s().-]", "", value)
+        if re.fullmatch(r"[6-9][0-9]{9}", digits):
+            digits = "+91" + digits
+        if not re.fullmatch(r"\+[1-9][0-9]{7,14}", digits):
+            raise forms.ValidationError("Enter a valid phone with country code, e.g. +91 98765 43210.")
+        return digits
 
     def clean_preferred_date(self):
         value = self.cleaned_data["preferred_date"]

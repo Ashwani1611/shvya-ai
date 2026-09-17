@@ -44,32 +44,6 @@
     });
   });
 
-  const leadCount=document.getElementById('leadCount');
-  const dealValue=document.getElementById('dealValue');
-  const recovery=document.getElementById('recoveryRate');
-  const closeRate=document.getElementById('closeRate');
-  const recoveryLabel=document.getElementById('recoveryLabel');
-  const closeLabel=document.getElementById('closeLabel');
-  const monthlyValue=document.getElementById('monthlyValue');
-  const annualValue=document.getElementById('annualValue');
-
-  if(leadCount&&dealValue&&recovery&&closeRate&&recoveryLabel&&closeLabel&&monthlyValue&&annualValue){
-    const money=new Intl.NumberFormat('en-IN',{style:'currency',currency:'INR',maximumFractionDigits:0});
-    const updateCalc=()=>{
-      const leads=Math.max(0,Number(leadCount.value)||0);
-      const deal=Math.max(0,Number(dealValue.value)||0);
-      const recovered=(Number(recovery.value)||0)/100;
-      const close=(Number(closeRate.value)||0)/100;
-      const monthly=leads*recovered*close*deal;
-      recoveryLabel.textContent=recovery.value+'%';
-      closeLabel.textContent=closeRate.value+'%';
-      monthlyValue.textContent=money.format(monthly);
-      annualValue.textContent=money.format(monthly*12);
-    };
-    [leadCount,dealValue,recovery,closeRate].forEach(el=>el.addEventListener('input',updateCalc));
-    updateCalc();
-  }
-
   const reveals=document.querySelectorAll('.reveal');
   if('IntersectionObserver' in window){
     const observer=new IntersectionObserver(entries=>{

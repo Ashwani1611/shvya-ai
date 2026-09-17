@@ -1,0 +1,19 @@
+{% extends "superadmin/base.html" %}
+{% block title %}BAC · Book a Call | SHVYA{% endblock %}
+{% block content %}
+<div class="sa-page-header"><div><h1 class="sa-page-title">BAC · Book a Call</h1><p class="sa-page-description">Every sales session request, ready for your team to follow up.</p><p>Destination organisation: {{ bac_organization_id }} · Intake stage: New Leads</p></div></div>
+<form method="get" class="sa-stat-card"><label for="bac-search">Search name, email, phone or company</label><input id="bac-search" name="q" value="{{ query }}" class="border rounded px-3 py-2"><button class="sa-primary-button" type="submit">Search</button></form>
+<p class="my-4">{{ page_obj.paginator.count }} request{{ page_obj.paginator.count|pluralize }}</p>
+{% for booking in page_obj %}
+<article class="sa-stat-card mb-4">
+<h2 class="text-lg font-semibold">{{ booking.name }}{% if booking.company %} · {{ booking.company }}{% endif %}</h2>
+<p>{{ booking.email }} · {{ booking.phone }}</p>
+<p class="my-2"><strong>Requested session:</strong> {{ booking.preferred_date|date:"d M Y" }} at {{ booking.preferred_time }} IST</p>
+<p><strong>Interest:</strong> {{ booking.interest|default:"Sales automation" }}</p>
+<div class="my-2"><strong>Business goal</strong>{{ booking.goal|linebreaks }}</div>
+<p>Received {{ booking.created_at|date:"d M Y, H:i" }} · {{ booking.status|title }} · Contact consent: {{ booking.consent|yesno:"Yes,No" }}</p>
+<p class="text-sm mt-2">Reference: {{ booking.pk }}<br>Lead: {{ booking.lead_id }} · Current stage: {{ booking.lead.stage.name }}</p>
+</article>
+{% empty %}<div class="sa-stat-card">No call requests match this view.</div>{% endfor %}
+<nav aria-label="BAC pages" class="flex gap-4 my-4">{% if page_obj.has_previous %}<a href="?q={{ query|urlencode }}&page={{ page_obj.previous_page_number }}">Previous</a>{% endif %}<span>Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span>{% if page_obj.has_next %}<a href="?q={{ query|urlencode }}&page={{ page_obj.next_page_number }}">Next</a>{% endif %}</nav>
+{% endblock %}
