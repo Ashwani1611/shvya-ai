@@ -210,6 +210,15 @@ class AiEngagementConfig(AppConfig):
         )
         install_qualification_execution_policy_guard()
 
+        # Phase 3 conversation strategy is deterministic and transport-neutral.
+        # It consumes Phase 2 IntentDecision plus the post-validation qualification
+        # state, then constrains the existing engagement generator without becoming
+        # a CRM executor or adding a policy-model call.
+        from apps.ai_engagement.services.conversation_policy_runtime import (
+            install_conversation_policy_runtime,
+        )
+        install_conversation_policy_runtime()
+
         # Phase 1 observability is installed last so it observes the final shared
         # API/Coexistence and Hosted runtime without becoming policy authority.
         from . import trace_signals  # noqa: F401
