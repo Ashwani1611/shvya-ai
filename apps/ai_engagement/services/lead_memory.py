@@ -50,10 +50,12 @@ _CONCEPT_ALIASES = {
     "location": ("location", "city", "state", "country", "based in"),
     "lead_volume": ("lead volume", "leads per", "daily leads", "monthly leads", "lead count"),
     "current_tools": ("current tool", "tools", "software", "crm", "platform"),
+    "objection": ("objection", "concern", "blocker", "hesitation"),
     "decision_maker_status": ("decision maker", "decision-maker", "authority", "approver"),
     "preferred_contact_time": ("contact time", "call time", "callback time", "preferred time"),
     "language": ("language", "speak in", "chat in"),
     "preference": ("preference", "preferred", "prefer"),
+    "commitment": ("commitment", "promise", "promised", "next step"),
 }
 
 _STOPWORDS = {
@@ -528,6 +530,19 @@ class LeadMemoryService:
                     self._clip(match.group(0), MAX_EVIDENCE_CHARS),
                 )
             )
+
+        for sentence in (
+            " ".join(part.split())
+            for part in re.split(r"[.!?\n]+", text)
+            if part.strip()
+        ):
+            lowered = sentence.casefold()
+            if any(term in lowered for term in _OBJECTION_TERMS):
+                clipped = self._clip(sentence, MAX_EVENT_CHARS)
+                extracted.append(("objection", clipped, clipped))
+            if re.search(r"\b(?:i|we)\s+(?:will|'ll)\b", lowered):
+                clipped = self._clip(sentence, MAX_EVENT_CHARS)
+                extracted.append(("commitment", clipped, clipped))
 
         result: list[dict[str, Any]] = []
         seen: set[tuple[str, str]] = set()
