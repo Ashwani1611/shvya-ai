@@ -59,6 +59,10 @@ def _dispatch():
             deliver_email(run_id)
         except Exception:
             logger.exception("Smart Trigger email dispatch failed: %s", run_id)
+    TriggerRun.objects.filter(status="sending", due_at__lte=timezone.now()).update(
+        status="needs_review", finished_at=timezone.now(),
+        detail="Email delivery was interrupted. Check the connected mailbox before retrying.",
+    )
     _dispatch_messages()
 
 

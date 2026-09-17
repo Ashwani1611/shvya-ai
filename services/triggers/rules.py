@@ -56,7 +56,7 @@ def catalog(org):
         "accounts": list(
             WhatsAppAccount.objects.filter(
                 organization=org, is_active=True, status="connected",
-                connection_type=WhatsAppAccount.ConnectionType.API,
+                connection_type__in=[WhatsAppAccount.ConnectionType.API, WhatsAppAccount.ConnectionType.coexisted],
             ).values("id", "business_name", "display_phone_number")
         ),
         "call_statuses": dict(LeadCall._meta.get_field("status").choices),
@@ -287,12 +287,12 @@ def validate(org, data):
                     id=a.get("account"),
                     is_active=True,
                     status="connected",
-                    connection_type=WhatsAppAccount.ConnectionType.API,
+                    connection_type__in=[WhatsAppAccount.ConnectionType.API, WhatsAppAccount.ConnectionType.coexisted],
                 ).exists()
             except (ValidationError, ValueError):
                 valid = False
             if not valid:
-                fail("Select a connected WhatsApp API account. For Hosted WhatsApp, use a Cadence sequence.")
+                fail("Select a connected WhatsApp account from your organization.")
             clean_a.update(account=str(a["account"]), schedule=a.get("schedule"))
             if a.get("schedule") == "relative":
                 clean_a.update(duration(a))

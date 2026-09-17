@@ -230,6 +230,16 @@ def send_whatsapp_message_task(self, message_id):
                     "message_id": str(message_id),
                 }
 
+            if "shvya_workflow" in payload:
+                from services.triggers.actions import workflow_message_block_reason
+
+                reason = workflow_message_block_reason(message)
+                if reason:
+                    message.status = WhatsAppMessage.Status.FAILED
+                    message.error = f"Workflow send cancelled: {reason}"
+                    message.save(update_fields=["status", "error", "updated_at"])
+                    return {"status": "skipped", "reason": reason, "message_id": str(message_id)}
+
             message.status = _WHATSAPP_SENDING_STATUS
             message.error = ""
             message.save(
@@ -255,6 +265,26 @@ def send_whatsapp_message_task(self, message_id):
         send_outbound_message(message=message)
     except WhatsAppSendError as exc:
         original = exc.__cause__
+
+        if "shvya_workflow" in payload and isinstance(original, WhatsAppAPIError):
+            from apps.triggers.models import TriggerRun
+
+            # A timeout may follow a successful provider send. Never resend an
+            # uncertain workflow automatically. Explicit 5xx responses retain
+            # the canonical bounded retry path; exhausting it is terminal.
+            uncertain = original.status_code is None
+            exhausted = self.request.retries >= self.max_retries
+            if uncertain or exhausted:
+                _persist_whatsapp_message_failure(message_id=message_id, error=exc)
+                TriggerRun.objects.filter(
+                    message_id=message_id, status__in=["queued", "dispatching"]
+                ).update(
+                    status="needs_review" if uncertain else "failed",
+                    detail=("Provider outcome is uncertain. Check delivery before retrying."
+                            if uncertain else "WhatsApp retry limit reached."),
+                    finished_at=timezone.now(),
+                )
+                return {"status": "needs_review" if uncertain else "failed", "message_id": str(message_id)}
 
         if isinstance(original, WhatsAppAPIError) and (
             original.status_code is None

@@ -94,9 +94,9 @@ def workflow_message_block_reason(message):
     if run.status not in ("queued", "dispatching"):
         return "Workflow delivery is no longer pending."
     if (not message.account.is_active or message.account.status != "connected"
-            or message.account.connection_type != WhatsAppAccount.ConnectionType.API):
+            or message.account.connection_type not in (WhatsAppAccount.ConnectionType.API, WhatsAppAccount.ConnectionType.coexisted)):
         return "The selected WhatsApp API account is no longer connected."
-    if not WhatsAppMessage.objects.filter(
+    if message.account.connection_type == WhatsAppAccount.ConnectionType.API and not WhatsAppMessage.objects.filter(
         organization_id=message.organization_id, lead_id=message.lead_id,
         account_id=message.account_id, direction="inbound",
         created_at__gte=timezone.now() - timedelta(hours=24),
@@ -242,10 +242,10 @@ def _apply(run, lead):
             return
         account = WhatsAppAccount.objects.get(
             id=a["account"], organization=org, is_active=True, status="connected",
-            connection_type=WhatsAppAccount.ConnectionType.API,
+            connection_type__in=[WhatsAppAccount.ConnectionType.API, WhatsAppAccount.ConnectionType.coexisted],
         )
         # SHVYA's API transport supports free text only in the active 24h window.
-        if not WhatsAppMessage.objects.filter(
+        if account.connection_type == WhatsAppAccount.ConnectionType.API and not WhatsAppMessage.objects.filter(
             organization=org,
             lead=lead,
             account=account,
@@ -271,7 +271,7 @@ def _apply(run, lead):
             "shvya_workflow": {"run_id": str(run.id)},
         }
         run.message.save(update_fields=["raw_payload", "updated_at"])
-        run.status, run.detail = "queued", "Queued through the WhatsApp API."
+        run.status, run.detail = "queued", "Queued through the selected WhatsApp account."
         return
     elif kind == "email":
         if not lead.email:
@@ -290,7 +290,7 @@ def deliver_email(run_id):
     # At-most-once automatic delivery: uncertain SMTP outcomes require review,
     # never an automatic duplicate. Message-ID is stable for provider tracing.
     if not TriggerRun.objects.filter(id=run_id, status="email_ready").update(
-        status="sending"
+        status="sending", due_at=timezone.now() + timedelta(minutes=10)
     ):
         return
     try:
@@ -330,5 +330,7 @@ def deliver_email(run_id):
             "needs_review",
             "Email delivery could not be confirmed; check provider logs before retrying.",
         )
-    run.finished_at = timezone.now()
-    run.save(update_fields=["status", "detail", "finished_at"])
+    # A deleted workflow must not be recreated by a late provider response.
+    TriggerRun.objects.filter(pk=run.pk, status="sending").update(
+        status=run.status, detail=run.detail, finished_at=timezone.now()
+    )

@@ -84,7 +84,14 @@ def sequence_event(sender, instance, raw=False, **kwargs):
 
 @receiver(post_save, sender=WhatsAppMessage)
 def message_event(sender, instance, created, raw=False, **kwargs):
+    payload = instance.raw_payload if isinstance(instance.raw_payload, dict) else {}
+    if raw or payload.get("isHistory") is True:
+        return
+    fields = kwargs.get("update_fields")
+    status_written = created or fields is None or "status" in fields
     if (
+        status_written
+        and
         not raw
         and instance.lead_id
         and instance.direction == "outbound"
