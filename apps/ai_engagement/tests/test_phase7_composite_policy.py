@@ -89,6 +89,7 @@ class Phase7CompositePolicyTests(SimpleTestCase):
         self.assertTrue(policy.answer_customer_question)
         self.assertTrue(policy.continue_qualification)
         self.assertEqual(policy.next_requirement_id, "ads")
+        self.assertNotEqual(policy.next_requirement_id, "volume")
         self.assertTrue(policy.requires_knowledge)
         self.assertTrue(policy.requires_human)
         self.assertEqual(policy.handoff_type, "call")
