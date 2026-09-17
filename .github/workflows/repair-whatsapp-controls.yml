@@ -3,7 +3,7 @@ name: Validate WhatsApp controls repair
 on:
   push:
     branches: [fix/whatsapp-account-controls-20260918]
-    paths: [.repair/whatsapp_controls.py]
+    paths: [.repair/whatsapp_controls.py, .github/workflows/repair-whatsapp-controls.yml, apps/channels/tests/test_account_settings_controls.py]
 
 permissions:
   contents: write
@@ -36,11 +36,15 @@ jobs:
           POSTGRES_USER: shvya_ci
           POSTGRES_PASSWORD: shvya_ci_password
         ports: ['5432:5432']
-        options: --health-cmd 'pg_isready -U shvya_ci -d shvya_ci' --health-interval 5s --health-timeout 5s --health-retries 10
+        options: >-
+          --health-cmd "pg_isready -U shvya_ci -d shvya_ci"
+          --health-interval 5s --health-timeout 5s --health-retries 10
       redis:
         image: redis:8-alpine
         ports: ['6379:6379']
-        options: --health-cmd 'redis-cli ping' --health-interval 5s --health-timeout 5s --health-retries 10
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 5s --health-retries 10
     steps:
       - uses: actions/checkout@v7
         with:
@@ -65,7 +69,7 @@ jobs:
       - name: Save review diff
         if: always()
         run: |
-          git diff > /tmp/whatsapp-controls.diff
+          if test -d .git; then git diff > /tmp/whatsapp-controls.diff; fi
       - name: Upload validation evidence
         if: always()
         uses: actions/upload-artifact@v4
