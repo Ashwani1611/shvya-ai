@@ -80,3 +80,29 @@ class BookingTests(TestCase):
         booking = save_booking(self.data)
         booking.lead.delete()
         self.assertFalse(MarketingBookingRequest.objects.exists())
+
+    def test_redesigned_booking_submits_to_bac(self):
+        from django.test import override_settings
+        with override_settings(
+            ALLOWED_HOSTS=["testserver"],
+            CACHES={"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}},
+        ):
+            response = self.client.post("/book-a-call/", self.data)
+            self.assertEqual(response.status_code, 302)
+            booking = MarketingBookingRequest.objects.get()
+            self.assertEqual(str(booking.lead.organization_id), BAC_ORGANIZATION_ID)
+            self.assertIn(str(booking.pk), response.url)
+            confirmation = self.client.get(response.url)
+            self.assertContains(confirmation, "Your request is saved.")
+            self.assertContains(confirmation, str(booking.pk))
+
+    def test_marketing_pages_share_dark_design_and_real_booking_link(self):
+        from django.test import override_settings
+        with override_settings(ALLOWED_HOSTS=["testserver"]):
+            for url in ["/", "/features/", "/pricing/", "/services/", "/product-suite/",
+                        "/privacy-policy/", "/terms-conditions/", "/cookie-policy/", "/refund-policy/",
+                        "/docs/", "/book-a-call/"]:
+                response = self.client.get(url)
+                self.assertContains(response, "/static/marketing/dark/site.css")
+                self.assertContains(response, "/book-a-call/")
+                self.assertNotContains(response, "coming soon")
