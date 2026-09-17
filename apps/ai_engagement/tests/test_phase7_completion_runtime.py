@@ -85,9 +85,9 @@ class Phase7MasterIntentTests(TestCase):
         self.assertEqual(outputs[0], outputs[1])
         self.assertEqual(outputs[1], outputs[2])
         result = outputs[0]
-        self.assertEqual(result["primary_intent"], Intent.PRICING_QUESTION.value)
+        self.assertEqual(result["primary_intent"], Intent.CALL_REQUEST.value)
+        self.assertIn(Intent.PRICING_QUESTION.value, result["secondary_intents"])
         self.assertIn(Intent.QUALIFICATION_ANSWER.value, result["secondary_intents"])
-        self.assertIn(Intent.CALL_REQUEST.value, result["secondary_intents"])
         self.assertEqual(result["qualification_candidate"]["value"], 30)
         self.assertTrue(result["requires_knowledge"])
         self.assertTrue(result["requires_human"])
