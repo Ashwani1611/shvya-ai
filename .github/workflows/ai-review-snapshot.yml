@@ -1,0 +1,25 @@
+name: AI review source snapshot
+
+on:
+  push:
+    branches: [fix/ai-phases-1-11-validated]
+    paths: [.github/workflows/ai-review-snapshot.yml]
+
+permissions:
+  contents: read
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Package only tracked source at the checked-out commit
+        run: git archive --format=zip --output=review-source.zip HEAD
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ai-review-source
+          path: review-source.zip
+          retention-days: 1
+          if-no-files-found: error
