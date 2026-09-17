@@ -227,6 +227,16 @@ class AiEngagementConfig(AppConfig):
         )
         install_conversation_policy_runtime()
 
+        # Phase 5 resolves the permitted evidence source for factual answers and
+        # Phase 6 persists versioned, tenant-keyed lead facts with provenance and
+        # confidence-aware conflict handling. Install after Phase 3 so the runtime
+        # can consume its IntentDecision/policy turn, but before Phase 1 so all
+        # grounding and memory mutations are captured by the final trace wrapper.
+        from apps.ai_engagement.services.phase5_6_runtime import (
+            install_phase5_6_runtime,
+        )
+        install_phase5_6_runtime()
+
         # Phase 1 observability is installed last so it observes the final shared
         # API/Coexistence and Hosted runtime without becoming policy authority.
         from . import trace_signals  # noqa: F401
