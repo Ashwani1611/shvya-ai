@@ -132,5 +132,11 @@ jobs:
       - name: Build application image
         run: docker build --tag shvya-ai:${{ github.sha }} .
 
+      - name: Verify application image runs as non-root
+        run: |
+          IMAGE="shvya-ai:${{ github.sha }}"
+          test "$(docker image inspect "$IMAGE" --format '{{.Config.User}}')" = "10001:10001"
+          docker run --rm --entrypoint sh "$IMAGE" -c 'test "$(id -u)" = "10001" && test "$(id -g)" = "10001" && test -w /app'
+
       - name: Build WhatsApp Web gateway image
         run: docker build --tag shvya-whatsapp-web-gateway:${{ github.sha }} ./whatsapp_web_gateway
