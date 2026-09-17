@@ -168,6 +168,7 @@ def send_hosted_message(*, message, defer_on_pause=True):
         "shvya_welcome",
         "shvya_hosted",
         "shvya_auto_followup",
+        "shvya_workflow",
         "peerKey",
         "peerPhone",
         "rawChatId",

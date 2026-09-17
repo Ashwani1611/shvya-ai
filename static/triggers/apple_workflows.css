@@ -313,3 +313,27 @@ html.shvya-page-workflows #smart-triggers .st-danger:hover { background: #932019
     html.shvya-page-workflows #smart-triggers .st-switch span { background: ButtonText; }
     html.shvya-page-workflows #smart-triggers .st-tabs button[aria-selected="true"] { outline: 2px solid Highlight; }
 }
+
+/* Source and sequence editor controls: contained, labelled and responsive. */
+html.shvya-page-workflows #smart-triggers .st-field { min-width: 0; width: 100%; }
+html.shvya-page-workflows #smart-triggers .st-columns { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: end; }
+html.shvya-page-workflows #smart-triggers .st-condition .st-columns { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 36px; }
+html.shvya-page-workflows #smart-triggers .st-condition .st-columns > .st-icon-button { grid-column: auto; }
+html.shvya-page-workflows #smart-triggers :is(input, select, textarea, .st-chips, .st-info, .st-hint) { max-width: 100%; min-width: 0; overflow-wrap: anywhere; }
+html.shvya-page-workflows #smart-triggers .st-chip { max-width: 100%; white-space: normal; overflow-wrap: anywhere; text-align: left; }
+html.shvya-page-workflows #smart-triggers .st-sequence-choice { display: flex; align-items: end; gap: 8px; min-width: 0; }
+html.shvya-page-workflows #smart-triggers .st-sequence-choice .st-icon-button { flex-shrink: 0; }
+html.shvya-page-workflows #smart-triggers .st-source-condition { margin: 16px 0; padding: 14px; border: 1px solid var(--st-line); border-radius: 12px; background: #fafafb; }
+html.shvya-page-workflows #smart-triggers .st-source-condition .st-section-label { margin: 0; padding: 0; border: 0; }
+html.shvya-page-workflows #smart-triggers #st-sources { display: flex; flex-wrap: wrap; column-gap: 16px; }
+html.shvya-page-workflows #smart-triggers #st-sources .st-check { max-width: 100%; overflow-wrap: anywhere; }
+html.shvya-page-workflows #smart-triggers #st-sources input { flex-shrink: 0; }
+html.shvya-page-workflows #smart-triggers .st-intro .st-module-label { display: flex; align-items: center; gap: 10px; color: var(--st-blue) !important; font-size: 12px; letter-spacing: .07em !important; }
+html.shvya-page-workflows #smart-triggers .st-module-label > span { width: 8px; height: 8px; border-radius: 50%; background: var(--st-blue); box-shadow: 0 0 0 6px #e3effb; }
+html.shvya-page-workflows #smart-triggers .st-intro h1 { margin: 16px 0 10px; font-size: clamp(36px, 4vw, 56px) !important; font-weight: 650; }
+html.shvya-page-workflows #smart-triggers .st-intro p { max-width: 65ch; font-size: 17px; }
+@media (max-width: 520px) {
+  html.shvya-page-workflows #smart-triggers .st-condition .st-columns { grid-template-columns: minmax(0, 1fr); }
+  html.shvya-page-workflows #smart-triggers .st-summary .st-check { flex-shrink: 1; }
+  html.shvya-page-workflows #smart-triggers .st-card-title h2 { font-size: 17px; }
+}
