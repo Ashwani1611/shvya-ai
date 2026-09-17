@@ -402,6 +402,7 @@ def _working_hours_question(question: str) -> bool:
 def _install_live_availability_guard() -> None:
     from apps.ai_engagement.services import evidence_resolver as evidence_module
     from apps.ai_engagement.services.intent_types import Intent, IntentDecision
+    from apps.ai_engagement.services.tenant_guard import TenantGuard
 
     resolver_cls = evidence_module.EvidenceResolver
     original = resolver_cls.resolve
@@ -416,6 +417,10 @@ def _install_live_availability_guard() -> None:
         intent_decision=None,
         structured_memory=None,
     ):
+        # Preserve Phase 4's fail-closed tenant boundary even when Phase 5 can
+        # answer deterministically without consulting the original resolver.
+        TenantGuard(organization).validate_lead(lead)
+
         intents = set()
         if isinstance(intent_decision, IntentDecision):
             intents = {
