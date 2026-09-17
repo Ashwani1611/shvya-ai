@@ -227,6 +227,14 @@ class AiEngagementConfig(AppConfig):
         )
         install_conversation_policy_runtime()
 
+        # Phase 6 lead memory extends the existing recent-message + rolling-summary
+        # context. It is organization+lead scoped, deterministic, and runs through
+        # the same accepted-turn hook for API, Coexistence and Hosted WhatsApp.
+        from apps.ai_engagement.services.lead_memory_runtime import (
+            install_lead_memory_runtime,
+        )
+        install_lead_memory_runtime()
+
         # Phase 1 observability is installed last so it observes the final shared
         # API/Coexistence and Hosted runtime without becoming policy authority.
         from . import trace_signals  # noqa: F401
