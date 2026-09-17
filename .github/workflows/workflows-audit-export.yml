@@ -10,6 +10,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          ref: 03161c1dbbd4e35cb41a6fc0871ff68afd856619
           persist-credentials: false
       - name: Export tracked source only
         run: |
@@ -17,6 +18,7 @@ jobs:
           git archive HEAD | tar -x -C /tmp/workflows-fixture
       - uses: actions/upload-artifact@v4
         with:
-          name: workflows-source-fixture
+          name: workflows-main-fixture
           path: /tmp/workflows-fixture/
+          include-hidden-files: true
           retention-days: 1
