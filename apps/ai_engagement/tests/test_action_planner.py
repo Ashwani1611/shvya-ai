@@ -70,7 +70,10 @@ class ActionPlannerTests(TestCase):
             attributes={},
         )
         self.planner = ActionPlanner()
-        self.source = SimpleNamespace(id="source-1", body="We receive around 30 leads daily. Please call me tomorrow.")
+        self.source = SimpleNamespace(
+            id="source-1",
+            body="We receive around 30 leads daily. Please call me tomorrow.",
+        )
 
     def decision(self, *, actions=None, file_document_id=None, reason_code="NORMAL_CONVERSATION"):
         return SimpleNamespace(
@@ -150,17 +153,28 @@ class ActionPlannerTests(TestCase):
         self.assertEqual(plan.actions[0].validation_status, STATUS_REJECTED)
 
     def test_inactive_stage_rejected(self):
-        self.stage_two.is_active = False
-        self.stage_two.save(update_fields=["is_active"])
+        inactive_stage = Stage.objects.create(
+            pipeline=self.pipeline,
+            name="Nurturing",
+            display_order=90,
+            is_active=True,
+        )
+        inactive_stage.is_active = False
+        inactive_stage.save(update_fields=["is_active"])
+        inactive_stage.refresh_from_db()
+        self.assertFalse(inactive_stage.is_active)
         plan = self.plan(self.decision(actions=[{
             "type": "pipeline_transition",
-            "stage_shift": {"stage_id": str(self.stage_two.id)},
+            "stage_shift": {"stage_id": str(inactive_stage.id)},
         }]))
         self.assertEqual(plan.actions[0].validation_status, STATUS_REJECTED)
 
     def test_add_note_is_proposal_only(self):
         before = LeadNote.objects.filter(lead=self.lead).count()
-        plan = self.plan(self.decision(actions=[{"type": "add_note", "note": "Customer requested follow-up."}]))
+        plan = self.plan(self.decision(actions=[{
+            "type": "add_note",
+            "note": "Customer requested follow-up.",
+        }]))
         self.assertEqual(plan.actions[0].validation_status, STATUS_ACCEPTED)
         self.assertEqual(LeadNote.objects.filter(lead=self.lead).count(), before)
 
@@ -216,7 +230,11 @@ class ActionPlannerTests(TestCase):
         contact = LeadContact.objects.create(lead=foreign_lead, channel="phone", handle="123")
         plan = self.plan(self.decision(actions=[{
             "type": "contact_updates",
-            "updates": [{"contact_id": str(contact.id), "channel": "phone", "handle": "456"}],
+            "updates": [{
+                "contact_id": str(contact.id),
+                "channel": "phone",
+                "handle": "456",
+            }],
         }]))
         self.assertEqual(plan.actions[0].validation_status, STATUS_REJECTED)
 
@@ -326,6 +344,9 @@ class ActionPlannerTests(TestCase):
             )
 
     def test_no_additional_model_call_is_required(self):
-        plan = self.plan(self.decision(actions=[{"type": "add_note", "note": "No model needed"}]))
+        plan = self.plan(self.decision(actions=[{
+            "type": "add_note",
+            "note": "No model needed",
+        }]))
         self.assertEqual(plan.actions[0].validation_status, STATUS_ACCEPTED)
-        self.assertEqual(plan.plan_version, "phase7.v1")
+        self.assertEqual(plan.plan_version, "phase7.v2")
