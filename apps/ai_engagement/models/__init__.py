@@ -12,3 +12,4 @@ from .credit import (
     AICreditWallet as AICreditWallet,
 )
 from .trace import AITrace as AITrace
+from .action_receipt import CRMActionReceipt as CRMActionReceipt
