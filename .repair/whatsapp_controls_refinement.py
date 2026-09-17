@@ -8,6 +8,26 @@ import runpy
 helpers = runpy.run_path(".repair/whatsapp_controls.py")
 replace = helpers["replace"]
 
+path = "services/channels/whatsapp_service.py"
+replace(path, '\n    \n', '\n\n', count=2)
+replace(path, '        # --------------------------------------------------------\n    # CREATE INBOUND MESSAGE', '    # --------------------------------------------------------\n    # CREATE INBOUND MESSAGE')
+
+path = "services/channels/hosted_automation_service.py"
+replace(path, '''        message = execution.whatsapp_message
+        if message is None or message.status != WhatsAppMessage.Status.QUEUED:
+''', '''        message = execution.whatsapp_message
+        if message is not None and (
+            message.account_id != account.pk or message.lead_id != state.lead_id
+            or message.organization_id != state.organization_id
+        ):
+            if message.status == WhatsAppMessage.Status.QUEUED:
+                message.status = WhatsAppMessage.Status.FAILED
+                message.error = "Follow-up sender changed before delivery."
+                message.save(update_fields=["status", "error", "updated_at"])
+            message = None
+        if message is None or message.status != WhatsAppMessage.Status.QUEUED:
+''')
+
 path = "apps/channels/tests/test_account_settings_controls.py"
 replace(path, '    def outbound(self, ai=None):\n        message = queue_outbound_message(\n', '''    def outbound(self, ai=None):
         if ai is not None and not self.lead.whatsapp_messages.filter(direction="inbound").exists():
@@ -36,6 +56,28 @@ replace(path, '    def test_manual_message_is_not_disabled_by_automation_switche
         self.assertEqual(message.status, WhatsAppMessage.Status.SENT)
 
     def test_manual_message_is_not_disabled_by_automation_switches(self):
+''')
+replace(path, '    def test_canonical_sender_does_not_strand_hosted_bump_messages(self):\n', '''    def test_queued_followup_checks_switch_again_at_transport_boundary(self):
+        from services.channels.hosted_automation_service import HostedAutomationPaused
+        from services.channels.hosted_whatsapp_transport import send_hosted_message
+
+        sequence, step, state = self.sequence()
+        message = self.outbound()
+        message.raw_payload = {"shvya_auto_followup": {"provider": "hosted", "sequence_id": str(sequence.pk)}}
+        message.save(update_fields=["raw_payload", "updated_at"])
+        FollowupExecution.objects.create(
+            organization=self.org, state=state, lead=self.lead, sequence=sequence, step=step,
+            scheduled_for=self.now, status=FollowupExecution.Status.PENDING, whatsapp_message=message,
+        )
+        self.save_settings(auto_follow_up=False)
+        with patch("services.channels.hosted_whatsapp_transport.WhatsAppWebClient.send_message") as gateway:
+            with self.assertRaises(HostedAutomationPaused):
+                send_hosted_message(message=message)
+            gateway.assert_not_called()
+        message.refresh_from_db()
+        self.assertEqual(message.status, WhatsAppMessage.Status.QUEUED)
+
+    def test_canonical_sender_does_not_strand_hosted_bump_messages(self):
 ''')
 
 path = "apps/channels/tests/test_hosted_followup_media_inbox.py"
