@@ -100,6 +100,10 @@ jobs:
             echo "Building updated application containers..."
             docker compose build web ws worker ai_realtime_worker hosted_ai_worker beat whatsapp-web-gateway
 
+            echo "Preparing writable application bind mounts for the non-root runtime user..."
+            docker compose run --rm --no-deps --user 0 web sh -c \
+              'mkdir -p /app/staticfiles /app/media && chown -R 10001:10001 /app/staticfiles /app/media'
+
             echo "Ensuring database and Redis are healthy..."
             docker compose up -d --wait db redis
 
@@ -141,6 +145,17 @@ jobs:
               docker compose logs --tail=150 hosted_ai_worker
               exit 1
             fi
+
+            echo "Verifying Python application services run as the non-root app user..."
+            for service in web ws worker ai_realtime_worker hosted_ai_worker beat; do
+              uid="$(docker compose exec -T "$service" id -u)"
+              gid="$(docker compose exec -T "$service" id -g)"
+              if [ "$uid" != "10001" ] || [ "$gid" != "10001" ]; then
+                echo "${service} is running as unexpected uid:gid ${uid}:${gid}."
+                docker compose ps
+                exit 1
+              fi
+            done
 
             echo "Verifying live AI task registration and queue consumers..."
             ai_ready=0
