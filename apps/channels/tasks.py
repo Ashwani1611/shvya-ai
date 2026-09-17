@@ -14,6 +14,7 @@ import logging
 
 from celery import chord, group, shared_task
 from django.db import transaction
+from django.utils import timezone
 
 logger = logging.getLogger(__name__)
 
