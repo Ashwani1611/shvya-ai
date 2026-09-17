@@ -16,6 +16,8 @@
   data-data-url="{% url 'whatsapp-hosted-session-chats-data' account.id %}"
   data-send-url="{% url 'whatsapp-hosted-session-chat-send' account.id %}"
   data-account-id="{{ account.id }}"
+  data-account-status="{{ account.status }}"
+  data-read-url="{% url 'whatsapp-hosted-session-chat-read' account.id %}"
 >
   <aside class="hosted-chat-list">
     <div class="hosted-list-header">
@@ -25,7 +27,7 @@
       <div class="hosted-list-title">
         <div class="hosted-list-title-row">
           <strong>Chats</strong>
-          <span id="hosted-live-status" class="hosted-live is-offline"><span class="hosted-live-dot"></span><span data-live-label>Connecting</span></span>
+          <span id="hosted-live-status" role="status" aria-live="polite" class="hosted-live is-offline"><span class="hosted-live-dot"></span><span data-live-label>Connecting</span></span>
         </div>
         <span>{{ account.display_phone_number }}</span>
       </div>
@@ -62,6 +64,7 @@
               <div class="hosted-conversation-preview">{{ c.last_message }}</div>
               {% if c.unread %}<span class="hosted-unread">{{ c.unread }}</span>{% endif %}
             </div>
+            {% if c.stage_name %}<span class="hosted-stage" title="Lead stage: {{ c.stage_name }}">{{ c.stage_name }}</span>{% endif %}
           </div>
         </div>
       </a>

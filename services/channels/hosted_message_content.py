@@ -140,8 +140,9 @@ def repair_gateway_message_content(*, message, payload, historical=False):
     current_payload = dict(_payload(message))
     incoming = {key: value for key, value in payload.items() if value is not None}
     merged = {**current_payload, **incoming}
-    if historical or merged.get("isHistory"):
-        merged["isHistory"] = True
+    # Keep explicit live provenance when replaying history, but recover the
+    # history flag on legacy rows that never recorded their source.
+    merged["isHistory"] = bool(current_payload.get("isHistory", historical)) if historical else False
 
     update_fields = []
     if merged != current_payload:
@@ -189,7 +190,9 @@ def repair_content_after_gateway_event(*, payload):
         if not message_id:
             continue
         message = WhatsAppMessage.objects.filter(
-            external_id=f"wweb:{message_id}"
+            external_id=f"wweb:{message_id}",
+            account_id=payload.get("sessionId"),
+            account__is_active=True,
         ).first()
         if not message:
             continue

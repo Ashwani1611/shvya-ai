@@ -4,6 +4,7 @@
 pytest==9.1.1
 pytest-django==4.14.0
 pytest-cov==7.1.0
+playwright==1.57.0
 factory_boy==3.3.3
 Faker==40.37.0
 
