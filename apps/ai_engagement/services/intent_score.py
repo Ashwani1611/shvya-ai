@@ -34,18 +34,25 @@ _MEDIUM_URGENCY_RE = re.compile(
     re.I,
 )
 _LIGHT_URGENCY_RE = re.compile(
-    r"\b(?:next quarter|within\s+[23]\s+months?|just exploring|exploring|later|soon)\b",
+    r"\b(?:next quarter|within\s+[23]\s+months?|later|soon)\b",
+    re.I,
+)
+_LONG_TERM_OR_BROWSING_RE = re.compile(
+    r"\b(?:just exploring|exploring|just browsing|browsing|"
+    r"more than\s+3\s+months?|after\s+3\s+months?|"
+    r"(?:4|5|6|7|8|9|10|11|12)\s+months?)\b",
     re.I,
 )
 _STRONG_COMMITMENT_RE = re.compile(
     r"\b(?:ready to (?:buy|purchase|proceed|start)|want to proceed|"
     r"book|schedule)\b.{0,50}\b(?:demo|call|meeting|appointment)\b|"
-    r"\b(?:call me|arrange a call|set up a demo)\b",
+    r"\b(?:call me|arrange a call|set up a demo|demo booked|meeting booked|"
+    r"budget approved|approved budget|decision[- ]?maker|final purchase decision)\b",
     re.I,
 )
 _SOFT_COMMITMENT_RE = re.compile(
-    r"\b(?:interested|pricing|price|cost|budget|send (?:me )?(?:details|brochure|proposal)|"
-    r"share (?:the )?(?:details|pricing)|decision maker|purchase decision)\b",
+    r"\b(?:maybe later|follow[- ]?up|contact me|check back|let me think|"
+    r"get back to me|reach out later|interested)\b",
     re.I,
 )
 _CLARITY_RE = re.compile(
@@ -122,13 +129,21 @@ def _engagement_points(texts: list[str]) -> tuple[int, str]:
         if _normalized(text) not in _SOCIAL_ONLY and len(_normalized(text)) > 2
     ]
     if not meaningful:
-        return 0, "Only greeting/acknowledgement-level engagement so far."
-    rich = any(len(text) >= 80 or "?" in text for text in meaningful)
-    if len(meaningful) >= 4 or (len(meaningful) >= 3 and rich):
-        return 3, "Multiple meaningful turns with active detail/questions."
-    if len(meaningful) >= 2 or rich:
-        return 2, "More than one useful reply or meaningful detail was shared."
-    return 1, "One meaningful lead response is available."
+        return 0, "Only one-word or generic replies so far."
+
+    joined = " ".join(meaningful[-20:])
+    rich_detail = any(len(text) >= 80 for text in meaningful)
+    actively_driving = bool(re.search(
+        r"\b(?:book|schedule|request|want|need|show me|explain)\b.{0,40}"
+        r"\b(?:demo|call|meeting|pricing|details)\b",
+        joined,
+        re.I,
+    ))
+    if rich_detail or actively_driving or len(meaningful) >= 4:
+        return 3, "Lead volunteered rich information or actively drove the conversation."
+    if any("?" in text for text in meaningful) or len(meaningful) >= 2:
+        return 2, "Lead asked clarifying questions or supplied useful detail."
+    return 1, "Lead answered questions but offered little extra detail."
 
 
 def _urgency_points(
@@ -141,11 +156,13 @@ def _urgency_points(
     )
     joined = " ".join([*texts[-20:], fact_text])
     if _STRONG_URGENCY_RE.search(joined):
-        return 3, "Explicit immediate/this-week timeline."
+        return 3, "Needs action this week or ASAP."
     if _MEDIUM_URGENCY_RE.search(joined):
-        return 2, "Explicit implementation timeline within about 30 days."
+        return 2, "Wants a solution within one month."
+    if _LONG_TERM_OR_BROWSING_RE.search(joined):
+        return 0, "Timeline is beyond three months or the lead is only browsing."
     if _LIGHT_URGENCY_RE.search(joined):
-        return 1, "Longer or exploratory timeline."
+        return 1, "Timeline is roughly one to three months or otherwise vague."
     return 0, "No explicit timeline yet."
 
 
@@ -167,20 +184,51 @@ def _commitment_points(
     qualification_facts: list[dict[str, str]] | None = None,
 ) -> tuple[int, str]:
     joined = " ".join(texts[-20:])
-    if _STRONG_COMMITMENT_RE.search(joined):
-        return 2, "Firm next-step signal such as a call/demo/proceed request."
-
     facts = qualification_facts or []
+    fact_text = " ".join(
+        f"{item.get('question', '')} {item.get('value', '')}"
+        for item in facts
+    )
+    combined = f"{joined} {fact_text}"
+
+    if _STRONG_COMMITMENT_RE.search(combined):
+        return 2, "Firm next step, approved budget, or decision-maker involvement."
+
     supplied_budget = any(
         "budget" in _normalized(item.get("question"))
         and bool(_normalized(item.get("value")))
         for item in facts
     )
-    if supplied_budget:
-        return 1, "Lead supplied a budget in the configured qualification flow."
-    if _SOFT_COMMITMENT_RE.search(joined):
-        return 1, "Soft buying signal such as budget/pricing/interest."
-    return 0, "No explicit commitment signal yet."
+    if supplied_budget or _SOFT_COMMITMENT_RE.search(joined):
+        return 1, "Soft commitment or follow-up interest."
+    return 0, "No next-step commitment was provided."
+
+
+def _qualification_answer_ratio(lead) -> tuple[int, int, float]:
+    attrs = lead.attributes if isinstance(getattr(lead, "attributes", None), dict) else {}
+    state = attrs.get(QUALIFICATION_STATE_KEY)
+    if not isinstance(state, dict):
+        return 0, 0, 0.0
+    snapshot = state.get("flow_snapshot")
+    snapshot = snapshot if isinstance(snapshot, list) else []
+    required_ids = [
+        str(item.get("id") or "")
+        for item in snapshot
+        if isinstance(item, dict)
+        and item.get("required", True)
+        and str(item.get("id") or "").strip()
+    ]
+    states = state.get("requirement_states")
+    states = states if isinstance(states, dict) else {}
+    answered = sum(
+        1
+        for requirement_id in required_ids
+        if str((states.get(requirement_id) or {}).get("status") or "").casefold()
+        == "answered"
+    )
+    total = len(required_ids)
+    ratio = answered / total if total else 0.0
+    return answered, total, ratio
 
 
 def compute_intent_score(*, lead) -> dict:
@@ -190,11 +238,21 @@ def compute_intent_score(*, lead) -> dict:
     urgency, urgency_reason = _urgency_points(texts, qualification_facts)
     clarity, clarity_reason = _clarity_points(lead, texts)
     commitment, commitment_reason = _commitment_points(texts, qualification_facts)
-    score = engagement + urgency + clarity + commitment
+    raw_score = engagement + urgency + clarity + commitment
+    answered, required, answer_ratio = _qualification_answer_ratio(lead)
+    eighty_percent_override = bool(required) and answer_ratio >= 0.8
+    score = max(raw_score, 8) if eighty_percent_override else raw_score
     return {
         "version": INTENT_SCORE_VERSION,
         "score": int(max(0, min(10, score))),
+        "raw_score": int(max(0, min(10, raw_score))),
         "max_score": 10,
+        "qualified_threshold": 8,
+        "meets_qualified_threshold": score >= 8,
+        "eighty_percent_override": eighty_percent_override,
+        "questions_answered": answered,
+        "questions_required": required,
+        "answered_ratio": round(answer_ratio, 4),
         "components": {
             "engagement": {
                 "label": "Engagement",
