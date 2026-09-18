@@ -225,7 +225,6 @@ def _wrap_build_input(original_method):
 def _priority_validator(engagement_module):
     def validate(self, *, decision, context, requirements, qualification_state):
         from apps.ai_engagement.services.qualification_state import (
-            MODE_QUALIFICATION,
             REQUIREMENT_ANSWERED,
             next_requirement,
             project_answer_updates,
@@ -237,12 +236,6 @@ def _priority_validator(engagement_module):
         stage_name = _stage_name(context)
         explicit_stage = bool(stage_name)
         in_new_lead = stage_name in _NEW_LEAD_STAGE_NAMES
-        backend_qualifying = (
-            str(qualification_state.get("engagement_mode") or "").strip().casefold()
-            == MODE_QUALIFICATION
-        )
-        strict_qualification_active = backend_qualifying and (not explicit_stage or in_new_lead)
-
         updates = getattr(decision, "qualification_updates", []) or []
         selected_next = str(getattr(decision, "next_requirement_id", "") or "").strip()
         reason_code = str(getattr(decision, "reason_code", "") or "").strip().upper()
@@ -307,23 +300,10 @@ def _priority_validator(engagement_module):
             for item in projected.get("requirement_states", {}).values()
         )
 
-        # Direct answers should advance naturally in the same response when a
-        # next requirement exists. Do not apply this forcing rule to synthetic
-        # contexts that omit the CRM stage; those are validation fixtures, not
-        # production routing state.
-        runtime_saved = ((getattr(context, "lead", {}) or {}).get("attributes") or {}).get(STATE_KEY) or {}
-        if (
-            explicit_stage
-            and strict_qualification_active
-            and next_item
-            and getattr(decision, "should_engage", False)
-            and runtime_saved.get("conversation_mode") not in {"paused", "opt_out"}
-            and answered_now
-            and selected_next != next_id
-        ):
-            raise engagement_module.EngagementError(
-                "The current qualification answer was accepted; acknowledge it and ask the backend-selected next requirement in the same response."
-            )
+        # Do not force a next qualification question merely because the active
+        # answer was accepted. The backend conversation-policy layer decides
+        # whether this turn should ask, answer, acknowledge, or simply preserve
+        # the pending requirement for later.
 
         # If the lead has a direct question/request/problem, a pending
         # qualification question may follow only after meaningful engagement.
