@@ -1,0 +1,55 @@
+/* Help & Support stays actionable until a reply/closure, not a click or read. */
+#app-sidebar a.support-needs-response {
+    position: relative;
+    color: #0066cc !important;
+    background: #eff6ff !important;
+    box-shadow: inset 0 0 0 1px #c5ddfa;
+    animation: shvya-support-response-pulse 2.8s ease-in-out infinite !important;
+}
+#app-sidebar a.support-needs-response .ti,
+#app-sidebar a.support-needs-response .shvya-nav-copy,
+#app-sidebar a.support-needs-response .nav-label { color: #0066cc !important; }
+#app-sidebar .support-attention-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    min-width: 20px;
+    height: 20px;
+    margin-left: auto;
+    padding: 0 5px;
+    border-radius: 999px;
+    color: #fff;
+    background: #0066cc;
+    font: 600 11px/1 system-ui, sans-serif;
+}
+#app-sidebar .support-attention-badge[hidden] { display: none !important; }
+#app-sidebar.sidebar-collapsed .support-attention-badge {
+    position: absolute;
+    right: 7px;
+    top: 7px;
+    min-width: 8px;
+    width: 8px;
+    height: 8px;
+    padding: 0;
+    font-size: 0;
+    box-shadow: 0 0 0 2px #fff;
+}
+.support-attention-sr {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
+}
+@keyframes shvya-support-response-pulse {
+    0%, 100% { box-shadow: inset 0 0 0 1px #c5ddfa, 0 0 0 0 rgba(0, 102, 204, 0); }
+    50% { box-shadow: inset 0 0 0 1px #6ba9ef, 0 0 0 3px rgba(0, 102, 204, .12); }
+}
+@media (prefers-reduced-motion: reduce) {
+    #app-sidebar a.support-needs-response { animation: none !important; }
+}
