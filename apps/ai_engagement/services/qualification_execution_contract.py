@@ -196,11 +196,10 @@ def _config(*, organization, requirements: list[dict[str, Any]]) -> dict[str, An
     # explicit mapping-shaped lines from either AI Setup field so organizations
     # do not silently lose CRM writes when they keep Q1 -> Attribute next to the
     # questionnaire. Only lines that parse as mappings are admitted here.
-    for source_text in (qualification_raw, engagement_raw):
-        for raw_line in source_text.splitlines():
-            cleaned = raw_line.strip().lstrip("-*• ").strip()
-            if cleaned and _split_mapping(cleaned):
-                mapping_lines.append(cleaned)
+    for raw_line in qualification_raw.splitlines():
+        cleaned = raw_line.strip().lstrip("-*• ").strip()
+        if cleaned and _split_mapping(cleaned):
+            mapping_lines.append(cleaned)
     mapping_lines = list(dict.fromkeys(mapping_lines))
 
     for line in mapping_lines:
