@@ -665,6 +665,12 @@ class QualificationExecutionContractE2ETests(TestCase):
         )
         AttributeDefinition.objects.create(
             organization=self.organization,
+            name="Timeline Mirror",
+            key="timeline_mirror",
+            field_type=AttributeDefinition.FieldType.TEXT,
+        )
+        AttributeDefinition.objects.create(
+            organization=self.organization,
             name="Timeline Guess",
             key="timeline_guess",
             field_type=AttributeDefinition.FieldType.TEXT,
@@ -676,7 +682,8 @@ class QualificationExecutionContractE2ETests(TestCase):
         )
         info.engagement_instructions = (
             "## Attribute mapped\n"
-            "timing -> Decision Window\n\n"
+            "timing -> Decision Window\n"
+            "timing -> Timeline Mirror\n\n"
             "## Stage shifting\n"
             "When all required qualification questions are answered, move to Discovery Complete.\n"
             "Acknowledgment message: \"We have captured your requirements.\""
@@ -730,6 +737,10 @@ class QualificationExecutionContractE2ETests(TestCase):
         self.lead.refresh_from_db()
         self.assertEqual(
             self.lead.attributes["decision_window"],
+            "Sometime after the festival season",
+        )
+        self.assertEqual(
+            self.lead.attributes["timeline_mirror"],
             "Sometime after the festival season",
         )
         self.assertNotIn("timeline_guess", self.lead.attributes)
