@@ -1,20 +1,44 @@
-name: AI source audit workspace
+name: Assemble verified AI phase changes
 on:
   push:
     branches: [audit/ai-phases-source-20260918]
 permissions:
-  contents: read
+  contents: write
 jobs:
-  source:
+  assemble:
     runs-on: ubuntu-latest
     steps:
-      - name: Export empty CI-compatible PostgreSQL runtime
-        run: |
-          docker create --name postgres-audit pgvector/pgvector:pg17
-          docker export postgres-audit | gzip > /tmp/postgres-audit-rootfs.tar.gz
-          docker rm postgres-audit
-      - uses: actions/upload-artifact@v4
+      - uses: actions/checkout@v7
         with:
-          name: shvya-ai-audit-postgres
-          path: /tmp/postgres-audit-rootfs.tar.gz
-          retention-days: 1
+          fetch-depth: 0
+      - name: Decode checksum-verified local implementation
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat .ai-transfer/part{0,1,2,3,4} | base64 --decode > /tmp/ai-implementation.xz
+          echo '761b7edf6a98a33f43898a262f01c99509859af3729706f4b1e82938222e192f  /tmp/ai-implementation.xz' | sha256sum --check
+          xz --decompress --stdout /tmp/ai-implementation.xz > /tmp/ai-implementation.patch
+          echo 'f9031b3359973fc1db718133377e82ee16dc5cca33b8dfcaad0503563e5ec219  /tmp/ai-implementation.patch' | sha256sum --check
+      - name: Create clean product branch without assembly helpers
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE=e94ef0e566c0af105962042eda4f931f6cd2ed64
+          TARGET=fix/ai-phases-1-11
+          test "$(git ls-remote origin refs/heads/staging | cut -f1)" = "$BASE"
+          if git ls-remote --exit-code --heads origin "refs/heads/$TARGET" >/dev/null; then
+            echo 'Refusing to overwrite an existing feature branch.'
+            exit 1
+          fi
+          git checkout --detach "$BASE"
+          git switch -c "$TARGET"
+          git apply --index --unidiff-zero /tmp/ai-implementation.patch
+          git diff --cached --check
+          test "$(git write-tree)" = c4b5daebee387e764f5db2d4684363dba065a124
+          test ! -e .ai-transfer
+          test ! -e .github/workflows/ai-audit-source.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'Complete AI reliability phases 1-11 with grounded composition and durable actions' -m 'Preserve existing organization/qualification/transport ownership and model selection. Fix grounding, source forwarding and transactional idempotency. Add configurable objection intelligence, explainable lead signals, source-bound memory, controlled response plans and recorded-provider backend evaluation. Local evaluation: 168 passed plus 33 subtests. Existing sandbox/repair regressions: 55 passed plus 4 subtests. Full remote CI and staged promotion are required; this commit does not assert live-provider verification.'
+          git push origin "HEAD:refs/heads/$TARGET"
+          git rev-parse HEAD
