@@ -1707,10 +1707,24 @@ def _execute_ai_engagement_response_impl(
 def _execute_ai_engagement_response(*, task, lead_id):
     from celery.exceptions import Retry
     from apps.channels.models import WhatsAppMessage
-    from apps.ai_engagement.services.execution_tracker import record_execution
-    source = WhatsAppMessage.objects.filter(lead_id=lead_id, direction="inbound").order_by("-created_at", "-id").first()
-    if source:
-        record_execution(source.pk, status="processing", increment=True)
+    from apps.ai_engagement.services.execution_tracker import (
+        claim_execution,
+        record_execution,
+    )
+
+    source = WhatsAppMessage.objects.filter(
+        lead_id=lead_id,
+        direction="inbound",
+    ).order_by("-created_at", "-id").first()
+
+    if source and not claim_execution(source.pk):
+        return {
+            "status": "skipped",
+            "reason": "duplicate_turn_in_progress_or_processed",
+            "lead_id": str(lead_id),
+            "source_message_id": str(source.pk),
+        }
+
     try:
         result = _execute_ai_engagement_response_impl(task=task, lead_id=lead_id)
     except Retry:
