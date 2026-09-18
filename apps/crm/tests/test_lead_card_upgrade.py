@@ -201,3 +201,26 @@ class LeadCardUpgradeTests(TestCase):
         self.assertIsNone(conversation.lead_id)
         self.assertTrue(InstagramMessage.objects.filter(pk=message.pk).exists())
         self.assertTrue(InstagramAccount.objects.filter(pk=conversation.account_id).exists())
+
+    def test_account_scoped_chat_links_and_composer_keep_one_account_parameter(self):
+        from bs4 import BeautifulSoup
+        self.message("Hello from the selected number")
+        response = self.client.get(reverse("whatsapp-chat-detail", args=[self.lead.pk]), {"account":self.account.pk})
+        self.assertEqual(response.status_code, 200)
+        soup = BeautifulSoup(response.content, "html.parser")
+        link = soup.select_one("a.conversation-row")
+        self.assertIsNotNone(link)
+        self.assertEqual(parse_qs(urlparse(link["href"]).query)["account"], [str(self.account.pk)])
+        self.assertNotIn("?account=" + str(self.account.pk) + "?", str(soup))
+
+    def test_card_template_renders_own_notes_avatar_and_unassessed_score(self):
+        from django.template.loader import render_to_string
+        from apps.crm.views.dashboard import _lead_card_context
+        LeadNote.objects.create(lead=self.lead, note="A saved note")
+        context = _lead_card_context(self.lead, self.user)
+        context["notes"] = []  # Unrelated page context must not hide this lead's notes.
+        html = render_to_string("crm/partials/lead_card.html", context)
+        self.assertIn("lead-cartoon-avatar", html)
+        self.assertIn("Not assessed", html)
+        self.assertIn("1 note", html)
+        self.assertIn(reverse("crm-lead-whatsapp", args=[self.lead.pk]), html)

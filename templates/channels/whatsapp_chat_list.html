@@ -58,7 +58,7 @@
 
         <div class="wa-scrollbar flex-1 overflow-y-auto">
             {% for lead in conversations %}
-            <a href="{% url 'whatsapp-chat-detail' lead.id %}{% if selected_account %}?account={{ selected_account.id }}{% endif %}?{% if selected_account %}account={{ selected_account.id }}&{% endif %}tab={{ active_tab }}{% if search_query %}&q={{ search_query|urlencode }}{% endif %}"
+            <a href="{% url 'whatsapp-chat-detail' lead.id %}?{% if selected_account %}account={{ selected_account.id }}&{% endif %}tab={{ active_tab }}{% if search_query %}&q={{ search_query|urlencode }}{% endif %}"
                class="conversation-row flex gap-3 border-b border-gray-100 px-3 py-3 transition hover:bg-[#f5faf7] {% if active_lead and active_lead.id == lead.id %}bg-[#eaf7f0]{% endif %}">
                 <div class="relative mt-0.5 flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full bg-[#e6ebe8] text-xs font-bold text-gray-600">
                     {{ lead.initials }}
