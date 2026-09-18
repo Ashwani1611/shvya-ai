@@ -149,6 +149,7 @@ def _value_supported_by_latest_message(value: Any, latest_text: str) -> bool:
 
 _ATTRIBUTE_STOPWORDS = {
     "a", "an", "and", "the", "of", "for", "to", "current", "lead", "customer",
+    "number", "count", "size",
 }
 _ATTRIBUTE_ALIASES = {
     "employees": "team", "employee": "team", "people": "team", "staff": "team",
