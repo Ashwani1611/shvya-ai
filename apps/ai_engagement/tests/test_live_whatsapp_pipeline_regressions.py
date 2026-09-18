@@ -85,7 +85,7 @@ class LiveWhatsAppPipelineRegressionTests(TestCase):
             status=WhatsAppMessage.Status.RECEIVED,
         )
 
-    def test_established_conversation_survives_pipeline_move_without_prior_ai_reply(self):
+    def test_untrusted_inbound_history_does_not_survive_pipeline_move(self):
         self._inbound("before-pipeline-move", "First customer message")
         self.lead.pipeline = self.leads
         self.lead.stage = self.leads_stage
@@ -98,8 +98,8 @@ class LiveWhatsAppPipelineRegressionTests(TestCase):
             lead=self.lead,
         )
 
-        self.assertTrue(decision.allowed)
-        self.assertEqual(decision.reason, "allowed")
+        self.assertFalse(decision.allowed)
+        self.assertEqual(decision.reason, "pipeline_whatsapp_account_mismatch")
 
     def test_hosted_permission_uses_its_exact_inbound_even_if_other_number_is_newer(self):
         hosted = WhatsAppAccount.objects.create(

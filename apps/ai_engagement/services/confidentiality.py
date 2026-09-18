@@ -169,6 +169,18 @@ def customer_message_violation(message: Any) -> str | None:
 def protect_customer_message(message: Any) -> tuple[str, str | None]:
     text = str(message or "").strip()
     violation = customer_message_violation(text)
+    # A reply can contain both a useful customer-facing statement and one
+    # prohibited routing sentence. Retain only the independently safe content;
+    # never disclose the route just because it appeared beside normal text.
+    if violation == "internal_routing":
+        safe_parts = [
+            part.strip()
+            for part in re.split(r"(?<=[.!?])\s+", text)
+            if part.strip() and not _INTERNAL_ROUTE_RE.search(part)
+        ]
+        safe_text = " ".join(safe_parts)
+        if safe_text and customer_message_violation(safe_text) is None:
+            return safe_text, violation
     if violation:
         return SAFE_CONFIDENTIALITY_REPLY, violation
     return text, None
