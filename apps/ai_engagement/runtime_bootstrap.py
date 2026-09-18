@@ -132,11 +132,6 @@ def install_ai_runtime() -> None:
     )
     install_task_execution_failsoft()
 
-    from services.channels.ai_orchestration_hooks import (
-        install_ai_orchestration_hooks,
-    )
-    install_ai_orchestration_hooks()
-
     # The first customer-facing WhatsApp reply greets once before presenting
     # the backend-selected first qualification requirement.
     from apps.ai_engagement.services.first_inbound_welcome_runtime import (
