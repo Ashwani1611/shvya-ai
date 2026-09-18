@@ -1,4 +1,5 @@
 from django.urls import path
+from .bac_views import bac_list
 
 from .views import (
     admin_global_search,
@@ -31,6 +32,7 @@ from .views import (
 )
 
 urlpatterns = [
+    path("bac/", bac_list, name="superadmin-bac"),
     # =========================================================
     # SUPER ADMIN — LOGIN
     # =========================================================

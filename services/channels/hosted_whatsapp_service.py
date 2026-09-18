@@ -42,6 +42,9 @@ def _default_settings_for_account(account):
     # Hosted linked-device sessions remain opt-in for automatic replies.
     if account.connection_type == WhatsAppAccount.ConnectionType.API:
         defaults["ai_auto_reply"] = True
+        # Existing API numbers created leads before the gear existed. Preserve
+        # that default only until a customer explicitly saves their preference.
+        defaults["auto_lead_creation"] = True
         # Before pipeline gears existed, API follow-up business hours and
         # conversation delay lived in AutoFollowupSettings. Use those values as
         # the initial defaults until this specific API number is saved through
@@ -213,12 +216,18 @@ def ensure_session_settings(*, account):
 
 
 def get_session_settings(*, account):
-    org_settings = account.organization.settings or {}
+    # Worker-held account/organization instances can outlive a settings save.
+    # Read persisted controls, never a cached related object's JSON snapshot.
+    org_settings = Organization.objects.filter(pk=account.organization_id).values_list(
+        "settings", flat=True
+    ).first() or {}
     sessions = org_settings.get("hosted_whatsapp", {}).get("sessions", {})
     settings = {
         **_default_settings_for_account(account),
         **deepcopy(sessions.get(str(account.id), {})),
     }
+    for key in ("ai_auto_reply", "auto_lead_creation", "bump_up_messages", "auto_follow_up"):
+        settings[key] = _as_bool(settings[key])
     pipeline = get_pipeline_for_account(account=account)
     if pipeline:
         # Pipeline.ai_enabled is the single source of truth used by Knowledge
@@ -258,6 +267,8 @@ def update_session_settings(*, account, payload):
         **_default_settings_for_account(account),
         **sessions.get(str(account.id), {}),
     }
+
+    previous_settings = deepcopy(current)
 
     for key in (
         "ai_auto_reply",
@@ -347,6 +358,24 @@ def update_session_settings(*, account, payload):
             defaults={"enabled": True},
         )
 
+    timing_keys = {
+        "auto_follow_up", "business_hours_start", "business_hours_end",
+        "active_conversation_delay_value", "active_conversation_delay_unit",
+    }
+    if any(current[key] != previous_settings[key] for key in timing_keys):
+        from services.followup_service import reschedule_account_followups
+
+        # Never acquire state locks while holding the organization-settings lock.
+        # A running sender owns its state until completion; subsequent work sees
+        # the newly committed controls, without restarting completed steps.
+        transaction.on_commit(
+            lambda account_id=account.pk, organization_id=organization.pk,
+            previous=deepcopy(previous_settings): reschedule_account_followups(
+                account_id=account_id, organization_id=organization_id,
+                previous_settings=previous,
+            ),
+            robust=True,
+        )
     return deepcopy(current)
 
 
@@ -408,6 +437,11 @@ def _persist_gateway_message(*, account, payload, historical=False):
         return None
 
     external_id = f"wweb:{raw_message_id}"
+    existing = WhatsAppMessage.objects.filter(external_id=external_id).first()
+    if existing and (
+        existing.account_id != account.pk or existing.organization_id != account.organization_id
+    ):
+        return None
     is_group = bool(payload.get("isGroup"))
     is_outbound = bool(payload.get("fromMe"))
     account_number = normalize_whatsapp_number(
@@ -463,6 +497,12 @@ def _persist_gateway_message(*, account, payload, historical=False):
         )
     )
 
+    from services.channels.hosted_contact_sync import _contact_name, _should_replace
+
+    contact_name = "" if is_group else _contact_name(payload, peer)
+    if lead and contact_name and _should_replace(lead, peer) and lead.name != contact_name:
+        lead.name = contact_name
+        lead.save(update_fields=["name", "updated_at"])
     settings = get_session_settings(account=account)
     pipeline = get_pipeline_for_account(account=account)
     # The existing-chat snapshot protects history import only. Once WhatsApp
@@ -470,7 +510,8 @@ def _persist_gateway_message(*, account, payload, historical=False):
     # be eligible for normal Lead creation and AI automation, even if the
     # number was present when the Hosted session was first connected.
     if (
-        not is_outbound
+        not is_group
+        and not is_outbound
         and not historical
         and not lead
         and peer
@@ -484,7 +525,7 @@ def _persist_gateway_message(*, account, payload, historical=False):
                     organization=account.organization,
                     pipeline=pipeline,
                     stage=stage,
-                    name=payload.get("contactName") or peer,
+                    name=contact_name or peer,
                     phone=peer,
                     lead_source="whatsapp",
                 )
@@ -493,6 +534,16 @@ def _persist_gateway_message(*, account, payload, historical=False):
                     organization=account.organization,
                     phone=peer,
                 ).first()
+
+    history_is_read = True
+    if historical and payload.get("isUnread") is True:
+        from apps.channels.models import HostedChatReadState
+
+        occurred_at = _message_timestamp(payload)
+        history_is_read = bool(occurred_at and HostedChatReadState.objects.filter(
+            account=account, chat_key__in=[peer, chat_id, str(payload.get("rawChatId") or "")],
+            read_through_at__gte=occurred_at,
+        ).exists())
 
     defaults = {
         "organization": account.organization,
@@ -514,13 +565,20 @@ def _persist_gateway_message(*, account, payload, historical=False):
             "ignoredExistingChat": ignored_existing_chat,
             "leadCreationMessage": bool(_created),
         },
-        "is_read": True if is_outbound or historical else False,
+        "is_read": True if is_outbound else (history_is_read if historical else False),
     }
     message, created = WhatsAppMessage.objects.get_or_create(
         external_id=external_id,
         defaults=defaults,
     )
     if not created:
+        if message.account_id != account.pk or message.organization_id != account.organization_id:
+            return None
+        if (historical and not is_outbound and isinstance(payload.get("isUnread"), bool)
+                and isinstance(message.raw_payload, dict) and message.raw_payload.get("isHistory")
+                and message.is_read != history_is_read):
+            message.is_read = history_is_read
+            message.save(update_fields=["is_read", "updated_at"])
         return message
 
     occurred_at = _message_timestamp(payload)
@@ -613,9 +671,14 @@ def handle_gateway_event(*, payload):
             account=account,
             external_id=external_id,
         ).first()
-        if message:
-            message.status = mapped
-            message.raw_payload = payload
+        if message and message.direction == WhatsAppMessage.Direction.OUTBOUND:
+            ranks = {"queued": 0, "failed": 0, "sent": 1, "delivered": 2, "read": 3}
+            if ranks.get(mapped, 0) >= ranks.get(message.status, 0):
+                message.status = mapped
+            # ACKs are partial events. Never erase identity, event time, media,
+            # AI provenance or history/live markers with an ACK payload.
+            raw = message.raw_payload if isinstance(message.raw_payload, dict) else {}
+            message.raw_payload = {**raw, "lastAck": payload}
             message.save(update_fields=["status", "raw_payload", "updated_at"])
         return message
 
@@ -678,3 +741,44 @@ def queued_messages(*, account):
         direction=WhatsAppMessage.Direction.OUTBOUND,
         status=WhatsAppMessage.Status.QUEUED,
     ).select_related("lead").order_by("created_at")
+
+
+def account_ai_block_reason(*, account, lead, bump_up_number=None):
+    """Evaluate live account controls at queue/send time for either provider."""
+    from apps.ai_engagement.models import OrgInfo
+    from apps.ai_engagement.services.ai_permissions import AIPermissionService
+
+    account = WhatsAppAccount.objects.select_related("organization").filter(
+        pk=account.pk, organization_id=account.organization_id,
+    ).first()
+    if account is None or not account.is_active:
+        return "whatsapp_account_inactive"
+    if account.status != WhatsAppAccount.Status.CONNECTED:
+        return "whatsapp_account_not_connected"
+    if lead is None:
+        return "lead_missing"
+    lead = Lead.objects.select_related("organization", "pipeline", "stage").filter(
+        pk=lead.pk, organization_id=account.organization_id,
+    ).first()
+    if lead is None:
+        return "lead_organization_mismatch"
+    decision = AIPermissionService().evaluate(organization=lead.organization, lead=lead)
+    if not decision.allowed:
+        return decision.reason
+    controls = get_session_settings(account=account)
+    if not controls["ai_auto_reply"]:
+        return "ai_auto_reply_disabled"
+    if bump_up_number is not None:
+        if not controls["bump_up_messages"]:
+            return "bump_up_messages_disabled"
+        org_info = OrgInfo.objects.filter(organization_id=account.organization_id).first()
+        if not org_info or not org_info.bump_up_enabled:
+            return "organization_bump_up_disabled"
+        try:
+            number = int(bump_up_number)
+            limit = min(int(org_info.bump_up_count), int(controls["bump_up_count"]))
+        except (TypeError, ValueError):
+            return "invalid_bump_up_count"
+        if number < 1 or number > limit:
+            return "bump_up_limit_reached"
+    return ""

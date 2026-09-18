@@ -569,13 +569,14 @@ def _set_next_step(state, *, reference=None):
         reference=reference,
         organization=state.organization,
     )
-    due = _move_into_business_hours(
-        organization=state.organization,
-        due=due,
-        automation_settings=_automation_settings_for_state(state),
-    )
+    controls = _automation_settings_for_state(state)
+    if controls:
+        _refresh_conversation_pause(state, controls)
     if state.paused_until and due < state.paused_until:
         due = state.paused_until
+    due = _move_into_business_hours(
+        organization=state.organization, due=due, automation_settings=controls,
+    )
     state.next_step = next_step
     state.upcoming_send_at = due
     state.status = LeadSequenceState.Status.ACTIVE
@@ -600,13 +601,14 @@ def _repeat_or_advance(state, step, *, completed_at):
             reference=completed_at,
             organization=state.organization,
         )
-        due = _move_into_business_hours(
-            organization=state.organization,
-            due=due,
-            automation_settings=_automation_settings_for_state(state),
-        )
+        controls = _automation_settings_for_state(state)
+        if controls:
+            _refresh_conversation_pause(state, controls)
         if state.paused_until and due < state.paused_until:
             due = state.paused_until
+        due = _move_into_business_hours(
+            organization=state.organization, due=due, automation_settings=controls,
+        )
         state.next_step = step
         state.upcoming_send_at = due
         state.status = LeadSequenceState.Status.ACTIVE
@@ -822,17 +824,19 @@ def _conversation_delay(config):
     return _delay_delta(config.conversation_delay_value, config.conversation_delay_unit)
 
 
+@transaction.atomic
 def register_lead_reply(*, lead, at=None):
     """Delay, but do not clear, the active sequence after a lead reply."""
     at = at or timezone.now()
-    state = LeadSequenceState.objects.filter(
+    state = LeadSequenceState.objects.select_for_update(of=("self",)).filter(
         lead=lead,
         status__in=[LeadSequenceState.Status.ACTIVE, LeadSequenceState.Status.PAUSED],
     ).select_related("organization", "lead", "lead__pipeline", "sequence", "sequence__whatsapp_account").first()
     if not state:
         return None
-    state.last_inbound_at = at
-    state.paused_until = at + _state_conversation_delay(state)
+    state.last_inbound_at = max(at, state.last_inbound_at) if state.last_inbound_at else at
+    latest_activity = max(value for value in (state.last_inbound_at, state.last_manual_outbound_at) if value)
+    state.paused_until = latest_activity + _state_conversation_delay(state)
     if state.upcoming_send_at is None or state.upcoming_send_at < state.paused_until:
         state.upcoming_send_at = state.paused_until
     state.save(
@@ -846,17 +850,19 @@ def register_lead_reply(*, lead, at=None):
     return state
 
 
+@transaction.atomic
 def register_manual_outbound(*, lead, at=None):
     """Organization replies keep the sequence but protect conversation space."""
     at = at or timezone.now()
-    state = LeadSequenceState.objects.filter(
+    state = LeadSequenceState.objects.select_for_update(of=("self",)).filter(
         lead=lead,
         status__in=[LeadSequenceState.Status.ACTIVE, LeadSequenceState.Status.PAUSED],
     ).select_related("organization", "lead", "lead__pipeline", "sequence", "sequence__whatsapp_account").first()
     if not state:
         return None
-    state.last_manual_outbound_at = at
-    state.paused_until = at + _state_conversation_delay(state)
+    state.last_manual_outbound_at = max(at, state.last_manual_outbound_at) if state.last_manual_outbound_at else at
+    latest_activity = max(value for value in (state.last_inbound_at, state.last_manual_outbound_at) if value)
+    state.paused_until = latest_activity + _state_conversation_delay(state)
     if state.upcoming_send_at is None or state.upcoming_send_at < state.paused_until:
         state.upcoming_send_at = state.paused_until
     state.save(
@@ -1009,6 +1015,16 @@ def _send_whatsapp_step(state, step, execution):
         lead=lead,
         user=state.sequence.created_by,
     )
+    eligible_at = live_followup_due(state)
+    if eligible_at > timezone.now():
+        execution.status = FollowupExecution.Status.PENDING
+        execution.started_at = None
+        execution.scheduled_for = eligible_at
+        execution.save(update_fields=["status", "started_at", "scheduled_for", "updated_at"])
+        state.upcoming_send_at = eligible_at
+        state.save(update_fields=["upcoming_send_at", "updated_at"])
+        return
+
     message = WhatsAppMessage.objects.create(
         organization=state.organization,
         account=account,
@@ -1195,28 +1211,16 @@ def process_due_state(state_id):
         return False
 
     automation_settings = _automation_settings_for_state(state)
-    if not automation_settings or not automation_settings.get("auto_follow_up", True):
-        return False
-
     now = timezone.now()
-    if state.paused_until and state.paused_until > now:
-        state.upcoming_send_at = state.paused_until
+    adjusted = live_followup_due(state, automation_settings=automation_settings, now=now)
+    if adjusted > now:
+        state.upcoming_send_at = max(state.upcoming_send_at or adjusted, adjusted)
         state.save(update_fields=["upcoming_send_at", "updated_at"])
         return False
     if not state.next_step:
         _set_next_step(state, reference=now)
         return False
     if state.upcoming_send_at and state.upcoming_send_at > now:
-        return False
-
-    adjusted = _move_into_business_hours(
-        organization=state.organization,
-        due=now,
-        automation_settings=automation_settings,
-    )
-    if adjusted > now:
-        state.upcoming_send_at = adjusted
-        state.save(update_fields=["upcoming_send_at", "updated_at"])
         return False
 
     step = state.next_step
@@ -1262,3 +1266,111 @@ def dispatch_one_due_state():
         return {"status": "deferred", "state_id": str(state_ids[0])}
     finally:
         cache.delete(DISPATCH_LOCK_KEY)
+
+
+def _refresh_conversation_pause(state, automation_settings):
+    """Recompute the quiet period from real activity and the current setting."""
+    activity = [value for value in (state.last_inbound_at, state.last_manual_outbound_at) if value]
+    if activity:
+        pause_until = max(activity) + _delay_delta(
+            automation_settings.get("active_conversation_delay_value", 2),
+            automation_settings.get("active_conversation_delay_unit", "hours"),
+        )
+        if state.paused_until != pause_until:
+            state.paused_until = pause_until
+            state.save(update_fields=["paused_until", "updated_at"])
+    return state.paused_until
+
+
+def live_followup_due(state, *, automation_settings=None, now=None):
+    """One execution-time eligibility calculation shared by API and Hosted."""
+    now = now or timezone.now()
+    controls = automation_settings or _automation_settings_for_state(state)
+    if (
+        state.status != LeadSequenceState.Status.ACTIVE
+        or not state.lead_auto_followup_enabled or not state.sequence.is_active
+        or not controls or not controls.get("auto_follow_up", True)
+    ):
+        return now + timedelta(minutes=5)
+    pause_until = _refresh_conversation_pause(state, controls)
+    due = max(now, pause_until) if pause_until else now
+    return _move_into_business_hours(
+        organization=state.organization, due=due, automation_settings=controls,
+    )
+
+
+def reschedule_account_followups(*, account_id, organization_id, previous_settings):
+    """Refresh pending deadlines without resetting step, retry, or lead controls."""
+    account = WhatsAppAccount.objects.filter(
+        pk=account_id, organization_id=organization_id,
+        is_active=True, status=WhatsAppAccount.Status.CONNECTED,
+    ).first()
+    if account is None:
+        return
+    candidates = LeadSequenceState.objects.filter(
+        organization_id=organization_id, status=LeadSequenceState.Status.ACTIVE,
+        lead_auto_followup_enabled=True, sequence__is_active=True,
+        sequence__whatsapp_account__connection_type=account.connection_type,
+        next_step__isnull=False,
+    ).values_list("pk", flat=True)
+    for state_id in candidates.iterator(chunk_size=200):
+        with transaction.atomic():
+            state = LeadSequenceState.objects.select_for_update(of=("self",)).select_related(
+                "organization", "lead__pipeline", "sequence__whatsapp_account", "next_step",
+            ).filter(
+                pk=state_id, organization_id=organization_id,
+                status=LeadSequenceState.Status.ACTIVE, lead_auto_followup_enabled=True,
+                sequence__is_active=True,
+            ).first()
+            if state is None or not state.next_step:
+                continue
+            try:
+                linked = _validate_lead_sender(state.lead, state.sequence)
+            except FollowupError:
+                continue
+            if linked.pk != account.pk:
+                continue
+            latest = state.executions.filter(step=state.next_step).order_by("-created_at").first()
+            if latest and latest.status == FollowupExecution.Status.PROCESSING:
+                continue
+            from services.channels.hosted_whatsapp_service import get_session_settings
+
+            controls = get_session_settings(account=linked)
+            now = timezone.now()
+            reference = state.last_step_completed_at or state.activated_at or state.assigned_at
+            base_due = calculate_step_due(step=state.next_step, reference=reference, organization=state.organization)
+            old_pause = state.paused_until
+            old_expected = _move_into_business_hours(
+                organization=state.organization,
+                due=max(base_due, old_pause) if old_pause else base_due,
+                automation_settings=previous_settings,
+            )
+            old_hours_first = _move_into_business_hours(
+                organization=state.organization, due=base_due,
+                automation_settings=previous_settings,
+            )
+            if old_pause:
+                old_hours_first = max(old_hours_first, old_pause)
+            old_from_now = _move_into_business_hours(
+                organization=state.organization,
+                due=max(now, old_pause) if old_pause else now,
+                automation_settings=previous_settings,
+            )
+            pause_until = _refresh_conversation_pause(state, controls)
+            due = max(now, base_due, pause_until or now)
+            # Do not shorten unrelated sender pacing or custom future deadlines.
+            recognized_waits = {old_expected, old_hours_first, old_from_now, old_pause}
+            if (
+                previous_settings.get("auto_follow_up", True)
+                and state.upcoming_send_at and state.upcoming_send_at > now
+                and state.upcoming_send_at not in recognized_waits
+            ):
+                due = max(due, state.upcoming_send_at)
+            if latest and latest.status == FollowupExecution.Status.RETRY_WAIT and latest.next_retry_at:
+                due = max(due, latest.next_retry_at)
+            if not controls.get("auto_follow_up", True):
+                due = max(due, now + timedelta(minutes=5))
+            state.upcoming_send_at = _move_into_business_hours(
+                organization=state.organization, due=due, automation_settings=controls,
+            )
+            state.save(update_fields=["upcoming_send_at", "updated_at"])

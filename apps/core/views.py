@@ -1,4 +1,4 @@
-import uuid
+import logging
 
 from django.contrib import messages
 from django.shortcuts import redirect
@@ -7,6 +7,7 @@ from django.views.generic import FormView, TemplateView
 
 from apps.core.docs_content import DOC_TOPICS, docs_index
 from apps.core.forms import MarketingBookingForm
+from apps.core.booking import BookingUnavailable, save_booking
 from apps.core.ratelimit import ratelimit
 from apps.crm.authentication import get_crm_authenticated_user
 
@@ -82,6 +83,19 @@ class BookCallView(CRMUserContextMixin, FormView):
         return initial
 
     def form_valid(self, form):
-        reference = uuid.uuid4()
+        try:
+            booking = save_booking(form.cleaned_data)
+        except BookingUnavailable:
+            logging.getLogger(__name__).exception("BAC destination unavailable")
+            form.add_error(None, "We could not save your request. Please try again shortly.")
+            return self.form_invalid(form)
+        reference = booking.pk
+        self.request.session["bac_reference"] = str(reference)
         messages.success(self.request, f"Your request is saved. Reference: {reference}")
         return redirect(f"{self.success_url}&ref={reference}")
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        reference = self.request.session.get("bac_reference")
+        context["booking_reference"] = reference if reference == self.request.GET.get("ref") else None
+        return context

@@ -402,6 +402,10 @@ class WhatsAppMessage(models.Model):
                 ],
                 name="wa_msg_lead_type_created_idx",
             ),
+            models.Index(
+                fields=["account", "created_at", "id"],
+                name="wa_msg_account_created_idx",
+            ),
         ]
 
     def __str__(self):
@@ -410,6 +414,26 @@ class WhatsAppMessage(models.Model):
             f"{self.from_number} -> "
             f"{self.to_number}"
         )
+
+
+class HostedChatReadState(models.Model):
+    """A read boundary prevents a late history replay from restoring unread badges.
+
+    Live messages never inherit this boundary. Account ownership supplies the
+    tenant boundary; no second CRM or conversation source of truth is created.
+    """
+
+    account = models.ForeignKey(WhatsAppAccount, on_delete=models.CASCADE)
+    chat_key = models.CharField(max_length=128)
+    read_through_at = models.DateTimeField()
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["account", "chat_key"], name="hosted_read_account_key_uniq"
+            ),
+        ]
 
 
 # ============================================================

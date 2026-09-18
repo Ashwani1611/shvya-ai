@@ -38,7 +38,7 @@ def _phone(value):
 
 
 def _contact_name(item, phone):
-    name = _clean(item.get("contactName") or item.get("chatName"))
+    name = _clean(item.get("profileName") or item.get("contactName") or item.get("chatName"))
     if not name:
         return ""
     if name.endswith(("@lid", "@c.us", "@g.us")):

@@ -241,8 +241,8 @@ async function resolveChatIdentity(chat, client = null, lidPhoneMap = null) {
 
   const contactName = (
     contact && (
-      contact.name ||
       contact.pushname ||
+      contact.name ||
       contact.shortName ||
       contact.verifiedName
     )
@@ -253,6 +253,7 @@ async function resolveChatIdentity(chat, client = null, lidPhoneMap = null) {
     peerKey: peerPhone || rawChatId,
     peerPhone,
     contactName,
+    profileName: String((contact && contact.pushname) || '').trim(),
     isGroup: false,
   };
 }
@@ -289,15 +290,20 @@ async function serializeMessage(message, chat = null, identity = null, client = 
     chatName: (resolvedChat && resolvedChat.name) || resolvedIdentity.contactName,
     isGroup: resolvedIdentity.isGroup,
     contactName: resolvedIdentity.contactName,
+    profileName: resolvedIdentity.profileName || '',
     author: message.author || '',
   };
 }
 
 async function sendHistoryBatch(sessionId, messages) {
-  if (!messages.length) return;
-  const delivered = await callback(sessionId, 'history_sync', { messages });
-  if (!delivered) {
-    throw new Error('Django rejected or did not receive hosted history batch');
+  // Keep callbacks small: a partial timeout can safely replay message IDs.
+  for (let offset = 0; offset < messages.length; offset += 20) {
+    const delivered = await callback(sessionId, 'history_sync', {
+      messages: messages.slice(offset, offset + 20),
+    });
+    if (!delivered) {
+      throw new Error('Django rejected or did not receive hosted history batch');
+    }
   }
 }
 
@@ -330,21 +336,31 @@ async function syncOneChat(sessionId, chat, client) {
     );
   } catch (error) {
     console.warn(`Could not fetch history for ${sessionId}/${rawChatId}:`, error.message);
-    return { chats: 1, messages: 0 };
+    throw error;
   }
 
   const batch = [];
-  for (const message of messages) {
+  let failed = 0;
+  let remainingUnread = Math.max(0, Math.floor(Number(chat.unreadCount) || 0));
+  // Newest callbacks arrive first. Only incoming messages consume unread slots.
+  const ordered = messages.slice().sort((a, b) => Number(b.timestamp || 0) - Number(a.timestamp || 0));
+  for (const message of ordered) {
     if (!message || !serializedId(message.id)) continue;
     try {
-      batch.push(await serializeMessage(message, chat, identity, client));
+      const item = await serializeMessage(message, chat, identity, client);
+      item.isUnread = !item.fromMe && remainingUnread > 0;
+      if (item.isUnread) remainingUnread -= 1;
+      batch.push(item);
     } catch (error) {
+      failed += 1;
       console.warn(`Could not serialize history for ${sessionId}/${rawChatId}:`, error.message);
     }
   }
 
   if (batch.length) await sendHistoryBatch(sessionId, batch);
+  if (failed) throw new Error(`Could not serialize ${failed} history messages`);
   return { chats: 1, messages: batch.length };
+
 }
 
 async function syncRecentHistory(sessionId, state) {
@@ -377,6 +393,9 @@ async function syncRecentHistory(sessionId, state) {
     () => worker(),
   );
   await Promise.all(workers);
+  if (state.historyFailedChats) {
+    throw new Error(`History sync incomplete: ${state.historyFailedChats} chats failed; retry scheduled`);
+  }
   return { chats: syncedChats, messages: syncedMessages };
 }
 
@@ -447,10 +466,17 @@ function startHistorySync(sessionId, state, { force = false } = {}) {
     return Promise.resolve(state.historyResult || { chats: 0, messages: 0 });
   }
 
+  if (force) {
+    clearTimeout(state.historyRetryTimer);
+    state.historyRetryTimer = null;
+    state.historyRetryCount = 0;
+  }
+  state.historyFailedChats = 0;
   state.historyError = '';
   state.historySyncPromise = syncRecentHistory(sessionId, state)
     .then(async (result) => {
       state.historySynced = true;
+      state.historyRetryCount = 0;
       state.historyResult = result;
       state.historyError = '';
       console.log(
@@ -463,6 +489,16 @@ function startHistorySync(sessionId, state, { force = false } = {}) {
       state.historySynced = false;
       state.historyError = error.message || String(error);
       await callback(sessionId, 'history_failed', { error: state.historyError });
+      const attempt = state.historyRetryCount || 0;
+      if (attempt < 3 && !state.historyRetryTimer && state.status === 'running') {
+        state.historyRetryCount = attempt + 1;
+        state.historyRetryTimer = setTimeout(() => {
+          state.historyRetryTimer = null;
+          if (sessions.get(sessionId) !== state || state.status !== 'running') return;
+          startHistorySync(sessionId, state).catch(() => {});
+        }, 5000 * (2 ** attempt));
+        state.historyRetryTimer.unref();
+      }
       throw error;
     })
     .finally(() => {
@@ -835,12 +871,11 @@ app.post('/sessions/:sessionId/sync', async (req, res) => {
   if (state.status !== 'running') {
     return res.status(409).json({ error: 'Session is not running.' });
   }
-  try {
-    const result = await startHistorySync(req.params.sessionId, state, { force: true });
-    return res.json({ ok: true, ...result });
-  } catch (error) {
-    return res.status(502).json({ error: error.message || String(error) });
-  }
+  // The control request must not hold a Django worker while history imports.
+  startHistorySync(req.params.sessionId, state, { force: true }).catch((error) => {
+    console.warn(`Hosted history refresh failed for ${req.params.sessionId}:`, error.message);
+  });
+  return res.status(202).json({ ok: true, status: 'syncing', queued: true });
 });
 
 app.get('/sessions/:sessionId/existing-chats', async (req, res) => {

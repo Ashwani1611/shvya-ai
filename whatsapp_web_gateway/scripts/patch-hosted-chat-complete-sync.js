@@ -24,7 +24,7 @@ function replaceOnce(before, after, label) {
 
 replaceOnce(
   `const HISTORY_CHAT_LIMIT = 100;\nconst HISTORY_MESSAGE_LIMIT = 30;\nconst HISTORY_SYNC_CONCURRENCY = 4;\nconst HISTORY_CHAT_FETCH_TIMEOUT_MS = 12000;\nconst HISTORY_GET_CHATS_TIMEOUT_MS = 20000;\nconst EXISTING_CHATS_TIMEOUT_MS = 60000;\nconst CONTACT_LOOKUP_TIMEOUT_MS = 5000;\nconst LID_RESOLVE_BATCH_SIZE = 20;\nconst LID_RESOLVE_TIMEOUT_MS = 10000;\nconst LOCAL_SEND_MATCH_MS = 20000;`,
-  `const HISTORY_DEEP_CHAT_LIMIT = 100;\nconst HISTORY_CHAT_INDEX_LIMIT = 1000;\nconst HISTORY_MESSAGE_LIMIT = 100;\nconst HISTORY_INDEX_MESSAGE_LIMIT = 1;\nconst HISTORY_SYNC_CONCURRENCY = 6;\nconst HISTORY_CHAT_FETCH_TIMEOUT_MS = 15000;\nconst HISTORY_GET_CHATS_TIMEOUT_MS = 30000;\nconst EXISTING_CHATS_TIMEOUT_MS = 60000;\nconst CONTACT_LOOKUP_TIMEOUT_MS = 5000;\nconst LID_RESOLVE_BATCH_SIZE = 50;\nconst LID_RESOLVE_TIMEOUT_MS = 10000;\nconst LOCAL_SEND_MATCH_MS = 20000;`,
+  `const HISTORY_DEEP_CHAT_LIMIT = 100;\nconst HISTORY_CHAT_INDEX_LIMIT = 1000;\nconst HISTORY_MESSAGE_LIMIT = 100;\nconst HISTORY_INDEX_MESSAGE_LIMIT = 1;\nconst HISTORY_SYNC_CONCURRENCY = 3;\nconst HISTORY_CHAT_FETCH_TIMEOUT_MS = 15000;\nconst HISTORY_GET_CHATS_TIMEOUT_MS = 30000;\nconst EXISTING_CHATS_TIMEOUT_MS = 60000;\nconst CONTACT_LOOKUP_TIMEOUT_MS = 5000;\nconst LID_RESOLVE_BATCH_SIZE = 50;\nconst LID_RESOLVE_TIMEOUT_MS = 10000;\nconst LOCAL_SEND_MATCH_MS = 20000;`,
   'expanded history index and LID resolver limits',
 );
 
@@ -48,13 +48,13 @@ replaceOnce(
 
 replaceOnce(
   `      chat.fetchMessages({ limit: HISTORY_MESSAGE_LIMIT }),`,
-  `      chat.fetchMessages({ limit: messageLimit }),`,
+  `      chat.fetchMessages({ limit: Math.max(messageLimit, Math.min(1000, Math.max(0, Number(chat.unreadCount) || 0))) }),`,
   'fetch requested history depth',
 );
 
 replaceOnce(
   `  const selectedChats = chats.slice(0, HISTORY_CHAT_LIMIT);\n  let cursor = 0;\n  let syncedMessages = 0;\n  let syncedChats = 0;\n\n  async function worker() {\n    while (true) {\n      const index = cursor++;\n      if (index >= selectedChats.length) return;\n      const result = await syncOneChat(\n        sessionId,\n        selectedChats[index],\n        state.client,\n      );\n      syncedChats += result.chats;\n      syncedMessages += result.messages;\n    }\n  }`,
-  `  const selectedChats = chats.slice(0, HISTORY_CHAT_INDEX_LIMIT);\n  const lidPhoneMap = await resolveLidPhoneMap(\n    state.client,\n    selectedChats.map((chat) => serializedId(chat && chat.id)),\n  );\n  let cursor = 0;\n  let syncedMessages = 0;\n  let syncedChats = 0;\n\n  async function worker() {\n    while (true) {\n      const index = cursor++;\n      if (index >= selectedChats.length) return;\n      const messageLimit = index < HISTORY_DEEP_CHAT_LIMIT\n        ? HISTORY_MESSAGE_LIMIT\n        : HISTORY_INDEX_MESSAGE_LIMIT;\n      const result = await syncOneChat(\n        sessionId,\n        selectedChats[index],\n        state.client,\n        { messageLimit, lidPhoneMap },\n      );\n      syncedChats += result.chats;\n      syncedMessages += result.messages;\n    }\n  }`,
+  `  const selectedChats = chats.filter((chat) => {\n    const id = serializedId(chat && chat.id);\n    return id && !id.endsWith('@broadcast') && !id.includes('@newsletter');\n  }).sort((a, b) => Number(b.timestamp || 0) - Number(a.timestamp || 0))\n    .slice(0, HISTORY_CHAT_INDEX_LIMIT);\n  // Resolve a batch lazily so 1,000 old LIDs cannot delay the newest chats.\n  const identityBatches = new Map();\n  let cursor = 0;\n  let syncedMessages = 0;\n  let syncedChats = 0;\n\n  async function worker() {\n    while (true) {\n      const index = cursor++;\n      if (index >= selectedChats.length) return;\n      const batchStart = Math.floor(index / LID_RESOLVE_BATCH_SIZE) * LID_RESOLVE_BATCH_SIZE;\n      if (!identityBatches.has(batchStart)) {\n        identityBatches.set(batchStart, resolveLidPhoneMap(\n          state.client,\n          selectedChats.slice(batchStart, batchStart + LID_RESOLVE_BATCH_SIZE)\n            .map((chat) => serializedId(chat && chat.id)),\n        ));\n      }\n      const lidPhoneMap = await identityBatches.get(batchStart);\n      const messageLimit = index < HISTORY_DEEP_CHAT_LIMIT\n        ? HISTORY_MESSAGE_LIMIT : HISTORY_INDEX_MESSAGE_LIMIT;\n      try {\n        const result = await syncOneChat(\n          sessionId, selectedChats[index], state.client, { messageLimit, lidPhoneMap },\n        );\n        syncedChats += result.chats;\n        syncedMessages += result.messages;\n      } catch (error) {\n        state.historyFailedChats = (state.historyFailedChats || 0) + 1;\n        console.warn('Hosted chat history will be retried:', error.message);\n      }\n    }\n  }`,
   'index older chats while deeply syncing recent conversations',
 );
 
