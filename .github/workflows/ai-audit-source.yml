@@ -1,4 +1,4 @@
-name: Assemble verified AI phase changes
+name: Assemble verified AI evaluation isolation
 on:
   push:
     branches: [audit/ai-phases-source-20260918]
@@ -11,38 +11,25 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      - name: Decode checksum-verified local implementation
+      - name: Apply checksum-verified isolation patch
         shell: bash
         run: |
           set -euo pipefail
-          cat .ai-transfer/part{0,1,2,3,4} | base64 --decode > /tmp/ai-implementation.xz
-          echo '761b7edf6a98a33f43898a262f01c99509859af3729706f4b1e82938222e192f  /tmp/ai-implementation.xz' | sha256sum --check
-          xz --decompress --stdout /tmp/ai-implementation.xz > /tmp/ai-implementation.patch
-          echo 'f9031b3359973fc1db718133377e82ee16dc5cca33b8dfcaad0503563e5ec219  /tmp/ai-implementation.patch' | sha256sum --check
-      - name: Create clean application branch without assembly helpers
-        shell: bash
-        run: |
-          set -euo pipefail
-          BASE=e94ef0e566c0af105962042eda4f931f6cd2ed64
+          cat > /tmp/isolation.b64 <<'PATCH'
+          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
+          PATCH
+          base64 --decode /tmp/isolation.b64 | xz --decompress > /tmp/isolation.patch
+          echo '9411c680d829325da0c11bb7c70978900e7c3d4fe9be24a21ea645a07997ed04  /tmp/isolation.patch' | sha256sum --check
+          BASE=4b74b5c68752ec42e63c97b145c0b6fc03951f6e
           TARGET=fix/ai-phases-1-11
-          test "$(git ls-remote origin refs/heads/staging | cut -f1)" = "$BASE"
-          if git ls-remote --exit-code --heads origin "refs/heads/$TARGET" >/dev/null; then
-            echo 'Refusing to overwrite an existing feature branch.'
-            exit 1
-          fi
+          test "$(git ls-remote origin refs/heads/$TARGET | cut -f1)" = "$BASE"
           git checkout --detach "$BASE"
-          git switch -c "$TARGET"
-          git apply --index --unidiff-zero /tmp/ai-implementation.patch
+          git apply --index /tmp/isolation.patch
           git diff --cached --check
-          test "$(git write-tree)" = c4b5daebee387e764f5db2d4684363dba065a124
-          test ! -e .ai-transfer
-          test ! -e .github/workflows/ai-audit-source.yml
-          # Actions' job token can publish application code but cannot alter workflows.
-          # The authorized GitHub connector applies the reviewed CI change separately.
-          git restore --source="$BASE" --staged --worktree .github/workflows/ci.yml
+          test "$(git write-tree)" = 443de43114d06b4ff6627212f071719e4f947393
           test -z "$(git diff --cached --name-only -- .github/workflows)"
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git commit -m 'Implement AI phase safety fixes, sales intelligence and behaviour evaluation' -m 'Application changes from checksum-verified local tree c4b5daebee387e764f5db2d4684363dba065a124. The CI evaluation gate will be applied by the authorized connector before PR validation. Preserve organization, qualification, transport ownership and existing model selection. Local evaluation: 168 passed plus 33 subtests. Sandbox and repair regressions: 55 passed plus 4 subtests. No live provider or customer messaging claims. Full CI and staged promotion are still required.'
+          git commit -m 'Isolate recorded AI evaluation from live caches, queues and media' -m 'Keep full CI testing.py with real Redis unchanged; evaluation subprocess uses dedicated process-local settings, a separate test database namespace and temporary media. Local recorded evaluation: 169 tests and 33 subtests passed.'
           git push origin "HEAD:refs/heads/$TARGET"
           git rev-parse HEAD
