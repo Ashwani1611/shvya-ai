@@ -2,133 +2,79 @@
 {% load static %}
 
 {% block title %}SHVYA AI — Teams{% endblock %}
-
-{% block header %}
-    Teams
-{% endblock %}
+{% block header %}Teams{% endblock %}
 
 {% block content %}
-
-
-    <!-- =====================================================
-         PAGE HEADER
-         ===================================================== -->
-
     <div class="mb-6 flex items-center gap-2">
-
-        <i class="ti ti-users-group text-2xl text-blue-600"></i>
-
-        <h2 class="text-lg font-semibold">
-            Teams
-        </h2>
-
+        <i class="ti ti-users-group text-2xl text-blue-600" aria-hidden="true"></i>
+        <h2 class="text-lg font-semibold">Teams</h2>
     </div>
 
-
-    <!-- =====================================================
-         MEMBERS TABLE
-         ===================================================== -->
-
     {% if members %}
-
-        <div class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
-
+        <div class="overflow-x-auto rounded-xl border border-gray-200 bg-white shadow-sm">
             <table class="w-full text-left text-sm">
-
+                <caption class="sr-only">Team members, linked WhatsApp connections and account status</caption>
                 <thead class="bg-blue-50/60 text-xs font-semibold uppercase tracking-wide text-gray-500">
-
                     <tr>
-                        <th class="px-5 py-3">S.No.</th>
-                        <th class="px-5 py-3">Name</th>
-                        <th class="px-5 py-3">Email</th>
-                        <th class="px-5 py-3">Phone Number</th>
-                        <th class="px-5 py-3 text-right">Action</th>
+                        <th scope="col" class="px-5 py-3">S.No.</th>
+                        <th scope="col" class="px-5 py-3">Name</th>
+                        <th scope="col" class="px-5 py-3">Email</th>
+                        <th scope="col" class="whitespace-nowrap px-5 py-3">Phone Number</th>
+                        <th scope="col" class="whitespace-nowrap px-5 py-3">Connected WhatsApp</th>
+                        <th scope="col" class="px-5 py-3">Status</th>
+                        <th scope="col" class="px-5 py-3 text-right">Action</th>
                     </tr>
-
                 </thead>
-
-
                 <tbody class="divide-y divide-gray-100">
-
                     {% for member in members %}
-
-                        <tr class="hover:bg-gray-50">
-
-                            <td class="px-5 py-4 text-gray-500">
-                                {{ forloop.counter }}
+                        {% with connection=member.whatsapp_connection %}
+                        <tr class="hover:bg-gray-50" data-member-id="{{ member.id }}">
+                            <td class="px-5 py-4 text-gray-500">{{ forloop.counter }}</td>
+                            <td class="px-5 py-4 font-medium text-gray-900">{{ member.name }}</td>
+                            <td class="px-5 py-4 text-gray-600">{{ member.email }}</td>
+                            <td class="whitespace-nowrap px-5 py-4 text-gray-600">{{ member.phone|default:"—" }}</td>
+                            <td class="px-5 py-4" data-whatsapp-connection="{% if connection.account %}{{ connection.account.id }}{% endif %}">
+                                <span class="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1 text-xs font-medium {% if connection.account %}bg-blue-50 text-blue-700{% else %}bg-gray-100 text-gray-500{% endif %}"{% if connection.reason %} title="{{ connection.reason }}"{% endif %}>
+                                    <i class="ti {% if connection.account %}ti-brand-whatsapp{% else %}ti-link-off{% endif %}" aria-hidden="true"></i>
+                                    {{ connection.label }}
+                                </span>
+                                {% if connection.number %}
+                                    <div class="mt-1 whitespace-nowrap text-xs text-gray-500">{{ connection.number }}</div>
+                                {% endif %}
                             </td>
-
-                            <td class="px-5 py-4 font-medium text-gray-900">
-                                {{ member.name }}
-                            </td>
-
-                            <td class="px-5 py-4 text-gray-600">
-                                {{ member.email }}
-                            </td>
-
-                            <td class="px-5 py-4 text-gray-600">
-                                {{ member.phone|default:"—" }}
-                            </td>
-
                             <td class="px-5 py-4">
-
-                                <div class="flex items-center justify-end">
-
-                                    {% if can_manage %}
-                                    <a
-                                        href="{% url 'crm-team-member-automation-settings' member.id %}"
-                                        class="flex h-8 w-8 items-center justify-center rounded-full text-gray-400 transition hover:bg-gray-100 hover:text-blue-600"
-                                        title="Lead automation settings"
-                                    >
-                                        <i class="ti ti-settings"></i>
-                                    </a>
-                                    {% endif %}
-
-                                </div>
-
+                                <span class="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1 text-xs font-medium {% if member.is_active %}bg-green-50 text-green-700{% else %}bg-gray-100 text-gray-500{% endif %}">
+                                    <span class="h-1.5 w-1.5 rounded-full {% if member.is_active %}bg-green-500{% else %}bg-gray-400{% endif %}" aria-hidden="true"></span>
+                                    {% if member.is_active %}Active{% else %}Inactive{% endif %}
+                                </span>
                             </td>
-
+                            <td class="px-5 py-4">
+                                <div class="flex items-center justify-end">
+                                    {% if can_manage and connection.account %}
+                                        <a href="{% url 'crm-team-member-automation-settings' member.id %}?account={{ connection.account.id }}"
+                                           class="flex h-8 w-8 items-center justify-center rounded-full text-gray-400 transition hover:bg-gray-100 hover:text-blue-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600"
+                                           title="{{ connection.label }} settings — {{ connection.number }}"
+                                           aria-label="{{ connection.label }} settings for {{ member.name|default:member.email }}, {{ connection.number }}">
+                                            <i class="ti ti-settings" aria-hidden="true"></i>
+                                        </a>
+                                    {% else %}
+                                        <span class="text-gray-400" title="{% if not can_manage %}Only organization admins can manage WhatsApp settings.{% else %}{{ connection.reason }}{% endif %}">—</span>
+                                    {% endif %}
+                                </div>
+                            </td>
                         </tr>
-
+                        {% endwith %}
                     {% endfor %}
-
                 </tbody>
-
             </table>
-
         </div>
-
-
     {% else %}
-
-
-        <!-- =================================================
-             NO MEMBERS
-             ================================================= -->
-
         <div class="rounded-xl border border-dashed border-gray-300 bg-white p-10 text-center">
-
-            <div
-                class="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-gray-100 text-2xl text-gray-400"
-            >
-
-                <i class="ti ti-users-group"></i>
-
+            <div class="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-gray-100 text-2xl text-gray-400">
+                <i class="ti ti-users-group" aria-hidden="true"></i>
             </div>
-
-            <h2 class="mt-4 text-base font-semibold text-gray-900">
-                No team members yet
-            </h2>
-
-            <p class="mt-1 text-sm text-gray-500">
-                Invite agents to your organization to see them here.
-            </p>
-
+            <h2 class="mt-4 text-base font-semibold text-gray-900">No team members yet</h2>
+            <p class="mt-1 text-sm text-gray-500">Invite agents to your organization to see them here.</p>
         </div>
-
-
     {% endif %}
-
-
 {% endblock %}
-

@@ -1,16 +1,13 @@
+from urllib.parse import urlencode
+
 from django.contrib import messages
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 
 from apps.accounts.models import User
+from apps.channels.models import WhatsAppAccount
 from apps.crm.authentication import crm_login_required
 from apps.teams.models import Team, TeamMembership
-from apps.channels.models import WhatsAppAccount
-from apps.crm.models import Pipeline
-from services.channels.hosted_whatsapp_service import (
-    normalize_whatsapp_number,
-    pipeline_whatsapp_number,
-)
 from services.teams.team_service import (
     CrossOrganizationMembershipError,
     DuplicateMembershipError,
@@ -21,6 +18,7 @@ from services.teams.team_service import (
     set_member_role,
     update_team,
 )
+from services.teams.whatsapp_connections import member_whatsapp_connections
 
 
 def _can_manage(user):
@@ -30,107 +28,83 @@ def _can_manage(user):
     )
 
 
+def _whatsapp_settings_url(account, member):
+    if account.connection_type == WhatsAppAccount.ConnectionType.coexisted:
+        return f"{reverse('whatsapp-connect-hosted')}?{urlencode({'settings': account.id})}"
+    # API and Business App Coexistence intentionally share the Cloud API gear.
+    params = urlencode({"owner": member.id, "settings": account.id})
+    return f"{reverse('whatsapp-accounts')}?{params}"
+
+
 @crm_login_required
 def team_list_view(request):
-    """
-    "Teams" page -- currently a flat list of every user in the org
-    (matches the org-members-with-per-agent-settings pattern the
-    product wants), not the Team/TeamMembership grouping model.
-    """
+    """List organization members with one verified, pipeline-owned connection."""
     user = request.crm_user
-
-    members = User.objects.filter(
+    members = list(User.objects.filter(organization=user.organization).order_by("name"))
+    connections = member_whatsapp_connections(
         organization=user.organization,
-    ).order_by("name")
-
-    return render(
+        members=members,
+    )
+    for member in members:
+        member.whatsapp_connection = connections[member.pk]
+    response = render(
         request,
         "teams/team_list.html",
-        {
-            "members": members,
-            "can_manage": _can_manage(user),
-        },
+        {"members": members, "can_manage": _can_manage(user)},
     )
+    response["Cache-Control"] = "no-store"
+    return response
 
 
 @crm_login_required
 def team_member_automation_settings_view(request, user_id):
-    """Open automation controls for the member's verified pipeline number.
-
-    A Team member can own more than one pipeline, but this action intentionally
-    opens a settings panel only when exactly one active pipeline has a connected
-    WhatsApp number.  That prevents an administrator from changing automation
-    on an unrelated number.
-    """
+    """Open the exact connection shown in Teams, after revalidating ownership."""
     admin = request.crm_user
     if not _can_manage(admin):
         messages.error(request, "Only organization admins can manage lead automation.")
         return redirect("crm-teams")
 
-    member = get_object_or_404(
-        User,
-        id=user_id,
+    # An admin may manage a still-connected number owned by an inactive member.
+    # The member's activity and the WhatsApp connection are independent states.
+    member = get_object_or_404(User, id=user_id, organization=admin.organization)
+    connection = member_whatsapp_connections(
         organization=admin.organization,
-        is_active=True,
-    )
-    pipelines = Pipeline.objects.filter(
-        organization=admin.organization,
-        owner=member,
-        is_active=True,
-    )
-    pipeline_numbers = {
-        pipeline_whatsapp_number(pipeline)
-        for pipeline in pipelines
-        if pipeline_whatsapp_number(pipeline)
-    }
-    matching_accounts = []
-    for account in WhatsAppAccount.objects.filter(
-        organization=admin.organization,
-        status=WhatsAppAccount.Status.CONNECTED,
-        is_active=True,
-    ).order_by("-updated_at"):
-        number = normalize_whatsapp_number(
-            phone_number=account.display_phone_number or account.phone_number_id
-        )
-        if number and number in pipeline_numbers:
-            matching_accounts.append(account)
-
-    if not matching_accounts:
+        members=[member],
+    )[member.pk]
+    account = connection["account"]
+    requested_account = request.GET.get("account", "").strip()
+    if requested_account and (account is None or str(account.id) != requested_account):
         messages.error(
             request,
-            f"{member.name or member.email} has no active pipeline with a connected WhatsApp number.",
+            "This WhatsApp connection has changed or is no longer linked to this member. Refresh Teams and try again.",
         )
         return redirect("crm-teams")
 
-    if len(matching_accounts) > 1:
-        account_rows = []
-        for account in matching_accounts:
-            is_hosted = account.connection_type == WhatsAppAccount.ConnectionType.coexisted
-            account_rows.append(
-                {
-                    "account": account,
-                    "is_hosted": is_hosted,
-                    "settings_url": (
-                        f"{reverse('whatsapp-connect-hosted')}?settings={account.id}"
-                        if is_hosted
-                        else f"{reverse('whatsapp-accounts')}?owner={member.id}&settings={account.id}"
-                    ),
-                }
-            )
+    if account is not None:
+        return redirect(_whatsapp_settings_url(account, member))
+
+    # Preserve the existing selection screen for old/bookmarked, unpinned URLs.
+    # New Teams gears always include the exact selected account ID above.
+    if not requested_account and len(connection["candidates"]) > 1:
         return render(
             request,
             "teams/member_automation_accounts.html",
-            {"member": member, "account_rows": account_rows},
+            {
+                "member": member,
+                "account_rows": [
+                    {
+                        "account": candidate,
+                        "is_hosted": candidate.connection_type == WhatsAppAccount.ConnectionType.coexisted,
+                        "connection_label": candidate.team_connection_label,
+                        "settings_url": _whatsapp_settings_url(candidate, member),
+                    }
+                    for candidate in connection["candidates"]
+                ],
+            },
         )
 
-    account = matching_accounts[0]
-    if account.connection_type == WhatsAppAccount.ConnectionType.coexisted:
-        return redirect(
-            f"{reverse('whatsapp-connect-hosted')}?settings={account.id}"
-        )
-    return redirect(
-        f"{reverse('whatsapp-accounts')}?owner={member.id}&settings={account.id}"
-    )
+    messages.error(request, connection["reason"])
+    return redirect("crm-teams")
 
 
 @crm_login_required
@@ -298,4 +272,3 @@ def team_member_role_view(request, team_id, user_id):
             messages.success(request, f"Updated {target_user.name}'s role.")
 
     return redirect("crm-team-detail", team_id=team.id)
-
