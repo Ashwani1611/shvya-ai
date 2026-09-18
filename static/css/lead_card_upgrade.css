@@ -1,3 +1,28 @@
+.lead-card .lead-cartoon-avatar {
+  display: block;
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  border-radius: 14px;
+}
+
+.lead-ai-score {
+  display: inline-flex;
+  white-space: nowrap;
+  border: 1px solid #d9d3fb;
+  background: #f2efff;
+  color: #654ab4;
+  border-radius: 999px;
+  padding: 3px 8px;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.lead-picker-legacy-chevron {
+  display: none !important;
+}
+
 .lead-picker-trigger {
   box-sizing: border-box;
   display: inline-flex;

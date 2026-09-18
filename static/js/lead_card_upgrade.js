@@ -105,6 +105,20 @@
       icon.setAttribute('aria-hidden', 'true');
 
       trigger.append(value, icon);
+
+      // The templates keep a native chevron for no-JS fallback. Hide only that
+      // legacy icon after enhancement so the Apple trigger never shows a
+      // doubled arrow.
+      const legacyIcon = select.nextElementSibling;
+      if (
+        legacyIcon &&
+        legacyIcon.classList &&
+        legacyIcon.classList.contains('ti-chevron-down')
+      ) {
+        legacyIcon.classList.add('lead-picker-legacy-chevron');
+        legacyIcon.setAttribute('aria-hidden', 'true');
+      }
+
       select.after(trigger);
 
       const state = {
