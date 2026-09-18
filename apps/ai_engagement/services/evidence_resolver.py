@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any, Mapping
@@ -170,15 +171,17 @@ class EvidenceResolver:
 
         lowered = question.casefold()
         if self._is_crm_status_question(lowered):
-            crm = self._crm_evidence(lead)
             return EvidenceResolution(
-                category=GroundingCategory.CRM_DATA,
+                category=GroundingCategory.NO_VERIFIED_EVIDENCE,
                 information_class=InformationClass.CRM_SCOPED,
-                question_type="crm_status",
-                sensitive=False,
-                verified=bool(crm),
-                evidence=crm,
-                controlled_fallback=("" if crm else self._fallback("CRM status")),
+                question_type="internal_crm_status",
+                sensitive=True,
+                verified=False,
+                evidence=(),
+                controlled_fallback=(
+                    "I can’t share internal CRM pipeline or stage details. "
+                    "I can still help with your enquiry or ask the team to assist."
+                ),
             )
 
         if self._is_memory_question(lowered):
@@ -398,7 +401,13 @@ class EvidenceResolver:
 
     @staticmethod
     def _is_crm_status_question(text: str) -> bool:
-        return any(
+        return bool(
+            re.search(
+                r"\b(?:which|what)\b.{0,32}\b(?:crm\s+)?(?:stage|pipeline)\b",
+                text,
+                flags=re.IGNORECASE,
+            )
+        ) or any(
             phrase in text
             for phrase in (
                 "my lead status",

@@ -101,14 +101,32 @@ class AIPermissionService:
         account,
         latest_message,
     ) -> bool:
-        """Return whether this lead already had history on the inbound account."""
+        """Return whether this account has a trusted conversation binding.
+
+        A prior rejected inbound message is not a binding. Trust is established
+        by an outbound message on this organization-owned account, or by the
+        exact current inbound having already crossed the transactional AI state
+        boundary before a legitimate pipeline move.
+        """
         history = lead.whatsapp_messages.filter(
             organization=organization,
             account=account,
+            direction="outbound",
         )
         if getattr(latest_message, "pk", None):
             history = history.exclude(pk=latest_message.pk)
-        return history.exists()
+        if history.exists():
+            return True
+
+        from apps.ai_engagement.services.runtime_state import STATE_KEY
+
+        attributes = lead.attributes if isinstance(getattr(lead, "attributes", None), dict) else {}
+        runtime = attributes.get(STATE_KEY)
+        return bool(
+            isinstance(runtime, dict)
+            and str(runtime.get("pre_resolved_message_id") or "")
+            == str(getattr(latest_message, "pk", "") or "")
+        )
 
     def _conversation_uses_pipeline_number(
         self,
