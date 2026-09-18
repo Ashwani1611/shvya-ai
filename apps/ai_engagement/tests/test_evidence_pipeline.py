@@ -109,8 +109,10 @@ class EvidencePipelineTests(SimpleTestCase):
 
         self.assertFalse(result["grounding_approved"])
         repaired = result["decision"]
-        self.assertEqual(repaired.next_requirement_id, "q2")
-        self.assertEqual(len(repaired.qualification_updates), 1)
+        self.assertIsNone(repaired.next_requirement_id)
+        self.assertEqual(repaired.qualification_updates, [])
+        self.assertEqual(repaired.crm_actions, [])
+        self.assertEqual(repaired.reason_code, "NORMAL_CONVERSATION")
         self.assertNotIn("verified information", repaired.message)
         self.assertIn("Thanks for sharing", repaired.message)
 
