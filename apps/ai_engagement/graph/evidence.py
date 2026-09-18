@@ -76,9 +76,11 @@ def _safe_unknown_decision(decision, *, qualification_turn=False):
             should_engage=True,
             message="Thanks for sharing that — that helps me understand your needs.",
             file_document_id=None,
+            next_requirement_id=None,
+            qualification_updates=[],
             crm_actions=[],
-            reason=getattr(decision, "reason", "") or "QUALIFICATION_NEXT",
-            reason_code=getattr(decision, "reason_code", "") or "QUALIFICATION_NEXT",
+            reason="NORMAL_CONVERSATION",
+            reason_code="NORMAL_CONVERSATION",
         )
     return replace(
         decision,
