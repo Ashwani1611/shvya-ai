@@ -1,0 +1,7 @@
+<a href="{{ conversation.url }}" data-conversation-id="{{ conversation.id }}" class="conversation-row flex gap-3 border-b px-4 py-3 text-[#111b21] hover:bg-[#f5f6f6]">
+  {% if conversation.participant_profile_picture_url %}<img src="{{ conversation.participant_profile_picture_url }}" alt="" width="44" height="44" loading="lazy" referrerpolicy="no-referrer" class="h-11 w-11 flex-shrink-0 rounded-full object-cover">{% else %}<span class="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full bg-[#dfe5e7] font-semibold">{{ conversation.participant_name|slice:":1" }}</span>{% endif %}
+  <span class="min-w-0 flex-1">
+    <span class="flex justify-between gap-2"><strong class="truncate text-sm">{{ conversation.participant_name }}</strong><time data-time="{{ conversation.last_message_at }}" class="whitespace-nowrap text-[10px] text-[#667781]">{{ conversation.last_message_at|slice:"11:16" }}</time></span>
+    <span class="mt-1 flex items-center gap-2"><span class="truncate text-xs text-[#667781]">{% if conversation.last_direction == 'outbound' %}You: {% endif %}{{ conversation.last_message }}</span>{% if conversation.unread_count %}<span class="ml-auto rounded-full bg-[#25d366] px-2 py-0.5 text-[10px] font-semibold text-[#111b21]" aria-label="{{ conversation.unread_count }} unread messages">{{ conversation.unread_count }}</span>{% endif %}</span>
+  </span>
+</a>

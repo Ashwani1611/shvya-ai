@@ -111,6 +111,9 @@ META_INSTAGRAM_APP_SECRET = config(
     "META_INSTAGRAM_APP_SECRET",
     default="",
 )
+# Load the existing environment key; otherwise the webhook getter silently
+# falls back to the unrelated generic Meta/WhatsApp verification token.
+META_INSTAGRAM_VERIFY_TOKEN = config("META_INSTAGRAM_VERIFY_TOKEN", default="")
 META_INSTAGRAM_REQUIRE_DEDICATED_CREDENTIALS = True
 
 # Reuse healthy PostgreSQL connections across Gunicorn requests instead of

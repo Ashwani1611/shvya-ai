@@ -1,176 +1,42 @@
 {% extends "base.html" %}
-
 {% block title %}SHVYA AI — Connect Instagram{% endblock %}
 {% block header %}Instagram{% endblock %}
-
 {% block content %}
-<style>
-    .ig-shell { background: #f5f5f7; color: #1d1d1f; }
-    .ig-gradient-text {
-        background: linear-gradient(112deg, #ff3040 5%, #d300c5 42%, #7638fa 72%, #0095f6 100%);
-        -webkit-background-clip: text; background-clip: text; color: transparent;
-    }
-    .ig-orb { background: radial-gradient(circle, rgba(211,0,197,.17) 0%, rgba(118,56,250,.10) 38%, rgba(0,149,246,.04) 62%, transparent 74%); }
-    .ig-icon-gradient { background: linear-gradient(145deg, #ff3040 4%, #d300c5 40%, #7638fa 70%, #0095f6 100%); }
-    .ig-glass { background: rgba(255,255,255,.78); backdrop-filter: blur(22px); -webkit-backdrop-filter: blur(22px); }
-</style>
-
-<div class="ig-shell -mx-4 -mt-4 min-h-[calc(100vh-5rem)] overflow-hidden px-4 pb-16 pt-8 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8 lg:pt-12">
-    <div class="pointer-events-none absolute left-1/2 top-16 h-[520px] w-[900px] -translate-x-1/2 rounded-full ig-orb blur-3xl"></div>
-
-    <div class="relative mx-auto max-w-6xl">
-        <header class="mx-auto max-w-4xl text-center">
-            <div class="ig-glass mx-auto inline-flex items-center gap-2 rounded-full px-3.5 py-2 text-xs font-semibold shadow-[0_1px_2px_rgba(0,0,0,.03),0_12px_36px_rgba(0,0,0,.05)] ring-1 ring-black/[.05]">
-                <span class="ig-icon-gradient flex h-6 w-6 items-center justify-center rounded-[8px] text-white shadow-sm"><i class="ti ti-brand-instagram text-sm"></i></span>
-                Instagram for SHVYA
-            </div>
-            <h1 class="mx-auto mt-7 max-w-4xl text-[40px] font-semibold leading-[1.01] tracking-[-0.055em] text-[#1d1d1f] sm:text-[54px] lg:text-[68px]">
-                Your DMs.<br class="hidden sm:block"><span class="ig-gradient-text">Right where sales happen.</span>
-            </h1>
-            <p class="mx-auto mt-5 max-w-2xl text-[16px] leading-7 text-[#6e6e73] sm:text-[18px]">
-                Connect a professional Instagram account to read customer conversations and reply from the same SHVYA workspace.
-            </p>
-        </header>
-
-        {% if instagram_connection_error %}
-        <div class="mx-auto mt-8 max-w-4xl rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 shadow-sm">
-            {{ instagram_connection_error }}
-        </div>
-        {% endif %}
-
-        <section class="relative mt-10 overflow-hidden rounded-[38px] bg-white shadow-[0_2px_4px_rgba(0,0,0,.03),0_28px_80px_rgba(0,0,0,.09)] ring-1 ring-black/[.04] sm:mt-12">
-            <div class="pointer-events-none absolute -right-24 -top-24 h-80 w-80 rounded-full bg-fuchsia-300/20 blur-3xl"></div>
-            <div class="pointer-events-none absolute -bottom-24 left-[36%] h-72 w-72 rounded-full bg-blue-300/20 blur-3xl"></div>
-
-            {% if instagram_connected %}
-            <div class="relative grid lg:grid-cols-[1.08fr_.92fr]">
-                <div class="flex min-h-[430px] flex-col justify-between p-7 sm:p-10 lg:p-12">
-                    <div>
-                        <div class="flex items-center gap-4">
-                            {% if instagram_connection.profile_picture_url %}
-                            <img src="{{ instagram_connection.profile_picture_url }}" alt="Instagram profile" class="h-16 w-16 rounded-[20px] object-cover ring-1 ring-black/[.06]">
-                            {% else %}
-                            <div class="ig-icon-gradient flex h-16 w-16 items-center justify-center rounded-[20px] text-white shadow-[0_12px_30px_rgba(118,56,250,.23)]"><i class="ti ti-brand-instagram text-[30px]"></i></div>
-                            {% endif %}
-                            <div>
-                                <span class="inline-flex items-center gap-1.5 rounded-full bg-[#eaf8ef] px-2.5 py-1 text-[11px] font-semibold text-[#16863f]"><span class="h-1.5 w-1.5 rounded-full bg-[#22c55e]"></span> Connected</span>
-                                <p class="mt-2 text-sm text-[#86868b]">Professional account</p>
-                            </div>
-                        </div>
-                        <h2 class="mt-8 text-3xl font-semibold tracking-[-0.04em] text-[#1d1d1f] sm:text-[42px]">
-                            @{{ instagram_connection.username|default:"instagram" }} is ready.
-                        </h2>
-                        <p class="mt-4 max-w-xl text-[15px] leading-7 text-[#6e6e73]">
-                            SHVYA can now load Instagram conversations for this account and send replies to people who have messaged you.
-                        </p>
-                    </div>
-
-                    <div class="mt-8 flex flex-col gap-3 sm:flex-row">
-                        <a href="{% url 'crm-instagram-chats' %}" class="inline-flex items-center justify-center gap-2 rounded-full bg-[#0071e3] px-6 py-3.5 text-sm font-semibold text-white shadow-[0_9px_22px_rgba(0,113,227,.22)] transition hover:bg-[#0077ed]">
-                            Open Instagram Chats <i class="ti ti-chevron-right text-base"></i>
-                        </a>
-                        <form method="post" action="{% url 'crm-instagram-disconnect' %}" onsubmit="return confirm('Disconnect Instagram from this workspace?');">
-                            {% csrf_token %}
-                            <button type="submit" class="inline-flex w-full items-center justify-center gap-2 rounded-full bg-[#f5f5f7] px-6 py-3.5 text-sm font-semibold text-[#424245] transition hover:bg-[#e8e8ed] sm:w-auto">
-                                Disconnect
-                            </button>
-                        </form>
-                    </div>
-                </div>
-
-                <div class="relative overflow-hidden border-t border-black/[.06] bg-[#08080a] p-7 text-white sm:p-10 lg:border-l lg:border-t-0 lg:p-12">
-                    <div class="pointer-events-none absolute -right-16 top-0 h-72 w-72 rounded-full bg-fuchsia-500/25 blur-3xl"></div>
-                    <div class="pointer-events-none absolute -bottom-20 -left-16 h-72 w-72 rounded-full bg-blue-500/20 blur-3xl"></div>
-                    <div class="relative flex h-full flex-col justify-between">
-                        <div class="flex items-center justify-between">
-                            <div class="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/10 text-white ring-1 ring-white/10 backdrop-blur-xl"><i class="ti ti-brand-meta text-2xl"></i></div>
-                            <span class="rounded-full bg-white/10 px-3 py-1.5 text-[11px] font-semibold text-white/65 ring-1 ring-white/10">LIVE</span>
-                        </div>
-                        <div class="mt-20">
-                            <p class="text-xs font-semibold uppercase tracking-[0.16em] text-white/40">Connected identity</p>
-                            <h3 class="mt-3 text-3xl font-semibold leading-tight tracking-[-0.04em]">Messages stay Instagram.<br>Your workflow stays SHVYA.</h3>
-                            <p class="mt-4 max-w-sm text-sm leading-6 text-white/58">The inbox uses Meta’s professional messaging API and keeps this workspace isolated from every other organization.</p>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            {% else %}
-            <div class="relative grid lg:grid-cols-[1.08fr_.92fr]">
-                <div class="flex min-h-[450px] flex-col justify-between p-7 sm:p-10 lg:p-12">
-                    <div>
-                        <div class="ig-icon-gradient flex h-16 w-16 items-center justify-center rounded-[20px] text-white shadow-[0_12px_30px_rgba(118,56,250,.22)]"><i class="ti ti-brand-instagram text-[31px]"></i></div>
-                        <p class="mt-8 text-sm font-semibold text-[#0071e3]">Official Meta connection</p>
-                        <h2 class="mt-2 max-w-xl text-3xl font-semibold leading-tight tracking-[-0.04em] text-[#1d1d1f] sm:text-[42px]">
-                            One sign-in. Your professional inbox appears.
-                        </h2>
-                        <p class="mt-4 max-w-xl text-[15px] leading-7 text-[#6e6e73]">
-                            Sign in with Instagram, choose the professional account you manage and approve basic profile plus messaging access.
-                        </p>
-
-                        <div class="mt-7 flex flex-wrap gap-2.5">
-                            <span class="inline-flex items-center gap-1.5 rounded-full bg-[#f5f5f7] px-3.5 py-2 text-xs font-semibold text-[#424245]"><i class="ti ti-shield-check text-[#0071e3]"></i> Meta authorized</span>
-                            <span class="inline-flex items-center gap-1.5 rounded-full bg-[#f5f5f7] px-3.5 py-2 text-xs font-semibold text-[#424245]"><i class="ti ti-lock text-[#0071e3]"></i> Token encrypted</span>
-                            <span class="inline-flex items-center gap-1.5 rounded-full bg-[#f5f5f7] px-3.5 py-2 text-xs font-semibold text-[#424245]"><i class="ti ti-message-circle text-[#0071e3]"></i> DMs in SHVYA</span>
-                        </div>
-                    </div>
-
-                    <div class="mt-9">
-                        {% if instagram_meta_ready %}
-                        <a href="{% url 'crm-instagram-oauth-start' %}" class="group inline-flex w-full items-center justify-center gap-2.5 rounded-full bg-[#0071e3] px-7 py-4 text-[15px] font-semibold text-white shadow-[0_8px_22px_rgba(0,113,227,.20)] transition duration-200 hover:bg-[#0077ed] hover:shadow-[0_10px_26px_rgba(0,113,227,.25)] focus:outline-none focus:ring-4 focus:ring-[#0071e3]/15 sm:w-auto sm:min-w-[280px]">
-                            <i class="ti ti-brand-instagram text-xl"></i>
-                            <span>Continue with Instagram</span>
-                            <i class="ti ti-arrow-up-right text-base opacity-70 transition group-hover:translate-x-0.5 group-hover:-translate-y-0.5"></i>
-                        </a>
-                        {% else %}
-                        <div class="max-w-xl rounded-2xl bg-[#fff7ed] px-4 py-3.5 text-sm leading-6 text-[#9a3412] ring-1 ring-orange-100">
-                            Add your Meta App ID and App Secret to the production environment before connecting Instagram.
-                        </div>
-                        {% endif %}
-                    </div>
-                </div>
-
-                <div class="relative overflow-hidden border-t border-black/[.06] bg-[#08080a] p-7 text-white sm:p-10 lg:border-l lg:border-t-0 lg:p-12">
-                    <div class="pointer-events-none absolute -right-16 -top-4 h-72 w-72 rounded-full bg-fuchsia-500/30 blur-3xl"></div>
-                    <div class="pointer-events-none absolute -bottom-20 -left-16 h-72 w-72 rounded-full bg-blue-500/25 blur-3xl"></div>
-                    <div class="relative">
-                        <div class="flex items-center justify-between">
-                            <div class="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/10 text-white ring-1 ring-white/10 backdrop-blur-xl"><i class="ti ti-brand-meta text-2xl"></i></div>
-                            <span class="rounded-full bg-white/10 px-3 py-1.5 text-[11px] font-semibold text-white/65 ring-1 ring-white/10">META</span>
-                        </div>
-                        <div class="mt-20">
-                            <p class="text-xs font-semibold uppercase tracking-[0.16em] text-white/40">Simple by design</p>
-                            <h3 class="mt-3 text-3xl font-semibold leading-tight tracking-[-0.04em]">From first DM<br>to the next action.</h3>
-                            <p class="mt-4 max-w-sm text-sm leading-6 text-white/58">Keep Instagram customer conversations close to the rest of your sales workflow without switching tabs all day.</p>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            {% endif %}
-        </section>
-
-        <section class="mt-16">
-            <div class="mx-auto max-w-3xl text-center">
-                <p class="text-sm font-semibold text-[#0071e3]">Built for professional accounts</p>
-                <h2 class="mt-2 text-3xl font-semibold tracking-[-0.045em] text-[#1d1d1f] sm:text-[44px]">Less setup. More conversation.</h2>
-            </div>
-            <div class="mt-8 grid gap-4 md:grid-cols-3">
-                <article class="rounded-[28px] bg-white p-6 shadow-[0_1px_2px_rgba(0,0,0,.03),0_14px_36px_rgba(0,0,0,.05)] ring-1 ring-black/[.04]">
-                    <div class="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#eef5ff] text-[#0071e3]"><i class="ti ti-user-check text-xl"></i></div>
-                    <h3 class="mt-6 text-lg font-semibold tracking-[-0.02em]">Business or Creator</h3>
-                    <p class="mt-2 text-sm leading-6 text-[#6e6e73]">Instagram messaging access is for professional accounts, not personal profiles.</p>
-                </article>
-                <article class="rounded-[28px] bg-white p-6 shadow-[0_1px_2px_rgba(0,0,0,.03),0_14px_36px_rgba(0,0,0,.05)] ring-1 ring-black/[.04]">
-                    <div class="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#f7ecff] text-[#8a34e8]"><i class="ti ti-message-dots text-xl"></i></div>
-                    <h3 class="mt-6 text-lg font-semibold tracking-[-0.02em]">Customer-started DMs</h3>
-                    <p class="mt-2 text-sm leading-6 text-[#6e6e73]">The inbox is designed around conversations customers have already started with your account.</p>
-                </article>
-                <article class="rounded-[28px] bg-white p-6 shadow-[0_1px_2px_rgba(0,0,0,.03),0_14px_36px_rgba(0,0,0,.05)] ring-1 ring-black/[.04]">
-                    <div class="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#eefbf5] text-[#16863f]"><i class="ti ti-lock-check text-xl"></i></div>
-                    <h3 class="mt-6 text-lg font-semibold tracking-[-0.02em]">Workspace isolated</h3>
-                    <p class="mt-2 text-sm leading-6 text-[#6e6e73]">Each SHVYA organization uses only its own encrypted Instagram connection.</p>
-                </article>
-            </div>
-        </section>
-    </div>
+<div class="mx-auto max-w-5xl pb-12">
+  <header class="py-10 text-center"><span class="text-sm font-semibold text-[#0071e3]">Instagram for SHVYA</span><h1 class="mt-4 text-4xl font-semibold tracking-tight sm:text-5xl">Your DMs. One workspace.</h1><p class="mx-auto mt-4 max-w-2xl text-[#6e6e73]">Connect your professional Instagram account through Meta. Authorization and inbox setup are checked separately.</p></header>
+  <section class="rounded-3xl border border-black/5 bg-white p-6 shadow-sm sm:p-9" data-ig-connect-state="{{ instagram_connection_state }}">
+    <h2 class="text-xl font-semibold" id="ig-setup-state">{% if instagram_oauth_pending %}Completing authorization…{% elif instagram_inbox_ready %}Instagram inbox ready{% elif instagram_connected %}Authorized — inbox setup needs attention{% else %}Connect a Business or Creator account{% endif %}</h2>
+    <p class="mt-3 text-sm text-red-700" role="alert" id="ig-setup-error" {% if not instagram_connection_error %}hidden{% endif %}>{{ instagram_connection_error }}</p>
+    <div class="mt-6 grid gap-3 text-sm sm:grid-cols-3"><div class="rounded-2xl bg-[#f5f5f7] p-4"><strong>1. Authorization</strong><p class="mt-2 text-[#6e6e73]">{% if instagram_connected %}Account authorized{% elif instagram_oauth_pending %}Worker is completing sign-in{% else %}Not connected{% endif %}</p></div><div class="rounded-2xl bg-[#f5f5f7] p-4"><strong>2. Webhook subscription</strong><p class="mt-2 text-[#6e6e73]">{% if instagram_connection.webhook_subscribed %}Confirmed by Meta{% else %}Not confirmed{% endif %}</p></div><div class="rounded-2xl bg-[#f5f5f7] p-4"><strong>3. Initial inbox sync</strong><p class="mt-2 text-[#6e6e73]">{% if instagram_connection.last_sync_at %}Sync completed{% else %}Not completed{% endif %}</p></div></div>
+    <div class="mt-7 flex flex-wrap items-center gap-3">{% if instagram_meta_ready %}<a href="{% url 'crm-instagram-oauth-start' %}" class="rounded-full bg-[#0071e3] px-6 py-3 text-sm font-semibold text-white">{% if instagram_connected %}Reconnect Instagram{% else %}Continue with Instagram{% endif %}</a>{% else %}<p class="text-sm text-red-700">Dedicated Instagram App ID or App Secret is not loaded by the server.</p>{% endif %}{% if instagram_connection %}<a href="{% url 'crm-instagram-chats' %}" class="rounded-full bg-[#f5f5f7] px-5 py-3 text-sm font-medium">Open Instagram Chats</a>{% endif %}{% if instagram_connected %}<form method="post">{% csrf_token %}<button class="rounded-full bg-[#f5f5f7] px-5 py-3 text-sm font-medium" type="submit">Retry inbox setup</button></form><form method="post" action="{% url 'crm-instagram-disconnect' %}">{% csrf_token %}<button class="px-3 py-2 text-sm text-red-700" type="submit">Disconnect</button></form>{% endif %}</div>
+    <p class="mt-4 text-xs text-[#6e6e73]" id="ig-setup-poll" role="status">{% if instagram_oauth_pending %}Checking connection status. This page will update when the worker finishes.{% endif %}</p>
+  </section>
+  <details class="mt-6 rounded-3xl border border-black/5 bg-white p-6"><summary class="cursor-pointer font-semibold">Connection diagnostics and Meta app setup</summary><div class="mt-5 space-y-4 text-sm text-[#6e6e73]"><p>Dedicated Instagram credentials loaded: <strong>{% if instagram_meta_ready %}Yes{% else %}No{% endif %}</strong>. Webhook verify token loaded: <strong>{% if instagram_verify_ready %}Yes{% else %}No{% endif %}</strong>. Values are never displayed.</p><p>Use the Instagram App ID and App Secret from <strong>Instagram API with Instagram Login</strong>, not WhatsApp Embedded Signup credentials. Grant <code>instagram_business_basic</code> and <code>instagram_business_manage_messages</code>.</p><p>Register this exact OAuth redirect URI in Meta, including its HTTPS scheme and trailing slash:</p><code class="block break-all rounded-xl bg-[#f5f5f7] p-3">{{ instagram_redirect_uri }}</code><p>Register this webhook callback with the same value as <code>META_INSTAGRAM_VERIFY_TOKEN</code>:</p><code class="block break-all rounded-xl bg-[#f5f5f7] p-3">{{ instagram_webhook_uri }}</code><p>Enable access to messages in the Instagram professional account. In development mode, use an authorized app tester who has accepted the invitation. Customer accounts require the applicable Meta App Review and access approvals. Having credentials in the environment alone does not grant these approvals.</p><p>An authorization timeout can indicate a stopped Celery worker or broker. A webhook warning indicates inbox setup needs attention, not that the password is wrong.</p><a href="https://developers.facebook.com/docs/instagram-platform/instagram-api-with-instagram-login/business-login/" target="_blank" rel="noopener noreferrer" class="text-[#0071e3] underline">Meta Instagram Login documentation</a></div></details>
+  <section class="mt-6 rounded-3xl bg-[#f5f5f7] p-6 text-sm leading-6 text-[#6e6e73]"><h3 class="mb-2 font-semibold text-[#1d1d1f]">Customer-started conversations</h3><p>The standard reply window is 24 hours from the customer's latest message. SHVYA checks the window before queueing and again before sending. This inbox does not claim the HUMAN_AGENT exception. Story and shared-media availability is controlled by Meta.</p><a href="{{ instagram_policy_url }}" target="_blank" rel="noopener noreferrer" class="text-[#0071e3] underline">Instagram messaging rules</a></section>
 </div>
+<script>
+(() => {
+  const root = document.querySelector('[data-ig-connect-state]');
+  if (!root || root.dataset.igConnectState !== 'authorizing') return;
+  let timer, failures = 0;
+  const started = Date.now();
+  async function check() {
+    if (document.hidden) { timer = setTimeout(check, 5000); return; }
+    if (Date.now() - started > 660000) { document.getElementById('ig-setup-poll').textContent = 'Authorization did not finish. Start Connect again and check the background worker.'; return; }
+    try {
+      const response = await fetch(location.href, {headers:{Accept:'application/json'}, credentials:'same-origin', cache:'no-store', signal:AbortSignal.timeout(12000)});
+      if (response.redirected || !response.ok || !response.headers.get('content-type')?.includes('application/json')) throw new Error();
+      const data = await response.json();
+      failures = 0;
+      if (!data.instagram_oauth_pending) { location.reload(); return; }
+    } catch (_) {
+      failures += 1;
+      document.getElementById('ig-setup-poll').textContent = 'Status updates are temporarily unavailable. Your authorization request has not been resubmitted.';
+    }
+    timer = setTimeout(check, Math.min(30000, 3000 * 2 ** Math.min(failures, 3)));
+  }
+  timer = setTimeout(check, 1500);
+  addEventListener('pagehide', () => clearTimeout(timer), {once:true});
+})();
+</script>
 {% endblock %}

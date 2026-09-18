@@ -195,6 +195,19 @@ class InstagramUITests(TestCase):
     def test_send_message_queues_scoped_outbound_row(self, delay):
         account = self.connect_instagram()
         conversation = self.add_conversation(account)
+        # A real inbound message, not summary metadata, opens the Meta window.
+        InstagramMessage.objects.create(
+            organization=self.org,
+            account=account,
+            conversation=conversation,
+            external_id="ig-inbound-before-reply",
+            direction=InstagramMessage.Direction.INBOUND,
+            status=InstagramMessage.Status.RECEIVED,
+            sender_id=conversation.participant_id,
+            recipient_id=account.ig_user_id,
+            body="Is this available?",
+            sent_at=timezone.now(),
+        )
         with self.captureOnCommitCallbacks(execute=True):
             response = self.client.post(
                 reverse("crm-instagram-send-message", args=[conversation.id]),
