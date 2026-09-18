@@ -1,0 +1,38 @@
+/* Appearance controls shared by public pages. The existing night palette stays intact. */
+.marketing-theme-toggle{display:none;align-items:center;justify-content:center;flex:0 0 44px;width:44px;height:44px;padding:0;border:1px solid transparent;border-radius:50%;background:transparent;color:var(--muted);touch-action:manipulation;cursor:pointer}
+html[data-marketing-theme] .marketing-theme-toggle{display:inline-flex}
+.marketing-theme-toggle:hover{color:var(--foreground);background:color-mix(in srgb,var(--foreground) 7%,transparent)}
+.marketing-theme-toggle:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+.marketing-theme-toggle svg{width:21px;height:21px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;pointer-events:none}
+.marketing-theme-toggle .theme-sun{display:none}
+html[data-marketing-theme="light"] .marketing-theme-toggle .theme-sun{display:block}
+html[data-marketing-theme="light"] .marketing-theme-toggle .theme-moon{display:none}
+.marketing-site .header-actions{flex-shrink:0}
+.marketing-site .mobile-menu>summary{min-width:44px;min-height:44px;align-items:center;justify-content:center}
+@media(max-width:1100px){.marketing-site .mobile-menu>summary{display:flex}}
+/* Make room for the appearance control and signed-in names on small laptops.
+ * Below 851px the existing mobile-navigation rules already provide the layout. */
+@media(min-width:851px) and (max-width:1100px){
+  .marketing-site>header>nav{display:none}
+  .marketing-site .mobile-menu{display:block}
+  .marketing-site .mobile-menu summary{list-style:none;font-size:24px;cursor:pointer}
+  .marketing-site .mobile-menu>div{position:absolute;right:20px;left:20px;top:75px;background:#172128;border:1px solid #3b5260;padding:15px;border-radius:12px;box-shadow:0 25px 70px #0009;z-index:40}
+  .marketing-site .mobile-menu a{display:block;padding:14px;font-size:15px;border-bottom:1px solid #2b3b45}
+  .marketing-site .mobile-menu a:last-child{border:0}
+}
+@media(max-width:600px){
+  .marketing-site header{gap:8px;min-height:75px;height:auto;padding-block:12px}
+  .marketing-site .header-actions{gap:4px}
+  .marketing-site .header-actions>.nav-login,.marketing-site .header-actions>.account-menu{display:none}
+  .marketing-site .header-actions>.button.small{white-space:nowrap}
+}
+@media(max-width:380px){
+  .marketing-site header{padding-inline:12px;gap:6px}
+  .marketing-site header .brand{gap:4px}
+  .marketing-site header .brand .wordmark{width:68px}
+  .marketing-site .header-actions{gap:2px}
+  .marketing-site .header-actions>.button.small{padding:10px 9px}
+  .marketing-site .header-actions>.button.small>span{display:none}
+}
+@media(prefers-reduced-motion:no-preference){.marketing-theme-toggle{transition:background-color .18s ease,color .18s ease}}
+@media(forced-colors:active){.marketing-theme-toggle{border-color:ButtonText;color:ButtonText}.marketing-theme-toggle:focus-visible{outline-color:Highlight}}
