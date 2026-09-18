@@ -1,0 +1,157 @@
+#shvya-reminder-notification-root {
+  position: fixed;
+  top: 5rem;
+  right: 1rem;
+  z-index: 120000;
+  display: flex;
+  width: min(24rem, calc(100vw - 2rem));
+  flex-direction: column;
+  gap: .7rem;
+  pointer-events: none;
+}
+
+.shvya-reminder-alert {
+  pointer-events: auto;
+  display: grid;
+  width: 100%;
+  grid-template-columns: 2.5rem minmax(0, 1fr);
+  gap: .8rem;
+  border: 1px solid rgba(15, 23, 42, .09);
+  border-radius: 1.2rem;
+  background: rgba(255, 255, 255, .92);
+  -webkit-backdrop-filter: saturate(180%) blur(22px);
+  backdrop-filter: saturate(180%) blur(22px);
+  padding: .9rem;
+  color: #111827;
+  text-align: left;
+  box-shadow:
+    0 24px 60px rgba(15, 23, 42, .16),
+    0 5px 18px rgba(15, 23, 42, .07),
+    inset 0 1px 0 rgba(255, 255, 255, .88);
+  opacity: 0;
+  transform: translateY(-10px) scale(.98);
+  transition:
+    opacity .22s cubic-bezier(.22, 1, .36, 1),
+    transform .26s cubic-bezier(.22, 1, .36, 1),
+    box-shadow .18s ease,
+    border-color .18s ease;
+  cursor: pointer;
+}
+
+.shvya-reminder-alert:hover {
+  border-color: rgba(0, 113, 227, .2);
+  box-shadow:
+    0 28px 66px rgba(15, 23, 42, .18),
+    0 6px 20px rgba(15, 23, 42, .08),
+    inset 0 1px 0 rgba(255, 255, 255, .9);
+}
+
+.shvya-reminder-alert:focus-visible {
+  outline: 2px solid #0071e3;
+  outline-offset: 3px;
+}
+
+.shvya-reminder-alert.is-visible {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+.shvya-reminder-alert.is-leaving {
+  opacity: 0;
+  transform: translateY(-8px) scale(.985);
+}
+
+.shvya-reminder-alert__icon {
+  display: inline-flex;
+  width: 2.5rem;
+  height: 2.5rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: .85rem;
+  background: linear-gradient(145deg, #fff3e6, #ffead3);
+  color: #b45309;
+  font-size: 1.1rem;
+  box-shadow: inset 0 0 0 1px rgba(245, 158, 11, .12);
+}
+
+.shvya-reminder-alert__body {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.shvya-reminder-alert__eyebrow {
+  color: #b45309;
+  font-size: .67rem;
+  font-weight: 750;
+  letter-spacing: .08em;
+  line-height: 1rem;
+  text-transform: uppercase;
+}
+
+.shvya-reminder-alert__title {
+  margin-top: .08rem;
+  overflow: hidden;
+  color: #111827;
+  font-size: .92rem;
+  font-weight: 700;
+  line-height: 1.25rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shvya-reminder-alert__meta {
+  margin-top: .08rem;
+  overflow: hidden;
+  color: #6b7280;
+  font-size: .75rem;
+  font-weight: 550;
+  line-height: 1.1rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shvya-reminder-alert__description {
+  display: -webkit-box;
+  margin-top: .38rem;
+  overflow: hidden;
+  color: #6e6e73;
+  font-size: .77rem;
+  line-height: 1.15rem;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.shvya-reminder-alert__action {
+  display: inline-flex;
+  margin-top: .65rem;
+  align-items: center;
+  gap: .2rem;
+  color: #0066cc;
+  font-size: .75rem;
+  font-weight: 650;
+}
+
+.shvya-reminder-alert[aria-busy="true"] {
+  cursor: wait;
+  opacity: .72;
+}
+
+@media (max-width: 640px) {
+  #shvya-reminder-notification-root {
+    top: 4.4rem;
+    right: .7rem;
+    left: .7rem;
+    width: auto;
+  }
+
+  .shvya-reminder-alert {
+    border-radius: 1rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shvya-reminder-alert {
+    transition: none;
+  }
+}

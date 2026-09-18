@@ -488,9 +488,8 @@
                         Reminders
                     </span>
 
-                    {% if pending_reminder_count %}
-
                     <span
+                        id="global-reminder-count"
                         class="inline-flex
                                items-center
                                justify-center
@@ -504,15 +503,13 @@
                                font-semibold
                                transition-all
                                duration-150
-
                                group-hover:bg-blue-100
                                group-hover:text-[#3B82F6]
+                               {% if not pending_reminder_count %}hidden{% endif %}
                         "
                     >
-                        {{ pending_reminder_count }}
+                        {{ pending_reminder_count|default:0 }}
                     </span>
-
-                    {% endif %}
 
                 </a>
 
@@ -715,6 +712,17 @@
      ============================================================ -->
 
 <div id="modal-root"></div>
+
+{% if request.crm_user %}
+<div
+    id="shvya-reminder-notification-config"
+    class="hidden"
+    aria-hidden="true"
+    data-feed-url="{% url 'crm-reminder-notification-feed' %}"
+    data-modal-url="{% url 'crm-global-reminders-modal' %}"
+    data-poll-ms="15000"
+></div>
+{% endif %}
 
 
 <!-- ============================================================

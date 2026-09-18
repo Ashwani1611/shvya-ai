@@ -5,7 +5,7 @@ from .contact import LeadContact
 from .permission import PipelinePermission
 from .note import LeadNote
 from .call import LeadCall
-from .reminder import LeadReminder
+from .reminder import LeadReminder, LeadReminderNotificationAck
 from .tag import Tag, LeadTag
 from .activity import LeadActivity
 from .attribute import AttributeDefinition
@@ -20,6 +20,7 @@ __all__ = [
     "LeadNote",
     "LeadCall",
     "LeadReminder",
+    "LeadReminderNotificationAck",
     "Tag",
     "LeadTag",
     "LeadActivity",
