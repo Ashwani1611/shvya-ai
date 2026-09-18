@@ -8,24 +8,13 @@ jobs:
   source:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-      - name: Export tracked source and history without credentials
-        run: git bundle create shvya-source.bundle HEAD refs/remotes/origin/main refs/remotes/origin/staging
+      - name: Export empty CI-compatible PostgreSQL runtime
+        run: |
+          docker create --name postgres-audit pgvector/pgvector:pg17
+          docker export postgres-audit | gzip > /tmp/postgres-audit-rootfs.tar.gz
+          docker rm postgres-audit
       - uses: actions/upload-artifact@v4
         with:
-          name: shvya-ai-source-audit
-          path: shvya-source.bundle
-          retention-days: 1
-      - uses: actions/setup-python@v7
-        with:
-          python-version: '3.13'
-      - name: Package declared test dependencies for offline validation
-        run: pip wheel -r requirements-dev.txt --wheel-dir /tmp/ai-audit-wheels
-      - uses: actions/upload-artifact@v4
-        with:
-          name: shvya-ai-audit-wheels
-          path: /tmp/ai-audit-wheels
+          name: shvya-ai-audit-postgres
+          path: /tmp/postgres-audit-rootfs.tar.gz
           retention-days: 1
