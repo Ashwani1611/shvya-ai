@@ -20,8 +20,9 @@ from apps.channels.campaign_models import CampaignDelivery
 from apps.channels.models import WhatsAppAccount, WhatsAppTemplate
 from apps.crm.decorators import crm_login_required
 from services.channels.campaign_audience import (
-    create_upload, definitions, is_suppressed, owned_upload, require_manage,
-    review_upload, rights, source_catalog, user_pipelines, uuid_value, visible_campaigns,
+    campaign_account_for_pipeline, create_upload, definitions, is_suppressed,
+    owned_upload, require_manage, review_upload, rights, source_catalog,
+    user_pipelines, uuid_value, visible_campaigns,
 )
 from services.channels.campaign_policy import CampaignInputError, csv_cell, template_fields
 from services.channels.campaign_reporting import (
@@ -92,14 +93,53 @@ def _route(name, **kwargs):
 def workspace(request, campaign_id=None):
     if campaign_id:
         get_campaign(request.crm_user, campaign_id)
+
+    seed = None
+    upload_id = str(request.GET.get("upload") or "").strip()
+    if upload_id:
+        item = owned_upload(user=request.crm_user, token=upload_id)
+        if hasattr(item, "plan") or not item.review_digest or not item.reviewed_rows:
+            raise CampaignInputError("This CRM campaign selection is no longer available. Select the leads again.")
+
+        pipeline_id = str(item.review_config.get("pipeline_id") or "")
+        pipeline = user_pipelines(request.crm_user).filter(pk=uuid_value(pipeline_id, "Pipeline")).first()
+        if pipeline is None:
+            raise PermissionDenied
+        account = campaign_account_for_pipeline(user=request.crm_user, pipeline=pipeline)
+        if account is None:
+            raise CampaignInputError(
+                "The pipeline's WhatsApp API or Coexistence number is no longer connected."
+            )
+        seed = {
+            "source": "crm_selection",
+            "pipeline_id": str(pipeline.pk),
+            "account_id": str(account.pk),
+            "upload": {
+                "id": str(item.pk),
+                "filename": item.filename,
+                "row_count": len(item.rows),
+                "headers": item.headers,
+                "review_url": _route("upload-review", upload_id=item.pk),
+                "errors_url": _route("upload-errors", upload_id=item.pk),
+            },
+            "audience": {
+                "stats": {key: value for key, value in item.review_stats.items() if key != "errors"},
+                "errors": item.review_stats.get("errors", [])[:25],
+                "digest": item.review_digest,
+            },
+        }
+
     urls = {key: _route(key) for key in ("list", "options", "upload", "templates", "preview", "confirm", "sample")}
     urls["data"] = _route("detail-data", campaign_id=campaign_id) if campaign_id else _route("list-data")
     if campaign_id:
         urls["actions"] = _route("actions", campaign_id=campaign_id)
     return render(request, "channels/bulk_campaigns.html", {
-        "campaign_bootstrap": {"campaign_id": str(campaign_id) if campaign_id else None,
-                               "open_composer": request.resolver_match.url_name == "whatsapp-campaign-create",
-                               "urls": urls},
+        "campaign_bootstrap": {
+            "campaign_id": str(campaign_id) if campaign_id else None,
+            "open_composer": request.resolver_match.url_name == "whatsapp-campaign-create" or bool(seed),
+            "seed": seed,
+            "urls": urls,
+        },
     })
 
 
