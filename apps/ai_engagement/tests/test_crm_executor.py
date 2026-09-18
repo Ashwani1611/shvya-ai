@@ -216,7 +216,7 @@ class CRMActionExecutorTests(TestCase):
         self.lead.refresh_from_db()
         self.assertEqual(definition.name, "Sales Team Size")
         self.assertEqual(definition.field_type, "numeric")
-        self.assertEqual(self.lead.attributes["sales_team_size"], 8)
+        self.assertEqual(self.lead.attributes["sales_team_size"], "8")
         self.assertEqual(result[0]["created_keys"], ["sales_team_size"])
 
     def test_dynamic_attribute_reuses_same_named_existing_definition(self):
@@ -256,7 +256,7 @@ class CRMActionExecutorTests(TestCase):
             ).count(),
             1,
         )
-        self.assertEqual(self.lead.attributes["number_of_sales_reps"], 8)
+        self.assertEqual(self.lead.attributes["number_of_sales_reps"], "8")
         self.assertNotIn("sales_team_size", self.lead.attributes)
 
     def test_rejects_ai_update_to_credential_attribute(self):
