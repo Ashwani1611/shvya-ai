@@ -1012,6 +1012,7 @@ def resolve_before_generation(
                     organization=organization,
                     lead=locked,
                     actions=[attribute_action],
+                    source_message=source,
                 )
                 for mapped in mapped_updates:
                     verified_attribute = _verify_attribute(locked, mapped["key"], mapped["value"])
@@ -1040,6 +1041,7 @@ def resolve_before_generation(
                     organization=organization,
                     lead=locked,
                     actions=[stage_action],
+                    source_message=source,
                 )
                 verified_stage = _verify_stage(locked, target)
                 results.append(verified_stage)
@@ -1070,6 +1072,7 @@ def resolve_before_generation(
                     organization=organization,
                     lead=locked,
                     actions=[reminder_action],
+                    source_message=source,
                 )
                 results.extend(reminder_result)
                 if reminder_result:
