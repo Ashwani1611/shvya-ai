@@ -19,3 +19,13 @@ jobs:
           name: shvya-ai-source-audit
           path: shvya-source.bundle
           retention-days: 1
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.13'
+      - name: Package declared test dependencies for offline validation
+        run: pip wheel -r requirements-dev.txt --wheel-dir /tmp/ai-audit-wheels
+      - uses: actions/upload-artifact@v4
+        with:
+          name: shvya-ai-audit-wheels
+          path: /tmp/ai-audit-wheels
+          retention-days: 1
