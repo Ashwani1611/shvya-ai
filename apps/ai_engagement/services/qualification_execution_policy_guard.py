@@ -364,7 +364,7 @@ def install_qualification_execution_policy_guard() -> None:
             # exact-mapping contract while allowing genuinely separate facts
             # volunteered in the same message.
             qualification_values = {
-                re.sub(r"\\s+", " ", str(item.get("value") or "")).strip().casefold()
+                re.sub(r"\s+", " ", str(item.get("value") or "")).strip().casefold()
                 for item in qualification_updates
                 if str(item.get("value") or "").strip()
             }
@@ -372,7 +372,7 @@ def install_qualification_execution_policy_guard() -> None:
             for item in proposed_attribute_updates:
                 key = str(item.get("key") or "")
                 value = re.sub(
-                    r"\\s+", " ", str(item.get("value") or "")
+                    r"\s+", " ", str(item.get("value") or "")
                 ).strip().casefold()
                 if not key or key in deterministic_keys or value in qualification_values:
                     continue
