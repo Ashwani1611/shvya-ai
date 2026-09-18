@@ -1,0 +1,276 @@
+# Initial support schema. Migration drift is checked by the repository CI gate.
+import uuid
+import apps.support.models
+import apps.support.storage
+from django.conf import settings
+from django.core.validators import MaxValueValidator, MinValueValidator
+from django.db import migrations, models
+from django.utils import timezone
+
+class Migration(migrations.Migration):
+    initial = True
+    dependencies = [
+        migrations.swappable_dependency(settings.AUTH_USER_MODEL),
+        ("organizations", "__first__"),
+        ("crm", "__first__"),
+    ]
+
+    operations = [
+        migrations.CreateModel(
+            name='TicketStatus',
+            fields=[
+                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
+                ('name', models.CharField(max_length=100)),
+                ('active', models.BooleanField(default=True)),
+                ('order', models.PositiveIntegerField(default=0)),
+                ('key', models.SlugField(max_length=60, unique=True)),
+                ('behavior', models.CharField(max_length=20, choices=[('open', 'Open'), ('in_progress', 'In Progress'), ('answered', 'Answered'), ('on_hold', 'On Hold'), ('closed', 'Closed')])),
+                ('system', models.BooleanField(default=False, editable=False)),
+            ],
+            options={'ordering': ('order', 'name'), 'abstract': False},
+        ),
+        migrations.CreateModel(
+            name='TicketPriority',
+            fields=[
+                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
+                ('name', models.CharField(max_length=100)),
+                ('active', models.BooleanField(default=True)),
+                ('order', models.PositiveIntegerField(default=0)),
+                ('key', models.SlugField(max_length=60, unique=True)),
+            ],
+            options={'ordering': ('order', 'name'), 'abstract': False},
+        ),
+        migrations.CreateModel(
+            name='TicketCategory',
+            fields=[
+                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
+                ('name', models.CharField(max_length=100, unique=True)),
+                ('active', models.BooleanField(default=True)),
+                ('order', models.PositiveIntegerField(default=0)),
+                ('description', models.CharField(max_length=250, blank=True)),
+            ],
+            options={'ordering': ('order', 'name'), 'abstract': False},
+        ),
+        migrations.CreateModel(
+            name='TicketIssue',
+            fields=[
+                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
+                ('name', models.CharField(max_length=100)),
+                ('active', models.BooleanField(default=True)),
+                ('order', models.PositiveIntegerField(default=0)),
+                ('category', models.ForeignKey(on_delete=models.PROTECT, related_name='issues', to='support.ticketcategory')),
+                ('guidance', models.CharField(max_length=350, blank=True)),
+            ],
+            options={
+                'ordering': ('order', 'name'),
+                'constraints': [models.UniqueConstraint(fields=('category', 'name'), name='support_unique_issue')],
+                'abstract': False,
+            },
+        ),
+        migrations.CreateModel(
+            name='CustomField',
+            fields=[
+                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
+                ('name', models.CharField(max_length=100)),
+                ('active', models.BooleanField(default=True)),
+                ('order', models.PositiveIntegerField(default=0)),
+                ('key', models.SlugField(max_length=60, unique=True)),
+                ('kind', models.CharField(max_length=16, choices=[('text', 'Short text'), ('long', 'Long text'), ('select', 'Dropdown'), ('number', 'Number'), ('date', 'Date'), ('checkbox', 'Checkbox')], default='text')),
+                ('options', models.TextField(blank=True, help_text='Dropdown choices, one per line.')),
+                ('customer_visible', models.BooleanField(default=True)),
+                ('required', models.BooleanField(default=False, help_text='Required when the relevant user supplies this field.')),
+                ('required_on_close', models.BooleanField(default=False)),
+                ('help_text', models.CharField(max_length=200, blank=True)),
+            ],
+            options={'ordering': ('order', 'name'), 'abstract': False},
+        ),
+        migrations.CreateModel(
+            name='SupportSettings',
+            fields=[
+                ('id', models.PositiveSmallIntegerField(primary_key=True, default=1, editable=False, serialize=False)),
+                ('auto_assign_first_reply', models.BooleanField(default=False)),
+                ('notify_customer', models.BooleanField(default=True)),
+                ('notify_staff', models.BooleanField(default=True)),
+                ('assignee_only_notifications', models.BooleanField(default=False)),
+                ('notify_organization_admins', models.BooleanField(default=False)),
+                ('allow_customer_close', models.BooleanField(default=True)),
+                ('auto_close_hours', models.PositiveIntegerField(default=0, validators=[MaxValueValidator(8760)])),
+                ('max_files', models.PositiveIntegerField(default=8, validators=[MinValueValidator(1), MaxValueValidator(20)])),
+                ('max_file_mb', models.PositiveIntegerField(default=25, validators=[MinValueValidator(1), MaxValueValidator(100)])),
+                ('max_total_mb', models.PositiveIntegerField(default=100, validators=[MinValueValidator(1), MaxValueValidator(200)])),
+                ('allowed_extensions', models.TextField(default='jpg,jpeg,png,gif,webp,heic,pdf,txt,csv,doc,docx,xls,xlsx,ppt,pptx,odt,ods,rtf,mp3,m4a,wav,ogg,opus,webm,mp4,mov,zip,rar,7z,log,json')),
+                ('email_intake_enabled', models.BooleanField(default=False)),
+                ('email_replies_only', models.BooleanField(default=False)),
+                ('email_issue', models.ForeignKey(on_delete=models.PROTECT, null=True, blank=True, help_text='Default issue for new email tickets; its category is used automatically.', to='support.ticketissue')),
+                ('email_priority', models.ForeignKey(on_delete=models.PROTECT, null=True, blank=True, to='support.ticketpriority')),
+                ('blocked_senders', models.TextField(blank=True, help_text='Exact emails or @domains, one per line.')),
+                ('blocked_subject_terms', models.TextField(blank=True, help_text='Blocked phrases, one per line.')),
+                ('new_tickets_per_hour', models.PositiveIntegerField(default=20, validators=[MinValueValidator(1), MaxValueValidator(100)])),
+            ],
+            options={'constraints': [models.CheckConstraint(condition=models.Q(id=1), name='support_settings_singleton')]},
+        ),
+        migrations.CreateModel(
+            name='OrganizationSupportPolicy',
+            fields=[
+                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
+                ('organization', models.OneToOneField(on_delete=models.CASCADE, related_name='support_policy', to='organizations.organization')),
+                ('own_tickets_only', models.BooleanField(default=False)),
+                ('email_notifications', models.BooleanField(default=True)),
+            ],
+        ),
+        migrations.CreateModel(
+            name='Ticket',
+            fields=[
+                ('id', models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False, serialize=False)),
+                ('reference', models.CharField(max_length=20, unique=True, default=apps.support.models.ticket_reference, editable=False)),
+                ('organization', models.ForeignKey(on_delete=models.PROTECT, related_name='support_tickets', to='organizations.organization')),
+                ('requester', models.ForeignKey(on_delete=models.PROTECT, related_name='requested_support_tickets', to=settings.AUTH_USER_MODEL)),
+                ('pipeline', models.ForeignKey(on_delete=models.SET_NULL, null=True, blank=True, related_name='support_tickets', to='crm.pipeline')),
+                ('context', models.JSONField(default=dict, editable=False)),
+                ('subject', models.CharField(max_length=200)),
+                ('category', models.ForeignKey(on_delete=models.PROTECT, to='support.ticketcategory')),
+                ('issue', models.ForeignKey(on_delete=models.PROTECT, to='support.ticketissue')),
+                ('status', models.ForeignKey(on_delete=models.PROTECT, to='support.ticketstatus')),
+                ('priority', models.ForeignKey(on_delete=models.PROTECT, to='support.ticketpriority')),
+                ('assignee', models.ForeignKey(on_delete=models.SET_NULL, null=True, blank=True, related_name='assigned_support_tickets', to=settings.AUTH_USER_MODEL)),
+                ('custom_values', models.JSONField(default=dict, blank=True)),
+                ('submission_key', models.UUIDField(null=True, blank=True)),
+                ('source', models.CharField(max_length=12, choices=[('portal', 'Portal'), ('email', 'Email')], default='portal')),
+                ('merged_into', models.ForeignKey(on_delete=models.PROTECT, null=True, blank=True, related_name='merged_sources', to='support.ticket')),
+                ('first_staff_reply_at', models.DateTimeField(null=True, blank=True)),
+                ('last_public_activity_at', models.DateTimeField(default=timezone.now)),
+                ('created_at', models.DateTimeField(default=timezone.now, editable=False)),
+                ('updated_at', models.DateTimeField(default=timezone.now)),
+                ('version', models.PositiveIntegerField(default=1)),
+            ],
+            options={
+                'ordering': ('-updated_at', '-id'),
+                'indexes': [models.Index(fields=('organization', '-updated_at'), name='support_org_updated'), models.Index(fields=('assignee', 'status'), name='support_assignee_status'), models.Index(fields=('status', 'last_public_activity_at'), name='support_status_activity')],
+                'constraints': [models.CheckConstraint(condition=~models.Q(id=models.F('merged_into_id')), name='support_no_self_merge'), models.UniqueConstraint(fields=('requester', 'submission_key'), name='support_submission_idempotency')],
+            },
+        ),
+        migrations.CreateModel(
+            name='TicketMessage',
+            fields=[
+                ('id', models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False, serialize=False)),
+                ('ticket', models.ForeignKey(on_delete=models.CASCADE, related_name='messages', to='support.ticket')),
+                ('origin_ticket', models.ForeignKey(on_delete=models.PROTECT, related_name='original_messages', to='support.ticket')),
+                ('author', models.ForeignKey(on_delete=models.SET_NULL, null=True, blank=True, to=settings.AUTH_USER_MODEL)),
+                ('author_name', models.CharField(max_length=150)),
+                ('author_kind', models.CharField(max_length=12, choices=[('customer', 'Customer'), ('staff', 'Shvya-Ops'), ('shared', 'Shared link')])),
+                ('internal', models.BooleanField(default=False)),
+                ('body', models.TextField(max_length=30000)),
+                ('created_at', models.DateTimeField(default=timezone.now)),
+                ('client_key', models.UUIDField(null=True, blank=True)),
+            ],
+            options={
+                'ordering': ('created_at', 'id'),
+                'constraints': [models.UniqueConstraint(fields=('ticket', 'author', 'client_key'), name='support_reply_idempotency'), models.UniqueConstraint(fields=('ticket', 'client_key'), condition=models.Q(author__isnull=True), name='support_shared_reply_idempotency')],
+            },
+        ),
+        migrations.CreateModel(
+            name='Attachment',
+            fields=[
+                ('id', models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False, serialize=False)),
+                ('message', models.ForeignKey(on_delete=models.CASCADE, related_name='attachments', to='support.ticketmessage')),
+                ('file', models.FileField(upload_to=apps.support.storage.attachment_path, storage=apps.support.storage.PrivateSupportStorage(), max_length=300)),
+                ('original_name', models.CharField(max_length=180)),
+                ('size', models.PositiveBigIntegerField()),
+                ('sha256', models.CharField(max_length=64)),
+                ('created_at', models.DateTimeField(default=timezone.now)),
+            ],
+        ),
+        migrations.CreateModel(
+            name='TicketEvent',
+            fields=[
+                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
+                ('ticket', models.ForeignKey(on_delete=models.CASCADE, related_name='events', to='support.ticket')),
+                ('actor', models.ForeignKey(null=True, blank=True, on_delete=models.SET_NULL, to=settings.AUTH_USER_MODEL)),
+                ('action', models.CharField(max_length=40)),
+                ('detail', models.JSONField(default=dict)),
+                ('created_at', models.DateTimeField(default=timezone.now)),
+            ],
+            options={'ordering': ('-created_at', '-id')},
+        ),
+        migrations.CreateModel(
+            name='SharedAccess',
+            fields=[
+                ('id', models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False, serialize=False)),
+                ('ticket', models.ForeignKey(on_delete=models.CASCADE, related_name='share_links', to='support.ticket')),
+                ('token_hash', models.CharField(max_length=64, unique=True)),
+                ('label', models.CharField(max_length=80, default='Shared viewer')),
+                ('can_reply', models.BooleanField(default=False)),
+                ('can_close', models.BooleanField(default=False)),
+                ('expires_at', models.DateTimeField()),
+                ('revoked_at', models.DateTimeField(null=True, blank=True)),
+                ('created_by', models.ForeignKey(on_delete=models.SET_NULL, null=True, to=settings.AUTH_USER_MODEL)),
+                ('created_at', models.DateTimeField(default=timezone.now)),
+            ],
+        ),
+        migrations.CreateModel(
+            name='WorkItem',
+            fields=[
+                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
+                ('ticket', models.ForeignKey(on_delete=models.CASCADE, related_name='work_items', to='support.ticket')),
+                ('kind', models.CharField(max_length=12, choices=[('task', 'Related task'), ('reminder', 'Reminder')])),
+                ('title', models.CharField(max_length=200)),
+                ('assigned_to', models.ForeignKey(on_delete=models.PROTECT, related_name='support_work_items', to=settings.AUTH_USER_MODEL)),
+                ('due_at', models.DateTimeField()),
+                ('completed_at', models.DateTimeField(null=True, blank=True)),
+                ('notified_at', models.DateTimeField(null=True, blank=True)),
+                ('created_at', models.DateTimeField(default=timezone.now)),
+            ],
+        ),
+        migrations.CreateModel(
+            name='SavedReply',
+            fields=[
+                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
+                ('name', models.CharField(max_length=100)),
+                ('active', models.BooleanField(default=True)),
+                ('order', models.PositiveIntegerField(default=0)),
+                ('body', models.TextField(max_length=10000)),
+                ('knowledge_url', models.URLField(blank=True, max_length=500)),
+            ],
+            options={'ordering': ('order', 'name'), 'abstract': False},
+        ),
+        migrations.CreateModel(
+            name='EmailDelivery',
+            fields=[
+                ('id', models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False, serialize=False)),
+                ('event', models.ForeignKey(on_delete=models.CASCADE, to='support.ticketevent')),
+                ('recipient', models.ForeignKey(on_delete=models.CASCADE, to=settings.AUTH_USER_MODEL)),
+                ('state', models.CharField(max_length=12, default='pending', choices=[('pending', 'Pending'), ('sending', 'Sending'), ('sent', 'Sent'), ('failed', 'Failed'), ('skipped', 'Skipped')])),
+                ('attempts', models.PositiveSmallIntegerField(default=0)),
+                ('available_at', models.DateTimeField(default=timezone.now)),
+                ('claimed_at', models.DateTimeField(null=True, blank=True)),
+                ('sent_at', models.DateTimeField(null=True, blank=True)),
+                ('last_error', models.CharField(max_length=80, blank=True)),
+            ],
+            options={
+                'constraints': [models.UniqueConstraint(fields=('event', 'recipient'), name='support_unique_delivery')],
+                'indexes': [models.Index(fields=('state', 'available_at'), name='support_outbox_due')],
+            },
+        ),
+        migrations.CreateModel(
+            name='InboundReceipt',
+            fields=[
+                ('digest', models.CharField(max_length=64, primary_key=True, serialize=False)),
+                ('ticket', models.ForeignKey(on_delete=models.SET_NULL, null=True, blank=True, to='support.ticket')),
+                ('result', models.CharField(max_length=24)),
+                ('reason', models.CharField(max_length=100, blank=True)),
+                ('created_at', models.DateTimeField(default=timezone.now)),
+            ],
+        ),
+        migrations.CreateModel(
+            name='ConfigurationEvent',
+            fields=[
+                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
+                ('actor', models.ForeignKey(on_delete=models.SET_NULL, null=True, to=settings.AUTH_USER_MODEL)),
+                ('section', models.CharField(max_length=40)),
+                ('object_key', models.CharField(max_length=64)),
+                ('changed_fields', models.JSONField(default=list)),
+                ('created_at', models.DateTimeField(default=timezone.now)),
+            ],
+            options={'ordering': ('-created_at', '-id')},
+        ),
+    ]

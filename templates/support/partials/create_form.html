@@ -1,0 +1,8 @@
+<form method="post" action="{% url 'support-client:create' %}" enctype="multipart/form-data" class="sp-form" data-issue-form data-attachments data-max-files="{{ config.max_files }}" data-max-mb="{{ config.max_file_mb }}">
+  {% csrf_token %}
+  <div class="sp-context-strip"><span class="sp-mini-avatar">{{ request.user.organization.name|slice:':1' }}</span><div><strong>{{ request.user.organization.name }}</strong><small>Submitted by {{ request.user.name|default:'your account' }} · automatically mapped</small></div><span class="sp-auto-label">Auto-captured</span></div>
+  {% include 'support/partials/form.html' with form=create_form %}
+  <p class="sp-help">Audio notes, images, videos, documents and spreadsheets are supported. Up to {{ config.max_files }} files; {{ config.max_file_mb }} MB per file. Do not include passwords, API keys or customer databases.</p>
+  <p class="sp-upload-feedback" aria-live="polite"></p>
+  <div class="sp-form-actions"><button type="button" class="sp-button sp-button--quiet" data-close-dialog>Cancel</button><button class="sp-button sp-button--primary" type="submit">Create ticket <span aria-hidden="true">↗</span></button></div>
+</form>

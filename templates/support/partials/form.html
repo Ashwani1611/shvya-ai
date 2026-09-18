@@ -1,0 +1,11 @@
+{% if form.non_field_errors %}<div class="sp-alert sp-alert--error" role="alert">{{ form.non_field_errors }}</div>{% endif %}
+{% for field in form %}
+  {% if field.is_hidden %}{{ field }}{% else %}
+  <div class="sp-field{% if field.errors %} sp-field--invalid{% endif %}">
+    {{ field.label_tag }}{% if field.field.required %}<span class="sp-required" aria-hidden="true"> *</span>{% endif %}
+    {{ field }}
+    {% if field.help_text %}<p class="sp-help">{{ field.help_text }}</p>{% endif %}
+    {% if field.errors %}<div class="sp-field-error" role="alert">{{ field.errors }}</div>{% endif %}
+  </div>
+  {% endif %}
+{% endfor %}
