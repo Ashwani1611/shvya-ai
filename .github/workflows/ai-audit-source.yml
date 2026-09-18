@@ -1,0 +1,21 @@
+name: AI source audit workspace
+on:
+  push:
+    branches: [audit/ai-phases-source-20260918]
+permissions:
+  contents: read
+jobs:
+  source:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Export tracked source and history without credentials
+        run: git bundle create shvya-source.bundle HEAD refs/remotes/origin/main refs/remotes/origin/staging
+      - uses: actions/upload-artifact@v4
+        with:
+          name: shvya-ai-source-audit
+          path: shvya-source.bundle
+          retention-days: 1
