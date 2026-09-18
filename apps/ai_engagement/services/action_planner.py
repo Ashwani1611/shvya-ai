@@ -164,6 +164,10 @@ class ActionPlanner:
         started = time.perf_counter()
         guard = TenantGuard(organization)
         guard.validate_current_lead_context(lead)
+        if source_message is not None and hasattr(source_message, "organization_id"):
+            guard.validate_message(source_message, lead=lead)
+            if getattr(source_message, "direction", "inbound") != "inbound":
+                raise TenantScopeError(object_type="inbound_message")
 
         runtime_profile = get_organization_ai_runtime_profile(
             organization=organization,

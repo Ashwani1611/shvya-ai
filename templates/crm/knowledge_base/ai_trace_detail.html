@@ -23,5 +23,8 @@
   {% include "crm/knowledge_base/_ai_trace_section.html" with number="14" title="Delivery" value=delivery %}
   <section class="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm"><div class="border-b border-gray-100 px-5 py-4"><h3 class="text-sm font-semibold text-gray-900">15. Performance / Tokens</h3></div><div class="space-y-3 p-5"><pre class="whitespace-pre-wrap break-words rounded-xl bg-gray-50 p-4 text-xs leading-6 text-gray-700">{{ performance }}</pre><pre class="whitespace-pre-wrap break-words rounded-xl bg-gray-50 p-4 text-xs leading-6 text-gray-700">{{ provider_usage|default:'Provider usage unavailable in current provider result.' }}</pre><p class="text-xs text-gray-500">Total: {% if trace.total_ms != None %}{{ trace.total_ms }} ms{% else %}Unavailable{% endif %}</p></div></section>
   {% include "crm/knowledge_base/_ai_trace_section.html" with number="16" title="Errors" value=error %}
+  {% include "crm/knowledge_base/_ai_trace_section.html" with number="17" title="Objection Intelligence" value=objections %}
+  {% include "crm/knowledge_base/_ai_trace_section.html" with number="18" title="Explainable Lead Signals" value=signals %}
+  {% include "crm/knowledge_base/_ai_trace_section.html" with number="19" title="Response Plan" value=response_plan %}
 </div>
 {% endblock %}

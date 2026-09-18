@@ -1,41 +1,11 @@
 from __future__ import annotations
 
-import re
 from functools import wraps
 from types import SimpleNamespace
 from typing import Any, Mapping
 
 
 _INSTALLED = False
-_WORD_RE = re.compile(r"[a-z0-9]+", re.I)
-_STOP_WORDS = {
-    "a",
-    "an",
-    "and",
-    "are",
-    "as",
-    "at",
-    "be",
-    "for",
-    "from",
-    "has",
-    "have",
-    "i",
-    "in",
-    "is",
-    "it",
-    "of",
-    "on",
-    "our",
-    "the",
-    "this",
-    "to",
-    "we",
-    "with",
-    "you",
-    "your",
-}
-
 
 def _policy_turn(*, organization, lead) -> dict[str, Any] | None:
     try:
@@ -233,6 +203,18 @@ def _install_planner_provenance_bridge() -> None:
         )
         inferred_policy, inferred_outcome = _policy_values(turn)
         planning_decision = _decision_for_planning(decision, turn)
+        if message is not None and "OPT_OUT" not in _intent_values(turn):
+            from apps.ai_engagement.services.sales_intelligence import ObjectionEngine
+            from apps.ai_engagement.services.intent_rules import deterministic_intents
+            from apps.ai_engagement.services.intent_types import Intent
+            if Intent.OPT_OUT not in deterministic_intents(message.body):
+                objections = ObjectionEngine().detect(text=message.body, settings=organization.settings,
+                                                      intent_decision=(turn or {}).get("intent_decision"))
+                if any(item.escalate for item in objections):
+                    planning_decision = SimpleNamespace(
+                        crm_actions=getattr(planning_decision, "crm_actions", []) or [],
+                        file_document_id=getattr(planning_decision, "file_document_id", None),
+                        reason_code="HUMAN_HANDOFF")
         return original(
             self,
             organization=organization,
@@ -257,85 +239,12 @@ def _install_planner_provenance_bridge() -> None:
     ActionPlanner.plan = plan
 
 
-def _normalized_tokens(value: Any) -> set[str]:
-    return {
-        token.casefold()
-        for token in _WORD_RE.findall(str(value or ""))
-        if len(token) > 2 and token.casefold() not in _STOP_WORDS
-    }
-
-
 def _deterministically_supported_reply(decision, resolution) -> bool:
-    if resolution is None or not getattr(resolution, "verified", False):
-        return False
-    if getattr(decision, "crm_actions", None) or getattr(decision, "qualification_updates", None):
-        return False
-    if getattr(decision, "file_document_id", None) is not None:
-        return False
-    question_type = str(getattr(resolution, "question_type", "") or "")
-    if question_type not in {
-        "pricing",
-        "policy",
-        "location",
-        "working_hours",
-        "product_or_service",
-    }:
-        return False
-    contents = [
-        str(getattr(item, "content", "") or "").strip()
-        for item in (getattr(resolution, "evidence", ()) or ())
-        if str(getattr(item, "content", "") or "").strip()
-    ]
-    if not contents:
-        return False
-    reply_tokens = _normalized_tokens(getattr(decision, "message", ""))
-    if not reply_tokens:
-        return False
-    evidence_tokens: set[str] = set()
-    for content in contents:
-        evidence_tokens.update(_normalized_tokens(content))
-    if not evidence_tokens:
-        return False
-    # Deterministic bypass is intentionally strict. Every meaningful reply token
-    # must already occur in same-tenant verified evidence. Any paraphrase or
-    # unsupported claim remains on the existing verifier path.
-    return reply_tokens.issubset(evidence_tokens)
+    # Compatibility for callers/tests; the one shared grounding guard is
+    # installed by Phase 5. Do not stack a second weaker approval predicate.
+    from apps.ai_engagement.services.grounding_safety import exact_evidence_reply
 
-
-def _install_grounding_budget_guard() -> None:
-    from apps.ai_engagement.graph import evidence as evidence_graph
-    from apps.ai_engagement.graph import workflow as workflow
-
-    original = evidence_graph.check_grounding
-
-    @wraps(original)
-    def check_grounding(state):
-        decision = state.get("decision")
-        if decision is None or not getattr(decision, "should_engage", False):
-            return original(state)
-        try:
-            from apps.ai_engagement.services.phase5_6_runtime import (
-                current_evidence_resolution,
-            )
-
-            resolution = current_evidence_resolution(
-                organization_id=getattr(state.get("organization"), "id", None),
-                lead_id=getattr(state.get("lead"), "id", None),
-            )
-        except Exception:
-            resolution = None
-        if _deterministically_supported_reply(decision, resolution):
-            return {
-                "grounding_approved": True,
-                "grounding_validation_path": "deterministic_verified_evidence",
-            }
-        return original(state)
-
-    evidence_graph.check_grounding = check_grounding
-    workflow.check_grounding = check_grounding
-    # LangGraph captures node callables when compiled, so rebind the one existing
-    # canonical graph after replacing the evidence node. This is not a new graph.
-    workflow.ENGAGEMENT_GRAPH = workflow.build_engagement_graph()
+    return exact_evidence_reply(decision, resolution)
 
 
 def install_phase7_completion_runtime() -> None:
@@ -343,7 +252,6 @@ def install_phase7_completion_runtime() -> None:
     if _INSTALLED:
         return
     _install_planner_provenance_bridge()
-    _install_grounding_budget_guard()
     _INSTALLED = True
 
 

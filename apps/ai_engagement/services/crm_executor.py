@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from datetime import datetime
+from copy import deepcopy
+from dataclasses import replace
 from types import SimpleNamespace
 from typing import Any
 
@@ -9,7 +11,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from apps.ai_engagement.services.action_plan_trace import trace_action_plan
-from apps.ai_engagement.services.action_planner import ActionPlanner
+from apps.ai_engagement.services.action_planner import ActionPlanner, EXECUTOR_ACTION_TYPES
 from apps.ai_engagement.services.crm_actions import (
     CRMActionSchemaError,
     validate_crm_actions,
@@ -84,6 +86,11 @@ class CRMActionExecutor:
         except CRMActionSchemaError as exc:
             raise CRMActionExecutionError(f"Invalid CRM actions: {exc}") from exc
 
+        from apps.ai_engagement.models import AIActionReceipt
+        from apps.ai_engagement.services.tenant_guard import TenantGuard
+        from apps.channels.models import WhatsAppMessage
+
+        source_id = plan.source_message_id
         results = []
         with transaction.atomic():
             locked_lead = (
@@ -94,9 +101,41 @@ class CRMActionExecutor:
 
             if locked_lead.organization_id != organization.id:
                 raise CRMActionExecutionError("Lead tenant changed before execution.")
-            self._revalidate_plan_state(plan=plan, lead=locked_lead)
+            guard = TenantGuard(organization)
+            guard.validate_current_lead_context(locked_lead)
+            if source_id:
+                # Supplied/inferred source identity is never sufficient by itself.
+                # Validate the real persisted message and its account before use.
+                try:
+                    source = WhatsAppMessage.objects.select_related("account", "lead").filter(
+                        pk=source_id, organization=organization, lead=locked_lead,
+                        direction=WhatsAppMessage.Direction.INBOUND,
+                    ).first()
+                except (ValueError, DjangoValidationError) as exc:
+                    raise CRMActionExecutionError("Invalid action source message.") from exc
+                if source is None:
+                    raise CRMActionExecutionError("Action source message is outside this lead.")
+                guard.validate_message(source, lead=locked_lead)
 
-            for action in normalized_actions:
+            proposals = [item for item in plan.accepted_actions
+                         if item.executor_action_type in EXECUTOR_ACTION_TYPES]
+            receipts = {
+                item.idempotency_key: item for item in AIActionReceipt.objects.filter(
+                    organization=organization, lead=locked_lead,
+                    idempotency_key__in=[item.idempotency_key for item in proposals],
+                )
+            } if source_id else {}
+            pending = [item for item in proposals if item.idempotency_key not in receipts]
+            if pending:
+                self._revalidate_plan_state(plan=replace(plan, actions=tuple(pending)), lead=locked_lead)
+
+            for proposal, action in zip(proposals, normalized_actions, strict=True):
+                receipt = receipts.get(proposal.idempotency_key)
+                if receipt is not None:
+                    results.append({**deepcopy(receipt.result), "idempotent_replay": True})
+                    continue
+                # Recheck target ownership under the lock, not just at planning.
+                guard.validate_crm_action(lead=locked_lead, action=action)
                 action_type = action["type"]
                 if action_type == "attribute_updates":
                     results.append(
@@ -143,12 +182,30 @@ class CRMActionExecutor:
                     raise CRMActionExecutionError(
                         f"Unsupported CRM action type: {action_type!r}."
                     )
+                if source_id:
+                    receipt = AIActionReceipt.objects.create(
+                        organization=organization,
+                        lead=locked_lead,
+                        source_message_id=source_id,
+                        idempotency_key=proposal.idempotency_key,
+                        action_type=proposal.action_type,
+                        result=deepcopy(results[-1]),
+                    )
+                    # Identical proposals in the same batch are also replays.
+                    receipts[proposal.idempotency_key] = receipt
         return results
 
     @staticmethod
     def _revalidate_plan_state(*, plan, lead: Lead) -> None:
         """Reject stale transition plans before any CRM side effect is executed."""
+        from apps.ai_engagement.services.organization_runtime_profile import configured_action_types
+
+        if str(plan.organization_id) != str(lead.organization_id) or str(plan.lead_id) != str(lead.pk):
+            raise CRMActionExecutionError("Action plan identity changed before execution.")
+        allowed = configured_action_types(lead.organization.settings)
         for proposal in plan.accepted_actions:
+            if proposal.executor_action_type in EXECUTOR_ACTION_TYPES and proposal.executor_action_type not in allowed:
+                raise CRMActionExecutionError("Action permission changed before execution.")
             if proposal.executor_action_type != "pipeline_transition":
                 continue
             snapshot = proposal.state_snapshot or {}
