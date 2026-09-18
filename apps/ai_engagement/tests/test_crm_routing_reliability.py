@@ -238,3 +238,103 @@ class ConversationRoutingReliabilityTests(SimpleTestCase):
             and item.get("stage_shift", {}).get("stage_id") == "seller-stage"
             for item in actions
         ))
+
+    def test_short_confirmation_uses_only_immediately_prior_whatsapp_question(self):
+        destination = {
+            "id": "human-stage",
+            "name": "Human Intervention",
+            "description": "Move here when the lead wants human support.",
+            "pipeline_id": "support-pipeline",
+            "pipeline_name": "Support",
+        }
+        context = self._context(body="Yes", available_stages=[destination])
+        context.conversation["messages"] = [
+            {
+                "id": "out-1",
+                "direction": "outbound",
+                "body": "Would you like human support?",
+            },
+            {"id": "in-1", "direction": "inbound", "body": "Yes"},
+        ]
+        actions, _ = build_controlled_actions(
+            decision=SimpleNamespace(
+                qualification_updates=[],
+                crm_actions=[{
+                    "type": "pipeline_transition",
+                    "stage_shift": {"stage_id": "human-stage"},
+                }],
+            ),
+            context=context,
+            runtime_policy={
+                "qualification": {"criteria": []},
+                "crm": {
+                    "stage_shifting": [
+                        "If the lead wants human support, move to Human Intervention."
+                    ]
+                },
+            },
+            qualification_state={"engagement_mode": "conversation", "requirement_states": {}},
+            requirements=[],
+        )
+        self.assertTrue(any(item.get("type") == "pipeline_transition" for item in actions))
+
+    def test_negated_customer_statement_cannot_trigger_positive_stage_move(self):
+        destination = {
+            "id": "human-stage",
+            "name": "Human Intervention",
+            "description": "Move here when the lead wants human support.",
+            "pipeline_id": "support-pipeline",
+            "pipeline_name": "Support",
+        }
+        actions, _ = build_controlled_actions(
+            decision=SimpleNamespace(
+                qualification_updates=[],
+                crm_actions=[{
+                    "type": "pipeline_transition",
+                    "stage_shift": {"stage_id": "human-stage"},
+                }],
+            ),
+            context=self._context(
+                body="I do not want human support",
+                available_stages=[destination],
+            ),
+            runtime_policy={
+                "qualification": {"criteria": []},
+                "crm": {
+                    "stage_shifting": [
+                        "If the lead wants human support, move to Human Intervention."
+                    ]
+                },
+            },
+            qualification_state={"engagement_mode": "conversation", "requirement_states": {}},
+            requirements=[],
+        )
+        self.assertFalse(any(item.get("type") == "pipeline_transition" for item in actions))
+
+    def test_cross_pipeline_route_can_use_destination_pipeline_description(self):
+        destination = {
+            "id": "enterprise-ready",
+            "name": "Ready",
+            "description": "",
+            "pipeline_id": "enterprise-pipeline",
+            "pipeline_name": "Enterprise",
+            "pipeline_description": "Customers requesting enterprise onboarding.",
+        }
+        actions, _ = build_controlled_actions(
+            decision=SimpleNamespace(
+                qualification_updates=[],
+                crm_actions=[{
+                    "type": "pipeline_transition",
+                    "stage_shift": {"stage_id": "enterprise-ready"},
+                }],
+            ),
+            context=self._context(
+                body="We need enterprise onboarding",
+                available_stages=[destination],
+            ),
+            runtime_policy={"qualification": {"criteria": []}},
+            qualification_state={"engagement_mode": "conversation", "requirement_states": {}},
+            requirements=[],
+        )
+        transition = next(item for item in actions if item.get("type") == "pipeline_transition")
+        self.assertEqual(transition["stage_shift"]["stage_id"], "enterprise-ready")

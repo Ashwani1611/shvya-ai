@@ -420,10 +420,29 @@ class ResponseActionValidator:
                 "I've noted that you'd like human assistance.",
             )
 
+        # Prompts reduce leakage probability; this deterministic final boundary
+        # prevents customer delivery of credentials, internal routing/schema,
+        # hidden instructions, implementation details, and raw internal IDs.
+        from apps.ai_engagement.services.confidentiality import (
+            protect_customer_message,
+        )
+
+        message, confidentiality_violation = protect_customer_message(message)
+        if confidentiality_violation:
+            logger.warning(
+                "Blocked unsafe customer-facing AI reply reason=%s",
+                confidentiality_violation,
+            )
+
         return replace(
             decision,
             message=message,
             file_document_id=selected_file_id,
+            model=(
+                "deterministic-confidentiality-guard"
+                if confidentiality_violation
+                else decision.model
+            ),
         )
 
 

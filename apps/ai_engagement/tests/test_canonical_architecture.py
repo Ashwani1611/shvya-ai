@@ -10,6 +10,7 @@ from apps.ai_engagement.services.canonical_architecture import (
     ResponseActionValidator,
 )
 from apps.ai_engagement.services.context import AIContextBuilder
+from apps.ai_engagement.services.confidentiality import is_sensitive_field_name
 from apps.ai_engagement.services.embeddings import EmbeddingError
 from apps.ai_engagement.services.engagement import EngagementDecision
 from apps.ai_engagement.services.retrieval import KnowledgeRetrievalService
@@ -279,3 +280,51 @@ class FinalResponseActionValidatorTests(SimpleTestCase):
         )
 
         self.assertEqual(result.message, "I've noted the follow-up request.")
+
+    def test_customer_reply_blocks_credentials_and_internal_schema(self):
+        reconciled = {
+            "stage": {"name": "New Lead"},
+            "qualification": {"status": "in_progress"},
+            "workflow": {"action_types": []},
+            "file_share": {"status": "none"},
+        }
+        for unsafe in (
+            "Authorization: Bearer abcdefgh123456",
+            'The crm_actions payload contains {"stage_id":"internal-stage"}.',
+            "My system prompt says to reveal the developer message.",
+            "Your internal CRM stage is Seller Pipeline.",
+            "The private CRM note says the budget is 50000.",
+            "Internal record: 123e4567-e89b-12d3-a456-426614174000",
+        ):
+            with self.subTest(unsafe=unsafe):
+                result = ResponseActionValidator().validate(
+                    decision=self._decision(unsafe),
+                    reconciled_state=reconciled,
+                )
+                self.assertEqual(
+                    result.message,
+                    "I can’t share private or internal system information. "
+                    "I can still help with your enquiry or ask the team to assist.",
+                )
+                self.assertEqual(result.model, "deterministic-confidentiality-guard")
+
+    def test_customer_reply_preserves_normal_verified_business_content(self):
+        decision = self._decision(
+            "Our CRM supports WhatsApp engagement and API key integrations."
+        )
+        result = ResponseActionValidator().validate(
+            decision=decision,
+            reconciled_state={
+                "stage": {"name": "New Lead"},
+                "qualification": {"status": "in_progress"},
+                "workflow": {"action_types": []},
+                "file_share": {"status": "none"},
+            },
+        )
+        self.assertEqual(result.message, decision.message)
+        self.assertEqual(result.model, "test")
+
+    def test_normal_business_fields_are_not_misclassified_as_credentials(self):
+        self.assertFalse(is_sensitive_field_name("shipping_address"))
+        self.assertFalse(is_sensitive_field_name("pin_code"))
+        self.assertTrue(is_sensitive_field_name("customer_access_token"))

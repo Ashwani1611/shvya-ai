@@ -95,6 +95,7 @@ def _enhanced_pipeline_context(original_method):
                     "config": stage.config,
                     "pipeline_id": str(pipeline.id),
                     "pipeline_name": pipeline.name,
+                    "pipeline_description": pipeline.description,
                     "is_current_pipeline": pipeline.id == lead.pipeline_id,
                 }
                 for stage in stages

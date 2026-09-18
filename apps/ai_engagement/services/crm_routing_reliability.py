@@ -120,6 +120,47 @@ def _latest_inbound(context) -> tuple[str, str]:
     return "", ""
 
 
+def _confirmation_context(context, latest_text: str) -> str:
+    """Resolve a short confirmation against only the immediately prior reply.
+
+    This permits a natural WhatsApp exchange such as "Would you like a human to
+    call?" -> "Yes" without treating older conversation text as fresh routing
+    authority. Negative or ambiguous short replies never use this path.
+    """
+
+    normalized = _clean(latest_text).casefold().strip(" .,!?:;'\"")
+    if normalized not in {
+        "yes",
+        "yes please",
+        "correct",
+        "that's right",
+        "thats right",
+        "sure",
+        "okay",
+        "ok",
+    }:
+        return ""
+
+    conversation = getattr(context, "conversation", None)
+    messages = conversation.get("messages", []) if isinstance(conversation, dict) else []
+    latest_index = None
+    for index in range(len(messages) - 1, -1, -1):
+        item = messages[index]
+        if isinstance(item, dict) and item.get("direction") == "inbound" and _clean(item.get("body")):
+            latest_index = index
+            break
+    if latest_index is None:
+        return ""
+    for index in range(latest_index - 1, -1, -1):
+        item = messages[index]
+        if not isinstance(item, dict) or not _clean(item.get("body")):
+            continue
+        if item.get("direction") != "outbound":
+            return ""
+        return f"{_clean(item.get('body'))} {latest_text}"
+    return ""
+
+
 def _ensure_datetime_reminder(controlled, latest_text):
     """Create deterministic normal-conversation reminders without qualification logic."""
     if any(item.get("type") == "create_reminder" for item in controlled):
@@ -246,17 +287,28 @@ def _stage_action_supported(
         _strong_evidence_match,
     )
 
+    evidence_texts = [latest_text]
+    confirmation = _confirmation_context(context, latest_text)
+    if confirmation:
+        evidence_texts.append(confirmation)
+
     rules = ((runtime_policy or {}).get("crm") or {}).get("stage_shifting") or []
     for rule in rules:
         if not isinstance(rule, str) or not _stage_rule_references_destination(rule, destination):
             continue
         condition = _condition_part(rule, destination)
-        if condition and _strong_evidence_match(latest_text, condition):
+        if condition and any(
+            _strong_evidence_match(text, condition) for text in evidence_texts
+        ):
             return True
 
     description = _clean(destination.get("description"))
-    if description and _strong_evidence_match(latest_text, description):
-        return True
+    pipeline_description = _clean(destination.get("pipeline_description"))
+    for authored in (description, pipeline_description):
+        if authored and any(
+            _strong_evidence_match(text, authored) for text in evidence_texts
+        ):
+            return True
 
     latest_tokens = _tokens(latest_text)
     destination_tokens = _tokens(destination.get("name"))

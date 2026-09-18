@@ -4,7 +4,7 @@ from django.test import TestCase
 
 from apps.ai_engagement.models import OrgInfo
 from apps.ai_engagement.services.context import AIContextBuilder
-from apps.crm.models import Lead, Pipeline, Stage
+from apps.crm.models import AttributeDefinition, Lead, Pipeline, Stage
 from apps.organizations.models import Organization
 
 
@@ -342,6 +342,45 @@ class AIContextBuilderTests(TestCase):
                     "value": "Cybersecurity",
                 },
             ],
+        )
+
+    def test_context_excludes_internal_and_credential_attributes(self):
+        AttributeDefinition.objects.create(
+            organization=self.organization,
+            name="API Key",
+            key="api_key",
+            field_type=AttributeDefinition.FieldType.TEXT,
+        )
+        AttributeDefinition.objects.create(
+            organization=self.organization,
+            name="Company Size",
+            key="company_size",
+            field_type=AttributeDefinition.FieldType.TEXT,
+        )
+        self.lead.attributes = {
+            **self.lead.attributes,
+            "_shvya_ai_runtime": {"internal": True},
+            "api_key": "must-not-enter-model-context",
+            "company_size": "25",
+        }
+        self.lead.save(update_fields=["attributes", "updated_at"])
+
+        context = AIContextBuilder().build(
+            organization=self.organization,
+            lead=self.lead,
+        )
+
+        self.assertNotIn("_shvya_ai_runtime", context.lead["attributes"])
+        self.assertNotIn("api_key", context.lead["attributes"])
+        self.assertEqual(context.lead["attributes"]["company_size"], "25")
+        self.assertNotIn("api_key", {item["name"] for item in context.attributes})
+        self.assertNotIn(
+            "api_key",
+            {item["key"] for item in context.pipeline["attribute_definitions"]},
+        )
+        self.assertIn(
+            "company_size",
+            {item["key"] for item in context.pipeline["attribute_definitions"]},
         )
 
     # ========================================================
