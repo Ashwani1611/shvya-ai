@@ -84,6 +84,34 @@ class DurableExecutionTests(TestCase):
     setUp = controls.AIEngagementControlTests.setUp
     _inbound = controls.AIEngagementControlTests._inbound
 
+    def test_duplicate_worker_cannot_claim_same_inbound_turn_twice(self):
+        from apps.ai_engagement.services.execution_tracker import claim_execution
+
+        source = self._inbound()
+
+        self.assertTrue(claim_execution(source.pk))
+        self.assertFalse(claim_execution(source.pk))
+
+    def test_stale_execution_claim_can_be_recovered(self):
+        from apps.ai_engagement.services.execution_tracker import (
+            KEY,
+            claim_execution,
+        )
+
+        source = self._inbound()
+        self.assertTrue(claim_execution(source.pk))
+        source.refresh_from_db()
+        payload = dict(source.raw_payload or {})
+        execution = dict(payload.get(KEY) or {})
+        execution["updated_at"] = (
+            timezone.now() - timedelta(minutes=4)
+        ).isoformat()
+        payload[KEY] = execution
+        source.raw_payload = payload
+        source.save(update_fields=["raw_payload"])
+
+        self.assertTrue(claim_execution(source.pk))
+
     def test_generation_failure_is_recorded_without_provider_error_contents(self):
         from apps.ai_engagement.tasks import _execute_ai_engagement_response
         source = self._inbound()
