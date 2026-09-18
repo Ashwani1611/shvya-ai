@@ -884,12 +884,28 @@ def resolve_before_generation(
         )
 
         # Build the complete authoritative execution plan before mutating state.
-        mapped_updates = [{"key": config["mappings"][item["requirement_id"]], "value": item["value"]}
-                          for item in updates if item["requirement_id"] in config["mappings"]]
+        mapped_updates = []
+        for item in updates:
+            for attribute_key in _mapping_keys(config, item["requirement_id"]):
+                mapped_updates.append(
+                    {"key": attribute_key, "value": item["value"]}
+                )
+        # A repeated authored mapping to the same key is harmless; keep only the
+        # final value for that key in this turn.
+        mapped_updates = list({
+            str(item["key"]): item
+            for item in mapped_updates
+            if str(item.get("key") or "").strip()
+        }.values())
         attribute_action = ({"type": "attribute_updates", "updates": mapped_updates}
                             if mapped_updates else None)
         completion_reached = _norm(projected.get("qualification_status")) == "completed"
-        target = config.get("completion_stage")
+        target = (
+            _completion_target(lead=locked, state=projected, config=config)
+            if completion_reached
+            else None
+        )
+        runtime_config = {**config, "completion_stage": target}
         stage_action = (
             {
                 "type": "pipeline_transition",
@@ -898,11 +914,17 @@ def resolve_before_generation(
             if completion_reached and isinstance(target, dict)
             else None
         )
+        reminder_actions = (
+            _configured_completion_reminders(runtime_config)
+            if completion_reached
+            else []
+        )
         execution_plan = {
             "qualification_update": deepcopy(update),
             "qualification_updates": deepcopy(updates),
             "attribute_action": deepcopy(attribute_action),
             "stage_action": deepcopy(stage_action),
+            "reminder_actions": deepcopy(reminder_actions),
         }
 
         results = deepcopy(config["errors"])
@@ -970,6 +992,30 @@ def resolve_before_generation(
                     }
                 )
 
+        # Completion reminders are created only from explicit authored reminder
+        # rules with a resolvable due time. Qualification completion alone never
+        # invents a reminder.
+        for reminder_action in reminder_actions:
+            try:
+                reminder_result = CRMActionExecutor().execute(
+                    organization=organization,
+                    lead=locked,
+                    actions=[reminder_action],
+                )
+                results.extend(reminder_result)
+                if reminder_result:
+                    action_types.append("create_reminder")
+            except Exception as exc:
+                results.append(
+                    {
+                        "type": "create_reminder",
+                        "status": "failed",
+                        "verified": False,
+                        "code": "reminder_creation_failed",
+                        "detail": str(exc)[:500],
+                    }
+                )
+
         locked.refresh_from_db(fields=["attributes", "pipeline", "stage"])
         final_state = qs.state_for_lead(
             locked,
@@ -980,7 +1026,7 @@ def resolve_before_generation(
             answer=answer,
             state=final_state,
             requirements=requirements,
-            config=config,
+            config=runtime_config,
             results=results,
         )
 
@@ -1017,7 +1063,10 @@ def resolve_before_generation(
                     if attribute_action
                     else []
                 ),
-                "workflow_actions": [deepcopy(stage_action)] if stage_action else [],
+                "workflow_actions": [
+                    *([deepcopy(stage_action)] if stage_action else []),
+                    *deepcopy(reminder_actions),
+                ],
             },
         )
         snapshot["response_plan"] = deepcopy(plan)
