@@ -29,6 +29,47 @@ def record_execution(message_id, *, status, reason='', increment=False):
         WhatsAppMessage.objects.filter(pk=message.pk).update(raw_payload=payload)
 
 
+def claim_execution(message_id, *, stale_after_seconds=180):
+    """Atomically claim one inbound turn before any response generation.
+
+    Redis generation locks protect provider calls, but a durable DB claim is also
+    required because duplicate Celery deliveries can enter through different
+    runtime wrappers. Only one fresh worker may own an inbound turn at a time.
+    A stale processing claim is recoverable by the existing recovery task.
+    """
+    from apps.channels.models import WhatsAppMessage
+
+    now = timezone.now()
+    with transaction.atomic():
+        message = (
+            WhatsAppMessage.objects.select_for_update()
+            .filter(pk=message_id, direction='inbound')
+            .first()
+        )
+        if message is None:
+            return False
+
+        payload = dict(message.raw_payload or {})
+        if (payload.get('shvya_ai_processing') or {}).get('processed'):
+            return False
+
+        previous = payload.get(KEY) or {}
+        if previous.get('status') == 'processing':
+            stamp = parse_datetime(str(previous.get('updated_at') or ''))
+            if stamp and (now - stamp).total_seconds() < stale_after_seconds:
+                return False
+
+        payload[KEY] = {
+            **previous,
+            'status': 'processing',
+            'reason': '',
+            'attempts': int(previous.get('attempts', 0)) + 1,
+            'updated_at': now.isoformat(),
+        }
+        WhatsAppMessage.objects.filter(pk=message.pk).update(raw_payload=payload)
+        return True
+
+
 def queue_api_engagement(*, lead_id):
     from apps.channels.models import WhatsAppMessage
     from apps.ai_engagement.tasks import generate_ai_engagement_response
