@@ -161,7 +161,7 @@ def _range_for_option(value: str) -> tuple[float | None, float | None, bool, boo
         .replace("€", "")
         .replace("£", "")
     )
-    match = re.search(r"(\d+(?:\.\d+)?)\s*(?:-|to)\s*(\d+(?:\.\d+)?)", normalized)
+    match = re.search(r"(\d+(?:\.\d+)?)\s*(?:-|–|—|to)\s*(\d+(?:\.\d+)?)", normalized)
     if match:
         return float(match.group(1)), float(match.group(2)), True, True
 
