@@ -106,8 +106,16 @@ def observe_accepted_turn(*, lead, source_message_id):
                                    **signal_summary(organization=organization, lead=locked)})
             record("objections", {"categories": [item.category for item in data["objections"]],
                                   "persisted_to_memory": persist_objections and memory_cfg.get("enabled", True) is True})
+
+            # Qualification updates for this turn have already been persisted by
+            # the execution contract. Recompute the deterministic 0-10 intent
+            # score now so clarity reflects the newly accepted answer too.
+            from apps.ai_engagement.services.intent_score import persist_intent_score
+            intent_score = persist_intent_score(lead=locked)
+            record("intent_score", intent_score)
+
             # Refresh from the locked object so the caller cannot later overwrite
-            # accepted memory when finalizing the same lead.
+            # accepted memory/intent state when finalizing the same lead.
             lead.attributes = locked.attributes
     except TenantScopeError:
         raise

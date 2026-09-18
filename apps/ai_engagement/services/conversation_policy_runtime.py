@@ -342,11 +342,11 @@ def _patch_qualification_boundary() -> None:
         if (
             direct_question_turn
             and not isinstance(qualification_candidate, dict)
-            and not state.get("last_asked_requirement_id")
         ):
-            # A direct business question on a turn where qualification has not yet
-            # been asked must be answered first. Do not let the existing
-            # qualification-start response plan erase the customer's question.
+            # A direct customer question always wins the current turn, even when
+            # qualification is already in progress. Preserve the pending backend
+            # requirement for a later turn instead of replacing the customer's
+            # question with the questionnaire or repeating the active question.
             result = {
                 "applied": False,
                 "reason": "conversation_policy_direct_question_priority",

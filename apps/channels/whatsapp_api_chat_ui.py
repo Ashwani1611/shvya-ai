@@ -84,8 +84,10 @@ def _chat_sidebar_context(request, user):
 
     conversations = list(conversations)
     all_conversations = list(all_conversations)
+    from apps.ai_engagement.services.intent_score import stored_intent_score
     for lead in conversations:
         lead.initials = _lead_initials(lead)
+        lead.intent_score_state = stored_intent_score(lead=lead)
 
     unread_count = sum(
         1 for lead in all_conversations if getattr(lead, "unread_count", 0) > 0
@@ -168,10 +170,13 @@ def whatsapp_chat_detail_view(request, lead_id):
     from apps.crm.models.note import LeadNote
     from apps.crm.models.stage import Stage
 
+    from apps.ai_engagement.services.intent_score import intent_score_for_lead
+
     context = _chat_sidebar_context(request, user)
     context.update(
         {
             "active_lead": lead,
+            "intent_score": intent_score_for_lead(lead=lead),
             "chat_messages": chat_messages,
             "lead_templates": lead_templates,
             "lead_calls": LeadCall.objects.filter(lead=lead).order_by("-called_at")[:10],

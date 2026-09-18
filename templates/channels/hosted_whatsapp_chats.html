@@ -64,7 +64,10 @@
               <div class="hosted-conversation-preview">{{ c.last_message }}</div>
               {% if c.unread %}<span class="hosted-unread">{{ c.unread }}</span>{% endif %}
             </div>
-            {% if c.stage_name %}<span class="hosted-stage" title="Lead stage: {{ c.stage_name }}">{{ c.stage_name }}</span>{% endif %}
+            <div class="mt-1 flex flex-wrap items-center gap-1.5">
+              {% if c.stage_name %}<span class="hosted-stage" title="Lead stage: {{ c.stage_name }}">{{ c.stage_name }}</span>{% endif %}
+              {% if c.intent_score != None %}<span class="rounded-full bg-violet-50 px-2 py-0.5 text-[9px] font-bold text-violet-700" title="Lead Intent Score">Intent {{ c.intent_score }}/10</span>{% endif %}
+            </div>
           </div>
         </div>
       </a>
@@ -85,7 +88,10 @@
       <button id="mobile-chat-back" type="button" class="chat-icon-button md:hidden" aria-label="Back to chat list"><i class="ti ti-arrow-left"></i></button>
       <div id="thread-avatar" class="hosted-thread-avatar">{{ selected_name|default:selected_chat|slice:":1"|upper }}</div>
       <div class="hosted-thread-title">
-        <div id="thread-name" class="hosted-thread-name">{{ selected_name }}</div>
+        <div class="flex items-center gap-2">
+          <div id="thread-name" class="hosted-thread-name">{{ selected_name }}</div>
+          <span id="thread-intent-score" class="hidden rounded-full bg-violet-50 px-2 py-0.5 text-[10px] font-bold text-violet-700"></span>
+        </div>
         <div id="thread-key" class="hosted-thread-key">{{ selected_chat }}</div>
       </div>
     </div>

@@ -145,8 +145,43 @@ def _snapshot(requirements) -> list[dict]:
     return deepcopy([item for item in requirements or [] if isinstance(item, dict)])
 
 
+def _compatible_trimmed_flow(snapshot, current_requirements) -> bool:
+    """Allow a live flow to adopt a safely shortened questionnaire.
+
+    In-progress leads stay pinned across wording/order edits, but when an admin
+    removes only trailing requirements while keeping the existing stable
+    questions/options unchanged, continuing to force deleted questions is
+    surprising and customer-visible. This compatibility check is intentionally
+    strict so answer identity cannot silently drift.
+    """
+    if not isinstance(snapshot, list) or not snapshot or not current_requirements:
+        return False
+    if len(current_requirements) >= len(snapshot):
+        return False
+
+    previous = {
+        str(item.get("stable_id") or ""): item
+        for item in snapshot
+        if isinstance(item, dict) and str(item.get("stable_id") or "")
+    }
+    for current in current_requirements:
+        if not isinstance(current, dict):
+            return False
+        stable_id = str(current.get("stable_id") or "")
+        old = previous.get(stable_id)
+        if old is None:
+            return False
+        if str(old.get("question") or "").strip() != str(current.get("question") or "").strip():
+            return False
+        if list(old.get("options") or []) != list(current.get("options") or []):
+            return False
+        if bool(old.get("required", True)) != bool(current.get("required", True)):
+            return False
+    return True
+
+
 def requirements_for_lead(lead, current_requirements=None) -> list[dict]:
-    """Pin a live questionnaire to the version active when qualification started."""
+    """Pin live qualification safely, while honoring strictly trimmed flows."""
     state = _raw_state(lead)
     snapshot = state.get("flow_snapshot")
     if (
@@ -154,6 +189,8 @@ def requirements_for_lead(lead, current_requirements=None) -> list[dict]:
         and isinstance(snapshot, list)
         and snapshot
     ):
+        if _compatible_trimmed_flow(snapshot, current_requirements or []):
+            return _snapshot(current_requirements)
         return _snapshot(snapshot)
     return _snapshot(current_requirements)
 
@@ -642,6 +679,21 @@ def _multiple_places_option(text: str, options: list[dict[str, str]]) -> str | N
     return multiple_value if multiple_value and matched >= 2 else None
 
 
+def _singular_token(value: str) -> str:
+    """Normalize only obvious English plural inflections for safe option matching."""
+    token = str(value or "").casefold()
+    if len(token) > 4 and token.endswith("ies"):
+        return token[:-3] + "y"
+    if len(token) > 3 and token.endswith("s") and not token.endswith(("ss", "us", "is")):
+        return token[:-1]
+    return token
+
+
+def _inflection_key(value: str) -> str:
+    tokens = re.findall(r"[a-z0-9]+", str(value or "").casefold())
+    return " ".join(_singular_token(token) for token in tokens)
+
+
 def _match_option_answer(text: str, options: list[dict[str, str]]) -> str | None:
     normalized = " ".join(str(text or "").strip().casefold().split()).strip(" .,:;-)('")
     if not normalized:
@@ -662,6 +714,19 @@ def _match_option_answer(text: str, options: list[dict[str, str]]) -> str | None
             aliases.add(chr(96 + index))
         if normalized in aliases or stripped in aliases:
             return value
+
+    # Accept only morphology-equivalent option text (for example
+    # "Slow reply" -> "Slow replies"). This deliberately avoids fuzzy semantic
+    # matching so unrelated short answers cannot advance qualification.
+    inflection = _inflection_key(stripped)
+    if inflection:
+        inflection_matches = [
+            str(option.get("value") or "").strip()
+            for option in options
+            if _inflection_key(option.get("value")) == inflection
+        ]
+        if len(inflection_matches) == 1:
+            return inflection_matches[0]
 
     numeric_matches = _numeric_option_matches(normalized, options)
     if len(numeric_matches) == 1:
