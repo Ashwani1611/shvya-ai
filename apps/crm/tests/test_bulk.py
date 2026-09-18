@@ -9,6 +9,7 @@ from openpyxl import load_workbook
 
 from apps.accounts.models import User
 from apps.accounts.session_utils import get_session_cookie_name, set_authenticated_user
+from apps.channels.campaign_models import CampaignUpload
 from apps.channels.models import WhatsAppAccount
 from apps.crm.models import AttributeDefinition, Lead, Pipeline, PipelinePermission
 from apps.followups.models import FollowupSequence, FollowupStep, LeadSequenceState
@@ -77,6 +78,79 @@ class BulkLeadTests(TestCase):
         self.assertContains(response, "Select all 1 leads in this stage")
         self.assertContains(response, "search=Lead+0")
         self.assertContains(response, "data-lead-select", count=1)
+
+    def api_campaign_account(self, *, connection_type="api", number="+919999999999"):
+        return WhatsAppAccount.objects.create(
+            organization=self.organization,
+            connection_type=connection_type,
+            status="connected",
+            is_active=True,
+            phone_number_id="meta-phone-id" if connection_type == "api" else number,
+            display_phone_number=number,
+            access_token="test-token" if connection_type == "api" else "",
+            business_name="Campaign sender",
+        )
+
+    def test_bulk_campaign_button_only_appears_for_linked_api_family_pipeline(self):
+        response = self.client.get(
+            reverse("crm-lead-table-partial"),
+            {"pipeline": self.pipeline.pk, "stage": self.stage.pk},
+        )
+        self.assertNotContains(response, 'data-bulk-action="campaign"')
+
+        hosted = self.api_campaign_account(connection_type="hosted")
+        response = self.client.get(
+            reverse("crm-lead-table-partial"),
+            {"pipeline": self.pipeline.pk, "stage": self.stage.pk},
+        )
+        self.assertNotContains(response, 'data-bulk-action="campaign"')
+
+        hosted.is_active = False
+        hosted.save(update_fields=["is_active"])
+        self.api_campaign_account()
+        response = self.client.get(
+            reverse("crm-lead-table-partial"),
+            {"pipeline": self.pipeline.pk, "stage": self.stage.pk},
+        )
+        self.assertContains(response, 'data-bulk-action="campaign"')
+        self.assertContains(response, "Bulk Campaigns")
+
+    def test_bulk_campaign_requires_sender_linked_to_current_pipeline_number(self):
+        self.api_campaign_account(number="+918888888888")
+        response = self.post("campaign")
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("WhatsApp API or WhatsApp Coexistence", response.json()["error"])
+        self.assertFalse(CampaignUpload.objects.exists())
+
+    def test_bulk_campaign_seeds_selected_existing_leads_and_campaign_workspace(self):
+        account = self.api_campaign_account()
+        response = self.post("campaign")
+        self.assertEqual(response.status_code, 200, response.content)
+        payload = response.json()
+        self.assertEqual(payload["count"], 2)
+        self.assertEqual(payload["eligible"], 2)
+        self.assertEqual(payload["excluded"], 0)
+        self.assertEqual(payload["account_id"], str(account.pk))
+        self.assertTrue(payload["url"].startswith(reverse("whatsapp-campaign-create")))
+
+        upload = CampaignUpload.objects.get()
+        self.assertEqual(upload.review_stats["eligible"], 2)
+        self.assertEqual(
+            {row["existing_id"] for row in upload.reviewed_rows},
+            {str(lead.pk) for lead in self.leads[:2]},
+        )
+        self.assertEqual(upload.review_config["mode"], "existing_only")
+        self.assertFalse(upload.review_config["update_existing"])
+        self.assertFalse(upload.review_config["move_existing"])
+
+        workspace = self.client.get(payload["url"])
+        self.assertEqual(workspace.status_code, 200)
+        bootstrap = workspace.context["campaign_bootstrap"]
+        self.assertTrue(bootstrap["open_composer"])
+        self.assertEqual(bootstrap["seed"]["source"], "crm_selection")
+        self.assertEqual(bootstrap["seed"]["account_id"], str(account.pk))
+        self.assertEqual(bootstrap["seed"]["pipeline_id"], str(self.pipeline.pk))
+        self.assertEqual(bootstrap["seed"]["audience"]["stats"]["eligible"], 2)
 
     def test_moves_only_selected_leads_and_records_activity(self):
         response = self.post("update", move=True, target_pipeline=str(self.pipeline.pk), target_stage=str(self.next_stage.pk))
