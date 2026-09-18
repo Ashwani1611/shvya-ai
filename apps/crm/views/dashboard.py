@@ -3621,6 +3621,8 @@ def _lead_card_context(
         - lead.created_at
     ).days
 
+    from apps.ai_engagement.services.intent_score import prepare_intent_scores
+    prepare_intent_scores([lead])
     lead.call_count = (
         lead.calls.count()
     )

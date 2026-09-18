@@ -7,7 +7,7 @@ inbox under /dashboard/whatsapp/connect/hosted/.
 from django.contrib import messages
 from django.db import models
 from django.http import JsonResponse
-from django.shortcuts import redirect, render
+from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_GET, require_POST
 
 from apps.crm.decorators import crm_login_required
@@ -26,6 +26,20 @@ from services.crm.lead_filter_service import active_filter_items, apply_lead_fil
 
 from .models import WhatsAppAccount, WhatsAppTemplate
 from .whatsapp_chat_smooth_ui import _inject_chat_ui
+
+
+def _requested_account(request, lead):
+    from django.core.exceptions import ValidationError
+    from django.http import Http404
+    account_id = request.POST.get("account") or request.GET.get("account")
+    if not account_id:
+        return None
+    try:
+        return get_object_or_404(WhatsAppAccount, pk=account_id,
+                                organization_id=lead.organization_id, connection_type="api",
+                                is_active=True, status="connected")
+    except (ValidationError, ValueError):
+        raise Http404("Invalid WhatsApp account")
 
 
 def _lead_initials(lead):
@@ -84,10 +98,10 @@ def _chat_sidebar_context(request, user):
 
     conversations = list(conversations)
     all_conversations = list(all_conversations)
-    from apps.ai_engagement.services.intent_score import stored_intent_score
+    from apps.ai_engagement.services.intent_score import prepare_intent_scores
+    prepare_intent_scores(conversations)
     for lead in conversations:
         lead.initials = _lead_initials(lead)
-        lead.intent_score_state = stored_intent_score(lead=lead)
 
     unread_count = sum(
         1 for lead in all_conversations if getattr(lead, "unread_count", 0) > 0
@@ -140,11 +154,13 @@ def whatsapp_chat_detail_view(request, lead_id):
         messages.error(request, "Lead not found.")
         return redirect("whatsapp-chats")
 
+    selected_account = _requested_account(request, lead)
     chat_messages = get_api_conversation_messages(
         organization=user.organization,
         lead=lead,
+        account=selected_account,
     )
-    if not chat_messages.exists():
+    if not selected_account and not chat_messages.exists():
         messages.error(request, "No active WhatsApp API conversation exists for this lead.")
         return redirect("whatsapp-chats")
 
@@ -153,7 +169,7 @@ def whatsapp_chat_detail_view(request, lead_id):
         if message.status == message.Status.FAILED:
             message.error = _failure_block(message_failure_details(message))
 
-    mark_api_conversation_read(organization=user.organization, lead=lead)
+    mark_api_conversation_read(organization=user.organization, lead=lead, account=selected_account)
 
     lead.initials = _lead_initials(lead)
     lead.stage_color = (lead.stage.color if lead.stage_id else "") or "#9ca3af"
@@ -165,6 +181,9 @@ def whatsapp_chat_detail_view(request, lead_id):
         account__status=WhatsAppAccount.Status.CONNECTED,
         status=WhatsAppTemplate.Status.APPROVED,
     ).order_by("name")
+
+    if selected_account:
+        lead_templates = lead_templates.filter(account=selected_account)
 
     from apps.crm.models.call import LeadCall
     from apps.crm.models.note import LeadNote
@@ -205,7 +224,7 @@ def whatsapp_send_message_view(request, lead_id):
     if not lead:
         return JsonResponse({"error": "Lead not found."}, status=404)
 
-    account = resolve_api_account_for_lead(
+    account = _requested_account(request, lead) or resolve_api_account_for_lead(
         organization=user.organization,
         lead=lead,
     )
@@ -219,7 +238,7 @@ def whatsapp_send_message_view(request, lead_id):
     if not body:
         return JsonResponse({"error": "Message body is required."}, status=400)
 
-    if not is_within_api_24h_window(lead=lead):
+    if not is_within_api_24h_window(lead=lead, account=account):
         return JsonResponse(
             {
                 "error": (
@@ -271,13 +290,15 @@ def whatsapp_send_template_view(request, lead_id):
     if not template:
         return JsonResponse({"error": "WhatsApp API template not found."}, status=404)
 
-    account = resolve_api_account_for_lead(
+    account = _requested_account(request, lead) or resolve_api_account_for_lead(
         organization=user.organization,
         lead=lead,
     )
     if not account:
         return JsonResponse({"error": "No connected WhatsApp API account."}, status=400)
 
+    if template.account_id != account.pk:
+        return JsonResponse({"error": "Select a template for this WhatsApp number."}, status=400)
     body = render_template_body(template=template, lead=lead)
     message = queue_outbound_message(
         organization=user.organization,

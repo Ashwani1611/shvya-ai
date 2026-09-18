@@ -130,7 +130,7 @@
                        font-semibold text-sm shrink-0"
             >
 
-                {{ lead.initials }}
+                {% lead_avatar lead %}
 
             </div>
 
@@ -148,10 +148,13 @@
                     </h3>
 
 
+                    <span class="lead-ai-score" title="Based on customer messages and confirmed qualification answers">
+                        {% if lead.intent_score_state.assessed %}AI {{ lead.intent_score_state.score }}/10{% else %}AI · Not assessed{% endif %}
+                    </span>
                     {% if lead.phone %}
 
                     <a
-                        href="{% url 'whatsapp-chat-detail' lead_id=lead.id %}"
+                        href="{% url 'crm-lead-whatsapp' lead_id=lead.id %}"
                         class="
                             inline-flex
                             items-center
@@ -714,8 +717,8 @@
                 <i class="ti ti-note"></i>
 
                 <span>
-                    {{ notes|length }}
-                    note{% if notes|length != 1 %}s{% endif %}
+                    {% lead_note_count lead as note_count %}
+                    {{ note_count }} note{{ note_count|pluralize }}
                 </span>
 
             </div>
@@ -2305,8 +2308,8 @@
                                 text-gray-500
                             "
                         >
-                            {% if activity.topic == "lead_created" and lead.lead_source == "csv_import" %}
-                                By CSV Import
+                            {% if activity.topic == "lead_created" %}
+                                Source: {% lead_creation_source activity lead %}
                             {% else %}
                             By {{ activity.actor_name|default:"System" }}
                             {% endif %}

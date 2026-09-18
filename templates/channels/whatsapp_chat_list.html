@@ -72,7 +72,7 @@
                     <div class="mt-1 flex items-center justify-between gap-2">
                         <p class="truncate text-xs text-gray-500">{% if lead.last_msg_direction == 'outbound' %}<span class="font-medium">You:</span> {% endif %}{{ lead.last_msg_body|default:"No messages"|truncatechars:34 }}</p>
                         <div class="flex items-center gap-1.5">
-                            {% if lead.intent_score_state %}
+                            {% if lead.intent_score_state.assessed %}
                             <span class="whitespace-nowrap rounded-full bg-violet-50 px-2 py-0.5 text-[9px] font-bold text-violet-700" title="Lead Intent Score">Intent {{ lead.intent_score_state.score }}/10</span>
                             {% endif %}
                             {% if lead.unread_count %}<span class="flex h-5 min-w-5 items-center justify-center rounded-full bg-[#25d366] px-1 text-[10px] font-bold text-white">{{ lead.unread_count }}</span>{% endif %}
@@ -174,7 +174,7 @@
         </div>
 
         <div class="side-panel wa-scrollbar flex-1 overflow-y-auto" id="panel-personal">
-            {% if intent_score %}
+            {% if intent_score.assessed %}
             <section class="border-b border-gray-100 px-4 py-4">
                 <div class="rounded-2xl border border-violet-100 bg-gradient-to-br from-violet-50 to-white p-4">
                     <div class="flex items-start justify-between gap-3">
@@ -255,11 +255,11 @@
 (function () {
     'use strict';
     const csrf = '{{ csrf_token }}';
-    const sendUrl = "{% url 'whatsapp-send-message' active_lead.id %}";
+    const sendUrl = "{% url 'whatsapp-send-message' active_lead.id %}{% if selected_account %}?account={{ selected_account.id }}{% endif %}";
     const quickUrl = "{% url 'whatsapp-lead-quick-update' active_lead.id %}";
     const aiUrl = "{% url 'whatsapp-lead-ai-toggle' active_lead.id %}";
     const attrUrl = "{% url 'whatsapp-lead-attributes-save' active_lead.id %}";
-    const templateUrl = "{% url 'whatsapp-send-template' active_lead.id %}";
+    const templateUrl = "{% url 'whatsapp-send-template' active_lead.id %}{% if selected_account %}?account={{ selected_account.id }}{% endif %}";
 
     function postForm(url, data) { return fetch(url, {method: 'POST', headers: {'X-CSRFToken': csrf, 'X-Requested-With': 'XMLHttpRequest'}, body: data}); }
     window.copyLeadPhone = function () { navigator.clipboard.writeText('{{ active_lead.phone|escapejs }}'); };

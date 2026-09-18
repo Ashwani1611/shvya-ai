@@ -119,6 +119,10 @@ class InstagramConversation(models.Model):
         on_delete=models.CASCADE,
         related_name="conversations",
     )
+    lead = models.ForeignKey(
+        "crm.Lead", null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="instagram_conversations",
+    )
     meta_conversation_id = models.CharField(max_length=160, null=True, blank=True, unique=True)
     participant_id = models.CharField(max_length=160)
     participant_username = models.CharField(max_length=150, blank=True)
