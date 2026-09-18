@@ -16,8 +16,6 @@ from apps.ai_engagement.services.credits import (
 logger = logging.getLogger(__name__)
 
 
-logger = logging.getLogger(__name__)
-
 class EmbeddingError(Exception):
     """
     Raised when an embedding cannot be generated.
