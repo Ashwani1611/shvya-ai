@@ -7,12 +7,20 @@ from django.db.models import Q, Max
 from django.http import (
     FileResponse,
     HttpResponse,
+    JsonResponse,
 )
 from django.shortcuts import get_object_or_404, render
+from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_GET, require_POST
 from django.db import transaction
 from django.conf import settings
+
+from services.crm.reminder_notification_service import (
+    acknowledge_reminder_notification,
+    due_reminder_notifications,
+    reset_reminder_notification_acknowledgements,
+)
 
 from services.crm_activity_service import (
     record_stage_changed,
@@ -191,6 +199,58 @@ def dashboard_view(request):
 
 @crm_login_required
 @require_GET
+def reminder_notification_feed(request):
+    """Return due reminder popups not yet acknowledged by this dashboard user."""
+    user = request.crm_user
+    reminders = due_reminder_notifications(user=user)
+
+    return JsonResponse(
+        {
+            "notifications": [
+                {
+                    "id": str(reminder.id),
+                    "title": reminder.title,
+                    "description": reminder.description,
+                    "lead_name": reminder.lead.name,
+                    "lead_id": str(reminder.lead_id),
+                    "due_at": timezone.localtime(reminder.due_at).isoformat(),
+                    "is_overdue": reminder.due_at < timezone.now(),
+                    "ack_url": reverse(
+                        "crm-reminder-notification-ack",
+                        args=[reminder.id],
+                    ),
+                }
+                for reminder in reminders
+            ],
+            "pending_count": LeadReminder.objects.filter(
+                lead__organization=user.organization,
+                status="pending",
+            ).count(),
+        }
+    )
+
+
+@crm_login_required
+@require_POST
+def reminder_notification_ack(request, reminder_id):
+    """Acknowledge the popup only; leave the reminder itself pending."""
+    user = request.crm_user
+    reminder = get_object_or_404(
+        LeadReminder.objects.select_related("lead"),
+        id=reminder_id,
+        lead__organization=user.organization,
+        status="pending",
+    )
+    acknowledge_reminder_notification(
+        user=user,
+        reminder=reminder,
+    )
+    return JsonResponse({"acknowledged": True})
+
+
+
+@crm_login_required
+@require_GET
 def global_reminders_modal(
     request,
 ):
@@ -332,6 +392,9 @@ def global_reminder_snooze(
             "updated_at",
         ]
     )
+    reset_reminder_notification_acknowledgements(
+        reminder=reminder,
+    )
 
     return HttpResponse(
         status=204
@@ -436,6 +499,9 @@ def global_reminder_edit_save(
             "due_at",
             "updated_at",
         ]
+    )
+    reset_reminder_notification_acknowledgements(
+        reminder=reminder,
     )
 
     return HttpResponse(
