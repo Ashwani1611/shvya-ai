@@ -7,6 +7,7 @@ from copy import deepcopy
 from dataclasses import asdict, dataclass, replace
 from functools import wraps
 from typing import Any
+from uuid import UUID
 
 from django.db import transaction
 from django.utils import timezone
@@ -59,6 +60,31 @@ _HANDOFF_SUCCESS_RE = re.compile(
 
 def _normalized(value: Any) -> str:
     return " ".join(str(value or "").casefold().split())
+
+
+def _valid_uuid(value) -> bool:
+    try:
+        UUID(str(value or "").strip())
+    except (TypeError, ValueError, AttributeError):
+        return False
+    return True
+
+
+def _persistent_lead_id(context) -> str | None:
+    lead = getattr(context, "lead", None)
+    if not isinstance(lead, dict):
+        return None
+    value = str(lead.get("id") or "").strip()
+    return value if _valid_uuid(value) else None
+
+
+def _is_persistent_lead(lead) -> bool:
+    if lead is None or not _valid_uuid(getattr(lead, "pk", None)):
+        return False
+    state = getattr(lead, "_state", None)
+    if state is not None and getattr(state, "adding", False):
+        return False
+    return True
 
 
 def _latest_inbound_id_from_context(context) -> str:
@@ -821,6 +847,12 @@ def install_canonical_ai_architecture() -> None:
 
     @wraps(current_build_input)
     def input_with_reconciled_state(self, *, context, **kwargs):
+        # Pure policy previews/tests may intentionally use synthetic lead IDs.
+        # Keep those contexts database-free instead of adding a second compat
+        # wrapper after this canonical decorator.
+        if _persistent_lead_id(context) is None:
+            return current_build_input(self, context=context, **kwargs)
+
         raw = current_build_input(self, context=context, **kwargs)
         try:
             payload = json.loads(raw)
@@ -853,6 +885,18 @@ def install_canonical_ai_architecture() -> None:
     def engage_with_final_state_validation(
         self, *, organization, lead, knowledge_query=None, context=None
     ):
+        # Unsaved/synthetic leads are used by pure service tests and previews.
+        # They must bypass database reconciliation exactly as the former
+        # canonical_architecture_compat wrapper did.
+        if not _is_persistent_lead(lead):
+            return current_engage(
+                self,
+                organization=organization,
+                lead=lead,
+                knowledge_query=knowledge_query,
+                context=context,
+            )
+
         decision = current_engage(
             self,
             organization=organization,
