@@ -241,7 +241,6 @@ def _priority_validator(engagement_module):
             str(qualification_state.get("engagement_mode") or "").strip().casefold()
             == MODE_QUALIFICATION
         )
-        strict_qualification_active = backend_qualifying and (not explicit_stage or in_new_lead)
 
         updates = getattr(decision, "qualification_updates", []) or []
         selected_next = str(getattr(decision, "next_requirement_id", "") or "").strip()
@@ -311,7 +310,6 @@ def _priority_validator(engagement_module):
         # current answer was accepted. ConversationPolicyEngine decides whether
         # this turn should continue qualification immediately or acknowledge the
         # answer and leave the next requirement pending for a later natural turn.
-        runtime_saved = ((getattr(context, "lead", {}) or {}).get("attributes") or {}).get(STATE_KEY) or {}
 
         # If the lead has a direct question/request/problem, a pending
         # qualification question may follow only after meaningful engagement.
