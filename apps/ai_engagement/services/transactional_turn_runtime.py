@@ -328,6 +328,24 @@ def _resolve_state_before_response(
             )
             locked_lead.refresh_from_db(fields=["attributes", "pipeline", "stage"])
 
+        # Scoring is deterministic backend state, never a model judgement. It is
+        # recalculated after the latest qualification/CRM writes so the score and
+        # its 80%-answered override reflect the same committed turn.
+        from apps.ai_engagement.services.qualification_scoring import refresh_lead_score
+
+        locked_lead.refresh_from_db(fields=["attributes", "pipeline", "stage"])
+        qualification_state = state_for_lead(
+            locked_lead,
+            requirements=requirements,
+        )
+        lead_score = refresh_lead_score(
+            lead=locked_lead,
+            qualification_state=qualification_state,
+            requirements=requirements,
+            source_message_id=inbound.id,
+        )
+        executed_types.append("qualification_score")
+
         _mark_state_resolved(
             lead=locked_lead,
             inbound=inbound,
@@ -338,6 +356,7 @@ def _resolve_state_before_response(
             "applied": True,
             "results": results,
             "qualification_status": qualification_state.get("qualification_status"),
+            "lead_score": lead_score,
             "stage_id": str(getattr(locked_lead, "stage_id", "") or ""),
         }
 
