@@ -150,7 +150,10 @@ def install_qualification_execution_policy_guard() -> None:
     )
     from apps.ai_engagement.services.engagement import EngagementError, EngagementService
     from apps.ai_engagement.services.qualification_execution_contract import (
+        _completion_target,
         _config,
+        _configured_completion_reminders,
+        _mapping_keys,
         _norm,
         _plan_from_reconciled,
         _requirement_ref,
@@ -254,7 +257,8 @@ def install_qualification_execution_policy_guard() -> None:
     contract_module.resolve_before_generation = pre_resolve
 
     # ------------------------------------------------------------------
-    # Completion stage: exact organization Stage Shifting config only.
+    # Completion stage: explicit configured target first, then the validated
+    # same-pipeline Qualified stage already exposed by qualification state.
     # ------------------------------------------------------------------
     def configured_completion_action(*, lead, qualification_state):
         if _norm(qualification_state.get("qualification_status")) != "completed":
@@ -267,7 +271,11 @@ def install_qualification_execution_policy_guard() -> None:
             organization=lead.organization,
             requirements=requirements,
         )
-        target = config.get("completion_stage")
+        target = _completion_target(
+            lead=lead,
+            state=qualification_state,
+            config=config,
+        )
         if not isinstance(target, dict) or target.get("id") is None:
             return None
         return {
@@ -309,11 +317,15 @@ def install_qualification_execution_policy_guard() -> None:
                 organization=organization,
                 requirements=requirements,
             )
+            # Qualification-owned CRM writes are rebuilt from deterministic
+            # backend configuration. Do not preserve model-selected attributes,
+            # completion stages, or reminders.
             actions = [
                 deepcopy(action)
                 for action in getattr(decision, "crm_actions", []) or []
                 if isinstance(action, dict)
-                and action.get("type") not in {"attribute_updates", "pipeline_transition"}
+                and action.get("type")
+                not in {"attribute_updates", "pipeline_transition", "create_reminder"}
             ]
             exact_updates = []
             for update in qualification_updates:
@@ -324,8 +336,7 @@ def install_qualification_execution_policy_guard() -> None:
                 if requirement is None:
                     continue
                 requirement_id = str(requirement.get("id") or "")
-                attribute_key = config.get("mappings", {}).get(requirement_id)
-                if attribute_key:
+                for attribute_key in _mapping_keys(config, requirement_id):
                     exact_updates.append(
                         {
                             "key": attribute_key,
@@ -345,6 +356,53 @@ def install_qualification_execution_policy_guard() -> None:
                         "updates": list(by_key.values()),
                     },
                 )
+
+            # Apply authored completion-reminder rules only if this inbound answer
+            # actually completes qualification. A reminder is never invented from
+            # qualification completion alone.
+            from apps.ai_engagement.services import qualification_state as qs
+
+            source = (
+                lead.whatsapp_messages.filter(
+                    pk=source_message_id,
+                    organization=organization,
+                    direction="inbound",
+                )
+                .values("id", "body", "direction")
+                .first()
+            )
+            if source is not None:
+                # Preserve the existing deterministic explicit date/time or call
+                # reminder behavior. This rebuilds the action from customer
+                # evidence instead of trusting a model-proposed due_at.
+                from apps.ai_engagement.services.crm_routing_reliability import (
+                    _ensure_datetime_reminder,
+                )
+
+                _ensure_datetime_reminder(
+                    actions,
+                    str(source.get("body") or ""),
+                )
+
+                base_state = qs.state_for_lead(lead, requirements=requirements)
+                try:
+                    projected = qs.project_answer_updates(
+                        state=base_state,
+                        requirements=requirements,
+                        updates=qualification_updates,
+                        messages=[
+                            {
+                                "id": str(source["id"]),
+                                "body": source.get("body") or "",
+                                "direction": "inbound",
+                            }
+                        ],
+                    )
+                except ValueError:
+                    projected = base_state
+                if _norm(projected.get("qualification_status")) == "completed":
+                    actions.extend(_configured_completion_reminders(config))
+
             decision = replace(decision, crm_actions=actions)
 
         result = current_resolve(
