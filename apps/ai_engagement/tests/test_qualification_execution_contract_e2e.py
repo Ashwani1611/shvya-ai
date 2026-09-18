@@ -796,6 +796,87 @@ class QualificationExecutionContractE2ETests(TestCase):
         self.assertNotIn("timeline_guess", self.lead.attributes)
         self.assertEqual(self.lead.stage_id, target.id)
 
+    def test_qualification_turn_preserves_distinct_volunteered_crm_fact(self):
+        target = self._create_target_stage("Conversation Qualified")
+        AttributeDefinition.objects.create(
+            organization=self.organization,
+            name="Decision Window",
+            key="decision_window",
+            field_type=AttributeDefinition.FieldType.TEXT,
+        )
+        AttributeDefinition.objects.create(
+            organization=self.organization,
+            name="Company Name",
+            key="company_name",
+            field_type=AttributeDefinition.FieldType.TEXT,
+        )
+        info, _ = OrgInfo.objects.get_or_create(organization=self.organization)
+        info.qualification_requirements = (
+            "[id: timing] When would you like to get started?\n"
+            "All questions are required"
+        )
+        info.engagement_instructions = (
+            "## Attribute mapped\n"
+            "timing -> Decision Window\n\n"
+            "## Stage shifting\n"
+            "When all required qualification questions are answered, move to Conversation Qualified.\n"
+            "Acknowledgment message: \"Thanks, that gives us enough context.\""
+        )
+        info.save()
+        requirements = compile_qualification_requirements(
+            info.qualification_requirements
+        )["requirements"]
+        record_last_asked_requirement(
+            self.lead,
+            requirements[0]["id"],
+            requirements=requirements,
+        )
+        source = self._source(
+            "qualification-plus-company",
+            "Next month. My company is ABC Technologies.",
+        )
+        decision = EngagementDecision(
+            should_engage=True,
+            message="Thanks, that gives me useful context.",
+            file_document_id=None,
+            crm_actions=[
+                {
+                    "type": "attribute_updates",
+                    "updates": [
+                        {
+                            "key": "company_name",
+                            "value": "ABC Technologies",
+                        }
+                    ],
+                }
+            ],
+            qualification_updates=[
+                {
+                    "requirement_id": requirements[0]["id"],
+                    "value": "Next month",
+                    "source_message_id": str(source.id),
+                    "evidence": "Next month",
+                }
+            ],
+            next_requirement_id=None,
+            reason="NORMAL_CONVERSATION",
+            reason_code="NORMAL_CONVERSATION",
+            model="test",
+        )
+
+        result = transactional_turn_runtime._resolve_state_before_response(
+            organization=self.organization,
+            lead=self.lead,
+            source_message_id=source.id,
+            decision=decision,
+        )
+
+        self.assertTrue(result["applied"])
+        self.lead.refresh_from_db()
+        self.assertEqual(self.lead.attributes["decision_window"], "Next month")
+        self.assertEqual(self.lead.attributes["company_name"], "ABC Technologies")
+        self.assertEqual(self.lead.stage_id, target.id)
+
     def test_internal_completion_label_is_rejected_instead_of_sent(self):
         _target, requirements = self._configure_two_step_org()
         record_last_asked_requirement(
