@@ -439,6 +439,7 @@ class AICreditService:
         output_tokens: int | None = 0,
         embedding: bool = False,
         metadata: dict[str, Any] | None = None,
+        charge_override: int | None = None,
     ) -> AICreditReservation:
         reservation_id = getattr(reservation, "id", reservation)
         locked = (
@@ -461,7 +462,9 @@ class AICreditService:
             else int(locked.estimated_output_tokens)
         )
 
-        if input_tokens is None:
+        if charge_override is not None:
+            actual_charge = max(int(charge_override), 1)
+        elif input_tokens is None:
             actual_charge = int(locked.reserved_credits)
         else:
             actual_charge = cls.calculate_charge(
@@ -520,6 +523,91 @@ class AICreditService:
             metadata=metadata or {},
         )
         return locked
+
+    @classmethod
+    @transaction.atomic
+    def mark_settlement_pending(
+        cls,
+        *,
+        reservation: AICreditReservation | str,
+        input_tokens: int | None,
+        output_tokens: int | None,
+        embedding: bool = False,
+    ) -> AICreditReservation:
+        """Persist provider usage while keeping the reservation active.
+
+        Called only after the provider succeeded but normal ledger settlement
+        failed. Reserved credits therefore remain unavailable until recovery.
+        A positive actual_credits value is the durable reconciliation marker.
+        """
+        reservation_id = getattr(reservation, "id", reservation)
+        locked = AICreditReservation.objects.select_for_update().get(pk=reservation_id)
+        if locked.status != AICreditReservation.Status.ACTIVE:
+            return locked
+
+        actual_input = (
+            max(int(input_tokens), 0)
+            if input_tokens is not None
+            else int(locked.estimated_input_tokens)
+        )
+        actual_output = (
+            max(int(output_tokens), 0)
+            if output_tokens is not None
+            else int(locked.estimated_output_tokens)
+        )
+        actual_charge = (
+            int(locked.reserved_credits)
+            if input_tokens is None
+            else cls.calculate_charge(
+                model=locked.model,
+                input_tokens=actual_input,
+                output_tokens=actual_output,
+                embedding=embedding,
+            )
+        )
+        locked.actual_input_tokens = actual_input
+        locked.actual_output_tokens = actual_output
+        locked.actual_credits = max(int(actual_charge), 1)
+        locked.save(
+            update_fields=[
+                "actual_input_tokens",
+                "actual_output_tokens",
+                "actual_credits",
+            ]
+        )
+        return locked
+
+    @classmethod
+    def reconcile_pending_settlements(cls, *, limit: int = 100) -> dict[str, int]:
+        """Retry only provider-completed reservations with persisted usage."""
+        pending_ids = list(
+            AICreditReservation.objects.filter(
+                status=AICreditReservation.Status.ACTIVE,
+                actual_credits__gt=0,
+            )
+            .order_by("created_at")
+            .values_list("id", flat=True)[: max(int(limit), 1)]
+        )
+        settled = 0
+        failed = 0
+        for reservation_id in pending_ids:
+            try:
+                reservation = AICreditReservation.objects.get(pk=reservation_id)
+                cls.settle(
+                    reservation=reservation,
+                    input_tokens=int(reservation.actual_input_tokens),
+                    output_tokens=int(reservation.actual_output_tokens),
+                    charge_override=int(reservation.actual_credits),
+                    metadata={"reconciled": True},
+                )
+                settled += 1
+            except Exception:
+                failed += 1
+        return {
+            "pending": len(pending_ids),
+            "settled": settled,
+            "failed": failed,
+        }
 
     @classmethod
     @transaction.atomic

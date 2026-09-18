@@ -275,6 +275,81 @@ class OpenAIProviderCreditGuardTests(TestCase):
             1,
         )
 
+    def test_successful_provider_response_survives_settlement_failure(self):
+        AICreditService.add_manual_credits(
+            organization=self.organization,
+            amount=20,
+            reason="Manual provider test allocation",
+        )
+
+        original_settle = AICreditService.settle
+        with patch.object(
+            AICreditService,
+            "settle",
+            side_effect=AICreditError("temporary ledger failure"),
+        ):
+            result = self._generate()
+
+        self.assertEqual(result.text, "Hello from SHVYA AI")
+        reservation = self.organization.ai_credit_reservations.get()
+        reservation.refresh_from_db()
+        wallet = AICreditService.ensure_wallet(self.organization)
+        wallet.refresh_from_db()
+        self.assertEqual(reservation.status, AICreditReservation.Status.ACTIVE)
+        self.assertEqual(reservation.actual_input_tokens, 1200)
+        self.assertEqual(reservation.actual_output_tokens, 100)
+        self.assertGreater(reservation.actual_credits, 0)
+        self.assertEqual(wallet.reserved_credits, reservation.reserved_credits)
+
+        with patch.object(AICreditService, "settle", wraps=original_settle):
+            recovery = AICreditService.reconcile_pending_settlements()
+
+        self.assertEqual(recovery["settled"], 1)
+        reservation.refresh_from_db()
+        wallet.refresh_from_db()
+        self.assertEqual(reservation.status, AICreditReservation.Status.SETTLED)
+        self.assertEqual(wallet.reserved_credits, 0)
+        self.assertEqual(wallet.balance, 14)
+
+    def test_reconciliation_ignores_active_inflight_reservations(self):
+        AICreditService.add_manual_credits(
+            organization=self.organization,
+            amount=20,
+            reason="Manual provider test allocation",
+        )
+        reservation = AICreditService.reserve_text(
+            organization_id=self.organization.id,
+            model="gpt-4.1-nano",
+            instructions="Reply helpfully.",
+            input_text="Hello",
+            feature="engagement",
+        )
+
+        recovery = AICreditService.reconcile_pending_settlements()
+
+        self.assertEqual(recovery["pending"], 0)
+        reservation.refresh_from_db()
+        self.assertEqual(reservation.status, AICreditReservation.Status.ACTIVE)
+
+    def test_successful_provider_response_survives_generic_settlement_error(self):
+        AICreditService.add_manual_credits(
+            organization=self.organization,
+            amount=20,
+            reason="Manual provider test allocation",
+        )
+
+        with patch.object(
+            AICreditService,
+            "settle",
+            side_effect=RuntimeError("database temporarily unavailable"),
+        ):
+            result = self._generate()
+
+        self.assertEqual(result.text, "Hello from SHVYA AI")
+        reservation = self.organization.ai_credit_reservations.get()
+        self.assertEqual(reservation.status, AICreditReservation.Status.ACTIVE)
+        self.assertGreater(reservation.actual_credits, 0)
+
 
 @patch.dict(
     os.environ,
@@ -350,3 +425,41 @@ class EmbeddingCreditGuardTests(TestCase):
         self.assertEqual(usage.feature, "knowledge_retrieval")
         self.assertEqual(usage.input_tokens, 240)
         self.assertEqual(usage.output_tokens, 0)
+    def test_successful_embedding_survives_settlement_failure_and_recovers(self):
+        AICreditService.add_manual_credits(
+            organization=self.organization,
+            amount=10,
+            reason="Manual embedding test allocation",
+        )
+
+        original_settle = AICreditService.settle
+        with patch.object(
+            AICreditService,
+            "settle",
+            side_effect=RuntimeError("temporary ledger outage"),
+        ):
+            vector = self.service.embed_text(
+                "What is the course fee?",
+                organization_id=self.organization.id,
+                feature="knowledge_retrieval",
+                reference_id="lead-embedding-recovery",
+            )
+
+        self.assertEqual(len(vector), EmbeddingService.DEFAULT_DIMENSIONS)
+        reservation = self.organization.ai_credit_reservations.get()
+        reservation.refresh_from_db()
+        self.assertEqual(reservation.status, AICreditReservation.Status.ACTIVE)
+        self.assertEqual(reservation.actual_output_tokens, 0)
+        self.assertGreater(reservation.actual_credits, 0)
+
+        with patch.object(AICreditService, "settle", wraps=original_settle):
+            recovery = AICreditService.reconcile_pending_settlements()
+
+        self.assertEqual(recovery["settled"], 1)
+        reservation.refresh_from_db()
+        self.assertEqual(reservation.status, AICreditReservation.Status.SETTLED)
+        wallet = AICreditService.ensure_wallet(self.organization)
+        wallet.refresh_from_db()
+        self.assertEqual(wallet.balance, 9)
+        self.assertEqual(wallet.reserved_credits, 0)
+

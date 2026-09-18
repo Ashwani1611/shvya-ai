@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 from typing import Sequence
 
 from django.conf import settings
@@ -11,6 +13,8 @@ from apps.ai_engagement.services.credits import (
     AICreditUnavailableError,
 )
 
+
+logger = logging.getLogger(__name__)
 
 class EmbeddingError(Exception):
     """
@@ -180,10 +184,28 @@ class EmbeddingService:
                     "operation": "embedding",
                 },
             )
-        except AICreditError as exc:
-            raise EmbeddingError(
-                f"Embedding completed but AI-credit settlement failed: {exc}"
-            ) from exc
+        except Exception:
+            # The embedding provider already succeeded. Preserve the vector and
+            # keep the reservation active until the durable reconciliation task
+            # can settle the recorded usage.
+            try:
+                AICreditService.mark_settlement_pending(
+                    reservation=reservation,
+                    input_tokens=input_tokens,
+                    output_tokens=0,
+                    embedding=True,
+                )
+            except Exception:
+                logger.exception(
+                    "Embedding credit settlement and recovery marker both failed "
+                    "for reservation %s",
+                    getattr(reservation, "id", reservation),
+                )
+            else:
+                logger.exception(
+                    "Embedding credit settlement deferred for reservation %s",
+                    getattr(reservation, "id", reservation),
+                )
 
     def embed_text(
         self,

@@ -76,6 +76,19 @@ def flush_background_enrichment(lead_id):
 
     return queue_background_enrichment(lead_id=lead_id, force=True)
 
+@shared_task(name="ai.reconcile_credit_settlements")
+def reconcile_credit_settlements():
+    """Retry provider-completed AI credit reservations that failed to settle."""
+    from apps.ai_engagement.services.credits import AICreditService
+
+    result = AICreditService.reconcile_pending_settlements(limit=100)
+    if result["failed"]:
+        logger.warning(
+            "AI credit settlement reconciliation left %s reservation(s) pending",
+            result["failed"],
+        )
+    return result
+
 
 @shared_task(name="ai.dispatch_bump_ups")
 def dispatch_bump_ups():
