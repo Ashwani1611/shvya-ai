@@ -225,7 +225,6 @@ def _wrap_build_input(original_method):
 def _priority_validator(engagement_module):
     def validate(self, *, decision, context, requirements, qualification_state):
         from apps.ai_engagement.services.qualification_state import (
-            MODE_QUALIFICATION,
             REQUIREMENT_ANSWERED,
             next_requirement,
             project_answer_updates,
