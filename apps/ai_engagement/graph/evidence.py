@@ -76,6 +76,55 @@ def _safe_unknown_decision(decision):
     )
 
 
+def _safe_qualification_grounding_decision(state, decision):
+    """Return a claim-free acknowledgement for a backend-owned qualification turn.
+
+    Grounding is allowed to remove unsupported model-authored business claims, but
+    it must not turn a valid qualification answer into an "unknown information"
+    response. The execution contract will append the exact backend-selected next
+    requirement or completion acknowledgement after this neutral text.
+    """
+    qualification = state.get("qualification_state") or {}
+    latest_id = str(state.get("latest_message_id") or "")
+    requirement_states = qualification.get("requirement_states") or {}
+    answered_this_turn = any(
+        isinstance(item, dict)
+        and str(item.get("source_message_id") or "") == latest_id
+        and str(item.get("status") or "").casefold() == "answered"
+        for item in requirement_states.values()
+    )
+    reason = str(
+        getattr(decision, "reason_code", "")
+        or getattr(decision, "reason", "")
+        or ""
+    ).upper()
+    qualification_turn = bool(
+        getattr(decision, "next_requirement_id", None)
+        or reason in {"QUALIFICATION_NEXT", "QUALIFICATION_CLARIFY"}
+        or answered_this_turn
+    )
+    if not qualification_turn:
+        return None
+    return replace(
+        decision,
+        should_engage=True,
+        message="Thanks for sharing that.",
+        file_document_id=None,
+        qualification_updates=[],
+        crm_actions=[],
+        reason=(
+            "QUALIFICATION_NEXT"
+            if getattr(decision, "next_requirement_id", None)
+            else "NORMAL_CONVERSATION"
+        ),
+        reason_code=(
+            "QUALIFICATION_NEXT"
+            if getattr(decision, "next_requirement_id", None)
+            else "NORMAL_CONVERSATION"
+        ),
+    )
+
+
 def _active_grounding(state):
     """Read Phase 5 evidence only when its tenant scope matches this graph turn."""
     try:
@@ -107,8 +156,9 @@ def check_grounding(state):
         # permitted evidence exists. Fail closed deterministically; the outer
         # Phase 5 runtime restores the policy-selected next qualification question
         # when this is an ANSWER_THEN_QUALIFY turn.
+        safe_qualification = _safe_qualification_grounding_decision(state, decision)
         return {
-            "decision": _safe_unknown_decision(decision),
+            "decision": safe_qualification or _safe_unknown_decision(decision),
             "grounding_approved": False,
             "grounding_category": resolution.category.value,
         }
@@ -167,8 +217,9 @@ def check_grounding(state):
             }},
         )
     except AIProviderError:
+        safe_qualification = _safe_qualification_grounding_decision(state, decision)
         return {
-            "decision": _safe_unknown_decision(decision),
+            "decision": safe_qualification or _safe_unknown_decision(decision),
             "grounding_approved": False,
         }
 
