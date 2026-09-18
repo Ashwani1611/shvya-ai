@@ -63,6 +63,42 @@ class IntentScoreTests(TestCase):
         self.assertEqual(result["components"]["clarity"]["score"], 2)
         self.assertEqual(result["components"]["commitment"]["score"], 2)
 
+    def test_score_uses_normalized_option_answers_for_timeline_and_budget(self):
+        self.lead.attributes = {
+            "_shvya_ai_qualification": {
+                "qualification_status": "in_progress",
+                "answered_requirement_ids": ["timeline", "budget"],
+                "flow_snapshot": [
+                    {
+                        "id": "timeline",
+                        "label": "How soon are you planning to implement a solution?",
+                    },
+                    {
+                        "id": "budget",
+                        "label": "What is your approximate monthly budget?",
+                    },
+                ],
+                "requirement_states": {
+                    "timeline": {
+                        "status": "answered",
+                        "value": "Within 7 days",
+                    },
+                    "budget": {
+                        "status": "answered",
+                        "value": "₹25,000–₹50,000",
+                    },
+                },
+            }
+        }
+        self.lead.save(update_fields=["attributes", "updated_at"])
+        self._inbound("B")
+        self._inbound("28000")
+
+        result = compute_intent_score(lead=self.lead)
+
+        self.assertEqual(result["components"]["urgency"]["score"], 3)
+        self.assertEqual(result["components"]["commitment"]["score"], 1)
+
     def test_score_persists_as_internal_lead_intelligence(self):
         self._inbound("I am interested in pricing.")
         result = persist_intent_score(lead=self.lead)
