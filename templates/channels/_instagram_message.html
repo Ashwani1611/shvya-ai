@@ -1,0 +1,18 @@
+<div data-message-id="{{ message.id }}" data-content-version="{{ message.content_version }}" data-time="{{ message.created_time }}" class="ig-message mb-2 flex {% if message.direction == 'outbound' %}justify-end{% else %}justify-start{% endif %}">
+  <div class="wa-bubble max-w-[82%] px-3 py-2 text-sm text-[#111b21] {% if message.direction == 'outbound' %}bg-[#d9fdd3]{% else %}bg-white{% endif %}" style="overflow-wrap:anywhere">
+    {% for media in message.media %}
+    <figure class="ig-media mb-2 max-w-[320px] overflow-hidden rounded-md" aria-label="{{ media.label }}">
+      <figcaption class="mb-1 text-xs font-medium text-[#54656f]">{{ media.label }}</figcaption>
+      {% if media.kind == 'image' and media.url %}<a href="{{ media.url }}" target="_blank" rel="noopener noreferrer"><img src="{{ media.url }}" alt="{{ media.label }}" width="300" loading="lazy" decoding="async" referrerpolicy="no-referrer" class="rounded-md" style="max-height:360px;object-fit:contain"></a>
+      {% elif media.kind == 'video' and media.url %}<video src="{{ media.url }}" {% if media.preview_url %}poster="{{ media.preview_url }}"{% endif %} controls playsinline preload="metadata" class="w-full rounded-md" style="max-height:360px" aria-label="{{ media.label }}"></video>
+      {% elif media.kind == 'audio' and media.url %}<audio src="{{ media.url }}" controls preload="none" style="width:280px;max-width:100%" aria-label="{{ media.label }}"></audio>
+      {% else %}{% if media.preview_url %}<img src="{{ media.preview_url }}" alt="{{ media.label }} preview" width="280" loading="lazy" decoding="async" referrerpolicy="no-referrer" class="rounded-md">{% endif %}
+      {% if media.url %}<a href="{{ media.url }}" target="_blank" rel="noopener noreferrer" class="block rounded-md border border-black/10 p-3 text-xs underline">Open {{ media.label }}</a>{% endif %}{% endif %}
+      <p class="ig-media-fallback mt-1 text-xs text-[#667781]" {% if not media.unavailable %}hidden{% endif %}>Media may have expired, been removed, or not be available through Meta's API.{% if media.url %} <a href="{{ media.url }}" target="_blank" rel="noopener noreferrer" class="underline">Open original</a>{% endif %}</p>
+    </figure>
+    {% endfor %}
+    {% if message.body %}<p class="whitespace-pre-wrap">{{ message.body }}</p>{% elif not message.media %}<p class="text-xs italic text-[#667781]">Content unavailable through Meta's API</p>{% endif %}
+    <div class="mt-1 flex justify-end gap-2 text-[10px] text-[#667781]"><time data-time="{{ message.created_time }}">{{ message.created_time|slice:"11:16" }}</time>{% if message.direction == 'outbound' %}<span data-message-status>{{ message.status|capfirst }}</span>{% endif %}</div>
+    <p data-message-error class="mt-1 text-xs text-red-700" {% if not message.error %}hidden{% endif %}>{{ message.error }}</p>
+  </div>
+</div>
