@@ -19,7 +19,9 @@ _TEMPORAL_TERMS = re.compile(
 
 
 def _normalize_text(value: Any) -> str:
-    return " ".join(str(value or "").casefold().split())
+    text = str(value or "").casefold().replace("–", "-").replace("—", "-")
+    text = re.sub(r"[^a-z0-9₹$€£+.%/-]+", " ", text)
+    return " ".join(text.split())
 
 
 def _numeric(value: Any) -> float | None:
@@ -131,6 +133,31 @@ def evaluate_qualification(*, runtime_policy: dict[str, Any], projected_state: d
     return {"outcome": outcome, "criteria": results}
 
 
+def _range_contains_latest(value: Any, latest_text: str) -> bool:
+    rendered = _normalize_text(value).replace(",", "")
+    actual = _numeric(latest_text)
+    if actual is None or not rendered:
+        return False
+
+    plus = re.search(r"(\\d+(?:\\.\\d+)?)\\s*\\+$", rendered)
+    if plus:
+        return actual >= float(plus.group(1))
+
+    below = re.search(r"\\b(?:below|under|less than)\\s*(\\d+(?:\\.\\d+)?)\\b", rendered)
+    if below:
+        return actual < float(below.group(1))
+
+    upto = re.search(r"\\b(?:up to|upto)\\s*(\\d+(?:\\.\\d+)?)\\b", rendered)
+    if upto:
+        return actual <= float(upto.group(1))
+
+    interval = re.search(r"(\\d+(?:\\.\\d+)?)\\s*(?:-|to)\\s*(\\d+(?:\\.\\d+)?)", rendered)
+    if interval:
+        low, high = float(interval.group(1)), float(interval.group(2))
+        return low <= actual <= high
+    return False
+
+
 def _value_supported_by_latest_message(value: Any, latest_text: str) -> bool:
     if value is None:
         return False
@@ -142,9 +169,18 @@ def _value_supported_by_latest_message(value: Any, latest_text: str) -> bool:
     rendered = _normalize_text(value)
     if rendered and rendered in latest:
         return True
+    if _range_contains_latest(value, latest_text):
+        return True
     actual_num = _numeric(value)
     latest_num = _numeric(latest_text)
-    return actual_num is not None and latest_num is not None and actual_num == latest_num
+    if actual_num is not None and latest_num is not None and actual_num == latest_num:
+        return True
+
+    # Permit conservative textual normalization such as "real-estate" ->
+    # "Real Estate" without accepting broad semantic guesses.
+    rendered_tokens = set(re.findall(r"[a-z0-9]+", rendered))
+    latest_tokens = set(re.findall(r"[a-z0-9]+", latest))
+    return bool(rendered_tokens and rendered_tokens.issubset(latest_tokens))
 
 
 def _attribute_keys(context) -> set[str]:
