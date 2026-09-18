@@ -91,7 +91,7 @@ def test_pricing_only_answers_without_forcing_qualification():
     assert result.continue_qualification is False
 
 
-def test_qualification_plus_pricing_answers_then_qualifies():
+def test_qualification_plus_pricing_answers_without_forced_next_question():
     result = decide(
         context(
             intent(
@@ -104,12 +104,13 @@ def test_qualification_plus_pricing_answers_then_qualifies():
             next_id="q4",
         )
     )
-    assert result.outcome == ConversationPolicyOutcome.ANSWER_THEN_QUALIFY
+    assert result.outcome == ConversationPolicyOutcome.ANSWER
     assert result.answer_customer_question is True
-    assert result.next_requirement_id == "q4"
+    assert result.continue_qualification is False
+    assert result.next_requirement_id is None
 
 
-def test_qualification_plus_product_question_answers_then_qualifies():
+def test_qualification_plus_product_question_answers_without_forced_next_question():
     result = decide(
         context(
             intent(
@@ -121,10 +122,12 @@ def test_qualification_plus_product_question_answers_then_qualifies():
             next_id="q4",
         )
     )
-    assert result.outcome == ConversationPolicyOutcome.ANSWER_THEN_QUALIFY
+    assert result.outcome == ConversationPolicyOutcome.ANSWER
+    assert result.continue_qualification is False
+    assert result.next_requirement_id is None
 
 
-def test_multiple_qualification_facts_do_not_change_backend_next_requirement():
+def test_multiple_qualification_facts_preserve_backend_requirement_for_later():
     facts = (
         {"requirement_id": "tool", "value": "Excel"},
         {"requirement_id": "volume", "value": 25},
@@ -141,8 +144,9 @@ def test_multiple_qualification_facts_do_not_change_backend_next_requirement():
             next_id="ads",
         )
     )
-    assert result.outcome == ConversationPolicyOutcome.ANSWER_THEN_QUALIFY
-    assert result.next_requirement_id == "ads"
+    assert result.outcome == ConversationPolicyOutcome.ANSWER
+    assert result.continue_qualification is False
+    assert result.next_requirement_id is None
 
 
 def test_human_request_has_handoff_precedence():
@@ -347,10 +351,10 @@ def test_acceptance_scenario_around_30_plus_pricing():
             state=state,
         )
     )
-    assert result.outcome == ConversationPolicyOutcome.ANSWER_THEN_QUALIFY
+    assert result.outcome == ConversationPolicyOutcome.ANSWER
     assert result.answer_customer_question is True
-    assert result.continue_qualification is True
-    assert result.next_requirement_id == "ads"
+    assert result.continue_qualification is False
+    assert result.next_requirement_id is None
     assert result.requires_knowledge is True
 
 

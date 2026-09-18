@@ -232,10 +232,14 @@ class ConversationPolicyEngine:
             )
 
         if asks_question:
-            if (accepted or context.continue_after_answer) and next_requirement_id:
+            # A direct customer question owns the turn. Merely accepting a
+            # qualification fact is not enough reason to append another
+            # questionnaire item. Qualification can continue only when an
+            # explicit policy signal asks for same-turn continuation.
+            if context.continue_after_answer and next_requirement_id:
                 return self._decision(
                     ConversationPolicyOutcome.ANSWER_THEN_QUALIFY,
-                    "DIRECT_QUESTION_AFTER_ACCEPTED_QUALIFICATION",
+                    "DIRECT_QUESTION_EXPLICIT_CONTINUE",
                     confidence,
                     answer=True,
                     continue_qualification=True,
@@ -244,8 +248,8 @@ class ConversationPolicyEngine:
                     goal="answer_customer_then_ask_next_qualification",
                     result_ref=result_ref,
                     debug=(
-                        "Answer the direct question first, then ask only the backend "
-                        "selected next unanswered requirement."
+                        "Answer the direct question first; continue qualification "
+                        "only because the runtime explicitly requested same-turn continuation."
                     ),
                 )
             return self._decision(
@@ -261,15 +265,38 @@ class ConversationPolicyEngine:
 
         if accepted:
             if next_requirement_id:
+                # Only a pure qualification-answer turn automatically advances
+                # to the next requirement. If the same message also carries a
+                # buying signal, objection, complaint, follow-up context, or
+                # other meaningful intent, preserve the pending requirement and
+                # respond to the conversation instead of behaving like a form.
+                parallel = intents - {Intent.QUALIFICATION_ANSWER}
+                if not parallel:
+                    return self._decision(
+                        ConversationPolicyOutcome.ASK_QUALIFICATION,
+                        "PURE_QUALIFICATION_ANSWER_CONTINUE",
+                        confidence,
+                        continue_qualification=True,
+                        next_requirement_id=next_requirement_id,
+                        goal="acknowledge_then_ask_next_qualification",
+                        result_ref=result_ref,
+                        debug=(
+                            "The message only answered the active qualification "
+                            "requirement, so a natural acknowledgement plus the next "
+                            "backend-selected requirement is appropriate."
+                        ),
+                    )
                 return self._decision(
-                    ConversationPolicyOutcome.ASK_QUALIFICATION,
-                    "ACCEPTED_QUALIFICATION_CONTINUE",
+                    ConversationPolicyOutcome.NORMAL_CONVERSATION,
+                    "QUALIFICATION_ANSWER_WITH_CONVERSATION_CONTEXT",
                     confidence,
-                    continue_qualification=True,
-                    next_requirement_id=next_requirement_id,
-                    goal="ask_next_qualification",
+                    requires_knowledge=bool(intent.requires_knowledge),
+                    goal="respond_naturally_preserve_pending_qualification",
                     result_ref=result_ref,
-                    debug="Current answer was accepted; continue with next unanswered requirement.",
+                    debug=(
+                        "The answer also contains meaningful conversational intent; "
+                        "save the accepted fact and preserve the next requirement for a later turn."
+                    ),
                 )
             return self._decision(
                 ConversationPolicyOutcome.NORMAL_CONVERSATION,
