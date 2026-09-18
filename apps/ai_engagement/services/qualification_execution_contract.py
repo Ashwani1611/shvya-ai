@@ -1197,7 +1197,38 @@ def _finalize(decision, state):
             continue
         if not _LABEL_ONLY.match(line):
             cleaned.append(line)
-    return replace(decision, message="\n".join(cleaned).strip())
+    final_message = "\n".join(cleaned).strip()
+    next_id = str(
+        ((plan.get("next_requirement") or {}).get("id") or "")
+    ).strip() or None
+
+    # The response-plan renderer is the final authority that actually places a
+    # qualification question in the customer message. Keep decision metadata in
+    # lock-step with that rendered output so the outbound post-save hook records
+    # the exact question as ASKED. Without this, a language-only second pass can
+    # append Q2 while leaving next_requirement_id=None, causing the customer's
+    # correct Q2 answer to be rejected/repeated on the following turn.
+    if kind == "qualification_complete":
+        return replace(
+            decision,
+            message=final_message,
+            next_requirement_id=None,
+        )
+    if kind == "qualification_clarification":
+        return replace(
+            decision,
+            message=final_message,
+            next_requirement_id=next_id,
+            reason="QUALIFICATION_CLARIFY",
+            reason_code="QUALIFICATION_CLARIFY",
+        )
+    return replace(
+        decision,
+        message=final_message,
+        next_requirement_id=next_id,
+        reason="QUALIFICATION_NEXT",
+        reason_code="QUALIFICATION_NEXT",
+    )
 
 
 def _latest_inbound(lead, account_id=None):
