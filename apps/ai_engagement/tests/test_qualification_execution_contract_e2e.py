@@ -797,7 +797,6 @@ class QualificationExecutionContractE2ETests(TestCase):
         self.assertEqual(self.lead.stage_id, target.id)
 
     def test_qualification_turn_preserves_distinct_volunteered_crm_fact(self):
-        target = self._create_target_stage("Conversation Qualified")
         AttributeDefinition.objects.create(
             organization=self.organization,
             name="Decision Window",
@@ -818,8 +817,6 @@ class QualificationExecutionContractE2ETests(TestCase):
         info.engagement_instructions = (
             "## Attribute mapped\n"
             "timing -> Decision Window\n\n"
-            "## Stage shifting\n"
-            "When all required qualification questions are answered, move to Conversation Qualified.\n"
             "Acknowledgment message: \"Thanks, that gives us enough context.\""
         )
         info.save()
@@ -875,7 +872,6 @@ class QualificationExecutionContractE2ETests(TestCase):
         self.lead.refresh_from_db()
         self.assertEqual(self.lead.attributes["decision_window"], "Next month")
         self.assertEqual(self.lead.attributes["company_name"], "ABC Technologies")
-        self.assertEqual(self.lead.stage_id, target.id)
 
     def test_internal_completion_label_is_rejected_instead_of_sent(self):
         _target, requirements = self._configure_two_step_org()
