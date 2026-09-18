@@ -13,10 +13,10 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         try:
-            # Deliberately fixed: the command never inherits production DB/settings
-            # as a test runner. pytest creates the isolated test_ database.
+            # Fixed evaluation settings isolate cache/queues/media as well as the
+            # pytest database; no live cache.clear() or broker publishing.
             report = run_evaluation(scenario_path=options["scenarios"], output=options["output"],
-                                    settings_module="config.settings.testing")
+                                    settings_module="config.settings.ai_evaluation")
         except (OSError, ValueError) as exc:
             raise CommandError(f"AI evaluation could not run: {exc}") from exc
         self.stdout.write(f"Passed: {report['passed']}  Failed: {report['failed']}  Skipped: {report['skipped']}")

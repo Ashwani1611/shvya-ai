@@ -187,4 +187,21 @@ class PhaseScopeAndRunnerTests(SimpleTestCase):
         with patch("apps.ai_engagement.management.commands.evaluate_ai.run_evaluation", return_value=report) as run:
             with self.assertRaises(CommandError):
                 call_command("evaluate_ai", output="/tmp/unused-test-report.json", verbosity=0)
-        self.assertEqual(run.call_args.kwargs["settings_module"], "config.settings.testing")
+        self.assertEqual(run.call_args.kwargs["settings_module"], "config.settings.ai_evaluation")
+
+
+    def test_evaluation_settings_never_inherit_live_cache_queues_or_test_database_name(self):
+        from importlib import import_module
+
+        isolated = import_module("config.settings.ai_evaluation")
+        self.assertIn("LocMem", isolated.CACHES["default"]["BACKEND"])
+        self.assertIn("InMemory", isolated.CHANNEL_LAYERS["default"]["BACKEND"])
+        self.assertEqual(isolated.CELERY_BROKER_URL, "memory://")
+        self.assertEqual(isolated.CELERY_RESULT_BACKEND, "cache+memory://")
+        self.assertEqual(isolated.REDIS_URL, "")
+        self.assertEqual(isolated.OPENAI_API_KEY, "")
+        for database in isolated.DATABASES.values():
+            self.assertTrue(database["TEST"]["NAME"].startswith("test_shvya_ai_eval_"))
+            # Django changes NAME to TEST.NAME while executing this suite.
+            from config.settings import base
+            self.assertNotEqual(database["TEST"]["NAME"], base.DATABASES["default"]["NAME"])

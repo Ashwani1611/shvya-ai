@@ -68,13 +68,18 @@ def summarize_junit(path, *, returncode):
     return report
 
 
-def run_evaluation(*, scenario_path=None, output=None, settings_module="config.settings.testing"):
+def run_evaluation(*, scenario_path=None, output=None, settings_module="config.settings.ai_evaluation"):
     load_scenarios(scenario_path)  # Fail before spawning a test process on invalid input.
     environment = os.environ.copy()
     environment.pop("SHVYA_AI_EVALUATION_SCENARIOS", None)
+    # Do not inherit flags/plugins that can redirect the fixed recorded suite.
+    environment.pop("PYTEST_ADDOPTS", None)
+    environment.pop("PYTEST_PLUGINS", None)
+    environment["DJANGO_SETTINGS_MODULE"] = settings_module
     if scenario_path:
         environment["SHVYA_AI_EVALUATION_SCENARIOS"] = str(Path(scenario_path).resolve())
     with tempfile.TemporaryDirectory(prefix="shvya-ai-evaluation-") as temporary:
+        environment["SHVYA_AI_EVALUATION_MEDIA_ROOT"] = str(Path(temporary) / "media")
         junit = Path(temporary) / "junit.xml"
         command = [sys.executable, "-m", "pytest", "--ds=" + settings_module,
                    "--no-cov", "-q", "--override-ini=junit_family=legacy", "--junitxml=" + str(junit)]

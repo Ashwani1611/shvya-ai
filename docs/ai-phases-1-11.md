@@ -148,7 +148,10 @@ python manage.py evaluate_ai --settings=config.settings.testing --output ai-eval
 
 `evaluate_ai` requires the pinned development/test dependencies and PostgreSQL with
 pgvector, as does existing CI. It launches pytest with fixed test settings and a
-separate test database. Optional `--scenarios path.json` accepts bounded declarative
+separate test database. The subprocess uses `config.settings.ai_evaluation`: cache
+and channel layers are process-local, the broker/result backend are in-memory,
+direct Redis endpoints are disabled, and media lives in its temporary directory.
+The ordinary full CI suite still exercises real Redis independently. Optional `--scenarios path.json` accepts bounded declarative
 fixtures, not executable Python. Missing reports, zero passing tests, failed
 assertions, collection errors, or timeout return failure and block promotion.
 
