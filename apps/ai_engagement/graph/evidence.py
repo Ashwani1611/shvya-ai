@@ -209,7 +209,10 @@ def check_grounding(state):
 
     if not approved:
         return {
-            "decision": _safe_unknown_decision(decision),
+            "decision": _safe_unknown_decision(
+                decision,
+                qualification_turn=qualification_turn,
+            ),
             "grounding_approved": False,
         }
     return {"grounding_approved": True}
