@@ -223,12 +223,13 @@ def build_controlled_actions(
             # Internal summaries/notes are owned by dedicated backend services.
             continue
         if action_type == "attribute_updates":
-            # During qualification, model-selected attributes are never accepted.
-            # Exact requirement -> attribute mappings are resolved later from AI
-            # Brain configuration. Normal-conversation attribute updates can still
-            # be accepted when directly supported by the latest customer message.
-            if qualification_active and qualification_updates:
-                continue
+            # Exact qualification requirement -> attribute mappings remain
+            # backend-owned, but a lead may volunteer other CRM facts on the same
+            # turn (company, website, industry, budget, etc.). Keep those
+            # organization-defined updates only when the proposed value is
+            # directly supported by the latest inbound customer message. The
+            # deterministic qualification execution contract subsequently
+            # overwrites any explicitly mapped key with its authoritative value.
             accepted = []
             for update in action.get("updates") or []:
                 key = str(update.get("key") or "").strip()

@@ -159,6 +159,52 @@ class ConditionalQualificationRuntimeTests(TestCase):
         )
         self.assertEqual(result["state"]["qualification_status"], STATUS_COMPLETED)
 
+    def test_no_crm_skips_dependent_current_crm_question(self):
+        requirements = compile_qualification_requirements(
+            "Are you currently using any CRM or lead-management software?\n"
+            "A. Yes\n"
+            "B. No\n"
+            "If you are using a CRM, which one are you currently using?\n"
+            "A. Zoho CRM\n"
+            "B. HubSpot\n"
+            "C. Salesforce\n"
+            "D. LeadSquared\n"
+            "E. Other\n"
+            "How soon are you planning to implement a solution?\n"
+            "A. Immediately\n"
+            "B. Within 7 days"
+        )["requirements"]
+        using_crm, current_crm, timeline = requirements
+        self.assertTrue(current_crm["conditional"])
+        self.assertEqual(
+            current_crm["eligible_when"],
+            {
+                "requirement_id": using_crm["id"],
+                "operator": "eq",
+                "value": True,
+            },
+        )
+
+        record_last_asked_requirement(
+            self.lead,
+            using_crm["id"],
+            requirements=requirements,
+        )
+        result = apply_unambiguous_reply(
+            lead=self.lead,
+            requirements=requirements,
+            text="B",
+            source_message_id="crm-no",
+        )
+
+        state = result["state"]
+        self.assertEqual(
+            state["requirement_states"][current_crm["id"]]["status"],
+            REQUIREMENT_NOT_APPLICABLE,
+        )
+        self.assertEqual(state["current_requirement_id"], timeline["id"])
+
+
     def test_already_mentioned_is_not_stored_as_an_answer(self):
         requirements = compile_qualification_requirements(
             "Where do you manage leads?"

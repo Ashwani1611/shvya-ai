@@ -136,6 +136,31 @@ def _prior_ads_requirement(
     return None
 
 
+def _prior_crm_requirement(
+    requirements: list[dict[str, Any]],
+    current_index: int,
+) -> str | None:
+    for requirement in reversed(requirements[:current_index]):
+        label = _normalized(requirement.get("label"))
+        question = _normalized(requirement.get("question"))
+        source = f"{label} {question}"
+        if (
+            "crm" in source
+            and any(
+                term in source
+                for term in (
+                    "using",
+                    "use",
+                    "lead-management software",
+                    "lead management software",
+                    "currently",
+                )
+            )
+        ):
+            return str(requirement.get("id") or "") or None
+    return None
+
+
 def _strip_optional_marker(value: str) -> str:
     return re.sub(r"\s*\(?optional\)?\s*$", "", str(value or ""), flags=re.IGNORECASE).strip()
 
@@ -179,6 +204,25 @@ def _condition_from_requirement(
                 "operator": "eq",
                 "value": _condition_value(natural.group("value")),
             }, first_line[: natural.start()].rstrip(" ,:-")
+
+    # Common authored CRM dependency: "If you are using a CRM, which one...".
+    # Resolve it against the nearest prior CRM yes/no requirement so a No answer
+    # marks this question not-applicable instead of asking it anyway.
+    leading_crm = re.match(
+        r"^if\s+(?:you(?:'re|\s+are)\s+)?(?:currently\s+)?using\s+"
+        r"(?:any\s+)?(?:a\s+)?(?:crm|crm\s+or\s+lead[- ]management\s+software|"
+        r"lead[- ]management\s+software)\s*[,;:]\s*(?P<question>.+)$",
+        first_line,
+        flags=re.IGNORECASE,
+    )
+    if leading_crm:
+        source_id = _prior_crm_requirement(requirements, current_index)
+        if source_id:
+            return {
+                "requirement_id": source_id,
+                "operator": "eq",
+                "value": True,
+            }, leading_crm.group("question")
 
     # A leading condition is the same backend rule as a trailing condition.
     leading_ads = re.match(

@@ -51,6 +51,29 @@ class OrganizationAIProfileTests(SimpleTestCase):
             "buying intent",
         ])
 
+    def test_trailing_config_is_not_compiled_as_qualification_questions(self):
+        result = compile_qualification_requirements(
+            "Q1. What is your biggest challenge?\n"
+            "A. Slow replies\n"
+            "B. Missed follow-ups\n"
+            "Q2. Do you run ads?\n"
+            "A. Yes\n"
+            "B. No\n"
+            "Acknowledgment Message:\n"
+            "\"Thanks for sharing the details.\"\n"
+            "ATTRIBUTE MAPPING\n"
+            "Q1 -> Biggest Problem\n"
+            "Q2 -> Running Ads\n"
+            "RULES\n"
+            "- Ask questions in order."
+        )
+        requirements = result["requirements"]
+        self.assertEqual(len(requirements), 2)
+        self.assertNotIn(
+            "acknowledgment message",
+            " ".join(item["question"].casefold() for item in requirements),
+        )
+
     def test_runtime_profiles_do_not_leak_between_organizations(self):
         first = compile_org_ai_profile_from_context({
             "name": "Org One",
@@ -112,6 +135,62 @@ class DirectQualificationReplyTests(SimpleTestCase):
             question="When are you planning to buy?",
         )
         self.assertEqual(result[0], REQUIREMENT_UNCLEAR)
+
+
+    def test_numeric_answer_resolves_unique_authored_range(self):
+        result = _classify_direct_reply(
+            text="18",
+            question=(
+                "How many leads do you typically receive per day?\n"
+                "A. 0–10\n"
+                "B. 10–30\n"
+                "C. 30+"
+            ),
+        )
+        self.assertEqual(result[0], REQUIREMENT_ANSWERED)
+        self.assertEqual(result[1], "10–30")
+
+    def test_numeric_answer_does_not_guess_overlapping_boundary(self):
+        result = _classify_direct_reply(
+            text="500",
+            question=(
+                "Approximately how many customer conversations do you handle per month?\n"
+                "A. Below 100\n"
+                "B. 100–500\n"
+                "C. 500–2,000\n"
+                "D. 2,000+"
+            ),
+        )
+        self.assertEqual(result[0], REQUIREMENT_UNCLEAR)
+        self.assertEqual(result[1], "500")
+
+    def test_multiple_places_is_resolved_from_two_named_tools(self):
+        result = _classify_direct_reply(
+            text="Chats and crm",
+            question=(
+                "Where do you currently manage your leads?\n"
+                "A. WhatsApp chats\n"
+                "B. Excel / Sheets\n"
+                "C. CRM\n"
+                "D. Multiple places"
+            ),
+        )
+        self.assertEqual(result[0], REQUIREMENT_ANSWERED)
+        self.assertEqual(result[1], "Multiple places")
+
+    def test_unique_natural_keyword_can_resolve_configured_option(self):
+        result = _classify_direct_reply(
+            text="Followup",
+            question=(
+                "What is your biggest challenge with managing or converting leads right now?\n"
+                "A. Slow replies\n"
+                "B. Missed follow-ups\n"
+                "C. Leads going cold\n"
+                "D. No proper tracking"
+            ),
+        )
+        self.assertEqual(result[0], REQUIREMENT_ANSWERED)
+        self.assertEqual(result[1], "Missed follow-ups")
 
 
 class QualificationStatePersistenceTests(TestCase):

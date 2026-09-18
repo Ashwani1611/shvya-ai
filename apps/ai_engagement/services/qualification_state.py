@@ -545,6 +545,103 @@ def _question_options(question: str) -> list[dict[str, str]]:
     return options
 
 
+def _numeric_answer_value(text: str) -> float | None:
+    normalized = " ".join(str(text or "").strip().casefold().split())
+    match = re.fullmatch(
+        r"[₹$€£]?\s*(\d+(?:\.\d+)?)\s*(k|thousand|lakh|lac|m|million|cr|crore)?",
+        normalized.replace(",", ""),
+    )
+    if not match:
+        return None
+    value = float(match.group(1))
+    suffix = match.group(2) or ""
+    factor = {
+        "": 1,
+        "k": 1_000,
+        "thousand": 1_000,
+        "lakh": 100_000,
+        "lac": 100_000,
+        "m": 1_000_000,
+        "million": 1_000_000,
+        "cr": 10_000_000,
+        "crore": 10_000_000,
+    }[suffix]
+    return value * factor
+
+
+def _numeric_option_matches(text: str, options: list[dict[str, str]]) -> list[str]:
+    actual = _numeric_answer_value(text)
+    if actual is None:
+        return []
+
+    matches: list[str] = []
+    for option in options:
+        value = str(option.get("value") or "").strip()
+        normalized = (
+            value.casefold()
+            .replace(",", "")
+            .replace("₹", "")
+            .replace("$", "")
+            .replace("€", "")
+            .replace("£", "")
+        )
+        if normalized in {"just me", "only me"}:
+            if actual == 1:
+                matches.append(value)
+            continue
+
+        plus = re.search(r"(\d+(?:\.\d+)?)\s*\+$", normalized)
+        if plus and actual >= float(plus.group(1)):
+            matches.append(value)
+            continue
+
+        below = re.search(
+            r"\b(?:below|under|less than)\s*(\d+(?:\.\d+)?)\b",
+            normalized,
+        )
+        if below and actual < float(below.group(1)):
+            matches.append(value)
+            continue
+
+        upto = re.search(r"\b(?:up to|upto)\s*(\d+(?:\.\d+)?)\b", normalized)
+        if upto and actual <= float(upto.group(1)):
+            matches.append(value)
+            continue
+
+        interval = re.search(
+            r"(\d+(?:\.\d+)?)\s*(?:-|–|—|to)\s*(\d+(?:\.\d+)?)",
+            normalized,
+        )
+        if interval:
+            low, high = float(interval.group(1)), float(interval.group(2))
+            if low <= actual <= high:
+                matches.append(value)
+    return matches
+
+
+def _multiple_places_option(text: str, options: list[dict[str, str]]) -> str | None:
+    normalized_tokens = set(re.findall(r"[a-z0-9]+", str(text or "").casefold()))
+    if not normalized_tokens:
+        return None
+
+    matched = 0
+    multiple_value = None
+    for option in options:
+        value = str(option.get("value") or "").strip()
+        option_normalized = value.casefold()
+        if "multiple" in option_normalized:
+            multiple_value = value
+            continue
+        option_tokens = {
+            token
+            for token in re.findall(r"[a-z0-9]+", option_normalized)
+            if len(token) >= 3 and token not in {"the", "and", "with", "from"}
+        }
+        if option_tokens & normalized_tokens:
+            matched += 1
+    return multiple_value if multiple_value and matched >= 2 else None
+
+
 def _match_option_answer(text: str, options: list[dict[str, str]]) -> str | None:
     normalized = " ".join(str(text or "").strip().casefold().split()).strip(" .,:;-)('")
     if not normalized:
@@ -553,11 +650,46 @@ def _match_option_answer(text: str, options: list[dict[str, str]]) -> str | None
     for index, option in enumerate(options, start=1):
         key = str(option.get("key") or "").strip().casefold()
         value = str(option.get("value") or "").strip()
-        aliases = {key, str(index), value.casefold(), value.casefold().strip(" .!?;:"), f"option {key}", f"option {index}"}
+        aliases = {
+            key,
+            str(index),
+            value.casefold(),
+            value.casefold().strip(" .!?;:"),
+            f"option {key}",
+            f"option {index}",
+        }
         if index <= 26:
             aliases.add(chr(96 + index))
         if normalized in aliases or stripped in aliases:
             return value
+
+    numeric_matches = _numeric_option_matches(normalized, options)
+    if len(numeric_matches) == 1:
+        return numeric_matches[0]
+    if len(numeric_matches) > 1:
+        # Overlapping authored ranges (for example 100–500 and 500–2,000)
+        # are ambiguous by definition. Do not guess.
+        return None
+
+    multiple_value = _multiple_places_option(normalized, options)
+    if multiple_value:
+        return multiple_value
+
+    compact = re.sub(r"[^a-z0-9]+", "", normalized)
+    if len(compact) >= 6:
+        keyword_matches = [
+            str(option.get("value") or "").strip()
+            for option in options
+            if compact
+            and compact
+            in re.sub(
+                r"[^a-z0-9]+",
+                "",
+                str(option.get("value") or "").casefold(),
+            )
+        ]
+        if len(keyword_matches) == 1:
+            return keyword_matches[0]
     return None
 
 

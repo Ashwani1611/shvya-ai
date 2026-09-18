@@ -124,7 +124,14 @@ def _tokens(value: Any) -> set[str]:
 
 
 def _extract_number(value: str) -> float | None:
-    normalized = _normalized(value)
+    normalized = (
+        _normalized(value)
+        .replace(",", "")
+        .replace("₹", "")
+        .replace("$", "")
+        .replace("€", "")
+        .replace("£", "")
+    )
     match = re.search(r"(?<![a-z])\d+(?:\.\d+)?(?![a-z])", normalized)
     if match:
         try:
@@ -146,8 +153,15 @@ def _extract_number(value: str) -> float | None:
 
 
 def _range_for_option(value: str) -> tuple[float | None, float | None, bool, bool] | None:
-    normalized = _normalized(value)
-    match = re.search(r"(\d+(?:\.\d+)?)\s*(?:-|to)\s*(\d+(?:\.\d+)?)", normalized)
+    normalized = (
+        _normalized(value)
+        .replace(",", "")
+        .replace("₹", "")
+        .replace("$", "")
+        .replace("€", "")
+        .replace("£", "")
+    )
+    match = re.search(r"(\d+(?:\.\d+)?)\s*(?:-|–|—|to)\s*(\d+(?:\.\d+)?)", normalized)
     if match:
         return float(match.group(1)), float(match.group(2)), True, True
 
@@ -318,10 +332,27 @@ def _ambiguous_option_answer(
 def _enhanced_direct_classifier(original, state_module):
     def classify(*, text: str, question: str):
         classified = original(text=text, question=question)
+        raw_text = str(text or "").strip()
+        options = state_module._question_options(question)
         if classified is not None and classified[0] == state_module.REQUIREMENT_ANSWERED:
+            # Preserve exact authored text, option keys, and deterministic
+            # multi-tool answers such as "Chats and CRM" -> "Multiple places".
+            # Only override a bare numeric scalar when authored ranges overlap
+            # at that number (for example 100-500 and 500-2,000).
+            scalar_number = bool(
+                re.fullmatch(
+                    r"\s*[₹$€£]?\s*\d+(?:[.,]\d+)?\s*",
+                    raw_text,
+                )
+            )
+            if (
+                scalar_number
+                and options
+                and len(set(_numeric_option_candidates(raw_text, options))) > 1
+            ):
+                return (state_module.REQUIREMENT_UNCLEAR, raw_text, "high")
             return classified
 
-        raw_text = str(text or "").strip()
         if not raw_text or len(raw_text) > 240 or "\n" in raw_text:
             return classified
         # Mixed informational questions stay on the model/RAG path so one turn
@@ -329,15 +360,24 @@ def _enhanced_direct_classifier(original, state_module):
         if "?" in raw_text:
             return classified
 
-        options = state_module._question_options(question)
         if not options:
             return classified
+
+        scalar_number = bool(
+            re.fullmatch(
+                r"\s*[₹$€£]?\s*\d+(?:[.,]\d+)?\s*",
+                raw_text,
+            )
+        )
+        numeric_candidates = _numeric_option_candidates(raw_text, options)
+        if scalar_number and len(set(numeric_candidates)) > 1:
+            return (state_module.REQUIREMENT_UNCLEAR, raw_text, "high")
 
         matched = (
             _match_key_option(raw_text, options)
             or _match_boolean_option(raw_text, question, options)
             or _match_numeric_option(raw_text, options)
-            or _match_text_option(raw_text, options)
+            or (None if scalar_number else _match_text_option(raw_text, options))
         )
         if matched is not None:
             return (state_module.REQUIREMENT_ANSWERED, matched, "high")

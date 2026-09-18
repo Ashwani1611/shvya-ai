@@ -183,6 +183,46 @@ class ControlledCRMActionTests(SimpleTestCase):
 
         self.assertFalse(any(action["type"] == "attribute_updates" for action in actions))
 
+    def test_volunteered_additional_attribute_survives_active_qualification(self):
+        context = self._context(body="75k, and my company is ABC Technologies")
+        context.pipeline["attribute_definitions"].append(
+            {"key": "company", "name": "Company", "field_type": "text"}
+        )
+        decision = SimpleNamespace(
+            qualification_updates=[
+                {
+                    "requirement_id": "budget",
+                    "value": "75k",
+                    "source_message_id": "message-1",
+                    "evidence": "75k",
+                }
+            ],
+            crm_actions=[
+                {
+                    "type": "attribute_updates",
+                    "updates": [
+                        {"key": "company", "value": "ABC Technologies"},
+                    ],
+                }
+            ],
+        )
+
+        actions, _ = build_controlled_actions(
+            decision=decision,
+            context=context,
+            runtime_policy=self._runtime_policy(),
+            qualification_state=self._qualification_state(),
+            requirements=[{"id": "budget", "required": True}],
+        )
+
+        self.assertIn(
+            {
+                "type": "attribute_updates",
+                "updates": [{"key": "company", "value": "ABC Technologies"}],
+            },
+            actions,
+        )
+
     def test_unrequested_model_reminder_is_removed(self):
         decision = SimpleNamespace(
             qualification_updates=[],

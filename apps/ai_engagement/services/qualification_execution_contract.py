@@ -20,6 +20,15 @@ _ACK_LABEL = re.compile(
     r"^\s*(?:[-*•]\s*)?(?P<label>(?:final\s+)?(?:acknowledg(?:e)?ment|completion)\s+message|final\s+acknowledg(?:e)?ment)\s*(?::|=|->|→)\s*(?P<value>.+?)\s*$",
     re.I,
 )
+_ACK_HEADING_ONLY = re.compile(
+    r"^\s*(?:[-*•]\s*)?(?:final\s+)?(?:acknowledg(?:e)?ment|completion)\s+message\s*:?\s*$",
+    re.I,
+)
+_QUESTION_FRAGMENT_RE = re.compile(
+    r"^(?:what|which|where|who|how|is|are|do|does|did|have|has|can|could|would|will|"
+    r"tell|share|select|choose)\b",
+    re.I,
+)
 _LABEL_ONLY = re.compile(
     r"^\s*(?:[-*•]\s*)?(?:(?:final\s+)?(?:acknowledg(?:e)?ment|completion)\s+message|final\s+acknowledg(?:e)?ment|qualification\s+requirements?|attribute\s+mapped|stage\s+shifting)\s*:?\s*$",
     re.I,
@@ -166,7 +175,9 @@ def _config(*, organization, requirements: list[dict[str, Any]]) -> dict[str, An
     from apps.crm.models import AttributeDefinition, Stage
 
     info = OrgInfo.objects.filter(organization=organization).first()
-    raw = str(getattr(info, "engagement_instructions", "") or "")
+    engagement_raw = str(getattr(info, "engagement_instructions", "") or "")
+    qualification_raw = str(getattr(info, "qualification_requirements", "") or "")
+    raw = engagement_raw
     definitions = list(
         AttributeDefinition.objects.filter(organization=organization).values(
             "key",
@@ -179,7 +190,19 @@ def _config(*, organization, requirements: list[dict[str, Any]]) -> dict[str, An
 
     mappings: dict[str, str] = {}
     errors: list[dict[str, str]] = []
-    for line in section_lines(raw, "attribute_mapped"):
+
+    mapping_lines = list(section_lines(engagement_raw, "attribute_mapped"))
+    # Attribute mappings are configuration, not qualification prose. Accept
+    # explicit mapping-shaped lines from either AI Setup field so organizations
+    # do not silently lose CRM writes when they keep Q1 -> Attribute next to the
+    # questionnaire. Only lines that parse as mappings are admitted here.
+    for raw_line in qualification_raw.splitlines():
+        cleaned = raw_line.strip().lstrip("-*• ").strip()
+        if cleaned and _split_mapping(cleaned):
+            mapping_lines.append(cleaned)
+    mapping_lines = list(dict.fromkeys(mapping_lines))
+
+    for line in mapping_lines:
         pair = _split_mapping(line)
         if not pair:
             errors.append(
@@ -242,22 +265,51 @@ def _config(*, organization, requirements: list[dict[str, Any]]) -> dict[str, An
             mappings[requirement_id] = attribute_key
 
     acknowledgement_values: list[str] = []
-    for line in raw.splitlines():
-        match = _ACK_LABEL.match(line.strip())
-        if not match:
-            continue
-        value = _strip_quotes(match.group("value"))
-        if value and not _LABEL_ONLY.match(value):
-            acknowledgement_values.append(value)
-        else:
-            errors.append(
-                {
-                    "type": "configuration_error",
-                    "status": "failed",
-                    "code": "invalid_final_acknowledgement_value",
-                    "detail": match.group("label"),
-                }
-            )
+    for source_text in (engagement_raw, qualification_raw):
+        source_lines = source_text.splitlines()
+        for index, line in enumerate(source_lines):
+            stripped = line.strip()
+            match = _ACK_LABEL.match(stripped)
+            if match:
+                value = _strip_quotes(match.group("value"))
+                if value and not _LABEL_ONLY.match(value):
+                    acknowledgement_values.append(value)
+                else:
+                    errors.append(
+                        {
+                            "type": "configuration_error",
+                            "status": "failed",
+                            "code": "invalid_final_acknowledgement_value",
+                            "detail": match.group("label"),
+                        }
+                    )
+                continue
+
+            if not _ACK_HEADING_ONLY.match(stripped):
+                continue
+            # Also support the natural two-line UI format:
+            # Acknowledgment Message:
+            # "Thanks for sharing the details..."
+            value = ""
+            for following in source_lines[index + 1:]:
+                candidate = following.strip()
+                if not candidate:
+                    continue
+                if _LABEL_ONLY.match(candidate):
+                    break
+                value = _strip_quotes(candidate.lstrip("-*• ").strip())
+                break
+            if value:
+                acknowledgement_values.append(value)
+            else:
+                errors.append(
+                    {
+                        "type": "configuration_error",
+                        "status": "failed",
+                        "code": "invalid_final_acknowledgement_value",
+                        "detail": stripped.rstrip(":"),
+                    }
+                )
     acknowledgement_values = list(dict.fromkeys(acknowledgement_values))
     final_ack = acknowledgement_values[0] if len(acknowledgement_values) == 1 else None
     if len(acknowledgement_values) > 1:
@@ -964,7 +1016,7 @@ def _plan_from_reconciled(*, lead, source_message_id, snapshot):
 
 
 def _ack_from_message(message: str, plan: dict[str, Any]) -> str:
-    text = str(message or "").strip()
+    text = str(message or "").replace("\\n", "\n").strip()
     final_value = str(
         ((plan.get("final_configured_acknowledgement") or {}).get("value") or "")
     ).strip()
@@ -992,16 +1044,34 @@ def _ack_from_message(message: str, plan: dict[str, Any]) -> str:
             line = _strip_quotes(match.group("value"))
         if _LABEL_ONLY.match(line):
             continue
-        normalized = _norm(line)
-        if next_question and normalized == next_question:
+        normalized_line = _norm(line)
+        if next_rendered and re.match(r"^[a-z0-9][).:\-]\s+", normalized_line):
             continue
-        if (
-            option_values
-            and re.match(r"^[a-z0-9][).:\-]\s+", normalized)
-            and any(normalized.endswith(value) for value in option_values)
-        ):
-            continue
-        kept.append(line)
+
+        # During a backend-owned qualification turn the model contributes only
+        # the acknowledgement. Any model-authored/paraphrased question or option
+        # is discarded; the exact configured requirement is appended below.
+        fragments = re.split(r"(?<=[.!?])\s+", line)
+        for fragment in fragments:
+            fragment = fragment.strip()
+            if not fragment:
+                continue
+            normalized = _norm(fragment)
+            if next_question and normalized == next_question:
+                continue
+            if next_rendered and (
+                "?" in fragment
+                or _QUESTION_FRAGMENT_RE.match(fragment)
+                or re.match(r"^[a-z0-9][).:\-]\s+", normalized)
+            ):
+                continue
+            if (
+                option_values
+                and re.match(r"^[a-z0-9][).:\-]\s+", normalized)
+                and any(normalized.endswith(value) for value in option_values)
+            ):
+                continue
+            kept.append(fragment)
     acknowledgement = " ".join(kept).strip()
     return (
         ""
