@@ -19,7 +19,7 @@
     const labels = {pending:'Queued', retry_pending:'Retry scheduled', preparing:'Preparing audience', queued:'Queued', scheduled:'Scheduled', sending:'Sending', accepted:'Accepted by Meta', delivered:'Delivered', read:'Read', replied:'Replied', completed:'Completed', failed:'Failed', skipped:'Skipped', review:'Needs review', retrying:'Retry scheduled', cancelled:'Cancelled', draft:'Legacy draft'};
     const pill = (status) => `<span class="bc-pill" data-status="${h(status)}">${h(labels[status] || status)}</span>`;
     const options = (items, value, empty) => `${empty === undefined ? '' : `<option value="">${h(empty)}</option>`}${items.map((item) => `<option value="${h(item.id ?? item.key)}" ${(item.id ?? item.key) === value ? 'selected' : ''}>${h(item.name ?? item.label)}</option>`).join('')}`;
-    const state = {meta:null, report:null, rows:[], step:1, upload:null, audience:null, template:null, templates:[], bindings:{}, preview:null, previewVersion:0, busy:false, page:1, activePage:1, filters:{q:'',account:'',status:'',pipeline:'',stage:''}, selected:new Set(), all:false, requestVersion:0, confirm:null};
+    const state = {meta:null, report:null, rows:[], step:1, upload:null, audience:null, template:null, templates:[], bindings:{}, preview:null, previewVersion:0, busy:false, page:1, activePage:1, filters:{q:'',account:'',status:'',pipeline:'',stage:''}, selected:new Set(), all:false, requestVersion:0, confirm:null, crmSeed:false};
     let filterTimer, templateTimer, previewTimer;
 
     function safeURL(value) {
@@ -110,7 +110,7 @@
         const next = $('bc-next');
         next.textContent = state.busy ? 'Working…' : state.step === 4 ? $('bc-schedule').checked ? 'Schedule campaign' : 'Send now' : 'Continue';
         next.disabled = state.busy || (state.step === 1 && !state.upload) || (state.step === 3 && !state.template) || (state.step === 4 && (!state.preview?.ready || !$('bc-consent').checked || (!$('bc-exclusions-label').hidden && !$('bc-exclusions').checked)));
-        $('bc-back').hidden = state.step === 1;
+        $('bc-back').hidden = state.step === 1 || (state.crmSeed && state.step === 3);
     }
     function setStep(step) {
         state.step = step; builderError();
@@ -129,6 +129,28 @@
         if (state.busy) return;
         if (!composer.open) composer.showModal();
         setStep(state.step);
+    }
+    async function applyCRMSeed(seed) {
+        if (!seed?.upload || !seed?.audience) return;
+        state.crmSeed = true;
+        state.upload = seed.upload;
+        state.audience = seed.audience;
+        state.step = 3;
+
+        $('bc-mode').value = 'existing_only';
+        $('bc-update-existing').checked = false;
+        $('bc-move-existing').checked = false;
+        $('bc-pipeline').value = seed.pipeline_id || '';
+        setStages();
+        $('bc-account').value = seed.account_id || '';
+
+        $('bc-file-summary').innerHTML = `<div class="bc-file-ready"><strong>CRM selection</strong>${number(seed.audience.stats.eligible)} eligible of ${number(seed.upload.row_count)} selected leads</div>`;
+        $('bc-audience-review').innerHTML = `<div class="bc-mini-stats"><span><strong>${number(seed.audience.stats.eligible)}</strong> eligible</span><span><strong>${number(seed.upload.row_count-seed.audience.stats.eligible)}</strong> excluded</span></div>`;
+        $('bc-exclusions-label').hidden = seed.upload.row_count === seed.audience.stats.eligible;
+        $('bc-exclusions').checked = false;
+        $('bc-exclusions-text').textContent = `I acknowledge ${number(seed.upload.row_count-seed.audience.stats.eligible)} selected leads are excluded and only ${number(seed.audience.stats.eligible)} eligible recipients will be prepared.`;
+
+        await loadTemplates();
     }
     async function uploadFile(file) {
         if (state.busy || !file) return;
@@ -316,6 +338,7 @@
             $('bc-account').innerHTML=options(state.meta.accounts,'','Choose a sending number');
             $('bc-timezone').value=Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
             root.querySelector('[data-action="create"]')?.toggleAttribute('hidden',!state.meta.can_create);
+            if (config.seed?.source === 'crm_selection') await applyCRMSeed(config.seed);
             await loadWorkspace();
             if (config.open_composer) showComposer();
         } catch (error) { notice(error.message,true); root.setAttribute('aria-busy','false'); }
