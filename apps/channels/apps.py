@@ -16,6 +16,7 @@ class ChannelsConfig(AppConfig):
         from . import instagram_models  # noqa: F401
         from . import template_models  # noqa: F401
         from . import lead_source_signals  # noqa: F401
+        from . import campaign_models  # noqa: F401
 
         # Register channel background tasks in both web and worker startup.
         # Task bodies import providers lazily, so importing these modules is safe
@@ -23,6 +24,7 @@ class ChannelsConfig(AppConfig):
         from . import hosted_tasks  # noqa: F401
         from . import instagram_tasks  # noqa: F401
         from . import welcome_tasks  # noqa: F401
+        from . import campaign_tasks  # noqa: F401
 
         # Install the actual Meta template transport first. The failure layer
         # then wraps every transport, including templates, so exact Meta error
@@ -55,6 +57,7 @@ class ChannelsConfig(AppConfig):
         from services.channels.staging_outbound_safety import (
             install_staging_outbound_safety,
         )
+        from services.channels.campaign_events import install_campaign_webhook
 
         install_instagram_runtime()
         install_whatsapp_phone_registration()
@@ -71,6 +74,7 @@ class ChannelsConfig(AppConfig):
         # webhook signature verification and standard API message processing.
         install_whatsapp_coexistence_runtime()
         install_whatsapp_coexistence_partner_runtime()
+        install_campaign_webhook()
         # This must be the final transport wrapper. Production is unchanged;
         # staging can only send to explicitly allowlisted test recipients.
         install_staging_outbound_safety()

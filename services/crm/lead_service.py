@@ -47,10 +47,11 @@ def _schedule_new_lead_welcome(lead):
     )
 
 
-def create_lead(*, organization, pipeline, stage, name, phone, **extra_fields):
+def create_lead(*, organization, pipeline, stage, name, phone, send_welcome=True, **extra_fields):
     """
     Create a Lead. Raises DjangoValidationError (from Lead.clean()) if
     the phone is malformed or already exists for this organization.
+    Campaign preparation explicitly suppresses a second, unsolicited welcome.
     """
     lead = Lead(
         organization=organization,
@@ -67,7 +68,8 @@ def create_lead(*, organization, pipeline, stage, name, phone, **extra_fields):
         lead=lead,
         actor=None,
     )
-    _schedule_new_lead_welcome(lead)
+    if send_welcome:
+        _schedule_new_lead_welcome(lead)
 
     return lead
 
@@ -80,7 +82,7 @@ def _looks_like_phone_name(name, phone):
 
 
 def upsert_lead(*, organization, pipeline=None, stage=None, name, phone,
-                 email="", notes="", attributes=None, lead_source="system"):
+                 email="", notes="", attributes=None, lead_source="system", send_welcome=True):
     """
     Create a Lead if (organization, phone) doesn't exist yet, otherwise
     update the existing one. Used by the Lead Upsert API and future
@@ -197,7 +199,8 @@ def upsert_lead(*, organization, pipeline=None, stage=None, name, phone,
                 lead=lead,
                 actor=None,
             )
-            _schedule_new_lead_welcome(lead)
+            if send_welcome:
+                _schedule_new_lead_welcome(lead)
 
             return lead, True
 
