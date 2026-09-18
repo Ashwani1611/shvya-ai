@@ -66,7 +66,7 @@ class LeadReminderNotificationAck(models.Model):
         constraints = [
             models.UniqueConstraint(
                 fields=["reminder", "user"],
-                name="uniq_reminder_notification_ack_user",
+                name="uniq_reminder_ack_user",
             )
         ]
         indexes = [
