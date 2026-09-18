@@ -99,6 +99,52 @@ class IntentScoreTests(TestCase):
         self.assertEqual(result["components"]["urgency"]["score"], 3)
         self.assertEqual(result["components"]["commitment"]["score"], 1)
 
+    def test_answering_eighty_percent_of_required_questions_forces_minimum_eight(self):
+        self.lead.attributes = {
+            "_shvya_ai_qualification": {
+                "qualification_status": "in_progress",
+                "flow_snapshot": [
+                    {"id": f"q{i}", "required": True, "label": f"Question {i}"}
+                    for i in range(1, 6)
+                ],
+                "requirement_states": {
+                    "q1": {"status": "answered", "value": "A"},
+                    "q2": {"status": "answered", "value": "B"},
+                    "q3": {"status": "answered", "value": "C"},
+                    "q4": {"status": "answered", "value": "D"},
+                    "q5": {"status": "unknown"},
+                },
+            }
+        }
+        self.lead.save(update_fields=["attributes", "updated_at"])
+        self._inbound("A")
+        self._inbound("B")
+        self._inbound("C")
+        self._inbound("D")
+
+        result = compute_intent_score(lead=self.lead)
+
+        self.assertTrue(result["eighty_percent_override"])
+        self.assertEqual(result["questions_answered"], 4)
+        self.assertEqual(result["questions_required"], 5)
+        self.assertEqual(result["answered_ratio"], 0.8)
+        self.assertGreaterEqual(result["score"], 8)
+        self.assertTrue(result["meets_qualified_threshold"])
+
+    def test_just_exploring_has_zero_urgency(self):
+        self._inbound("I am just exploring options right now.")
+
+        result = compute_intent_score(lead=self.lead)
+
+        self.assertEqual(result["components"]["urgency"]["score"], 0)
+
+    def test_decision_maker_signal_counts_as_strong_commitment(self):
+        self._inbound("I am the final decision-maker for this purchase.")
+
+        result = compute_intent_score(lead=self.lead)
+
+        self.assertEqual(result["components"]["commitment"]["score"], 2)
+
     def test_score_persists_as_internal_lead_intelligence(self):
         self._inbound("I am interested in pricing.")
         result = persist_intent_score(lead=self.lead)
