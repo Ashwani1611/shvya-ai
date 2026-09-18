@@ -1,6 +1,7 @@
 import json
 from datetime import timedelta
 
+from django.http import Http404
 from django.test import RequestFactory, TestCase
 from django.utils import timezone
 
@@ -171,11 +172,11 @@ class ReminderNotificationTests(TestCase):
         foreign_request = self.factory.post("/dashboard/reminders/notifications/ack/")
         foreign_request.crm_user = foreign_user
         foreign_request.user = foreign_user
-        foreign_response = reminder_notification_ack.__wrapped__(
-            foreign_request,
-            reminder.pk,
-        )
-        self.assertEqual(foreign_response.status_code, 404)
+        with self.assertRaises(Http404):
+            reminder_notification_ack.__wrapped__(
+                foreign_request,
+                reminder.pk,
+            )
 
     def test_snooze_clears_ack_and_notification_returns_only_when_due_again(self):
         reminder = self._reminder()
