@@ -1,89 +1,477 @@
 (() => {
   'use strict';
+
   if (window.shvyaLeadPickers) return;
   window.shvyaLeadPickers = true;
-  const selector = '.lead-card select[name="stage"], #pipeline-select, #modal-root select[name="pipeline"], #modal-root select[name="stage"]';
+
+  // Keep this enhancement intentionally narrow. Import/edit modals keep their
+  // normal selects; only the CRM pipeline switcher and lead-card stage picker
+  // become the fast inline dropdown requested for daily navigation.
+  const selector = '.lead-card select[name="stage"], #pipeline-select';
+  const states = new WeakMap();
+  let openState = null;
+  let menu = null;
+  let uid = 0;
+
+  function optionLabel(option) {
+    return (option && option.textContent ? option.textContent : '').trim();
+  }
+
+  function selectedOption(select) {
+    return select.selectedOptions && select.selectedOptions[0]
+      ? select.selectedOptions[0]
+      : Array.from(select.options).find(option => option.value === select.value);
+  }
+
+  function kindFor(select) {
+    return select.id === 'pipeline-select' ? 'pipeline' : 'stage';
+  }
+
+  function labelFor(kind) {
+    return kind === 'pipeline' ? 'Switch pipeline' : 'Change lead stage';
+  }
+
+  function ensureMenu() {
+    if (menu) return menu;
+
+    menu = document.createElement('div');
+    menu.className = 'lead-picker-popover';
+    menu.hidden = true;
+    menu.setAttribute('role', 'listbox');
+    menu.addEventListener('keydown', onMenuKeydown);
+    document.body.appendChild(menu);
+    return menu;
+  }
+
+  function sync(state) {
+    if (!state || !state.select.isConnected) return;
+
+    const option = selectedOption(state.select);
+    state.value.textContent = optionLabel(option) || labelFor(state.kind);
+    state.trigger.disabled = state.select.disabled;
+    state.trigger.setAttribute('aria-disabled', String(state.select.disabled));
+
+    if (openState === state) {
+      renderMenu(state);
+      positionMenu(state);
+    }
+  }
+
+  function setPending(state, pending) {
+    if (!state || !state.trigger.isConnected) return;
+
+    state.pending = pending;
+    state.trigger.classList.toggle('is-loading', pending);
+    state.trigger.setAttribute('aria-busy', String(pending));
+    state.icon.className = pending
+      ? 'ti ti-loader-2 lead-picker-chevron lead-picker-spinner'
+      : 'ti ti-chevron-down lead-picker-chevron';
+  }
+
+  function flashError(state) {
+    if (!state || !state.trigger.isConnected) return;
+
+    state.trigger.classList.add('lead-picker-trigger-error');
+    state.trigger.title = 'Could not update. The previous selection was restored.';
+
+    window.clearTimeout(state.errorTimer);
+    state.errorTimer = window.setTimeout(() => {
+      if (!state.trigger.isConnected) return;
+      state.trigger.classList.remove('lead-picker-trigger-error');
+      state.trigger.removeAttribute('title');
+    }, 2400);
+  }
+
   function enhance(root = document) {
     root.querySelectorAll(selector).forEach(select => {
       if (select.dataset.applePicker) return;
+
+      const kind = kindFor(select);
       select.dataset.applePicker = '1';
-      const button = document.createElement('button');
-      button.type = 'button'; button.className = select.className + ' lead-picker-trigger';
-      button.setAttribute('aria-haspopup', 'dialog');
-      const title = select.name === 'stage' ? 'Choose a stage' : 'Choose a pipeline';
-      button.setAttribute('aria-label', title);
-      const sync = () => { button.textContent = select.selectedOptions[0]?.textContent || title; button.disabled = select.disabled; };
-      sync(); select.hidden = true; select.after(button);
-      select.addEventListener('change', sync);
-      new MutationObserver(sync).observe(select, {childList:true, subtree:true, attributes:true});
-      button.addEventListener('click', () => open(select, button, title, sync));
-    });
-  }
-  function open(select, trigger, title, sync) {
-    const original = select.value;
-    let chosen = original, pending = false, submitted = false;
-    const dialog = document.createElement('dialog');
-    dialog.className = 'lead-picker-dialog';
-    dialog.innerHTML = '<header><span class="lead-picker-eyebrow">WORKSPACE</span><h2></h2><p>Find the right place for your next step.</p></header><input type="search" placeholder="Search…" aria-label="Search choices"><div class="lead-picker-options" role="radiogroup"></div><p class="lead-picker-empty" hidden>No matching options.</p><p class="lead-picker-error" role="alert"></p><footer><button type="button" data-cancel>Cancel</button><button type="button" data-apply>Apply</button></footer>';
-    dialog.querySelector('h2').textContent = title;
-    const headingId = 'lead-picker-heading'; dialog.querySelector('h2').id = headingId;
-    dialog.setAttribute('aria-labelledby', headingId);
-    const search = dialog.querySelector('input'), list = dialog.querySelector('[role="radiogroup"]');
-    list.setAttribute('aria-label', title);
-    const apply = dialog.querySelector('[data-apply]'), cancel = dialog.querySelector('[data-cancel]');
-    const error = dialog.querySelector('[role="alert"]');
-    const options = Array.from(select.options).filter(o => !o.disabled && !(o.parentElement.tagName === 'OPTGROUP' && o.parentElement.disabled));
-    function draw() {
-      list.replaceChildren();
-      const visible = options.filter(o => o.textContent.toLocaleLowerCase().includes(search.value.toLocaleLowerCase()));
-      visible.forEach(o => {
-        const row = document.createElement('button'); row.type = 'button'; row.setAttribute('role', 'radio');
-        row.setAttribute('aria-checked', String(o.value === chosen)); row.dataset.value = o.value;
-        const label = document.createElement('span'); label.textContent = o.textContent;
-        const check = document.createElement('span'); check.textContent = o.value === chosen ? '✓' : ''; check.setAttribute('aria-hidden', 'true');
-        row.append(label, check); row.disabled = pending;
-        row.addEventListener('click', () => { chosen = o.value; draw(); Array.from(list.children).find(n => n.dataset.value === chosen)?.focus(); });
-        list.append(row);
+      select.hidden = true;
+
+      const trigger = document.createElement('button');
+      trigger.type = 'button';
+      trigger.className = 'lead-picker-trigger lead-picker-trigger--' + kind;
+      trigger.setAttribute('aria-haspopup', 'listbox');
+      trigger.setAttribute('aria-expanded', 'false');
+      trigger.setAttribute('aria-label', labelFor(kind));
+
+      const value = document.createElement('span');
+      value.className = 'lead-picker-value';
+
+      const icon = document.createElement('i');
+      icon.className = 'ti ti-chevron-down lead-picker-chevron';
+      icon.setAttribute('aria-hidden', 'true');
+
+      trigger.append(value, icon);
+
+      // The templates keep a native chevron for no-JS fallback. Hide only that
+      // legacy icon after enhancement so the Apple trigger never shows a
+      // doubled arrow.
+      const legacyIcon = select.nextElementSibling;
+      if (
+        legacyIcon &&
+        legacyIcon.classList &&
+        legacyIcon.classList.contains('ti-chevron-down')
+      ) {
+        legacyIcon.classList.add('lead-picker-legacy-chevron');
+        legacyIcon.setAttribute('aria-hidden', 'true');
+      }
+
+      select.after(trigger);
+
+      const state = {
+        select,
+        trigger,
+        value,
+        icon,
+        kind,
+        pending: false,
+        previousValue: null,
+        errorTimer: null,
+      };
+
+      states.set(select, state);
+      sync(state);
+
+      select.addEventListener('change', () => sync(state));
+
+      const observer = new MutationObserver(() => sync(state));
+      observer.observe(select, {
+        childList: true,
+        subtree: true,
+        attributes: true,
       });
-      dialog.querySelector('.lead-picker-empty').hidden = visible.length > 0;
-      apply.disabled = pending || chosen === original || !visible.some(o => o.value === chosen);
-    }
-    function cleanup() {
-      document.removeEventListener('htmx:beforeRequest', before);
-      document.removeEventListener('htmx:afterRequest', after);
-      dialog.remove(); if (trigger.isConnected) trigger.focus();
-    }
-    function relevant(event) { return event.detail?.elt === select || event.detail?.elt === select.form; }
-    function before(event) { if (submitted && relevant(event)) { pending = true; apply.textContent = 'Saving…'; cancel.disabled = true; search.disabled = true; draw(); } }
-    function after(event) {
-      if (!submitted || !relevant(event)) return;
-      pending = false;
-      if (event.detail.successful) { dialog.close(); }
-      else { select.value = original; sync(); submitted = false; apply.textContent = 'Apply'; cancel.disabled = false; search.disabled = false; error.textContent = 'Could not save. Your previous selection is unchanged. Please retry.'; draw(); }
-    }
-    document.addEventListener('htmx:beforeRequest', before);
-    document.addEventListener('htmx:afterRequest', after);
-    dialog.addEventListener('close', cleanup, {once:true});
-    dialog.addEventListener('cancel', e => { if (pending) e.preventDefault(); });
-    cancel.addEventListener('click', () => dialog.close());
-    dialog.addEventListener('click', e => { if (e.target === dialog && !pending) { const r=dialog.getBoundingClientRect(); if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom) dialog.close(); } });
-    search.addEventListener('input', draw);
-    dialog.addEventListener('keydown', e => {
-      if (pending || !['ArrowDown','ArrowUp','Home','End'].includes(e.key)) return;
-      const rows = Array.from(list.children); if (!rows.length) return;
-      if ((e.key === 'Home' || e.key === 'End') && e.target === search) return;
-      e.preventDefault(); const i = rows.indexOf(document.activeElement);
-      const next = e.key === 'Home' ? 0 : e.key === 'End' ? rows.length-1 : (i + (e.key === 'ArrowDown' ? 1 : -1) + rows.length) % rows.length;
-      rows[next].focus();
+
+      trigger.addEventListener('click', () => {
+        if (state.pending || state.select.disabled) return;
+        if (openState === state) closeMenu(true);
+        else openMenu(state, 'selected');
+      });
+
+      trigger.addEventListener('keydown', event => {
+        if (state.pending || state.select.disabled) return;
+        if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+          event.preventDefault();
+          openMenu(state, event.key === 'ArrowUp' ? 'last' : 'selected');
+        } else if (event.key === 'Escape' && openState === state) {
+          event.preventDefault();
+          closeMenu(true);
+        }
+      });
     });
-    apply.addEventListener('click', () => {
-      if (pending || apply.disabled || !select.isConnected) return;
-      error.textContent = ''; submitted = true; select.value = chosen; sync();
-      select.dispatchEvent(new Event('change', {bubbles:true}));
-      if (!pending) dialog.close();
-    });
-    document.body.append(dialog); draw(); dialog.showModal(); search.focus();
   }
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => enhance()); else enhance();
-  document.addEventListener('htmx:afterSwap', () => enhance());
+
+  function availableOptions(select) {
+    return Array.from(select.options).filter(option => {
+      const group = option.parentElement;
+      return !option.disabled && !(group && group.tagName === 'OPTGROUP' && group.disabled);
+    });
+  }
+
+  function renderMenu(state) {
+    const popover = ensureMenu();
+    popover.replaceChildren();
+    popover.dataset.kind = state.kind;
+    popover.setAttribute('aria-label', labelFor(state.kind));
+
+    availableOptions(state.select).forEach((option, index) => {
+      const row = document.createElement('button');
+      row.type = 'button';
+      row.className = 'lead-picker-option';
+      row.setAttribute('role', 'option');
+      row.setAttribute('aria-selected', String(option.value === state.select.value));
+      row.dataset.value = option.value;
+      row.id = 'lead-picker-option-' + state.kind + '-' + index + '-' + uid;
+
+      const label = document.createElement('span');
+      label.className = 'lead-picker-option-label';
+      label.textContent = optionLabel(option);
+
+      const check = document.createElement('span');
+      check.className = 'lead-picker-check';
+      check.setAttribute('aria-hidden', 'true');
+      check.textContent = option.value === state.select.value ? '✓' : '';
+
+      row.append(label, check);
+      row.addEventListener('click', () => choose(state, option.value));
+      popover.appendChild(row);
+    });
+  }
+
+  function openMenu(state, focusMode) {
+    if (!state.select.isConnected || !state.trigger.isConnected) return;
+
+    if (openState && openState !== state) closeMenu(false);
+
+    uid += 1;
+    openState = state;
+    renderMenu(state);
+
+    const popover = ensureMenu();
+    const menuId = 'lead-picker-popover-' + uid;
+    popover.id = menuId;
+    state.trigger.setAttribute('aria-controls', menuId);
+    state.trigger.setAttribute('aria-expanded', 'true');
+    state.trigger.classList.add('is-open');
+
+    popover.hidden = false;
+    popover.style.visibility = 'hidden';
+    positionMenu(state);
+    popover.style.visibility = 'visible';
+
+    window.requestAnimationFrame(() => {
+      if (openState !== state) return;
+
+      const rows = Array.from(popover.querySelectorAll('.lead-picker-option'));
+      if (!rows.length) return;
+
+      let target = rows.find(row => row.getAttribute('aria-selected') === 'true') || rows[0];
+      if (focusMode === 'last') target = rows[rows.length - 1];
+      target.focus({ preventScroll: true });
+    });
+  }
+
+  function closeMenu(restoreFocus) {
+    if (!openState) return;
+
+    const state = openState;
+    openState = null;
+
+    if (menu) {
+      menu.hidden = true;
+      menu.style.visibility = '';
+      menu.removeAttribute('id');
+    }
+
+    if (state.trigger.isConnected) {
+      state.trigger.setAttribute('aria-expanded', 'false');
+      state.trigger.removeAttribute('aria-controls');
+      state.trigger.classList.remove('is-open');
+      if (restoreFocus) state.trigger.focus({ preventScroll: true });
+    }
+  }
+
+  function positionMenu(state) {
+    if (!menu || menu.hidden || !state || !state.trigger.isConnected) return;
+
+    const rect = state.trigger.getBoundingClientRect();
+    const viewportWidth = document.documentElement.clientWidth || window.innerWidth;
+    const viewportHeight = document.documentElement.clientHeight || window.innerHeight;
+    const edge = 8;
+    const gap = 7;
+
+    const desired = state.kind === 'pipeline'
+      ? Math.max(rect.width, 220)
+      : Math.max(rect.width, 190);
+    const width = Math.max(160, Math.min(desired, viewportWidth - edge * 2));
+
+    menu.style.width = width + 'px';
+    menu.style.maxHeight = Math.max(140, Math.min(320, viewportHeight - 24)) + 'px';
+
+    let left = rect.left;
+    if (left + width > viewportWidth - edge) {
+      left = viewportWidth - width - edge;
+    }
+    left = Math.max(edge, left);
+
+    const height = menu.offsetHeight;
+    let top = rect.bottom + gap;
+
+    if (top + height > viewportHeight - edge) {
+      top = rect.top - height - gap;
+    }
+    top = Math.max(edge, Math.min(top, viewportHeight - height - edge));
+
+    menu.style.left = Math.round(left) + 'px';
+    menu.style.top = Math.round(top) + 'px';
+  }
+
+  function choose(state, value) {
+    if (!state || state.pending || state.select.disabled) return;
+
+    if (value === state.select.value) {
+      closeMenu(true);
+      return;
+    }
+
+    state.previousValue = state.select.value;
+    state.select.value = value;
+    sync(state);
+    closeMenu(false);
+
+    // Preserve the existing HTMX/form contracts. Both controls already know
+    // how to update their backend; this event simply removes the extra modal
+    // and Apply step.
+    state.select.dispatchEvent(new Event('change', { bubbles: true }));
+    state.trigger.focus({ preventScroll: true });
+  }
+
+  function stateForRequest(event) {
+    const elt = event.detail && event.detail.elt;
+    if (!elt) return null;
+
+    if (elt.matches && elt.matches(selector)) {
+      return states.get(elt) || null;
+    }
+
+    if (elt.querySelector) {
+      const select = elt.querySelector('select[data-apple-picker="1"]');
+      if (select && select.matches(selector)) return states.get(select) || null;
+    }
+
+    return null;
+  }
+
+  function syncPipelineContext(state) {
+    if (!state || state.kind !== 'pipeline') return;
+
+    const value = state.select.value;
+    const table = document.getElementById('lead-table-container');
+
+    if (table) {
+      const raw = table.getAttribute('hx-get');
+      if (raw) {
+        try {
+          const url = new URL(raw, window.location.href);
+          url.searchParams.set('pipeline', value);
+          url.searchParams.delete('stage');
+          table.setAttribute('hx-get', url.pathname + url.search);
+        } catch (error) {
+          // The visible switch already succeeded; URL bookkeeping is optional.
+        }
+      }
+    }
+
+    const filterButton = document.querySelector('.crm-premium-filter[hx-get]');
+    if (filterButton) {
+      const raw = filterButton.getAttribute('hx-get');
+      if (raw) {
+        try {
+          const url = new URL(raw, window.location.href);
+          url.searchParams.set('pipeline', value);
+          filterButton.setAttribute('hx-get', url.pathname + url.search);
+        } catch (error) {
+          // Keep the existing filter URL if it cannot be parsed.
+        }
+      }
+    }
+
+    if (/^https?:$/.test(window.location.protocol)) {
+      try {
+        const pageUrl = new URL(window.location.href);
+        pageUrl.searchParams.set('pipeline', value);
+        pageUrl.searchParams.delete('stage');
+        window.history.replaceState(
+          window.history.state,
+          '',
+          pageUrl.pathname + pageUrl.search + pageUrl.hash
+        );
+      } catch (error) {
+        // History updates are a convenience and must never break switching.
+      }
+    }
+  }
+
+  function onMenuKeydown(event) {
+    if (!openState || !menu) return;
+
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      closeMenu(true);
+      return;
+    }
+
+    if (event.key === 'Tab') {
+      closeMenu(false);
+      return;
+    }
+
+    if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+
+    const rows = Array.from(menu.querySelectorAll('.lead-picker-option'));
+    if (!rows.length) return;
+
+    event.preventDefault();
+    const index = rows.indexOf(document.activeElement);
+
+    let next;
+    if (event.key === 'Home') next = 0;
+    else if (event.key === 'End') next = rows.length - 1;
+    else if (event.key === 'ArrowDown') next = index < 0 ? 0 : (index + 1) % rows.length;
+    else next = index < 0 ? rows.length - 1 : (index - 1 + rows.length) % rows.length;
+
+    rows[next].focus({ preventScroll: true });
+  }
+
+  document.addEventListener('pointerdown', event => {
+    if (!openState || !menu) return;
+
+    const insideMenu = menu.contains(event.target);
+    const insideTrigger = openState.trigger.contains(event.target);
+    if (!insideMenu && !insideTrigger) closeMenu(false);
+  }, true);
+
+  document.addEventListener('htmx:beforeRequest', event => {
+    const state = stateForRequest(event);
+    if (!state) return;
+    setPending(state, true);
+  });
+
+  document.addEventListener('htmx:afterRequest', event => {
+    const state = stateForRequest(event);
+    if (!state) return;
+
+    const successful = Boolean(event.detail && event.detail.successful);
+    setPending(state, false);
+
+    if (successful) {
+      if (state.kind === 'pipeline') syncPipelineContext(state);
+      state.previousValue = null;
+      sync(state);
+      return;
+    }
+
+    if (state.previousValue !== null) {
+      state.select.value = state.previousValue;
+      state.previousValue = null;
+      sync(state);
+    }
+    flashError(state);
+  });
+
+  document.addEventListener('leadStageUpdated', event => {
+    const detail = event.detail || {};
+    if (!detail.lead_id || !detail.stage_id) return;
+
+    const card = document.getElementById('lead-card-' + detail.lead_id);
+    const select = card && card.querySelector('select[name="stage"]');
+    const state = select && states.get(select);
+    if (!state) return;
+
+    select.value = String(detail.stage_id);
+    state.previousValue = null;
+    setPending(state, false);
+    sync(state);
+  });
+
+  document.addEventListener('htmx:afterSwap', event => {
+    if (openState && !openState.select.isConnected) closeMenu(false);
+    enhance(event.detail && event.detail.target ? event.detail.target : document);
+  });
+
+  window.addEventListener('resize', () => {
+    if (openState) positionMenu(openState);
+  });
+
+  document.addEventListener('scroll', () => {
+    if (openState) positionMenu(openState);
+  }, true);
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => enhance());
+  } else {
+    enhance();
+  }
 })();
