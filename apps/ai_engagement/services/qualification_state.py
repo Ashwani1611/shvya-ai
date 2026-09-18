@@ -642,6 +642,27 @@ def _multiple_places_option(text: str, options: list[dict[str, str]]) -> str | N
     return multiple_value if multiple_value and matched >= 2 else None
 
 
+def _option_phrase_key(value: str) -> str:
+    """Conservatively normalize harmless singular/plural wording differences.
+
+    This is intentionally not fuzzy matching. It only normalizes punctuation and
+    common English inflections so replies such as "slow reply" can match the
+    configured option "Slow replies" without allowing unrelated text to bind to
+    an option.
+    """
+    tokens = re.findall(r"[a-z0-9]+", str(value or "").casefold())
+    normalized: list[str] = []
+    for token in tokens:
+        if len(token) > 4 and token.endswith("ies"):
+            token = token[:-3] + "y"
+        elif len(token) > 4 and token.endswith("es") and not token.endswith(("sses", "uses")):
+            token = token[:-1]
+        elif len(token) > 3 and token.endswith("s") and not token.endswith(("ss", "us", "is")):
+            token = token[:-1]
+        normalized.append(token)
+    return " ".join(normalized)
+
+
 def _match_option_answer(text: str, options: list[dict[str, str]]) -> str | None:
     normalized = " ".join(str(text or "").strip().casefold().split()).strip(" .,:;-)('")
     if not normalized:
@@ -662,6 +683,18 @@ def _match_option_answer(text: str, options: list[dict[str, str]]) -> str | None
             aliases.add(chr(96 + index))
         if normalized in aliases or stripped in aliases:
             return value
+
+    # Exact normalized phrase matching after conservative inflection handling.
+    # Require a unique option match; never guess between two authored options.
+    phrase_key = _option_phrase_key(stripped)
+    if phrase_key:
+        phrase_matches = [
+            str(option.get("value") or "").strip()
+            for option in options
+            if _option_phrase_key(str(option.get("value") or "")) == phrase_key
+        ]
+        if len(phrase_matches) == 1:
+            return phrase_matches[0]
 
     numeric_matches = _numeric_option_matches(normalized, options)
     if len(numeric_matches) == 1:
