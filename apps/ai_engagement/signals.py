@@ -90,7 +90,7 @@ def maintain_qualification_state_from_whatsapp(sender, instance, **kwargs):
             "pipeline",
             "stage",
         )
-        .filter(pk=instance.lead_id)
+        .filter(pk=instance.lead_id, organization_id=instance.organization_id)
         .first()
     )
     if lead is None:
@@ -98,6 +98,8 @@ def maintain_qualification_state_from_whatsapp(sender, instance, **kwargs):
 
     if instance.direction == WhatsAppMessage.Direction.INBOUND:
         ensure_state(lead)
+        from apps.ai_engagement.services.lead_intelligence import record_explicit_opt_out
+        record_explicit_opt_out(lead=lead, source_message=instance)
         return
 
     if instance.status != WhatsAppMessage.Status.QUEUED:

@@ -64,6 +64,18 @@ def classify_context(*, organization, lead, context) -> IntentDecision | None:
     if not message:
         return None
 
+    from apps.ai_engagement.services import conversation_policy_runtime as policy_runtime
+    turn = policy_runtime._TURN.get()
+    if (isinstance(turn, dict) and str(turn.get("organization_id")) == str(organization.pk)
+            and str(turn.get("lead_id")) == str(lead.pk)
+            and str(turn.get("source_message_id")) == str(source_message_id)
+            and isinstance(turn.get("intent_decision"), IntentDecision)):
+        return turn["intent_decision"]
+    observed = current_intent_decision(organization_id=organization.pk,
+                                      lead_id=lead.pk, source_message_id=source_message_id)
+    if isinstance(observed, IntentDecision):
+        return observed
+
     from apps.ai_engagement.services.organization_profile import (
         compile_org_ai_profile_from_context,
     )

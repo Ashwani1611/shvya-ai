@@ -37,6 +37,7 @@ class ConversationPolicyContext:
     capabilities: frozenset[str] = frozenset()
     organization_rules: str = ""
     channel: str | None = None
+    continue_after_answer: bool = False
 
 
 @dataclass(frozen=True)
@@ -231,7 +232,7 @@ class ConversationPolicyEngine:
             )
 
         if asks_question:
-            if accepted and next_requirement_id:
+            if (accepted or context.continue_after_answer) and next_requirement_id:
                 return self._decision(
                     ConversationPolicyOutcome.ANSWER_THEN_QUALIFY,
                     "DIRECT_QUESTION_AFTER_ACCEPTED_QUALIFICATION",

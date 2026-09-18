@@ -122,6 +122,21 @@ def _classify_turn(
     )
     if source is None:
         return None
+    payload = source.raw_payload if isinstance(source.raw_payload, dict) else {}
+    processing = payload.get("shvya_ai_processing")
+    if isinstance(processing, dict) and processing.get("processed") is True:
+        # The canonical finalizer owns duplicate handling. Replayed accepted
+        # messages need no new intent model call before that existing check.
+        return None
+    if _turn_matches(organization=organization, lead=lead, source_message_id=source_message_id):
+        observed = (_TURN.get() or {}).get("intent_decision")
+        if isinstance(observed, IntentDecision):
+            return observed
+    from apps.ai_engagement.services.intent_runtime import current_intent_decision
+    observed = current_intent_decision(organization_id=organization.pk, lead_id=lead.pk,
+                                      source_message_id=source_message_id)
+    if isinstance(observed, IntentDecision):
+        return observed
     started = time.perf_counter()
     decision = IntentEngine().classify(
         organization=organization,
@@ -148,14 +163,15 @@ def _turn_matches(*, organization, lead, source_message_id=None) -> bool:
     return True
 
 
-def _capabilities() -> frozenset[str]:
+def _capabilities(organization=None) -> frozenset[str]:
     # SHVYA already has a validated reminder action used by the existing call-request
     # runtime. No canonical booking executor exists in the engagement action contract,
     # so booking is deliberately not advertised here.
     try:
-        from apps.ai_engagement.services.crm_actions import ALLOWED_ACTION_TYPES
+        from apps.ai_engagement.services.organization_runtime_profile import configured_action_types
 
-        return frozenset({"call"}) if "create_reminder" in ALLOWED_ACTION_TYPES else frozenset()
+        allowed = configured_action_types(getattr(organization, "settings", {}))
+        return frozenset({"call"}) if "create_reminder" in allowed else frozenset()
     except Exception:
         return frozenset()
 
@@ -197,7 +213,12 @@ def _build_policy_context(*, organization, lead, turn: dict[str, Any]):
         extracted_facts=tuple(intent.facts),
         knowledge_available=turn.get("knowledge_available"),
         ai_allowed=True,
-        capabilities=_capabilities(),
+        capabilities=_capabilities(organization),
+        continue_after_answer=(
+            isinstance(organization.settings, dict)
+            and isinstance(organization.settings.get("ai_qualification"), dict)
+            and organization.settings["ai_qualification"].get("continue_after_answer", False) is True
+        ),
         organization_rules=str(turn.get("organization_rules") or ""),
         channel=str(turn.get("channel") or "") or None,
     )

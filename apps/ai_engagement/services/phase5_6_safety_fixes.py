@@ -28,21 +28,6 @@ _WORKING_HOURS_RE = re.compile(
     re.I,
 )
 
-_RISKY_REPLY_RE = re.compile(
-    r"(?:\d|₹|\$|€|£|%|https?://|www\.|\b(?:price|pricing|cost|fee|fees|refund|"
-    r"policy|discount|offer|available|availability|slot|appointment|address|location|"
-    r"open|close|hours?|timing|guarantee|promise|booked|scheduled|confirmed|callback|"
-    r"call\s+you)\b)",
-    re.I,
-)
-
-_LITERAL_RE = re.compile(
-    r"(?:https?://\S+|www\.\S+|[\w.+-]+@[\w.-]+\.\w+|"
-    r"(?:₹|\$|€|£)\s*\d[\d,]*(?:\.\d+)?(?:\s*/\s*[A-Za-z]+)?|"
-    r"\b\d{1,4}(?::\d{2})?\s*(?:am|pm)?\b|\b\d+(?:\.\d+)?%\b)",
-    re.I,
-)
-
 
 def _authority(source_type: Any) -> int:
     return _SOURCE_AUTHORITY.get(str(source_type or "").strip().casefold(), 50)
@@ -454,70 +439,16 @@ def _install_live_availability_guard() -> None:
     resolver_cls.resolve = resolve
 
 
-def _normalized(value: Any) -> str:
-    return " ".join(str(value or "").casefold().split())
-
-
-def _literal_set(value: Any) -> set[str]:
-    return {
-        _normalized(match.group(0)).strip(".,;:!?()[]{}")
-        for match in _LITERAL_RE.finditer(str(value or ""))
-        if _normalized(match.group(0)).strip(".,;:!?()[]{}")
-    }
-
-
 def _extractive_evidence_match(decision, resolution) -> bool:
-    if resolution is None or not getattr(resolution, "verified", False):
-        return False
-    if getattr(decision, "crm_actions", None) or getattr(decision, "qualification_updates", None):
-        return False
-    if getattr(decision, "file_document_id", None) is not None:
-        return False
-    reply = _normalized(getattr(decision, "message", ""))
-    if not reply:
-        return False
-    contents = [
-        str(getattr(item, "content", "") or "").strip()
-        for item in getattr(resolution, "evidence", ()) or ()
-        if str(getattr(item, "content", "") or "").strip()
-    ]
-    if not contents:
-        return False
-    for content in contents:
-        normalized_content = _normalized(content)
-        if len(normalized_content) >= 4 and (
-            normalized_content in reply or reply in normalized_content
-        ):
-            return True
-    evidence_literals = set()
-    for content in contents:
-        evidence_literals.update(_literal_set(content))
-    reply_literals = _literal_set(getattr(decision, "message", ""))
-    if reply_literals and reply_literals.issubset(evidence_literals):
-        question_type = str(getattr(resolution, "question_type", "") or "")
-        return question_type in {"pricing", "working_hours"}
-    return False
+    from apps.ai_engagement.services.grounding_safety import exact_evidence_reply
+
+    return exact_evidence_reply(decision, resolution, allow_price_template=True)
 
 
 def _low_risk_normal_reply(decision, resolution) -> bool:
-    if str(getattr(decision, "reason_code", "") or "") != "NORMAL_CONVERSATION":
-        return False
-    if getattr(decision, "crm_actions", None) or getattr(decision, "qualification_updates", None):
-        return False
-    if getattr(decision, "file_document_id", None) is not None:
-        return False
-    if resolution is not None:
-        if getattr(resolution, "sensitive", False):
-            return False
-        if str(getattr(resolution, "question_type", "") or "") not in {
-            "",
-            "not_evidence_bound",
-        }:
-            return False
-    message = str(getattr(decision, "message", "") or "").strip()
-    if not message or len(message) > 500:
-        return False
-    return not bool(_RISKY_REPLY_RE.search(message))
+    from apps.ai_engagement.services.grounding_safety import safe_acknowledgement
+
+    return safe_acknowledgement(decision, resolution)
 
 
 def _install_grounding_cost_guard() -> None:
@@ -541,6 +472,14 @@ def _install_grounding_cost_guard() -> None:
             )
         except Exception:
             resolution = None
+
+        from apps.ai_engagement.services.response_composer import configured_forbidden_claims
+        from apps.ai_engagement.services.grounding_safety import normalized_text
+        forbidden = configured_forbidden_claims(getattr(state.get("organization"), "settings", {}))
+        reply = normalized_text(getattr(decision, "message", ""))
+        if any(normalized_text(claim) in reply for claim in forbidden):
+            return {"decision": evidence_graph._safe_unknown_decision(decision),
+                    "grounding_approved": False, "grounding_validation_path": "forbidden_claim"}
 
         if _extractive_evidence_match(decision, resolution):
             return {

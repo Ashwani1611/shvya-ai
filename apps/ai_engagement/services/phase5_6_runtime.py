@@ -132,9 +132,10 @@ def _source_question(*, organization, lead, turn: Mapping[str, Any]) -> str:
 def _facts_for_memory(decision: IntentDecision | None) -> list[Mapping[str, Any]]:
     if not isinstance(decision, IntentDecision):
         return []
-    facts = [item for item in decision.facts if isinstance(item, Mapping)]
+    facts = [item for item in decision.facts if isinstance(item, Mapping)
+             and isinstance(item.get("value"), (str, int, float, bool))]
     candidate = decision.qualification_candidate
-    if isinstance(candidate, Mapping):
+    if isinstance(candidate, Mapping) and isinstance(candidate.get("value"), (str, int, float, bool)):
         candidate_key = (
             str(candidate.get("key") or ""),
             str(candidate.get("requirement_id") or ""),
@@ -151,6 +152,61 @@ def _facts_for_memory(decision: IntentDecision | None) -> list[Mapping[str, Any]
         if candidate_key not in seen:
             facts.append(candidate)
     return facts
+
+
+def refine_evidence_from_context(*, context, resolution):
+    """Adopt existing semantic/hybrid hits after validating their real owners.
+
+    The canonical context builder already performs metered semantic retrieval
+    with keyword fallback. Reuse those hits; never perform another provider call
+    here. Live appointment availability is deliberately excluded.
+    """
+    if resolution is None or resolution.question_type in {"appointment_availability", "not_evidence_bound"}:
+        return resolution
+    if resolution.category not in {GroundingCategory.NO_VERIFIED_EVIDENCE, GroundingCategory.KNOWLEDGE_BASE}:
+        return resolution
+    org_id = (context.organization or {}).get("id")
+    lead_id = (context.lead or {}).get("id")
+    active = _ACTIVE_EVIDENCE.get()
+    if (not isinstance(active, dict) or str(active.get("organization_id")) != str(org_id)
+            or str(active.get("lead_id")) != str(lead_id)):
+        return resolution
+    from apps.ai_engagement.models import Chunk
+    from apps.ai_engagement.services.evidence_resolver import EvidenceItem
+    candidates = []
+    for item in (context.knowledge or [])[:20]:
+        if not isinstance(item, dict):
+            continue
+        try:
+            chunk_id, score = int(item.get("chunk_id")), float(item.get("similarity") or 0)
+        except (ValueError, TypeError):
+            continue
+        if 0.38 <= score <= 1.0:
+            candidates.append((chunk_id, score))
+    if not candidates:
+        return resolution
+    chunks = {item.pk: item for item in Chunk.objects.select_related("document").filter(
+        pk__in=[item[0] for item in candidates], organization_id=org_id,
+        document__organization_id=org_id, is_active=True, document__is_active=True,
+        document__processing_status="completed")}
+    evidence = []
+    for chunk_id, score in candidates:
+        chunk = chunks.get(chunk_id)
+        if chunk is not None:
+            evidence.append(EvidenceItem(source_id=f"document:{chunk.document_id}:chunk:{chunk.pk}",
+                source_type="knowledge_chunk", content=chunk.content[:4000], score=score,
+                metadata={"document_id": chunk.document_id, "chunk_id": chunk.pk,
+                          "retrieval_path": "canonical_semantic_hybrid"}))
+        if len(evidence) >= 4:
+            break
+    if not evidence:
+        return resolution
+    refined = replace(resolution, category=GroundingCategory.KNOWLEDGE_BASE,
+                      information_class=InformationClass.DYNAMIC_RETRIEVED,
+                      verified=True, evidence=tuple(evidence), controlled_fallback="")
+    _ACTIVE_EVIDENCE.set({**active, "resolution": refined})
+    _record("grounding", refined.trace_dict())
+    return refined
 
 
 def _fail_closed_resolution(decision: IntentDecision | None) -> EvidenceResolution:
@@ -251,6 +307,8 @@ def _patch_memory_boundary() -> None:
             return result
         decision = turn.get("intent_decision")
         facts = _facts_for_memory(decision if isinstance(decision, IntentDecision) else None)
+        facts = [{**item, "source_type": "phase2_intent", "source_message_id": str(source_message_id)}
+                 for item in facts if isinstance(item.get("value"), (str, int, float, bool))]
         started = time.perf_counter()
         try:
             if facts:
@@ -357,6 +415,8 @@ def _patch_engagement() -> None:
                 "organization_id": str(organization.id),
                 "lead_id": str(lead.id),
                 "snapshot": memory,
+                "settings": dict(organization.settings or {}),
+                "intent_decision": intent,
             }
         )
         try:
@@ -367,6 +427,7 @@ def _patch_engagement() -> None:
                 **kwargs,
             )
 
+            resolution = current_evidence_resolution(organization_id=organization.pk, lead_id=lead.pk) or resolution
             if (
                 resolution.sensitive
                 and not resolution.verified
@@ -414,9 +475,27 @@ def _patch_engagement() -> None:
         except (TypeError, ValueError, json.JSONDecodeError):
             return raw
         if evidence is not None:
+            evidence = refine_evidence_from_context(context=context, resolution=evidence)
             payload["grounding"] = evidence.prompt_dict()
         if memory is not None:
             payload["structured_lead_memory"] = memory_service.prompt_payload(memory)
+        from apps.ai_engagement.services.response_composer import build_response_plan
+        from apps.ai_engagement.services.post_state_finalization_guard import _FINAL_LANGUAGE_ONLY
+        active = _ACTIVE_MEMORY.get() or {}
+        plan = build_response_plan(
+            payload=payload, organization_id=(context.organization or {}).get("id"),
+            lead_id=(context.lead or {}).get("id"),
+            settings=active.get("settings") if memory is not None else {},
+            intent_decision=active.get("intent_decision") if memory is not None else None,
+            final_composition=_FINAL_LANGUAGE_ONLY.get(),
+        )
+        payload["response_plan"] = {**(payload.get("response_plan") or {}), **plan.as_dict()}
+        payload["long_term_memory"] = {
+            "conversation_summary": payload.get("conversation_summary"),
+            "reported_events": (memory or {}).get("events") or [],
+            "authority": "customer_reports_are_not_system_confirmations",
+        }
+        _record("response_plan", plan.trace_dict())
         return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
 
     @wraps(current_instructions)
@@ -424,7 +503,8 @@ def _patch_engagement() -> None:
         base = current_instructions(self, context=context, profile=profile)
         if _GROUNDING_INSTRUCTIONS in base:
             return base
-        return f"{base}\n\n{_GROUNDING_INSTRUCTIONS}"
+        from apps.ai_engagement.services.response_composer import COMPOSER_INSTRUCTIONS
+        return f"{base}\n\n{_GROUNDING_INSTRUCTIONS}\n\n{COMPOSER_INSTRUCTIONS}"
 
     EngagementService.engage = engage
     EngagementService._build_input = build_input

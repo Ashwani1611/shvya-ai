@@ -77,6 +77,8 @@ _AI_CONFIGURATION_KEYS = (
     "ai_config",
     "ai_configuration",
     "runtime_options",
+    "ai_objections", "ai_signals", "ai_memory", "ai_response",
+    "ai_qualification", "ai_action_permissions",
 )
 
 
@@ -225,6 +227,21 @@ class OrganizationAIRuntimeProfile:
         return requirements if isinstance(requirements, list) else []
 
 
+def configured_action_types(settings) -> frozenset[str]:
+    """Intersect tenant-authored permissions with the canonical action schema."""
+    from apps.ai_engagement.services.crm_actions import ALLOWED_ACTION_TYPES
+
+    settings = settings if isinstance(settings, dict) else {}
+    permissions = settings.get("ai_action_permissions", {})
+    permissions = permissions if isinstance(permissions, dict) else {}
+    requested = permissions.get("allowed_action_types")
+    if requested is None:
+        return frozenset(ALLOWED_ACTION_TYPES)
+    if not isinstance(requested, list):
+        return frozenset()
+    return frozenset(ALLOWED_ACTION_TYPES).intersection(item for item in requested if isinstance(item, str))
+
+
 class OrganizationAIRuntimeProfileBuilder:
     """Load only bounded configuration for one deterministically resolved tenant."""
 
@@ -236,7 +253,6 @@ class OrganizationAIRuntimeProfileBuilder:
         from apps.ai_engagement.models import Document, OrgInfo
         from apps.channels.models import WhatsAppAccount
         from apps.crm.models import AttributeDefinition, Pipeline, Stage
-        from apps.ai_engagement.services.crm_actions import ALLOWED_ACTION_TYPES
 
         org_info = (
             OrgInfo.objects.filter(organization_id=organization.id)
@@ -433,15 +449,16 @@ class OrganizationAIRuntimeProfileBuilder:
         }
         qualification = _bounded_safe_copy(compiled.get("qualification") or {})
         business_facts = _selected_settings(raw_settings, _BUSINESS_FACT_KEYS)
+        allowed_actions = configured_action_types(raw_settings)
         booking_handoff = {
             "configured": _selected_settings(raw_settings, _BOOKING_HANDOFF_KEYS),
             "capabilities": {
-                "call_handoff": "create_reminder" in ALLOWED_ACTION_TYPES,
+                "call_handoff": "create_reminder" in allowed_actions,
                 "booking_executor": False,
             },
         }
         crm_capabilities = {
-            "allowed_action_types": sorted(ALLOWED_ACTION_TYPES),
+            "allowed_action_types": sorted(allowed_actions),
             "attributes": attributes,
             "pipelines": pipelines,
         }

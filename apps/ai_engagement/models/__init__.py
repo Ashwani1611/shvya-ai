@@ -12,3 +12,6 @@ from .credit import (
     AICreditWallet as AICreditWallet,
 )
 from .trace import AITrace as AITrace
+
+from .action_receipt import AIActionReceipt as AIActionReceipt
+from .lead_signal import LeadSignal as LeadSignal
