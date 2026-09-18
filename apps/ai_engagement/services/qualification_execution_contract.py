@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+from datetime import timedelta
 from copy import deepcopy
 from dataclasses import replace
 from functools import wraps
@@ -380,6 +381,112 @@ def _config(*, organization, requirements: list[dict[str, Any]]) -> dict[str, An
         "reminder_rules": section_lines(engagement_raw, "reminders"),
         "errors": errors,
     }
+
+
+def _mapping_keys(config: dict[str, Any], requirement_id: str) -> list[str]:
+    targets = (config.get("mapping_targets") or {}).get(str(requirement_id))
+    if isinstance(targets, list):
+        return [str(item).strip() for item in targets if str(item or "").strip()]
+    primary = str((config.get("mappings") or {}).get(str(requirement_id)) or "").strip()
+    return [primary] if primary else []
+
+
+def _completion_target(*, lead, state: dict[str, Any], config: dict[str, Any]):
+    """Resolve the qualification-completion stage deterministically.
+
+    An explicit Stage Shifting completion rule wins. Otherwise use the
+    qualification state's validated same-pipeline Qualified stage, which is
+    already tenant/pipeline scoped by qualification_state._qualified_stage().
+    """
+    target = config.get("completion_stage")
+    if isinstance(target, dict) and target.get("id") is not None:
+        return target
+
+    stage_id = str(state.get("qualified_stage_id") or "").strip()
+    if not stage_id:
+        return None
+
+    from apps.crm.models import Stage
+
+    return (
+        Stage.objects.filter(
+            id=stage_id,
+            pipeline__organization=lead.organization,
+            pipeline__is_active=True,
+            is_active=True,
+        )
+        .values("id", "name", "pipeline_id", "pipeline__name")
+        .first()
+    )
+
+
+_COMPLETION_REMINDER_SCOPE_RE = re.compile(
+    r"\b(?:qualification\s+(?:is\s+)?(?:complete|completed)|"
+    r"after\s+(?:all|every)\s+(?:required\s+)?(?:qualification\s+)?"
+    r"(?:questions?|requirements?|answers?)\s+(?:are\s+)?(?:answered|complete|completed)|"
+    r"when\s+(?:all|every)\s+(?:required\s+)?(?:qualification\s+)?"
+    r"(?:questions?|requirements?|answers?)\s+(?:are\s+)?(?:answered|complete|completed))\b",
+    re.I,
+)
+_REMINDER_CREATE_RE = re.compile(
+    r"\b(?:create|set|add|schedule)\b.{0,40}\breminder\b|"
+    r"\breminder\b.{0,40}\b(?:create|set|add|schedule)\b",
+    re.I,
+)
+_REMINDER_RELATIVE_RE = re.compile(
+    r"\b(?:in|after)\s+(?P<amount>\d{1,3})\s*"
+    r"(?P<unit>minutes?|mins?|hours?|hrs?|days?|weeks?)\b",
+    re.I,
+)
+
+
+def _configured_completion_reminders(config: dict[str, Any]) -> list[dict[str, Any]]:
+    """Build completion reminders only from explicit authored reminder rules.
+
+    No reminder is invented merely because qualification completed. A rule must
+    explicitly scope itself to qualification completion and include a resolvable
+    due time.
+    """
+    from apps.ai_engagement.services.reminder_time_runtime import parse_grounded_due_at
+
+    actions: list[dict[str, Any]] = []
+    for rule in config.get("reminder_rules") or []:
+        text = str(rule or "").strip()
+        if not text or not _COMPLETION_REMINDER_SCOPE_RE.search(text):
+            continue
+        if not _REMINDER_CREATE_RE.search(text):
+            continue
+
+        due_at = parse_grounded_due_at(text)
+        if due_at is None:
+            relative = _REMINDER_RELATIVE_RE.search(text)
+            if relative:
+                amount = int(relative.group("amount"))
+                unit = relative.group("unit").casefold()
+                if unit.startswith(("min", "minute")):
+                    delta = timedelta(minutes=amount)
+                elif unit.startswith(("hr", "hour")):
+                    delta = timedelta(hours=amount)
+                elif unit.startswith("week"):
+                    delta = timedelta(weeks=amount)
+                else:
+                    delta = timedelta(days=amount)
+                due_at = (timezone.now() + delta).isoformat()
+        if due_at is None:
+            continue
+
+        actions.append(
+            {
+                "type": "create_reminder",
+                "title": "Follow up with qualified lead",
+                "description": "Configured follow-up reminder after qualification completion.",
+                "due_at": due_at,
+            }
+        )
+        # One completion reminder per qualification is sufficient and avoids
+        # duplicate reminders from equivalent authored lines.
+        break
+    return actions
 
 
 def _render_requirement(requirement: dict[str, Any] | None) -> str:
