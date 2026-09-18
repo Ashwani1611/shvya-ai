@@ -177,7 +177,8 @@ def _enhanced_controlled_actions(original_builder):
 
         pipeline = context.pipeline if isinstance(context.pipeline, dict) else {}
         available_stages = pipeline.get("available_stages") or []
-        current_stage = context.stage if isinstance(context.stage, dict) else {}
+        raw_stage = getattr(context, "stage", {})
+        current_stage = raw_stage if isinstance(raw_stage, dict) else {}
         current_stage_id = str(current_stage.get("id") or "")
         by_id = {
             str(item.get("id")): item
