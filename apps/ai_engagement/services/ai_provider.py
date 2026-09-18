@@ -23,6 +23,8 @@ from apps.ai_engagement.services.credits import (
     AICreditUnavailableError,
 )
 
+logger = logging.getLogger(__name__)
+
 
 logger = logging.getLogger(__name__)
 

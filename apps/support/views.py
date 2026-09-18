@@ -27,7 +27,9 @@ from .policy import safe_csv
 
 def private(response):
     response["Cache-Control"] = "no-store, private"
-    response["Referrer-Policy"] = "no-referrer"
+    # Native POST forms need same-origin Origin/Referer headers for Django CSRF.
+    # Still suppress referrers to other origins, including shared-ticket URLs.
+    response["Referrer-Policy"] = "same-origin"
     response["X-Robots-Tag"] = "noindex, nofollow, noarchive"
     return response
 
