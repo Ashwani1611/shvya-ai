@@ -1,1 +1,27 @@
-{% load static %}<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>{% block title %}SHVYA AI{% endblock %}</title><meta name="description" content="Shvya AI connects sales cadence, AI playbooks, WhatsApp conversations and workflows for Indian businesses."><link rel="icon" href="{% static 'marketing/dark/logo.png' %}"><link rel="stylesheet" href="{% static 'marketing/dark/site.css' %}"><link rel="stylesheet" href="{% static 'marketing/dark/production.css' %}">{% block extra_head %}{% endblock %}</head><body>{% block content %}{% endblock %}<script src="{% static 'marketing/dark/interactions.js' %}" defer></script><script src="{% static 'marketing/opportunity.js' %}" defer></script>{% block extra_scripts %}{% endblock %}</body></html>
+{% load static %}<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#f5f5f7" media="(prefers-color-scheme: light)" data-marketing-theme-color>
+  <meta name="theme-color" content="#080909" media="(prefers-color-scheme: dark)" data-marketing-theme-color>
+  <title>{% block title %}SHVYA AI{% endblock %}</title>
+  <meta name="description" content="Shvya AI connects sales cadence, AI playbooks, WhatsApp conversations and workflows for Indian businesses.">
+  <link rel="icon" href="{% static 'marketing/dark/logo.png' %}">
+  <link rel="stylesheet" href="{% static 'marketing/dark/site.css' %}">
+  <link rel="stylesheet" href="{% static 'marketing/dark/production.css' %}">
+  {% block extra_head %}{% endblock %}
+  <link rel="stylesheet" href="{% static 'marketing/theme.css' %}">
+  {# The media query also supplies the correct device appearance without JavaScript. #}
+  <link rel="stylesheet" id="marketing-day-theme" href="{% static 'marketing/day.css' %}" media="(prefers-color-scheme: light)">
+  {# Deliberately not deferred: resolve saved appearance before rendering page content. #}
+  <script src="{% static 'marketing/theme.js' %}"></script>
+</head>
+<body class="marketing-site">
+  {% block content %}{% endblock %}
+  <script src="{% static 'marketing/dark/interactions.js' %}" defer></script>
+  <script src="{% static 'marketing/opportunity.js' %}" defer></script>
+  {% block extra_scripts %}{% endblock %}
+</body>
+</html>
