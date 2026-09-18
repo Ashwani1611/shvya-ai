@@ -182,6 +182,56 @@ class QualificationExecutionContractE2ETests(TestCase):
             "Thanks for sharing the details. Our team will connect with you shortly.",
         )
 
+    def test_multi_target_mapping_shorthand_resolves_exact_attribute_names(self):
+        for name, key in (
+            ("Lead Management Tool", "lead_management_tool"),
+            ("Using Whatsapp", "using_whatsapp"),
+            ("CRM", "crm"),
+            ("Leads/d", "leads_d"),
+        ):
+            AttributeDefinition.objects.create(
+                organization=self.organization,
+                name=name,
+                key=key,
+                field_type=AttributeDefinition.FieldType.TEXT,
+            )
+        info, _ = OrgInfo.objects.get_or_create(organization=self.organization)
+        info.qualification_requirements = (
+            "[id: management] Where do you currently manage your leads?\n"
+            "A. WhatsApp chats\n"
+            "B. CRM\n"
+            "[id: volume] How many leads do you receive per day?\n"
+            "A. 0-10\n"
+            "B. 10-30\n"
+        )
+        info.engagement_instructions = (
+            "## Attribute mapped\n"
+            "management -> Lead Management Tool (+ Using Whatsapp / CRM)\n"
+            "volume -> Leads/d\n"
+        )
+        info.save()
+        requirements = compile_qualification_requirements(
+            info.qualification_requirements
+        )["requirements"]
+
+        config = _config(
+            organization=self.organization,
+            requirements=requirements,
+        )
+
+        self.assertEqual(
+            config["mapping_targets"][requirements[0]["id"]],
+            ["lead_management_tool", "using_whatsapp", "crm"],
+        )
+        self.assertEqual(
+            config["mapping_targets"][requirements[1]["id"]],
+            ["leads_d"],
+        )
+        self.assertFalse(any(
+            item.get("code") == "unknown_attribute_mapping_reference"
+            for item in config["errors"]
+        ))
+
     def test_one_answer_can_fill_multiple_explicitly_mapped_attributes_and_fallback_to_qualified(self):
         AttributeDefinition.objects.create(
             organization=self.organization,
