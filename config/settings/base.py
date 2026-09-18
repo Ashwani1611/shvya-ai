@@ -223,6 +223,7 @@ INSTALLED_APPS = [
     "apps.integrations",
     "apps.teams",
     "apps.telephony",
+    "apps.support.apps.SupportConfig",
 ]
 
 
@@ -610,7 +611,7 @@ META_LEAD_VERIFY_TOKEN = config(
 # onboarding popup (pick/create a WABA, verify the number, accept
 # Meta's terms) instead of asking the person to paste a
 # phone_number_id / access_token by hand. Both values below come
-# from Meta App Dashboard, NOT something this codebase can
+# from Meta Dashboard, NOT something this codebase can
 # generate on its own:
 #
 # META_APP_ID: App Dashboard > Settings > Basic > "App ID". Public
@@ -636,3 +637,23 @@ META_WA_EMBEDDED_SIGNUP_CONFIG_ID = config(
     "META_WA_EMBEDDED_SIGNUP_CONFIG_ID",
     default="",
 )
+
+
+# ---------------------------------------------------------------------------
+# Help & Support: credentials stay in the deployment environment. The storage
+# implementation encrypts attachments on the existing shared media volume.
+# ---------------------------------------------------------------------------
+SUPPORT_PUBLIC_BASE_URL = config("SUPPORT_PUBLIC_BASE_URL", default="")
+SUPPORT_PRIVATE_ROOT = config("SUPPORT_PRIVATE_ROOT", default="")
+SUPPORT_FROM_EMAIL = config("SUPPORT_FROM_EMAIL", default=DEFAULT_FROM_EMAIL)
+SUPPORT_REPLY_TO_EMAIL = config("SUPPORT_REPLY_TO_EMAIL", default=DEFAULT_FROM_EMAIL)
+SUPPORT_ATTACHMENT_SCANNER = config("SUPPORT_ATTACHMENT_SCANNER", default="")
+SUPPORT_REQUIRE_SCANNER = config("SUPPORT_REQUIRE_SCANNER", default=False, cast=bool)
+SUPPORT_MAX_EMAIL_BYTES = config("SUPPORT_MAX_EMAIL_BYTES", default=36700160, cast=int)
+SUPPORT_IMAP_HOST = config("SUPPORT_IMAP_HOST", default="")
+SUPPORT_IMAP_PORT = config("SUPPORT_IMAP_PORT", default=993, cast=int)
+SUPPORT_IMAP_USER = config("SUPPORT_IMAP_USER", default="")
+SUPPORT_IMAP_PASSWORD = config("SUPPORT_IMAP_PASSWORD", default="")
+SUPPORT_IMAP_FOLDER = config("SUPPORT_IMAP_FOLDER", default="INBOX")
+SUPPORT_IMAP_AUTHSERV_ID = config("SUPPORT_IMAP_AUTHSERV_ID", default="")
+SUPPORT_IMAP_TRUST_RECEIVER = config("SUPPORT_IMAP_TRUST_RECEIVER", default=False, cast=bool)
