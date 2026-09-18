@@ -189,13 +189,6 @@ def install_ai_runtime() -> None:
     )
     install_canonical_ai_architecture()
 
-    # Pure policy previews and SimpleTestCase fixtures use non-persistent
-    # synthetic lead IDs. Production UUID-backed CRM leads still reconcile.
-    from apps.ai_engagement.services.canonical_architecture_compat import (
-        install_canonical_architecture_compat,
-    )
-    install_canonical_architecture_compat()
-
     # Authoritative qualification execution contract. This owns active-answer
     # resolution, exact configured mapping, completion actions, reconciliation
     # and backend response plans for API and Hosted/Coexistence WhatsApp.
