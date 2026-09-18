@@ -40,3 +40,41 @@ class LeadReminder(models.Model):
 
     def __str__(self):
         return f"{self.title} — {self.lead.name}"
+
+class LeadReminderNotificationAck(models.Model):
+    """Per-user acknowledgement for a reminder notification popup.
+
+    Acknowledging the popup does not complete, snooze, edit, or delete the
+    underlying LeadReminder. It only records that this dashboard user has clicked
+    the notification so the persistent popup can stop for that user.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    reminder = models.ForeignKey(
+        LeadReminder,
+        on_delete=models.CASCADE,
+        related_name="notification_acknowledgements",
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="reminder_notification_acknowledgements",
+    )
+    acknowledged_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["reminder", "user"],
+                name="uniq_reminder_notification_ack_user",
+            )
+        ]
+        indexes = [
+            models.Index(
+                fields=["user", "acknowledged_at"],
+                name="crm_rem_ack_user_at_idx",
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.user_id} acknowledged {self.reminder_id}"
