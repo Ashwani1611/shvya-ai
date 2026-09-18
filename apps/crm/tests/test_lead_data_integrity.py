@@ -149,6 +149,8 @@ class LeadDataIntegrityTests(TestCase):
             {
                 ("channels.campaigndelivery", "lead"),
                 ("channels.whatsappmessage", "lead"),
+                # Account-owned provider history survives, with its CRM link cleared.
+                ("channels.instagramconversation", "lead"),
                 ("followups.followupsenderstate", "last_lead"),
             },
         )

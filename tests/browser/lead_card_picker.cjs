@@ -1,0 +1,30 @@
+const {chromium}=require(process.env.PLAYWRIGHT_PATH || 'playwright');
+const fs=require('fs');const path=require('path');const assert=require('node:assert/strict');
+(async()=>{
+ const browser=await chromium.launch({headless:true, ...(process.env.BROWSER_EXECUTABLE ? {executablePath:process.env.BROWSER_EXECUTABLE} : {})});const page=await browser.newPage();
+ const root=path.resolve(__dirname,'../..');
+ await page.setContent('<div class="lead-card"><form><select name="stage" aria-label="Lead stage"><option value="new">New lead</option><option value="qualified">Qualified</option><option value="won">Won</option></select></form></div><select id="pipeline-select" name="pipeline"><option value="a">Sales</option><option value="b">Support</option></select>');
+ await page.addStyleTag({content:fs.readFileSync(path.join(root,'static/css/lead_card_upgrade.css'),'utf8')});
+ const js=fs.readFileSync(path.join(root,'static/js/lead_card_upgrade.js'),'utf8');await page.addScriptTag({content:js});
+ const stage=page.getByRole('button',{name:'Choose a stage'});
+ await stage.click();await page.getByRole('radio',{name:'Qualified',exact:true}).click();await page.getByRole('button',{name:'Cancel',exact:true}).click();
+ assert.equal(await page.locator('select[name=stage]').inputValue(),'new');
+ await stage.click();await page.getByRole('searchbox').fill('Won');assert.equal(await page.getByRole('radio').count(),1);
+ await page.keyboard.press('ArrowDown');await page.keyboard.press('Enter');await page.getByRole('button',{name:'Apply',exact:true}).click();
+ assert.equal(await page.locator('select[name=stage]').inputValue(),'won');await page.locator('dialog').waitFor({state:'detached'});assert.equal(await page.locator('dialog').count(),0);
+ await page.addScriptTag({content:js});assert.equal(await page.locator('.lead-picker-trigger').count(),2);
+ await page.evaluate(()=>document.querySelector('select[name=stage]').addEventListener('change',e=>document.dispatchEvent(new CustomEvent('htmx:beforeRequest',{detail:{elt:e.target.form}}))));
+ await stage.click();await page.getByRole('radio',{name:'Qualified',exact:true}).click();await page.getByRole('button',{name:'Apply',exact:true}).click();
+ assert.equal(await page.getByRole('button',{name:'Saving…'}).isDisabled(),true);
+ await page.evaluate(()=>document.dispatchEvent(new CustomEvent('htmx:afterRequest',{detail:{elt:document.querySelector('form'),successful:false}})));
+ assert.equal(await page.locator('select[name=stage]').inputValue(),'won');assert.match(await page.getByRole('alert').innerText(),/Could not save/);
+ await page.getByRole('button',{name:'Apply',exact:true}).click();
+ await page.evaluate(()=>document.dispatchEvent(new CustomEvent('htmx:afterRequest',{detail:{elt:document.querySelector('form'),successful:true}})));
+ await page.locator('dialog').waitFor({state:'detached'});assert.equal(await page.locator('dialog').count(),0);assert.equal(await page.locator('select[name=stage]').inputValue(),'qualified');
+ await page.setViewportSize({width:375,height:812});await page.emulateMedia({colorScheme:'dark'});
+ await page.getByRole('button',{name:'Choose a pipeline'}).click();
+ const box=await page.locator('dialog').boundingBox();assert.ok(box.x>=0&&box.x+box.width<=375);
+ await page.keyboard.press('Escape');await page.locator('dialog').waitFor({state:'detached'});assert.equal(await page.locator('dialog').count(),0);
+ if(process.env.PICKER_SCREENSHOT){await stage.click();await page.screenshot({path:process.env.PICKER_SCREENSHOT});}
+ await browser.close();console.log('Picker browser checks passed: cancel, search, keyboard, apply, duplicate init, failed save rollback, retry, mobile, dark mode, Escape.');
+})().catch(error=>{console.error(error);process.exit(1)});

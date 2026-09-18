@@ -2,6 +2,7 @@ from django.urls import path
 from django.views.generic import RedirectView
 
 from apps.channels import instagram_ui
+from apps.channels.instagram_lead_ui import instagram_link_lead
 from apps.core.coming_soon import coming_soon
 from apps.crm.views.ai_setup import ai_setup_view
 from apps.crm.views.ai_trace import (
@@ -14,6 +15,7 @@ from apps.support.views import customer_list as support_customer_list
 
 
 coming_soon_urlpatterns = [
+    path("instagram/chats/<uuid:conversation_id>/lead/", instagram_link_lead, name="crm-instagram-link-lead"),
     # Call tools now live inside Connect Hub.
     path(
         "connect-hub/call-scheduler/",

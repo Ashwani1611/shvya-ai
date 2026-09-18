@@ -146,7 +146,9 @@ def lead_table_partial(request):
     attribute_definitions = list(public_attribute_definitions(user.organization))
     stage_groups = []
     for index, stage in enumerate(stages):
-        stage_leads = list(queryset.filter(stage=stage))
+        stage_leads = list(queryset.filter(stage=stage).prefetch_related("lead_notes"))
+        from apps.ai_engagement.services.intent_score import prepare_intent_scores
+        prepare_intent_scores(stage_leads)
         for lead in stage_leads:
             _prepare_lead(lead, attribute_definitions)
         stage_groups.append(

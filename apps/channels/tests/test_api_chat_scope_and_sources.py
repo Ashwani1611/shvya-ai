@@ -143,7 +143,7 @@ class WhatsAppApiChatScopeAndSourceTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(list(response.context["accounts"]), [visible])
 
-    def test_first_hosted_inbound_normalizes_new_lead_source(self):
+    def test_first_hosted_message_preserves_recorded_creation_source(self):
         hosted = WhatsAppAccount.objects.create(
             organization=self.org,
             connection_type=WhatsAppAccount.ConnectionType.coexisted,
@@ -156,7 +156,8 @@ class WhatsAppApiChatScopeAndSourceTests(TestCase):
         self._message(hosted, lead)
 
         lead.refresh_from_db()
-        self.assertEqual(lead.lead_source, "whatsapp")
+        # A message is not evidence that this transport originally created the lead.
+        self.assertEqual(lead.lead_source, "whatsapp_api")
 
     def test_existing_api_lead_is_not_relabelled_by_later_hosted_message(self):
         hosted = WhatsAppAccount.objects.create(

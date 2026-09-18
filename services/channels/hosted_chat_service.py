@@ -557,13 +557,14 @@ def build_hosted_chat_snapshot(
             organization_id=account.organization_id, phone__in=phones,
         ).select_related("stage")
     }
-    from apps.ai_engagement.services.intent_score import stored_intent_score
+    from apps.ai_engagement.services.intent_score import prepare_intent_scores
+    prepare_intent_scores(leads.values())
 
     for row in conversations.values():
         lead = None if row["is_group"] else leads.get(row["phone"])
         row["lead_id"] = str(lead.pk) if lead else ""
         row["stage_name"] = lead.stage.name if lead and lead.stage_id else ""
-        intent_state = stored_intent_score(lead=lead) if lead else None
+        intent_state = lead.intent_score_state if lead else None
         row["intent_score"] = intent_state.get("score") if intent_state else None
         row["intent_components"] = intent_state.get("components") if intent_state else None
         if lead and _name_quality(lead.name, phone=lead.phone, key=row["key"]) > 1:

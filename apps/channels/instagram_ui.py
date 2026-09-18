@@ -222,7 +222,14 @@ def instagram_disconnect_view(request):
     return redirect("crm-instagram-connect")
 
 
-def _present_thread(thread):
+def _present_thread(thread, organization):
+    from apps.channels.instagram_models import InstagramConversation
+    from apps.ai_engagement.services.intent_score import intent_score_for_lead
+    conversation = InstagramConversation.objects.select_related("lead").get(pk=thread["id"], organization=organization, account__organization=organization)
+    lead = conversation.lead
+    thread["lead_url"] = reverse("crm-instagram-link-lead", args=[thread["id"]])
+    thread["lead_name"] = lead.name if lead and lead.organization_id == conversation.organization_id else ""
+    thread["intent_score"] = intent_score_for_lead(lead=lead) if thread["lead_name"] else None
     thread["url"] = reverse("crm-instagram-chat-detail", args=[thread["id"]])
     thread["send_url"] = reverse("crm-instagram-send-message", args=[thread["id"]])
     for message in thread["messages"]:
@@ -252,7 +259,7 @@ def _chat_response(request, conversation_id=None):
     active = None
     if conversation_id:
         try:
-            active = _present_thread(inbox_thread(organization, conversation_id, before=request.GET.get("before", "")))
+            active = _present_thread(inbox_thread(organization, conversation_id, before=request.GET.get("before", "")), organization)
             if not request.GET.get("before"):
                 mark_loaded_read(organization, conversation_id, [message["id"] for message in active["messages"]])
         except provider.InstagramAPIError as exc:
