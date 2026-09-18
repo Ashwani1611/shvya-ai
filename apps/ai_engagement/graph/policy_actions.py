@@ -139,19 +139,19 @@ def _range_contains_latest(value: Any, latest_text: str) -> bool:
     if actual is None or not rendered:
         return False
 
-    plus = re.search(r"(\\d+(?:\\.\\d+)?)\\s*\\+$", rendered)
+    plus = re.search(r"(\d+(?:\.\d+)?)\s*\+$", rendered)
     if plus:
         return actual >= float(plus.group(1))
 
-    below = re.search(r"\\b(?:below|under|less than)\\s*(\\d+(?:\\.\\d+)?)\\b", rendered)
+    below = re.search(r"\b(?:below|under|less than)\s*(\d+(?:\.\d+)?)\b", rendered)
     if below:
         return actual < float(below.group(1))
 
-    upto = re.search(r"\\b(?:up to|upto)\\s*(\\d+(?:\\.\\d+)?)\\b", rendered)
+    upto = re.search(r"\b(?:up to|upto)\s*(\d+(?:\.\d+)?)\b", rendered)
     if upto:
         return actual <= float(upto.group(1))
 
-    interval = re.search(r"(\\d+(?:\\.\\d+)?)\\s*(?:-|to)\\s*(\\d+(?:\\.\\d+)?)", rendered)
+    interval = re.search(r"(\d+(?:\.\d+)?)\s*(?:-|to)\s*(\d+(?:\.\d+)?)", rendered)
     if interval:
         low, high = float(interval.group(1)), float(interval.group(2))
         return low <= actual <= high
