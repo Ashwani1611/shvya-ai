@@ -134,31 +134,52 @@ def _validate_attribute_updates(
             ),
         )
 
-        _require_exact_keys(
-            update,
-            expected={
-                "key",
-                "value",
-            },
-            label=(
-                f"attribute_updates.updates[{index}]"
-            ),
-        )
+        allowed_keys = {
+            "key",
+            "value",
+            "name",
+            "field_type",
+            "create_if_missing",
+        }
+        actual_keys = set(update.keys())
+        if not {"key", "value"}.issubset(actual_keys) or actual_keys - allowed_keys:
+            raise CRMActionSchemaError(
+                f"attribute_updates.updates[{index}] has an invalid schema."
+            )
 
-        normalized_updates.append(
-            {
-                "key": _require_non_empty_string(
-                    update["key"],
-                    label=(
-                        "attribute_updates."
-                        f"updates[{index}].key"
-                    ),
+        normalized = {
+            "key": _require_non_empty_string(
+                update["key"],
+                label=(
+                    "attribute_updates."
+                    f"updates[{index}].key"
                 ),
-                "value": update[
-                    "value"
-                ],
-            }
-        )
+            ),
+            "value": update["value"],
+        }
+        create_if_missing = update.get("create_if_missing", False)
+        if not isinstance(create_if_missing, bool):
+            raise CRMActionSchemaError(
+                f"attribute_updates.updates[{index}].create_if_missing must be boolean."
+            )
+        if create_if_missing:
+            name = _require_non_empty_string(
+                update.get("name"),
+                label=f"attribute_updates.updates[{index}].name",
+            )
+            field_type = str(update.get("field_type") or "text").strip().casefold()
+            if field_type not in {"text", "numeric", "date", "datetime"}:
+                raise CRMActionSchemaError(
+                    f"attribute_updates.updates[{index}].field_type is not allowed."
+                )
+            normalized.update(
+                {
+                    "name": name,
+                    "field_type": field_type,
+                    "create_if_missing": True,
+                }
+            )
+        normalized_updates.append(normalized)
 
     return {
         "type": "attribute_updates",
