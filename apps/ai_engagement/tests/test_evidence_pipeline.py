@@ -65,6 +65,55 @@ class EvidencePipelineTests(SimpleTestCase):
         self.assertTrue(result["decision"].should_engage)
         self.assertIn("verified information", result["decision"].message)
 
+    def test_grounding_rejection_does_not_pollute_qualification_reply(self):
+        decision = EngagementDecision(
+            should_engage=True,
+            message="That sounds useful.",
+            file_document_id=None,
+            crm_actions=[],
+            reason="QUALIFICATION_NEXT",
+            reason_code="QUALIFICATION_NEXT",
+            model="test",
+            next_requirement_id="q2",
+            qualification_updates=[
+                {
+                    "requirement_id": "q1",
+                    "value": "Slow replies",
+                    "source_message_id": "m1",
+                    "evidence": "Slow reply",
+                }
+            ],
+        )
+        state = {
+            "decision": decision,
+            "context": SimpleNamespace(
+                organization={},
+                knowledge=[],
+                conversation={
+                    "messages": [
+                        {"id": "m1", "direction": "inbound", "body": "Slow reply"}
+                    ]
+                },
+                lead={"attributes": {}},
+            ),
+            "organization": SimpleNamespace(id="org"),
+            "lead": SimpleNamespace(id="lead"),
+            "qualification_state": {},
+            "requirements": [],
+        }
+        with patch("apps.ai_engagement.graph.evidence.OpenAIProvider") as provider:
+            provider.return_value.generate_text.return_value.text = (
+                '{"approved":false,"reason":"unsupported"}'
+            )
+            result = check_grounding(state)
+
+        self.assertFalse(result["grounding_approved"])
+        repaired = result["decision"]
+        self.assertEqual(repaired.next_requirement_id, "q2")
+        self.assertEqual(len(repaired.qualification_updates), 1)
+        self.assertNotIn("verified information", repaired.message)
+        self.assertIn("Thanks for sharing", repaired.message)
+
     def test_grounding_provider_failure_returns_safe_reply(self):
         state = self._state()
         with patch("apps.ai_engagement.graph.evidence.OpenAIProvider") as provider:
