@@ -357,14 +357,26 @@ def install_qualification_execution_policy_guard() -> None:
                         }
                     )
 
-            # Keep only non-qualification attribute keys from the already
-            # policy-filtered decision. Full metadata is preserved so a safe
-            # create_if_missing candidate can reach the transactional executor.
-            by_key = {
-                str(item.get("key")): item
-                for item in proposed_attribute_updates
-                if str(item.get("key") or "") not in deterministic_keys
+            # Keep only distinct non-qualification facts from the already
+            # policy-filtered decision. If a model proposes the same value as a
+            # qualification answer under another key, treat it as an attempted
+            # fuzzy/shadow mapping and discard it. This preserves the existing
+            # exact-mapping contract while allowing genuinely separate facts
+            # volunteered in the same message.
+            qualification_values = {
+                re.sub(r"\\s+", " ", str(item.get("value") or "")).strip().casefold()
+                for item in qualification_updates
+                if str(item.get("value") or "").strip()
             }
+            by_key = {}
+            for item in proposed_attribute_updates:
+                key = str(item.get("key") or "")
+                value = re.sub(
+                    r"\\s+", " ", str(item.get("value") or "")
+                ).strip().casefold()
+                if not key or key in deterministic_keys or value in qualification_values:
+                    continue
+                by_key[key] = item
             for item in exact_updates:
                 if item.get("key"):
                     by_key[str(item["key"])] = item
