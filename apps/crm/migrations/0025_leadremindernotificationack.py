@@ -54,7 +54,7 @@ class Migration(migrations.Migration):
                 "constraints": [
                     models.UniqueConstraint(
                         fields=("reminder", "user"),
-                        name="uniq_reminder_notification_ack_user",
+                        name="uniq_reminder_ack_user",
                     )
                 ],
             },
