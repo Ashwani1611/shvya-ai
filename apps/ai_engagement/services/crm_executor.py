@@ -267,10 +267,11 @@ class CRMActionExecutor:
                             ),
                             options=[],
                         )
-                    except DjangoValidationError as exc:
-                        raise CRMActionExecutionError(
-                            "Dynamic lead attribute definition failed validation."
-                        ) from exc
+                    except DjangoValidationError:
+                        # Dynamic capture is enrichment, not a reason to lose a
+                        # valid customer reply. Capacity/name/type validation can
+                        # safely skip this optional candidate.
+                        continue
                     created_keys.append(definition.key)
                 existing[definition.key] = definition
 
