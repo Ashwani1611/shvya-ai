@@ -103,6 +103,7 @@
                     </svg>
                     <span class="sa-nav-text">RAG Monitor</span>
                 </a>
+                {% include "support/partials/staff_nav.html" %}
             </nav>
 
             {% if organization and request.resolver_match.url_name == 'superadmin-organization-detail' %}
@@ -172,7 +173,9 @@
                     <div class="min-w-0">
                         <div class="sa-page-kicker">SHVYA AI · Superadmin</div>
                         <div class="sa-page-location">
-                            {% if request.resolver_match.url_name == 'superadmin-ai-credit-overview' %}
+                            {% if support_staff %}
+                                Client’s Portal
+                            {% elif request.resolver_match.url_name == 'superadmin-ai-credit-overview' %}
                                 AI Coins
                             {% elif request.resolver_match.url_name == 'superadmin-organization-ai-credits' %}
                                 Manage AI Coins

@@ -65,4 +65,17 @@ app.conf.beat_schedule = {
         "task": "apps.channels.instagram_tasks.refresh_instagram_tokens_task",
         "schedule": 21600.0,
     },
+    # Support work uses the existing general worker, never the realtime AI lanes.
+    "support-email-outbox": {
+        "task": "support.deliver_notifications",
+        "schedule": 30.0,
+    },
+    "support-maintenance": {
+        "task": "support.maintain_tickets",
+        "schedule": 60.0,
+    },
+    "support-mailbox": {
+        "task": "support.poll_mailbox",
+        "schedule": 60.0,
+    },
 }
