@@ -17,6 +17,7 @@
   const threadName = document.getElementById('thread-name');
   const threadKey = document.getElementById('thread-key');
   const threadAvatar = document.getElementById('thread-avatar');
+  const threadIntentScore = document.getElementById('thread-intent-score');
   const form = document.getElementById('chat-form');
   const chatInput = document.getElementById('chat-key-input');
   const mobileBack = document.getElementById('mobile-chat-back');
@@ -181,10 +182,15 @@
       : '';
     const stage = row.stage_name
       ? `<span class="hosted-stage" title="Lead stage: ${esc(row.stage_name)}">${esc(row.stage_name)}</span>` : '';
+    const rawIntent = Number(row.intent_score);
+    const intent = Number.isFinite(rawIntent) && rawIntent >= 0 && rawIntent <= 10
+      ? `<span class="rounded-full bg-violet-50 px-2 py-0.5 text-[9px] font-bold text-violet-700" title="Lead Intent Score">Intent ${esc(rawIntent)}/10</span>`
+      : '';
+    const meta = stage || intent ? `<div class="mt-1 flex flex-wrap items-center gap-1.5">${stage}${intent}</div>` : '';
     const unread = row.unread
       ? `<span class="hosted-unread">${Number(row.unread) || 0}</span>`
       : '';
-    return `<div class="hosted-conversation-inner"><div class="hosted-conversation-avatar">${esc(initial)}</div><div class="hosted-conversation-content"><div class="hosted-conversation-top"><div class="hosted-conversation-name">${esc(name)}</div><div class="hosted-conversation-time">${esc(fmtList(row.last_at))}</div></div>${phone}<div class="flex items-center justify-between gap-2"><div class="hosted-conversation-preview">${esc(conversationPreview(row))}</div>${unread}</div>${stage}</div></div>`;
+    return `<div class="hosted-conversation-inner"><div class="hosted-conversation-avatar">${esc(initial)}</div><div class="hosted-conversation-content"><div class="hosted-conversation-top"><div class="hosted-conversation-name">${esc(name)}</div><div class="hosted-conversation-time">${esc(fmtList(row.last_at))}</div></div>${phone}<div class="flex items-center justify-between gap-2"><div class="hosted-conversation-preview">${esc(conversationPreview(row))}</div>${unread}</div>${meta}</div></div>`;
   }
 
   function renderList(data) {
@@ -217,7 +223,7 @@
         node.className = 'hosted-conversation';
         node.dataset.chatKey = key;
       }
-      const signature = JSON.stringify([row.name, row.phone, row.last_message, row.last_at, row.unread, row.stage_name, row.lead_id, state.selected === key]);
+      const signature = JSON.stringify([row.name, row.phone, row.last_message, row.last_at, row.unread, row.stage_name, row.intent_score, row.lead_id, state.selected === key]);
       if (node.dataset.signature !== signature) {
         node.classList.toggle('active', state.selected === key);
         node.href = `?chat=${encodeURIComponent(key)}${state.query ? '&q=' + encodeURIComponent(state.query) : ''}`;
@@ -274,6 +280,24 @@
     if (threadName) threadName.textContent = selectedName;
     if (threadKey) threadKey.textContent = state.selected;
     if (threadAvatar) threadAvatar.textContent = selectedName.trim().charAt(0).toUpperCase() || '?';
+    const selectedRow = (data.conversations || []).find(item => item.key === state.selected);
+    if (threadIntentScore) {
+      const rawIntent = Number(selectedRow?.intent_score);
+      const hasIntent = Number.isFinite(rawIntent) && rawIntent >= 0 && rawIntent <= 10;
+      threadIntentScore.textContent = hasIntent ? `Intent ${rawIntent}/10` : '';
+      threadIntentScore.classList.toggle('hidden', !hasIntent);
+      if (hasIntent && selectedRow?.intent_components) {
+        const parts = selectedRow.intent_components;
+        threadIntentScore.title = [
+          `Engagement ${parts.engagement?.score ?? 0}/3`,
+          `Urgency / Timeline ${parts.urgency?.score ?? 0}/3`,
+          `Clarity of Need ${parts.clarity?.score ?? 0}/2`,
+          `Commitment Signal ${parts.commitment?.score ?? 0}/2`,
+        ].join(' · ');
+      } else {
+        threadIntentScore.removeAttribute('title');
+      }
+    }
     if (chatInput) chatInput.value = state.selected;
     const stick = !older && (nearBottom() || !state.threadLoaded);
     const savedTop = thread.scrollTop;
