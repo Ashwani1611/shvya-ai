@@ -9,10 +9,10 @@ html[data-marketing-theme="light"] .marketing-theme-toggle .theme-sun{display:bl
 html[data-marketing-theme="light"] .marketing-theme-toggle .theme-moon{display:none}
 .marketing-site .header-actions{flex-shrink:0}
 .marketing-site .mobile-menu>summary{min-width:44px;min-height:44px;align-items:center;justify-content:center}
-@media(max-width:1100px){.marketing-site .mobile-menu>summary{display:flex}}
+@media(max-width:1200px){.marketing-site .mobile-menu>summary{display:flex}}
 /* Make room for the appearance control and signed-in names on small laptops.
  * Below 851px the existing mobile-navigation rules already provide the layout. */
-@media(min-width:851px) and (max-width:1100px){
+@media(min-width:851px) and (max-width:1200px){
   .marketing-site>header>nav{display:none}
   .marketing-site .mobile-menu{display:block}
   .marketing-site .mobile-menu summary{list-style:none;font-size:24px;cursor:pointer}
@@ -20,10 +20,11 @@ html[data-marketing-theme="light"] .marketing-theme-toggle .theme-moon{display:n
   .marketing-site .mobile-menu a{display:block;padding:14px;font-size:15px;border-bottom:1px solid #2b3b45}
   .marketing-site .mobile-menu a:last-child{border:0}
 }
+@media(max-width:850px){.marketing-site .header-actions>.account-menu{display:none}}
 @media(max-width:600px){
   .marketing-site header{gap:8px;min-height:75px;height:auto;padding-block:12px}
   .marketing-site .header-actions{gap:4px}
-  .marketing-site .header-actions>.nav-login,.marketing-site .header-actions>.account-menu{display:none}
+  .marketing-site .header-actions>.nav-login{display:none}
   .marketing-site .header-actions>.button.small{white-space:nowrap}
 }
 @media(max-width:380px){
