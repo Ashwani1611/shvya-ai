@@ -2,12 +2,14 @@
 
 import json
 from io import BytesIO
+from urllib.parse import urlencode
 from uuid import UUID
 
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
 from django.db.models.deletion import ProtectedError
 from django.http import HttpResponse, JsonResponse
+from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 from openpyxl import Workbook
@@ -43,6 +45,14 @@ def bulk_permissions(user, pipeline):
             "move": "can_move_leads", "edit": "can_edit_leads", "delete": "can_delete_leads",
         }.items()
     }
+
+
+def bulk_campaign_available(user, pipeline):
+    if pipeline is None:
+        return False
+    from services.channels.campaign_audience import campaign_account_for_pipeline
+
+    return campaign_account_for_pipeline(user=user, pipeline=pipeline) is not None
 
 
 def _uuid(value):
@@ -226,12 +236,35 @@ def bulk_leads(request):
         if not isinstance(data, dict):
             return JsonResponse({"error": "Invalid request."}, status=400)
         action = data.get("action")
-        if action not in ("options", "update", "export", "delete"):
+        if action not in ("options", "update", "export", "delete", "campaign"):
             raise ValueError("Choose a valid bulk action.")
         with transaction.atomic():
-            pipeline, leads = _selection(request.crm_user, data, lock=action in ("update", "delete"))
+            pipeline, leads = _selection(
+                request.crm_user,
+                data,
+                lock=action in ("update", "delete", "campaign"),
+            )
             if action == "options":
                 return _options(request.crm_user, pipeline, leads)
+            if action == "campaign":
+                from services.channels.campaign_audience import create_crm_selection_upload
+
+                upload, account = create_crm_selection_upload(
+                    user=request.crm_user,
+                    pipeline=pipeline,
+                    leads=leads,
+                )
+                query = urlencode({"upload": str(upload.pk)})
+                eligible = int(upload.review_stats.get("eligible") or 0)
+                return JsonResponse(
+                    {
+                        "count": len(leads),
+                        "eligible": eligible,
+                        "excluded": len(leads) - eligible,
+                        "account_id": str(account.pk),
+                        "url": f"{reverse('whatsapp-campaign-create')}?{query}",
+                    }
+                )
             if action == "export":
                 return _export(request.crm_user, leads, data)
             if action == "update":
