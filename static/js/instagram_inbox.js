@@ -128,6 +128,14 @@
       messages.replaceChildren();
     }
     active = next;
+    const intelligence = byId('ig-lead-intelligence');
+    if (intelligence) {
+      intelligence.hidden = !active;
+      byId('ig-lead-score').textContent = active?.intent_score?.assessed ? `AI ${active.intent_score.score}/10` : 'AI · Not assessed';
+      byId('ig-link-lead').textContent = active?.lead_name || 'Link to a CRM lead';
+      if (active?.lead_url) byId('ig-link-lead').setAttribute('href', active.lead_url);
+      else byId('ig-link-lead').removeAttribute('href');
+    }
     shell.classList.toggle('wa-has-active-chat', !!active);
     shell.classList.toggle('wa-empty-chat', !active);
     surface.id = active ? 'thread' : 'ig-thread';

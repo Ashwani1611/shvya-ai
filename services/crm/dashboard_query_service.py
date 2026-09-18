@@ -167,7 +167,7 @@ def build_lead_table_context(
             "pipeline",
         )
         .annotate(
-            call_count=Count("calls"),
+            call_count=Count("calls", distinct=True),
             auto_followup_name=Subquery(
                 LeadSequenceState.objects.filter(
                     lead_id=OuterRef("pk"), status__in=["active", "paused"],
@@ -232,6 +232,8 @@ def build_lead_table_context(
     # One lead query for the complete pipeline. Related card data is loaded
     # by the four batched prefetch queries above, regardless of lead count.
     leads = list(leads_qs)
+    from apps.ai_engagement.services.intent_score import prepare_intent_scores
+    prepare_intent_scores(leads)
 
     attribute_definitions = get_cached_attribute_definitions(
         organization.id

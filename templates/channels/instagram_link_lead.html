@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="mx-auto max-w-xl rounded-3xl bg-white p-8 shadow-sm">
+<h1 class="text-2xl font-semibold">Link Instagram to a lead</h1>
+<p class="mt-3 text-sm text-gray-500">Confirm the real phone number for {{ conversation.participant_name|default:conversation.participant_username }}. Existing leads keep their name, pipeline and original creation source.</p>
+{% if error %}<p role="alert" class="mt-4 text-red-700">{{ error }}</p>{% endif %}
+<form method="post" class="mt-6 space-y-4">{% csrf_token %}
+<label class="block">Confirmed phone number<input type="tel" name="phone" required placeholder="+919876543210" value="{{ request.POST.phone }}" class="block w-full rounded-xl border p-3"></label>
+<details><summary class="cursor-pointer">Create a lead if this number is new</summary>
+<label class="mt-3 block">Lead name<input name="name" maxlength="150" value="{{ request.POST.name }}" class="block w-full rounded-xl border p-3"></label>
+<label class="mt-3 block">Pipeline<select name="pipeline" class="block w-full rounded-xl border p-3"><option value="">Choose a pipeline</option>{% for pipeline in pipelines %}<option value="{{ pipeline.pk }}">{{ pipeline.name }}</option>{% endfor %}</select></label></details>
+<label class="flex gap-2"><input type="checkbox" name="confirmed" value="yes" required>I have confirmed this number belongs to this participant.</label>
+<button class="rounded-full bg-blue-600 px-6 py-3 text-white">Link lead</button>
+<a class="ml-4" href="{% url 'crm-instagram-chat-detail' conversation.pk %}">Cancel</a>
+</form></section>{% endblock %}
