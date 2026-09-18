@@ -161,7 +161,8 @@ class DirectQualificationReplyTests(SimpleTestCase):
                 "D. 2,000+"
             ),
         )
-        self.assertIsNone(result)
+        self.assertEqual(result[0], REQUIREMENT_UNCLEAR)
+        self.assertEqual(result[1], "500")
 
     def test_multiple_places_is_resolved_from_two_named_tools(self):
         result = _classify_direct_reply(
