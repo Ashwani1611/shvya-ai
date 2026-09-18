@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}Bulk Campaigns · SHVYA AI{% endblock %}
+{% block header %}Bulk Campaigns{% endblock %}
+{% block extra_head %}
+{{ block.super }}
+<link rel="stylesheet" href="{% static 'channels/bulk_campaigns.css' %}">
+<script src="{% static 'channels/bulk_campaigns.js' %}" defer></script>
+{% endblock %}
+{% block content %}
+{{ campaign_bootstrap|json_script:"bulk-campaign-config" }}
+<div hidden>{% csrf_token %}</div>
+<main id="bulk-campaign-root" class="bc-ui" aria-busy="true">
+    <header class="bc-hero">
+        <div><p class="bc-eyebrow">WHATSAPP · API & COEXISTENCE</p><h1>Bulk Campaigns<span class="bc-dot">.</span></h1><p class="bc-subtitle">Personal at scale. Measurable in detail.</p></div>
+        <button class="bc-button bc-primary" type="button" data-action="create"><span aria-hidden="true">＋</span> Create campaign</button>
+    </header>
+    <div id="bc-notice" class="bc-notice" role="status" hidden></div>
+    <section id="bc-workspace" aria-label="Campaign workspace"><div class="bc-empty">Loading your campaign records…</div></section>
+    <noscript><p class="bc-notice">Enable JavaScript to review campaign audiences and delivery records. No campaign is sent without confirmation.</p></noscript>
+</main>
+<dialog id="bc-composer" class="bc-ui bc-dialog" aria-labelledby="bc-composer-title">
+    <div class="bc-dialog-head"><div><p class="bc-eyebrow">CAMPAIGN STUDIO</p><h2 id="bc-composer-title">A message worth opening.</h2></div><button type="button" class="bc-icon" data-close="bc-composer" aria-label="Close campaign builder">×</button></div>
+    <ol class="bc-steps" aria-label="Campaign creation progress"><li data-step-indicator="1"><span>1</span> Audience</li><li data-step-indicator="2"><span>2</span> Mapping</li><li data-step-indicator="3"><span>3</span> Template</li><li data-step-indicator="4"><span>4</span> Review & send</li></ol>
+    <div id="bc-composer-error" class="bc-notice bc-error" role="alert" hidden></div>
+    <div class="bc-dialog-body">
+        <section data-step="1" class="bc-step"><p class="bc-kicker">01 / YOUR AUDIENCE</p><h3>Start with the right people.</h3><p class="bc-muted">Upload a list, then decide which columns and leads to use. Reviewing a file does not create or update CRM leads.</p>
+            <label class="bc-dropzone" id="bc-dropzone" for="bc-file"><span class="bc-upload-icon" aria-hidden="true">↥</span><strong>Drop your spreadsheet here</strong><span>or choose a file</span><small>CSV, XLS or XLSX · Up to 10 MB · 25,000 rows</small><input id="bc-file" type="file" accept=".csv,.xls,.xlsx"></label>
+            <div id="bc-file-summary" aria-live="polite"></div><button type="button" class="bc-link" data-action="sample">Get a sample CSV ↗</button>
+            <div class="bc-note">Use international phone numbers with country codes. Only contact people who have permitted WhatsApp contact from your business.</div>
+        </section>
+        <section data-step="2" class="bc-step" hidden><p class="bc-kicker">02 / MAKE IT YOURS</p><h3>Every column, in the right place.</h3><div class="bc-map-layout"><div><div id="bc-mapping" class="bc-mapping"></div></div><aside class="bc-soft-card"><h4>Audience rules</h4>
+            <label class="bc-field">Include<select id="bc-mode"><option value="new_only">New leads only</option><option value="existing_only">Existing leads only</option><option value="both">New and existing leads</option></select></label>
+            <label class="bc-field">Default pipeline<select id="bc-pipeline"></select></label><label class="bc-field">Default stage<select id="bc-stage"></select></label>
+            <p class="bc-help">Mapped pipeline and stage columns override these defaults for new leads. Existing leads stay in place unless you explicitly enable changes.</p>
+            <label class="bc-check"><input type="checkbox" id="bc-update-existing"> Update existing lead details</label><label class="bc-check"><input type="checkbox" id="bc-move-existing"> Also apply pipeline and stage changes</label>
+        </aside></div><div id="bc-audience-review"></div></section>
+        <section data-step="3" class="bc-step" hidden><p class="bc-kicker">03 / YOUR MESSAGE</p><h3>Choose an approved template.</h3><div class="bc-toolbar"><label class="bc-field">Sending number<select id="bc-account"></select></label><label class="bc-field">Category<select id="bc-category"><option value="">All categories</option><option value="marketing">Marketing</option><option value="utility">Utility</option><option value="authentication">Authentication</option></select></label><label class="bc-field bc-grow">Find a template<input id="bc-template-search" type="search" placeholder="Search approved templates"></label><button class="bc-button" type="button" data-action="templates">Refresh list</button></div><div id="bc-templates" class="bc-template-grid" role="radiogroup" aria-label="Approved templates"></div><p class="bc-help">Templates belong to the selected sending account. A template changed, paused or deleted after review is blocked at send time. Pricing is not estimated without verified rate data.</p></section>
+        <section data-step="4" class="bc-step" hidden><p class="bc-kicker">04 / THE FINISHING TOUCHES</p><div class="bc-review-layout"><div><h3>Personal. Down to the details.</h3><label class="bc-field">Campaign name<input id="bc-name" type="text" maxlength="150" autocomplete="off" placeholder="Give this campaign a memorable name"></label><h4>Personalization</h4><p class="bc-help">Use a CRM field and an optional fallback. Fallbacks are sent only when a recipient has no value for that field.</p><div id="bc-bindings"></div>
+            <div class="bc-settings"><label class="bc-switch-label" for="bc-schedule"><span><strong>Schedule the campaign</strong><small>Choose the local time and time zone.</small></span><input class="bc-switch" type="checkbox" id="bc-schedule" role="switch"></label><div id="bc-schedule-fields" class="bc-two-col" hidden><label class="bc-field">Date & time<input type="datetime-local" id="bc-scheduled-local"></label><label class="bc-field">Time zone<input type="text" id="bc-timezone" list="bc-timezones" placeholder="Asia/Kolkata"><datalist id="bc-timezones"><option value="Asia/Kolkata"><option value="UTC"><option value="America/New_York"><option value="America/Los_Angeles"><option value="Europe/London"><option value="Asia/Dubai"></datalist></label></div></div>
+            <div class="bc-settings"><label class="bc-switch-label" for="bc-auto-retry"><span><strong>Retry failed messages</strong><small>Only eligible failures. Never unknown or delivered sends.</small></span><input class="bc-switch" type="checkbox" id="bc-auto-retry" role="switch"></label><div id="bc-retry-fields" class="bc-two-col" hidden><label class="bc-field">Maximum retries<select id="bc-retries"><option value="1">1 retry</option><option value="2">2 retries</option><option value="3" selected>3 retries</option></select></label><label class="bc-field">Wait between attempts<select id="bc-retry-delay"><option value="1">1 hour</option><option value="6">6 hours</option><option value="24" selected>24 hours</option><option value="48">48 hours</option><option value="72">72 hours</option></select></label></div><p class="bc-help">Error 131049 always waits at least 24 hours. Cooldowns and attempt limits also apply to manual and bulk retries.</p></div>
+            <label class="bc-check bc-consent"><input id="bc-consent" type="checkbox"> I confirm these recipients have permitted WhatsApp contact from this business.</label><label class="bc-check" id="bc-exclusions-label" hidden><input id="bc-exclusions" type="checkbox"><span id="bc-exclusions-text"></span></label>
+        </div><aside><div class="bc-preview-frame"><div class="bc-preview-head"><span class="bc-brand-mark" aria-hidden="true">S</span><div><strong id="bc-preview-account"></strong><small id="bc-preview-number"></small></div></div><div class="bc-preview-canvas"><p class="bc-preview-label">ACTUAL RECIPIENT PREVIEW</p><label class="bc-field">Preview recipient<select id="bc-preview-recipient"></select></label><div id="bc-preview-message" class="bc-message" aria-live="polite">Complete the personalization fields to preview the message.</div></div><div class="bc-preview-foot">Sent with your approved WhatsApp template</div></div><button type="button" class="bc-button bc-full" data-action="preview">Update preview</button><div id="bc-preview-status" class="bc-help" aria-live="polite"></div><div id="bc-final-summary" class="bc-note"></div></aside></div></section>
+    </div><footer class="bc-dialog-foot"><button type="button" class="bc-button" id="bc-back">Back</button><p id="bc-step-summary" class="bc-help"></p><button type="button" class="bc-button bc-primary" id="bc-next">Continue</button></footer>
+</dialog>
+<dialog id="bc-inspector" class="bc-ui bc-dialog bc-inspector" aria-labelledby="bc-inspector-title"><div class="bc-dialog-head"><h2 id="bc-inspector-title">Details</h2><button type="button" class="bc-icon" data-close="bc-inspector" aria-label="Close details">×</button></div><div class="bc-dialog-body" id="bc-inspector-body"></div><footer class="bc-dialog-foot"><button type="button" class="bc-button" data-close="bc-inspector">Close</button><button type="button" id="bc-inspector-confirm" class="bc-button bc-primary" hidden>Confirm</button></footer></dialog>
+{% endblock %}

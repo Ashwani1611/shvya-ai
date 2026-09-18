@@ -122,7 +122,7 @@ NAV_ITEMS = [
                 "requires_whatsapp_connection": True,
             },
             {
-                "label": "Broadcasts",
+                "label": "Bulk Campaigns",
                 "icon": "ti-speakerphone",
                 "url_name": "whatsapp-campaign-list",
                 "path_prefix": "/dashboard/whatsapp/campaigns/",

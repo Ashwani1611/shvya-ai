@@ -7,7 +7,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('channels', '0013_hosted_chat_read_state'),
+        ('channels', '0014_bulk_campaigns'),
         ('crm', '0026_alter_lead_lead_source'),
     ]
 
