@@ -124,7 +124,14 @@ def _tokens(value: Any) -> set[str]:
 
 
 def _extract_number(value: str) -> float | None:
-    normalized = _normalized(value)
+    normalized = (
+        _normalized(value)
+        .replace(",", "")
+        .replace("₹", "")
+        .replace("$", "")
+        .replace("€", "")
+        .replace("£", "")
+    )
     match = re.search(r"(?<![a-z])\d+(?:\.\d+)?(?![a-z])", normalized)
     if match:
         try:
@@ -146,7 +153,14 @@ def _extract_number(value: str) -> float | None:
 
 
 def _range_for_option(value: str) -> tuple[float | None, float | None, bool, bool] | None:
-    normalized = _normalized(value)
+    normalized = (
+        _normalized(value)
+        .replace(",", "")
+        .replace("₹", "")
+        .replace("$", "")
+        .replace("€", "")
+        .replace("£", "")
+    )
     match = re.search(r"(\d+(?:\.\d+)?)\s*(?:-|to)\s*(\d+(?:\.\d+)?)", normalized)
     if match:
         return float(match.group(1)), float(match.group(2)), True, True
@@ -318,10 +332,18 @@ def _ambiguous_option_answer(
 def _enhanced_direct_classifier(original, state_module):
     def classify(*, text: str, question: str):
         classified = original(text=text, question=question)
+        raw_text = str(text or "").strip()
+        options = state_module._question_options(question)
+        if (
+            classified is not None
+            and classified[0] == state_module.REQUIREMENT_ANSWERED
+            and options
+            and _ambiguous_option_answer(raw_text, question, options)
+        ):
+            return (state_module.REQUIREMENT_UNCLEAR, raw_text, "high")
         if classified is not None and classified[0] == state_module.REQUIREMENT_ANSWERED:
             return classified
 
-        raw_text = str(text or "").strip()
         if not raw_text or len(raw_text) > 240 or "\n" in raw_text:
             return classified
         # Mixed informational questions stay on the model/RAG path so one turn
@@ -329,7 +351,6 @@ def _enhanced_direct_classifier(original, state_module):
         if "?" in raw_text:
             return classified
 
-        options = state_module._question_options(question)
         if not options:
             return classified
 
