@@ -1,12 +1,18 @@
 """Central startup bootstrap for the shared SHVYA AI runtime.
 
-Keep installer order explicit here. Several compatibility/runtime layers wrap
-the same canonical engagement path, so order is part of the current behavior.
-This module centralizes startup only; it does not change installer semantics.
+Keep installer order explicit here. Several policy/execution layers wrap the
+same canonical engagement path, so order is part of the current behavior.
+This module centralizes startup and prevents duplicate installation.
 """
 
 
+_INSTALLED = False
+
+
 def install_ai_runtime() -> None:
+    global _INSTALLED
+    if _INSTALLED:
+        return
     # Register application-controlled qualification-state hooks.
     from . import signals  # noqa: F401
 
@@ -215,3 +221,4 @@ def install_ai_runtime() -> None:
         install_ai_trace_runtime,
     )
     install_ai_trace_runtime()
+    _INSTALLED = True
