@@ -20,6 +20,7 @@ from apps.ai_engagement.services.organization_profile import (
     compile_qualification_requirements,
 )
 from apps.ai_engagement.services.qualification_execution_contract import (
+    _ack_from_message,
     _config,
     resolve_before_generation,
 )
@@ -122,6 +123,24 @@ class QualificationExecutionContractE2ETests(TestCase):
             reason_code=("QUALIFICATION_NEXT" if next_requirement_id else "NORMAL_CONVERSATION"),
             model="test",
         )
+
+    def test_acknowledgement_sanitizer_removes_model_paraphrased_question(self):
+        plan = {
+            "next_requirement": {
+                "question": "Do you currently run ads?",
+                "rendered": "Do you currently run ads?\nA. Yes\nB. No",
+                "options": [
+                    {"key": "A", "value": "Yes"},
+                    {"key": "B", "value": "No"},
+                ],
+            },
+            "final_configured_acknowledgement": {"value": ""},
+        }
+        acknowledgement = _ack_from_message(
+            "Thanks, that helps. Are you currently running ads?\\nA. Yes\\nB. No",
+            plan,
+        )
+        self.assertEqual(acknowledgement, "Thanks, that helps.")
 
     def test_config_reads_mapping_and_multiline_ack_from_qualification_field(self):
         AttributeDefinition.objects.create(
