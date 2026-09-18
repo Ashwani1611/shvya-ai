@@ -1044,6 +1044,9 @@ def _ack_from_message(message: str, plan: dict[str, Any]) -> str:
             line = _strip_quotes(match.group("value"))
         if _LABEL_ONLY.match(line):
             continue
+        normalized_line = _norm(line)
+        if next_rendered and re.match(r"^[a-z0-9][).:\-]\s+", normalized_line):
+            continue
 
         # During a backend-owned qualification turn the model contributes only
         # the acknowledgement. Any model-authored/paraphrased question or option
