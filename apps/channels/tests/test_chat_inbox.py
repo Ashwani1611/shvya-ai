@@ -59,6 +59,35 @@ class WhatsAppChatInboxTests(TestCase):
         response = self.client.get(reverse("whatsapp-chat-detail", args=[lead.pk]))
         self.assertContains(response, "Hello from WhatsApp")
 
+    def test_chat_detail_surfaces_explainable_intent_score(self):
+        lead = self.make_lead("Scored Lead", "+919000000007")
+        lead.attributes = {
+            "_shvya_ai_intent_score": {
+                "version": 1,
+                "score": 7,
+                "max_score": 10,
+                "components": {
+                    "engagement": {"label": "Engagement", "score": 2, "max": 3, "reason": "e"},
+                    "urgency": {"label": "Urgency / Timeline", "score": 2, "max": 3, "reason": "u"},
+                    "clarity": {"label": "Clarity of Need", "score": 2, "max": 2, "reason": "c"},
+                    "commitment": {"label": "Commitment Signal", "score": 1, "max": 2, "reason": "m"},
+                },
+                "authority": "deterministic_conversation_evidence",
+                "updated_at": "2026-09-18T00:00:00+00:00",
+            }
+        }
+        lead.save(update_fields=["attributes", "updated_at"])
+        self.make_message(lead, body="I need this within 30 days")
+
+        response = self.client.get(reverse("whatsapp-chat-detail", args=[lead.pk]))
+
+        self.assertContains(response, "Intent Score")
+        self.assertContains(response, "7")
+        self.assertContains(response, "Engagement")
+        self.assertContains(response, "Urgency / Timeline")
+        self.assertContains(response, "Clarity of Need")
+        self.assertContains(response, "Commitment Signal")
+
     def test_tabs_use_latest_message_and_unread_count(self):
         waiting = self.make_lead("Waiting", "+919000000002")
         failed = self.make_lead("Failed", "+919000000003")

@@ -1,5 +1,7 @@
 """Non-blocking internal AI enrichment and qualification-state hooks."""
 
+import logging
+
 from django.db import transaction
 from django.db.models.signals import post_save
 from django.dispatch import receiver
@@ -8,6 +10,21 @@ from apps.ai_engagement.services.background_enrichment import (
     queue_background_enrichment,
 )
 from apps.channels.models import WhatsAppMessage
+
+
+logger = logging.getLogger(__name__)
+
+
+def _refresh_intent_score(lead_id):
+    """Refresh cheap deterministic sales intelligence after inbound commit."""
+    from apps.ai_engagement.services.intent_score import persist_intent_score
+    from apps.crm.models import Lead
+
+    try:
+        lead = Lead.objects.select_related("organization").get(pk=lead_id)
+        persist_intent_score(lead=lead)
+    except Exception:
+        logger.exception("Intent score refresh failed for lead %s", lead_id)
 
 
 @receiver(post_save, sender=WhatsAppMessage)
@@ -20,6 +37,10 @@ def queue_internal_ai_enrichment(sender, instance, created, **kwargs):
     lead_id = str(instance.lead_id)
     transaction.on_commit(
         lambda lead_id=lead_id: queue_background_enrichment(lead_id=lead_id),
+        robust=True,
+    )
+    transaction.on_commit(
+        lambda lead_id=lead_id: _refresh_intent_score(lead_id),
         robust=True,
     )
 

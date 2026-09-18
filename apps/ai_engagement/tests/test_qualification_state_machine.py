@@ -132,6 +132,64 @@ class QualificationStateMachineTests(TestCase):
             requirements[2]["id"],
         )
 
+    def test_singular_reply_matches_plural_configured_option(self):
+        requirements = compile_qualification_requirements(
+            "What is your biggest challenge?\n"
+            "A. Slow replies\n"
+            "B. Missed follow-ups\n"
+            "C. Leads going cold\n"
+            "D. No proper tracking"
+        )["requirements"]
+        first = requirements[0]
+        record_last_asked_requirement(self.lead, first["id"], requirements=requirements)
+
+        result = apply_unambiguous_reply(
+            lead=self.lead,
+            requirements=requirements,
+            text="Slow reply",
+            source_message_id="slow-reply",
+        )
+
+        self.assertTrue(result["changed"])
+        self.assertEqual(
+            result["state"]["requirement_states"][first["id"]]["value"],
+            "Slow replies",
+        )
+        self.assertEqual(result["state"]["qualification_status"], STATUS_COMPLETED)
+
+    def test_safely_trimmed_live_flow_drops_removed_trailing_questions(self):
+        original = compile_qualification_requirements(
+            "Which city are you in?\n"
+            "What is your budget?\n"
+            "Which product do you need?"
+        )["requirements"]
+        record_last_asked_requirement(
+            self.lead,
+            original[0]["id"],
+            requirements=original,
+        )
+        apply_unambiguous_reply(
+            lead=self.lead,
+            requirements=original,
+            text="Delhi",
+            source_message_id="trim-q1",
+        )
+
+        trimmed = compile_qualification_requirements(
+            "Which city are you in?\n"
+            "What is your budget?"
+        )["requirements"]
+
+        active = requirements_for_lead(self.lead, trimmed)
+        self.assertEqual(len(active), 2)
+        self.assertEqual(
+            [item["stable_id"] for item in active],
+            ["qualification_1", "qualification_2"],
+        )
+        state = state_for_lead(self.lead, requirements=trimmed)
+        self.assertEqual(state["current_requirement_id"], trimmed[1]["id"])
+        self.assertNotIn(original[2]["id"], state["missing_requirement_ids"])
+
     def test_duplicate_message_id_cannot_advance_two_requirements(self):
         requirements = self._requirements()
         first = requirements[0]

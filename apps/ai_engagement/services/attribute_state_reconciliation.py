@@ -31,7 +31,11 @@ def reconcile_lead_qualification_from_attributes(*, organization, lead):
     from apps.ai_engagement.models import OrgInfo
     from apps.ai_engagement.services.organization_profile import compile_org_ai_profile
     from apps.ai_engagement.services import qualification_state as state_module
-    from apps.ai_engagement.services.qualification_execution_contract import _config
+    from apps.ai_engagement.services.qualification_execution_contract import (
+        _completion_target,
+        _config,
+        _mapping_keys,
+    )
     from apps.crm.models import Lead
 
     if not _is_persistent_model_instance(organization) or not _is_persistent_model_instance(lead):
@@ -60,7 +64,6 @@ def reconcile_lead_qualification_from_attributes(*, organization, lead):
             organization=organization,
             requirements=requirements,
         )
-        mappings = contract_config.get("mappings") or {}
         attributes = deepcopy(locked.attributes) if isinstance(locked.attributes, dict) else {}
         state = state_module.state_for_lead(locked, requirements=requirements)
         states = deepcopy(state.get("requirement_states") or {})
@@ -77,12 +80,29 @@ def reconcile_lead_qualification_from_attributes(*, organization, lead):
             if str(existing.get("status") or "").casefold() in _TERMINAL:
                 continue
 
-            key = str(mappings.get(requirement_id) or "").strip()
-            if not key:
+            keys = _mapping_keys(contract_config, requirement_id)
+            if not keys:
                 continue
-            value = attributes.get(key)
-            if value is None or (isinstance(value, str) and not value.strip()):
+            values = [
+                attributes.get(key)
+                for key in keys
+                if attributes.get(key) is not None
+                and not (
+                    isinstance(attributes.get(key), str)
+                    and not attributes.get(key).strip()
+                )
+            ]
+            normalized_values = {
+                str(value).strip()
+                for value in values
+                if str(value).strip()
+            }
+            # Reverse reconciliation is allowed only when the mapped CRM fields
+            # agree. Never guess which conflicting attribute should satisfy the
+            # qualification requirement.
+            if len(normalized_values) != 1:
                 continue
+            value = values[0]
 
             now = timezone.now().isoformat()
             states[requirement_id] = {
@@ -131,7 +151,11 @@ def reconcile_lead_qualification_from_attributes(*, organization, lead):
         locked.refresh_from_db(fields=["attributes", "pipeline", "stage"])
         normalized = state_module.state_for_lead(locked, requirements=requirements)
 
-        target = contract_config.get("completion_stage")
+        target = _completion_target(
+            lead=locked,
+            state=normalized,
+            config=contract_config,
+        )
         if (
             normalized.get("qualification_status") == state_module.STATUS_COMPLETED
             and isinstance(target, dict)

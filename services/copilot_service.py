@@ -602,8 +602,17 @@ def evaluate_lead(
                     )
                 )
 
-    intent_score = _attribute_number(attrs.get("intent_score"))
-    if intent_score is not None and intent_score > config["copilot_intent_threshold"]:
+    internal_intent = attrs.get("_shvya_ai_intent_score")
+    intent_score_10 = (
+        _attribute_number(internal_intent.get("score"))
+        if isinstance(internal_intent, dict)
+        else None
+    )
+    legacy_intent = _attribute_number(attrs.get("intent_score"))
+    if intent_score_10 is None and legacy_intent is not None:
+        intent_score_10 = legacy_intent if legacy_intent <= 10 else legacy_intent / 10
+    intent_percent = intent_score_10 * 10 if intent_score_10 is not None else None
+    if intent_percent is not None and intent_percent > config["copilot_intent_threshold"]:
         outbound_at = last_outbound.created_at if last_outbound else lead.created_at
         gap_hours = _hours(now - outbound_at)
         if gap_hours >= 24:
@@ -611,7 +620,8 @@ def evaluate_lead(
                 _signal(
                     "H1",
                     "critical",
-                    intent_score=int(intent_score),
+                    intent_score=int(round(intent_score_10)),
+                    intent_percent=int(round(intent_percent)),
                     hours_since_last_outbound=int(gap_hours),
                 )
             )
