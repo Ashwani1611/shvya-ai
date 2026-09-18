@@ -255,16 +255,18 @@ class CRMActionExecutor:
                     ).first()
                 )
                 if definition is None:
-                    definition = AttributeDefinition(
-                        organization=organization,
-                        name=requested_name,
-                        key=requested_key,
-                        field_type=str(item.get("field_type") or "text").strip().casefold(),
-                        description="Created from explicit lead information captured by SHVYA AI.",
-                    )
+                    from services.crm.attribute_service import create_attribute_definition
+
                     try:
-                        definition.full_clean()
-                        definition.save()
+                        definition = create_attribute_definition(
+                            organization=organization,
+                            name=requested_name,
+                            field_type=str(item.get("field_type") or "text").strip().casefold(),
+                            description=(
+                                "Created from explicit lead information captured by SHVYA AI."
+                            ),
+                            options=[],
+                        )
                     except DjangoValidationError as exc:
                         raise CRMActionExecutionError(
                             "Dynamic lead attribute definition failed validation."
