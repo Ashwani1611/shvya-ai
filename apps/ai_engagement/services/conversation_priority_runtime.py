@@ -307,23 +307,11 @@ def _priority_validator(engagement_module):
             for item in projected.get("requirement_states", {}).values()
         )
 
-        # Direct answers should advance naturally in the same response when a
-        # next requirement exists. Do not apply this forcing rule to synthetic
-        # contexts that omit the CRM stage; those are validation fixtures, not
-        # production routing state.
+        # Do not force the next qualification question merely because the
+        # current answer was accepted. ConversationPolicyEngine decides whether
+        # this turn should continue qualification immediately or acknowledge the
+        # answer and leave the next requirement pending for a later natural turn.
         runtime_saved = ((getattr(context, "lead", {}) or {}).get("attributes") or {}).get(STATE_KEY) or {}
-        if (
-            explicit_stage
-            and strict_qualification_active
-            and next_item
-            and getattr(decision, "should_engage", False)
-            and runtime_saved.get("conversation_mode") not in {"paused", "opt_out"}
-            and answered_now
-            and selected_next != next_id
-        ):
-            raise engagement_module.EngagementError(
-                "The current qualification answer was accepted; acknowledge it and ask the backend-selected next requirement in the same response."
-            )
 
         # If the lead has a direct question/request/problem, a pending
         # qualification question may follow only after meaningful engagement.
