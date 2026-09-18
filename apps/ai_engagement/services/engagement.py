@@ -419,7 +419,39 @@ class EngagementService:
     ):
         """Validate both primary and repaired output before caching or writes."""
         self._validate_engagement_policy(decision=decision, context=context)
+
+        # Bounded previews/tests may omit stage metadata, and the backend may
+        # complete the final New Lead answer before validating the same turn.
+        # Qualification-shaped output is compatible only when no concrete
+        # non-New-Lead stage contradicts it.
+        from apps.ai_engagement.services.qualification_state import (
+            NEW_LEAD_STAGE,
+            normalize_stage_name,
+        )
+
+        raw_stage = getattr(context, "stage", {})
+        stage_name = normalize_stage_name(
+            raw_stage.get("name")
+            if isinstance(raw_stage, dict)
+            else getattr(raw_stage, "name", "")
+        )
+        qualification_shaped = bool(
+            (getattr(decision, "qualification_updates", []) or [])
+            or getattr(decision, "next_requirement_id", None)
+            or str(getattr(decision, "reason_code", "") or "").strip().upper()
+            in {"QUALIFICATION_NEXT", "QUALIFICATION_CLARIFY"}
+        )
         qualifying = qualification_state.get("engagement_mode") == MODE_QUALIFICATION
+        if (
+            not qualifying
+            and qualification_shaped
+            and (not stage_name or stage_name == NEW_LEAD_STAGE)
+        ):
+            qualification_state = {
+                **qualification_state,
+                "engagement_mode": MODE_QUALIFICATION,
+            }
+            qualifying = True
         if not qualifying:
             if getattr(decision, "qualification_updates", []) or getattr(decision, "next_requirement_id", None):
                 raise EngagementError(
