@@ -145,8 +145,43 @@ def _snapshot(requirements) -> list[dict]:
     return deepcopy([item for item in requirements or [] if isinstance(item, dict)])
 
 
+def _compatible_trimmed_flow(snapshot, current_requirements) -> bool:
+    """Allow a live flow to adopt a safely shortened questionnaire.
+
+    In-progress leads stay pinned across wording/order edits, but when an admin
+    removes only trailing requirements while keeping the existing stable
+    questions/options unchanged, continuing to force deleted questions is
+    surprising and customer-visible. This compatibility check is intentionally
+    strict so answer identity cannot silently drift.
+    """
+    if not isinstance(snapshot, list) or not snapshot or not current_requirements:
+        return False
+    if len(current_requirements) >= len(snapshot):
+        return False
+
+    previous = {
+        str(item.get("stable_id") or ""): item
+        for item in snapshot
+        if isinstance(item, dict) and str(item.get("stable_id") or "")
+    }
+    for current in current_requirements:
+        if not isinstance(current, dict):
+            return False
+        stable_id = str(current.get("stable_id") or "")
+        old = previous.get(stable_id)
+        if old is None:
+            return False
+        if str(old.get("question") or "").strip() != str(current.get("question") or "").strip():
+            return False
+        if list(old.get("options") or []) != list(current.get("options") or []):
+            return False
+        if bool(old.get("required", True)) != bool(current.get("required", True)):
+            return False
+    return True
+
+
 def requirements_for_lead(lead, current_requirements=None) -> list[dict]:
-    """Pin a live questionnaire to the version active when qualification started."""
+    """Pin live qualification safely, while honoring strictly trimmed flows."""
     state = _raw_state(lead)
     snapshot = state.get("flow_snapshot")
     if (
@@ -154,6 +189,8 @@ def requirements_for_lead(lead, current_requirements=None) -> list[dict]:
         and isinstance(snapshot, list)
         and snapshot
     ):
+        if _compatible_trimmed_flow(snapshot, current_requirements or []):
+            return _snapshot(current_requirements)
         return _snapshot(snapshot)
     return _snapshot(current_requirements)
 
