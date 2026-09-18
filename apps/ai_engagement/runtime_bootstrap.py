@@ -39,11 +39,6 @@ def install_ai_runtime() -> None:
     )
     install_conversation_priority_runtime()
 
-    from apps.ai_engagement.services.ai_setup_runtime_compat import (
-        install_ai_setup_runtime_compat,
-    )
-    install_ai_setup_runtime_compat()
-
     # Reminder extraction is independent of qualification mapping authority.
     from apps.ai_engagement.services.reminder_time_runtime import (
         install_reminder_time_runtime,
