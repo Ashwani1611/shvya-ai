@@ -1125,32 +1125,31 @@ def _plan_from_reconciled(*, lead, source_message_id, snapshot):
         if isinstance(item, dict)
     ]
 
-    # Verify exact mapped attributes by DB readback for every answer persisted by
-    # this inbound message, regardless of what the model proposed.
+    # Verify every explicitly mapped attribute target by DB readback for every
+    # answer persisted by this inbound message, regardless of model proposals.
     for requirement_id, item in answered:
-        attribute_key = config.get("mappings", {}).get(str(requirement_id))
-        if not attribute_key:
-            continue
-        verification = _verify_attribute(
-            lead,
-            attribute_key,
-            item.get("value"),
-        )
-        results = [
-            result
-            for result in results
-            if not (
-                result.get("type") == "attribute_updates"
-                and any(
-                    str(update.get("key") or "") == attribute_key
-                    for update in result.get("updates") or []
-                    if isinstance(update, dict)
-                )
+        for attribute_key in _mapping_keys(config, str(requirement_id)):
+            verification = _verify_attribute(
+                lead,
+                attribute_key,
+                item.get("value"),
             )
-        ]
-        results.append(verification)
+            results = [
+                result
+                for result in results
+                if not (
+                    result.get("type") == "attribute_updates"
+                    and any(
+                        str(update.get("key") or "") == attribute_key
+                        for update in result.get("updates") or []
+                        if isinstance(update, dict)
+                    )
+                )
+            ]
+            results.append(verification)
 
-    target = config.get("completion_stage")
+    target = _completion_target(lead=lead, state=state, config=config)
+    runtime_config = {**config, "completion_stage": target}
     if target and _norm(state.get("qualification_status")) == "completed":
         verification = _verify_stage(lead, target)
         results = [
@@ -1165,7 +1164,7 @@ def _plan_from_reconciled(*, lead, source_message_id, snapshot):
         answer=answered[-1][1].get("value"),
         state=state,
         requirements=requirements,
-        config=config,
+        config=runtime_config,
         results=results,
     )
 
