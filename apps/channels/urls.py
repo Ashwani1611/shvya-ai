@@ -6,6 +6,7 @@ from apps.hosted_automation import views as hosted_automation_views
 from . import api_account_repair_ui
 from . import ai_reply_status_ui
 from . import api_account_ui
+from . import campaign_ui
 from . import coexistence_finish_ui
 from . import coexistence_phone_selection_ui
 from . import coexistence_ui
@@ -67,10 +68,22 @@ urlpatterns = [
     path("accounts/<uuid:account_id>/disconnect/", views_flat.whatsapp_disconnect_view, name="whatsapp-disconnect"),
     path("accounts/<uuid:account_id>/resubscribe/", api_account_repair_ui.whatsapp_resubscribe_repair_view, name="whatsapp-resubscribe"),
     path("send/<uuid:lead_id>/", whatsapp_api_chat_ui.whatsapp_send_message_view, name="whatsapp-send-message"),
-    path("campaigns/", views_flat.whatsapp_campaign_list_view, name="whatsapp-campaign-list"),
-    path("campaigns/new/", views_flat.whatsapp_campaign_create_view, name="whatsapp-campaign-create"),
-    path("campaigns/<uuid:campaign_id>/", views_flat.whatsapp_campaign_detail_view, name="whatsapp-campaign-detail"),
-    path("campaigns/<uuid:campaign_id>/launch/", views_flat.whatsapp_campaign_launch_view, name="whatsapp-campaign-launch"),
+    path("campaigns/", campaign_ui.workspace, name="whatsapp-campaign-list"),
+    path("campaigns/new/", campaign_ui.workspace, name="whatsapp-campaign-create"),
+    path("campaigns/data/", campaign_ui.list_data, name="whatsapp-campaign-list-data"),
+    path("campaigns/options/", campaign_ui.options, name="whatsapp-campaign-options"),
+    path("campaigns/upload/", campaign_ui.upload, name="whatsapp-campaign-upload"),
+    path("campaigns/sample/", campaign_ui.sample, name="whatsapp-campaign-sample"),
+    path("campaigns/uploads/<uuid:upload_id>/review/", campaign_ui.review, name="whatsapp-campaign-upload-review"),
+    path("campaigns/uploads/<uuid:upload_id>/errors/", campaign_ui.upload_errors, name="whatsapp-campaign-upload-errors"),
+    path("campaigns/templates/", campaign_ui.templates, name="whatsapp-campaign-templates"),
+    path("campaigns/preview/", campaign_ui.preview, name="whatsapp-campaign-preview"),
+    path("campaigns/confirm/", campaign_ui.confirm, name="whatsapp-campaign-confirm"),
+    path("campaigns/<uuid:campaign_id>/", campaign_ui.workspace, name="whatsapp-campaign-detail"),
+    path("campaigns/<uuid:campaign_id>/data/", campaign_ui.detail_data, name="whatsapp-campaign-detail-data"),
+    path("campaigns/<uuid:campaign_id>/actions/", campaign_ui.actions, name="whatsapp-campaign-actions"),
+    path("campaigns/<uuid:campaign_id>/recipients/<uuid:recipient_id>/lead/", campaign_ui.lead_details, name="whatsapp-campaign-lead"),
+    path("campaigns/<uuid:campaign_id>/launch/", campaign_ui.legacy_launch, name="whatsapp-campaign-launch"),
 
     path("templates/", template_action_ui.template_list, name="whatsapp-template-list"),
     path("templates/new/", template_action_ui.template_create, name="whatsapp-template-create"),
