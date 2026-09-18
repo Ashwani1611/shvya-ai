@@ -317,17 +317,29 @@ def install_qualification_execution_policy_guard() -> None:
                 organization=organization,
                 requirements=requirements,
             )
-            # Qualification-owned CRM writes are rebuilt from deterministic
-            # backend configuration. Do not preserve model-selected attributes,
-            # completion stages, or reminders.
-            actions = [
-                deepcopy(action)
-                for action in getattr(decision, "crm_actions", []) or []
-                if isinstance(action, dict)
-                and action.get("type")
-                not in {"attribute_updates", "pipeline_transition", "create_reminder"}
-            ]
+            # Qualification-owned mapped keys are rebuilt from deterministic
+            # backend configuration. Preserve unrelated evidence-validated CRM
+            # facts from the same customer message (for example company/team
+            # size volunteered alongside a qualification answer), while never
+            # allowing the model to override a configured qualification mapping.
+            proposed_attribute_updates = []
+            actions = []
+            for action in getattr(decision, "crm_actions", []) or []:
+                if not isinstance(action, dict) or not action.get("type"):
+                    continue
+                if action.get("type") == "attribute_updates":
+                    proposed_attribute_updates.extend(
+                        deepcopy(item)
+                        for item in action.get("updates") or []
+                        if isinstance(item, dict) and item.get("key")
+                    )
+                    continue
+                if action.get("type") in {"pipeline_transition", "create_reminder"}:
+                    continue
+                actions.append(deepcopy(action))
+
             exact_updates = []
+            deterministic_keys = set()
             for update in qualification_updates:
                 requirement = _requirement_ref(
                     str(update.get("requirement_id") or ""),
@@ -337,18 +349,38 @@ def install_qualification_execution_policy_guard() -> None:
                     continue
                 requirement_id = str(requirement.get("id") or "")
                 for attribute_key in _mapping_keys(config, requirement_id):
+                    deterministic_keys.add(str(attribute_key))
                     exact_updates.append(
                         {
                             "key": attribute_key,
                             "value": update.get("value"),
                         }
                     )
-            if exact_updates:
-                by_key = {
-                    str(item["key"]): item
-                    for item in exact_updates
-                    if item.get("key")
-                }
+
+            # Keep only distinct non-qualification facts from the already
+            # policy-filtered decision. If a model proposes the same value as a
+            # qualification answer under another key, treat it as an attempted
+            # fuzzy/shadow mapping and discard it. This preserves the existing
+            # exact-mapping contract while allowing genuinely separate facts
+            # volunteered in the same message.
+            qualification_values = {
+                re.sub(r"\s+", " ", str(item.get("value") or "")).strip().casefold()
+                for item in qualification_updates
+                if str(item.get("value") or "").strip()
+            }
+            by_key = {}
+            for item in proposed_attribute_updates:
+                key = str(item.get("key") or "")
+                value = re.sub(
+                    r"\s+", " ", str(item.get("value") or "")
+                ).strip().casefold()
+                if not key or key in deterministic_keys or value in qualification_values:
+                    continue
+                by_key[key] = item
+            for item in exact_updates:
+                if item.get("key"):
+                    by_key[str(item["key"])] = item
+            if by_key:
                 actions.insert(
                     0,
                     {

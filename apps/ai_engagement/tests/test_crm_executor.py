@@ -189,6 +189,76 @@ class CRMActionExecutorTests(TestCase):
                 ],
             )
 
+    def test_creates_safe_dynamic_attribute_and_fills_value(self):
+        result = self.executor.execute(
+            organization=self.organization,
+            lead=self.lead,
+            actions=[
+                {
+                    "type": "attribute_updates",
+                    "updates": [
+                        {
+                            "key": "sales_team_size",
+                            "name": "Sales Team Size",
+                            "field_type": "numeric",
+                            "create_if_missing": True,
+                            "value": 8,
+                        }
+                    ],
+                }
+            ],
+        )
+
+        definition = AttributeDefinition.objects.get(
+            organization=self.organization,
+            key="sales_team_size",
+        )
+        self.lead.refresh_from_db()
+        self.assertEqual(definition.name, "Sales Team Size")
+        self.assertEqual(definition.field_type, "numeric")
+        self.assertEqual(self.lead.attributes["sales_team_size"], "8")
+        self.assertEqual(result[0]["created_keys"], ["sales_team_size"])
+
+    def test_dynamic_attribute_reuses_same_named_existing_definition(self):
+        AttributeDefinition.objects.create(
+            organization=self.organization,
+            name="Sales Team Size",
+            key="number_of_sales_reps",
+            field_type="numeric",
+            description="Existing field.",
+            options=[],
+        )
+
+        self.executor.execute(
+            organization=self.organization,
+            lead=self.lead,
+            actions=[
+                {
+                    "type": "attribute_updates",
+                    "updates": [
+                        {
+                            "key": "sales_team_size",
+                            "name": "Sales Team Size",
+                            "field_type": "numeric",
+                            "create_if_missing": True,
+                            "value": 8,
+                        }
+                    ],
+                }
+            ],
+        )
+
+        self.lead.refresh_from_db()
+        self.assertEqual(
+            AttributeDefinition.objects.filter(
+                organization=self.organization,
+                name="Sales Team Size",
+            ).count(),
+            1,
+        )
+        self.assertEqual(self.lead.attributes["number_of_sales_reps"], "8")
+        self.assertNotIn("sales_team_size", self.lead.attributes)
+
     def test_rejects_ai_update_to_credential_attribute(self):
         AttributeDefinition.objects.create(
             organization=self.organization,

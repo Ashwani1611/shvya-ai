@@ -315,11 +315,11 @@ class TenantGuard:
                 is_sensitive_attribute_definition,
             )
 
-            keys = {
-                str(item.get("key") or "")
-                for item in action.get("updates") or []
+            updates = [
+                item for item in action.get("updates") or []
                 if isinstance(item, dict) and item.get("key")
-            }
+            ]
+            keys = {str(item.get("key") or "") for item in updates}
             if not keys:
                 return action
             definitions = list(
@@ -328,6 +328,7 @@ class TenantGuard:
                     key__in=keys,
                 )
             )
+            existing_keys = {definition.key for definition in definitions}
             for definition in definitions:
                 self.validate_attribute(definition)
                 if is_sensitive_attribute_definition(
@@ -337,11 +338,25 @@ class TenantGuard:
                         object_type="attribute",
                         code=OBJECT_NOT_IN_ORGANIZATION,
                     )
-            if {definition.key for definition in definitions} != keys:
-                self._reject(
-                    object_type="attribute",
-                    code=OBJECT_NOT_IN_ORGANIZATION,
-                )
+
+            for item in updates:
+                key = str(item.get("key") or "")
+                if key in existing_keys:
+                    continue
+                if item.get("create_if_missing") is not True:
+                    self._reject(
+                        object_type="attribute",
+                        code=OBJECT_NOT_IN_ORGANIZATION,
+                    )
+                candidate = {
+                    "key": key,
+                    "name": str(item.get("name") or ""),
+                }
+                if is_sensitive_attribute_definition(candidate):
+                    self._reject(
+                        object_type="attribute",
+                        code=OBJECT_NOT_IN_ORGANIZATION,
+                    )
             return action
 
         # add_note/create_reminder target the already validated current Lead and

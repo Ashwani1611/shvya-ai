@@ -223,6 +223,111 @@ class ControlledCRMActionTests(SimpleTestCase):
             actions,
         )
 
+
+    def test_numeric_range_attribute_is_supported_by_explicit_lead_volume(self):
+        context = self._context(body="We get 19 leads every day")
+        context.pipeline["attribute_definitions"].append(
+            {"key": "leads_d", "name": "Leads/d", "field_type": "text"}
+        )
+        decision = SimpleNamespace(
+            qualification_updates=[],
+            crm_actions=[
+                {
+                    "type": "attribute_updates",
+                    "updates": [{"key": "leads_d", "value": "10-30"}],
+                }
+            ],
+        )
+
+        actions, _ = build_controlled_actions(
+            decision=decision,
+            context=context,
+            runtime_policy={"qualification": {"criteria": []}},
+            qualification_state={"requirement_states": {}},
+            requirements=[],
+        )
+
+        self.assertIn(
+            {
+                "type": "attribute_updates",
+                "updates": [{"key": "leads_d", "value": "10-30"}],
+            },
+            actions,
+        )
+
+    def test_safe_dynamic_attribute_candidate_survives_policy_filter(self):
+        context = self._context(body="We have 8 salespeople handling enquiries")
+        decision = SimpleNamespace(
+            qualification_updates=[],
+            crm_actions=[
+                {
+                    "type": "attribute_updates",
+                    "updates": [
+                        {
+                            "key": "sales_team_size",
+                            "name": "Sales Team Size",
+                            "field_type": "numeric",
+                            "create_if_missing": True,
+                            "value": 8,
+                        }
+                    ],
+                }
+            ],
+        )
+
+        actions, _ = build_controlled_actions(
+            decision=decision,
+            context=context,
+            runtime_policy={"qualification": {"criteria": []}},
+            qualification_state={"requirement_states": {}},
+            requirements=[],
+        )
+
+        self.assertIn(
+            {
+                "type": "attribute_updates",
+                "updates": [
+                    {
+                        "key": "sales_team_size",
+                        "name": "Sales Team Size",
+                        "field_type": "numeric",
+                        "create_if_missing": True,
+                        "value": 8,
+                    }
+                ],
+            },
+            actions,
+        )
+
+    def test_dynamic_attribute_without_explicit_evidence_is_rejected(self):
+        context = self._context(body="We are exploring options")
+        decision = SimpleNamespace(
+            qualification_updates=[],
+            crm_actions=[
+                {
+                    "type": "attribute_updates",
+                    "updates": [
+                        {
+                            "key": "sales_team_size",
+                            "name": "Sales Team Size",
+                            "field_type": "numeric",
+                            "create_if_missing": True,
+                            "value": 8,
+                        }
+                    ],
+                }
+            ],
+        )
+
+        actions, _ = build_controlled_actions(
+            decision=decision,
+            context=context,
+            runtime_policy={"qualification": {"criteria": []}},
+            qualification_state={"requirement_states": {}},
+            requirements=[],
+        )
+        self.assertEqual(actions, [])
+
     def test_unrequested_model_reminder_is_removed(self):
         decision = SimpleNamespace(
             qualification_updates=[],

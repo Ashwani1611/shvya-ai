@@ -260,16 +260,34 @@ class ConversationPolicyEngine:
             )
 
         if accepted:
-            if next_requirement_id:
+            if next_requirement_id and context.continue_after_answer:
                 return self._decision(
                     ConversationPolicyOutcome.ASK_QUALIFICATION,
                     "ACCEPTED_QUALIFICATION_CONTINUE",
                     confidence,
                     continue_qualification=True,
                     next_requirement_id=next_requirement_id,
-                    goal="ask_next_qualification",
+                    goal="acknowledge_then_ask_next_qualification",
                     result_ref=result_ref,
-                    debug="Current answer was accepted; continue with next unanswered requirement.",
+                    debug=(
+                        "The current answer was accepted and this turn is a short/direct "
+                        "qualification reply, so continue with the backend-selected next "
+                        "requirement."
+                    ),
+                )
+            if next_requirement_id:
+                return self._decision(
+                    ConversationPolicyOutcome.NORMAL_CONVERSATION,
+                    "ACCEPTED_QUALIFICATION_PAUSE",
+                    confidence,
+                    continue_qualification=False,
+                    goal="acknowledge_and_continue_naturally",
+                    result_ref=result_ref,
+                    debug=(
+                        "The current answer was accepted, but the turn contains enough "
+                        "conversational context that qualification should remain pending "
+                        "instead of forcing another question immediately."
+                    ),
                 )
             return self._decision(
                 ConversationPolicyOutcome.NORMAL_CONVERSATION,
