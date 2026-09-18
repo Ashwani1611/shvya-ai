@@ -363,11 +363,21 @@ def _enhanced_direct_classifier(original, state_module):
         if not options:
             return classified
 
+        scalar_number = bool(
+            re.fullmatch(
+                r"\s*[₹$€£]?\s*\d+(?:[.,]\d+)?\s*",
+                raw_text,
+            )
+        )
+        numeric_candidates = _numeric_option_candidates(raw_text, options)
+        if scalar_number and len(set(numeric_candidates)) > 1:
+            return (state_module.REQUIREMENT_UNCLEAR, raw_text, "high")
+
         matched = (
             _match_key_option(raw_text, options)
             or _match_boolean_option(raw_text, question, options)
             or _match_numeric_option(raw_text, options)
-            or _match_text_option(raw_text, options)
+            or (None if scalar_number else _match_text_option(raw_text, options))
         )
         if matched is not None:
             return (state_module.REQUIREMENT_ANSWERED, matched, "high")
