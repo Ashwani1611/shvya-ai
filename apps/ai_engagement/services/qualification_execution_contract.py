@@ -189,6 +189,7 @@ def _config(*, organization, requirements: list[dict[str, Any]]) -> dict[str, An
     )
 
     mappings: dict[str, str] = {}
+    mapping_targets: dict[str, list[str]] = {}
     errors: list[dict[str, str]] = []
 
     mapping_lines = list(section_lines(engagement_raw, "attribute_mapped"))
@@ -252,17 +253,13 @@ def _config(*, organization, requirements: list[dict[str, Any]]) -> dict[str, An
             continue
         requirement_id = str(requirement.get("id") or "")
         attribute_key = str(attribute.get("key") or "")
-        if requirement_id in mappings and mappings[requirement_id] != attribute_key:
-            errors.append(
-                {
-                    "type": "configuration_error",
-                    "status": "failed",
-                    "code": "ambiguous_attribute_mapping",
-                    "detail": requirement_id,
-                }
-            )
-        else:
-            mappings[requirement_id] = attribute_key
+        targets = mapping_targets.setdefault(requirement_id, [])
+        if attribute_key not in targets:
+            targets.append(attribute_key)
+        # Keep the first mapping as the backwards-compatible primary mapping for
+        # older reconciliation callers. Qualification execution itself uses the
+        # full one-to-many mapping_targets list.
+        mappings.setdefault(requirement_id, attribute_key)
 
     acknowledgement_values: list[str] = []
     for source_text in (engagement_raw, qualification_raw):
@@ -377,8 +374,10 @@ def _config(*, organization, requirements: list[dict[str, Any]]) -> dict[str, An
 
     return {
         "mappings": mappings,
+        "mapping_targets": mapping_targets,
         "final_ack": final_ack,
         "completion_stage": completion_stage,
+        "reminder_rules": section_lines(engagement_raw, "reminders"),
         "errors": errors,
     }
 
