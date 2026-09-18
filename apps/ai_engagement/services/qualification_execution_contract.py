@@ -402,22 +402,45 @@ def _completion_target(*, lead, state: dict[str, Any], config: dict[str, Any]):
     if isinstance(target, dict) and target.get("id") is not None:
         return target
 
-    stage_id = str(state.get("qualified_stage_id") or "").strip()
-    if not stage_id:
-        return None
-
     from apps.crm.models import Stage
 
-    return (
+    stage_id = str(state.get("qualified_stage_id") or "").strip()
+    if stage_id:
+        target = (
+            Stage.objects.filter(
+                id=stage_id,
+                pipeline__organization=lead.organization,
+                pipeline__is_active=True,
+                is_active=True,
+            )
+            .values("id", "name", "pipeline_id", "pipeline__name")
+            .first()
+        )
+        if target is not None:
+            return target
+
+    # Some projected qualification states are normalized without a live Lead
+    # object and therefore do not carry qualified_stage_id. Derive the fallback
+    # from the lead's actual active pipeline instead of losing the completion
+    # transition.
+    pipeline_id = getattr(lead, "pipeline_id", None)
+    if not pipeline_id:
+        return None
+    candidates = list(
         Stage.objects.filter(
-            id=stage_id,
+            pipeline_id=pipeline_id,
             pipeline__organization=lead.organization,
             pipeline__is_active=True,
             is_active=True,
         )
         .values("id", "name", "pipeline_id", "pipeline__name")
-        .first()
     )
+    qualified = [
+        item
+        for item in candidates
+        if _norm(item.get("name")) == "qualified"
+    ]
+    return qualified[0] if len(qualified) == 1 else None
 
 
 _COMPLETION_REMINDER_SCOPE_RE = re.compile(
