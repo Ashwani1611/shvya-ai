@@ -3,19 +3,25 @@ on:
   push:
     branches: [build/ai-phase-completion-20260918]
 permissions:
-  contents: write
+  contents: read
 jobs:
   prepare:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
         with:
+          ref: 7a569db44b3293f85b33c3c14c200e91df7b2e9f
           fetch-depth: 0
           persist-credentials: false
-      - name: Assemble inspected source into clean Git objects
-        id: assemble
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: python .phase_build/assemble.py
-      - name: Source summary
-        run: echo "Prepared immutable code commit ${{ steps.assemble.outputs.commit }}; no branch was moved and no deployment was triggered."
+      - name: Export tracked review source only
+        run: |
+          git archive --format=zip --output=ai-review-source.zip HEAD
+          git bundle create ai-review.bundle HEAD refs/remotes/origin/main refs/remotes/origin/staging
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ai-phase-review-source
+          path: |
+            ai-review-source.zip
+            ai-review.bundle
+          retention-days: 1
+          if-no-files-found: error
