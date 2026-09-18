@@ -56,6 +56,8 @@ from apps.crm.views.dashboard import (
     global_reminder_delete,
     global_reminder_edit_save,
     global_reminder_snooze,
+    reminder_notification_ack,
+    reminder_notification_feed,
 )
 
 from apps.crm.views.filtering import (
@@ -432,6 +434,18 @@ path(
     "reminders/",
     global_reminders_modal,
     name="crm-global-reminders-modal",
+),
+
+path(
+    "reminders/notifications/",
+    reminder_notification_feed,
+    name="crm-reminder-notification-feed",
+),
+
+path(
+    "reminders/notifications/<uuid:reminder_id>/ack/",
+    reminder_notification_ack,
+    name="crm-reminder-notification-ack",
 ),
 
 path(
