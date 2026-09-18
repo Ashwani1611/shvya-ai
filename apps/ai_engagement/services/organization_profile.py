@@ -20,6 +20,20 @@ _INLINE_OPTION_RE = re.compile(
     r"(?<!\w)(?P<key>[A-Za-z]|\d{1,2})\s*[\)\].:\-]\s+"
 )
 _EXPLICIT_ID_RE = re.compile(r"^\s*\[id\s*:\s*(?P<id>[A-Za-z0-9_-]+)\]\s*", re.IGNORECASE)
+_QUALIFICATION_CONFIG_HEADING_RE = re.compile(
+    r"^\s*(?:#{1,6}\s*)?(?:"
+    r"(?:final\s+)?(?:acknowledg(?:e)?ment|completion)\s+message|"
+    r"attribute\s+(?:mapped|mapping|mappings|map|filling|fill)|"
+    r"stage\s+(?:shifting|shift|movement|routing)|"
+    r"(?:qualification\s+)?rules?|"
+    r"engagement\s+instructions?"
+    r")\s*:?[\s#]*$",
+    re.IGNORECASE,
+)
+_QUALIFICATION_MAPPING_LINE_RE = re.compile(
+    r"^\s*(?:[-*•]\s*)?(?:q(?:uestion)?\s*\d+|[A-Za-z0-9_-]+)\s*(?:->|=>|→)\s*.+$",
+    re.IGNORECASE,
+)
 
 
 def _clean_requirement_line(value: str) -> str:
@@ -110,6 +124,15 @@ def _requirement_blocks(raw: str) -> list[dict[str, Any]]:
     for raw_part in re.split(r"[\n;]+", text):
         original = str(raw_part or "").strip()
         if not original:
+            continue
+
+        # The Qualification Requirements textarea often contains trailing
+        # configuration (acknowledgment, attribute mappings, rules). Those lines
+        # are not questionnaire requirements and must never become customer-facing
+        # questions. Once a configuration heading starts, the questionnaire ends.
+        if _QUALIFICATION_CONFIG_HEADING_RE.match(original):
+            break
+        if _QUALIFICATION_MAPPING_LINE_RE.match(original):
             continue
 
         inline = _extract_inline_options(original)
