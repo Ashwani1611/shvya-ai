@@ -327,10 +327,22 @@ class BulkCampaignTests(CampaignFixture, TestCase):
     def test_deleted_lead_does_not_change_frozen_recipient_total(self):
         campaign = self.campaign()
         delivery = campaign.campaign_delivery_rows.get()
+        frozen = (delivery.name, delivery.phone, delivery.body, delivery.values)
+        message = self.outbound(delivery.lead, external_id="wamid.deleted-lead")
+        attempt = CampaignAttempt.objects.create(
+            delivery=delivery, number=1, message=message,
+            provider_id=message.external_id, accepted_at=timezone.now(),
+        )
         delivery.lead.delete()
         delivery.refresh_from_db()
+        attempt.refresh_from_db()
         self.assertIsNone(delivery.lead_id)
         self.assertIsNone(delivery.recipient_id)
+        self.assertEqual((delivery.name, delivery.phone, delivery.body, delivery.values), frozen)
+        self.assertEqual(attempt.delivery_id, delivery.pk)
+        self.assertEqual(attempt.provider_id, "wamid.deleted-lead")
+        self.assertIsNotNone(attempt.accepted_at)
+        self.assertIsNone(attempt.message_id)
         self.assertEqual(delivery_counts(campaign.campaign_delivery_rows)["total"], 1)
         self.assertEqual(send_delivery(delivery.pk)["status"], "lead_changed")
 
