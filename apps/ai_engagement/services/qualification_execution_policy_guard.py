@@ -372,6 +372,18 @@ def install_qualification_execution_policy_guard() -> None:
                 .first()
             )
             if source is not None:
+                # Preserve the existing deterministic explicit date/time or call
+                # reminder behavior. This rebuilds the action from customer
+                # evidence instead of trusting a model-proposed due_at.
+                from apps.ai_engagement.services.crm_routing_reliability import (
+                    _ensure_datetime_reminder,
+                )
+
+                _ensure_datetime_reminder(
+                    actions,
+                    str(source.get("body") or ""),
+                )
+
                 base_state = qs.state_for_lead(lead, requirements=requirements)
                 try:
                     projected = qs.project_answer_updates(
