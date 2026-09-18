@@ -42,6 +42,7 @@ def context(
     capabilities=(),
     channel: str = "api",
     state=None,
+    continue_after_answer: bool = False,
 ) -> ConversationPolicyContext:
     source_id = "m1"
     qualification_state = state or {
@@ -63,6 +64,7 @@ def context(
         extracted_facts=tuple(decision.facts),
         capabilities=frozenset(capabilities),
         channel=channel,
+        continue_after_answer=continue_after_answer,
     )
 
 
@@ -70,8 +72,22 @@ def decide(ctx: ConversationPolicyContext):
     return ConversationPolicyEngine().decide(ctx)
 
 
-def test_qualification_answer_only_continues_to_next_requirement():
+def test_contextual_qualification_answer_can_pause_next_question():
     result = decide(context(intent(Intent.QUALIFICATION_ANSWER), accepted=True, next_id="q4"))
+    assert result.outcome == ConversationPolicyOutcome.NORMAL_CONVERSATION
+    assert result.next_requirement_id is None
+    assert result.continue_qualification is False
+
+
+def test_short_direct_qualification_answer_can_continue_immediately():
+    result = decide(
+        context(
+            intent(Intent.QUALIFICATION_ANSWER),
+            accepted=True,
+            next_id="q4",
+            continue_after_answer=True,
+        )
+    )
     assert result.outcome == ConversationPolicyOutcome.ASK_QUALIFICATION
     assert result.next_requirement_id == "q4"
 
@@ -226,6 +242,7 @@ def test_previously_answered_requirement_is_never_selected_by_policy():
             accepted=True,
             next_id="q3",
             state=state,
+            continue_after_answer=True,
         )
     )
     assert result.next_requirement_id == "q3"
@@ -368,6 +385,7 @@ def test_answered_state_can_prove_acceptance_even_if_result_flag_is_false():
             accepted=False,
             next_id="ads",
             state=state,
+            continue_after_answer=True,
         )
     )
     assert result.outcome == ConversationPolicyOutcome.ASK_QUALIFICATION
