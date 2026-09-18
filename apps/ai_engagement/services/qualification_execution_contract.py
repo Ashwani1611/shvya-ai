@@ -157,6 +157,45 @@ def _attribute_ref(
     return found[0] if len(found) == 1 else None
 
 
+def _attribute_refs(
+    value: str,
+    definitions: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Resolve one or more exact authored attribute targets.
+
+    Exact names/keys remain authoritative. Multi-target shorthand is supported
+    only when the full right-hand side is not itself an attribute name, so an
+    attribute such as "Leads/d" still resolves as one field while authored forms
+    such as "Lead Management Tool (+ Using Whatsapp / CRM)" resolve to three.
+    """
+    direct = _attribute_ref(value, definitions)
+    if direct is not None:
+        return [direct]
+
+    text = str(value or "").strip()
+    text = re.sub(r"\(\s*\+", "+", text)
+    text = text.replace(")", " ")
+    parts = [
+        part.strip()
+        for part in re.split(r"\s*(?:\+|/|,|\band\b)\s*", text, flags=re.I)
+        if part.strip()
+    ]
+    if len(parts) < 2:
+        return []
+
+    resolved: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for part in parts:
+        item = _attribute_ref(part, definitions)
+        if item is None:
+            return []
+        key = str(item.get("key") or "")
+        if key and key not in seen:
+            resolved.append(item)
+            seen.add(key)
+    return resolved
+
+
 def _split_mapping(line: str) -> tuple[str, str] | None:
     text = str(line or "").strip()
     parts = re.split(r"\s*(?:->|=>|→)\s*", text, maxsplit=1)
@@ -217,7 +256,7 @@ def _config(*, organization, requirements: list[dict[str, Any]]) -> dict[str, An
             )
             continue
         requirement = _requirement_ref(pair[0], requirements)
-        attribute = _attribute_ref(pair[1], definitions)
+        attributes = _attribute_refs(pair[1], definitions)
         if requirement is None:
             errors.append(
                 {
@@ -228,7 +267,7 @@ def _config(*, organization, requirements: list[dict[str, Any]]) -> dict[str, An
                 }
             )
             continue
-        if attribute is None:
+        if not attributes:
             errors.append(
                 {
                     "type": "configuration_error",
@@ -242,7 +281,12 @@ def _config(*, organization, requirements: list[dict[str, Any]]) -> dict[str, An
             is_sensitive_attribute_definition,
         )
 
-        if is_sensitive_attribute_definition(attribute):
+        sensitive = [
+            attribute
+            for attribute in attributes
+            if is_sensitive_attribute_definition(attribute)
+        ]
+        if sensitive:
             errors.append(
                 {
                     "type": "configuration_error",
@@ -253,14 +297,16 @@ def _config(*, organization, requirements: list[dict[str, Any]]) -> dict[str, An
             )
             continue
         requirement_id = str(requirement.get("id") or "")
-        attribute_key = str(attribute.get("key") or "")
         targets = mapping_targets.setdefault(requirement_id, [])
-        if attribute_key not in targets:
-            targets.append(attribute_key)
-        # Keep the first mapping as the backwards-compatible primary mapping for
-        # older reconciliation callers. Qualification execution itself uses the
-        # full one-to-many mapping_targets list.
-        mappings.setdefault(requirement_id, attribute_key)
+        for attribute in attributes:
+            attribute_key = str(attribute.get("key") or "")
+            if attribute_key and attribute_key not in targets:
+                targets.append(attribute_key)
+            # Keep the first mapping as the backwards-compatible primary mapping
+            # for older reconciliation callers. Qualification execution itself
+            # uses the full one-to-many mapping_targets list.
+            if attribute_key:
+                mappings.setdefault(requirement_id, attribute_key)
 
     acknowledgement_values: list[str] = []
     for source_text in (engagement_raw, qualification_raw):
