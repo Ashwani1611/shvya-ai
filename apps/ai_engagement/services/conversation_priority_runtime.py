@@ -237,12 +237,6 @@ def _priority_validator(engagement_module):
         stage_name = _stage_name(context)
         explicit_stage = bool(stage_name)
         in_new_lead = stage_name in _NEW_LEAD_STAGE_NAMES
-        backend_qualifying = (
-            str(qualification_state.get("engagement_mode") or "").strip().casefold()
-            == MODE_QUALIFICATION
-        )
-        strict_qualification_active = backend_qualifying and (not explicit_stage or in_new_lead)
-
         updates = getattr(decision, "qualification_updates", []) or []
         selected_next = str(getattr(decision, "next_requirement_id", "") or "").strip()
         reason_code = str(getattr(decision, "reason_code", "") or "").strip().upper()
