@@ -233,6 +233,21 @@ class EvidenceResolver:
                 )
             return self._unknown(question_type=question_type, sensitive=False)
 
+        from apps.ai_engagement.services.sales_intelligence import ObjectionEngine
+        objections = ObjectionEngine().detect(text=question, settings=organization.settings,
+                                              intent_decision=intent_decision)
+        approved = tuple(
+            EvidenceItem(source_id=f"organization:{organization.pk}:objection:{item.category}:{index}",
+                         source_type="organization_approved_objection_fact", content=fact,
+                         metadata={"category": item.category})
+            for item in objections for index, fact in enumerate(item.approved_facts)
+        )[:self.MAX_ITEMS]
+        if approved:
+            return EvidenceResolution(
+                category=GroundingCategory.STRUCTURED_ORG_DATA,
+                information_class=InformationClass.STATIC_CONFIGURED,
+                question_type="objection", sensitive=False, verified=True, evidence=approved)
+
         return EvidenceResolution(
             category=GroundingCategory.NO_VERIFIED_EVIDENCE,
             information_class=InformationClass.UNKNOWN,

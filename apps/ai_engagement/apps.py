@@ -237,6 +237,24 @@ class AiEngagementConfig(AppConfig):
         )
         install_phase5_6_runtime()
 
+        # Tighten the canonical Phase 5/6 runtime without creating a parallel AI
+        # path: live slot availability requires live evidence; backend-owned CRM
+        # and validated qualification facts outrank memory inference; and the
+        # second grounding model call is skipped only for provably low-risk or
+        # extractively evidence-matched replies.
+        from apps.ai_engagement.services.phase5_6_safety_fixes import (
+            install_phase5_6_safety_fixes,
+        )
+        install_phase5_6_safety_fixes()
+
+        # LangGraph captures node callables when compiled. Rebind the existing
+        # canonical graph after the Phase 5/6 grounding guard is installed so an
+        # early import cannot retain the pre-guard callable.
+        from apps.ai_engagement.graph import evidence as evidence_graph
+        from apps.ai_engagement.graph import workflow as engagement_workflow
+        engagement_workflow.check_grounding = evidence_graph.check_grounding
+        engagement_workflow.ENGAGEMENT_GRAPH = engagement_workflow.build_engagement_graph()
+
         # Phase 1 observability is installed last so it observes the final shared
         # API/Coexistence and Hosted runtime without becoming policy authority.
         from . import trace_signals  # noqa: F401

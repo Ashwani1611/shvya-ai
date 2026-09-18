@@ -50,14 +50,24 @@ def _strip_protected_generated_text(message: str, state: dict) -> str:
     text = str(message or "").strip()
     response_plan = state.get("response_plan") if isinstance(state, dict) else None
 
-    # A response-plan reply contains generated language first and exact
-    # backend-authored customer content after the blank line. Never filter the
-    # authored question/options/final acknowledgement value.
-    blocks = text.split("\n\n")
-    generated = blocks[0] if blocks else ""
-    suffix = blocks[1:] if isinstance(response_plan, dict) and len(blocks) > 1 else []
-    if not isinstance(response_plan, dict):
-        generated = text
+    # Protect only an exact backend-authored trailing block, never arbitrary
+    # model text after a blank line. Ordinary ANSWER_THEN_QUALIFY turns may have
+    # no qualification-write plan, but their reconciled next question is still
+    # authored by the organization and must not be censored as an internal ID.
+    trusted = []
+    if isinstance(response_plan, dict):
+        trusted.extend([
+            str((response_plan.get("next_requirement") or {}).get("rendered") or "").strip(),
+            str((response_plan.get("final_configured_acknowledgement") or {}).get("value") or "").strip(),
+        ])
+    trusted.append(str((state.get("customer_next_requirement") or {}).get("question") or "").strip())
+    generated = text
+    suffix = []
+    for authored in sorted(set(trusted), key=len, reverse=True):
+        if authored and (text == authored or text.endswith("\n\n" + authored)):
+            generated = text[:-len(authored)].rstrip()
+            suffix = [authored]
+            break
 
     parts = re.split(r"(?<=[.!?])\s+|\n+", generated)
     kept = [
@@ -213,6 +223,10 @@ def install_qualification_execution_policy_guard() -> None:
                 is_active=True,
             ).values_list("id", flat=True)
         )
+        current_id = str((snapshot.get("qualification") or {}).get("current_requirement_id") or "")
+        next_requirement = next((item for item in requirements if str(item.get("id")) == current_id), None)
+        if next_requirement and (snapshot.get("qualification") or {}).get("status") != "completed":
+            snapshot["customer_next_requirement"] = deepcopy(next_requirement)
         snapshot["protected_configuration_labels"] = sorted(
             protected,
             key=lambda item: (-len(item), item.casefold()),

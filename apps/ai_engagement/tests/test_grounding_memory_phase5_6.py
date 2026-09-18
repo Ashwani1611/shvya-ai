@@ -273,8 +273,10 @@ class Phase56GroundingMemoryTests(TestCase):
         self.assertTrue(second[0].accepted)
         self.assertEqual(second[0].old["value"], "this month")
         self.assertEqual(second[0].proposed["value"], "next month")
-        self.assertEqual(trace["mutations"][0]["old"]["value"], "this month")
-        self.assertEqual(trace["mutations"][0]["proposed"]["value"], "next month")
+        self.assertNotIn("old", trace["mutations"][0])
+        self.assertNotIn("this month", str(trace))
+        self.assertNotIn("proposed", trace["mutations"][0])
+        self.assertNotIn("next month", str(trace))
         self.assertTrue(trace["mutations"][0]["accepted"])
 
     def test_copied_memory_payload_fails_closed_in_another_tenant(self):

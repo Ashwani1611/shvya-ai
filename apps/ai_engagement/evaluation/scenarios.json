@@ -1,0 +1,280 @@
+{
+  "version": 1,
+  "mode": "recorded_provider_backend_regression",
+  "scenarios": [
+    {
+      "id": "A_qualification_progress",
+      "category": "qualification",
+      "questions": [
+        {
+          "id": "challenge",
+          "question": "What is your biggest challenge?\nA. Slow replies\nB. Missed follow-ups",
+          "field": "biggest_challenge"
+        },
+        {
+          "id": "tool",
+          "question": "Which tool do you use?\nA. Excel\nB. CRM",
+          "field": "current_tool"
+        },
+        {
+          "id": "volume",
+          "question": "How many leads do you receive daily?",
+          "field": "daily_leads",
+          "field_type": "numeric"
+        },
+        {
+          "id": "ads",
+          "question": "Are you running ads?\nA. Yes\nB. No",
+          "field": "running_ads"
+        }
+      ],
+      "initial_question": "challenge",
+      "turns": [
+        {
+          "message": "Missed follow-ups",
+          "model_reply": "Missed follow-ups are the challenge you are addressing.",
+          "expect": {
+            "attributes": {
+              "biggest_challenge": "Missed follow-ups"
+            },
+            "next": "tool",
+            "reply": true,
+            "intent": "QUALIFICATION_ANSWER"
+          }
+        }
+      ]
+    },
+    {
+      "id": "B_configured_compound_answers",
+      "category": "qualification",
+      "questions": [
+        {
+          "id": "tool",
+          "question": "Which tool do you use?\nA. Excel\nB. CRM",
+          "field": "current_tool"
+        },
+        {
+          "id": "volume",
+          "question": "How many leads do you receive daily?",
+          "field": "daily_leads",
+          "field_type": "numeric"
+        },
+        {
+          "id": "ads",
+          "question": "Are you running ads?\nA. Yes\nB. No",
+          "field": "running_ads"
+        }
+      ],
+      "initial_question": "tool",
+      "organization": {
+        "ai_qualification": {
+          "capture_multiple_answers": true
+        }
+      },
+      "turns": [
+        {
+          "message": "I use Excel and receive around 25 leads per day.",
+          "model_reply": "Excel and around 25 leads per day give us the context.",
+          "expect": {
+            "attributes": {
+              "current_tool": "Excel",
+              "daily_leads": "25"
+            },
+            "next": "ads",
+            "reply": true
+          }
+        }
+      ]
+    },
+    {
+      "id": "C_service_answer_then_continue",
+      "category": "rag",
+      "questions": [
+        {
+          "id": "tool",
+          "question": "Which tool do you use?\nA. Excel\nB. CRM",
+          "field": "current_tool"
+        },
+        {
+          "id": "volume",
+          "question": "How many leads do you receive daily?",
+          "field": "daily_leads",
+          "field_type": "numeric"
+        },
+        {
+          "id": "ads",
+          "question": "Are you running ads?\nA. Yes\nB. No",
+          "field": "running_ads"
+        }
+      ],
+      "initial_question": "tool",
+      "organization": {
+        "services": "We organize incoming enquiries and team follow-ups.",
+        "ai_qualification": {
+          "continue_after_answer": true
+        }
+      },
+      "turns": [
+        {
+          "message": "What does your service do?",
+          "model_reply": "We organize incoming enquiries and team follow-ups.",
+          "expect": {
+            "next": "tool",
+            "reply": true,
+            "answer_before_question": "We organize incoming enquiries",
+            "intent": "PRODUCT_OR_SERVICE_QUESTION",
+            "grounding": "STRUCTURED_ORG_DATA"
+          }
+        }
+      ]
+    },
+    {
+      "id": "D_no_fabricated_price",
+      "category": "hallucination",
+      "questions": [],
+      "turns": [
+        {
+          "message": "What is your pricing?",
+          "model_reply": "Our price is 99999 per month.",
+          "expect": {
+            "reply": true,
+            "forbidden": [
+              "99999"
+            ],
+            "grounding": "NO_VERIFIED_EVIDENCE",
+            "intent": "PRICING_QUESTION"
+          }
+        }
+      ]
+    },
+    {
+      "id": "E_foreign_knowledge",
+      "category": "tenant_isolation",
+      "questions": [],
+      "foreign_knowledge": "Our price is 777777 per month. SECRET_OTHER_TENANT",
+      "turns": [
+        {
+          "message": "What is your pricing?",
+          "model_reply": "Our price is 777777 per month. SECRET_OTHER_TENANT",
+          "expect": {
+            "reply": true,
+            "forbidden": [
+              "777777",
+              "SECRET_OTHER_TENANT"
+            ],
+            "grounding": "NO_VERIFIED_EVIDENCE"
+          }
+        }
+      ]
+    },
+    {
+      "id": "F_explicit_opt_out",
+      "category": "silence",
+      "questions": [
+        {
+          "id": "challenge",
+          "question": "What is your biggest challenge?\nA. Slow replies\nB. Missed follow-ups",
+          "field": "biggest_challenge"
+        },
+        {
+          "id": "tool",
+          "question": "Which tool do you use?\nA. Excel\nB. CRM",
+          "field": "current_tool"
+        },
+        {
+          "id": "volume",
+          "question": "How many leads do you receive daily?",
+          "field": "daily_leads",
+          "field_type": "numeric"
+        },
+        {
+          "id": "ads",
+          "question": "Are you running ads?\nA. Yes\nB. No",
+          "field": "running_ads"
+        }
+      ],
+      "initial_question": "challenge",
+      "turns": [
+        {
+          "message": "Stop messaging me",
+          "model_reply": "Hello again",
+          "expect": {
+            "reply": false,
+            "disabled": true
+          }
+        }
+      ]
+    },
+    {
+      "id": "G_authoritative_completion",
+      "category": "actions",
+      "questions": [
+        {
+          "id": "tool",
+          "question": "Which tool do you use?\nA. Excel\nB. CRM",
+          "field": "current_tool"
+        }
+      ],
+      "initial_question": "tool",
+      "turns": [
+        {
+          "message": "Excel",
+          "model_reply": "Excel is your current tool.",
+          "expect": {
+            "reply": true,
+            "attributes": {
+              "current_tool": "Excel"
+            },
+            "completed": true,
+            "stage": "Ready for review",
+            "no_question": true
+          }
+        }
+      ]
+    },
+    {
+      "id": "H_hindi_customer_question",
+      "category": "language",
+      "questions": [],
+      "organization": {
+        "pricing": "हमारी कीमत ₹99 प्रति माह है।"
+      },
+      "turns": [
+        {
+          "message": "कीमत क्या है?",
+          "model_reply": "हमारी कीमत ₹99 प्रति माह है।",
+          "intent_fixture": "PRICING_QUESTION",
+          "language": "hi",
+          "expect": {
+            "reply": true,
+            "contains": [
+              "₹99"
+            ],
+            "grounding": "STRUCTURED_ORG_DATA"
+          }
+        }
+      ]
+    },
+    {
+      "id": "I_live_availability_unknown",
+      "category": "hallucination",
+      "questions": [],
+      "organization": {
+        "working_hours": "Every weekday 9 AM to 6 PM"
+      },
+      "turns": [
+        {
+          "message": "Is an appointment available tomorrow at 10 AM?",
+          "model_reply": "Your appointment is confirmed tomorrow at 10 AM.",
+          "expect": {
+            "reply": true,
+            "forbidden": [
+              "is confirmed"
+            ],
+            "grounding": "NO_VERIFIED_EVIDENCE"
+          }
+        }
+      ]
+    }
+  ]
+}

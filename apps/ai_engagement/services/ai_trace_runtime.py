@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import time
 
+from apps.ai_engagement.services.turn_scope import isolated_ai_turn
+
 _INSTALLED = False
 
 
@@ -284,6 +286,23 @@ def install_ai_trace_runtime():
             )
             raise
         mark_decision(decision=decision)
+        # This is a read-only proposal observation. File delivery and all CRM
+        # mutations still use their existing canonical validation boundaries.
+        from apps.ai_engagement.services.action_planner import ActionPlanner
+        from apps.ai_engagement.services.action_plan_trace import trace_action_plan
+        from apps.ai_engagement.services.tenant_guard import TenantScopeError
+        organization, lead = kwargs.get("organization"), kwargs.get("lead")
+        from apps.crm.models import Lead
+        # Sandbox previews intentionally use synthetic leads and have no durable
+        # CRM action context. Their existing preview validator remains authoritative.
+        # Only persisted CRM leads enter this read-only production observation.
+        if organization is not None and isinstance(lead, Lead) and not lead._state.adding:
+            try:
+                trace_action_plan(ActionPlanner().plan(organization=organization, lead=lead, decision=decision))
+            except TenantScopeError:
+                raise
+            except Exception as exc:
+                mark_error(step="action_plan_observation", exc=exc, code="ACTION_PLAN_OBSERVATION_FAILED")
         record(
             "performance",
             {"model_or_deterministic_ms": _elapsed_ms(started)},
@@ -333,6 +352,7 @@ def install_ai_trace_runtime():
 
     original_api_executor = task_module._execute_ai_engagement_response_impl
 
+    @isolated_ai_turn
     def traced_api_executor(*, task, lead_id):
         token = _start_api_trace(lead_id)
         started = time.perf_counter()
@@ -374,6 +394,7 @@ def install_ai_trace_runtime():
     hosted_module.build_deterministic_fallback_decision = traced_hosted_fallback
     original_hosted_executor = hosted_module.execute_hosted_ai_engagement
 
+    @isolated_ai_turn
     def traced_hosted_executor(*, task, job):
         token = _start_hosted_trace(job)
         started = time.perf_counter()

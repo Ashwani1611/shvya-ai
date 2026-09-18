@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 from copy import deepcopy
 from dataclasses import asdict, dataclass
 from typing import Any, Iterable, Mapping
@@ -43,6 +45,7 @@ class StructuredLeadMemoryService:
     customer facts.
     """
 
+    MAX_EVENTS = 50
     MAX_FACTS = 100
     MAX_EVIDENCE_CHARS = 2000
 
@@ -122,6 +125,7 @@ class StructuredLeadMemoryService:
                 "organization_id": str(organization.id),
                 "lead_id": str(locked.id),
                 "facts": stored,
+                "events": deepcopy(snapshot.get("events") or []),
                 "updated_at": timezone.now().isoformat(),
             }
             attributes = dict(locked.attributes or {})
@@ -133,6 +137,49 @@ class StructuredLeadMemoryService:
             # cannot accidentally overwrite the just-committed memory snapshot.
             lead.attributes = deepcopy(attributes)
             return deepcopy(snapshot), mutations
+
+    def merge_events(self, *, organization, lead, source_message, events):
+        """Retain bounded customer reports, separately from confirmed system state.
+
+        Original conversation summaries remain authoritative and are not edited.
+        Event IDs are source-specific, so retrying a turn cannot duplicate them.
+        """
+        from apps.crm.models import Lead
+
+        guard = TenantGuard(organization)
+        guard.validate_current_lead_context(lead)
+        guard.validate_message(source_message, lead=lead)
+        if source_message.direction != "inbound":
+            raise StructuredMemoryScopeError("Memory requires an inbound customer source.")
+        with transaction.atomic():
+            locked = Lead.objects.select_for_update().get(pk=lead.pk, organization=organization)
+            snapshot = self._snapshot_from_attributes(
+                organization=organization, lead=locked, attributes=locked.attributes or {})
+            saved = list(snapshot.get("events") or [])
+            known = {item.get("id") for item in saved if isinstance(item, Mapping)}
+            for raw in list(events or ())[:20]:
+                if not isinstance(raw, Mapping):
+                    continue
+                kind, text = str(raw.get("kind") or "")[:60], str(raw.get("text") or "")[:300]
+                if not kind or not text:
+                    continue
+                event_id = hashlib.sha256(json.dumps(
+                    [str(organization.pk), str(lead.pk), str(source_message.pk), kind, text],
+                    ensure_ascii=False).encode()).hexdigest()
+                if event_id in known:
+                    continue
+                saved.append({"id": event_id, "kind": kind, "text": text,
+                              "source_message_id": str(source_message.pk),
+                              "authority": "customer_report",
+                              "created_at": source_message.created_at.isoformat()})
+                known.add(event_id)
+            snapshot["events"] = saved[-self.MAX_EVENTS:]
+            attributes = dict(locked.attributes or {})
+            attributes[MEMORY_KEY] = snapshot
+            locked.attributes = attributes
+            locked.save(update_fields=["attributes"])
+            lead.attributes = deepcopy(attributes)
+            return deepcopy(snapshot)
 
     def prompt_payload(self, snapshot: Mapping[str, Any] | None) -> dict[str, Any]:
         snapshot = snapshot if isinstance(snapshot, Mapping) else {}
@@ -153,6 +200,7 @@ class StructuredLeadMemoryService:
             "organization_id": snapshot.get("organization_id"),
             "lead_id": snapshot.get("lead_id"),
             "facts": compact,
+            "reported_events": deepcopy(snapshot.get("events") or [])[-self.MAX_EVENTS:],
             "authority": "backend_structured_lead_memory",
         }
 
@@ -169,7 +217,12 @@ class StructuredLeadMemoryService:
             "organization_id": snapshot.get("organization_id"),
             "lead_id": snapshot.get("lead_id"),
             "fact_keys": sorted(str(key) for key in facts.keys()),
-            "mutations": [item.as_dict() for item in mutations],
+            # Observability carries provenance, not raw customer facts/secrets.
+            "mutations": [{"key": item.key, "accepted": item.accepted, "reason": item.reason,
+                           "source_message_id": item.proposed.get("source_message_id"),
+                           "source_type": item.proposed.get("source_type"),
+                           "confidence": item.proposed.get("confidence")} for item in mutations],
+            "event_count": len(snapshot.get("events") or []),
             "authority": "backend_structured_lead_memory",
         }
 
@@ -201,6 +254,8 @@ class StructuredLeadMemoryService:
             "organization_id": stored_org,
             "lead_id": stored_lead,
             "facts": deepcopy(dict(facts)),
+            "events": deepcopy(raw.get("events"))[-self.MAX_EVENTS:]
+                if isinstance(raw.get("events"), list) else [],
             "updated_at": raw.get("updated_at"),
         }
 

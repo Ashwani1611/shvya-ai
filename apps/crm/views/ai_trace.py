@@ -22,6 +22,32 @@ def _org_trace(organization, trace_id):
     return trace
 
 
+def _trace_detail_context(details):
+    """Expose bounded Phase 1-7 trace sections to the server-rendered detail UI."""
+    details = details if isinstance(details, dict) else {}
+    return {
+        "input": details.get("input", {}),
+        "permission": details.get("permission", {}),
+        "intent": details.get("intent", {"status": "NOT_AVAILABLE"}),
+        "qualification": details.get("qualification", {}),
+        "policy": details.get("policy", {}),
+        "rag": details.get("rag", {}),
+        "grounding": details.get("grounding", {}),
+        "memory": details.get("memory", {}),
+        "objections": details.get("objections", {}),
+        "signals": details.get("signals", {}),
+        "response_plan": details.get("response_plan", {}),
+        "generation": details.get("generation", {}),
+        "action_plan": details.get("action_plan", {}),
+        "crm_actions": details.get("crm_actions", {}),
+        "finalization": details.get("finalization", {}),
+        "performance": details.get("performance", {}),
+        "provider_usage": details.get("provider_usage", {}),
+        "error": details.get("error", {}),
+        "delivery": details.get("delivery", {}),
+    }
+
+
 @crm_login_required
 def ai_trace_list_view(request):
     organization = request.crm_user.organization
@@ -70,24 +96,11 @@ def ai_trace_list_view(request):
 def ai_trace_detail_view(request, trace_id):
     trace = _org_trace(request.crm_user.organization, trace_id)
     details = trace.details if isinstance(trace.details, dict) else {}
+    context = {"trace": trace, **_trace_detail_context(details)}
     return render(
         request,
         "crm/knowledge_base/ai_trace_detail.html",
-        {
-            "trace": trace,
-            "input": details.get("input", {}),
-            "permission": details.get("permission", {}),
-            "intent": details.get("intent", {"status": "NOT_AVAILABLE"}),
-            "qualification": details.get("qualification", {}),
-            "rag": details.get("rag", {}),
-            "generation": details.get("generation", {}),
-            "crm_actions": details.get("crm_actions", {}),
-            "finalization": details.get("finalization", {}),
-            "performance": details.get("performance", {}),
-            "provider_usage": details.get("provider_usage", {}),
-            "error": details.get("error", {}),
-            "delivery": details.get("delivery", {}),
-        },
+        context,
     )
 
 

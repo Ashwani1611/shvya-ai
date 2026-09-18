@@ -37,6 +37,7 @@ class ConversationPolicyContext:
     capabilities: frozenset[str] = frozenset()
     organization_rules: str = ""
     channel: str | None = None
+    continue_after_answer: bool = False
 
 
 @dataclass(frozen=True)
@@ -82,6 +83,7 @@ class ConversationPolicyEngine:
         accepted = self._qualification_accepted(context)
         result_ref = self._qualification_result_reference(context)
         confidence = max(0.0, min(float(intent.confidence or 0.0), 1.0))
+        asks_question = bool(intent.direct_question) or bool(intents & _QUESTION_INTENTS)
 
         if not context.ai_allowed:
             return self._decision(
@@ -115,7 +117,80 @@ class ConversationPolicyEngine:
             )
 
         if Intent.CALL_REQUEST in intents:
-            if "call" in context.capabilities:
+            call_supported = "call" in context.capabilities
+            handoff_type = "call" if call_supported else "human"
+            reason_prefix = "CALL_REQUEST_SUPPORTED" if call_supported else "CALL_REQUEST_SAFE_FALLBACK"
+
+            # A call request is an action requirement, not permission to discard
+            # another explicit customer question or a qualification answer in the
+            # same message. Preserve those conversational obligations while the
+            # backend separately validates/proposes the call/reminder action.
+            if asks_question and accepted and next_requirement_id:
+                return self._decision(
+                    ConversationPolicyOutcome.ANSWER_THEN_QUALIFY,
+                    f"{reason_prefix}_ANSWER_THEN_QUALIFY",
+                    confidence,
+                    answer=True,
+                    continue_qualification=True,
+                    next_requirement_id=next_requirement_id,
+                    requires_knowledge=bool(intent.requires_knowledge),
+                    requires_human=True,
+                    handoff_type=handoff_type,
+                    goal=(
+                        "answer_customer_then_ask_next_qualification_and_arrange_call"
+                        if call_supported
+                        else "answer_customer_then_ask_next_qualification_and_human_handoff_without_call_confirmation"
+                    ),
+                    result_ref=result_ref,
+                    debug=(
+                        "Preserve the direct question and accepted qualification answer; "
+                        "the validated backend call capability is handled in parallel."
+                    ),
+                )
+
+            if asks_question:
+                return self._decision(
+                    ConversationPolicyOutcome.ANSWER,
+                    f"{reason_prefix}_ANSWER",
+                    confidence,
+                    answer=True,
+                    requires_knowledge=bool(intent.requires_knowledge),
+                    requires_human=True,
+                    handoff_type=handoff_type,
+                    goal=(
+                        "answer_customer_and_arrange_call"
+                        if call_supported
+                        else "answer_customer_and_human_handoff_without_call_confirmation"
+                    ),
+                    result_ref=result_ref,
+                    debug=(
+                        "Answer the direct customer question while preserving the call "
+                        "request as a backend action/handoff requirement."
+                    ),
+                )
+
+            if accepted and next_requirement_id:
+                return self._decision(
+                    ConversationPolicyOutcome.ASK_QUALIFICATION,
+                    f"{reason_prefix}_CONTINUE_QUALIFICATION",
+                    confidence,
+                    continue_qualification=True,
+                    next_requirement_id=next_requirement_id,
+                    requires_human=True,
+                    handoff_type=handoff_type,
+                    goal=(
+                        "ask_next_qualification_and_arrange_call"
+                        if call_supported
+                        else "ask_next_qualification_and_human_handoff_without_call_confirmation"
+                    ),
+                    result_ref=result_ref,
+                    debug=(
+                        "The current qualification answer was accepted; continue with the "
+                        "backend-selected next requirement while preserving the call request."
+                    ),
+                )
+
+            if call_supported:
                 return self._decision(
                     ConversationPolicyOutcome.CALL_HANDOFF,
                     "CALL_REQUEST_SUPPORTED",
@@ -156,9 +231,8 @@ class ConversationPolicyEngine:
                 debug="No validated booking capability exists; do not invent a booking.",
             )
 
-        asks_question = bool(intent.direct_question) or bool(intents & _QUESTION_INTENTS)
         if asks_question:
-            if accepted and next_requirement_id:
+            if (accepted or context.continue_after_answer) and next_requirement_id:
                 return self._decision(
                     ConversationPolicyOutcome.ANSWER_THEN_QUALIFY,
                     "DIRECT_QUESTION_AFTER_ACCEPTED_QUALIFICATION",

@@ -541,6 +541,46 @@ def _asked_requirement(*, state, requirements):
     )
 
 
+def _additional_explicit_updates(*, organization, requirements, state, source, active_id):
+    """Optional volunteered answers still use the one validated contract.
+
+    The organization must enable multi-answer capture. An unasked option letter
+    or unrelated number is never an answer to another requirement. No fuzzy CRM
+    mapping and no extra provider call are introduced.
+    """
+    from apps.ai_engagement.services.sales_intelligence import settings_section
+    from apps.ai_engagement.services.intent_rules import question_options
+
+    config = settings_section(organization.settings, "ai_qualification")
+    if config.get("capture_multiple_answers", False) is not True:
+        return []
+    output = []
+    text = str(source.body or "").strip()
+    for requirement in requirements:
+        rid = str(requirement.get("id") or "")
+        status = (state.get("requirement_states", {}).get(rid) or {}).get("status")
+        if rid == active_id or status in {"answered", "skipped", "not_applicable"}:
+            continue
+        question = str(requirement.get("question") or "")
+        options = question_options(question)
+        value = None
+        if options:
+            matches = [str(item["value"]) for item in options if re.search(
+                r"(?<![\w])" + re.escape(str(item["value"])) + r"(?![\w])", text, re.I)]
+            if len(matches) == 1 and not re.search(
+                r"(?:not|no|nahi|nahin|नहीं)\s+" + re.escape(matches[0]), text, re.I):
+                value = matches[0]
+        elif re.search(r"\b(?:leads?|enquiries?|inquiries?)\b", question, re.I) and re.search(
+                r"\b(?:how many|volume|per day|daily)\b", question, re.I):
+            match = re.search(r"(?<!\w)(\d+)\s+(?:leads?|enquiries?|inquiries?)(?:\s+(?:per day|daily|every day))?\b", text, re.I)
+            if match:
+                value = int(match.group(1))
+        if value is not None:
+            output.append({"requirement_id": rid, "value": value,
+                           "source_message_id": str(source.pk), "evidence": text})
+    return output
+
+
 def resolve_before_generation(
     *,
     organization,
@@ -651,10 +691,13 @@ def resolve_before_generation(
             "source_message_id": str(source.id),
             "evidence": str(source.body or "").strip(),
         }
+        updates = [update, *_additional_explicit_updates(
+            organization=organization, requirements=requirements, state=state,
+            source=source, active_id=active_id)]
         projected = qs.project_answer_updates(
             state=state,
             requirements=requirements,
-            updates=[update],
+            updates=updates,
             messages=[
                 {
                     "id": str(source.id),
@@ -669,15 +712,10 @@ def resolve_before_generation(
         )
 
         # Build the complete authoritative execution plan before mutating state.
-        attribute_key = config["mappings"].get(active_id)
-        attribute_action = (
-            {
-                "type": "attribute_updates",
-                "updates": [{"key": attribute_key, "value": answer}],
-            }
-            if attribute_key
-            else None
-        )
+        mapped_updates = [{"key": config["mappings"][item["requirement_id"]], "value": item["value"]}
+                          for item in updates if item["requirement_id"] in config["mappings"]]
+        attribute_action = ({"type": "attribute_updates", "updates": mapped_updates}
+                            if mapped_updates else None)
         completion_reached = _norm(projected.get("qualification_status")) == "completed"
         target = config.get("completion_stage")
         stage_action = (
@@ -690,6 +728,7 @@ def resolve_before_generation(
         )
         execution_plan = {
             "qualification_update": deepcopy(update),
+            "qualification_updates": deepcopy(updates),
             "attribute_action": deepcopy(attribute_action),
             "stage_action": deepcopy(stage_action),
         }
@@ -700,7 +739,7 @@ def resolve_before_generation(
         _persist_updates_against_requirements(
             lead=locked,
             requirements=requirements,
-            updates=[update],
+            updates=updates,
         )
         locked.refresh_from_db(fields=["attributes", "pipeline", "stage"])
 
@@ -711,13 +750,10 @@ def resolve_before_generation(
                     lead=locked,
                     actions=[attribute_action],
                 )
-                verified_attribute = _verify_attribute(
-                    locked,
-                    attribute_key,
-                    answer,
-                )
-                results.append(verified_attribute)
-                if verified_attribute["verified"]:
+                for mapped in mapped_updates:
+                    verified_attribute = _verify_attribute(locked, mapped["key"], mapped["value"])
+                    results.append(verified_attribute)
+                if all(item.get("verified") for item in results if item.get("type") == "attribute_updates"):
                     action_types.append("attribute_updates")
             except Exception as exc:
                 results.append(
@@ -727,13 +763,8 @@ def resolve_before_generation(
                         "verified": False,
                         "code": "attribute_persistence_failed",
                         "detail": str(exc)[:500],
-                        "updates": [
-                            {
-                                "key": attribute_key,
-                                "expected": answer,
-                                "actual": None,
-                            }
-                        ],
+                        "updates": [{"key": item["key"], "expected": item["value"], "actual": None}
+                                    for item in mapped_updates],
                     }
                 )
 
@@ -808,7 +839,7 @@ def resolve_before_generation(
             structured_decision={
                 "intent": "qualification_answer",
                 "source_message_id": str(source.id),
-                "qualification_updates": [update],
+                "qualification_updates": deepcopy(updates),
                 "attribute_updates": (
                     deepcopy(attribute_action["updates"])
                     if attribute_action
