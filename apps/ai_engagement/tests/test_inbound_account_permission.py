@@ -104,3 +104,69 @@ class InboundAccountPermissionRegressionTests(TestCase):
 
         self.assertFalse(decision.allowed)
         self.assertEqual(decision.reason, "pipeline_whatsapp_account_mismatch")
+
+    def test_repeated_wrong_inbound_does_not_create_a_trusted_binding(self):
+        wrong_account = WhatsAppAccount.objects.create(
+            organization=self.organization,
+            connection_type=WhatsAppAccount.ConnectionType.API,
+            business_name="Wrong Inbound Number",
+            phone_number_id="meta-repeated-wrong-number",
+            display_phone_number="+918888888888",
+            status=WhatsAppAccount.Status.CONNECTED,
+            is_active=True,
+        )
+        for external_id in ("wrong-turn-1", "wrong-turn-2"):
+            inbound = WhatsAppMessage.objects.create(
+                organization=self.organization,
+                account=wrong_account,
+                lead=self.lead,
+                direction=WhatsAppMessage.Direction.INBOUND,
+                external_id=external_id,
+                from_number=self.lead.phone,
+                to_number=wrong_account.display_phone_number,
+                body="Hello again",
+                status=WhatsAppMessage.Status.RECEIVED,
+            )
+            decision = AIPermissionService().evaluate(
+                organization=self.organization,
+                lead=self.lead,
+                latest_inbound=inbound,
+            )
+            self.assertFalse(decision.allowed)
+            self.assertEqual(decision.reason, "pipeline_whatsapp_account_mismatch")
+
+    def test_transactionally_resolved_inbound_survives_legitimate_pipeline_move(self):
+        inbound = WhatsAppMessage.objects.create(
+            organization=self.organization,
+            account=self.hosted_account,
+            lead=self.lead,
+            direction=WhatsAppMessage.Direction.INBOUND,
+            external_id="trusted-transition-turn",
+            from_number=self.lead.phone,
+            to_number=self.hosted_account.display_phone_number,
+            body="I need the enterprise team",
+            status=WhatsAppMessage.Status.RECEIVED,
+        )
+        self.lead.attributes = {
+            "_shvya_ai_runtime": {
+                "pre_resolved_message_id": str(inbound.id),
+            }
+        }
+        self.lead.save(update_fields=["attributes", "updated_at"])
+
+        destination = Pipeline.objects.create(
+            organization=self.organization,
+            name="Enterprise",
+            country_code="+91",
+            phone_number="7777777777",
+        )
+        self.lead.pipeline = destination
+        self.lead.stage = destination.stages.order_by("display_order").first()
+        self.lead.save(update_fields=["pipeline", "stage", "updated_at"])
+
+        decision = AIPermissionService().evaluate(
+            organization=self.organization,
+            lead=self.lead,
+            latest_inbound=inbound,
+        )
+        self.assertTrue(decision.allowed)

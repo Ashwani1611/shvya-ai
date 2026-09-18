@@ -213,6 +213,20 @@ def _config(*, organization, requirements: list[dict[str, Any]]) -> dict[str, An
                 }
             )
             continue
+        from apps.ai_engagement.services.confidentiality import (
+            is_sensitive_attribute_definition,
+        )
+
+        if is_sensitive_attribute_definition(attribute):
+            errors.append(
+                {
+                    "type": "configuration_error",
+                    "status": "failed",
+                    "code": "sensitive_attribute_mapping",
+                    "detail": pair[1],
+                }
+            )
+            continue
         requirement_id = str(requirement.get("id") or "")
         attribute_key = str(attribute.get("key") or "")
         if requirement_id in mappings and mappings[requirement_id] != attribute_key:

@@ -189,6 +189,33 @@ class CRMActionExecutorTests(TestCase):
                 ],
             )
 
+    def test_rejects_ai_update_to_credential_attribute(self):
+        AttributeDefinition.objects.create(
+            organization=self.organization,
+            name="Access Token",
+            key="access_token",
+            field_type="text",
+            description="Must never be filled from customer chat.",
+            options=[],
+            display_order=2,
+        )
+
+        with self.assertRaises(CRMActionExecutionError):
+            self.executor.execute(
+                organization=self.organization,
+                lead=self.lead,
+                actions=[
+                    {
+                        "type": "attribute_updates",
+                        "updates": [
+                            {"key": "access_token", "value": "private-value"}
+                        ],
+                    }
+                ],
+            )
+        self.lead.refresh_from_db()
+        self.assertNotIn("access_token", self.lead.attributes)
+
     # ============================================================
     # STAGE TRANSITION
     # ============================================================

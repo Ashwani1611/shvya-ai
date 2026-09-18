@@ -311,6 +311,9 @@ class TenantGuard:
 
         if action_type == "attribute_updates":
             from apps.crm.models import AttributeDefinition
+            from apps.ai_engagement.services.confidentiality import (
+                is_sensitive_attribute_definition,
+            )
 
             keys = {
                 str(item.get("key") or "")
@@ -327,6 +330,13 @@ class TenantGuard:
             )
             for definition in definitions:
                 self.validate_attribute(definition)
+                if is_sensitive_attribute_definition(
+                    {"key": definition.key, "name": definition.name}
+                ):
+                    self._reject(
+                        object_type="attribute",
+                        code=OBJECT_NOT_IN_ORGANIZATION,
+                    )
             if {definition.key for definition in definitions} != keys:
                 self._reject(
                     object_type="attribute",

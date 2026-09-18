@@ -346,6 +346,10 @@ class OrganizationAIRuntimeProfileBuilder:
             for row in pipeline_rows
         ]
 
+        from apps.ai_engagement.services.confidentiality import (
+            is_sensitive_attribute_definition,
+        )
+
         attributes = [
             {
                 "id": str(row["id"]),
@@ -369,6 +373,7 @@ class OrganizationAIRuntimeProfileBuilder:
                 "options",
                 "display_order",
             )[:MAX_ATTRIBUTES]
+            if not is_sensitive_attribute_definition(row)
         ]
 
         documents = [
