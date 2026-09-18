@@ -277,6 +277,17 @@ def _safe_dynamic_attribute(update: dict[str, Any]) -> bool:
         return False
     if is_sensitive_attribute_definition({"key": key, "name": name}):
         return False
+
+    # Dynamic CRM schema creation is for ordinary business context only. Highly
+    # sensitive personal information must never become an AI-created attribute.
+    compact = re.sub(r"[^a-z0-9]+", "", f"{key} {name}".casefold())
+    sensitive_parts = {
+        "aadhaar", "aadhar", "bankaccount", "biometric", "cardnumber",
+        "criminal", "diagnosis", "disease", "health", "medical",
+        "pan", "political", "race", "religion", "sexual", "ssn",
+    }
+    if any(part in compact for part in sensitive_parts):
+        return False
     return True
 
 
@@ -365,6 +376,8 @@ def build_controlled_actions(
                     accepted.append({"key": resolved_key, "value": value})
                     continue
 
+                if len(attribute_definitions) >= 15:
+                    continue
                 if _safe_dynamic_attribute(update):
                     accepted.append(
                         {
