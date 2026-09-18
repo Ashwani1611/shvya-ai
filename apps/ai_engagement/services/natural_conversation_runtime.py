@@ -11,6 +11,11 @@ _SIMPLE_ACKS = {
     "got it", "understood", "alright", "all right", "it's alright", "its alright",
     "no worries", "all good", "perfect", "sounds good",
 }
+_BOOKING_CLAIM_RE = re.compile(
+    r"\b(?:i|we)\s+(?:have\s+)?(?:already\s+)?(?:booked|scheduled)\b",
+    flags=re.IGNORECASE,
+)
+
 _MISSED_CALL_TERMS = (
     "no one called", "nobody called", "didn't call", "did not call", "missed my call",
 )
@@ -224,6 +229,20 @@ def _patch_failsoft() -> None:
             )
         latest_text = str(getattr(latest_inbound, "body", "") or "").strip()
         normalized = _normalized(latest_text)
+
+        booking_claim = bool(_BOOKING_CLAIM_RE.search(latest_text))
+        missed_call = any(term in normalized for term in _MISSED_CALL_TERMS)
+        if booking_claim and not missed_call:
+            return replace(
+                decision,
+                message=(
+                    "Got it. I’ll treat that as a booking you’ve reported, but I can’t "
+                    "confirm the appointment unless the booking system confirms it."
+                ),
+                reason="NORMAL_CONVERSATION",
+                reason_code="NORMAL_CONVERSATION",
+                crm_actions=[],
+            )
 
         if normalized in _SIMPLE_ACKS:
             message, reason = grounded_conversation_reply(
