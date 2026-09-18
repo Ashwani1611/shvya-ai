@@ -1,0 +1,7 @@
+{% load static support_attention %}
+{% support_attention_state as support_attention %}
+{% if support_attention %}
+{{ support_attention|json_script:"shvya-support-attention" }}
+<link rel="stylesheet" href="{% static 'support/attention.css' %}?v=1">
+<script src="{% static 'support/attention.js' %}?v=1" defer></script>
+{% endif %}
