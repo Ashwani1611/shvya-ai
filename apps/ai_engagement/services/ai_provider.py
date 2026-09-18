@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import logging
 import os
 from dataclasses import dataclass
 from typing import Any
@@ -15,6 +16,9 @@ from openai import (
     PermissionDeniedError,
     RateLimitError,
 )
+
+logger = logging.getLogger(__name__)
+
 
 from apps.ai_engagement.services.credits import (
     AICreditError,
@@ -397,10 +401,29 @@ class OpenAIProvider:
                         ),
                     },
                 )
-            except AICreditError as exc:
-                raise AIProviderPermanentError(
-                    f"OpenAI completed but AI-credit settlement failed: {exc}"
-                ) from exc
+            except AICreditError:
+                # The provider already completed successfully. Do not discard a
+                # valid customer response because an internal ledger write failed.
+                # Keep the reservation active so its credits remain unavailable,
+                # persist provider usage for recovery, and continue the response.
+                try:
+                    AICreditService.mark_settlement_pending(
+                        reservation=reservation,
+                        input_tokens=input_tokens,
+                        output_tokens=output_tokens,
+                        embedding=False,
+                    )
+                except Exception:
+                    logger.exception(
+                        "AI credit settlement and recovery marker both failed for "
+                        "reservation %s",
+                        getattr(reservation, "id", reservation),
+                    )
+                else:
+                    logger.exception(
+                        "AI credit settlement deferred for reservation %s",
+                        getattr(reservation, "id", reservation),
+                    )
 
         output_text = (getattr(response, "output_text", "") or "").strip()
         if not output_text:
