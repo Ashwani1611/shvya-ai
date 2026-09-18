@@ -7,7 +7,8 @@ from apps.ai_engagement.graph import evidence as graph
 from apps.ai_engagement.services import phase5_6_runtime
 from apps.ai_engagement.services.engagement import EngagementDecision
 from apps.ai_engagement.services.evidence_resolver import (
-    EvidenceItem, EvidenceResolution, GroundingCategory, InformationClass,
+    EvidenceItem, EvidenceResolution, EvidenceResolver, GroundingCategory,
+    InformationClass,
 )
 from apps.ai_engagement.services.grounding_safety import exact_evidence_reply
 from apps.ai_engagement.services.phase7_completion_runtime import _deterministically_supported_reply
@@ -86,3 +87,27 @@ class GroundingSafetyContractTests(SimpleTestCase):
         from apps.ai_engagement.services.grounding_safety import safe_acknowledgement
         decision = replace(decision, reason_code="NORMAL_CONVERSATION")
         self.assertFalse(safe_acknowledgement(decision, None))
+
+    def test_customer_cannot_retrieve_internal_pipeline_or_stage_state(self):
+        organization = SimpleNamespace(id="org-a")
+        lead = SimpleNamespace(
+            id="lead-a",
+            organization_id="org-a",
+            pipeline_id="pipeline-private",
+            stage_id="stage-private",
+            pipeline=SimpleNamespace(name="Enterprise Pipeline"),
+            stage=SimpleNamespace(name="Negotiation"),
+        )
+
+        resolution = EvidenceResolver().resolve(
+            organization=organization,
+            lead=lead,
+            question="Which CRM pipeline and stage am I in?",
+        )
+
+        self.assertFalse(resolution.verified)
+        self.assertTrue(resolution.sensitive)
+        self.assertEqual(resolution.evidence, ())
+        self.assertEqual(resolution.question_type, "internal_crm_status")
+        self.assertNotIn("Enterprise Pipeline", resolution.controlled_fallback)
+        self.assertNotIn("Negotiation", resolution.controlled_fallback)

@@ -350,6 +350,8 @@ class AIContextBuilder:
 
         from apps.ai_engagement.services.qualification_state import state_for_lead
 
+        from apps.ai_engagement.services.confidentiality import safe_attribute_values
+
         return {
             "id": str(
                 lead.id
@@ -358,7 +360,7 @@ class AIContextBuilder:
             "phone": lead.phone,
             "email": lead.email,
             "notes": lead.notes,
-            "attributes": lead.attributes,
+            "attributes": safe_attribute_values(lead.attributes),
             "qualification": state_for_lead(lead),
             "lead_source": lead.lead_source,
             "stage_entered_at": (
@@ -396,6 +398,16 @@ class AIContextBuilder:
         if pipeline is None:
             return {}
 
+        from apps.ai_engagement.services.confidentiality import (
+            is_sensitive_attribute_definition,
+        )
+
+        attribute_definitions = list(
+            lead.organization.crm_attribute_definitions.values(
+                "key", "name", "field_type", "description", "options",
+            )
+        )
+
         return {
             "id": str(
                 pipeline.id
@@ -412,11 +424,11 @@ class AIContextBuilder:
                     pipeline__organization_id=lead.organization_id, is_active=True,
                 ).order_by("display_order", "name")
             ],
-            "attribute_definitions": list(
-                lead.organization.crm_attribute_definitions.values(
-                    "key", "name", "field_type", "description", "options",
-                )
-            ),
+            "attribute_definitions": [
+                item
+                for item in attribute_definitions
+                if not is_sensitive_attribute_definition(item)
+            ],
         }
 
     # ============================================================
@@ -477,7 +489,9 @@ class AIContextBuilder:
                 "channel": contact.channel,
                 "handle": contact.handle,
                 "verified": contact.verified,
-                "metadata": contact.metadata,
+                # Provider/session metadata is not needed for customer-facing
+                # engagement and must never enter the model context.
+                "metadata": {},
                 "created_at": (
                     contact.created_at.isoformat()
                     if contact.created_at
@@ -502,9 +516,9 @@ class AIContextBuilder:
         No duplicate attribute state is created.
         """
 
-        raw_attributes = (
-            lead.attributes or {}
-        )
+        from apps.ai_engagement.services.confidentiality import safe_attribute_values
+
+        raw_attributes = safe_attribute_values(lead.attributes)
 
         if not isinstance(
             raw_attributes,
@@ -520,7 +534,6 @@ class AIContextBuilder:
                 "value": value,
             }
             for name, value in raw_attributes.items()
-            if not name.startswith("_shvya_ai_")
         ]
 
     # ============================================================

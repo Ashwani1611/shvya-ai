@@ -351,9 +351,22 @@ def _condition_part(rule: str, destination: dict[str, Any]) -> str:
 
 
 def _strong_evidence_match(latest_text: str, condition: str) -> bool:
+    latest_normalized = _normalized(latest_text)
+    condition_normalized = _normalized(condition)
     latest_tokens = _tokens(latest_text)
     condition_tokens = _tokens(condition)
     if not latest_tokens or not condition_tokens:
+        return False
+
+    # Do not turn a negated customer statement into a positive route merely
+    # because token overlap is high (for example, "not interested"). A rule
+    # that is itself explicitly negative is still allowed to match.
+    negative_pattern = re.compile(
+        r"\b(?:not|never|no longer|don't|dont|do not|isn't|isnt|cannot|can't|cant)\b"
+    )
+    latest_negative = bool(negative_pattern.search(latest_normalized))
+    condition_negative = bool(negative_pattern.search(condition_normalized))
+    if latest_negative and not condition_negative:
         return False
 
     overlap = latest_tokens & condition_tokens
@@ -377,7 +390,7 @@ def _strong_evidence_match(latest_text: str, condition: str) -> bool:
             return True
 
     if {"not", "interested"}.issubset(condition_tokens):
-        return "not interested" in _normalized(latest_text)
+        return "not interested" in latest_normalized
     return False
 
 
@@ -421,7 +434,11 @@ def _authored_stage_transition(
         matching_rules = [
             rule for rule in rules if _stage_rule_references_destination(rule, destination)
         ]
-        if matching_rules:
+        if any(
+            (condition := _condition_part(rule, destination))
+            and _strong_evidence_match(latest_text, condition)
+            for rule in matching_rules
+        ):
             controlled.append(
                 {"type": "pipeline_transition", "stage_shift": {"stage_id": stage_id}}
             )
@@ -442,6 +459,9 @@ def _authored_stage_transition(
         description = _clean(destination.get("description"))
         if description:
             texts.append(description)
+        pipeline_description = _clean(destination.get("pipeline_description"))
+        if pipeline_description:
+            texts.append(pipeline_description)
         texts.extend(
             rule for rule in rules if _stage_rule_references_destination(rule, destination)
         )

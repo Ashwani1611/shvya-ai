@@ -275,6 +275,7 @@ def _resolve_state_before_response(
                     organization=organization,
                     lead=locked_lead,
                     actions=attribute_actions,
+                    source_message=inbound,
                 )
             )
             executed_types.append("attribute_updates")
@@ -307,6 +308,7 @@ def _resolve_state_before_response(
                     organization=organization,
                     lead=locked_lead,
                     actions=stage_actions,
+                    source_message=inbound,
                 )
             )
             executed_types.append("pipeline_transition")
@@ -318,6 +320,7 @@ def _resolve_state_before_response(
                     organization=organization,
                     lead=locked_lead,
                     actions=other_actions,
+                    source_message=inbound,
                 )
             )
             executed_types.extend(
