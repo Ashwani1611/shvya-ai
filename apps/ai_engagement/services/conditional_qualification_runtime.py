@@ -636,6 +636,60 @@ def install_conditional_qualification_runtime() -> None:
         )
 
     state_module.apply_unambiguous_reply = _atomic_keyword_lead_wrapper(apply_unambiguous_reply)
+
+    # Normalize derived qualification fields immediately after an answer changes
+    # status. This used to be installed by conditional_state_postfix.py as a
+    # second startup wrapper; keep the same behavior inside the owning runtime.
+    current_apply_unambiguous_reply = state_module.apply_unambiguous_reply
+
+    def normalized_apply_unambiguous_reply(*, lead, requirements, text, source_message_id):
+        pk = getattr(lead, "pk", None)
+        manager = getattr(getattr(lead, "__class__", None), "objects", None)
+        if pk is None or manager is None:
+            return current_apply_unambiguous_reply(
+                lead=lead,
+                requirements=requirements,
+                text=text,
+                source_message_id=source_message_id,
+            )
+
+        with transaction.atomic():
+            locked = manager.select_for_update().get(pk=pk)
+            result = current_apply_unambiguous_reply(
+                lead=locked,
+                requirements=requirements,
+                text=text,
+                source_message_id=source_message_id,
+            )
+            state = result.get("state") if isinstance(result, dict) else None
+            if isinstance(state, dict) and result.get("changed"):
+                active_requirements = state_module.requirements_for_lead(
+                    locked,
+                    requirements,
+                )
+                normalized = state_module._normalize_runtime_state(
+                    state,
+                    active_requirements,
+                    lead=locked,
+                )
+                state_module._persist_state(locked, normalized)
+                next_item = (
+                    state_module.next_requirement(
+                        active_requirements,
+                        normalized.get("requirement_states") or {},
+                    )
+                    if normalized.get("qualification_status") != "completed"
+                    else None
+                )
+                result = {
+                    **result,
+                    "state": normalized,
+                    "next_requirement": deepcopy(next_item),
+                }
+                lead.attributes = deepcopy(locked.attributes)
+            return result
+
+    state_module.apply_unambiguous_reply = normalized_apply_unambiguous_reply
     state_module.record_last_asked_requirement = _atomic_lead_wrapper(state_module.record_last_asked_requirement)
     state_module.reset_state = _atomic_lead_wrapper(state_module.reset_state)
     state_module.persist_answer_updates = _atomic_keyword_lead_wrapper(state_module.persist_answer_updates)
