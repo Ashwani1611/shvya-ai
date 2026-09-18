@@ -1,1 +1,22 @@
-<header><a class="brand" href="/"><img src="/static/marketing/dark/logo.png" alt=""/><img class="wordmark" src="/static/marketing/dark/wordmark.png" alt="SHVYA AI"/></a><nav><a href="/features/">Features</a><a href="/pricing/">Pricing</a><details class="nav-dropdown"><summary>SHVYA ecosystem <span>⌄</span></summary><div><a href="/services/">SHVYA Services ↗</a><a href="/product-suite/">SHVYA Product Suite ↗</a><a href="/#integrations">Integrations ↗</a></div></details><a href="/docs/">Documentation</a></nav><div class="header-actions">{% if crm_user %}<details class="nav-dropdown account-menu"><summary>{{ crm_user.name|default:"Your account"|truncatechars:16 }} ⌄</summary><div><a href="{% url 'crm-dashboard' %}">Dashboard</a><a href="{% url 'crm-profile' %}">Profile</a><a href="{% url 'crm-logout' %}">Logout</a></div></details>{% else %}<a class="nav-login" href="{% url 'crm-login' %}">Login</a>{% endif %}<a class="button small" href="/book-a-call/">Book a call <span>↗</span></a><details class="mobile-menu"><summary aria-label="Open navigation">☰</summary><div><a href="/features/">Features ↗</a><a href="/pricing/">Pricing ↗</a><a href="/services/">SHVYA Services ↗</a><a href="/product-suite/">SHVYA Product Suite ↗</a><a href="/#integrations">Integrations ↗</a><a href="/docs/">Documentation ↗</a></div></details></div></header>
+<header>
+  <a class="brand" href="/"><img src="/static/marketing/dark/logo.png" alt=""/><img class="wordmark" src="/static/marketing/dark/wordmark.png" alt="SHVYA AI"/></a>
+  <nav>
+    <a href="/features/">Features</a><a href="/pricing/">Pricing</a>
+    <details class="nav-dropdown"><summary>SHVYA ecosystem <span>⌄</span></summary><div><a href="/services/">SHVYA Services ↗</a><a href="/product-suite/">SHVYA Product Suite ↗</a><a href="/#integrations">Integrations ↗</a></div></details>
+    <a href="/docs/">Documentation</a>
+  </nav>
+  <div class="header-actions">
+    {% if crm_user %}
+    <details class="nav-dropdown account-menu"><summary>{{ crm_user.name|default:"Your account"|truncatechars:16 }} ⌄</summary><div><a href="{% url 'crm-dashboard' %}">Dashboard</a><a href="{% url 'crm-profile' %}">Profile</a><a href="{% url 'crm-logout' %}">Logout</a></div></details>
+    {% else %}<a class="nav-login" href="{% url 'crm-login' %}">Login</a>{% endif %}
+    <button type="button" class="marketing-theme-toggle" data-marketing-theme-toggle aria-label="Switch appearance" title="Switch appearance">
+      <svg class="theme-moon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20.9 13.3A9 9 0 0 1 10.7 3.1 9 9 0 1 0 20.9 13.3Z"/></svg>
+      <svg class="theme-sun" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42"/></svg>
+    </button>
+    <a class="button small" href="/book-a-call/">Book a call <span>↗</span></a>
+    <details class="mobile-menu"><summary aria-label="Open navigation">☰</summary><div>
+      <a href="/features/">Features ↗</a><a href="/pricing/">Pricing ↗</a><a href="/services/">SHVYA Services ↗</a><a href="/product-suite/">SHVYA Product Suite ↗</a><a href="/#integrations">Integrations ↗</a><a href="/docs/">Documentation ↗</a>
+      {% if crm_user %}<a href="{% url 'crm-dashboard' %}">Dashboard</a><a href="{% url 'crm-profile' %}">Profile</a><a href="{% url 'crm-logout' %}">Logout</a>{% else %}<a href="{% url 'crm-login' %}">Login</a>{% endif %}
+    </div></details>
+  </div>
+</header>
