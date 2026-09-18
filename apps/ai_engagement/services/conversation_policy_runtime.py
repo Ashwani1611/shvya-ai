@@ -196,8 +196,12 @@ def _accepted_result(*, state: dict[str, Any], source_message_id: str) -> dict[s
 def _continue_qualification_immediately(*, organization, lead, turn: dict[str, Any]) -> bool:
     settings = organization.settings if isinstance(getattr(organization, "settings", None), dict) else {}
     qualification_settings = settings.get("ai_qualification")
-    if isinstance(qualification_settings, dict) and "continue_after_answer" in qualification_settings:
-        return qualification_settings.get("continue_after_answer") is True
+    if (
+        isinstance(qualification_settings, dict)
+        and qualification_settings.get("continue_after_answer") is True
+    ):
+        # Explicit true keeps the legacy "always continue immediately" behavior.
+        return True
 
     source_message_id = str(turn.get("source_message_id") or "").strip()
     if not source_message_id:
