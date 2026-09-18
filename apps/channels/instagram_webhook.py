@@ -48,27 +48,43 @@ def instagram_webhook_view(request):
     if not isinstance(payload, dict):
         return HttpResponseBadRequest("Invalid payload")
     digest = hashlib.sha256(request.body).hexdigest()
+
+    # Commit the envelope before publishing. A worker on another connection can
+    # always find it, and a broker failure must not roll back the incoming event.
     with transaction.atomic():
         delivery, _ = InstagramWebhookDelivery.objects.get_or_create(
             payload_sha256=digest, defaults={"raw_payload": payload},
         )
-        delivery = InstagramWebhookDelivery.objects.select_for_update().get(pk=delivery.pk)
-        if delivery.status in {InstagramWebhookDelivery.Status.PROCESSED, InstagramWebhookDelivery.Status.IGNORED}:
-            return HttpResponse("EVENT_RECEIVED")
-        if delivery.status == InstagramWebhookDelivery.Status.FAILED:
-            delivery.status = InstagramWebhookDelivery.Status.PENDING
+
+    try:
+        # Serialize dispatches using the same row lock as the processor. Keep
+        # the PROCESSING claim and broker submission in this short transaction:
+        # a successful submission commits the claim; a failure rolls it back to
+        # PENDING/FAILED so Meta's retry can recover it. The worker's row lock
+        # waits for this commit before processing the already-durable envelope.
+        with transaction.atomic():
+            delivery = InstagramWebhookDelivery.objects.select_for_update().get(pk=delivery.pk)
+            if delivery.status in {
+                InstagramWebhookDelivery.Status.PROCESSING,
+                InstagramWebhookDelivery.Status.PROCESSED,
+                InstagramWebhookDelivery.Status.IGNORED,
+            }:
+                return HttpResponse("EVENT_RECEIVED")
+            delivery.status = InstagramWebhookDelivery.Status.PROCESSING
             delivery.error_message = ""
             delivery.processed_at = None
             delivery.save(update_fields=["status", "error_message", "processed_at"])
-    # The transaction has committed before enqueue. A Meta retry can requeue an
-    # existing PENDING row after broker failure. The worker locks/deduplicates it.
-    # non_atomic_requests below keeps this boundary valid with ATOMIC_REQUESTS.
-    try:
-        process_instagram_webhook_delivery_task.delay(str(delivery.pk))
+            process_instagram_webhook_delivery_task.delay(str(delivery.pk))
     except Exception:
+        # If the broker accepted a publish but its acknowledgement was lost,
+        # another task may be submitted on retry. The existing worker locks and
+        # idempotent message writes remain the final duplicate-processing guard.
         logger.warning("Instagram webhook enqueue unavailable for delivery %s", delivery.pk)
-        return HttpResponse("RETRY_LATER", status=503)
+        response = HttpResponse("RETRY_LATER", status=503)
+        response["Retry-After"] = "5"
+        return response
     return HttpResponse("EVENT_RECEIVED")
 
 
+# Ensure the first transaction commits even when ATOMIC_REQUESTS is enabled.
 instagram_webhook_view = transaction.non_atomic_requests(instagram_webhook_view)
