@@ -1,5 +1,3 @@
-from types import SimpleNamespace
-
 from django.test import SimpleTestCase
 
 from apps.ai_engagement.graph.policy_actions import (
