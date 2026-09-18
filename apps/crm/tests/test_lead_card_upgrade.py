@@ -191,3 +191,13 @@ class LeadCardUpgradeTests(TestCase):
         self.assertEqual(response.status_code, 202)
         sent = WhatsAppMessage.objects.get(pk=response.json()["id"])
         self.assertEqual(sent.account_id, self.account.pk)
+
+    def test_deleting_lead_unlinks_account_owned_instagram_conversation(self):
+        conversation = self.instagram()
+        message = InstagramMessage.objects.create(organization=self.org, account=conversation.account,
+            conversation=conversation, direction="inbound", status="received", body="A customer message")
+        self.lead.delete()
+        conversation.refresh_from_db()
+        self.assertIsNone(conversation.lead_id)
+        self.assertTrue(InstagramMessage.objects.filter(pk=message.pk).exists())
+        self.assertTrue(InstagramAccount.objects.filter(pk=conversation.account_id).exists())

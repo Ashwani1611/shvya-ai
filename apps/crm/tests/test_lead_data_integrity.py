@@ -127,7 +127,9 @@ class LeadDataIntegrityTests(TestCase):
         WhatsAppMessage is a historical SET_NULL relation but the Lead
         pre_delete receiver hard-deletes its rows. FollowupSenderState is
         account-owned throttling state; deleting a Lead intentionally clears
-        only its last_lead pointer. Every other Lead-owned relation must CASCADE.
+        only its last_lead pointer. InstagramConversation is an account-owned
+        provider read model which can exist before a lead; deleting the lead
+        removes only its explicit CRM association. Other Lead-owned relations CASCADE.
         """
         exceptions = []
 
@@ -146,6 +148,7 @@ class LeadDataIntegrityTests(TestCase):
             {(label, field_name) for label, field_name, _ in exceptions},
             {
                 ("channels.whatsappmessage", "lead"),
+                ("channels.instagramconversation", "lead"),
                 ("followups.followupsenderstate", "last_lead"),
             },
         )
