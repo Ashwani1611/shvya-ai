@@ -148,11 +148,19 @@ def _value_supported_by_latest_message(value: Any, latest_text: str) -> bool:
 
 
 def _attribute_keys(context) -> set[str]:
+    from apps.ai_engagement.services.confidentiality import (
+        is_sensitive_attribute_definition,
+    )
+
     definitions = (context.pipeline or {}).get("attribute_definitions") or []
     return {
         str(item.get("key") or "").strip()
         for item in definitions
-        if isinstance(item, dict) and str(item.get("key") or "").strip()
+        if (
+            isinstance(item, dict)
+            and str(item.get("key") or "").strip()
+            and not is_sensitive_attribute_definition(item)
+        )
     }
 
 

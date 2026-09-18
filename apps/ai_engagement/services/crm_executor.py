@@ -230,11 +230,20 @@ class CRMActionExecutor:
     ) -> dict[str, Any]:
         updates = action["updates"]
         requested_values = {item["key"]: item["value"] for item in updates}
-        allowed_keys = set(
-            AttributeDefinition.objects.filter(organization=organization).values_list(
-                "key", flat=True
+        from apps.ai_engagement.services.confidentiality import (
+            is_sensitive_attribute_definition,
+        )
+
+        definitions = list(
+            AttributeDefinition.objects.filter(organization=organization).values(
+                "key", "name"
             )
         )
+        allowed_keys = {
+            item["key"]
+            for item in definitions
+            if not is_sensitive_attribute_definition(item)
+        }
         invalid_keys = sorted(set(requested_values) - allowed_keys)
         if invalid_keys:
             raise CRMActionExecutionError(f"Unknown attribute keys: {invalid_keys}.")
