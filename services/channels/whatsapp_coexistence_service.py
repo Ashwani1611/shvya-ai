@@ -14,6 +14,7 @@ from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
 
+from apps.channels.connection_attempts import WhatsAppConnectionAttempt
 from apps.channels.models import WhatsAppAccount, WhatsAppMessage
 from apps.channels.providers import whatsapp as whatsapp_provider
 from apps.channels.providers import whatsapp_embedded as embedded_provider
@@ -292,6 +293,13 @@ def complete_coexistence_signup(
             stage="account_save",
         ) from exc
 
+    # Retain successful Coexistence provenance even for service callers that do
+    # not supply a browser attempt. No credentials are stored in this audit row.
+    if attempt is None:
+        attempt = WhatsAppConnectionAttempt.objects.create(
+            organization=organization,
+            method=WhatsAppConnectionAttempt.Method.EMBEDDED,
+        )
     _update_attempt(
         attempt,
         account=account,
@@ -343,7 +351,7 @@ def complete_coexistence_signup(
     _update_attempt(
         attempt,
         status="connected",
-        stage="connected" if not warning else "coexistence_sync_warning",
+        stage="coexistence_connected" if not warning else "coexistence_sync_warning",
         webhook_subscribed=not any("Webhook subscription" in item for item in warnings),
         warning_message=warning,
         completed_at=timezone.now(),
