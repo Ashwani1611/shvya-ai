@@ -1,0 +1,21 @@
+name: AI phase source preparation
+on:
+  push:
+    branches: [build/ai-phase-completion-20260918]
+permissions:
+  contents: write
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Assemble inspected source into clean Git objects
+        id: assemble
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python .phase_build/assemble.py
+      - name: Source summary
+        run: echo "Prepared immutable code commit ${{ steps.assemble.outputs.commit }}; no branch was moved and no deployment was triggered."

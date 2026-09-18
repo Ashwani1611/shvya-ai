@@ -1,0 +1,115 @@
+    def execute(
+        self, *, organization, lead: Lead, actions: list[dict[str, Any]],
+        actor=None, source_message=None,
+    ) -> list[dict[str, Any]]:
+        from apps.ai_engagement.models import AIActionReceipt
+        from apps.ai_engagement.services.action_planner import EXECUTOR_ACTION_TYPES
+        from apps.ai_engagement.services.ai_permissions import AIPermissionService
+        from apps.ai_engagement.services.organization_runtime_profile import get_organization_ai_runtime_profile
+        from apps.ai_engagement.services.tenant_guard import TenantGuard
+        from apps.ai_engagement.services.trace_service import current, record
+        from apps.channels.models import WhatsAppMessage
+
+        if organization is None:
+            raise CRMActionExecutionError("Organization is required.")
+        if lead is None:
+            raise CRMActionExecutionError("Lead is required.")
+        if lead.organization_id != organization.id:
+            raise CRMActionExecutionError("Lead does not belong to this organization.")
+        plan = ActionPlanner().plan(
+            organization=organization, lead=lead,
+            decision=SimpleNamespace(crm_actions=actions, file_document_id=None, reason_code=""),
+            source_message=source_message,
+        )
+        trace_action_plan(plan)
+        if plan.rejected_actions:
+            reasons = sorted({p.reason_code or "ACTION_REJECTED" for p in plan.rejected_actions})
+            raise CRMActionExecutionError("Action plan rejected one or more proposals: " + ", ".join(reasons))
+        try:
+            normalized = validate_crm_actions(plan.executor_actions)
+        except CRMActionSchemaError as exc:
+            raise CRMActionExecutionError(f"Invalid CRM actions: {exc}") from exc
+        proposals = [p for p in plan.accepted_actions if p.executor_action_type in EXECUTOR_ACTION_TYPES]
+        if len(proposals) != len(normalized):
+            raise CRMActionExecutionError("Action plan projection changed during validation.")
+        if not proposals:
+            return []
+        trace = current()
+        if trace is not None and str(trace.organization_id) == str(organization.id) and not plan.source_message_id:
+            raise CRMActionExecutionError("AI action requires an authenticated source message.")
+
+        with transaction.atomic():
+            locked = Lead.objects.select_for_update(of=("self",)).select_related(
+                "organization", "pipeline", "stage",
+            ).get(pk=lead.pk, organization=organization)
+            TenantGuard(locked.organization).validate_current_lead_context(locked)
+            source = None
+            if plan.source_message_id:
+                try:
+                    source = WhatsAppMessage.objects.select_related("account", "lead").filter(
+                        pk=plan.source_message_id, organization=organization,
+                        lead=locked, direction="inbound",
+                    ).first()
+                except (ValueError, DjangoValidationError) as exc:
+                    raise CRMActionExecutionError("Action source is unavailable in this organization.") from exc
+                if source is None:
+                    raise CRMActionExecutionError("Action source is unavailable in this organization.")
+                TenantGuard(locked.organization).validate_message(source, lead=locked)
+            receipts = {
+                r.idempotency_key: r
+                for r in AIActionReceipt.objects.filter(
+                    organization=organization, lead=locked, source_message_id=source.pk,
+                    idempotency_key__in=[p.idempotency_key for p in proposals],
+                )
+            } if source is not None else {}
+            pending = [p for p in proposals if p.idempotency_key not in receipts]
+            if pending:
+                self._revalidate_plan_state(plan=SimpleNamespace(accepted_actions=pending), lead=locked)
+                current_profile = get_organization_ai_runtime_profile(organization=locked.organization, lead=locked)
+                for proposal in pending:
+                    revision = proposal.state_snapshot.get("runtime_profile_revision")
+                    if revision and revision != current_profile.revision:
+                        raise CRMActionExecutionError("Action runtime configuration changed before execution.")
+                if source is not None:
+                    permission = AIPermissionService().evaluate(
+                        organization=locked.organization, lead=locked, latest_inbound=source,
+                    )
+                    if not permission.allowed:
+                        raise CRMActionExecutionError("AI action permission revoked: " + permission.reason)
+                    if not getattr(locked.organization, "is_active", True):
+                        raise CRMActionExecutionError("Organization is inactive.")
+                if actor is not None and getattr(actor, "organization_id", organization.id) != organization.id:
+                    raise CRMActionExecutionError("Action actor is outside organization scope.")
+            results = []
+            for proposal, action in zip(proposals, normalized):
+                key = proposal.idempotency_key
+                if key in receipts:
+                    results.append(dict(receipts[key].result))
+                    try:
+                        record("action_receipts", {"replayed": [{"key": key, "action_type": proposal.action_type}]})
+                    except Exception:
+                        pass
+                    continue
+                kind = action["type"]
+                if kind == "attribute_updates":
+                    result = self._execute_attribute_updates(organization=organization, lead=locked, action=action)
+                elif kind == "pipeline_transition":
+                    result = self._execute_pipeline_transition(organization=organization, lead=locked, action=action, actor=actor)
+                elif kind == "add_note":
+                    result = self._execute_add_note(lead=locked, action=action, actor=actor)
+                elif kind == "create_reminder":
+                    result = self._execute_create_reminder(lead=locked, action=action, actor=actor)
+                elif kind == "contact_updates":
+                    result = self._execute_contact_updates(organization=organization, lead=locked, action=action)
+                else:
+                    raise CRMActionExecutionError(f"Unsupported CRM action type: {kind!r}.")
+                results.append(result)
+                if source is not None:
+                    receipts[key] = AIActionReceipt.objects.create(
+                        organization=organization, lead=locked, source_message_id=source.pk,
+                        idempotency_key=key, action_type=proposal.action_type, result=result,
+                    )
+            # Receipts and CRM mutations commit or roll back together. Source-less
+            # non-AI service calls retain their pre-existing behavior.
+            lead.refresh_from_db(fields=["attributes", "pipeline", "stage"])
+            return results
