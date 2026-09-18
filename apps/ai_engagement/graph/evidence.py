@@ -120,9 +120,18 @@ def check_grounding(state):
     if not decision.should_engage:
         return {"grounding_approved": True}
 
+    qualification_state = state.get("qualification_state") or {}
+    latest_message_id = str(state.get("latest_message_id") or "").strip()
+    answered_this_turn = bool(latest_message_id) and any(
+        isinstance(item, dict)
+        and str(item.get("source_message_id") or "").strip() == latest_message_id
+        and str(item.get("status") or "").strip().casefold() == "answered"
+        for item in (qualification_state.get("requirement_states") or {}).values()
+    )
     qualification_turn = bool(
         getattr(decision, "qualification_updates", None)
         or getattr(decision, "next_requirement_id", None)
+        or answered_this_turn
         or (
             isinstance(state.get("reconciled_state"), dict)
             and isinstance(state["reconciled_state"].get("response_plan"), dict)
