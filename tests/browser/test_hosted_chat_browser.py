@@ -11,6 +11,7 @@ from urllib.parse import parse_qs, urlparse
 
 import pytest
 from django.template import Context, Engine
+from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import expect, sync_playwright
 
 
@@ -31,7 +32,14 @@ def message(index, *, body=None, **kwargs):
 @pytest.fixture(scope="module")
 def browser():
     with sync_playwright() as playwright:
-        browser = playwright.chromium.launch()
+        try:
+            browser = playwright.chromium.launch()
+        except PlaywrightError as exc:
+            if "Executable doesn't exist" in str(exc):
+                pytest.skip(
+                    "Playwright Chromium is not installed in this test environment."
+                )
+            raise
         yield browser
         browser.close()
 
