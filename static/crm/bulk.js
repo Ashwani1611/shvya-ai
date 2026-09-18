@@ -106,6 +106,39 @@
         if (sequences.some(item => item.id === selected)) el('sequence').value = selected;
     }
 
+    async function openCampaign(button) {
+        const current = root(), panel = activePanel();
+        const ids = boxes(panel).filter(input => input.checked).map(input => input.value);
+        if (!ids.length || current?.dataset.canCampaign !== 'true') return;
+
+        trigger = button;
+        action = 'campaign';
+        selection = {
+            lead_ids: ids,
+            pipeline: current.dataset.pipeline,
+            source_stage: panel.dataset.stagePanel,
+        };
+        endpoint = current.dataset.bulkUrl;
+
+        button.disabled = true;
+        status(`Preparing Bulk Campaigns for ${ids.length} selected lead${ids.length === 1 ? '' : 's'}…`);
+        try {
+            const response = await request({action: 'campaign'});
+            const result = await response.json();
+            const target = new URL(result.url, window.location.origin);
+            if (target.origin !== window.location.origin) {
+                throw new Error('An unexpected campaign destination was blocked.');
+            }
+            window.location.assign(target.href);
+        } catch (error) {
+            status(error instanceof TypeError
+                ? 'The connection was interrupted. Your selection was not sent. Please try again.'
+                : error.message);
+        } finally {
+            if (button.isConnected) button.disabled = false;
+        }
+    }
+
     async function openDialog(button) {
         const current = root(), panel = activePanel();
         const ids = boxes(panel).filter(input => input.checked).map(input => input.value);
@@ -181,7 +214,8 @@
         if (event.target.closest('.stage-tab')) clearSelection();
         if (event.target.closest('[data-bulk-clear]')) clearSelection();
         const button = event.target.closest('[data-bulk-action]');
-        if (button) openDialog(button);
+        if (button?.dataset.bulkAction === 'campaign') openCampaign(button);
+        else if (button) openDialog(button);
     });
     dialog.addEventListener('click', event => {
         if (event.target.closest('[data-bulk-cancel]') && !busy) dialog.close();
