@@ -202,7 +202,7 @@ Rules for the fields:
                 if latest_text:
                     break
         explicit_file_request = bool(re.search(
-            r"(?:brochure|catalog(?:ue)?|pdf|file|document|deck|presentation|menu|prospectus|portfolio|flyer|leaflet|datasheet|price\s*list|pricelist)",
+            r"\b(?:brochure|catalog(?:ue)?|pdf|file|document|deck|presentation|menu|prospectus|portfolio|flyer|leaflet|datasheet|price\s*list|pricelist)\b",
             latest_text,
             flags=re.IGNORECASE,
         ))

@@ -13,9 +13,7 @@ from apps.channels.models import WhatsAppAccount, WhatsAppMessage
 from apps.crm.models import Lead, Pipeline
 from apps.crm.views.api import BulkMoveStageAPIView
 from apps.organizations.models import Organization
-from services.channels.ai_orchestration_hooks import (
-    _conversation_bound_hosted_block_reason,
-)
+from services.channels.hosted_automation_service import hosted_ai_block_reason
 
 
 class _InvalidQualificationProvider:
@@ -126,7 +124,7 @@ class LiveWhatsAppPipelineRegressionTests(TestCase):
         # Hosted job's permission context.
         self._inbound("newer-api-turn", "API question")
 
-        reason = _conversation_bound_hosted_block_reason(
+        reason = hosted_ai_block_reason(
             account=hosted,
             lead=self.lead,
         )

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import logging
 import re
+from dataclasses import replace
 
 
 _INSTALLED = False
@@ -345,6 +346,65 @@ def build_deterministic_fallback_decision(*, organization, lead, latest_inbound=
     )
 
 
+def _conversation_mode(lead) -> str:
+    from apps.ai_engagement.services.runtime_state import STATE_KEY
+
+    attributes = (
+        lead.attributes
+        if isinstance(getattr(lead, "attributes", None), dict)
+        else {}
+    )
+    state = attributes.get(STATE_KEY)
+    if not isinstance(state, dict):
+        return ""
+    return str(state.get("conversation_mode") or "").strip().casefold()
+
+
+def _ensure_customer_reply(decision, *, lead):
+    if getattr(decision, "should_engage", False):
+        return decision
+
+    reason_code = str(
+        getattr(decision, "reason_code", "")
+        or getattr(decision, "reason", "")
+        or ""
+    ).strip().upper()
+    if reason_code == "OPT_OUT":
+        return decision
+
+    if _conversation_mode(lead) == "paused":
+        return replace(
+            decision,
+            should_engage=True,
+            message="No problem. We can continue whenever you're ready.",
+            reason="NORMAL_CONVERSATION",
+            reason_code="NORMAL_CONVERSATION",
+            silence_rule=None,
+            crm_actions=[],
+            qualification_updates=[],
+            next_requirement_id=None,
+            file_document_id=None,
+            model="deterministic-paused-ack",
+        )
+
+    return replace(
+        decision,
+        should_engage=True,
+        message=(
+            "I don’t have enough verified information to answer that "
+            "confidently. The team would need to confirm it."
+        ),
+        reason="UNKNOWN_INFORMATION",
+        reason_code="UNKNOWN_INFORMATION",
+        silence_rule=None,
+        crm_actions=[],
+        qualification_updates=[],
+        next_requirement_id=None,
+        file_document_id=None,
+        model="deterministic-reply-guard",
+    )
+
+
 def _fallback_decision(*, service, organization, lead):
     """Compatibility wrapper for the installed EngagementService guard."""
     latest_inbound = None
@@ -380,13 +440,14 @@ def install_engagement_failsoft() -> None:
 
     def engage(self, *, organization, lead, knowledge_query=None, context=None):
         try:
-            return original_engage(
+            decision = original_engage(
                 self,
                 organization=organization,
                 lead=lead,
                 knowledge_query=knowledge_query,
                 context=context,
             )
+            return _ensure_customer_reply(decision, lead=lead)
         except engagement_module.EngagementError as exc:
             # Explicit/injected providers are used by callers that need strict
             # validation semantics. Do not convert their failures into replies.
@@ -400,11 +461,12 @@ def install_engagement_failsoft() -> None:
                 "AI engagement validation/provider path failed for lead %s; using deterministic fail-soft reply",
                 getattr(lead, "pk", None),
             )
-            return _fallback_decision(
+            decision = _fallback_decision(
                 service=self,
                 organization=organization,
                 lead=lead,
             )
+            return _ensure_customer_reply(decision, lead=lead)
 
     service_class.engage = engage
     _INSTALLED = True

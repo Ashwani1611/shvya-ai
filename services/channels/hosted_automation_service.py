@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import mimetypes
+import os
 from datetime import timedelta
 from pathlib import Path
 from urllib.parse import quote
@@ -35,7 +36,17 @@ from apps.hosted_automation.models import (
 
 
 HOSTED_CONNECTION_TYPE = "hosted"
-AI_RESPONSE_DELAY_SECONDS = 60
+
+
+def _ai_response_delay_seconds() -> int:
+    try:
+        value = int(os.getenv("AI_ENGAGEMENT_DEBOUNCE_SECONDS", "5"))
+    except (TypeError, ValueError):
+        value = 5
+    return min(max(value, 0), 5)
+
+
+AI_RESPONSE_DELAY_SECONDS = _ai_response_delay_seconds()
 HOSTED_ENGINE_INTERVAL_SECONDS = 10
 SAME_CONTENT_GAP_SECONDS = 180
 DIFFERENT_CONTENT_GAP_SECONDS = 90
@@ -401,19 +412,45 @@ def _latest_hosted_inbound(*, job):
 
 
 def hosted_ai_block_reason(*, account, lead):
-    """Re-evaluate live switches and sender mapping, including resumed jobs."""
+    """Re-evaluate live AI controls against the exact Hosted conversation."""
     from apps.ai_engagement.services.ai_permissions import AIPermissionService
     from apps.crm.models import Lead
     from services.channels.hosted_whatsapp_service import get_session_settings
-    from services.followup_service import resolve_linked_whatsapp_account
 
-    lead = Lead.objects.select_related("organization", "pipeline", "stage").get(pk=lead.pk)
-    decision = AIPermissionService().evaluate(organization=lead.organization, lead=lead)
+    lead = Lead.objects.select_related(
+        "organization", "pipeline", "stage"
+    ).get(pk=lead.pk)
+
+    if account.organization_id != lead.organization_id:
+        return "whatsapp_account_organization_mismatch"
+    if account.connection_type != WhatsAppAccount.ConnectionType.coexisted:
+        return "unsupported_whatsapp_connection_type"
+    if not account.is_active:
+        return "whatsapp_account_inactive"
+    if account.status != WhatsAppAccount.Status.CONNECTED:
+        return "whatsapp_account_not_connected"
+
+    latest_for_account = (
+        WhatsAppMessage.objects.filter(
+            organization=lead.organization,
+            account=account,
+            lead=lead,
+            direction=WhatsAppMessage.Direction.INBOUND,
+        )
+        .select_related("account")
+        .order_by("-created_at", "-id")
+        .first()
+    )
+    if latest_for_account is None:
+        return "conversation_whatsapp_account_missing"
+
+    decision = AIPermissionService().evaluate(
+        organization=lead.organization,
+        lead=lead,
+        latest_inbound=latest_for_account,
+    )
     if not decision.allowed:
         return decision.reason
-    linked = resolve_linked_whatsapp_account(lead=lead, connection_type=HOSTED_CONNECTION_TYPE)
-    if not linked or linked.pk != account.pk:
-        return "pipeline_whatsapp_account_mismatch"
     if not get_session_settings(account=account).get("ai_auto_reply"):
         return "ai_auto_reply_disabled"
     return ""

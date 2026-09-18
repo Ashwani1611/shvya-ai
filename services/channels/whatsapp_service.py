@@ -20,7 +20,6 @@ from apps.channels.providers.whatsapp import WhatsAppAPIError, WhatsAppClient
 from apps.crm.models import Lead, Pipeline, Stage
 from services.channels.reply_intent_service import Intent, classify_reply
 from services.crm.lead_service import upsert_lead
-from services.crm.stage_service import move_to_next_stage
 
 
 class WhatsAppSendError(Exception):
@@ -265,40 +264,18 @@ def _queue_internal_conversation_summary(
     *,
     lead_id,
 ):
-    """
-    Queue internal conversation-summary generation for a Lead.
-
-    The AI task is imported locally so the WhatsApp service does
-    not create a module-level dependency on the AI task module.
-    """
-    from apps.ai_engagement.tasks import (
-        generate_internal_conversation_summary,
-    )
-
-    generate_internal_conversation_summary.delay(
-        str(lead_id)
-    )
+    """Summary refresh is signal-owned for both API and Hosted conversations."""
+    return None
 
 
 def _queue_whatsapp_engagement(
     *,
     lead_id,
 ):
-    """
-    Queue canonical AI Engagement processing for the Lead.
+    """Queue the durable, source-message-idempotent API AI execution path."""
+    from apps.ai_engagement.services.execution_tracker import queue_api_engagement
 
-    The task receives only the Lead ID. It resolves the current
-    WhatsApp account and re-validates all permissions and send
-    eligibility inside the worker so stale webhook state cannot
-    bypass the AI control hierarchy.
-    """
-    from apps.ai_engagement.tasks import (
-        generate_ai_engagement_response,
-    )
-
-    generate_ai_engagement_response.delay(
-        str(lead_id)
-    )
+    return queue_api_engagement(lead_id=lead_id)
 
 
 # ============================================================
@@ -498,47 +475,35 @@ def _apply_reply_intent(
     lead,
     body,
 ):
+    """Persist deterministic opt-out and negative-review intent only.
+
+    Positive replies are valid qualification/conversation answers and must never
+    move CRM stages implicitly. Stage movement is owned by validated AI/CRM
+    action execution.
     """
-    A positive reply ("yes" / "+" / "interested" / etc.) auto-advances
-    the lead to the next pipeline stage. A negative reply ("no" /
-    "stop" / etc.) is tagged on the lead so agents/reporting can see
-    it, but the lead is NOT auto-deleted or auto-moved backward --
-    that decision stays with a human.
+    text = " ".join(str(body or "").strip().casefold().split())
+    if not text:
+        return
 
-    Negative replies also feed the 24-hour no-response escalation:
-    they don't count as "no response", but they do mean a human
-    should follow up, which is handled by the calling-escalation
-    task checking WhatsAppMessage history directly rather than a
-    flag here.
-    """
-    intent = classify_reply(body)
+    from apps.ai_engagement.services.runtime_state import is_explicit_opt_out
 
-    if intent == Intent.POSITIVE:
-
-        move_to_next_stage(
-            lead=lead,
-        )
-
-    elif intent == Intent.NEGATIVE:
-
+    if is_explicit_opt_out(text):
         notes = lead.notes or ""
-
-        marker = (
-            "[WhatsApp] Lead replied negatively -- needs review."
-        )
-
+        marker = "[WhatsApp] Lead opted out of AI engagement."
+        lead.ai_enabled = False
         if marker not in notes:
+            lead.notes = f"{notes}\n{marker}".strip()
+            lead.save(update_fields=["ai_enabled", "notes", "updated_at"])
+        else:
+            lead.save(update_fields=["ai_enabled", "updated_at"])
+        return
 
-            lead.notes = (
-                f"{notes}\n{marker}"
-            ).strip()
-
-            lead.save(
-                update_fields=[
-                    "notes",
-                    "updated_at",
-                ]
-            )
+    if classify_reply(body) == Intent.NEGATIVE:
+        notes = lead.notes or ""
+        marker = "[WhatsApp] Lead replied negatively -- needs review."
+        if marker not in notes:
+            lead.notes = f"{notes}\n{marker}".strip()
+            lead.save(update_fields=["notes", "updated_at"])
 
 
 def handle_status_update(

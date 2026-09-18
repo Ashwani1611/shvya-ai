@@ -97,6 +97,7 @@ def _enhanced_pipeline_context(original_method):
                     "pipeline_name": pipeline.name,
                     "pipeline_description": pipeline.description,
                     "is_current_pipeline": pipeline.id == lead.pipeline_id,
+                    "customer_visible": False,
                 }
                 for stage in stages
             ]
@@ -108,12 +109,18 @@ def _enhanced_pipeline_context(original_method):
                     "description": pipeline.description,
                     "ai_enabled": pipeline.ai_enabled,
                     "is_current": pipeline.id == lead.pipeline_id,
+                    "customer_visible": False,
                     "stages": stage_payloads,
                 }
             )
 
         return {
             **context,
+            "current_pipeline": {
+                "id": str(lead.pipeline_id) if lead.pipeline_id else None,
+                "name": getattr(getattr(lead, "pipeline", None), "name", ""),
+            },
+            "routing_metadata_internal_only": True,
             "available_stages": available_stages,
             "available_pipelines": available_pipelines,
         }
@@ -170,7 +177,8 @@ def _enhanced_controlled_actions(original_builder):
 
         pipeline = context.pipeline if isinstance(context.pipeline, dict) else {}
         available_stages = pipeline.get("available_stages") or []
-        current_stage = context.stage if isinstance(context.stage, dict) else {}
+        raw_stage = getattr(context, "stage", {})
+        current_stage = raw_stage if isinstance(raw_stage, dict) else {}
         current_stage_id = str(current_stage.get("id") or "")
         by_id = {
             str(item.get("id")): item

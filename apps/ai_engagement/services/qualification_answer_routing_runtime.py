@@ -449,6 +449,7 @@ def _is_safe_backend_question(state, persisted: dict[str, Any]) -> bool:
 
 def _qualification_first_grounding(original):
     def check(state):
+        has_requirements = bool(state.get("requirements") or [])
         persisted_answer = _latest_persisted_answer(state)
         if persisted_answer is not None:
             _, persisted = persisted_answer
@@ -457,7 +458,28 @@ def _qualification_first_grounding(original):
                     "grounding_approved": True,
                     "qualification_answer_authoritative": True,
                 }
-        return original(state)
+
+        result = original(state)
+        if has_requirements or not isinstance(result, dict):
+            return result
+
+        qualification_bypass = bool(
+            result.get("qualification_answer_authoritative")
+            or result.get("grounding_recovered")
+        )
+        if not qualification_bypass:
+            return result
+
+        decision = state.get("decision")
+        if decision is None:
+            return {"grounding_approved": False}
+
+        from apps.ai_engagement.graph import evidence as evidence_module
+
+        return {
+            "decision": evidence_module._safe_unknown_decision(decision),
+            "grounding_approved": False,
+        }
 
     return check
 

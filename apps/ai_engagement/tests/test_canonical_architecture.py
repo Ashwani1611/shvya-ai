@@ -8,6 +8,8 @@ from apps.ai_engagement.models import Chunk, Document
 from apps.ai_engagement.services.canonical_architecture import (
     PolicyDecisionResolver,
     ResponseActionValidator,
+    _is_persistent_lead,
+    _persistent_lead_id,
 )
 from apps.ai_engagement.services.context import AIContextBuilder
 from apps.ai_engagement.services.confidentiality import is_sensitive_field_name
@@ -121,6 +123,36 @@ class CanonicalKnowledgeRetrievalTests(TestCase):
         self.assertEqual(knowledge[0]["source_type"], "website")
         self.assertIn("keyword", knowledge[0]["retrieval_methods"])
         self.assertIn("4999", knowledge[0]["content"])
+
+
+
+class CanonicalPersistenceBoundaryTests(SimpleTestCase):
+    def test_synthetic_context_id_is_not_treated_as_persistent(self):
+        context = type("Context", (), {"lead": {"id": "lead-preview"}})()
+        self.assertIsNone(_persistent_lead_id(context))
+
+    def test_uuid_context_id_is_treated_as_persistent_candidate(self):
+        context = type(
+            "Context",
+            (),
+            {"lead": {"id": "123e4567-e89b-12d3-a456-426614174000"}},
+        )()
+        self.assertEqual(
+            _persistent_lead_id(context),
+            "123e4567-e89b-12d3-a456-426614174000",
+        )
+
+    def test_unsaved_uuid_backed_lead_is_not_persistent(self):
+        lead = type(
+            "LeadPreview",
+            (),
+            {
+                "pk": "123e4567-e89b-12d3-a456-426614174000",
+                "_state": type("State", (), {"adding": True})(),
+            },
+        )()
+        self.assertFalse(_is_persistent_lead(lead))
+
 
 
 class CanonicalDecisionResolverTests(SimpleTestCase):
