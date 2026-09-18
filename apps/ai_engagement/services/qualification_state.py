@@ -146,16 +146,33 @@ def _snapshot(requirements) -> list[dict]:
 
 
 def requirements_for_lead(lead, current_requirements=None) -> list[dict]:
-    """Pin a live questionnaire to the version active when qualification started."""
+    """Pin a live questionnaire while allowing a safe authored flow shrink.
+
+    Mid-conversation edits normally keep the pinned snapshot. The one safe
+    exception is when the current flow is a strict prefix of the pinned flow
+    with the same stable requirement identities. This supports deliberately
+    removing trailing questions (for example reducing an old 15-question flow
+    to Q1-Q5) without reordering or silently changing already-asked questions.
+    """
     state = _raw_state(lead)
     snapshot = state.get("flow_snapshot")
-    if (
-        _status(state.get("qualification_status")) in {STATUS_IN_PROGRESS, STATUS_COMPLETED}
-        and isinstance(snapshot, list)
-        and snapshot
-    ):
+    status = _status(state.get("qualification_status"))
+    current = _snapshot(current_requirements)
+
+    if status in {STATUS_IN_PROGRESS, STATUS_COMPLETED} and isinstance(snapshot, list) and snapshot:
+        if status == STATUS_IN_PROGRESS and current and len(current) < len(snapshot):
+            current_ids = [
+                str(item.get("stable_id") or item.get("id") or "")
+                for item in current
+            ]
+            snapshot_ids = [
+                str(item.get("stable_id") or item.get("id") or "")
+                for item in snapshot[: len(current)]
+            ]
+            if current_ids == snapshot_ids:
+                return current
         return _snapshot(snapshot)
-    return _snapshot(current_requirements)
+    return current
 
 
 def _aliases(requirement: dict) -> set[str]:
@@ -300,6 +317,10 @@ def _normalize_runtime_state(state: dict, requirements, *, lead=None) -> dict:
             current_id = ""
     if not current_id and next_item is not None:
         current_id = str(next_item.get("id") or "")
+
+    if status == STATUS_IN_PROGRESS and requirements and not missing:
+        status = STATUS_COMPLETED
+        result = result or RESULT_QUALIFIED
 
     if status == STATUS_COMPLETED:
         current_id = ""
