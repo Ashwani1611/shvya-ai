@@ -642,6 +642,21 @@ def _multiple_places_option(text: str, options: list[dict[str, str]]) -> str | N
     return multiple_value if multiple_value and matched >= 2 else None
 
 
+def _singular_token(value: str) -> str:
+    """Normalize only obvious English plural inflections for safe option matching."""
+    token = str(value or "").casefold()
+    if len(token) > 4 and token.endswith("ies"):
+        return token[:-3] + "y"
+    if len(token) > 3 and token.endswith("s") and not token.endswith(("ss", "us", "is")):
+        return token[:-1]
+    return token
+
+
+def _inflection_key(value: str) -> str:
+    tokens = re.findall(r"[a-z0-9]+", str(value or "").casefold())
+    return " ".join(_singular_token(token) for token in tokens)
+
+
 def _match_option_answer(text: str, options: list[dict[str, str]]) -> str | None:
     normalized = " ".join(str(text or "").strip().casefold().split()).strip(" .,:;-)('")
     if not normalized:
@@ -662,6 +677,19 @@ def _match_option_answer(text: str, options: list[dict[str, str]]) -> str | None
             aliases.add(chr(96 + index))
         if normalized in aliases or stripped in aliases:
             return value
+
+    # Accept only morphology-equivalent option text (for example
+    # "Slow reply" -> "Slow replies"). This deliberately avoids fuzzy semantic
+    # matching so unrelated short answers cannot advance qualification.
+    inflection = _inflection_key(stripped)
+    if inflection:
+        inflection_matches = [
+            str(option.get("value") or "").strip()
+            for option in options
+            if _inflection_key(option.get("value")) == inflection
+        ]
+        if len(inflection_matches) == 1:
+            return inflection_matches[0]
 
     numeric_matches = _numeric_option_matches(normalized, options)
     if len(numeric_matches) == 1:
