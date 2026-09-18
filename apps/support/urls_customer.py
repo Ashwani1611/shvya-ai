@@ -1,8 +1,10 @@
 from django.urls import path
 from . import views
+from .views_attention import attention_status
 app_name = "support-client"
 urlpatterns = [
     path("", views.customer_list, name="list"),
+    path("attention/", attention_status, name="attention"),
     path("create/", views.create, name="create"),
     path("attachments/<uuid:attachment_id>/", views.customer_attachment, name="attachment"),
     path("tickets/<uuid:ticket_id>/", views.customer_detail, name="detail"),
