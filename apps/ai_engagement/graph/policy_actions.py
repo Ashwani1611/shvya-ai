@@ -183,21 +183,101 @@ def _value_supported_by_latest_message(value: Any, latest_text: str) -> bool:
     return bool(rendered_tokens and rendered_tokens.issubset(latest_tokens))
 
 
-def _attribute_keys(context) -> set[str]:
+def _attribute_definitions(context) -> list[dict[str, Any]]:
     from apps.ai_engagement.services.confidentiality import (
         is_sensitive_attribute_definition,
     )
 
-    definitions = (context.pipeline or {}).get("attribute_definitions") or []
-    return {
-        str(item.get("key") or "").strip()
-        for item in definitions
+    return [
+        item
+        for item in ((context.pipeline or {}).get("attribute_definitions") or [])
         if (
             isinstance(item, dict)
             and str(item.get("key") or "").strip()
             and not is_sensitive_attribute_definition(item)
         )
+    ]
+
+
+def _attribute_tokens(value: Any) -> set[str]:
+    aliases = {
+        "reps": "representative",
+        "rep": "representative",
+        "salespeople": "sales",
+        "salesperson": "sales",
+        "employees": "employee",
+        "members": "member",
+        "persons": "person",
+        "people": "person",
+        "whatsapp": "whatsapp",
+        "wa": "whatsapp",
     }
+    tokens = set()
+    for token in re.findall(r"[a-z0-9]+", _normalize_text(value)):
+        normalized = aliases.get(token, token)
+        if normalized not in {"of", "the", "a", "an", "current", "lead"}:
+            tokens.add(normalized)
+    return tokens
+
+
+def _resolve_existing_attribute_key(
+    *,
+    proposed_key: str,
+    proposed_name: str,
+    definitions: list[dict[str, Any]],
+) -> str | None:
+    exact = {
+        str(item.get("key") or "").strip(): item
+        for item in definitions
+        if str(item.get("key") or "").strip()
+    }
+    if proposed_key in exact:
+        return proposed_key
+
+    candidate_tokens = _attribute_tokens(f"{proposed_key} {proposed_name}")
+    if not candidate_tokens:
+        return None
+    ranked: list[tuple[float, str]] = []
+    for item in definitions:
+        key = str(item.get("key") or "").strip()
+        tokens = _attribute_tokens(f"{key} {item.get('name') or ''}")
+        if not key or not tokens:
+            continue
+        overlap = candidate_tokens & tokens
+        union = candidate_tokens | tokens
+        score = len(overlap) / len(union) if union else 0.0
+        if candidate_tokens.issubset(tokens) or tokens.issubset(candidate_tokens):
+            score = max(score, 0.8)
+        ranked.append((score, key))
+    ranked.sort(key=lambda item: (-item[0], item[1]))
+    if not ranked or ranked[0][0] < 0.6:
+        return None
+    if len(ranked) > 1 and ranked[0][0] == ranked[1][0]:
+        return None
+    return ranked[0][1]
+
+
+def _safe_dynamic_attribute(update: dict[str, Any]) -> bool:
+    from apps.ai_engagement.services.confidentiality import (
+        is_sensitive_attribute_definition,
+    )
+
+    key = str(update.get("key") or "").strip().lower()
+    name = str(update.get("name") or "").strip()
+    field_type = str(update.get("field_type") or "text").strip().casefold()
+    if (
+        update.get("create_if_missing") is not True
+        or not key
+        or not name
+        or len(key) > 100
+        or len(name) > 100
+        or not re.fullmatch(r"[a-z0-9_]+", key)
+        or field_type not in {"text", "numeric", "date", "datetime"}
+    ):
+        return False
+    if is_sensitive_attribute_definition({"key": key, "name": name}):
+        return False
+    return True
 
 
 def build_controlled_actions(
@@ -246,7 +326,7 @@ def build_controlled_actions(
                 break
 
     controlled: list[dict[str, Any]] = []
-    attribute_keys = _attribute_keys(context)
+    attribute_definitions = _attribute_definitions(context)
 
     for action in getattr(decision, "crm_actions", []) or []:
         action_type = action.get("type")
@@ -268,12 +348,33 @@ def build_controlled_actions(
             # overwrites any explicitly mapped key with its authoritative value.
             accepted = []
             for update in action.get("updates") or []:
-                key = str(update.get("key") or "").strip()
-                value = update.get("value")
-                if key not in attribute_keys:
+                if not isinstance(update, dict):
                     continue
-                if _value_supported_by_latest_message(value, latest_text):
-                    accepted.append({"key": key, "value": value})
+                proposed_key = str(update.get("key") or "").strip().lower()
+                proposed_name = str(update.get("name") or "").strip()
+                value = update.get("value")
+                if not _value_supported_by_latest_message(value, latest_text):
+                    continue
+
+                resolved_key = _resolve_existing_attribute_key(
+                    proposed_key=proposed_key,
+                    proposed_name=proposed_name,
+                    definitions=attribute_definitions,
+                )
+                if resolved_key:
+                    accepted.append({"key": resolved_key, "value": value})
+                    continue
+
+                if _safe_dynamic_attribute(update):
+                    accepted.append(
+                        {
+                            "key": proposed_key,
+                            "value": value,
+                            "name": proposed_name,
+                            "field_type": str(update.get("field_type") or "text").strip().casefold(),
+                            "create_if_missing": True,
+                        }
+                    )
             if accepted:
                 controlled.append({"type": "attribute_updates", "updates": accepted})
             continue
