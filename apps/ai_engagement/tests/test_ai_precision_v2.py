@@ -51,6 +51,29 @@ class OrganizationAIProfileTests(SimpleTestCase):
             "buying intent",
         ])
 
+    def test_trailing_config_is_not_compiled_as_qualification_questions(self):
+        result = compile_qualification_requirements(
+            "Q1. What is your biggest challenge?\n"
+            "A. Slow replies\n"
+            "B. Missed follow-ups\n"
+            "Q2. Do you run ads?\n"
+            "A. Yes\n"
+            "B. No\n"
+            "Acknowledgment Message:\n"
+            "\"Thanks for sharing the details.\"\n"
+            "ATTRIBUTE MAPPING\n"
+            "Q1 -> Biggest Problem\n"
+            "Q2 -> Running Ads\n"
+            "RULES\n"
+            "- Ask questions in order."
+        )
+        requirements = result["requirements"]
+        self.assertEqual(len(requirements), 2)
+        self.assertNotIn(
+            "acknowledgment message",
+            " ".join(item["question"].casefold() for item in requirements),
+        )
+
     def test_runtime_profiles_do_not_leak_between_organizations(self):
         first = compile_org_ai_profile_from_context({
             "name": "Org One",
