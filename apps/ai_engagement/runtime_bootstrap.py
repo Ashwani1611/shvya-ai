@@ -24,11 +24,6 @@ def install_ai_runtime() -> None:
     )
     install_conditional_qualification_runtime()
 
-    from apps.ai_engagement.services.conditional_state_postfix import (
-        install_conditional_state_postfix,
-    )
-    install_conditional_state_postfix()
-
     from apps.ai_engagement.services.prompt_overrides import (
         install_fixed_prompt_overrides,
     )
@@ -43,11 +38,6 @@ def install_ai_runtime() -> None:
         install_conversation_priority_runtime,
     )
     install_conversation_priority_runtime()
-
-    from apps.ai_engagement.services.pipeline_context_guard import (
-        install_pipeline_context_guard,
-    )
-    install_pipeline_context_guard()
 
     from apps.ai_engagement.services.ai_setup_runtime_compat import (
         install_ai_setup_runtime_compat,
@@ -75,12 +65,6 @@ def install_ai_runtime() -> None:
         install_engagement_instruction_runtime,
     )
     install_engagement_instruction_runtime()
-
-    # Install the grounding scope boundary before qualification routing.
-    from apps.ai_engagement.services.qualification_grounding_scope_guard import (
-        install_qualification_grounding_scope_guard,
-    )
-    install_qualification_grounding_scope_guard()
 
     # Normalize direct answers only against the persisted active requirement
     # before generic knowledge handling. This runtime must not choose CRM
@@ -111,25 +95,10 @@ def install_ai_runtime() -> None:
     )
     install_natural_conversation_runtime()
 
-    # A lead saying they already booked is a report, not a new callback
-    # request. Preserve that distinction while still escalating missed calls.
-    from apps.ai_engagement.services.natural_conversation_booking_guard import (
-        install_natural_conversation_booking_guard,
-    )
-    install_natural_conversation_booking_guard()
-
     from apps.ai_engagement.services.engagement_failsoft import (
         install_engagement_failsoft,
     )
     install_engagement_failsoft()
-
-    # Fail-soft is allowed to recover provider/runtime errors, but it must not
-    # convert a normal customer turn into silence. Only deterministic opt-out
-    # remains a silent EngagementDecision at the service boundary.
-    from apps.ai_engagement.services.final_reply_guard import (
-        install_final_reply_guard,
-    )
-    install_final_reply_guard()
 
     # Final evidence gate for ordinary model-proposed stage moves. Configured
     # deterministic qualification-completion transitions are separately
