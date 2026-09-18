@@ -109,6 +109,17 @@ jobs:
           path: pytest-output.log
           if-no-files-found: error
 
+      - name: AI behaviour evaluation
+        run: python manage.py evaluate_ai --settings=config.settings.testing --output ai-evaluation.json
+
+      - name: Upload AI evaluation report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-evaluation-report
+          path: ai-evaluation.json
+          if-no-files-found: warn
+
   docker-build:
     name: Docker build
     runs-on: ubuntu-latest
