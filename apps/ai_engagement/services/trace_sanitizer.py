@@ -29,10 +29,20 @@ def _sensitive_key(key: object) -> bool:
     )
 
 
+def redact_text(value) -> str:
+    text = str(value or "")
+    text = re.sub(r"(?i)bearer\s+[a-z0-9._~+\-/=]+", "Bearer [redacted]", text)
+    text = re.sub(r"\bsk-[A-Za-z0-9_-]{8,}\b", "[redacted]", text)
+    text = re.sub(
+        r"(?i)(api[_-]?key|access[_-]?token|refresh[_-]?token|password|client[_-]?secret|smtp[_-]?password)\s*[:=]\s*[^\s,;]+",
+        r"\1=[redacted]", text)
+    return text
+
+
 def _take_text(value: object, budget: list[int], limit: int = MAX_STRING) -> str:
     if budget[0] <= 0:
         return "[truncated]"
-    text = str(value or "")[: min(limit, budget[0])]
+    text = redact_text(value)[: min(limit, budget[0])]
     budget[0] -= len(text)
     return text
 
@@ -73,16 +83,8 @@ def sanitize(value):
 
 
 def preview(value, *, limit: int = 1200) -> str:
-    return " ".join(str(value or "").split())[: max(0, min(limit, 8000))]
+    return " ".join(redact_text(value).split())[: max(0, min(limit, 8000))]
 
 
 def safe_error_message(value) -> str:
-    text = preview(value, limit=500)
-    text = re.sub(r"(?i)bearer\s+[a-z0-9._~+\-/=]+", "Bearer [redacted]", text)
-    text = re.sub(r"\bsk-[A-Za-z0-9_-]{8,}\b", "[redacted]", text)
-    text = re.sub(
-        r"(?i)(api[_-]?key|access[_-]?token|password|client[_-]?secret)\s*[:=]\s*[^\s,;]+",
-        r"\1=[redacted]",
-        text,
-    )
-    return text
+    return preview(value, limit=500)

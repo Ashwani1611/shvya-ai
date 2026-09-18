@@ -428,6 +428,8 @@ def _persist_engagement_answers_effective(lead, decision, source_message_id):
     }
     inbound.raw_payload = payload
     inbound.save(update_fields=["raw_payload", "updated_at"])
+    from apps.ai_engagement.services.lead_intelligence import observe_accepted_turn
+    observe_accepted_turn(lead=lead, source_message_id=source_message_id)
     return True
 
 

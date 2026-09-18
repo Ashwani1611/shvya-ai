@@ -6,10 +6,17 @@ from copy import deepcopy
 _INSTALLED = False
 
 
-def _latest_inbound_text(lead) -> str:
+def _latest_inbound_text(lead, source_message=None) -> str:
     try:
         from apps.channels.models import WhatsAppMessage
 
+        if source_message is not None:
+            from apps.ai_engagement.services.tenant_guard import TenantGuard
+
+            TenantGuard(lead.organization).validate_message(source_message, lead=lead)
+            if source_message.direction != WhatsAppMessage.Direction.INBOUND:
+                return ""
+            return str(source_message.body or "").strip()
         message = (
             lead.whatsapp_messages.filter(
                 organization_id=lead.organization_id,
@@ -126,9 +133,9 @@ def _nonqualified_evidence_matches(*, organization, destination, latest_text: st
     return bool(stage_tokens and stage_tokens.issubset(latest_tokens))
 
 
-def _filter_stage_actions(*, organization, lead, actions):
+def _filter_stage_actions(*, organization, lead, actions, source_message=None):
     filtered = []
-    latest_text = _latest_inbound_text(lead)
+    latest_text = _latest_inbound_text(lead, source_message=source_message)
     for action in actions or []:
         if not isinstance(action, dict) or action.get("type") != "pipeline_transition":
             filtered.append(deepcopy(action))
@@ -161,6 +168,13 @@ def _filter_stage_actions(*, organization, lead, actions):
             latest_text=latest_text,
         ):
             filtered.append(deepcopy(action))
+        else:
+            try:
+                from apps.ai_engagement.services.trace_service import append
+                append("crm_actions", "rejections", {"type": "pipeline_transition",
+                       "reason_code": "STAGE_EVIDENCE_REQUIRED", "stage_id": str(destination.pk)})
+            except Exception:
+                pass  # Observability never grants or revokes mutation permission.
     return filtered
 
 
@@ -194,7 +208,7 @@ def install_stage_transition_evidence() -> None:
 
     current_execute = CRMActionExecutor.execute
 
-    def execute(self, *, organization, lead, actions, actor=None):
+    def execute(self, *, organization, lead, actions, actor=None, source_message=None):
         # The executor is also a deterministic backend service and is used by
         # non-AI code/tests. Tenant ownership and schema validation belong there;
         # model-evidence filtering belongs only to an actual API/Hosted AI turn.
@@ -204,6 +218,7 @@ def install_stage_transition_evidence() -> None:
                 organization=organization,
                 lead=lead,
                 actions=actions,
+                source_message=source_message,
             )
         return current_execute(
             self,
@@ -211,6 +226,7 @@ def install_stage_transition_evidence() -> None:
             lead=lead,
             actions=effective_actions,
             actor=actor,
+            source_message=source_message,
         )
 
     CRMActionExecutor.execute = execute
