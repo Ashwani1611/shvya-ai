@@ -334,14 +334,23 @@ def _enhanced_direct_classifier(original, state_module):
         classified = original(text=text, question=question)
         raw_text = str(text or "").strip()
         options = state_module._question_options(question)
-        if (
-            classified is not None
-            and classified[0] == state_module.REQUIREMENT_ANSWERED
-            and options
-            and _ambiguous_option_answer(raw_text, question, options)
-        ):
-            return (state_module.REQUIREMENT_UNCLEAR, raw_text, "high")
         if classified is not None and classified[0] == state_module.REQUIREMENT_ANSWERED:
+            # Preserve exact authored text, option keys, and deterministic
+            # multi-tool answers such as "Chats and CRM" -> "Multiple places".
+            # Only override a bare numeric scalar when authored ranges overlap
+            # at that number (for example 100-500 and 500-2,000).
+            scalar_number = bool(
+                re.fullmatch(
+                    r"\s*[₹$€£]?\s*\d+(?:[.,]\d+)?\s*",
+                    raw_text,
+                )
+            )
+            if (
+                scalar_number
+                and options
+                and len(set(_numeric_option_candidates(raw_text, options))) > 1
+            ):
+                return (state_module.REQUIREMENT_UNCLEAR, raw_text, "high")
             return classified
 
         if not raw_text or len(raw_text) > 240 or "\n" in raw_text:
