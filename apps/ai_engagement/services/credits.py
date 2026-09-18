@@ -439,6 +439,7 @@ class AICreditService:
         output_tokens: int | None = 0,
         embedding: bool = False,
         metadata: dict[str, Any] | None = None,
+        charge_override: int | None = None,
     ) -> AICreditReservation:
         reservation_id = getattr(reservation, "id", reservation)
         locked = (
@@ -461,7 +462,9 @@ class AICreditService:
             else int(locked.estimated_output_tokens)
         )
 
-        if input_tokens is None:
+        if charge_override is not None:
+            actual_charge = max(int(charge_override), 1)
+        elif input_tokens is None:
             actual_charge = int(locked.reserved_credits)
         else:
             actual_charge = cls.calculate_charge(
@@ -594,6 +597,8 @@ class AICreditService:
                     reservation=reservation,
                     input_tokens=int(reservation.actual_input_tokens),
                     output_tokens=int(reservation.actual_output_tokens),
+                    charge_override=int(reservation.actual_credits),
+                    metadata={"reconciled": True},
                 )
                 settled += 1
             except Exception:
