@@ -401,7 +401,7 @@ class OpenAIProvider:
                         ),
                     },
                 )
-            except AICreditError:
+            except Exception:
                 # The provider already completed successfully. Do not discard a
                 # valid customer response because an internal ledger write failed.
                 # Keep the reservation active so its credits remain unavailable,
