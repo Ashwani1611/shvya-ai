@@ -1,0 +1,9 @@
+<div class="sp-conversation" aria-label="Ticket conversation">
+{% for entry in thread %}
+  <article class="sp-message{% if entry.internal %} sp-message--internal{% endif %}">
+    <div class="sp-message-head"><span class="sp-mini-avatar{% if entry.author_kind == 'staff' %} sp-avatar-blue{% endif %}" aria-hidden="true">{{ entry.author_name|slice:':1'|upper }}</span><div><strong>{{ entry.author_name }}</strong><span class="sp-message-role">{% if entry.internal %}Internal note · Shvya-Ops only{% elif entry.author_kind == 'staff' %}Shvya-Ops{% elif entry.author_kind == 'shared' %}Shared-link participant{% else %}Organization user{% endif %}</span></div><time datetime="{{ entry.created_at|date:'c' }}">{{ entry.created_at|date:'d M, h:i A' }}</time></div>
+    <div class="sp-message-body">{{ entry.body }}</div>
+    {% if entry.attachments.all %}<div class="sp-file-list">{% for file in entry.attachments.all %}<a class="sp-file-chip" href="{{ file.download_url }}"><span aria-hidden="true">↧</span><span>{{ file.original_name }}<small>{{ file.size|filesizeformat }} · Secure download</small></span></a>{% endfor %}</div>{% endif %}
+  </article>
+{% endfor %}
+</div>

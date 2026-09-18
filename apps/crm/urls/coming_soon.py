@@ -10,6 +10,7 @@ from apps.crm.views.ai_trace import (
     ai_trace_list_view,
 )
 from apps.crm.views.faq import faq_view
+from apps.support.views import customer_list as support_customer_list
 
 
 coming_soon_urlpatterns = [
@@ -98,11 +99,10 @@ coming_soon_urlpatterns = [
         name="crm-knowledge-base-faq",
     ),
 
-    # Support Portal is available from the sidebar below Teams.
+    # Preserve the existing sidebar URL name; the support app owns the page.
     path(
         "support-portal/",
-        coming_soon,
-        {"feature": "support-portal"},
+        support_customer_list,
         name="crm-support-portal",
     ),
 

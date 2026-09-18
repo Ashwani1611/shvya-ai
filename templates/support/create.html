@@ -1,0 +1,4 @@
+{% extends base_template %}
+{% block title %}New ticket · SHVYA AI{% endblock %}
+{% block extra_head %}{{ block.super }}{% include 'support/partials/assets.html' %}{% endblock %}
+{% block content %}<section class="sp-app sp-narrow"><a class="sp-back" href="{{ list_url }}">← Help & Support</a><header class="sp-section-head"><span class="sp-eyebrow">NEW TICKET</span><h1>Let’s work through it.</h1><p>Review the details below and send your request to Shvya-Ops.</p></header><div class="sp-panel sp-pad">{% include 'support/partials/create_form.html' %}</div>{{ issue_choices|json_script:'sp-issues' }}</section>{% endblock %}

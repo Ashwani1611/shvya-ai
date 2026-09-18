@@ -22,6 +22,10 @@ urlpatterns = [
     path("health/ready/", health_ready, name="health-ready"),
     path("features/", FeaturesView.as_view(), name="features"),
     path('dashboard/workflows/', include('apps.triggers.urls.web')),
+    # Dedicated support routes must precede the broad dashboard/admin includes.
+    path("dashboard/support-portal/", include("apps.support.urls_customer")),
+    path("superadmin/client-portal/", include("apps.support.urls_staff")),
+    path("support/", include("apps.support.urls_shared")),
     # =========================================================
     # Browser favicon
     # =========================================================
