@@ -147,21 +147,183 @@ def _value_supported_by_latest_message(value: Any, latest_text: str) -> bool:
     return actual_num is not None and latest_num is not None and actual_num == latest_num
 
 
-def _attribute_keys(context) -> set[str]:
+_ATTRIBUTE_STOPWORDS = {
+    "a", "an", "and", "the", "of", "for", "to", "current", "lead", "customer",
+    "number", "count", "size",
+}
+_ATTRIBUTE_ALIASES = {
+    "employees": "team", "employee": "team", "people": "team", "staff": "team",
+    "salespeople": "sales", "salesperson": "sales", "reps": "sales", "representatives": "sales",
+    "crm": "crm", "software": "tool", "system": "tool", "platform": "tool",
+}
+_SENSITIVE_ATTRIBUTE_TERMS = {
+    "password", "passcode", "otp", "token", "secret", "api key", "apikey",
+    "credit card", "card number", "cvv", "bank account", "aadhaar", "aadhar",
+    "pan number", "passport", "private key",
+}
+
+
+def _attribute_tokens(value: Any) -> set[str]:
+    tokens = set()
+    for raw in re.findall(r"[a-z0-9]+", _normalize_text(value)):
+        token = _ATTRIBUTE_ALIASES.get(raw, raw)
+        if token and token not in _ATTRIBUTE_STOPWORDS:
+            tokens.add(token)
+    return tokens
+
+
+def _attribute_definitions(context) -> list[dict[str, Any]]:
     from apps.ai_engagement.services.confidentiality import (
         is_sensitive_attribute_definition,
     )
 
     definitions = (context.pipeline or {}).get("attribute_definitions") or []
-    return {
-        str(item.get("key") or "").strip()
+    return [
+        item
         for item in definitions
         if (
             isinstance(item, dict)
             and str(item.get("key") or "").strip()
             and not is_sensitive_attribute_definition(item)
         )
-    }
+    ]
+
+
+def _option_matches_numeric(option: Any, latest_text: str) -> bool:
+    actual = _numeric(latest_text)
+    if actual is None:
+        return False
+    normalized = _normalize_text(option).replace(",", "")
+    plus = re.search(r"(\d+(?:\.\d+)?)\s*\+$", normalized)
+    if plus:
+        return actual >= float(plus.group(1))
+    interval = re.search(r"(\d+(?:\.\d+)?)\s*(?:-|–|—|to)\s*(\d+(?:\.\d+)?)", normalized)
+    if interval:
+        low, high = float(interval.group(1)), float(interval.group(2))
+        return low <= actual <= high
+    below = re.search(r"\b(?:below|under|less than)\s*(\d+(?:\.\d+)?)\b", normalized)
+    if below:
+        return actual < float(below.group(1))
+    upto = re.search(r"\b(?:up to|upto)\s*(\d+(?:\.\d+)?)\b", normalized)
+    if upto:
+        return actual <= float(upto.group(1))
+    return False
+
+
+def _value_supported_by_definition(value: Any, latest_text: str, definition: dict[str, Any]) -> bool:
+    if _value_supported_by_latest_message(value, latest_text):
+        return True
+    if str(definition.get("field_type") or "").casefold() != "option":
+        return False
+    rendered = _normalize_text(value)
+    for option in definition.get("options") or []:
+        if _normalize_text(option) == rendered and _option_matches_numeric(option, latest_text):
+            return True
+    return False
+
+
+def _resolve_existing_attribute_key(candidate: str, definitions: list[dict[str, Any]]) -> str | None:
+    normalized = _normalize_text(candidate).replace("_", " ")
+    if normalized.startswith("new:"):
+        normalized = normalized[4:].strip()
+    if not normalized:
+        return None
+
+    for item in definitions:
+        key = str(item.get("key") or "").strip()
+        name = _normalize_text(item.get("name"))
+        if candidate == key or normalized == key.replace("_", " ") or normalized == name:
+            return key
+
+    wanted = _attribute_tokens(normalized)
+    if not wanted:
+        return None
+    ranked: list[tuple[float, str]] = []
+    for item in definitions:
+        key = str(item.get("key") or "").strip()
+        existing = _attribute_tokens(f"{item.get('name') or ''} {key.replace('_', ' ')}")
+        if not existing:
+            continue
+        union = wanted | existing
+        score = len(wanted & existing) / len(union) if union else 0.0
+        if wanted.issubset(existing) or existing.issubset(wanted):
+            score = max(score, 0.85)
+        if score >= 0.72:
+            ranked.append((score, key))
+    ranked.sort(key=lambda item: (-item[0], item[1]))
+    if not ranked:
+        return None
+    if len(ranked) > 1 and abs(ranked[0][0] - ranked[1][0]) < 0.08:
+        return None
+    return ranked[0][1]
+
+
+def _safe_candidate_name(raw_key: str) -> str | None:
+    if not raw_key.casefold().startswith("new:"):
+        return None
+    name = re.sub(r"\s+", " ", raw_key.split(":", 1)[1]).strip(" .:_-")
+    if not (3 <= len(name) <= 60):
+        return None
+    if len(name.split()) > 6:
+        return None
+    lowered = name.casefold()
+    if any(term in lowered for term in _SENSITIVE_ATTRIBUTE_TERMS):
+        return None
+    if not re.search(r"[a-zA-Z]", name):
+        return None
+    return name
+
+
+def _create_candidate_attribute(*, context, raw_key: str, value: Any, latest_text: str) -> str | None:
+    name = _safe_candidate_name(raw_key)
+    if name is None or not _value_supported_by_latest_message(value, latest_text):
+        return None
+    organization_payload = getattr(context, "organization", None)
+    organization_id = (
+        str(organization_payload.get("id") or "").strip()
+        if isinstance(organization_payload, dict)
+        else ""
+    )
+    if not organization_id:
+        return None
+
+    try:
+        from apps.crm.models import AttributeDefinition
+        from apps.organizations.models import Organization
+        from services.crm.attribute_service import create_attribute_definition
+        from django.core.exceptions import ValidationError
+
+        organization = Organization.objects.get(pk=organization_id)
+        field_type = (
+            AttributeDefinition.FieldType.NUMERIC
+            if _numeric(value) is not None and re.fullmatch(
+                r"[₹$]?\s*\d[\d,]*(?:\.\d+)?\s*(?:k|thousand|lakh|lac|m|million|cr|crore)?",
+                str(value or "").strip(),
+                flags=re.IGNORECASE,
+            )
+            else AttributeDefinition.FieldType.TEXT
+        )
+        created = create_attribute_definition(
+            organization=organization,
+            name=name,
+            field_type=field_type,
+            description="Created by SHVYA AI from an explicit reusable lead fact.",
+        )
+        return str(created.key)
+    except (Organization.DoesNotExist, ValidationError):
+        # A concurrent turn may already have created the same/similar definition.
+        try:
+            from apps.crm.models import AttributeDefinition
+            definitions = list(
+                AttributeDefinition.objects.filter(organization_id=organization_id).values(
+                    "key", "name", "field_type", "options"
+                )
+            )
+            return _resolve_existing_attribute_key(name, definitions)
+        except Exception:
+            return None
+    except Exception:
+        return None
 
 
 def build_controlled_actions(
@@ -210,7 +372,12 @@ def build_controlled_actions(
                 break
 
     controlled: list[dict[str, Any]] = []
-    attribute_keys = _attribute_keys(context)
+    attribute_definitions = _attribute_definitions(context)
+    attribute_by_key = {
+        str(item.get("key") or "").strip(): item
+        for item in attribute_definitions
+        if str(item.get("key") or "").strip()
+    }
 
     for action in getattr(decision, "crm_actions", []) or []:
         action_type = action.get("type")
@@ -232,11 +399,27 @@ def build_controlled_actions(
             # overwrites any explicitly mapped key with its authoritative value.
             accepted = []
             for update in action.get("updates") or []:
-                key = str(update.get("key") or "").strip()
+                raw_key = str(update.get("key") or "").strip()
                 value = update.get("value")
-                if key not in attribute_keys:
+                key = _resolve_existing_attribute_key(raw_key, attribute_definitions)
+                if key is None and raw_key.casefold().startswith("new:"):
+                    key = _create_candidate_attribute(
+                        context=context,
+                        raw_key=raw_key,
+                        value=value,
+                        latest_text=latest_text,
+                    )
+                    if key:
+                        attribute_by_key[key] = {
+                            "key": key,
+                            "name": raw_key.split(":", 1)[1].strip(),
+                            "field_type": "numeric" if _numeric(value) is not None else "text",
+                            "options": [],
+                        }
+                definition = attribute_by_key.get(key or "")
+                if not key or not definition:
                     continue
-                if _value_supported_by_latest_message(value, latest_text):
+                if _value_supported_by_definition(value, latest_text, definition):
                     accepted.append({"key": key, "value": value})
             if accepted:
                 controlled.append({"type": "attribute_updates", "updates": accepted})
