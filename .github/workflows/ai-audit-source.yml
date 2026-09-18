@@ -19,7 +19,7 @@ jobs:
           echo '761b7edf6a98a33f43898a262f01c99509859af3729706f4b1e82938222e192f  /tmp/ai-implementation.xz' | sha256sum --check
           xz --decompress --stdout /tmp/ai-implementation.xz > /tmp/ai-implementation.patch
           echo 'f9031b3359973fc1db718133377e82ee16dc5cca33b8dfcaad0503563e5ec219  /tmp/ai-implementation.patch' | sha256sum --check
-      - name: Create clean product branch without assembly helpers
+      - name: Create clean application branch without assembly helpers
         shell: bash
         run: |
           set -euo pipefail
@@ -37,8 +37,12 @@ jobs:
           test "$(git write-tree)" = c4b5daebee387e764f5db2d4684363dba065a124
           test ! -e .ai-transfer
           test ! -e .github/workflows/ai-audit-source.yml
+          # Actions' job token can publish application code but cannot alter workflows.
+          # The authorized GitHub connector applies the reviewed CI change separately.
+          git restore --source="$BASE" --staged --worktree .github/workflows/ci.yml
+          test -z "$(git diff --cached --name-only -- .github/workflows)"
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git commit -m 'Complete AI reliability phases 1-11 with grounded composition and durable actions' -m 'Preserve existing organization/qualification/transport ownership and model selection. Fix grounding, source forwarding and transactional idempotency. Add configurable objection intelligence, explainable lead signals, source-bound memory, controlled response plans and recorded-provider backend evaluation. Local evaluation: 168 passed plus 33 subtests. Existing sandbox/repair regressions: 55 passed plus 4 subtests. Full remote CI and staged promotion are required; this commit does not assert live-provider verification.'
+          git commit -m 'Implement AI phase safety fixes, sales intelligence and behaviour evaluation' -m 'Application changes from checksum-verified local tree c4b5daebee387e764f5db2d4684363dba065a124. The CI evaluation gate will be applied by the authorized connector before PR validation. Preserve organization, qualification, transport ownership and existing model selection. Local evaluation: 168 passed plus 33 subtests. Sandbox and repair regressions: 55 passed plus 4 subtests. No live provider or customer messaging claims. Full CI and staged promotion are still required.'
           git push origin "HEAD:refs/heads/$TARGET"
           git rev-parse HEAD
