@@ -142,10 +142,10 @@ def resolve_api_account_for_lead(*, organization, lead):
     return connected_accounts.first()
 
 
-def is_within_api_24h_window(*, lead):
+def is_within_api_24h_window(*, lead, account=None):
     """Return True when a recent inbound belongs to a currently connected API number."""
     organization = lead.organization
-    visible_q = _visible_message_account_q(organization=organization)
+    visible_q = _visible_message_account_q(organization=organization, account=account)
     last_inbound = (
         WhatsAppMessage.objects.filter(
             visible_q,
@@ -255,9 +255,9 @@ def get_api_conversation_messages(*, organization, lead, account=None):
     return queryset.order_by("created_at", "pk")
 
 
-def mark_api_conversation_read(*, organization, lead):
+def mark_api_conversation_read(*, organization, lead, account=None):
     return WhatsAppMessage.objects.filter(
-        _visible_message_account_q(organization=organization),
+        _visible_message_account_q(organization=organization, account=account),
         lead=lead,
         direction=WhatsAppMessage.Direction.INBOUND,
         is_read=False,

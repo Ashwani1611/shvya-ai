@@ -182,7 +182,7 @@
       : '';
     const stage = row.stage_name
       ? `<span class="hosted-stage" title="Lead stage: ${esc(row.stage_name)}">${esc(row.stage_name)}</span>` : '';
-    const rawIntent = Number(row.intent_score);
+    const rawIntent = row.intent_score == null ? NaN : Number(row.intent_score);
     const intent = Number.isFinite(rawIntent) && rawIntent >= 0 && rawIntent <= 10
       ? `<span class="rounded-full bg-violet-50 px-2 py-0.5 text-[9px] font-bold text-violet-700" title="Lead Intent Score">Intent ${esc(rawIntent)}/10</span>`
       : '';
@@ -282,7 +282,7 @@
     if (threadAvatar) threadAvatar.textContent = selectedName.trim().charAt(0).toUpperCase() || '?';
     const selectedRow = (data.conversations || []).find(item => item.key === state.selected);
     if (threadIntentScore) {
-      const rawIntent = Number(selectedRow?.intent_score);
+      const rawIntent = selectedRow?.intent_score == null ? NaN : Number(selectedRow.intent_score);
       const hasIntent = Number.isFinite(rawIntent) && rawIntent >= 0 && rawIntent <= 10;
       threadIntentScore.textContent = hasIntent ? `Intent ${rawIntent}/10` : '';
       threadIntentScore.classList.toggle('hidden', !hasIntent);

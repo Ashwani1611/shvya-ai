@@ -15,7 +15,7 @@ from apps.ai_engagement.services.qualification_state import QUALIFICATION_STATE_
 
 
 INTENT_SCORE_STATE_KEY = "_shvya_ai_intent_score"
-INTENT_SCORE_VERSION = 1
+INTENT_SCORE_VERSION = 2
 
 _SOCIAL_ONLY = {
     "hi", "hii", "hello", "hey", "ok", "okay", "thanks", "thank you",
@@ -66,20 +66,40 @@ def _normalized(value) -> str:
     return " ".join(str(value or "").strip().casefold().split()).strip(" .!?;:,")
 
 
-def _latest_inbound_texts(lead, *, limit=40) -> list[str]:
+def prepare_intent_scores(leads):
+    """Two bounded evidence queries per tenant, never one query per card."""
+    from collections import defaultdict
+    from django.db.models import F, Window
+    from django.db.models.functions import RowNumber
     from apps.channels.models import WhatsAppMessage
+    from apps.channels.instagram_models import InstagramMessage
 
-    rows = (
-        WhatsAppMessage.objects.filter(
-            organization_id=lead.organization_id,
-            lead=lead,
-            direction=WhatsAppMessage.Direction.INBOUND,
-        )
-        .exclude(body="")
-        .order_by("-created_at", "-id")
-        .values_list("body", flat=True)[:limit]
-    )
-    return [str(value or "").strip() for value in reversed(list(rows)) if str(value or "").strip()]
+    groups = defaultdict(list)
+    for lead in leads:
+        groups[lead.organization_id].append(lead)
+    for org_id, group in groups.items():
+        evidence = defaultdict(list)
+        ids = [lead.pk for lead in group]
+        for model, relation in ((WhatsAppMessage, "lead_id"), (InstagramMessage, "conversation__lead_id")):
+            filters = {"organization_id": org_id, "account__organization_id": org_id, relation + "__in": ids, "direction": "inbound"}
+            if model is InstagramMessage:
+                filters.update(conversation__organization_id=org_id, account__organization_id=org_id)
+            rows = model.objects.filter(**filters).exclude(body="").annotate(
+                evidence_rank=Window(RowNumber(), partition_by=[F(relation)],
+                                     order_by=[F("created_at").desc(), F("pk").desc()])
+            ).filter(evidence_rank__lte=40).values_list(relation, "created_at", "pk", "body")
+            for lead_id, at, pk, body in rows:
+                if body.strip():
+                    evidence[lead_id].append((at, str(pk), body.strip()))
+        for lead in group:
+            lead._intent_texts = [row[2] for row in sorted(evidence[lead.pk])[-40:]]
+            lead.intent_score_state = compute_intent_score(lead=lead)
+
+
+def _latest_inbound_texts(lead, *, limit=40) -> list[str]:
+    if not hasattr(lead, "_intent_texts"):
+        prepare_intent_scores([lead])
+    return lead._intent_texts[-limit:]
 
 
 def _qualification_facts(lead) -> list[dict[str, str]]:
@@ -244,7 +264,9 @@ def compute_intent_score(*, lead) -> dict:
     score = max(raw_score, 8) if eighty_percent_override else raw_score
     return {
         "version": INTENT_SCORE_VERSION,
-        "score": int(max(0, min(10, score))),
+        "score": int(max(0, min(10, score))) if texts or qualification_facts else None,
+        "assessed": bool(texts or qualification_facts),
+        "evidence_count": len(texts),
         "raw_score": int(max(0, min(10, raw_score))),
         "max_score": 10,
         "qualified_threshold": 8,
@@ -287,7 +309,7 @@ def compute_intent_score(*, lead) -> dict:
 def stored_intent_score(*, lead) -> dict | None:
     attrs = lead.attributes if isinstance(getattr(lead, "attributes", None), dict) else {}
     state = attrs.get(INTENT_SCORE_STATE_KEY)
-    if not isinstance(state, dict):
+    if not isinstance(state, dict) or state.get("version") != INTENT_SCORE_VERSION:
         return None
     score = state.get("score")
     if isinstance(score, bool) or not isinstance(score, int) or not 0 <= score <= 10:
@@ -299,13 +321,18 @@ def stored_intent_score(*, lead) -> dict | None:
 
 
 def intent_score_for_lead(*, lead) -> dict:
-    return stored_intent_score(lead=lead) or compute_intent_score(lead=lead)
+    return compute_intent_score(lead=lead)
 
 
 def persist_intent_score(*, lead) -> dict:
-    score = compute_intent_score(lead=lead)
-    attrs = deepcopy(lead.attributes) if isinstance(getattr(lead, "attributes", None), dict) else {}
-    attrs[INTENT_SCORE_STATE_KEY] = deepcopy(score)
-    lead.__class__.objects.filter(pk=lead.pk).update(attributes=attrs)
+    from django.db import transaction
+    with transaction.atomic():
+        current = lead.__class__.objects.select_for_update().get(
+            pk=lead.pk, organization_id=lead.organization_id,
+        )
+        score = compute_intent_score(lead=current)
+        attrs = deepcopy(current.attributes) if isinstance(current.attributes, dict) else {}
+        attrs[INTENT_SCORE_STATE_KEY] = deepcopy(score)
+        lead.__class__.objects.filter(pk=current.pk, organization_id=current.organization_id).update(attributes=attrs)
     lead.attributes = attrs
     return score

@@ -100,7 +100,8 @@ class LeadDashboardPerformanceTests(TestCase):
         self._create_lead(1)
 
         cache.clear()
-        with self.assertNumQueries(7):
+        # Two bounded queries load WhatsApp and Instagram scoring evidence.
+        with self.assertNumQueries(9):
             one_lead_context = self._build_context()
 
         self.assertEqual(
@@ -115,7 +116,8 @@ class LeadDashboardPerformanceTests(TestCase):
             self._create_lead(index)
 
         cache.clear()
-        with self.assertNumQueries(7):
+        # Two bounded queries load WhatsApp and Instagram scoring evidence.
+        with self.assertNumQueries(9):
             many_lead_context = self._build_context()
 
         rendered_leads = [
