@@ -20,6 +20,7 @@ from apps.ai_engagement.services.organization_profile import (
     compile_qualification_requirements,
 )
 from apps.ai_engagement.services.qualification_execution_contract import (
+    _config,
     resolve_before_generation,
 )
 from apps.ai_engagement.services.qualification_state import (
@@ -120,6 +121,46 @@ class QualificationExecutionContractE2ETests(TestCase):
             reason=("QUALIFICATION_NEXT" if next_requirement_id else "NORMAL_CONVERSATION"),
             reason_code=("QUALIFICATION_NEXT" if next_requirement_id else "NORMAL_CONVERSATION"),
             model="test",
+        )
+
+    def test_config_reads_mapping_and_multiline_ack_from_qualification_field(self):
+        AttributeDefinition.objects.create(
+            organization=self.organization,
+            name="Biggest Problem",
+            key="biggest_problem",
+            field_type=AttributeDefinition.FieldType.TEXT,
+        )
+        info, _ = OrgInfo.objects.get_or_create(organization=self.organization)
+        info.qualification_requirements = (
+            "Q1. What is your biggest challenge?\n"
+            "A. Slow replies\n"
+            "B. Missed follow-ups\n"
+            "Acknowledgment Message:\n"
+            "\"Thanks for sharing the details. Our team will connect with you shortly.\"\n"
+            "ATTRIBUTE MAPPING\n"
+            "Q1 -> Biggest Problem\n"
+            "RULES\n"
+            "- Ask only the next unanswered question."
+        )
+        info.engagement_instructions = "Be concise and natural."
+        info.save()
+
+        requirements = compile_qualification_requirements(
+            info.qualification_requirements
+        )["requirements"]
+        self.assertEqual(len(requirements), 1)
+
+        config = _config(
+            organization=self.organization,
+            requirements=requirements,
+        )
+        self.assertEqual(
+            config["mappings"][requirements[0]["id"]],
+            "biggest_problem",
+        )
+        self.assertEqual(
+            config["final_ack"],
+            "Thanks for sharing the details. Our team will connect with you shortly.",
         )
 
     def test_non_final_answer_persists_exact_mapping_and_builds_progress_response(self):
