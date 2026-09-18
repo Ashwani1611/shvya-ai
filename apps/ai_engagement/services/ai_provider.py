@@ -17,14 +17,13 @@ from openai import (
     RateLimitError,
 )
 
-logger = logging.getLogger(__name__)
-
-
 from apps.ai_engagement.services.credits import (
     AICreditError,
     AICreditService,
     AICreditUnavailableError,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class AIProviderError(Exception):

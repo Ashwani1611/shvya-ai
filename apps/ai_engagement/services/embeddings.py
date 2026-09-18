@@ -7,14 +7,13 @@ from typing import Sequence
 from django.conf import settings
 from openai import OpenAI
 
-logger = logging.getLogger(__name__)
-
-
 from apps.ai_engagement.services.credits import (
     AICreditError,
     AICreditService,
     AICreditUnavailableError,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class EmbeddingError(Exception):
