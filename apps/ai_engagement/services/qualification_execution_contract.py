@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+from datetime import timedelta
 from copy import deepcopy
 from dataclasses import replace
 from functools import wraps
@@ -156,6 +157,45 @@ def _attribute_ref(
     return found[0] if len(found) == 1 else None
 
 
+def _attribute_refs(
+    value: str,
+    definitions: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Resolve one or more exact authored attribute targets.
+
+    Exact names/keys remain authoritative. Multi-target shorthand is supported
+    only when the full right-hand side is not itself an attribute name, so an
+    attribute such as "Leads/d" still resolves as one field while authored forms
+    such as "Lead Management Tool (+ Using Whatsapp / CRM)" resolve to three.
+    """
+    direct = _attribute_ref(value, definitions)
+    if direct is not None:
+        return [direct]
+
+    text = str(value or "").strip()
+    text = re.sub(r"\(\s*\+", "+", text)
+    text = text.replace(")", " ")
+    parts = [
+        part.strip()
+        for part in re.split(r"\s*(?:\+|/|,|\band\b)\s*", text, flags=re.I)
+        if part.strip()
+    ]
+    if len(parts) < 2:
+        return []
+
+    resolved: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for part in parts:
+        item = _attribute_ref(part, definitions)
+        if item is None:
+            return []
+        key = str(item.get("key") or "")
+        if key and key not in seen:
+            resolved.append(item)
+            seen.add(key)
+    return resolved
+
+
 def _split_mapping(line: str) -> tuple[str, str] | None:
     text = str(line or "").strip()
     parts = re.split(r"\s*(?:->|=>|→)\s*", text, maxsplit=1)
@@ -189,6 +229,7 @@ def _config(*, organization, requirements: list[dict[str, Any]]) -> dict[str, An
     )
 
     mappings: dict[str, str] = {}
+    mapping_targets: dict[str, list[str]] = {}
     errors: list[dict[str, str]] = []
 
     mapping_lines = list(section_lines(engagement_raw, "attribute_mapped"))
@@ -215,7 +256,7 @@ def _config(*, organization, requirements: list[dict[str, Any]]) -> dict[str, An
             )
             continue
         requirement = _requirement_ref(pair[0], requirements)
-        attribute = _attribute_ref(pair[1], definitions)
+        attributes = _attribute_refs(pair[1], definitions)
         if requirement is None:
             errors.append(
                 {
@@ -226,7 +267,7 @@ def _config(*, organization, requirements: list[dict[str, Any]]) -> dict[str, An
                 }
             )
             continue
-        if attribute is None:
+        if not attributes:
             errors.append(
                 {
                     "type": "configuration_error",
@@ -240,7 +281,12 @@ def _config(*, organization, requirements: list[dict[str, Any]]) -> dict[str, An
             is_sensitive_attribute_definition,
         )
 
-        if is_sensitive_attribute_definition(attribute):
+        sensitive = [
+            attribute
+            for attribute in attributes
+            if is_sensitive_attribute_definition(attribute)
+        ]
+        if sensitive:
             errors.append(
                 {
                     "type": "configuration_error",
@@ -251,18 +297,16 @@ def _config(*, organization, requirements: list[dict[str, Any]]) -> dict[str, An
             )
             continue
         requirement_id = str(requirement.get("id") or "")
-        attribute_key = str(attribute.get("key") or "")
-        if requirement_id in mappings and mappings[requirement_id] != attribute_key:
-            errors.append(
-                {
-                    "type": "configuration_error",
-                    "status": "failed",
-                    "code": "ambiguous_attribute_mapping",
-                    "detail": requirement_id,
-                }
-            )
-        else:
-            mappings[requirement_id] = attribute_key
+        targets = mapping_targets.setdefault(requirement_id, [])
+        for attribute in attributes:
+            attribute_key = str(attribute.get("key") or "")
+            if attribute_key and attribute_key not in targets:
+                targets.append(attribute_key)
+            # Keep the first mapping as the backwards-compatible primary mapping
+            # for older reconciliation callers. Qualification execution itself
+            # uses the full one-to-many mapping_targets list.
+            if attribute_key:
+                mappings.setdefault(requirement_id, attribute_key)
 
     acknowledgement_values: list[str] = []
     for source_text in (engagement_raw, qualification_raw):
@@ -377,10 +421,141 @@ def _config(*, organization, requirements: list[dict[str, Any]]) -> dict[str, An
 
     return {
         "mappings": mappings,
+        "mapping_targets": mapping_targets,
         "final_ack": final_ack,
         "completion_stage": completion_stage,
+        "reminder_rules": section_lines(engagement_raw, "reminders"),
         "errors": errors,
     }
+
+
+def _mapping_keys(config: dict[str, Any], requirement_id: str) -> list[str]:
+    targets = (config.get("mapping_targets") or {}).get(str(requirement_id))
+    if isinstance(targets, list):
+        return [str(item).strip() for item in targets if str(item or "").strip()]
+    primary = str((config.get("mappings") or {}).get(str(requirement_id)) or "").strip()
+    return [primary] if primary else []
+
+
+def _completion_target(*, lead, state: dict[str, Any], config: dict[str, Any]):
+    """Resolve the qualification-completion stage deterministically.
+
+    An explicit Stage Shifting completion rule wins. Otherwise use the
+    qualification state's validated same-pipeline Qualified stage, which is
+    already tenant/pipeline scoped by qualification_state._qualified_stage().
+    """
+    target = config.get("completion_stage")
+    if isinstance(target, dict) and target.get("id") is not None:
+        return target
+
+    from apps.crm.models import Stage
+
+    stage_id = str(state.get("qualified_stage_id") or "").strip()
+    if stage_id:
+        target = (
+            Stage.objects.filter(
+                id=stage_id,
+                pipeline__organization=lead.organization,
+                pipeline__is_active=True,
+                is_active=True,
+            )
+            .values("id", "name", "pipeline_id", "pipeline__name")
+            .first()
+        )
+        if target is not None:
+            return target
+
+    # Some projected qualification states are normalized without a live Lead
+    # object and therefore do not carry qualified_stage_id. Derive the fallback
+    # from the lead's actual active pipeline instead of losing the completion
+    # transition.
+    pipeline_id = getattr(lead, "pipeline_id", None)
+    if not pipeline_id:
+        return None
+    candidates = list(
+        Stage.objects.filter(
+            pipeline_id=pipeline_id,
+            pipeline__organization=lead.organization,
+            pipeline__is_active=True,
+            is_active=True,
+        )
+        .values("id", "name", "pipeline_id", "pipeline__name")
+    )
+    qualified = [
+        item
+        for item in candidates
+        if _norm(item.get("name")) == "qualified"
+    ]
+    return qualified[0] if len(qualified) == 1 else None
+
+
+_COMPLETION_REMINDER_SCOPE_RE = re.compile(
+    r"\b(?:qualification\s+(?:is\s+)?(?:complete|completed)|"
+    r"after\s+(?:all|every)\s+(?:required\s+)?(?:qualification\s+)?"
+    r"(?:questions?|requirements?|answers?)\s+(?:are\s+)?(?:answered|complete|completed)|"
+    r"when\s+(?:all|every)\s+(?:required\s+)?(?:qualification\s+)?"
+    r"(?:questions?|requirements?|answers?)\s+(?:are\s+)?(?:answered|complete|completed))\b",
+    re.I,
+)
+_REMINDER_CREATE_RE = re.compile(
+    r"\b(?:create|set|add|schedule)\b.{0,40}\breminder\b|"
+    r"\breminder\b.{0,40}\b(?:create|set|add|schedule)\b",
+    re.I,
+)
+_REMINDER_RELATIVE_RE = re.compile(
+    r"\b(?:in|after)\s+(?P<amount>\d{1,3})\s*"
+    r"(?P<unit>minutes?|mins?|hours?|hrs?|days?|weeks?)\b",
+    re.I,
+)
+
+
+def _configured_completion_reminders(config: dict[str, Any]) -> list[dict[str, Any]]:
+    """Build completion reminders only from explicit authored reminder rules.
+
+    No reminder is invented merely because qualification completed. A rule must
+    explicitly scope itself to qualification completion and include a resolvable
+    due time.
+    """
+    from apps.ai_engagement.services.reminder_time_runtime import parse_grounded_due_at
+
+    actions: list[dict[str, Any]] = []
+    for rule in config.get("reminder_rules") or []:
+        text = str(rule or "").strip()
+        if not text or not _COMPLETION_REMINDER_SCOPE_RE.search(text):
+            continue
+        if not _REMINDER_CREATE_RE.search(text):
+            continue
+
+        due_at = parse_grounded_due_at(text)
+        if due_at is None:
+            relative = _REMINDER_RELATIVE_RE.search(text)
+            if relative:
+                amount = int(relative.group("amount"))
+                unit = relative.group("unit").casefold()
+                if unit.startswith(("min", "minute")):
+                    delta = timedelta(minutes=amount)
+                elif unit.startswith(("hr", "hour")):
+                    delta = timedelta(hours=amount)
+                elif unit.startswith("week"):
+                    delta = timedelta(weeks=amount)
+                else:
+                    delta = timedelta(days=amount)
+                due_at = (timezone.now() + delta).isoformat()
+        if due_at is None:
+            continue
+
+        actions.append(
+            {
+                "type": "create_reminder",
+                "title": "Follow up with qualified lead",
+                "description": "Configured follow-up reminder after qualification completion.",
+                "due_at": due_at,
+            }
+        )
+        # One completion reminder per qualification is sufficient and avoids
+        # duplicate reminders from equivalent authored lines.
+        break
+    return actions
 
 
 def _render_requirement(requirement: dict[str, Any] | None) -> str:
@@ -778,12 +953,28 @@ def resolve_before_generation(
         )
 
         # Build the complete authoritative execution plan before mutating state.
-        mapped_updates = [{"key": config["mappings"][item["requirement_id"]], "value": item["value"]}
-                          for item in updates if item["requirement_id"] in config["mappings"]]
+        mapped_updates = []
+        for item in updates:
+            for attribute_key in _mapping_keys(config, item["requirement_id"]):
+                mapped_updates.append(
+                    {"key": attribute_key, "value": item["value"]}
+                )
+        # A repeated authored mapping to the same key is harmless; keep only the
+        # final value for that key in this turn.
+        mapped_updates = list({
+            str(item["key"]): item
+            for item in mapped_updates
+            if str(item.get("key") or "").strip()
+        }.values())
         attribute_action = ({"type": "attribute_updates", "updates": mapped_updates}
                             if mapped_updates else None)
         completion_reached = _norm(projected.get("qualification_status")) == "completed"
-        target = config.get("completion_stage")
+        target = (
+            _completion_target(lead=locked, state=projected, config=config)
+            if completion_reached
+            else None
+        )
+        runtime_config = {**config, "completion_stage": target}
         stage_action = (
             {
                 "type": "pipeline_transition",
@@ -792,11 +983,17 @@ def resolve_before_generation(
             if completion_reached and isinstance(target, dict)
             else None
         )
+        reminder_actions = (
+            _configured_completion_reminders(runtime_config)
+            if completion_reached
+            else []
+        )
         execution_plan = {
             "qualification_update": deepcopy(update),
             "qualification_updates": deepcopy(updates),
             "attribute_action": deepcopy(attribute_action),
             "stage_action": deepcopy(stage_action),
+            "reminder_actions": deepcopy(reminder_actions),
         }
 
         results = deepcopy(config["errors"])
@@ -864,6 +1061,30 @@ def resolve_before_generation(
                     }
                 )
 
+        # Completion reminders are created only from explicit authored reminder
+        # rules with a resolvable due time. Qualification completion alone never
+        # invents a reminder.
+        for reminder_action in reminder_actions:
+            try:
+                reminder_result = CRMActionExecutor().execute(
+                    organization=organization,
+                    lead=locked,
+                    actions=[reminder_action],
+                )
+                results.extend(reminder_result)
+                if reminder_result:
+                    action_types.append("create_reminder")
+            except Exception as exc:
+                results.append(
+                    {
+                        "type": "create_reminder",
+                        "status": "failed",
+                        "verified": False,
+                        "code": "reminder_creation_failed",
+                        "detail": str(exc)[:500],
+                    }
+                )
+
         locked.refresh_from_db(fields=["attributes", "pipeline", "stage"])
         final_state = qs.state_for_lead(
             locked,
@@ -874,7 +1095,7 @@ def resolve_before_generation(
             answer=answer,
             state=final_state,
             requirements=requirements,
-            config=config,
+            config=runtime_config,
             results=results,
         )
 
@@ -911,7 +1132,10 @@ def resolve_before_generation(
                     if attribute_action
                     else []
                 ),
-                "workflow_actions": [deepcopy(stage_action)] if stage_action else [],
+                "workflow_actions": [
+                    *([deepcopy(stage_action)] if stage_action else []),
+                    *deepcopy(reminder_actions),
+                ],
             },
         )
         snapshot["response_plan"] = deepcopy(plan)
@@ -970,32 +1194,31 @@ def _plan_from_reconciled(*, lead, source_message_id, snapshot):
         if isinstance(item, dict)
     ]
 
-    # Verify exact mapped attributes by DB readback for every answer persisted by
-    # this inbound message, regardless of what the model proposed.
+    # Verify every explicitly mapped attribute target by DB readback for every
+    # answer persisted by this inbound message, regardless of model proposals.
     for requirement_id, item in answered:
-        attribute_key = config.get("mappings", {}).get(str(requirement_id))
-        if not attribute_key:
-            continue
-        verification = _verify_attribute(
-            lead,
-            attribute_key,
-            item.get("value"),
-        )
-        results = [
-            result
-            for result in results
-            if not (
-                result.get("type") == "attribute_updates"
-                and any(
-                    str(update.get("key") or "") == attribute_key
-                    for update in result.get("updates") or []
-                    if isinstance(update, dict)
-                )
+        for attribute_key in _mapping_keys(config, str(requirement_id)):
+            verification = _verify_attribute(
+                lead,
+                attribute_key,
+                item.get("value"),
             )
-        ]
-        results.append(verification)
+            results = [
+                result
+                for result in results
+                if not (
+                    result.get("type") == "attribute_updates"
+                    and any(
+                        str(update.get("key") or "") == attribute_key
+                        for update in result.get("updates") or []
+                        if isinstance(update, dict)
+                    )
+                )
+            ]
+            results.append(verification)
 
-    target = config.get("completion_stage")
+    target = _completion_target(lead=lead, state=state, config=config)
+    runtime_config = {**config, "completion_stage": target}
     if target and _norm(state.get("qualification_status")) == "completed":
         verification = _verify_stage(lead, target)
         results = [
@@ -1010,7 +1233,7 @@ def _plan_from_reconciled(*, lead, source_message_id, snapshot):
         answer=answered[-1][1].get("value"),
         state=state,
         requirements=requirements,
-        config=config,
+        config=runtime_config,
         results=results,
     )
 
