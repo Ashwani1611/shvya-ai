@@ -33,7 +33,7 @@ from apps.ai_engagement.tests.test_engagement_controls import (
     AIEngagementControlTests,
 )
 from apps.channels.models import WhatsAppMessage
-from apps.crm.models import AttributeDefinition, Stage
+from apps.crm.models import AttributeDefinition, LeadReminder, Stage
 
 
 class _NoRetryTask:
@@ -182,6 +182,167 @@ class QualificationExecutionContractE2ETests(TestCase):
             "Thanks for sharing the details. Our team will connect with you shortly.",
         )
 
+    def test_multi_target_mapping_shorthand_resolves_exact_attribute_names(self):
+        for name, key in (
+            ("Lead Management Tool", "lead_management_tool"),
+            ("Using Whatsapp", "using_whatsapp"),
+            ("CRM", "crm"),
+            ("Leads/d", "leads_d"),
+        ):
+            AttributeDefinition.objects.create(
+                organization=self.organization,
+                name=name,
+                key=key,
+                field_type=AttributeDefinition.FieldType.TEXT,
+            )
+        info, _ = OrgInfo.objects.get_or_create(organization=self.organization)
+        info.qualification_requirements = (
+            "[id: management] Where do you currently manage your leads?\n"
+            "A. WhatsApp chats\n"
+            "B. CRM\n"
+            "[id: volume] How many leads do you receive per day?\n"
+            "A. 0-10\n"
+            "B. 10-30\n"
+        )
+        info.engagement_instructions = (
+            "## Attribute mapped\n"
+            "management -> Lead Management Tool (+ Using Whatsapp / CRM)\n"
+            "volume -> Leads/d\n"
+        )
+        info.save()
+        requirements = compile_qualification_requirements(
+            info.qualification_requirements
+        )["requirements"]
+
+        config = _config(
+            organization=self.organization,
+            requirements=requirements,
+        )
+
+        self.assertEqual(
+            config["mapping_targets"][requirements[0]["id"]],
+            ["lead_management_tool", "using_whatsapp", "crm"],
+        )
+        self.assertEqual(
+            config["mapping_targets"][requirements[1]["id"]],
+            ["leads_d"],
+        )
+        self.assertFalse(any(
+            item.get("code") == "unknown_attribute_mapping_reference"
+            for item in config["errors"]
+        ))
+
+    def test_one_answer_can_fill_multiple_explicitly_mapped_attributes_and_fallback_to_qualified(self):
+        AttributeDefinition.objects.create(
+            organization=self.organization,
+            name="Lead Management Tool",
+            key="lead_management_tool",
+            field_type=AttributeDefinition.FieldType.TEXT,
+        )
+        AttributeDefinition.objects.create(
+            organization=self.organization,
+            name="Using Whatsapp",
+            key="using_whatsapp",
+            field_type=AttributeDefinition.FieldType.TEXT,
+        )
+        info, _ = OrgInfo.objects.get_or_create(organization=self.organization)
+        info.qualification_requirements = (
+            "[id: management] Where do you currently manage your leads?\n"
+            "A. WhatsApp chats\n"
+            "B. Excel / Sheets\n"
+            "C. CRM\n"
+            "D. Multiple places\n"
+            "All questions are required\n"
+            "Acknowledgment message: \"Thanks for sharing the details. Our team will connect with you shortly.\""
+        )
+        info.engagement_instructions = (
+            "## Attribute mapped\n"
+            "management -> Lead Management Tool\n"
+            "management -> Using Whatsapp\n"
+        )
+        info.ai_enabled = True
+        info.save()
+
+        requirements = compile_qualification_requirements(
+            info.qualification_requirements
+        )["requirements"]
+        record_last_asked_requirement(
+            self.lead,
+            requirements[0]["id"],
+            requirements=requirements,
+        )
+        source = self._source("multi-map-final", "Whatsapp")
+
+        result = resolve_before_generation(
+            organization=self.organization,
+            lead=self.lead,
+            source_message_id=source.pk,
+        )
+
+        self.assertTrue(result["applied"])
+        self.lead.refresh_from_db()
+        self.assertEqual(self.lead.attributes["lead_management_tool"], "WhatsApp chats")
+        self.assertEqual(self.lead.attributes["using_whatsapp"], "WhatsApp chats")
+        self.assertEqual(self.lead.stage_id, self.qualified.id)
+        config = _config(
+            organization=self.organization,
+            requirements=requirements,
+        )
+        self.assertEqual(
+            config["mapping_targets"][requirements[0]["id"]],
+            ["lead_management_tool", "using_whatsapp"],
+        )
+
+    def test_completion_reminder_runs_only_from_explicit_configured_rule(self):
+        AttributeDefinition.objects.create(
+            organization=self.organization,
+            name="Lead Source Answer",
+            key="lead_source_answer",
+            field_type=AttributeDefinition.FieldType.TEXT,
+        )
+        info, _ = OrgInfo.objects.get_or_create(organization=self.organization)
+        info.qualification_requirements = (
+            "[id: source] Where do most of your leads currently come from?\n"
+            "A. Referrals\n"
+            "B. Organic search\n"
+            "All questions are required\n"
+            "Acknowledgment message: \"Thanks for sharing the details. Our team will connect with you shortly.\""
+        )
+        info.engagement_instructions = (
+            "## Attribute mapped\n"
+            "source -> Lead Source Answer\n\n"
+            "## Reminders\n"
+            "When qualification is completed, create a reminder after 1 day.\n"
+        )
+        info.ai_enabled = True
+        info.save()
+
+        requirements = compile_qualification_requirements(
+            info.qualification_requirements
+        )["requirements"]
+        record_last_asked_requirement(
+            self.lead,
+            requirements[0]["id"],
+            requirements=requirements,
+        )
+        source = self._source("completion-reminder", "A")
+
+        result = resolve_before_generation(
+            organization=self.organization,
+            lead=self.lead,
+            source_message_id=source.pk,
+        )
+
+        self.assertTrue(result["applied"])
+        reminder = LeadReminder.objects.get(lead=self.lead)
+        self.assertEqual(reminder.status, "pending")
+        self.assertGreater(reminder.due_at, source.created_at)
+        self.assertTrue(any(
+            item.get("type") == "create_reminder"
+            and item.get("status") == "executed"
+            for item in result["execution_results"]
+        ))
+
     def test_non_final_answer_persists_exact_mapping_and_builds_progress_response(self):
         target, requirements = self._configure_two_step_org()
         record_last_asked_requirement(
@@ -230,6 +391,34 @@ class QualificationExecutionContractE2ETests(TestCase):
                 f"{option['key']}. {option['value']}",
                 final.message,
             )
+
+    def test_response_plan_sets_metadata_for_the_question_it_actually_renders(self):
+        _target, requirements = self._configure_two_step_org()
+        record_last_asked_requirement(
+            self.lead,
+            requirements[0]["id"],
+            requirements=requirements,
+        )
+        inbound = self._source("contract-metadata-progress", "B")
+        result = resolve_before_generation(
+            organization=self.organization,
+            lead=self.lead,
+            source_message_id=inbound.pk,
+        )
+        self.assertTrue(result["applied"])
+
+        reconciled = self._reconciled(inbound)
+        final = ResponseActionValidator().validate(
+            decision=self._decision(
+                "Partner referrals are your main route, which gives us useful context.",
+                next_requirement_id=None,
+            ),
+            reconciled_state=reconciled,
+        )
+
+        self.assertEqual(final.next_requirement_id, requirements[1]["id"])
+        self.assertEqual(final.reason_code, "QUALIFICATION_NEXT")
+        self.assertIn("How are new enquiries handled today?", final.message)
 
     def test_final_answer_persists_all_mappings_moves_configured_stage_and_uses_ack_value(self):
         target, requirements = self._configure_two_step_org()
@@ -526,6 +715,12 @@ class QualificationExecutionContractE2ETests(TestCase):
         )
         AttributeDefinition.objects.create(
             organization=self.organization,
+            name="Timeline Mirror",
+            key="timeline_mirror",
+            field_type=AttributeDefinition.FieldType.TEXT,
+        )
+        AttributeDefinition.objects.create(
+            organization=self.organization,
             name="Timeline Guess",
             key="timeline_guess",
             field_type=AttributeDefinition.FieldType.TEXT,
@@ -537,7 +732,8 @@ class QualificationExecutionContractE2ETests(TestCase):
         )
         info.engagement_instructions = (
             "## Attribute mapped\n"
-            "timing -> Decision Window\n\n"
+            "timing -> Decision Window\n"
+            "timing -> Timeline Mirror\n\n"
             "## Stage shifting\n"
             "When all required qualification questions are answered, move to Discovery Complete.\n"
             "Acknowledgment message: \"We have captured your requirements.\""
@@ -591,6 +787,10 @@ class QualificationExecutionContractE2ETests(TestCase):
         self.lead.refresh_from_db()
         self.assertEqual(
             self.lead.attributes["decision_window"],
+            "Sometime after the festival season",
+        )
+        self.assertEqual(
+            self.lead.attributes["timeline_mirror"],
             "Sometime after the festival season",
         )
         self.assertNotIn("timeline_guess", self.lead.attributes)
