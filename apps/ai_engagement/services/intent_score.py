@@ -75,22 +75,45 @@ def _latest_inbound_texts(lead, *, limit=40) -> list[str]:
     return [str(value or "").strip() for value in reversed(list(rows)) if str(value or "").strip()]
 
 
-def _qualification_answer_count(lead) -> int:
+def _qualification_facts(lead) -> list[dict[str, str]]:
+    """Return backend-normalized answered requirements for scoring context."""
     attrs = lead.attributes if isinstance(getattr(lead, "attributes", None), dict) else {}
     state = attrs.get(QUALIFICATION_STATE_KEY)
     if not isinstance(state, dict):
-        return 0
-    answered = state.get("answered_requirement_ids")
-    if isinstance(answered, list):
-        return len({str(value) for value in answered if str(value or "").strip()})
+        return []
+
     states = state.get("requirement_states")
-    if not isinstance(states, dict):
-        return 0
-    return sum(
-        1
-        for item in states.values()
-        if isinstance(item, dict) and str(item.get("status") or "").casefold() == "answered"
-    )
+    states = states if isinstance(states, dict) else {}
+    snapshot = state.get("flow_snapshot")
+    snapshot = snapshot if isinstance(snapshot, list) else []
+    requirement_by_id = {
+        str(item.get("id") or ""): item
+        for item in snapshot
+        if isinstance(item, dict) and str(item.get("id") or "").strip()
+    }
+
+    facts = []
+    for requirement_id, answer_state in states.items():
+        if (
+            not isinstance(answer_state, dict)
+            or str(answer_state.get("status") or "").casefold() != "answered"
+        ):
+            continue
+        value = answer_state.get("value")
+        if value is None or (isinstance(value, str) and not value.strip()):
+            continue
+        requirement = requirement_by_id.get(str(requirement_id), {})
+        question = str(
+            requirement.get("label")
+            or str(requirement.get("question") or "").splitlines()[0]
+            or requirement_id
+        ).strip()
+        facts.append({"question": question, "value": str(value).strip()})
+    return facts
+
+
+def _qualification_answer_count(lead) -> int:
+    return len(_qualification_facts(lead))
 
 
 def _engagement_points(texts: list[str]) -> tuple[int, str]:
@@ -108,8 +131,15 @@ def _engagement_points(texts: list[str]) -> tuple[int, str]:
     return 1, "One meaningful lead response is available."
 
 
-def _urgency_points(texts: list[str]) -> tuple[int, str]:
-    joined = " ".join(texts[-20:])
+def _urgency_points(
+    texts: list[str],
+    qualification_facts: list[dict[str, str]] | None = None,
+) -> tuple[int, str]:
+    fact_text = " ".join(
+        f"{item.get('question', '')} {item.get('value', '')}"
+        for item in (qualification_facts or [])
+    )
+    joined = " ".join([*texts[-20:], fact_text])
     if _STRONG_URGENCY_RE.search(joined):
         return 3, "Explicit immediate/this-week timeline."
     if _MEDIUM_URGENCY_RE.search(joined):
@@ -132,10 +162,22 @@ def _clarity_points(lead, texts: list[str]) -> tuple[int, str]:
     return 0, "Need is still vague or not stated."
 
 
-def _commitment_points(texts: list[str]) -> tuple[int, str]:
+def _commitment_points(
+    texts: list[str],
+    qualification_facts: list[dict[str, str]] | None = None,
+) -> tuple[int, str]:
     joined = " ".join(texts[-20:])
     if _STRONG_COMMITMENT_RE.search(joined):
         return 2, "Firm next-step signal such as a call/demo/proceed request."
+
+    facts = qualification_facts or []
+    supplied_budget = any(
+        "budget" in _normalized(item.get("question"))
+        and bool(_normalized(item.get("value")))
+        for item in facts
+    )
+    if supplied_budget:
+        return 1, "Lead supplied a budget in the configured qualification flow."
     if _SOFT_COMMITMENT_RE.search(joined):
         return 1, "Soft buying signal such as budget/pricing/interest."
     return 0, "No explicit commitment signal yet."
@@ -143,10 +185,11 @@ def _commitment_points(texts: list[str]) -> tuple[int, str]:
 
 def compute_intent_score(*, lead) -> dict:
     texts = _latest_inbound_texts(lead)
+    qualification_facts = _qualification_facts(lead)
     engagement, engagement_reason = _engagement_points(texts)
-    urgency, urgency_reason = _urgency_points(texts)
+    urgency, urgency_reason = _urgency_points(texts, qualification_facts)
     clarity, clarity_reason = _clarity_points(lead, texts)
-    commitment, commitment_reason = _commitment_points(texts)
+    commitment, commitment_reason = _commitment_points(texts, qualification_facts)
     score = engagement + urgency + clarity + commitment
     return {
         "version": INTENT_SCORE_VERSION,
