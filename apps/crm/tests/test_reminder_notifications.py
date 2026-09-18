@@ -1,3 +1,4 @@
+import json
 from datetime import timedelta
 
 from django.test import RequestFactory, TestCase
@@ -135,7 +136,7 @@ class ReminderNotificationTests(TestCase):
         response = reminder_notification_feed.__wrapped__(self._request("get"))
 
         self.assertEqual(response.status_code, 200)
-        payload = response.json()
+        payload = json.loads(response.content)
         self.assertEqual(len(payload["notifications"]), 1)
         item = payload["notifications"][0]
         self.assertEqual(item["id"], str(reminder.pk))
