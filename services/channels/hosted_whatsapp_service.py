@@ -449,7 +449,11 @@ def _persist_gateway_message(*, account, payload, historical=False):
     )
     chat_id = str(payload.get("chatId") or "")
 
-    resolved_peer = payload.get("contactPhoneNumber") or payload.get("peerPhone")
+    resolved_peer = (
+        payload.get("contactPhoneNumber")
+        or payload.get("peerPhone")
+        or payload.get("peerKey")
+    )
     if is_group:
         peer = chat_id or str(payload.get("from") or payload.get("to") or "")
     elif is_outbound:
