@@ -175,27 +175,27 @@ class OpenAIProvider:
                 },
             ]
         }
-        update_item = {
+        existing_update_item = {
             "type": "object",
             "properties": {
                 "key": {"type": "string"},
                 "value": scalar_value,
-                "name": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+            },
+            "required": ["key", "value"],
+            "additionalProperties": False,
+        }
+        dynamic_update_item = {
+            "type": "object",
+            "properties": {
+                "key": {"type": "string"},
+                "value": scalar_value,
+                "name": {"type": "string"},
                 "field_type": {
-                    "anyOf": [
-                        {
-                            "type": "string",
-                            "enum": ["text", "numeric", "date", "datetime"],
-                        },
-                        {"type": "null"},
-                    ]
+                    "type": "string",
+                    "enum": ["text", "numeric", "date", "datetime"],
                 },
                 "create_if_missing": {"type": "boolean"},
             },
-            # Structured Outputs requires closed objects to make every property
-            # explicit. Existing attributes use null/null/false; a genuinely new
-            # reusable attribute uses name/field_type/true so those fields survive
-            # the provider boundary and reach the CRM executor.
             "required": [
                 "key",
                 "value",
@@ -204,6 +204,12 @@ class OpenAIProvider:
                 "create_if_missing",
             ],
             "additionalProperties": False,
+        }
+        update_item = {
+            "anyOf": [
+                existing_update_item,
+                dynamic_update_item,
+            ]
         }
         contact_item = {
             "type": "object",
