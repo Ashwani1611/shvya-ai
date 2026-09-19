@@ -1469,9 +1469,20 @@ def _stage_success(state: dict[str, Any]) -> bool:
 
 def _leading_greeting(message: str) -> str:
     blocks = str(message or "").strip().split("\n\n")
-    if blocks and _GREETING_RE.match(blocks[0].strip()):
-        return blocks[0].strip()
-    return ""
+    if not blocks:
+        return ""
+    first = blocks[0].strip()
+    if not _GREETING_RE.match(first):
+        return ""
+
+    # Keep only the greeting sentence. A model may include a paraphrased
+    # qualification question in the same opening block; the backend appends the
+    # exact configured requirement below, so retaining that extra prose causes
+    # the customer to see Q1 twice.
+    sentence = re.split(r"(?<=[.!])\s+", first, maxsplit=1)[0].strip()
+    if "?" in sentence:
+        sentence = sentence.split("?", 1)[0].strip()
+    return sentence
 
 
 def _finalize(decision, state):
