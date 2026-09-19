@@ -38,6 +38,9 @@ BACKEND CONVERSATION POLICY CONTRACT
   functionality, feature, pricing, policy, location, or availability requests,
   provide the available answer itself; never reply only with an invitation such
   as "Would you like to know more?" or another question.
+- For broad feature, functionality, capability, benefit, or "why choose/buy" requests,
+  use the retrieved organization evidence to give several concrete supported points.
+  Do not merely repeat a one-line product description, and do not invent unsupported claims.
 - ASK_QUALIFICATION: ask exactly the backend-selected next_requirement_id and no
   answered requirement.
 - ANSWER_THEN_QUALIFY: answer the direct customer question first from permitted
@@ -117,7 +120,9 @@ _INFORMATION_INTENTS = {
 }
 _DETAIL_REQUEST_TERMS = (
     "detail", "details", "functionality", "functionalities", "feature", "features",
-    "capability", "capabilities", "what can you do", "what do you offer",
+    "featurs", "featres", "capability", "capabilities", "benefit", "benefits",
+    "advantage", "advantages", "why buy", "why i buy", "why should i buy",
+    "why choose", "why should i choose", "what can you do", "what do you offer",
 )
 _INFORMATION_CTA_PREFIXES = (
     "would you like",
