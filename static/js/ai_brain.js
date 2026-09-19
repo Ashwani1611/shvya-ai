@@ -14,11 +14,13 @@
             event.preventDefault();
             const button = settingsForm.querySelector('button[type="submit"]');
             if (button.disabled) return;
+            // The hidden input named "action" masks form.action in real browsers.
+            const saveUrl = settingsForm.getAttribute("action");
             const payload = new FormData(settingsForm);
             button.disabled = true;
-            saveStatus.textContent = "Saving…";
+            saveStatus.textContent = "Savingâ€¦";
             try {
-                const response = await fetch(settingsForm.action, {
+                const response = await fetch(saveUrl, {
                     method: "POST", credentials: "same-origin",
                     headers: { "Accept": "application/json" }, body: payload
                 });
@@ -30,7 +32,7 @@
                     saveStatus.textContent = "Saved the submitted version. You have newer unsaved edits.";
                     return;
                 }
-                window.location.assign(settingsForm.action);
+                window.location.assign(saveUrl);
             } catch (error) {
                 saveStatus.textContent = error instanceof SyntaxError ? "Could not confirm the save. Your draft is still here; refresh your session and try again." : error.message;
                 saveStatus.setAttribute("role", "alert");
@@ -77,7 +79,7 @@
             remove.className = "brain-icon-button";
             remove.dataset.removeKnowledgeUrl = "";
             remove.setAttribute("aria-label", "Remove website URL");
-            remove.textContent = "×";
+            remove.textContent = "Ã—";
             row.append(input, remove);
             urlList.appendChild(row);
             urlFeedback.textContent = "";
