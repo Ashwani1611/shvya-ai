@@ -163,7 +163,6 @@ def _information_reply_has_substance(message: str, *, detailed: bool = False) ->
             continue
         if normalized.startswith(_INFORMATION_CTA_PREFIXES):
             continue
-        # A standalone question is not an answer to the information request.
         if part.rstrip().endswith("?"):
             continue
         meaningful.extend(
@@ -316,6 +315,53 @@ def _accepted_result(*, state: dict[str, Any], source_message_id: str) -> dict[s
     }
 
 
+def _continue_qualification_immediately(*, organization, lead, turn: dict[str, Any]) -> bool:
+    settings = organization.settings if isinstance(getattr(organization, "settings", None), dict) else {}
+    qualification_settings = settings.get("ai_qualification")
+    if (
+        isinstance(qualification_settings, dict)
+        and qualification_settings.get("continue_after_answer") is True
+    ):
+        # Explicit true keeps the legacy "always continue immediately" behavior.
+        return True
+
+    source_message_id = str(turn.get("source_message_id") or "").strip()
+    if not source_message_id:
+        return False
+    source = _source_message(
+        lead=lead,
+        source_message_id=source_message_id,
+        account_id=None,
+    )
+    text = str(getattr(source, "body", "") or "").strip()
+    if not text or "?" in text:
+        return False
+
+    intent = turn.get("intent_decision")
+    if not isinstance(intent, IntentDecision):
+        return False
+    intents = _intent_values(intent)
+    if intents & {
+        Intent.PRODUCT_OR_SERVICE_QUESTION,
+        Intent.PRICING_QUESTION,
+        Intent.POLICY_QUESTION,
+        Intent.LOCATION_QUESTION,
+        Intent.AVAILABILITY_QUESTION,
+        Intent.OBJECTION,
+        Intent.BUYING_INTENT,
+        Intent.CALL_REQUEST,
+        Intent.HUMAN_REQUEST,
+        Intent.COMPLAINT,
+    }:
+        return False
+
+    # Short, direct qualification answers can move forward in the same turn.
+    # Richer statements are acknowledged and absorbed into CRM context first,
+    # leaving the next requirement pending for a later natural opening.
+    words = [item for item in text.replace("\n", " ").split(" ") if item.strip()]
+    return Intent.QUALIFICATION_ANSWER in intents and len(words) <= 8
+
+
 def _build_policy_context(*, organization, lead, turn: dict[str, Any]):
     intent = turn.get("intent_decision")
     if not isinstance(intent, IntentDecision):
@@ -337,10 +383,10 @@ def _build_policy_context(*, organization, lead, turn: dict[str, Any]):
         knowledge_available=turn.get("knowledge_available"),
         ai_allowed=True,
         capabilities=_capabilities(organization),
-        continue_after_answer=(
-            isinstance(organization.settings, dict)
-            and isinstance(organization.settings.get("ai_qualification"), dict)
-            and organization.settings["ai_qualification"].get("continue_after_answer", False) is True
+        continue_after_answer=_continue_qualification_immediately(
+            organization=organization,
+            lead=lead,
+            turn=turn,
         ),
         organization_rules=str(turn.get("organization_rules") or ""),
         channel=str(turn.get("channel") or "") or None,
