@@ -18,7 +18,7 @@
             const saveUrl = settingsForm.getAttribute("action");
             const payload = new FormData(settingsForm);
             button.disabled = true;
-            saveStatus.textContent = "Savingâ€¦";
+            saveStatus.textContent = "Saving…";
             try {
                 const response = await fetch(saveUrl, {
                     method: "POST", credentials: "same-origin",
@@ -79,7 +79,7 @@
             remove.className = "brain-icon-button";
             remove.dataset.removeKnowledgeUrl = "";
             remove.setAttribute("aria-label", "Remove website URL");
-            remove.textContent = "Ã—";
+            remove.textContent = "×";
             row.append(input, remove);
             urlList.appendChild(row);
             urlFeedback.textContent = "";
