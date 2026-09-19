@@ -4,6 +4,7 @@ import json
 from unittest.mock import patch
 
 from django.test import TestCase
+from django.utils import timezone
 
 from apps.ai_engagement.models import OrgInfo
 from apps.ai_engagement.services.ai_provider import AITextResult
@@ -430,6 +431,91 @@ class QualificationExecutionContractE2ETests(TestCase):
             and item.get("status") == "executed"
             for item in result["execution_results"]
         ))
+
+    def test_completion_without_authored_reminder_creates_standard_follow_up(self):
+        info, _ = OrgInfo.objects.get_or_create(organization=self.organization)
+        info.qualification_requirements = (
+            "[id: source] Where do most of your leads currently come from?\n"
+            "A. Referrals\n"
+            "B. Organic search\n"
+            "All questions are required\n"
+            "Acknowledgment message: \"Thanks — we have what we need to take the next step.\""
+        )
+        info.engagement_instructions = "Be concise and natural."
+        info.ai_enabled = True
+        info.save()
+
+        requirements = compile_qualification_requirements(
+            info.qualification_requirements
+        )["requirements"]
+        record_last_asked_requirement(
+            self.lead,
+            requirements[0]["id"],
+            requirements=requirements,
+        )
+        source = self._source("default-completion-reminder", "A")
+        before = timezone.now()
+
+        result = resolve_before_generation(
+            organization=self.organization,
+            lead=self.lead,
+            source_message_id=source.pk,
+        )
+
+        self.assertTrue(result["applied"])
+        reminder = LeadReminder.objects.get(lead=self.lead)
+        self.assertEqual(reminder.status, "pending")
+        self.assertEqual(reminder.title, "Follow up with qualified lead")
+        self.assertGreater(reminder.due_at, before + timezone.timedelta(hours=23))
+        self.assertLess(reminder.due_at, before + timezone.timedelta(hours=25))
+        self.lead.refresh_from_db()
+        self.assertEqual(self.lead.stage_id, self.qualified.id)
+
+    def test_completion_uses_next_active_stage_when_qualified_stage_is_unavailable(self):
+        self.qualified.is_active = False
+        self.qualified.save(update_fields=["is_active", "updated_at"])
+        next_stage = Stage.objects.create(
+            pipeline=self.pipeline,
+            name="Sales Review",
+            display_order=max(
+                self.pipeline.stages.values_list("display_order", flat=True)
+            ) + 10,
+            is_active=True,
+            ai_on=True,
+        )
+        info, _ = OrgInfo.objects.get_or_create(organization=self.organization)
+        info.qualification_requirements = (
+            "[id: source] Where do most of your leads currently come from?\n"
+            "A. Referrals\n"
+            "B. Organic search\n"
+            "All questions are required"
+        )
+        info.engagement_instructions = "Be concise and natural."
+        info.ai_enabled = True
+        info.save()
+
+        requirements = compile_qualification_requirements(
+            info.qualification_requirements
+        )["requirements"]
+        record_last_asked_requirement(
+            self.lead,
+            requirements[0]["id"],
+            requirements=requirements,
+        )
+        source = self._source("next-stage-completion", "A")
+
+        result = resolve_before_generation(
+            organization=self.organization,
+            lead=self.lead,
+            source_message_id=source.pk,
+        )
+
+        self.assertTrue(result["applied"])
+        self.lead.refresh_from_db()
+        self.assertEqual(self.lead.stage_id, next_stage.id)
+        stage_result = result["response_plan"]["execution_results"]["stage_transition"]["result"]
+        self.assertTrue(stage_result["verified"])
+        self.assertEqual(stage_result["actual_stage_id"], str(next_stage.id))
 
     def test_non_final_answer_persists_exact_mapping_and_builds_progress_response(self):
         target, requirements = self._configure_two_step_org()
