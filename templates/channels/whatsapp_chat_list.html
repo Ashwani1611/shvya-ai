@@ -189,6 +189,7 @@
                     <div class="mt-3 h-1.5 overflow-hidden rounded-full bg-violet-100">
                         <div class="h-full rounded-full bg-violet-500" style="width: {{ intent_score.score }}0%"></div>
                     </div>
+                    {% if intent_score.eighty_percent_override %}<p class="mt-3 text-xs text-gray-500">At least 80% of asked questions answered. Minimum score: 8. This does not determine qualification.</p>{% endif %}
                     <div class="mt-3 grid grid-cols-2 gap-2">
                         <div class="rounded-xl bg-white/80 p-2.5 ring-1 ring-gray-100">
                             <div class="flex items-center justify-between gap-2"><span class="text-[10px] font-semibold text-gray-600">Engagement</span><span class="text-[10px] font-bold text-gray-800">{{ intent_score.components.engagement.score }}/3</span></div>

@@ -183,7 +183,7 @@ def install_qualification_execution_policy_guard() -> None:
             execution_results=execution_results,
             structured_decision=structured_decision,
         )
-        from apps.ai_engagement.services.engagement_instruction_policy import _SECTION_ALIASES
+        from apps.ai_engagement.services.playbook import SECTION_ALIASES
         from apps.crm.models import AttributeDefinition, Stage
 
         requirements = runtime._requirements_for_turn(
@@ -197,7 +197,7 @@ def install_qualification_execution_policy_guard() -> None:
             "Attribute Mapped",
             "Stage Shifting",
         }
-        for aliases in _SECTION_ALIASES.values():
+        for aliases in SECTION_ALIASES.values():
             protected.update(
                 str(item).strip() for item in aliases if str(item).strip()
             )

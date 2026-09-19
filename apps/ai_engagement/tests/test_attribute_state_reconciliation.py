@@ -1,3 +1,5 @@
+from tests.playbook_fixtures import build_ai_playbook, qualification_questions
+
 from django.test import TestCase
 
 from apps.ai_engagement.models import OrgInfo
@@ -22,21 +24,17 @@ class ExistingAttributeQualificationTests(TestCase):
             ai_on=True,
         )
         org_info, _ = OrgInfo.objects.get_or_create(organization=self.organization)
-        org_info.qualification_requirements = (
-            "[id: management] Where do you currently manage leads?\n"
+        org_info.ai_playbook = build_ai_playbook(questions="[id: management] Where do you currently manage leads?\n"
             "A. WhatsApp chats\n"
             "B. Excel / Sheets\n"
             "C. CRM\n"
-            "D. Multiple places"
-        )
-        org_info.engagement_instructions = (
-            "Ask only unanswered qualification questions.\n\n"
+            "D. Multiple places", rules="Ask only unanswered qualification questions.\n\n"
             "## Attribute mapped\n"
             "management -> Lead Management Tool\n\n"
             "## Stage shifting\n"
             "When all required qualification questions are answered, move to Existing CRM Complete.\n"
-            "Acknowledgment message: \"Thanks, your details are complete.\""
-        )
+            "Acknowledgment message: \"Thanks, your details are complete.\"")
+
         org_info.ai_enabled = True
         org_info.save()
         AttributeDefinition.objects.create(
@@ -56,7 +54,7 @@ class ExistingAttributeQualificationTests(TestCase):
             lead=self.lead,
         )
         requirements = compile_qualification_requirements(
-            org_info.qualification_requirements
+            qualification_questions(org_info.ai_playbook)
         )["requirements"]
         requirement_id = requirements[0]["id"]
         self.assertEqual(
@@ -77,8 +75,8 @@ class ExistingAttributeQualificationTests(TestCase):
 
     def test_unmapped_existing_attributes_are_not_inferred_semantically(self):
         org_info, _ = OrgInfo.objects.get_or_create(organization=self.organization)
-        org_info.qualification_requirements = "What is your requirement?"
-        org_info.engagement_instructions = "Do not infer CRM mappings."
+        org_info.ai_playbook = build_ai_playbook(questions="What is your requirement?", rules="Do not infer CRM mappings.")
+
         org_info.ai_enabled = True
         org_info.save()
         for index in (1, 2):
@@ -100,7 +98,7 @@ class ExistingAttributeQualificationTests(TestCase):
             lead=self.lead,
         )
         requirements = compile_qualification_requirements(
-            org_info.qualification_requirements
+            qualification_questions(org_info.ai_playbook)
         )["requirements"]
         requirement_id = requirements[0]["id"]
         self.assertNotEqual(

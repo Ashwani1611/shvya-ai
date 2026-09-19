@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from django.core.exceptions import ValidationError
+from django.db import transaction
 
 from apps.ai_engagement.models import OrgInfo
 
@@ -25,8 +26,8 @@ class OrgInfoService:
     ALLOWED_FIELDS = {
         "about",
         "bot_languages",
-        "qualification_requirements",
-        "engagement_instructions",
+        "ai_playbook",
+        "organization_name",
         "ai_enabled",
         "bump_up_enabled",
         "bump_up_count",
@@ -65,6 +66,7 @@ class OrgInfoService:
     # UPDATE
     # ========================================================
 
+    @transaction.atomic
     def update(
         self,
         *,
@@ -117,24 +119,20 @@ class OrgInfoService:
                 data["bot_languages"] or ""
             ).strip()
 
-        if "qualification_requirements" in data:
-
-            org_info.qualification_requirements = (
-                data["qualification_requirements"] or ""
-            ).strip()
-
-        if "qualification_requirements" in data:
-            from apps.ai_engagement.services.organization_profile import compile_qualification_requirements
+        if "ai_playbook" in data:
+            from apps.ai_engagement.services.playbook import validate_playbook
             try:
-                compile_qualification_requirements(org_info.qualification_requirements)
+                org_info.ai_playbook = validate_playbook(data["ai_playbook"] or "")
             except (TypeError, ValueError) as exc:
                 raise OrgInfoServiceError(str(exc)) from exc
 
-        if "engagement_instructions" in data:
-
-            org_info.engagement_instructions = (
-                data["engagement_instructions"] or ""
-            ).strip()
+        if "organization_name" in data:
+            organization.name = str(data["organization_name"] or "").strip()
+            try:
+                organization.full_clean()
+            except ValidationError as exc:
+                raise OrgInfoServiceError(str(exc)) from exc
+            organization.save(update_fields=["name"])
 
         # ----------------------------------------------------
         # AI MASTER SWITCH

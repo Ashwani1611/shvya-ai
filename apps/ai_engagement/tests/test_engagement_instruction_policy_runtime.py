@@ -1,4 +1,6 @@
 from __future__ import annotations
+from tests.playbook_fixtures import build_ai_playbook
+
 
 from types import SimpleNamespace
 
@@ -26,7 +28,7 @@ from apps.organizations.models import Organization
 
 
 AUTHORED_POLICY = """
-##Qualification criteria
+##Qualification Questions
 What is your biggest challenge?
 A. Slow replies
 B. Missed follow-ups
@@ -49,7 +51,8 @@ A. Referrals
 B. Organic search
 C. Walk-ins
 D. Other
-After all required qualification questions are answered, mark the lead qualified.
+##Qualification Criteria
+All required qualification questions are answered.
 
 ##Attribute mapped
 Q1 -> Biggest Challenge
@@ -70,30 +73,24 @@ When the lead provides a concrete date and time to connect, create a reminder.
 class EngagementInstructionPolicyParsingTests(SimpleTestCase):
     def test_hash_headings_are_compiled_as_distinct_policy_sections(self):
         sections = parse_engagement_instruction_sections(AUTHORED_POLICY)
-        self.assertIn("What is your biggest challenge?", sections["qualification_criteria"])
+        self.assertIn("What is your biggest challenge?", sections["qualification_questions"])
         self.assertIn("Q3 -> Daily Leads", sections["attribute_mapped"])
         self.assertIn("Human Intervention", sections["stage_shifting"])
         self.assertIn("concrete date and time", sections["reminders"])
 
-    def test_qualification_section_is_fallback_questionnaire_when_dedicated_field_empty(self):
+    def test_criteria_cannot_become_a_questionnaire(self):
         source, source_name = effective_qualification_source(
-            qualification_requirements="",
-            engagement_instructions=AUTHORED_POLICY,
+            ai_playbook="##Qualification Criteria\nThe lead must have an approved budget.",
         )
-        self.assertIn("What is your biggest challenge?", source)
-        self.assertNotIn("mark the lead qualified", source)
-        self.assertEqual(
-            source_name,
-            "engagement_instructions.qualification_criteria",
-        )
+        self.assertEqual(source, "")
+        self.assertEqual(source_name, "none")
 
-    def test_dedicated_qualification_field_keeps_precedence(self):
+    def test_only_explicit_question_section_supplies_the_questionnaire(self):
         source, source_name = effective_qualification_source(
-            qualification_requirements="What is your budget?",
-            engagement_instructions=AUTHORED_POLICY,
+            ai_playbook=build_ai_playbook(questions="What is your budget?", rules="Be concise."),
         )
         self.assertEqual(source, "What is your budget?")
-        self.assertEqual(source_name, "qualification_requirements")
+        self.assertEqual(source_name, "ai_playbook.qualification_questions")
 
     def test_grounded_reminder_parser_accepts_common_date_time_language(self):
         for text in (
@@ -149,8 +146,8 @@ class AuthoredPolicyCRMIntegrationTests(TestCase):
 
         self.org_info = OrgInfo.objects.create(
             organization=self.organization,
-            qualification_requirements="",
-            engagement_instructions=AUTHORED_POLICY,
+            ai_playbook=AUTHORED_POLICY,
+
             bot_languages="English",
             ai_enabled=True,
         )
@@ -208,7 +205,7 @@ class AuthoredPolicyCRMIntegrationTests(TestCase):
         self.assertEqual(len(requirements), 5)
         self.assertEqual(
             profile["qualification"]["source"],
-            "engagement_instructions.qualification_criteria",
+            "ai_playbook.qualification_questions",
         )
         self.assertEqual(
             policy["qualification"]["source"],
@@ -278,6 +275,12 @@ class AuthoredPolicyCRMIntegrationTests(TestCase):
             self.assertEqual(self.lead.attributes.get(key), value)
 
     def test_new_reusable_fact_is_created_and_filled_through_canonical_executor(self):
+        self.org_info.ai_playbook += (
+            "\n\n## Attribute mapping logic\n"
+            "When the lead shares their sales team size, create Sales Team Size "
+            "as a numeric attribute if missing and map that stated count to it."
+        )
+        self.org_info.save(update_fields=["ai_playbook"])
         context, runtime_policy, requirements, _profile = self._context_policy_requirements(
             message_id="dynamic-attribute-turn",
             body="We have 8 salespeople handling enquiries",

@@ -1,3 +1,5 @@
+from tests.playbook_fixtures import build_ai_playbook
+
 import json
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -150,10 +152,7 @@ class LiveWhatsAppPipelineRegressionTests(TestCase):
     def test_invalid_model_qualification_output_falls_back_to_backend_question(self):
         OrgInfo.objects.update_or_create(
             organization=self.organization,
-            defaults={
-                "qualification_requirements": "What is your budget?",
-                "ai_enabled": True,
-            },
+            defaults={"ai_playbook": build_ai_playbook(questions='What is your budget?'), 'ai_enabled': True},
         )
         self._inbound("invalid-provider-turn", "Hi")
 

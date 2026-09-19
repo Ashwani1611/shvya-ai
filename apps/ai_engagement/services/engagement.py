@@ -81,7 +81,7 @@ ENGAGEMENT_RESPONSE_SCHEMA = {
             "silence_rule": {"anyOf": [{"type": "null"}, {
                 "type": "object",
                 "properties": {
-                    "field": {"type": "string", "enum": ["qualification_requirements", "engagement_instructions"]},
+                    "field": {"type": "string", "enum": ["ai_playbook"]},
                     "quote": {"type": "string"},
                 },
                 "required": ["field", "quote"],
@@ -506,7 +506,7 @@ class EngagementService:
         if isinstance(rule, dict) and set(rule) == {"field", "quote"}:
             source_field = rule["field"]
             quote = rule["quote"]
-            if isinstance(source_field, str) and source_field in {"qualification_requirements", "engagement_instructions"}:
+            if source_field == "ai_playbook":
                 authored = (context.organization or {}).get(source_field, "")
                 if (decision.reason_code == "ORG_INSTRUCTION"
                         and isinstance(quote, str) and quote.strip()
@@ -515,7 +515,7 @@ class EngagementService:
         raise EngagementError(
             "Reply to the lead. Silence requires ORG_INSTRUCTION and silence_rule "
             "with an exact quote of the applicable no-reply instruction from the "
-            "organization's qualification_requirements or engagement_instructions. "
+            "organization's ai_playbook. "
             "Greetings, negative answers, completed qualification, unknown facts "
             "and short messages do not authorize silence."
         )
@@ -661,12 +661,12 @@ Do not add explanations, markdown, or chain-of-thought.
             profile.get("communication", {}).get("custom_instructions", "") or ""
         ).strip()
         organization_section = organization_instructions or (
-            "No additional organization-specific engagement instructions were supplied."
+            "No organization-specific AI Playbook rules were supplied."
         )
         return (
             f"{SHVYABaseInstructions.get()}\n\n"
             "============================================================\n"
-            "ORGANIZATION ENGAGEMENT INSTRUCTIONS\n"
+            "ORGANIZATION AI PLAYBOOK RULES\n"
             "============================================================\n"
             f"{organization_section}\n\n"
             "============================================================\n"
@@ -729,6 +729,7 @@ Do not add explanations, markdown, or chain-of-thought.
         profile = profile or compile_org_ai_profile_from_context(data["organization"] or {})
         lead_data = dict(data["lead"] or {})
         lead_data.pop("attributes", None)
+        lead_data.pop("notes", None)
         if qualification_state is not None:
             lead_data["qualification"] = qualification_state
 
@@ -753,7 +754,6 @@ Do not add explanations, markdown, or chain-of-thought.
             "attributes": data["attributes"],
             "conversation_summary": data["conversation_summary"],
             "recent_conversation": self._compact_conversation(data["conversation"] or {}),
-            "qualification_notes": data["qualification_notes"],
             "next_requirement": next_item,
             "knowledge": data["knowledge"],
         }

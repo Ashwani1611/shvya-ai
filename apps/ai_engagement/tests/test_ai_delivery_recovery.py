@@ -1,3 +1,5 @@
+from tests.playbook_fixtures import build_ai_playbook
+
 import json
 from datetime import timedelta
 from types import SimpleNamespace
@@ -40,7 +42,7 @@ class AuthoredQualificationTests(SimpleTestCase):
     def _sandbox(self, runs_ads):
         info = Mock()
         info.get_or_create.return_value = SimpleNamespace(ai_enabled=True, about='Lead management service',
-            bot_languages='English', qualification_requirements=self.raw, engagement_instructions='Ask one question at a time.',
+            bot_languages='English', ai_playbook=build_ai_playbook(questions=self.raw, rules='Ask one question at a time.'),
             bump_up_enabled=False, bump_up_count=0)
         provider = Mock()
         question_indices = [0, 1, 2] + ([] if runs_ads else [3]) + [None]

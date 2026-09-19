@@ -1,3 +1,5 @@
+from tests.playbook_fixtures import build_ai_playbook
+
 import json
 from types import SimpleNamespace
 
@@ -30,17 +32,7 @@ class _SequenceProvider:
 class PreciseEngagementTests(SimpleTestCase):
     def _context(self, latest="Yes"):
         return AIContext(
-            organization={
-                "id": "org-1",
-                "name": "Example Org",
-                "about": "Example business",
-                "bot_languages": "English",
-                "qualification_requirements": "Budget and timeline",
-                "engagement_instructions": "Be concise",
-                "ai_enabled": True,
-                "bump_up_enabled": False,
-                "bump_up_count": 0,
-            },
+            organization={'id': 'org-1', 'name': 'Example Org', 'about': 'Example business', 'bot_languages': 'English', "ai_playbook": build_ai_playbook(questions='Budget and timeline', rules='Be concise'), 'ai_enabled': True, 'bump_up_enabled': False, 'bump_up_count': 0},
             lead={
                 "id": "lead-1",
                 "name": "Lead",

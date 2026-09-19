@@ -1,3 +1,5 @@
+from tests.playbook_fixtures import build_ai_playbook, replace_playbook_questions
+
 import json
 import os
 from types import SimpleNamespace
@@ -21,7 +23,7 @@ class EngagementRecoveryTests(SimpleTestCase):
     def setUp(self):
         cache.clear()
         self.context = fixtures.PreciseEngagementTests()._context("I live in Delhi")
-        self.context.organization["qualification_requirements"] = "Which city?\nWhat is your budget?"
+        self.context.organization["ai_playbook"] = replace_playbook_questions(self.context.organization["ai_playbook"], "Which city?\nWhat is your budget?")
         self.context.conversation["messages"][0]["id"] = "inbound-1"
         self.valid = {
             "should_engage": True, "message": "What is your budget?",
@@ -137,14 +139,7 @@ class MultiTurnTransportRecoveryTests(TestCase):
         questions = ["Which city?", "What occupation?", "Which product?", "Which color?"]
         requirement_ids = ["which_city", "what_occupation", "which_product", "which_color"]
         final_configured_ack = "Thanks, I have all the required details and can continue from here."
-        OrgInfo.objects.update_or_create(organization=org, defaults={
-            "qualification_requirements": "\n".join(questions),
-            "engagement_instructions": (
-                "Be concise and natural.\n"
-                f' Acknowledgment message: "{final_configured_ack}"'
-            ),
-            "bot_languages": "English",
-        })
+        OrgInfo.objects.update_or_create(organization=org, defaults={"ai_playbook": build_ai_playbook(questions='\n'.join(questions), rules=f'Be concise and natural.\n Acknowledgment message: "{final_configured_ack}"'), 'bot_languages': 'English'})
         replies = ["Hello", "Delhi", "Teacher", "Desk", "Blue", "Thank you"]
 
         def deliver(*, message, **kwargs):

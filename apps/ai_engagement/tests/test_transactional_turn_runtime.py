@@ -1,4 +1,6 @@
 from __future__ import annotations
+from tests.playbook_fixtures import build_ai_playbook, qualification_questions
+
 
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
@@ -37,22 +39,18 @@ class TransactionalTurnRuntimeTests(TestCase):
             ai_on=True,
         )
         org_info, _ = OrgInfo.objects.get_or_create(organization=self.organization)
-        org_info.qualification_requirements = (
-            "[id: lead_system] Where do you currently manage leads?\n"
+        org_info.ai_playbook = build_ai_playbook(questions="[id: lead_system] Where do you currently manage leads?\n"
             "A. WhatsApp chats\n"
             "B. Excel / Sheets\n"
             "C. CRM\n"
             "D. Multiple places\n"
-            "All questions are required"
-        )
-        org_info.engagement_instructions = (
-            "Reply naturally and concisely.\n\n"
+            "All questions are required", rules="Reply naturally and concisely.\n\n"
             "## Attribute mapped\n"
             "lead_system -> Lead Management Tool\n\n"
             "## Stage shifting\n"
             "When all required qualification questions are answered, move to Qualification Complete.\n"
-            "Acknowledgment message: \"Thanks, your qualification details are complete.\""
-        )
+            "Acknowledgment message: \"Thanks, your qualification details are complete.\"")
+
         org_info.bot_languages = "English"
         org_info.ai_enabled = True
         org_info.save()
@@ -67,7 +65,7 @@ class TransactionalTurnRuntimeTests(TestCase):
             field_type=AttributeDefinition.FieldType.TEXT,
         )
         requirements = compile_qualification_requirements(
-            org_info.qualification_requirements
+            qualification_questions(org_info.ai_playbook)
         )["requirements"]
         record_last_asked_requirement(
             self.lead,
@@ -243,16 +241,14 @@ class TransactionalTurnRuntimeTests(TestCase):
 
     def test_missing_required_answer_does_not_move_to_qualified(self):
         org_info, _ = OrgInfo.objects.get_or_create(organization=self.organization)
-        org_info.qualification_requirements = (
-            "[id: q1] What is your primary goal?\n"
+        org_info.ai_playbook = build_ai_playbook(questions="[id: q1] What is your primary goal?\n"
             "[id: q2] What is your expected timeline?\n"
-            "All questions are required"
-        )
-        org_info.engagement_instructions = "Be concise."
+            "All questions are required", rules="Be concise.")
+
         org_info.ai_enabled = True
         org_info.save()
         requirements = compile_qualification_requirements(
-            org_info.qualification_requirements
+            qualification_questions(org_info.ai_playbook)
         )["requirements"]
         record_last_asked_requirement(
             self.lead,
@@ -295,21 +291,22 @@ class TransactionalTurnRuntimeTests(TestCase):
         self.assertEqual(self.lead.stage_id, self.new_lead.id)
         self.assertEqual(state["next_requirement_id"], requirements[1]["id"])
 
-    def test_engagement_instruction_qualification_source_is_used_for_persistence(self):
+    def test_playbook_question_section_is_used_for_persistence(self):
         org_info, _ = OrgInfo.objects.get_or_create(organization=self.organization)
-        org_info.qualification_requirements = ""
-        org_info.engagement_instructions = """
-##Qualification criteria
+        org_info.ai_playbook = build_ai_playbook(questions="", rules="""
+##Qualification Questions
 What is your biggest challenge?
 A. Slow replies
 B. Missed follow-ups
 C. Leads going cold
 D. No proper tracking
-After all required qualification questions are answered, mark the lead qualified.
+##Qualification Criteria
+All required qualification questions are answered.
 
 ##Attribute mapped
 Q1 -> Challenge
-""".strip()
+""".strip())
+
         org_info.ai_enabled = True
         org_info.save()
 

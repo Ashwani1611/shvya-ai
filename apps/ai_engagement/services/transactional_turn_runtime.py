@@ -103,9 +103,7 @@ def _split_actions(actions):
 def _requirements_for_turn(*, organization, lead):
     """Compile the same organization-specific flow used by live engagement.
 
-    The profile compiler is intentionally used instead of directly parsing only
-    OrgInfo.qualification_requirements because Engagement Instructions may be the
-    configured qualification source for an organization.
+    The profile compiler derives the questionnaire only from AI Playbook.
     """
     from apps.ai_engagement.models import OrgInfo
     from apps.ai_engagement.services.organization_profile import compile_org_ai_profile
@@ -175,6 +173,9 @@ def _qualified_action(*, lead, qualification_state) -> dict[str, Any] | None:
     if str(qualification_state.get("qualification_status") or "").casefold() != "completed":
         return None
     if normalize_stage_name(getattr(getattr(lead, "stage", None), "name", "")) != "new lead":
+        return None
+    from apps.ai_engagement.services.playbook import criteria_for_lead
+    if not criteria_for_lead(lead=lead, state=qualification_state).get("qualified"):
         return None
     stage_id = str(qualification_state.get("qualified_stage_id") or "").strip()
     if not stage_id:

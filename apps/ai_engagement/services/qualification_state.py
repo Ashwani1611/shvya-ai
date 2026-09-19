@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from apps.ai_engagement.services.playbook import qualification_questions
+
 import re
 from copy import deepcopy
 
@@ -981,7 +983,7 @@ def persist_answer_updates(*, lead, updates):
 
     org_info = OrgInfo.objects.filter(organization_id=lead.organization_id).first()
     current_requirements = compile_qualification_requirements(
-        org_info.qualification_requirements if org_info else ""
+        qualification_questions(org_info.ai_playbook if org_info else "")
     )["requirements"]
     requirements = requirements_for_lead(lead, current_requirements)
     messages = list(

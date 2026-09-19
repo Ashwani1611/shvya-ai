@@ -149,7 +149,7 @@ def queue_background_enrichment(*, lead_id, force=False) -> dict:
 
     org_info = OrgInfo.objects.filter(organization=lead.organization).first()
     qualification_queued = bool(
-        org_info and (org_info.qualification_requirements or "").strip()
+        org_info and (org_info.ai_playbook or "").strip()
     )
     if qualification_queued:
         generate_lead_qualification.apply_async(

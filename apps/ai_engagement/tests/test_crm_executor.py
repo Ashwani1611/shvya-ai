@@ -55,7 +55,7 @@ class CRMActionExecutorTests(TestCase):
             )
 
         cls.stage_one = cls.stages[0]
-        cls.stage_two = cls.stages[1]
+        cls.stage_two = next(stage for stage in cls.stages[1:] if stage.name.casefold() != "qualified")
 
         cls.other_organization = Organization.objects.create(
             name="Other Organization",
@@ -85,6 +85,40 @@ class CRMActionExecutorTests(TestCase):
     # ============================================================
     # EMPTY
     # ============================================================
+
+    def test_qualified_stage_rejects_unconfigured_criteria(self):
+        qualified = self.pipeline.stages.get(name__iexact="qualified")
+        with self.assertRaisesMessage(CRMActionExecutionError, "qualification criteria are not satisfied"):
+            self.executor.execute(organization=self.organization, lead=self.lead, actions=[{
+                "type": "pipeline_transition", "stage_shift": {"stage_id": str(qualified.id)},
+            }])
+        self.lead.refresh_from_db()
+        self.assertEqual(self.lead.stage_id, self.stage_one.id)
+
+    def test_explicit_criteria_can_use_confirmed_crm_values(self):
+        from apps.ai_engagement.models import OrgInfo
+        OrgInfo.objects.create(organization=self.organization, ai_playbook="## Qualification Criteria\nName is captured\nPhone is captured")
+        qualified = self.pipeline.stages.get(name__iexact="qualified")
+        self.executor.execute(organization=self.organization, lead=self.lead, actions=[{
+            "type": "pipeline_transition", "stage_shift": {"stage_id": str(qualified.id)},
+        }])
+        self.lead.refresh_from_db()
+        self.assertEqual(self.lead.stage_id, qualified.id)
+
+    def test_custom_completion_stage_cannot_bypass_unsatisfied_criteria(self):
+        from apps.ai_engagement.models import OrgInfo
+        OrgInfo.objects.create(
+            organization=self.organization,
+            ai_playbook=("## Qualification Criteria\nBudget >= 50000\n"
+                         "## Stage shifting logic\nWhen all required questions are answered, move to "
+                         + self.stage_two.name + "."),
+        )
+        with self.assertRaisesMessage(CRMActionExecutionError, "qualification criteria are not satisfied"):
+            self.executor.execute(organization=self.organization, lead=self.lead, actions=[{
+                "type": "pipeline_transition", "stage_shift": {"stage_id": str(self.stage_two.id)},
+            }])
+        self.lead.refresh_from_db()
+        self.assertEqual(self.lead.stage_id, self.stage_one.id)
 
     def test_empty_actions_returns_empty_result(self):
         result = self.executor.execute(

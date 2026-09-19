@@ -1,4 +1,6 @@
 from __future__ import annotations
+from tests.playbook_fixtures import build_ai_playbook
+
 
 from unittest.mock import patch
 
@@ -52,11 +54,9 @@ class LeadQualificationTaskTests(TestCase):
             bot_languages=(
                 "English, Hindi, Hinglish"
             ),
-            qualification_requirements=(
-                "Identify the learner's preferred course, "
+            ai_playbook=build_ai_playbook(questions="Identify the learner's preferred course, "
                 "preferred batch timing, main training goal, "
-                "current lead volume, and buying intent."
-            ),
+                "current lead volume, and buying intent."),
             ai_enabled=True,
         )
 

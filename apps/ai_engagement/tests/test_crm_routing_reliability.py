@@ -1,4 +1,6 @@
 from __future__ import annotations
+from tests.playbook_fixtures import build_ai_playbook, qualification_questions
+
 
 from types import SimpleNamespace
 
@@ -48,15 +50,13 @@ class QualificationRoutingReliabilityTests(TestCase):
 
         self.org_info = OrgInfo.objects.create(
             organization=self.organization,
-            qualification_requirements=(
-                "Where do you currently manage leads?\n"
+            ai_playbook=build_ai_playbook(questions="Where do you currently manage leads?\n"
                 "A. WhatsApp\n"
                 "B. Excel/Sheets\n"
                 "C. CRM\n"
-                "D. Multiple places"
-            ),
+                "D. Multiple places", rules="Reply naturally and concisely."),
             bot_languages="English",
-            engagement_instructions="Reply naturally and concisely.",
+
             ai_enabled=True,
         )
         AttributeDefinition.objects.create(
@@ -79,7 +79,7 @@ class QualificationRoutingReliabilityTests(TestCase):
 
     def _requirements(self):
         return compile_qualification_requirements(
-            self.org_info.qualification_requirements
+            qualification_questions(self.org_info.ai_playbook)
         )["requirements"]
 
     def _context_and_policy(self, *, message_id, body, requirements):
@@ -338,3 +338,35 @@ class ConversationRoutingReliabilityTests(SimpleTestCase):
         )
         transition = next(item for item in actions if item.get("type") == "pipeline_transition")
         self.assertEqual(transition["stage_shift"]["stage_id"], "enterprise-ready")
+
+    def test_pipeline_description_still_requires_full_current_customer_evidence(self):
+        cases = [
+            ("Customers requesting enterprise onboarding.", "We need enterprise support"),
+            ("Customers requesting enterprise onboarding.", "We do not need enterprise onboarding"),
+            ("Customers requesting enterprise onboarding and budget approved.", "We need enterprise onboarding"),
+            ("Customers requesting enterprise onboarding with 100 users.", "We need enterprise onboarding with 10 users"),
+        ]
+        for description, body in cases:
+            with self.subTest(description=description, body=body):
+                destination = {
+                    "id": "enterprise-ready",
+                    "name": "Ready",
+                    "description": "",
+                    "pipeline_id": "enterprise-pipeline",
+                    "pipeline_name": "Enterprise",
+                    "pipeline_description": description,
+                }
+                actions, _ = build_controlled_actions(
+                    decision=SimpleNamespace(
+                        qualification_updates=[],
+                        crm_actions=[{
+                            "type": "pipeline_transition",
+                            "stage_shift": {"stage_id": "enterprise-ready"},
+                        }],
+                    ),
+                    context=self._context(body=body, available_stages=[destination]),
+                    runtime_policy={"qualification": {"criteria": []}},
+                    qualification_state={"engagement_mode": "conversation", "requirement_states": {}},
+                    requirements=[],
+                )
+                self.assertFalse(any(item.get("type") == "pipeline_transition" for item in actions))

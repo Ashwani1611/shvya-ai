@@ -1,3 +1,5 @@
+from tests.playbook_fixtures import build_ai_playbook, replace_playbook_questions
+
 import json
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
@@ -17,7 +19,7 @@ from apps.ai_engagement.tests.test_precise_orchestration import PreciseEngagemen
 class SemanticAnswerTests(SimpleTestCase):
     def test_free_form_answer_advances_question_in_same_call(self):
         context = PreciseEngagementTests()._context("I live in Delhi")
-        context.organization["qualification_requirements"] = "Which city?\nWhat is your budget?"
+        context.organization["ai_playbook"] = replace_playbook_questions(context.organization["ai_playbook"], "Which city?\nWhat is your budget?")
         context.conversation["messages"][0]["id"] = "inbound-1"
         output = {
             "should_engage": True, "message": "What budget do you have in mind?",
@@ -94,7 +96,7 @@ class ContextAndEnrichmentTests(TestCase):
         from apps.ai_engagement.background_signals import remember_ai_qualification_question
         from apps.crm.models import Lead
         OrgInfo.objects.update_or_create(organization=self.org,
-                                        defaults={"qualification_requirements": "Which city?"})
+                                        defaults={"ai_playbook": build_ai_playbook(questions='Which city?')})
         # The outbound message still holds the pre-CRM-action Lead instance.
         Lead.objects.filter(pk=self.lead.pk).update(attributes={"city": "Delhi"})
         instance = SimpleNamespace(
@@ -122,7 +124,7 @@ class ContextAndEnrichmentTests(TestCase):
         from apps.ai_engagement.models import OrgInfo
         from apps.ai_engagement.tasks import flush_background_enrichment
         OrgInfo.objects.update_or_create(organization=self.org,
-                                        defaults={"qualification_requirements": "Which city?"})
+                                        defaults={"ai_playbook": build_ai_playbook(questions='Which city?')})
         with patch(
             "apps.ai_engagement.services.background_enrichment._new_message_stats",
             return_value=(1, 20),

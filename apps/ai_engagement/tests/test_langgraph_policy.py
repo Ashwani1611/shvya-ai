@@ -210,7 +210,7 @@ class ControlledCRMActionTests(SimpleTestCase):
         actions, _ = build_controlled_actions(
             decision=decision,
             context=context,
-            runtime_policy=self._runtime_policy(),
+            runtime_policy={**self._runtime_policy(), "crm": {"attribute_mapped": ["Map Company from the lead stated value."]}},
             qualification_state=self._qualification_state(),
             requirements=[{"id": "budget", "required": True}],
         )
@@ -242,7 +242,7 @@ class ControlledCRMActionTests(SimpleTestCase):
         actions, _ = build_controlled_actions(
             decision=decision,
             context=context,
-            runtime_policy={"qualification": {"criteria": []}},
+            runtime_policy={"qualification": {"criteria": []}, "crm": {"attribute_mapped": ["Map Leads/d from the lead stated value."]}},
             qualification_state={"requirement_states": {}},
             requirements=[],
         )
@@ -278,7 +278,7 @@ class ControlledCRMActionTests(SimpleTestCase):
         actions, _ = build_controlled_actions(
             decision=decision,
             context=context,
-            runtime_policy={"qualification": {"criteria": []}},
+            runtime_policy={"qualification": {"criteria": []}, "crm": {"attribute_mapped": ["Map Sales Team Size from the lead stated value."]}},
             qualification_state={"requirement_states": {}},
             requirements=[],
         )

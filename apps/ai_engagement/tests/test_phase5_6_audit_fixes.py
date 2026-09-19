@@ -1,4 +1,6 @@
 from __future__ import annotations
+from tests.playbook_fixtures import build_ai_playbook
+
 
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -342,12 +344,7 @@ class Phase56AuditFixTests(TestCase):
             )
             context = SimpleNamespace(
                 conversation={"messages": []},
-                organization={
-                    "about": "",
-                    "name": self.organization.name,
-                    "engagement_instructions": "",
-                    "bot_languages": "",
-                },
+                organization={'about': '', 'name': self.organization.name, "ai_playbook": build_ai_playbook(rules=''), 'bot_languages': ''},
                 knowledge=[],
                 lead={"attributes": {}},
             )
