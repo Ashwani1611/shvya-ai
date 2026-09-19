@@ -46,8 +46,8 @@ class HostedWhatsAppRecoveryTests(TestCase):
         session.save()
         self.client.cookies["shvya_crm_sessionid"] = session.session_key
 
-    @patch("apps.channels.tasks.initialize_hosted_session_task.delay")
-    @patch("apps.channels.tasks.WhatsAppWebClient.get_session", create=True)
+    @patch("apps.channels.hosted_tasks.initialize_hosted_session_task.delay")
+    @patch("apps.channels.providers.whatsapp_web.WhatsAppWebClient.get_session")
     def test_periodic_reconcile_reinitializes_missing_connected_gateway_session(
         self,
         get_session,
@@ -67,7 +67,7 @@ class HostedWhatsAppRecoveryTests(TestCase):
         initialize_delay.assert_called_once_with(str(self.account.id))
         self.assertEqual(result["reinitialized"], 1)
 
-    @patch("apps.channels.tasks.WhatsAppWebClient.get_session", create=True)
+    @patch("apps.channels.providers.whatsapp_web.WhatsAppWebClient.get_session")
     def test_periodic_reconcile_keeps_running_hosted_session_connected(self, get_session):
         self.account.status = WhatsAppAccount.Status.CONNECTED
         self.account.save(update_fields=["status", "updated_at"])
