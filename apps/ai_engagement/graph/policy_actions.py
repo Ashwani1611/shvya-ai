@@ -291,6 +291,35 @@ def _safe_dynamic_attribute(update: dict[str, Any]) -> bool:
     return True
 
 
+def _new_key_dynamic_attribute(
+    *,
+    raw_key: str,
+    value: Any,
+) -> dict[str, Any] | None:
+    """Normalize staging-style new:<Name> candidates into executor metadata."""
+    if not str(raw_key or "").strip().casefold().startswith("new:"):
+        return None
+    name = re.sub(r"\s+", " ", str(raw_key).split(":", 1)[1]).strip(" .:_-")
+    key = re.sub(r"[^a-zA-Z0-9]+", "_", name.lower())
+    key = re.sub(r"_+", "_", key).strip("_")[:100]
+    if not key or not name:
+        return None
+
+    field_type = (
+        "numeric"
+        if isinstance(value, (int, float)) and not isinstance(value, bool)
+        else "text"
+    )
+    candidate = {
+        "key": key,
+        "value": value,
+        "name": name,
+        "field_type": field_type,
+        "create_if_missing": True,
+    }
+    return candidate if _safe_dynamic_attribute(candidate) else None
+
+
 def build_controlled_actions(
     *,
     decision,
@@ -361,11 +390,21 @@ def build_controlled_actions(
             for update in action.get("updates") or []:
                 if not isinstance(update, dict):
                     continue
-                proposed_key = str(update.get("key") or "").strip().lower()
-                proposed_name = str(update.get("name") or "").strip()
+                raw_key = str(update.get("key") or "").strip()
                 value = update.get("value")
                 if not _value_supported_by_latest_message(value, latest_text):
                     continue
+
+                new_key_candidate = _new_key_dynamic_attribute(
+                    raw_key=raw_key,
+                    value=value,
+                )
+                if new_key_candidate is not None:
+                    proposed_key = str(new_key_candidate["key"])
+                    proposed_name = str(new_key_candidate["name"])
+                else:
+                    proposed_key = raw_key.lower()
+                    proposed_name = str(update.get("name") or "").strip()
 
                 resolved_key = _resolve_existing_attribute_key(
                     proposed_key=proposed_key,
@@ -377,6 +416,9 @@ def build_controlled_actions(
                     continue
 
                 if len(attribute_definitions) >= 15:
+                    continue
+                if new_key_candidate is not None:
+                    accepted.append(new_key_candidate)
                     continue
                 if _safe_dynamic_attribute(update):
                     accepted.append(
