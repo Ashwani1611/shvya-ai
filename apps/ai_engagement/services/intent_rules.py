@@ -106,6 +106,22 @@ def deterministic_intents(text: str) -> set[Intent]:
     for intent, terms in mappings:
         if contains_any(value, terms):
             intents.add(intent)
+
+    # A lead asking "What is <brand/product>?" is an informational question,
+    # even when they omit the question mark. Keep more specific question
+    # families (pricing/policy/location/availability) authoritative.
+    if (
+        direct_question(text)
+        and value.startswith("what is ")
+        and not intents
+        & {
+            Intent.PRICING_QUESTION,
+            Intent.POLICY_QUESTION,
+            Intent.LOCATION_QUESTION,
+            Intent.AVAILABILITY_QUESTION,
+        }
+    ):
+        intents.add(Intent.PRODUCT_OR_SERVICE_QUESTION)
     return intents
 
 
@@ -197,7 +213,12 @@ def generic_candidate(text: str, question: str, *, active: bool) -> tuple[Any, f
         )
         if match:
             return match.group(1).strip(), 0.9, "natural_text"
-    if active and len(text) <= 180 and "?" not in text and not deterministic_intents(text):
+    if (
+        active
+        and len(text) <= 180
+        and not direct_question(text)
+        and not deterministic_intents(text)
+    ):
         if contains_any(question, ("what", "which", "city", "location", "service", "product", "goal", "challenge", "problem", "source", "industry", "role", "type")):
             return text.strip(), 0.75, "active_freeform"
     return None
