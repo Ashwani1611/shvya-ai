@@ -28,6 +28,7 @@ jobs:
           username: ${{ secrets.VPS_USER }}
           password: ${{ secrets.VPS_PASSWORD }}
           port: ${{ secrets.VPS_PORT || 22 }}
+          command_timeout: 30m
           script: |
             set -e
             cd /opt/shvya-ai
@@ -115,11 +116,38 @@ jobs:
             gzip "$BACKUP_FILE"
             find /opt/shvya-ai/backups -type f -name 'shvya-prod-*.sql.gz' -mtime +14 -delete
 
-            echo "Applying database migrations before replacing the live web container..."
-            docker compose run --rm web python manage.py migrate --noinput
+            APPLICATION_MAINTENANCE=0
+            report_maintenance_failure() {
+              deploy_status=$?
+              if [ "$deploy_status" -ne 0 ] && [ "$APPLICATION_MAINTENANCE" -eq 1 ]; then
+                echo "Deployment failed during application maintenance; application services may remain stopped."
+                echo "Database, Redis, and gateway state are preserved. Backup: ${BACKUP_FILE}.gz"
+                echo "Review the failed migration/startup before recovery; do not restart old images against the new schema."
+                docker compose ps || true
+              fi
+              return "$deploy_status"
+            }
+            trap report_maintenance_failure EXIT
+
+            # Column-removal migrations require every old Python process to
+            # finish before the schema changes. Stop producers first, then let
+            # Celery finish active tasks. Keep queues, database, edge, and linked
+            # WhatsApp gateway sessions running throughout this maintenance window.
+            APPLICATION_MAINTENANCE=1
+            echo "Pausing schedulers and HTTP/WebSocket traffic before schema changes..."
+            docker compose stop --timeout 60 beat web ws
+            echo "Draining application workers with a bounded graceful shutdown..."
+            docker compose stop --timeout 300 worker ai_realtime_worker hosted_ai_worker
+            if [ -n "$(docker compose ps --status running -q web ws worker ai_realtime_worker hosted_ai_worker beat)" ]; then
+              echo "Refusing migrations while an old application service is still running."
+              exit 1
+            fi
+
+            echo "Applying database migrations while old application services are stopped..."
+            docker compose run --rm --no-deps web python manage.py migrate --noinput
 
             echo "Collecting static files before replacing the live web container..."
-            docker compose run --rm web python manage.py collectstatic --noinput
+            docker compose run --rm --no-deps web python manage.py collectstatic --noinput
 
             echo "Updating application services..."
             docker compose up -d --no-deps web ws worker ai_realtime_worker hosted_ai_worker beat
@@ -131,6 +159,7 @@ jobs:
               docker compose logs --tail=150 web
               exit 1
             fi
+            APPLICATION_MAINTENANCE=0
 
             echo "Verifying realtime AI workers are running..."
             if ! docker compose ps --status running ai_realtime_worker | grep -q ai_realtime_worker; then
