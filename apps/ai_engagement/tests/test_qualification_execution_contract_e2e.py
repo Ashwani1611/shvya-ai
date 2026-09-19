@@ -24,6 +24,7 @@ from apps.ai_engagement.services.organization_profile import (
 from apps.ai_engagement.services.qualification_execution_contract import (
     _ack_from_message,
     _config,
+    _finalize,
     resolve_before_generation,
 )
 from apps.ai_engagement.services.qualification_state import (
@@ -573,6 +574,38 @@ class QualificationExecutionContractE2ETests(TestCase):
                 f"{option['key']}. {option['value']}",
                 final.message,
             )
+
+    def test_generic_model_ack_falls_back_to_answer_aware_progress_ack(self):
+        _target, requirements = self._configure_two_step_org()
+        record_last_asked_requirement(
+            self.lead,
+            requirements[0]["id"],
+            requirements=requirements,
+        )
+        inbound = self._source("contract-generic-progress-ack", "B")
+        result = resolve_before_generation(
+            organization=self.organization,
+            lead=self.lead,
+            source_message_id=inbound.pk,
+        )
+        self.assertTrue(result["applied"])
+
+        reconciled = self._reconciled(inbound)
+        final = _finalize(
+            self._decision(
+                "Nice.",
+                next_requirement_id=requirements[1]["id"],
+            ),
+            reconciled,
+        )
+
+        self.assertIn("Partner referrals", final.message)
+        self.assertIn("useful context", final.message)
+        self.assertIn("How are new enquiries handled today?", final.message)
+        self.assertNotEqual(
+            final.message.strip(),
+            result["response_plan"]["next_requirement"]["rendered"].strip(),
+        )
 
     def test_response_plan_sets_metadata_for_the_question_it_actually_renders(self):
         _target, requirements = self._configure_two_step_org()
