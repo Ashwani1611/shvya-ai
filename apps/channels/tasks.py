@@ -18,6 +18,84 @@ from django.utils import timezone
 
 logger = logging.getLogger(__name__)
 
+
+@shared_task(name="apps.channels.reconcile_hosted_sessions")
+def reconcile_hosted_sessions():
+    """Self-heal Hosted accounts whose persisted DB status drifted from the gateway."""
+    from apps.channels.hosted_tasks import initialize_hosted_session_task
+    from apps.channels.models import WhatsAppAccount
+    from apps.channels.providers.whatsapp_web import (
+        WhatsAppWebClient,
+        WhatsAppWebGatewayError,
+    )
+    from services.channels.hosted_whatsapp_service import handle_gateway_event
+
+    accounts = list(
+        WhatsAppAccount.objects.filter(
+            connection_type=WhatsAppAccount.ConnectionType.coexisted,
+            is_active=True,
+            status=WhatsAppAccount.Status.CONNECTED,
+        ).only("id", "organization_id", "display_phone_number", "phone_number_id", "status")[:200]
+    )
+    client = WhatsAppWebClient()
+    result = {
+        "inspected": len(accounts),
+        "running": 0,
+        "reinitialized": 0,
+        "pending": 0,
+        "disconnected": 0,
+        "failed": 0,
+        "gateway_errors": 0,
+    }
+
+    for account in accounts:
+        try:
+            session = client.get_session(session_id=account.id)
+        except WhatsAppWebGatewayError as exc:
+            if exc.status_code == 404:
+                changed = WhatsAppAccount.objects.filter(
+                    pk=account.pk,
+                    status=WhatsAppAccount.Status.CONNECTED,
+                    is_active=True,
+                ).update(status=WhatsAppAccount.Status.PENDING)
+                if changed:
+                    initialize_hosted_session_task.delay(str(account.id))
+                    result["reinitialized"] += 1
+                continue
+            # A gateway/network outage is not proof that the WhatsApp session is
+            # disconnected. Preserve DB state and retry on the next Beat tick.
+            result["gateway_errors"] += 1
+            continue
+
+        gateway_status = str(session.get("status") or "").strip().casefold()
+        phone_number = session.get("phoneNumber") or account.display_phone_number
+        if gateway_status == "running":
+            handle_gateway_event(
+                payload={
+                    "sessionId": str(account.id),
+                    "event": "ready",
+                    "phoneNumber": phone_number,
+                }
+            )
+            result["running"] += 1
+        elif gateway_status in {"initializing", "connecting", "authenticated", "syncing", "qr_ready"}:
+            handle_gateway_event(
+                payload={"sessionId": str(account.id), "event": "connecting"}
+            )
+            result["pending"] += 1
+        elif gateway_status == "disconnected":
+            handle_gateway_event(
+                payload={"sessionId": str(account.id), "event": "disconnected"}
+            )
+            result["disconnected"] += 1
+        elif gateway_status == "failed":
+            handle_gateway_event(
+                payload={"sessionId": str(account.id), "event": "failed"}
+            )
+            result["failed"] += 1
+
+    return result
+
 # Internal transient state used only while the provider request is in flight.
 # It is intentionally not a user-selectable model choice. Persisting the claim
 # before the network call prevents concurrent workers from sending the same
