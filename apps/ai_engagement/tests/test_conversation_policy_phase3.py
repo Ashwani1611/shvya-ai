@@ -1,14 +1,18 @@
 from __future__ import annotations
 
 import copy
-from unittest.mock import patch
+from types import SimpleNamespace
+from unittest.mock import Mock, patch
 
 from apps.ai_engagement.services.conversation_policy import (
     ConversationPolicyContext,
     ConversationPolicyEngine,
     ConversationPolicyOutcome,
 )
-from apps.ai_engagement.services.conversation_policy_runtime import _record_policy
+from apps.ai_engagement.services.conversation_policy_runtime import (
+    _affirmed_information_offer,
+    _record_policy,
+)
 from apps.ai_engagement.services.intent_types import (
     ClassificationPath,
     Intent,
@@ -68,6 +72,27 @@ def context(
 
 def decide(ctx: ConversationPolicyContext):
     return ConversationPolicyEngine().decide(ctx)
+
+
+def test_yes_after_feature_offer_is_treated_as_conversation_continuation():
+    manager = Mock()
+    query = Mock()
+    manager.filter.return_value = query
+    query.filter.return_value = query
+    query.order_by.return_value = query
+    query.only.return_value = query
+    query.first.return_value = SimpleNamespace(
+        body="Would you like details on our plans or specific features?"
+    )
+    lead = SimpleNamespace(organization_id="org-a", whatsapp_messages=manager)
+    source = SimpleNamespace(body="yes", created_at=object(), account_id="account-a")
+
+    assert _affirmed_information_offer(lead=lead, source=source) is True
+
+    query.first.return_value = SimpleNamespace(
+        body="What is your biggest challenge with managing leads?"
+    )
+    assert _affirmed_information_offer(lead=lead, source=source) is False
 
 
 def test_qualification_answer_only_continues_to_next_requirement():
