@@ -340,6 +340,11 @@ class APIKey(models.Model):
         default=True,
     )
 
+    can_read_diagnostics = models.BooleanField(
+        default=False,
+        help_text="Allow this key to read organization-scoped diagnostic data.",
+    )
+
     last_used_at = models.DateTimeField(
         null=True,
         blank=True,
