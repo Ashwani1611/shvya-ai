@@ -110,7 +110,17 @@ def deterministic_intents(text: str) -> set[Intent]:
     # A lead asking "What is <brand/product>?" is an informational question,
     # even when they omit the question mark. Never let an active free-form
     # qualification requirement consume that message as its answer.
-    if direct_question(text) and value.startswith("what is "):
+    if (
+        direct_question(text)
+        and value.startswith("what is ")
+        and not intents
+        & {
+            Intent.PRICING_QUESTION,
+            Intent.POLICY_QUESTION,
+            Intent.LOCATION_QUESTION,
+            Intent.AVAILABILITY_QUESTION,
+        }
+    ):
         intents.add(Intent.PRODUCT_OR_SERVICE_QUESTION)
     return intents
 
