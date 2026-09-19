@@ -31,6 +31,7 @@ jobs:
           username: ${{ secrets.VPS_USER }}
           password: ${{ secrets.VPS_PASSWORD }}
           port: ${{ secrets.VPS_PORT || 22 }}
+          command_timeout: 30m
           script: |
             set -eu
 
@@ -45,9 +46,29 @@ jobs:
             fi
 
             cd "$APP_DIR"
-            git fetch origin staging
+            # Pin automatic deployments to their successful CI run. A manual
+            # dispatch stays pinned to its selected event SHA, never a later push.
+            DEPLOY_SHA="${{ github.event.workflow_run.head_sha || github.sha }}"
+            if [ -z "$DEPLOY_SHA" ]; then
+              echo "Deployment SHA is missing."
+              exit 1
+            fi
+            git fetch --no-tags origin staging
+            if ! git cat-file -e "${DEPLOY_SHA}^{commit}" 2>/dev/null; then
+              echo "Deployment SHA ${DEPLOY_SHA} is unavailable in staging."
+              exit 1
+            fi
+            if ! git merge-base --is-ancestor "$DEPLOY_SHA" origin/staging; then
+              echo "Refusing deployment: ${DEPLOY_SHA} is not part of origin/staging."
+              exit 1
+            fi
             git checkout staging
-            git reset --hard origin/staging
+            git reset --hard "$DEPLOY_SHA"
+            ACTUAL_SHA="$(git rev-parse HEAD)"
+            if [ "$ACTUAL_SHA" != "$DEPLOY_SHA" ]; then
+              echo "Deployment checkout mismatch: expected ${DEPLOY_SHA}, got ${ACTUAL_SHA}."
+              exit 1
+            fi
 
             ensure_env_secret() {
               key="$1"
@@ -109,15 +130,48 @@ jobs:
             echo "Starting isolated staging PostgreSQL and Redis..."
             $COMPOSE up -d --wait db redis
 
+            echo "Creating a staging database backup before migrations..."
+            BACKUP_FILE="$APP_DIR/backups/shvya-staging-$(date -u +%Y%m%dT%H%M%SZ).sql"
+            $COMPOSE exec -T db sh -c 'pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB"' > "$BACKUP_FILE"
+            test -s "$BACKUP_FILE"
+            gzip "$BACKUP_FILE"
+            find "$APP_DIR/backups" -type f -name 'shvya-staging-*.sql.gz' -mtime +14 -delete
+
+            APPLICATION_MAINTENANCE=0
+            report_maintenance_failure() {
+              deploy_status=$?
+              if [ "$deploy_status" -ne 0 ] && [ "$APPLICATION_MAINTENANCE" -eq 1 ]; then
+                echo "Staging deployment failed during application maintenance; application services may remain stopped."
+                echo "Database, Redis, and gateway state are preserved. Backup: ${BACKUP_FILE}.gz"
+                echo "Review the failed migration/startup before recovery; do not restart old images against the new schema."
+                $COMPOSE ps || true
+              fi
+              return "$deploy_status"
+            }
+            trap report_maintenance_failure EXIT
+
+            # Stop only the old Python application processes, preserving the
+            # isolated staging database, queues, gateway sessions, and edge.
+            APPLICATION_MAINTENANCE=1
+            echo "Pausing staging schedulers and HTTP/WebSocket traffic..."
+            $COMPOSE stop --timeout 60 beat web ws
+            echo "Draining staging workers with a bounded graceful shutdown..."
+            $COMPOSE stop --timeout 300 worker ai_realtime_worker hosted_ai_worker
+            if [ -n "$($COMPOSE ps --status running -q web ws worker ai_realtime_worker hosted_ai_worker beat)" ]; then
+              echo "Refusing migrations while an old staging application service is still running."
+              exit 1
+            fi
+
             echo "Applying staging migrations..."
-            $COMPOSE run --rm web python manage.py migrate --noinput
+            $COMPOSE run --rm --no-deps web python manage.py migrate --noinput
 
             echo "Collecting staging static assets..."
-            $COMPOSE run --rm web python manage.py collectstatic --noinput
+            $COMPOSE run --rm --no-deps web python manage.py collectstatic --noinput
 
             echo "Starting staging application services..."
             $COMPOSE up -d --no-deps web ws worker ai_realtime_worker hosted_ai_worker beat
             $COMPOSE up -d --wait --no-deps web
+            APPLICATION_MAINTENANCE=0
 
             echo "Verifying staging Python application services run as the non-root app user..."
             for service in web ws worker ai_realtime_worker hosted_ai_worker beat; do
