@@ -18,7 +18,7 @@ from apps.core.views import BookCallView, DocumentationView, FeaturesView, HomeV
 
 
 urlpatterns = [
-    path("health/live/", health_live, name="health-live"),
+    # Remote read-only SHVYA diagnostic MCP + OAuth discovery.\n    path("", include("apps.integrations.urls.diagnostics")),\n    path("health/live/", health_live, name="health-live"),
     path("health/ready/", health_ready, name="health-ready"),
     path("features/", FeaturesView.as_view(), name="features"),
     path('dashboard/workflows/', include('apps.triggers.urls.web')),
