@@ -113,6 +113,14 @@ def test_natural_numeric_qualification(env):
     assert result.qualification_candidate["value"] == 25
 
 
+@pytest.mark.parametrize("text", ["some time", "sometimes", "occasionally", "from time to time"])
+def test_intermittent_boolean_qualification_is_yes(env, text):
+    result = classify(env, text, active="ads")
+    assert result.primary_intent == Intent.QUALIFICATION_ANSWER
+    assert result.qualification_candidate["value"] is True
+    assert result.classification_path == ClassificationPath.DETERMINISTIC
+
+
 def test_configured_option_letter_and_natural_text(env):
     assert classify(env, "B", active="challenge").qualification_candidate["value"] == "Missed follow-ups"
     assert classify(env, "We are mainly struggling with missed follow-ups.", active="challenge").qualification_candidate["value"] == "Missed follow-ups"
