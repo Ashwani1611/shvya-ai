@@ -1,7 +1,11 @@
 """Database-derived campaign reporting; unknown legacy evidence stays unknown."""
+from django.core.exceptions import ValidationError
 from django.db.models import Count, Max, Q
 from django.urls import reverse
 from django.utils import timezone
+
+from apps.channels.models import WhatsAppAccount
+from services.crm.lead_chat import pipeline_chat_account
 
 from .campaign_audience import require_manage, user_pipelines, uuid_value
 from .campaign_policy import CampaignInputError, percent
@@ -10,6 +14,25 @@ from .campaign_service import retry_eligibility
 
 def iso(value):
     return value.isoformat() if value else None
+
+
+def _campaign_chat_url(lead):
+    """Route recipient actions through the number linked to the lead's current pipeline."""
+    if lead is None:
+        return None
+    try:
+        account = pipeline_chat_account(lead)
+    except ValidationError:
+        return None
+    if account.connection_type != WhatsAppAccount.ConnectionType.API:
+        return None
+    return reverse("whatsapp-chat-detail", kwargs={"lead_id": lead.pk}) + f"?account={account.pk}"
+
+
+def _crm_lead_url(lead):
+    if lead is None:
+        return None
+    return reverse("crm-dashboard") + f"?pipeline={lead.pipeline_id}&lead={lead.pk}"
 
 
 def delivery_counts(rows):
@@ -156,7 +179,8 @@ def recipient_report(delivery, *, campaign, plan):
         "status": state, "replied": delivery.replied_at is not None, "recorded_at": iso(delivery.updated_at),
         "error_code": delivery.error_code, "error_message": delivery.error_message, "attempt_count": delivery.attempt_count,
         "can_retry": allowed, "retry_at": iso(due), "retry_reason": reason,
-        "chat_url": reverse("whatsapp-chat-detail", kwargs={"lead_id": lead.pk}) + f"?account={campaign.account_id}" if lead else None,
+        "chat_url": _campaign_chat_url(lead),
+        "crm_url": _crm_lead_url(lead),
         "whatsapp_url": f"https://wa.me/{delivery.phone.lstrip('+')}",
         "times": {key: iso(getattr(delivery, f"{key}_at")) for key in ("accepted", "sent", "delivered", "read", "replied", "failed")},
         "attempts": [{"number": attempt.number, "provider_id": attempt.provider_id, "started_at": iso(attempt.started_at),
@@ -176,5 +200,5 @@ def legacy_recipient_report(recipient, *, campaign):
             "recorded_at": iso(message.updated_at if message else recipient.updated_at), "error_code": "",
             "error_message": message.error if message else recipient.skip_reason, "attempt_count": None,
             "can_retry": False, "retry_at": None, "retry_reason": "Legacy sends have no safe attempt ledger. Create a new reviewed campaign to resend.",
-            "chat_url": reverse("whatsapp-chat-detail", kwargs={"lead_id": lead.pk}) + f"?account={campaign.account_id}",
+            "chat_url": _campaign_chat_url(lead), "crm_url": _crm_lead_url(lead),
             "whatsapp_url": f"https://wa.me/{lead.phone.lstrip('+')}", "times": {}, "attempts": []}
