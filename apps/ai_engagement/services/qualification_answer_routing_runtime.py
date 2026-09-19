@@ -318,7 +318,10 @@ def _match_boolean_option(
     # Natural frequency answers still mean "Yes" for a binary current-ads
     # requirement. Keep this deterministic so replies such as "some time"
     # advance qualification instead of falling through to the grounding gate.
-    if _INTERMITTENT_POSITIVE_BOOLEAN_RE.search(normalized):
+    if (
+        _INTERMITTENT_POSITIVE_BOOLEAN_RE.search(normalized)
+        and not _NEGATIVE_RE.search(normalized)
+    ):
         return by_value["yes"]
 
     question_tokens = _tokens(str(question or "").splitlines()[0])
