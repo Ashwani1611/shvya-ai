@@ -160,17 +160,21 @@ def _attribute_ref(
 def _attribute_refs(
     value: str,
     definitions: list[dict[str, Any]],
-) -> list[dict[str, Any]]:
-    """Resolve one or more exact authored attribute targets.
+) -> tuple[list[dict[str, Any]], list[str]]:
+    """Resolve authored attribute targets without dropping valid siblings.
 
     Exact names/keys remain authoritative. Multi-target shorthand is supported
     only when the full right-hand side is not itself an attribute name, so an
-    attribute such as "Leads/d" still resolves as one field while authored forms
-    such as "Lead Management Tool (+ Using Whatsapp / CRM)" resolve to three.
+    attribute such as "Leads/d" remains one field while authored forms such as
+    "Lead Management Tool (+ Using Whatsapp / CRM)" can resolve several fields.
+
+    A missing secondary target must not cancel the valid primary/other targets.
+    Missing names are returned separately so configuration diagnostics remain
+    visible instead of silently losing all CRM writes for the requirement.
     """
     direct = _attribute_ref(value, definitions)
     if direct is not None:
-        return [direct]
+        return [direct], []
 
     text = str(value or "").strip()
     text = re.sub(r"\(\s*\+", "+", text)
@@ -181,19 +185,21 @@ def _attribute_refs(
         if part.strip()
     ]
     if len(parts) < 2:
-        return []
+        return [], ([text] if text else [])
 
     resolved: list[dict[str, Any]] = []
+    unresolved: list[str] = []
     seen: set[str] = set()
     for part in parts:
         item = _attribute_ref(part, definitions)
         if item is None:
-            return []
+            unresolved.append(part)
+            continue
         key = str(item.get("key") or "")
         if key and key not in seen:
             resolved.append(item)
             seen.add(key)
-    return resolved
+    return resolved, unresolved
 
 
 def _split_mapping(line: str) -> tuple[str, str] | None:
@@ -256,7 +262,7 @@ def _config(*, organization, requirements: list[dict[str, Any]]) -> dict[str, An
             )
             continue
         requirement = _requirement_ref(pair[0], requirements)
-        attributes = _attribute_refs(pair[1], definitions)
+        attributes, unresolved_attributes = _attribute_refs(pair[1], definitions)
         if requirement is None:
             errors.append(
                 {
@@ -267,15 +273,17 @@ def _config(*, organization, requirements: list[dict[str, Any]]) -> dict[str, An
                 }
             )
             continue
+        if unresolved_attributes:
+            for unresolved in unresolved_attributes:
+                errors.append(
+                    {
+                        "type": "configuration_error",
+                        "status": "failed",
+                        "code": "unknown_attribute_mapping_reference",
+                        "detail": unresolved,
+                    }
+                )
         if not attributes:
-            errors.append(
-                {
-                    "type": "configuration_error",
-                    "status": "failed",
-                    "code": "unknown_attribute_mapping_reference",
-                    "detail": pair[1],
-                }
-            )
             continue
         from apps.ai_engagement.services.confidentiality import (
             is_sensitive_attribute_definition,
