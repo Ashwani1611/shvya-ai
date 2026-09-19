@@ -79,6 +79,12 @@ def test_direct_product_question_without_question_mark_is_not_qualification_answ
     assert Intent.QUALIFICATION_ANSWER not in result.secondary_intents
 
 
+def test_specific_pricing_question_is_not_double_classified_as_product(env):
+    result = classify(env, "What is your pricing?")
+    assert result.primary_intent == Intent.PRICING_QUESTION
+    assert Intent.PRODUCT_OR_SERVICE_QUESTION not in result.secondary_intents
+
+
 def test_numeric_qualification(env):
     result = classify(env, "30", active="volume")
     assert result.primary_intent == Intent.QUALIFICATION_ANSWER
