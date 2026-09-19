@@ -91,16 +91,20 @@ def install_fixed_prompt_overrides() -> None:
             for key in (
                 "about",
                 "bot_languages",
-                "engagement_instructions",
+                "ai_playbook",
                 "bump_up_enabled",
                 "bump_up_count",
             ):
                 organization[key] = source.get(key)
-            organization.pop("qualification_requirements", None)
+            from apps.ai_engagement.services.playbook import playbook_for_engagement
+            organization["ai_playbook"] = playbook_for_engagement(source.get("ai_playbook", ""))
 
             profile = organization.get("ai_profile")
             qualification_requirements = []
             if isinstance(profile, dict):
+                playbook = profile.get("playbook")
+                if isinstance(playbook, dict) and isinstance(playbook.get("sections"), dict):
+                    playbook["sections"].pop("qualification_questions", None)
                 identity = profile.get("identity")
                 if isinstance(identity, dict):
                     identity.pop("about", None)

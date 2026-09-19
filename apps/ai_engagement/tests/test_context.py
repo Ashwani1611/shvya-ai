@@ -1,4 +1,7 @@
 from __future__ import annotations
+from tests.playbook_fixtures import build_ai_playbook, qualification_questions
+from apps.ai_engagement.services.playbook import playbook_for_engagement
+
 
 from django.test import TestCase
 
@@ -51,14 +54,10 @@ class AIContextBuilderTests(TestCase):
                 "providing certification programs."
             ),
             bot_languages="English, Hindi, Hinglish",
-            qualification_requirements=(
-                "Identify course interest, budget, "
-                "timeline, and buying intent."
-            ),
-            engagement_instructions=(
-                "Use a friendly, concise, and helpful tone "
-                "when speaking with leads."
-            ),
+            ai_playbook=build_ai_playbook(questions="Identify course interest, budget, "
+                "timeline, and buying intent.", rules="Use a friendly, concise, and helpful tone "
+                "when speaking with leads."),
+
             ai_enabled=True,
             bump_up_enabled=True,
             bump_up_count=2,
@@ -129,13 +128,13 @@ class AIContextBuilderTests(TestCase):
         )
 
         self.assertEqual(
-            context.organization["qualification_requirements"],
-            self.org_info.qualification_requirements,
+            qualification_questions(context.organization["ai_playbook"]),
+            qualification_questions(self.org_info.ai_playbook),
         )
 
         self.assertEqual(
-            context.organization["engagement_instructions"],
-            self.org_info.engagement_instructions,
+            playbook_for_engagement(context.organization["ai_playbook"]),
+            playbook_for_engagement(self.org_info.ai_playbook),
         )
 
         self.assertTrue(
@@ -204,12 +203,12 @@ class AIContextBuilderTests(TestCase):
         )
 
         self.assertEqual(
-            context.organization["qualification_requirements"],
+            qualification_questions(context.organization["ai_playbook"]),
             "",
         )
 
         self.assertEqual(
-            context.organization["engagement_instructions"],
+            playbook_for_engagement(context.organization["ai_playbook"]),
             "",
         )
 
@@ -427,8 +426,8 @@ class AIContextBuilderTests(TestCase):
         )
 
         self.assertEqual(
-            data["organization"]["engagement_instructions"],
-            self.org_info.engagement_instructions,
+            playbook_for_engagement(data["organization"]["ai_playbook"]),
+            playbook_for_engagement(self.org_info.ai_playbook),
         )
 
         self.assertEqual(

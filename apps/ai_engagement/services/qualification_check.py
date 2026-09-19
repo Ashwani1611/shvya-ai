@@ -5,6 +5,7 @@ from dataclasses import dataclass
 
 from apps.ai_engagement.prompts.qualification_check import (
     QUALIFICATION_CHECK_INSTRUCTIONS,
+    SEMANTIC_CRITERIA_INSTRUCTIONS,
 )
 from apps.ai_engagement.services.ai_provider import AIProviderError, OpenAIProvider
 from apps.ai_engagement.services.context import AIContextBuilder
@@ -23,12 +24,11 @@ class QualificationCheckResult:
 
 
 class QualificationCheckService:
-    """On-demand semantic qualification check.
+    """Internal qualification checks and evidence-bound background verification.
 
-    This service is deliberately not called on every WhatsApp turn. The normal
-    engagement path uses persisted application qualification state and one LLM
-    call. Use this checker only when an explicit internal verification is
-    required.
+    Normal engagement stays state-driven. The background qualifier uses the
+    semantic method only after collection completes and authored criteria remain
+    unresolved; current signed receipts avoid repeated verification calls.
     """
 
     MESSAGE_LIMIT = 100
@@ -49,12 +49,7 @@ class QualificationCheckService:
                     "name": organization.get("name", ""),
                     "about": organization.get("about", ""),
                     "bot_languages": organization.get("bot_languages", ""),
-                    "qualification_requirements": organization.get(
-                        "qualification_requirements", ""
-                    ),
-                    "engagement_instructions": organization.get(
-                        "engagement_instructions", ""
-                    ),
+                    "ai_playbook": organization.get("ai_playbook", ""),
                 },
                 "qualification_state": lead.get("qualification") or {},
                 "lead": lead,
@@ -112,3 +107,29 @@ class QualificationCheckService:
             all_questions_answered=payload["all_questions_answered"],
             model=result.model,
         )
+
+    def evaluate_criteria(self, *, clauses, evidence, backend_verdicts, organization, lead) -> dict:
+        """One bounded model call; truth/evidence and receipt validation stay local."""
+        from apps.ai_engagement.services.ai_provider import AIProviderTransientError
+        provider = self.provider or OpenAIProvider()
+        try:
+            result = provider.generate_text(
+                instructions=SEMANTIC_CRITERIA_INSTRUCTIONS,
+                input_text=json.dumps({"criteria": clauses, "answers": evidence,
+                                       "backend_verdicts": backend_verdicts}, ensure_ascii=False),
+                metadata={"organization_id": str(organization.id), "lead_id": str(lead.id),
+                          "task": "qualification", "purpose": "playbook_criteria_verification"},
+            )
+        except AIProviderTransientError:
+            raise
+        except AIProviderError as exc:
+            raise QualificationCheckError("Semantic qualification verification failed.") from exc
+        try:
+            payload = json.loads(result.text)
+        except (ValueError, TypeError) as exc:
+            raise QualificationCheckError("Semantic qualification returned invalid JSON.") from exc
+        return payload
+
+    def refresh_semantic(self, *, organization, lead) -> dict:
+        from apps.ai_engagement.services.semantic_criteria import refresh_semantic_criteria
+        return refresh_semantic_criteria(service=self, organization=organization, lead=lead)

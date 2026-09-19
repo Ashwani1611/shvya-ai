@@ -165,7 +165,8 @@ class AICreditService:
         aliases = {
             "lead_qualification_summary": "qualification",
             "internal_conversation_summary": "internal_summary",
-            "bump_up": "engagement",
+            "bump_up": "bump_up",
+            "intent_score": "intent_score",
         }
         return aliases.get(value, value[:64] or "other")
 

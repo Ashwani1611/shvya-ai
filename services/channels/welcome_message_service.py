@@ -138,7 +138,12 @@ def _generate_hosted_welcome(*, lead):
     org_info = OrgInfo.objects.filter(organization=lead.organization).first()
     about = str(getattr(org_info, "about", "") or "").strip()
     languages = str(getattr(org_info, "bot_languages", "") or "").strip()
-    engagement = str(getattr(org_info, "engagement_instructions", "") or "").strip()
+    from apps.ai_engagement.services.playbook import parse_playbook, playbook_for_engagement
+    raw_playbook = str(getattr(org_info, "ai_playbook", "") or "")
+    configured_welcome = parse_playbook(raw_playbook)["welcome_message"]
+    if configured_welcome:
+        return configured_welcome
+    engagement = playbook_for_engagement(raw_playbook)
     first_name = (lead.name or "").strip().split(" ")[0]
 
     provider = OpenAIProvider()
@@ -157,7 +162,7 @@ def _generate_hosted_welcome(*, lead):
             f"Lead first name: {first_name}\n"
             f"About organization: {about}\n"
             f"Configured languages: {languages}\n"
-            f"Engagement instructions: {engagement}"
+            f"AI Playbook: {engagement}"
         ),
         metadata={
             "feature": "engagement",

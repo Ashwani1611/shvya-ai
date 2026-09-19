@@ -19,7 +19,9 @@ _TEMPORAL_TERMS = re.compile(
 
 
 def _normalize_text(value: Any) -> str:
-    return " ".join(str(value or "").casefold().split())
+    text = str(value or "").casefold().replace("–", "-").replace("—", "-")
+    text = re.sub(r"[^a-z0-9₹$€£+.%/-]+", " ", text)
+    return " ".join(text.split())
 
 
 def _numeric(value: Any) -> float | None:
@@ -58,7 +60,7 @@ def evaluate_condition(value: Any, condition: dict[str, Any] | None) -> str:
     operator = str(condition.get("operator") or "").strip().casefold()
     target = condition.get("value")
 
-    if operator in {"gt", "gte", "lt", "lte"}:
+    if operator in {"gt", "gte", "lt", "lte", "numeric_eq"}:
         actual_num = _numeric(value)
         target_num = _numeric(target)
         if actual_num is None or target_num is None:
@@ -68,6 +70,7 @@ def evaluate_condition(value: Any, condition: dict[str, Any] | None) -> str:
             "gte": actual_num >= target_num,
             "lt": actual_num < target_num,
             "lte": actual_num <= target_num,
+            "numeric_eq": actual_num == target_num,
         }
         return "pass" if checks[operator] else "fail"
 
@@ -128,7 +131,39 @@ def evaluate_qualification(*, runtime_policy: dict[str, Any], projected_state: d
     else:
         outcome = "not_configured"
 
-    return {"outcome": outcome, "criteria": results}
+    from apps.ai_engagement.services.playbook import evaluate_playbook_criteria
+    authored = evaluate_playbook_criteria(
+        "## Qualification Criteria\n" + str((runtime_policy.get("qualification") or {}).get("criteria_text") or ""),
+        requirements=criteria, state=projected_state,
+    )
+    if outcome == "qualified" and not authored["qualified"]:
+        outcome = "in_progress" if authored["rules"] else "not_configured"
+    return {"outcome": outcome, "criteria": results, "authored_criteria": authored}
+
+
+def _range_contains_latest(value: Any, latest_text: str) -> bool:
+    rendered = _normalize_text(value).replace(",", "")
+    actual = _numeric(latest_text)
+    if actual is None or not rendered:
+        return False
+
+    plus = re.search(r"(\d+(?:\.\d+)?)\s*\+$", rendered)
+    if plus:
+        return actual >= float(plus.group(1))
+
+    below = re.search(r"\b(?:below|under|less than)\s*(\d+(?:\.\d+)?)\b", rendered)
+    if below:
+        return actual < float(below.group(1))
+
+    upto = re.search(r"\b(?:up to|upto)\s*(\d+(?:\.\d+)?)\b", rendered)
+    if upto:
+        return actual <= float(upto.group(1))
+
+    interval = re.search(r"(\d+(?:\.\d+)?)\s*(?:-|to)\s*(\d+(?:\.\d+)?)", rendered)
+    if interval:
+        low, high = float(interval.group(1)), float(interval.group(2))
+        return low <= actual <= high
+    return False
 
 
 def _value_supported_by_latest_message(value: Any, latest_text: str) -> bool:
@@ -142,34 +177,18 @@ def _value_supported_by_latest_message(value: Any, latest_text: str) -> bool:
     rendered = _normalize_text(value)
     if rendered and rendered in latest:
         return True
+    if _range_contains_latest(value, latest_text):
+        return True
     actual_num = _numeric(value)
     latest_num = _numeric(latest_text)
-    return actual_num is not None and latest_num is not None and actual_num == latest_num
+    if actual_num is not None and latest_num is not None and actual_num == latest_num:
+        return True
 
-
-_ATTRIBUTE_STOPWORDS = {
-    "a", "an", "and", "the", "of", "for", "to", "current", "lead", "customer",
-    "number", "count", "size",
-}
-_ATTRIBUTE_ALIASES = {
-    "employees": "team", "employee": "team", "people": "team", "staff": "team",
-    "salespeople": "sales", "salesperson": "sales", "reps": "sales", "representatives": "sales",
-    "crm": "crm", "software": "tool", "system": "tool", "platform": "tool",
-}
-_SENSITIVE_ATTRIBUTE_TERMS = {
-    "password", "passcode", "otp", "token", "secret", "api key", "apikey",
-    "credit card", "card number", "cvv", "bank account", "aadhaar", "aadhar",
-    "pan number", "passport", "private key",
-}
-
-
-def _attribute_tokens(value: Any) -> set[str]:
-    tokens = set()
-    for raw in re.findall(r"[a-z0-9]+", _normalize_text(value)):
-        token = _ATTRIBUTE_ALIASES.get(raw, raw)
-        if token and token not in _ATTRIBUTE_STOPWORDS:
-            tokens.add(token)
-    return tokens
+    # Permit conservative textual normalization such as "real-estate" ->
+    # "Real Estate" without accepting broad semantic guesses.
+    rendered_tokens = set(re.findall(r"[a-z0-9]+", rendered))
+    latest_tokens = set(re.findall(r"[a-z0-9]+", latest))
+    return bool(rendered_tokens and rendered_tokens.issubset(latest_tokens))
 
 
 def _attribute_definitions(context) -> list[dict[str, Any]]:
@@ -177,10 +196,9 @@ def _attribute_definitions(context) -> list[dict[str, Any]]:
         is_sensitive_attribute_definition,
     )
 
-    definitions = (context.pipeline or {}).get("attribute_definitions") or []
     return [
         item
-        for item in definitions
+        for item in ((context.pipeline or {}).get("attribute_definitions") or [])
         if (
             isinstance(item, dict)
             and str(item.get("key") or "").strip()
@@ -189,156 +207,125 @@ def _attribute_definitions(context) -> list[dict[str, Any]]:
     ]
 
 
-def _option_matches_numeric(option: Any, latest_text: str) -> bool:
-    actual = _numeric(latest_text)
-    if actual is None:
-        return False
-    normalized = _normalize_text(option).replace(",", "")
-    plus = re.search(r"(\d+(?:\.\d+)?)\s*\+$", normalized)
-    if plus:
-        return actual >= float(plus.group(1))
-    interval = re.search(r"(\d+(?:\.\d+)?)\s*(?:-|–|—|to)\s*(\d+(?:\.\d+)?)", normalized)
-    if interval:
-        low, high = float(interval.group(1)), float(interval.group(2))
-        return low <= actual <= high
-    below = re.search(r"\b(?:below|under|less than)\s*(\d+(?:\.\d+)?)\b", normalized)
-    if below:
-        return actual < float(below.group(1))
-    upto = re.search(r"\b(?:up to|upto)\s*(\d+(?:\.\d+)?)\b", normalized)
-    if upto:
-        return actual <= float(upto.group(1))
-    return False
+def _attribute_tokens(value: Any) -> set[str]:
+    aliases = {
+        "reps": "representative",
+        "rep": "representative",
+        "salespeople": "sales",
+        "salesperson": "sales",
+        "employees": "employee",
+        "members": "member",
+        "persons": "person",
+        "people": "person",
+        "whatsapp": "whatsapp",
+        "wa": "whatsapp",
+    }
+    tokens = set()
+    for token in re.findall(r"[a-z0-9]+", _normalize_text(value)):
+        normalized = aliases.get(token, token)
+        if normalized not in {"of", "the", "a", "an", "current", "lead"}:
+            tokens.add(normalized)
+    return tokens
 
 
-def _value_supported_by_definition(value: Any, latest_text: str, definition: dict[str, Any]) -> bool:
-    if _value_supported_by_latest_message(value, latest_text):
-        return True
-    if str(definition.get("field_type") or "").casefold() != "option":
-        return False
-    rendered = _normalize_text(value)
-    for option in definition.get("options") or []:
-        if _normalize_text(option) == rendered and _option_matches_numeric(option, latest_text):
-            return True
-    return False
+def _resolve_existing_attribute_key(
+    *,
+    proposed_key: str,
+    proposed_name: str,
+    definitions: list[dict[str, Any]],
+) -> str | None:
+    exact = {
+        str(item.get("key") or "").strip(): item
+        for item in definitions
+        if str(item.get("key") or "").strip()
+    }
+    if proposed_key in exact:
+        return proposed_key
 
-
-def _resolve_existing_attribute_key(candidate: str, definitions: list[dict[str, Any]]) -> str | None:
-    normalized = _normalize_text(candidate).replace("_", " ")
-    if normalized.startswith("new:"):
-        normalized = normalized[4:].strip()
-    if not normalized:
-        return None
-
-    for item in definitions:
-        key = str(item.get("key") or "").strip()
-        name = _normalize_text(item.get("name"))
-        if candidate == key or normalized == key.replace("_", " ") or normalized == name:
-            return key
-
-    wanted = _attribute_tokens(normalized)
-    if not wanted:
+    candidate_tokens = _attribute_tokens(f"{proposed_key} {proposed_name}")
+    if not candidate_tokens:
         return None
     ranked: list[tuple[float, str]] = []
     for item in definitions:
         key = str(item.get("key") or "").strip()
-        existing = _attribute_tokens(f"{item.get('name') or ''} {key.replace('_', ' ')}")
-        if not existing:
+        tokens = _attribute_tokens(f"{key} {item.get('name') or ''}")
+        if not key or not tokens:
             continue
-        union = wanted | existing
-        score = len(wanted & existing) / len(union) if union else 0.0
-        if wanted.issubset(existing) or existing.issubset(wanted):
-            score = max(score, 0.85)
-        if score >= 0.72:
-            ranked.append((score, key))
+        overlap = candidate_tokens & tokens
+        union = candidate_tokens | tokens
+        score = len(overlap) / len(union) if union else 0.0
+        if candidate_tokens.issubset(tokens) or tokens.issubset(candidate_tokens):
+            score = max(score, 0.8)
+        ranked.append((score, key))
     ranked.sort(key=lambda item: (-item[0], item[1]))
-    if not ranked:
+    if not ranked or ranked[0][0] < 0.6:
         return None
-    if len(ranked) > 1 and abs(ranked[0][0] - ranked[1][0]) < 0.08:
+    if len(ranked) > 1 and ranked[0][0] == ranked[1][0]:
         return None
     return ranked[0][1]
 
 
-def _safe_candidate_name(raw_key: str, proposed_name: str = "") -> str | None:
-    name = ""
-    if raw_key.casefold().startswith("new:"):
-        name = raw_key.split(":", 1)[1]
-    elif proposed_name:
-        name = proposed_name
-    name = re.sub(r"\s+", " ", name).strip(" .:_-")
-    if not (3 <= len(name) <= 60):
-        return None
-    if len(name.split()) > 6:
-        return None
-    lowered = name.casefold()
-    if any(term in lowered for term in _SENSITIVE_ATTRIBUTE_TERMS):
-        return None
-    if not re.search(r"[a-zA-Z]", name):
-        return None
-
+def _safe_dynamic_attribute(update: dict[str, Any]) -> bool:
     from apps.ai_engagement.services.confidentiality import (
         is_sensitive_attribute_definition,
     )
-    if is_sensitive_attribute_definition({"key": raw_key, "name": name}):
-        return None
-    return name
+
+    key = str(update.get("key") or "").strip().lower()
+    name = str(update.get("name") or "").strip()
+    field_type = str(update.get("field_type") or "text").strip().casefold()
+    if (
+        update.get("create_if_missing") is not True
+        or not key
+        or not name
+        or len(key) > 100
+        or len(name) > 100
+        or not re.fullmatch(r"[a-z0-9_]+", key)
+        or field_type not in {"text", "numeric", "date", "datetime"}
+    ):
+        return False
+    if is_sensitive_attribute_definition({"key": key, "name": name}):
+        return False
+
+    # Dynamic CRM schema creation is for ordinary business context only. Highly
+    # sensitive personal information must never become an AI-created attribute.
+    compact = re.sub(r"[^a-z0-9]+", "", f"{key} {name}".casefold())
+    sensitive_parts = {
+        "aadhaar", "aadhar", "bankaccount", "biometric", "cardnumber",
+        "criminal", "diagnosis", "disease", "health", "medical",
+        "pan", "political", "race", "religion", "sexual", "ssn",
+    }
+    if any(part in compact for part in sensitive_parts):
+        return False
+    return True
 
 
-def _attribute_key_from_name(name: str) -> str:
-    key = re.sub(r"[^a-zA-Z0-9]+", "_", str(name or "").strip().lower())
-    return re.sub(r"_+", "_", key).strip("_")[:100]
-
-
-def _dynamic_attribute_update(
+def _new_key_dynamic_attribute(
     *,
-    update: dict[str, Any],
+    raw_key: str,
     value: Any,
-    latest_text: str,
 ) -> dict[str, Any] | None:
-    raw_key = str(update.get("key") or "").strip()
-    proposed_name = str(update.get("name") or "").strip()
-    explicitly_dynamic = (
-        raw_key.casefold().startswith("new:")
-        or update.get("create_if_missing") is True
+    """Normalize staging-style new:<Name> candidates into executor metadata."""
+    if not str(raw_key or "").strip().casefold().startswith("new:"):
+        return None
+    name = re.sub(r"\s+", " ", str(raw_key).split(":", 1)[1]).strip(" .:_-")
+    key = re.sub(r"[^a-zA-Z0-9]+", "_", name.lower())
+    key = re.sub(r"_+", "_", key).strip("_")[:100]
+    if not key or not name:
+        return None
+
+    field_type = (
+        "numeric"
+        if isinstance(value, (int, float)) and not isinstance(value, bool)
+        else "text"
     )
-    if not explicitly_dynamic or not _value_supported_by_latest_message(value, latest_text):
-        return None
-
-    name = _safe_candidate_name(raw_key, proposed_name)
-    if name is None:
-        return None
-
-    requested_type = str(update.get("field_type") or "").strip().casefold()
-    if requested_type in {"text", "numeric", "date", "datetime"}:
-        field_type = requested_type
-    else:
-        numeric = _numeric(value)
-        field_type = (
-            "numeric"
-            if numeric is not None
-            and re.fullmatch(
-                r"[₹$]?\s*\d[\d,]*(?:\.\d+)?\s*(?:k|thousand|lakh|lac|m|million|cr|crore)?",
-                str(value or "").strip(),
-                flags=re.IGNORECASE,
-            )
-            else "text"
-        )
-
-    if raw_key.casefold().startswith("new:"):
-        key = _attribute_key_from_name(name)
-    else:
-        key = raw_key.casefold()
-        if not re.fullmatch(r"[a-z0-9_]+", key):
-            key = _attribute_key_from_name(name)
-    if not key:
-        return None
-
-    return {
+    candidate = {
         "key": key,
         "value": value,
         "name": name,
         "field_type": field_type,
         "create_if_missing": True,
     }
+    return candidate if _safe_dynamic_attribute(candidate) else None
 
 
 def build_controlled_actions(
@@ -388,11 +375,6 @@ def build_controlled_actions(
 
     controlled: list[dict[str, Any]] = []
     attribute_definitions = _attribute_definitions(context)
-    attribute_by_key = {
-        str(item.get("key") or "").strip(): item
-        for item in attribute_definitions
-        if str(item.get("key") or "").strip()
-    }
 
     for action in getattr(decision, "crm_actions", []) or []:
         action_type = action.get("type")
@@ -417,30 +399,51 @@ def build_controlled_actions(
                 if not isinstance(update, dict):
                     continue
                 raw_key = str(update.get("key") or "").strip()
-                proposed_name = str(update.get("name") or "").strip()
                 value = update.get("value")
                 if not _value_supported_by_latest_message(value, latest_text):
                     continue
 
-                key = _resolve_existing_attribute_key(
-                    raw_key if not proposed_name else f"{raw_key} {proposed_name}",
-                    attribute_definitions,
+                new_key_candidate = _new_key_dynamic_attribute(
+                    raw_key=raw_key,
+                    value=value,
                 )
-                definition = attribute_by_key.get(key or "")
-                if key and definition:
-                    if _value_supported_by_definition(value, latest_text, definition):
-                        accepted.append({"key": key, "value": value})
+                if new_key_candidate is not None:
+                    proposed_key = str(new_key_candidate["key"])
+                    proposed_name = str(new_key_candidate["name"])
+                else:
+                    proposed_key = raw_key.lower()
+                    proposed_name = str(update.get("name") or "").strip()
+
+                resolved_key = _resolve_existing_attribute_key(
+                    proposed_key=proposed_key,
+                    proposed_name=proposed_name,
+                    definitions=attribute_definitions,
+                )
+                mapping_rules = ((runtime_policy.get("crm") or {}).get("attribute_mapped") or [])
+                from apps.ai_engagement.services.engagement_instruction_runtime import _definition_reference_score
+                definition = next((item for item in attribute_definitions if item.get("key") == resolved_key), {"key": proposed_key, "name": proposed_name})
+                permitted = any(_definition_reference_score(rule, definition) >= 98 for rule in mapping_rules)
+                if not permitted:
+                    continue
+                if resolved_key:
+                    accepted.append({"key": resolved_key, "value": value})
                     continue
 
                 if len(attribute_definitions) >= 15:
                     continue
-                dynamic_update = _dynamic_attribute_update(
-                    update=update,
-                    value=value,
-                    latest_text=latest_text,
-                )
-                if dynamic_update is not None:
-                    accepted.append(dynamic_update)
+                if new_key_candidate is not None:
+                    accepted.append(new_key_candidate)
+                    continue
+                if _safe_dynamic_attribute(update):
+                    accepted.append(
+                        {
+                            "key": proposed_key,
+                            "value": value,
+                            "name": proposed_name,
+                            "field_type": str(update.get("field_type") or "text").strip().casefold(),
+                            "create_if_missing": True,
+                        }
+                    )
             if accepted:
                 controlled.append({"type": "attribute_updates", "updates": accepted})
             continue

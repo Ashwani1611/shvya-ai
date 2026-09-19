@@ -1,4 +1,7 @@
 from __future__ import annotations
+from tests.playbook_fixtures import build_ai_playbook, qualification_questions
+from apps.ai_engagement.services.playbook import playbook_for_engagement
+
 
 import json
 from unittest.mock import Mock
@@ -31,13 +34,9 @@ class EngagementServiceTests(TestCase):
                 "providing certification programs."
             ),
             bot_languages="English, Hindi, Hinglish",
-            qualification_requirements=(
-                "Identify course interest, budget, "
-                "timeline, and buying intent."
-            ),
-            engagement_instructions=(
-                "Use a friendly, concise, and helpful tone."
-            ),
+            ai_playbook=build_ai_playbook(questions="Identify course interest, budget, "
+                "timeline, and buying intent.", rules="Use a friendly, concise, and helpful tone."),
+
             ai_enabled=True,
             bump_up_enabled=True,
             bump_up_count=2,
@@ -162,15 +161,15 @@ class EngagementServiceTests(TestCase):
         payload = json.loads(input_text)
         self.assertIn("SHVYA", instructions)
         self.assertIn("customer-facing", instructions.lower())
-        self.assertIn(self.org_info.engagement_instructions, instructions)
+        self.assertIn(playbook_for_engagement(self.org_info.ai_playbook), instructions)
         self.assertLess(
-            instructions.index(self.org_info.engagement_instructions),
+            instructions.index(playbook_for_engagement(self.org_info.ai_playbook)),
             instructions.index("SHVYA AI ENGAGEMENT TASK"),
         )
         self.assertIn(self.organization.name, input_text)
         self.assertIn(self.lead.name, input_text)
-        self.assertIn(self.org_info.engagement_instructions, instructions)
-        self.assertNotIn(self.org_info.qualification_requirements, input_text)
+        self.assertIn(playbook_for_engagement(self.org_info.ai_playbook), instructions)
+        self.assertNotIn(qualification_questions(self.org_info.ai_playbook), input_text)
         self.assertNotIn("requirements", payload["organization"]["ai_profile"]["qualification"])
         self.assertIn("qualification_turn", payload)
         self.assertIsNotNone(payload["qualification_turn"]["current_requirement"])

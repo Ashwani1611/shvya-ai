@@ -1,3 +1,5 @@
+from tests.playbook_fixtures import build_ai_playbook, qualification_questions
+
 import json
 from pathlib import Path
 import tempfile
@@ -42,11 +44,11 @@ class PhaseIntegrationTests(TestCase):
         for key in ("tool", "volume"):
             AttributeDefinition.objects.create(organization=self.organization, name=key, key=key)
         info, _ = OrgInfo.objects.get_or_create(organization=self.organization)
-        info.qualification_requirements = ("[id: tool] Which tool do you use?\nA. Excel\nB. CRM\n"
-                                           "[id: volume] How many leads do you receive daily?\nAll questions are required")
-        info.engagement_instructions = "## Attribute mapped\ntool -> tool\nvolume -> volume"
+        info.ai_playbook = build_ai_playbook(questions="[id: tool] Which tool do you use?\nA. Excel\nB. CRM\n"
+                                           "[id: volume] How many leads do you receive daily?\nAll questions are required", rules="## Attribute mapped\ntool -> tool\nvolume -> volume")
+
         info.save()
-        requirements = compile_qualification_requirements(info.qualification_requirements)["requirements"]
+        requirements = compile_qualification_requirements(qualification_questions(info.ai_playbook))["requirements"]
         record_last_asked_requirement(self.lead, requirements[0]["id"], requirements=requirements)
         return requirements
 

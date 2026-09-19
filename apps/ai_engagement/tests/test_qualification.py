@@ -1,4 +1,6 @@
 from __future__ import annotations
+from tests.playbook_fixtures import build_ai_playbook
+
 
 from unittest.mock import patch
 import json
@@ -59,13 +61,11 @@ class QualificationServiceTests(TestCase):
             bot_languages=(
                 "English, Hindi, Hinglish"
             ),
-            qualification_requirements=(
-                "Identify the learner's preferred course, "
+            ai_playbook=build_ai_playbook(questions="Identify the learner's preferred course, "
                 "preferred batch timing, main training goal, "
                 "current lead volume, and buying intent. "
                 "Identify missing qualification information "
-                "without inventing facts."
-            ),
+                "without inventing facts."),
             ai_enabled=True,
         )
 
@@ -166,7 +166,7 @@ class QualificationServiceTests(TestCase):
         )
 
     def setup_answer(self):
-        OrgInfo.objects.filter(organization=self.organization).update(qualification_requirements="Which course?")
+        OrgInfo.objects.filter(organization=self.organization).update(ai_playbook=build_ai_playbook(questions="Which course?"))
         lead = self.create_lead("+919876543240")
         self.create_message(lead=lead, external_id="question", body="Which course?", direction="outbound")
         answer = self.create_message(lead=lead, external_id="answer", body="Security+")

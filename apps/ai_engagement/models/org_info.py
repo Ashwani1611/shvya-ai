@@ -38,20 +38,9 @@ class OrgInfo(models.Model):
         ),
     )
 
-    qualification_requirements = models.TextField(
+    ai_playbook = models.TextField(
         blank=True,
-        help_text=(
-            "Instructions and requirements SHVYA AI should use "
-            "when qualifying leads."
-        ),
-    )
-
-    engagement_instructions = models.TextField(
-        blank=True,
-        help_text=(
-            "Instructions SHVYA AI should follow when engaging "
-            "with leads in customer-facing conversations."
-        ),
+        help_text="The organization's complete AI operating specification: rules, messages, qualification, CRM routing, attributes and reminders.",
     )
 
     # =========================================================

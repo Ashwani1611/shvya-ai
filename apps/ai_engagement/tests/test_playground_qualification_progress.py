@@ -1,3 +1,5 @@
+from tests.playbook_fixtures import build_ai_playbook
+
 import json
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
@@ -36,8 +38,8 @@ class PlaygroundQualificationProgressRegressionTests(SimpleTestCase):
             ai_enabled=True,
             about="Sales engagement platform",
             bot_languages="English",
-            qualification_requirements=self.raw,
-            engagement_instructions="Ask one qualification question at a time.",
+            ai_playbook=build_ai_playbook(questions=self.raw, rules="Ask one qualification question at a time."),
+
             bump_up_enabled=False,
             bump_up_count=0,
         )

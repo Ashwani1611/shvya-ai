@@ -10,7 +10,7 @@ from django.core.cache import cache
 from django.utils.text import slugify
 
 
-PROFILE_VERSION = 2
+PROFILE_VERSION = 3
 PROFILE_CACHE_SECONDS = 300
 
 _OPTION_LINE_RE = re.compile(
@@ -362,10 +362,17 @@ def _profile_from_values(
     organization_name: str,
     about: str,
     bot_languages: str,
-    qualification_requirements: str,
-    engagement_instructions: str,
+    ai_playbook: str,
 ) -> dict[str, Any]:
+    from apps.ai_engagement.services.playbook import parse_playbook, playbook_for_engagement
+    from apps.ai_engagement.services.engagement_instruction_policy import compile_engagement_instruction_policy
+    sections = parse_playbook(ai_playbook)
+    qualification = compile_qualification_requirements(sections["qualification_questions"])
+    qualification["source"] = "ai_playbook.qualification_questions"
+    qualification["criteria_text"] = sections["qualification_criteria"]
     return {
+        "playbook": {"sections": sections},
+        "engagement_policy": compile_engagement_instruction_policy(ai_playbook),
         "version": PROFILE_VERSION,
         "identity": {
             "name": organization_name,
@@ -373,9 +380,9 @@ def _profile_from_values(
         },
         "communication": {
             "languages": _languages(bot_languages),
-            "custom_instructions": str(engagement_instructions or "").strip(),
+            "custom_instructions": playbook_for_engagement(ai_playbook),
         },
-        "qualification": compile_qualification_requirements(qualification_requirements),
+        "qualification": qualification,
         "knowledge_policy": {
             "source": "rag_only",
             "unknown_fact": "human_confirmation",
@@ -391,7 +398,7 @@ def compile_org_ai_profile(*, organization_name: str, org_info) -> dict[str, Any
 
     updated_at = getattr(org_info, "updated_at", None)
     cache_key = (
-        f"shvya:ai:org-profile:{getattr(org_info, 'pk', 'none')}:"
+        f"shvya:ai:org-profile:v3:{getattr(org_info, 'pk', 'none')}:"
         f"{updated_at.isoformat() if updated_at else 'na'}"
     )
     cached = cache.get(cache_key)
@@ -402,8 +409,7 @@ def compile_org_ai_profile(*, organization_name: str, org_info) -> dict[str, Any
         organization_name=organization_name,
         about=getattr(org_info, "about", ""),
         bot_languages=getattr(org_info, "bot_languages", ""),
-        qualification_requirements=getattr(org_info, "qualification_requirements", ""),
-        engagement_instructions=getattr(org_info, "engagement_instructions", ""),
+        ai_playbook=getattr(org_info, "ai_playbook", ""),
     )
     cache.set(cache_key, profile, PROFILE_CACHE_SECONDS)
     return deepcopy(profile)
@@ -416,6 +422,5 @@ def compile_org_ai_profile_from_context(organization_context: dict[str, Any]) ->
         organization_name=str(context.get("name") or ""),
         about=str(context.get("about") or ""),
         bot_languages=str(context.get("bot_languages") or ""),
-        qualification_requirements=str(context.get("qualification_requirements") or ""),
-        engagement_instructions=str(context.get("engagement_instructions") or ""),
+        ai_playbook=str(context.get("ai_playbook") or ""),
     )

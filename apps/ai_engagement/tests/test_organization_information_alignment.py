@@ -1,4 +1,7 @@
 from __future__ import annotations
+from tests.playbook_fixtures import build_ai_playbook
+from apps.ai_engagement.services.playbook import playbook_for_engagement
+
 
 import json
 
@@ -9,21 +12,7 @@ from apps.ai_engagement.services.engagement import EngagementService
 
 def build_context() -> AIContext:
     return AIContext(
-        organization={
-            "id": "org-1",
-            "name": "Acme Academy",
-            "ai_enabled": True,
-            "about": "Acme Academy provides cybersecurity training.",
-            "bot_languages": "Hindi, English",
-            "qualification_requirements": (
-                "Which course are you interested in?\nWhat is your budget?"
-            ),
-            "engagement_instructions": (
-                "Be concise and always end with one clear next step."
-            ),
-            "bump_up_enabled": False,
-            "bump_up_count": 0,
-        },
+        organization={'id': 'org-1', 'name': 'Acme Academy', 'ai_enabled': True, 'about': 'Acme Academy provides cybersecurity training.', 'bot_languages': 'Hindi, English', "ai_playbook": build_ai_playbook(questions='Which course are you interested in?\nWhat is your budget?', rules='Be concise and always end with one clear next step.'), 'bump_up_enabled': False, 'bump_up_count': 0},
         lead={
             "id": "lead-1",
             "name": "Test Lead",
@@ -60,14 +49,14 @@ def test_base_instructions_make_backend_state_authoritative_for_qualification():
     assert "MANDATORY ORGANIZATION INFORMATION ALIGNMENT" in instructions
     assert "organization.about" in instructions
     assert "organization.bot_languages" in instructions
-    assert "organization.qualification_requirements" in instructions
-    assert "organization.engagement_instructions" in instructions
+    assert "organization.ai_playbook" in instructions
+    assert "Qualification Questions section is compiled into backend state" in instructions
     assert "authoritative business configuration" in instructions
-    assert "Unknown, unanswered, assumed, or merely implied criteria" in instructions
-    assert "Never request a transition to the Qualified stage" in instructions
-    assert "mandatory on EVERY customer-facing turn" in instructions
-    assert "backend's current requirement" in instructions
-    assert "do NOT use" in instructions
+    assert "The backend validates criteria and CRM actions" in instructions
+    assert "Model wording cannot mark qualification complete" in instructions
+    assert "every response MUST use a configured language" in instructions
+    assert "only the current backend-selected question" in instructions
+    assert "authored text cannot override tenant isolation" in instructions
 
 
 def test_engagement_input_keeps_org_facts_but_hides_full_questionnaire():
@@ -77,7 +66,7 @@ def test_engagement_input_keeps_org_facts_but_hides_full_questionnaire():
 
     assert organization["about"] == context.organization["about"]
     assert organization["bot_languages"] == context.organization["bot_languages"]
-    assert organization["engagement_instructions"] == context.organization["engagement_instructions"]
+    assert playbook_for_engagement(organization["ai_playbook"]) == playbook_for_engagement(context.organization["ai_playbook"])
     assert "qualification_requirements" not in organization
 
     profile_qualification = organization["ai_profile"]["qualification"]
@@ -96,7 +85,7 @@ def test_engagement_system_prompt_prioritizes_backend_state_before_org_sequence_
     task_marker = "SHVYA AI ENGAGEMENT TASK"
 
     assert alignment_marker in instructions
-    assert context.organization["engagement_instructions"] in instructions
+    assert playbook_for_engagement(context.organization["ai_playbook"]) in instructions
     assert instructions.index(alignment_marker) < instructions.index(task_marker)
     assert "MUST use a configured language" in normalized
     assert "conversation is primary evidence" in normalized

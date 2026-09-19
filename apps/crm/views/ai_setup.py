@@ -4,10 +4,13 @@ from django.contrib import messages
 from django.shortcuts import redirect, render
 
 from apps.ai_engagement.models import Document, KnowledgeSource
+from apps.ai_engagement.services.ai_brain_setup import save_ai_brain_configuration
+from apps.ai_engagement.services.knowledge_file_security import MAX_UPLOAD_BYTES
 from apps.ai_engagement.services.knowledge_source import (
     KnowledgeSourceService,
     KnowledgeSourceServiceError,
 )
+from apps.ai_engagement.services.playbook import parse_playbook
 from apps.ai_engagement.services.org_info import (
     OrgInfoService,
     OrgInfoServiceError,
@@ -58,7 +61,6 @@ def ai_setup_view(request):
     user = request.crm_user
     organization = user.organization
 
-    org_info_service = OrgInfoService()
     source_service = KnowledgeSourceService()
 
     if request.method == "POST":
@@ -73,90 +75,26 @@ def ai_setup_view(request):
         # =========================================================
 
         if action == "save_settings":
-
-            about = request.POST.get(
-                "about",
-                "",
-            )
-
-            bot_languages = request.POST.get(
-                "bot_languages",
-                "",
-            )
-
-            qualification_requirements = request.POST.get(
-                "qualification_requirements",
-                "",
-            )
-
-            engagement_instructions = request.POST.get(
-                "engagement_instructions",
-                "",
-            )
-
-            bump_up_enabled = (
-                request.POST.get("bump_up_enabled")
-                == "on"
-            )
-
-            bump_up_count_raw = request.POST.get(
-                "bump_up_count",
-                "0",
-            )
-
+            data = {
+                "organization_name": request.POST.get("organization_name", "").strip(),
+                "about": request.POST.get("about", "").strip(),
+                "bot_languages": request.POST.get("bot_languages", "").strip(),
+                "ai_playbook": request.POST.get("ai_playbook", "").strip(),
+            }
             try:
-                bump_up_count = int(
-                    bump_up_count_raw
-                )
-
-            except (
-                TypeError,
-                ValueError,
-            ):
-                messages.error(
-                    request,
-                    "Bump-up count must be a non-negative integer.",
-                )
-
-                return redirect(
-                    "crm-knowledge-base-ai-setup"
-                )
-
-            try:
-                org_info_service.update(
+                if not data["about"]:
+                    raise OrgInfoServiceError("Describe what your company does.")
+                save_ai_brain_configuration(
                     organization=organization,
-                    data={
-                        "about": about,
-                        "bot_languages": bot_languages,
-                        "qualification_requirements": (
-                            qualification_requirements
-                        ),
-                        "engagement_instructions": (
-                            engagement_instructions
-                        ),
-                        "bump_up_enabled": bump_up_enabled,
-                        "bump_up_count": bump_up_count,
-                    },
+                    data=data,
+                    urls=request.POST.getlist("knowledge_urls"),
+                    uploaded_file=request.FILES.get("knowledge_file"),
                 )
-
-            except OrgInfoServiceError as exc:
-                messages.error(
-                    request,
-                    str(exc),
-                )
-
-                return redirect(
-                    "crm-knowledge-base-ai-setup"
-                )
-
-            messages.success(
-                request,
-                "AI settings saved successfully.",
-            )
-
-            return redirect(
-                "crm-knowledge-base-ai-setup"
-            )
+            except (OrgInfoServiceError, KnowledgeSourceServiceError) as exc:
+                messages.error(request, str(exc))
+                return _render_ai_setup(request, organization, form_values=data, status=400)
+            messages.success(request, "AI Brain saved successfully.")
+            return redirect("crm-knowledge-base-ai-setup")
 
         if action == "save_pipeline_ai":
             pipeline_id = request.POST.get("pipeline_id", "")
@@ -468,31 +406,37 @@ def ai_setup_view(request):
             "crm-knowledge-base-ai-setup"
         )
 
-    org_info = org_info_service.get_or_create(
-        organization=organization,
-    )
+    return _render_ai_setup(request, organization)
 
-    sources, documents = _get_knowledge_data(
-        organization,
-    )
 
+def _render_ai_setup(request, organization, *, form_values=None, status=200):
+    org_info = OrgInfoService().get_or_create(organization=organization)
+    sources, documents = _get_knowledge_data(organization)
+    values = form_values if form_values is not None else {
+        "organization_name": organization.name,
+        "about": org_info.about,
+        "bot_languages": org_info.bot_languages,
+        "ai_playbook": org_info.ai_playbook,
+    }
+    sections = parse_playbook(values["ai_playbook"])
     return render(
         request,
         "crm/knowledge_base/ai_setup.html",
         {
             "org_info": org_info,
             "organization": organization,
-            "knowledge_sources": sources,
-            "knowledge_documents": documents,
-            "guided_documents": documents.exclude(share_instruction=""),
-            "pipelines": Pipeline.objects.filter(
-                organization=organization,
-                is_active=True,
-            ).order_by("name"),
-            "supported_file_extensions": (
-                KnowledgeSourceService()
-                .ingestion_service
-                .SUPPORTED_FILE_EXTENSIONS
+            "form_values": values,
+            "playbook_needs_criteria": bool(
+                sections["qualification_questions"] and not sections["qualification_criteria"]
             ),
+            "pending_urls": request.POST.getlist("knowledge_urls") or [""],
+            "knowledge_sources": sources.filter(source_type=KnowledgeSource.SourceType.URL),
+            "knowledge_documents": documents.filter(share_instruction="").exclude(file=""),
+            "guided_documents": documents.exclude(share_instruction="").exclude(file=""),
+            "supported_file_extensions": sorted(
+                KnowledgeSourceService().ingestion_service.SUPPORTED_FILE_EXTENSIONS
+            ),
+            "knowledge_max_upload_bytes": MAX_UPLOAD_BYTES,
         },
+        status=status,
     )

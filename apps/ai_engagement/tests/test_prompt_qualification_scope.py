@@ -51,11 +51,11 @@ class PromptQualificationScopeTests(SimpleTestCase):
                 "name": "SHVYA",
                 "about": "SHVYA helps businesses manage existing leads.",
                 "bot_languages": "English",
-                "qualification_requirements": requirement["question"],
-                "engagement_instructions": "Ask one question at a time.",
+                "ai_playbook": "## Rules\nAsk one question at a time.\n## Qualification Questions\n" + requirement["question"],
             },
             lead={
                 "id": "lead-1",
+                "notes": "Confidential sales negotiation note",
                 "attributes": {},
                 "qualification": qstate,
             },
@@ -69,7 +69,7 @@ class PromptQualificationScopeTests(SimpleTestCase):
                 ]
             },
             conversation_summary=None,
-            qualification_notes=[],
+            qualification_notes=[{"note": "Private sales strategy must not reach the response prompt."}],
             knowledge=[],
         )
         raw = EngagementService()._build_input(
@@ -90,6 +90,10 @@ class PromptQualificationScopeTests(SimpleTestCase):
         self.assertFalse(turn["current_requirement_was_asked"])
         self.assertIsNone(payload["next_requirement"])
         self.assertIsNone(payload["backend_state"]["current_requirement_id"])
+        self.assertNotIn("qualification_notes", payload)
+        self.assertNotIn("Private sales strategy", json.dumps(payload))
+        self.assertNotIn("notes", payload["lead"])
+        self.assertNotIn("Confidential sales negotiation", json.dumps(payload))
 
     def test_new_lead_qualification_mode_keeps_backend_current_requirement(self):
         payload, requirement = self._payload(engagement_mode="qualification")

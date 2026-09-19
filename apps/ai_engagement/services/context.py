@@ -307,8 +307,7 @@ class AIContextBuilder:
                 "ai_enabled": False,
                 "about": "",
                 "bot_languages": "",
-                "qualification_requirements": "",
-                "engagement_instructions": "",
+                "ai_playbook": "",
                 "bump_up_enabled": False,
                 "bump_up_count": 0,
             }
@@ -321,12 +320,7 @@ class AIContextBuilder:
             "ai_enabled": org_info.ai_enabled,
             "about": org_info.about,
             "bot_languages": org_info.bot_languages,
-            "qualification_requirements": (
-                org_info.qualification_requirements
-            ),
-            "engagement_instructions": (
-                org_info.engagement_instructions
-            ),
+            "ai_playbook": org_info.ai_playbook,
             "bump_up_enabled": (
                 org_info.bump_up_enabled
             ),

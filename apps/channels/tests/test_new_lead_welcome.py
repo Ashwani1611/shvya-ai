@@ -1,3 +1,5 @@
+from tests.playbook_fixtures import build_ai_playbook
+
 from datetime import timedelta
 from unittest.mock import patch
 
@@ -160,11 +162,7 @@ class NewLeadWelcomeTests(TestCase):
     ):
         OrgInfo.objects.update_or_create(
             organization=self.org,
-            defaults={
-                "about": "We help businesses automate customer engagement.",
-                "bot_languages": "English",
-                "engagement_instructions": "Keep messages concise and professional.",
-            },
+            defaults={'about': 'We help businesses automate customer engagement.', 'bot_languages': 'English', "ai_playbook": build_ai_playbook(rules='Keep messages concise and professional.')},
         )
         account = self._hosted_account()
         provider = provider_class.return_value

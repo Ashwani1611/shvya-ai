@@ -1,4 +1,7 @@
 from __future__ import annotations
+from tests.playbook_fixtures import build_ai_playbook, replace_playbook_questions, qualification_questions
+from apps.ai_engagement.services.playbook import playbook_for_engagement
+
 
 from types import SimpleNamespace
 
@@ -41,11 +44,9 @@ class NewLeadQualificationLifecycleTests(TestCase):
             organization=self.organization,
             about="Acme manages existing sales leads.",
             bot_languages="English, Hindi",
-            qualification_requirements=(
-                "What is your budget?\nA. Under 50k\nB. 50k+\n"
-                "Which city are you in?\nA. Delhi\nB. Mumbai"
-            ),
-            engagement_instructions="Be concise and consultative.",
+            ai_playbook=build_ai_playbook(questions="What is your budget?\nA. Under 50k\nB. 50k+\n"
+                "Which city are you in?\nA. Delhi\nB. Mumbai", rules="Be concise and consultative."),
+
             ai_enabled=True,
         )
         self.lead = Lead.objects.create(
@@ -57,7 +58,7 @@ class NewLeadQualificationLifecycleTests(TestCase):
         )
 
     def _requirements(self):
-        return compile_qualification_requirements(self.org_info.qualification_requirements)["requirements"]
+        return compile_qualification_requirements(qualification_questions(self.org_info.ai_playbook))["requirements"]
 
     def test_incomplete_qualification_pauses_outside_new_lead_and_resumes_same_requirement(self):
         requirements = self._requirements()
@@ -91,8 +92,8 @@ class NewLeadQualificationLifecycleTests(TestCase):
         self.assertEqual(resumed["current_requirement_id"], pending_id)
 
     def test_final_answer_then_qualified_transition_sets_result_and_short_note(self):
-        self.org_info.qualification_requirements = "What is your budget?\nA. Under 50k\nB. 50k+"
-        self.org_info.save(update_fields=["qualification_requirements", "updated_at"])
+        self.org_info.ai_playbook = replace_playbook_questions(self.org_info.ai_playbook, "What is your budget?\nA. Under 50k\nB. 50k+")
+        self.org_info.save(update_fields=["ai_playbook", "updated_at"])
         requirements = self._requirements()
         record_last_asked_requirement(self.lead, requirements[0]["id"], requirements=requirements)
         apply_unambiguous_reply(
@@ -129,7 +130,7 @@ class NewLeadQualificationLifecycleTests(TestCase):
         context = AIContextBuilder()._build_organization_context(organization=self.organization)
         self.assertEqual(context["about"], self.org_info.about)
         self.assertEqual(context["bot_languages"], self.org_info.bot_languages)
-        self.assertEqual(context["engagement_instructions"], self.org_info.engagement_instructions)
+        self.assertEqual(playbook_for_engagement(context["ai_playbook"]), playbook_for_engagement(self.org_info.ai_playbook))
 
 
 class QualificationStagePolicyTests(SimpleTestCase):

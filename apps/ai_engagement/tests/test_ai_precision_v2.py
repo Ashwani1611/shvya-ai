@@ -1,4 +1,6 @@
 from __future__ import annotations
+from tests.playbook_fixtures import build_ai_playbook
+
 
 import json
 from types import SimpleNamespace
@@ -79,15 +81,15 @@ class OrganizationAIProfileTests(SimpleTestCase):
             "name": "Org One",
             "about": "Only sells solar panels.",
             "bot_languages": "English",
-            "qualification_requirements": "What is your budget?",
-            "engagement_instructions": "Be formal.",
+            "ai_playbook": build_ai_playbook(questions="What is your budget?", rules="Be formal."),
+
         })
         second = compile_org_ai_profile_from_context({
             "name": "Org Two",
             "about": "Only provides fitness coaching.",
             "bot_languages": "Hindi",
-            "qualification_requirements": "When do you want to start?",
-            "engagement_instructions": "Be conversational.",
+            "ai_playbook": build_ai_playbook(questions="When do you want to start?", rules="Be conversational."),
+
         })
         self.assertEqual(first["identity"]["name"], "Org One")
         self.assertEqual(second["identity"]["name"], "Org Two")
