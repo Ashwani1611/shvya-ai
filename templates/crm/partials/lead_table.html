@@ -13,7 +13,8 @@
      data-refresh-url="{% url 'crm-lead-table-partial' %}?{{ bulk_query }}"
      data-can-move="{{ bulk_permissions.move|yesno:'true,false' }}"
      data-can-edit="{{ bulk_permissions.edit|yesno:'true,false' }}"
-     data-can-delete="{{ bulk_permissions.delete|yesno:'true,false' }}">
+     data-can-delete="{{ bulk_permissions.delete|yesno:'true,false' }}"
+     data-can-campaign="{{ bulk_campaign_available|yesno:'true,false' }}">
 
     <div class="crm-bulk-toolbar" data-bulk-toolbar hidden aria-label="Selected lead actions">
         <strong data-bulk-count aria-live="polite"></strong>
@@ -23,6 +24,12 @@
             <button type="button" data-bulk-action="update" class="crm-bulk-button crm-bulk-primary">Update Leads</button>
             {% endif %}
             <button type="button" data-bulk-action="export" class="crm-bulk-button">Export</button>
+            {% if bulk_campaign_available %}
+            <button type="button" data-bulk-action="campaign" class="crm-bulk-button">
+                <i class="ti ti-speakerphone" aria-hidden="true"></i>
+                Bulk Campaigns
+            </button>
+            {% endif %}
             {% if bulk_permissions.delete %}
             <button type="button" data-bulk-action="delete" class="crm-bulk-button crm-bulk-danger-outline">Delete</button>
             {% endif %}
