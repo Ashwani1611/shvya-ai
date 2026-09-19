@@ -178,6 +178,20 @@ class DirectQualificationReplyTests(SimpleTestCase):
         self.assertEqual(result[0], REQUIREMENT_ANSWERED)
         self.assertEqual(result[1], "Multiple places")
 
+    def test_explicit_multiple_problem_options_are_accepted_together(self):
+        result = _classify_direct_reply(
+            text="slow reply and missed follow up",
+            question=(
+                "What is your biggest challenge with managing or converting leads right now?\n"
+                "A. Slow replies\n"
+                "B. Missed follow-ups\n"
+                "C. Leads going cold\n"
+                "D. No proper tracking"
+            ),
+        )
+        self.assertEqual(result[0], REQUIREMENT_ANSWERED)
+        self.assertEqual(result[1], "Slow replies; Missed follow-ups")
+
     def test_unique_natural_keyword_can_resolve_configured_option(self):
         result = _classify_direct_reply(
             text="Followup",
