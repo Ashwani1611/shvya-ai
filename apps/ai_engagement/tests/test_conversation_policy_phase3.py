@@ -11,6 +11,7 @@ from apps.ai_engagement.services.conversation_policy import (
 )
 from apps.ai_engagement.services.conversation_policy_runtime import (
     _affirmed_information_offer,
+    _information_reply_has_substance,
     _record_policy,
 )
 from apps.ai_engagement.services.intent_types import (
@@ -97,6 +98,40 @@ def test_yes_after_feature_offer_is_treated_as_conversation_continuation():
     assert _affirmed_information_offer(lead=lead, source=source) is False
 
 
+def test_product_information_reply_must_be_substantive():
+    assert (
+        _information_reply_has_substance(
+            "Would you like to know more about our plans or features?"
+        )
+        is False
+    )
+    assert (
+        _information_reply_has_substance(
+            "SHVYA AI is an AI-powered WhatsApp sales and CRM automation platform."
+        )
+        is True
+    )
+
+
+def test_detailed_information_reply_requires_more_than_a_shallow_one_liner():
+    assert (
+        _information_reply_has_substance(
+            "It automates follow-ups and manages conversations.",
+            detailed=True,
+        )
+        is False
+    )
+    assert (
+        _information_reply_has_substance(
+            "SHVYA AI manages WhatsApp conversations, captures leads into CRM, "
+            "qualifies prospects, automates follow-ups, tracks pipeline activity, "
+            "and supports workflow-based sales automation.",
+            detailed=True,
+        )
+        is True
+    )
+
+
 def test_contextual_qualification_answer_can_pause_next_question():
     result = decide(context(intent(Intent.QUALIFICATION_ANSWER), accepted=True, next_id="q4"))
     assert result.outcome == ConversationPolicyOutcome.NORMAL_CONVERSATION
@@ -115,6 +150,23 @@ def test_short_direct_qualification_answer_can_continue_immediately():
     )
     assert result.outcome == ConversationPolicyOutcome.ASK_QUALIFICATION
     assert result.next_requirement_id == "q4"
+
+
+def test_product_information_intent_without_question_mark_answers_before_qualification():
+    result = decide(
+        context(
+            intent(
+                Intent.PRODUCT_OR_SERVICE_QUESTION,
+                requires_knowledge=True,
+            ),
+            next_id="q1",
+        )
+    )
+    assert result.outcome == ConversationPolicyOutcome.ANSWER
+    assert result.answer_customer_question is True
+    assert result.continue_qualification is False
+    assert result.next_requirement_id is None
+    assert result.requires_knowledge is True
 
 
 def test_pricing_only_answers_without_forcing_qualification():

@@ -111,9 +111,40 @@ def deterministic_intents(text: str) -> set[Intent]:
         if contains_any(value, terms):
             intents.add(intent)
 
+    # Natural product-information requests are not always phrased as questions.
+    # Keep specific pricing/policy/location/availability intents authoritative,
+    # then treat broad "know about / functionality / capabilities" language as
+    # product/service information instead of allowing active qualification to
+    # consume it as a free-form answer.
+    if (
+        (
+            contains_any(
+                value,
+                (
+                    "want to know about",
+                    "would like to know about",
+                    "know about",
+                    "functionality",
+                    "functionalities",
+                    "capabilities",
+                    "what can you do",
+                    "what do you offer",
+                ),
+            )
+        )
+        and not intents
+        & {
+            Intent.PRICING_QUESTION,
+            Intent.POLICY_QUESTION,
+            Intent.LOCATION_QUESTION,
+            Intent.AVAILABILITY_QUESTION,
+        }
+    ):
+        intents.add(Intent.PRODUCT_OR_SERVICE_QUESTION)
+
     # A lead asking "What is <brand/product>?" is an informational question,
-    # even when they omit the question mark. Never let an active free-form
-    # qualification requirement consume that message as its answer.
+    # even when they omit the question mark. Keep more specific question
+    # families (pricing/policy/location/availability) authoritative.
     if (
         direct_question(text)
         and value.startswith("what is ")
