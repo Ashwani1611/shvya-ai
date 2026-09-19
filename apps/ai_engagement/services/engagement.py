@@ -631,6 +631,8 @@ Do not add explanations, markdown, or chain-of-thought.
         words = set(re.findall(r"[a-z0-9]+", normalized))
         if words & self._KNOWLEDGE_TERMS:
             return True
+        if normalized.startswith(("what is ", "what's ")):
+            return True
         if "?" in text and len(normalized) > 20:
             return True
         return False
