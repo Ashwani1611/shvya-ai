@@ -243,7 +243,12 @@ def boolean_candidate(text: str, question: str) -> bool | None:
         token for token in re.findall(r"[a-z]{3,}", question)
         if token not in {"are", "you", "your", "the", "and", "with", "have", "has", "does", "do", "is"}
     ]
-    if len(value.split()) > 3 and keywords and not any(token in value for token in keywords[:5]):
+    if (
+        not intermittent
+        and len(value.split()) > 3
+        and keywords
+        and not any(token in value for token in keywords[:5])
+    ):
         if not ("ad" in question and re.search(r"\bads?\b", value)):
             return None
     return yes
