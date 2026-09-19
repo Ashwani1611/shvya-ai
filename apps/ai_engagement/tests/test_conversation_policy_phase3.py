@@ -11,6 +11,7 @@ from apps.ai_engagement.services.conversation_policy import (
 )
 from apps.ai_engagement.services.conversation_policy_runtime import (
     _affirmed_information_offer,
+    _information_reply_has_substance,
     _record_policy,
 )
 from apps.ai_engagement.services.intent_types import (
@@ -93,6 +94,40 @@ def test_yes_after_feature_offer_is_treated_as_conversation_continuation():
         body="What is your biggest challenge with managing leads?"
     )
     assert _affirmed_information_offer(lead=lead, source=source) is False
+
+
+def test_product_information_reply_must_be_substantive():
+    assert (
+        _information_reply_has_substance(
+            "Would you like to know more about our plans or features?"
+        )
+        is False
+    )
+    assert (
+        _information_reply_has_substance(
+            "SHVYA AI is an AI-powered WhatsApp sales and CRM automation platform."
+        )
+        is True
+    )
+
+
+def test_detailed_information_reply_requires_more_than_a_shallow_one_liner():
+    assert (
+        _information_reply_has_substance(
+            "It automates follow-ups and manages conversations.",
+            detailed=True,
+        )
+        is False
+    )
+    assert (
+        _information_reply_has_substance(
+            "SHVYA AI manages WhatsApp conversations, captures leads into CRM, "
+            "qualifies prospects, automates follow-ups, tracks pipeline activity, "
+            "and supports workflow-based sales automation.",
+            detailed=True,
+        )
+        is True
+    )
 
 
 def test_qualification_answer_only_continues_to_next_requirement():
