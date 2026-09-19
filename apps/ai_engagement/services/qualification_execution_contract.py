@@ -660,6 +660,53 @@ def _plan(*, source, answer, state, requirements, config, results) -> dict[str, 
 
     completed = _norm(state.get("qualification_status")) == "completed"
     target = config.get("completion_stage")
+    source_id = str(getattr(source, "id", "") or "")
+    answered_requirement = next(
+        (
+            requirement
+            for requirement in requirements
+            if str(
+                (
+                    (state.get("requirement_states") or {}).get(
+                        str(requirement.get("id") or "")
+                    )
+                    or {}
+                ).get("source_message_id")
+                or ""
+            )
+            == source_id
+            and _norm(
+                (
+                    (state.get("requirement_states") or {}).get(
+                        str(requirement.get("id") or "")
+                    )
+                    or {}
+                ).get("status")
+            )
+            == "answered"
+        ),
+        None,
+    )
+    acknowledgement_context = {
+        "raw_answer": str(source.body or ""),
+        "normalized_answer": answer,
+        "requirement_id": (
+            str(answered_requirement.get("id") or "")
+            if isinstance(answered_requirement, dict)
+            else ""
+        ),
+        "question": (
+            str(
+                answered_requirement.get("question")
+                or answered_requirement.get("label")
+                or ""
+            )
+            .splitlines()[0]
+            .strip()
+            if isinstance(answered_requirement, dict)
+            else ""
+        ),
+    }
     attribute_results = [
         result
         for result in results
@@ -679,10 +726,7 @@ def _plan(*, source, answer, state, requirements, config, results) -> dict[str, 
             "response_type": "qualification_complete",
             "qualification_complete": True,
             "acknowledgement_required": True,
-            "acknowledgement_context": {
-                "raw_answer": str(source.body or ""),
-                "normalized_answer": answer,
-            },
+            "acknowledgement_context": deepcopy(acknowledgement_context),
             "final_configured_acknowledgement": {"value": config.get("final_ack")},
             "execution_results": {
                 "attributes": attribute_results,
@@ -710,10 +754,7 @@ def _plan(*, source, answer, state, requirements, config, results) -> dict[str, 
         "response_type": "qualification_progress",
         "qualification_complete": False,
         "acknowledgement_required": True,
-        "acknowledgement_context": {
-            "raw_answer": str(source.body or ""),
-            "normalized_answer": answer,
-        },
+        "acknowledgement_context": deepcopy(acknowledgement_context),
         "next_requirement": _requirement_payload(next_item),
         "execution_results": {
             "attributes": attribute_results,
@@ -1271,6 +1312,73 @@ def _plan_from_reconciled(*, lead, source_message_id, snapshot):
     )
 
 
+def _fallback_acknowledgement(plan: dict[str, Any]) -> str:
+    """Build a short answer-aware acknowledgement from backend-owned facts."""
+    context = plan.get("acknowledgement_context")
+    context = context if isinstance(context, dict) else {}
+    answer = context.get("normalized_answer")
+    if isinstance(answer, bool):
+        answer_text = "Yes" if answer else "No"
+    else:
+        answer_text = _clean(answer or context.get("raw_answer"))
+    answer_text = answer_text.strip(" .!?")
+    question = _norm(context.get("question"))
+
+    if not answer_text:
+        return "Thanks — that helps me understand your setup better."
+    if len(answer_text) > 100 or "\n" in answer_text:
+        return "Thanks — that helps me understand your setup better."
+
+    answer_norm = _norm(answer_text)
+    if "challenge" in question or "problem" in question:
+        return f"Got it — {answer_text} sounds like the main challenge right now."
+    if (
+        ("manage" in question and "lead" in question)
+        or "lead-management" in question
+        or "lead management" in question
+    ):
+        return f"Understood — you're currently managing leads through {answer_text}."
+    if (
+        ("how many" in question and ("lead" in question or "enquir" in question))
+        or ("lead" in question and ("per day" in question or "daily" in question))
+    ):
+        return f"Thanks — {answer_text} gives me a clear picture of your daily lead volume."
+    if "run ads" in question or "running ads" in question:
+        if answer_norm == "yes":
+            return "Got it — you're currently running ads."
+        if answer_norm == "no":
+            return "Understood — you're not currently running ads."
+        return "Got it — that helps me understand your current ad activity."
+    if ("lead" in question and "come from" in question) or "lead source" in question:
+        label = "sources" if any(token in answer_text for token in (";", ",", " and ")) else "source"
+        return f"Thanks — I've noted {answer_text} as your main lead {label}."
+    if "type of business" in question or "industry" in question:
+        return f"Got it — {answer_text} gives me useful context about your business."
+    if "sales team" in question or "salespeople" in question:
+        return f"Thanks — {answer_text} gives me a clear picture of your sales team size."
+    if "budget" in question:
+        return f"Got it — {answer_text} gives me useful budget context."
+    if "main goal" in question or ("goal" in question and "shvya" in question):
+        return f"That makes sense — {answer_text} gives me a clear picture of what you want to improve."
+    if ("crm" in question or "lead-management software" in question) and (
+        answer_norm in {"yes", "no"}
+    ):
+        return "Thanks — that clarifies your current CRM setup."
+    if "how soon" in question or "implement" in question:
+        return f"Understood — {answer_text} is your implementation timeline."
+    if "purchase decision" in question or "final purchase" in question:
+        return "Thanks — that clarifies how the purchase decision works on your side."
+    if "whatsapp setup" in question:
+        return f"Got it — {answer_text} is your current WhatsApp setup."
+    if "customer conversations" in question and (
+        "month" in question or "monthly" in question
+    ):
+        return f"Thanks — {answer_text} gives me a clear picture of your monthly conversation volume."
+    if answer_norm in {"yes", "no"}:
+        return "Got it — thanks for confirming that."
+    return f"Thanks — I've noted {answer_text}. That gives me useful context."
+
+
 def _ack_from_message(message: str, plan: dict[str, Any]) -> str:
     text = str(message or "").replace("\\n", "\n").strip()
     final_value = str(
@@ -1408,6 +1516,8 @@ def _finalize(decision, state):
             getattr(decision, "message", ""),
             plan,
         )
+        if plan.get("acknowledgement_required") and not acknowledgement:
+            acknowledgement = _fallback_acknowledgement(plan)
         if plan.get("acknowledgement_required") and not acknowledgement:
             raise EngagementError(
                 "Qualification response requires a personalized acknowledgement."
