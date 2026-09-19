@@ -1,11 +1,14 @@
 import csv
 from datetime import date as date_cls, timedelta
+from urllib.parse import urlencode
 from uuid import UUID
 
 from django.contrib import messages
+from django.core.exceptions import ValidationError
 from django.core.paginator import Paginator
 from django.http import HttpResponse
 from django.shortcuts import redirect, render
+from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
@@ -28,10 +31,56 @@ from services.analytics.analytics_service import (
     save_settings,
     organization_timezone,
 )
+from services.crm.lead_chat import pipeline_chat_account
 
 
 def _can_manage(user):
     return user.is_superuser or user.role in (User.Role.SUPERADMIN, User.Role.ADMIN)
+
+
+def _parse_message_ids(values, *, limit=500):
+    message_ids = []
+    seen = set()
+    for value in values:
+        try:
+            message_id = str(UUID(str(value)))
+        except (ValueError, TypeError, AttributeError):
+            continue
+        if message_id in seen:
+            continue
+        seen.add(message_id)
+        message_ids.append(message_id)
+        if len(message_ids) >= limit:
+            break
+    return message_ids
+
+
+def _failed_template_action_urls(message):
+    lead = message.lead
+    if lead is None:
+        return None, None
+
+    crm_query = {
+        "pipeline": str(lead.pipeline_id),
+        "lead": str(lead.pk),
+    }
+    if lead.stage_id:
+        crm_query["stage"] = str(lead.stage_id)
+    crm_url = f"{reverse('crm-dashboard')}?{urlencode(crm_query)}"
+
+    try:
+        account = pipeline_chat_account(lead)
+    except ValidationError:
+        return None, crm_url
+    if account.connection_type != WhatsAppAccount.ConnectionType.API:
+        return None, crm_url
+
+    chat_url = (
+        reverse("whatsapp-chat-detail", args=[lead.pk])
+        + "?"
+        + urlencode({"account": account.pk})
+    )
+    return chat_url, crm_url
 
 
 def _parse_pipeline_ids(request):
@@ -200,6 +249,11 @@ def analytics_dashboard_view(request):
         pipeline_ids=pipeline_ids,
     )
     failed_page = Paginator(failed_qs, 25).get_page(request.GET.get("page") or 1)
+    for failed_message in failed_page.object_list:
+        (
+            failed_message.insights_chat_url,
+            failed_message.insights_crm_url,
+        ) = _failed_template_action_urls(failed_message)
     approved_templates = (
         WhatsAppTemplate.objects.filter(
             organization=organization,
@@ -252,9 +306,9 @@ def retry_failed_template_messages_view(request):
 
     user = request.crm_user
     organization = user.organization
-    message_ids = [value for value in request.POST.getlist("message_ids") if value]
+    message_ids = _parse_message_ids(request.POST.getlist("message_ids"))
     if not message_ids and request.POST.get("message_id"):
-        message_ids = [request.POST["message_id"]]
+        message_ids = _parse_message_ids([request.POST["message_id"]])
     if not message_ids:
         messages.error(request, "Select at least one failed WhatsApp message to retry.")
         return redirect("crm-analytics")
@@ -344,6 +398,9 @@ def export_failed_template_leads_view(request):
         date_to=date_to,
         pipeline_ids=pipeline_ids,
     )
+    selected_message_ids = _parse_message_ids(request.GET.getlist("message_ids"))
+    if selected_message_ids:
+        failed_messages = failed_messages.filter(id__in=selected_message_ids)
 
     response = HttpResponse(content_type="text/csv")
     response["Content-Disposition"] = f'attachment; filename="failed-whatsapp-templates-{date_from}-to-{date_to}.csv"'
