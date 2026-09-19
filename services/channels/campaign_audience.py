@@ -19,9 +19,13 @@ from django.utils import timezone
 
 from apps.accounts.models import User
 from apps.channels.campaign_models import CampaignDelivery, CampaignSuppression, CampaignUpload
-from apps.channels.models import BulkMessageCampaign, BulkMessageRecipient
+from apps.channels.models import BulkMessageCampaign, BulkMessageRecipient, WhatsAppAccount
 from apps.crm.models import AttributeDefinition, Lead, PipelinePermission
 from services.crm.lead_import_service import normalize_import_phone, parse_uploaded_file
+from services.channels.hosted_whatsapp_service import (
+    normalize_whatsapp_number,
+    pipeline_whatsapp_number,
+)
 
 from .campaign_policy import CampaignInputError, fingerprint
 
@@ -56,6 +60,54 @@ def rights(user, pipeline):
         return dict.fromkeys(names, True)
     permission = PipelinePermission.objects.filter(user=user, pipeline=pipeline).first()
     return {name: bool(permission and getattr(permission, name)) for name in names}
+
+
+def campaign_account_for_pipeline(*, user, pipeline):
+    """Return the connected Meta API-family sender linked to one CRM pipeline.
+
+    WhatsApp API and Business App Coexistence both use the canonical API
+    transport. Hosted linked-device accounts use the legacy "hosted"
+    connection type and are intentionally excluded from Bulk Campaigns.
+    """
+    if (
+        pipeline is None
+        or pipeline.organization_id != user.organization_id
+        or not pipeline.is_active
+        or not rights(user, pipeline)["can_edit_leads"]
+    ):
+        return None
+
+    expected_number = pipeline_whatsapp_number(pipeline)
+    if not expected_number:
+        return None
+
+    accounts = (
+        WhatsAppAccount.objects.filter(
+            organization_id=user.organization_id,
+            connection_type=WhatsAppAccount.ConnectionType.API,
+            status=WhatsAppAccount.Status.CONNECTED,
+            is_active=True,
+        )
+        .exclude(phone_number_id="")
+        .exclude(access_token="")
+        .only(
+            "id",
+            "organization_id",
+            "connection_type",
+            "status",
+            "is_active",
+            "display_phone_number",
+            "phone_number_id",
+            "business_name",
+            "updated_at",
+            "connected_at",
+        )
+        .order_by("-updated_at", "-connected_at", "-pk")
+    )
+    for account in accounts:
+        if normalize_whatsapp_number(phone_number=account.display_phone_number) == expected_number:
+            return account
+    return None
 
 
 def definitions(user):
@@ -159,6 +211,60 @@ def create_upload(*, user, uploaded_file):
         organization_id=user.organization_id, user=user, filename=parsed["filename"][:255],
         headers=parsed["headers"], rows=parsed["rows"], expires_at=timezone.now() + timedelta(hours=2),
     )
+
+
+@transaction.atomic
+def create_crm_selection_upload(*, user, pipeline, leads):
+    """Freeze selected CRM leads into the normal reviewed campaign workflow."""
+    if not user_pipelines(user).filter(pk=pipeline.pk).exists():
+        raise PermissionDenied
+
+    account = campaign_account_for_pipeline(user=user, pipeline=pipeline)
+    if account is None:
+        raise CampaignInputError(
+            "Bulk Campaigns are available only when this pipeline is linked to a connected "
+            "WhatsApp API or WhatsApp Coexistence number."
+        )
+
+    selected = list(leads)
+    if not selected:
+        raise CampaignInputError("Select at least one lead.")
+    if any(
+        lead.organization_id != user.organization_id or lead.pipeline_id != pipeline.pk
+        for lead in selected
+    ):
+        raise PermissionDenied
+
+    item = CampaignUpload.objects.create(
+        organization_id=user.organization_id,
+        user=user,
+        filename="crm-selected-leads.csv",
+        headers=["Name", "Phone", "Email"],
+        rows=[
+            {"Name": lead.name, "Phone": lead.phone, "Email": lead.email or ""}
+            for lead in selected
+        ],
+        expires_at=timezone.now() + timedelta(hours=2),
+    )
+    item = review_upload(
+        user=user,
+        token=item.pk,
+        data={
+            "mapping": {"name": "Name", "phone": "Phone", "email": "Email"},
+            "mode": "existing_only",
+            "pipeline_id": str(pipeline.pk),
+            "stage_id": "",
+            "update_existing": False,
+            "move_existing": False,
+        },
+    )
+    if int(item.review_stats.get("eligible") or 0) <= 0:
+        item.delete()
+        raise CampaignInputError(
+            "None of the selected leads are eligible for a WhatsApp campaign. "
+            "Check phone numbers, opt-outs and campaign permissions."
+        )
+    return item, account
 
 
 def owned_upload(*, user, token, lock=False):
