@@ -432,7 +432,14 @@ def install_qualification_execution_policy_guard() -> None:
                     )
                 except ValueError:
                     projected = base_state
-                if _norm(projected.get("qualification_status")) == "completed":
+                if (
+                    _norm(projected.get("qualification_status")) == "completed"
+                    and not any(
+                        isinstance(action, dict)
+                        and action.get("type") == "create_reminder"
+                        for action in actions
+                    )
+                ):
                     actions.extend(_configured_completion_reminders(config))
 
             decision = replace(decision, crm_actions=actions)
