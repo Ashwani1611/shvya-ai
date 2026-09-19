@@ -25,6 +25,7 @@ from apps.ai_engagement.services.qualification_execution_contract import (
     _ack_from_message,
     _config,
     _finalize,
+    _leading_greeting,
     resolve_before_generation,
 )
 from apps.ai_engagement.services.qualification_state import (
@@ -126,6 +127,13 @@ class QualificationExecutionContractE2ETests(TestCase):
             reason_code=("QUALIFICATION_NEXT" if next_requirement_id else "NORMAL_CONVERSATION"),
             model="test",
         )
+
+    def test_qualification_start_keeps_only_clean_greeting_sentence(self):
+        message = (
+            "Hello Ashwani! To help you better, could you tell me what your "
+            "biggest challenge is? Please choose one."
+        )
+        self.assertEqual(_leading_greeting(message), "Hello Ashwani!")
 
     def test_acknowledgement_sanitizer_removes_model_paraphrased_question(self):
         plan = {
