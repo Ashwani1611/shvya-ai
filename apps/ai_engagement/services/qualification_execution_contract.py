@@ -1475,14 +1475,28 @@ def _leading_greeting(message: str) -> str:
     if not _GREETING_RE.match(first):
         return ""
 
-    # Keep only the greeting sentence. A model may include a paraphrased
-    # qualification question in the same opening block; the backend appends the
-    # exact configured requirement below, so retaining that extra prose causes
-    # the customer to see Q1 twice.
-    sentence = re.split(r"(?<=[.!])\s+", first, maxsplit=1)[0].strip()
-    if "?" in sentence:
-        sentence = sentence.split("?", 1)[0].strip()
-    return sentence
+    # Preserve legitimate welcome sentences, but stop before the model begins a
+    # paraphrased qualification question/instruction. The backend appends the
+    # exact configured requirement below.
+    fragments = [
+        fragment.strip()
+        for fragment in re.split(r"(?<=[.!?])\s+", first)
+        if fragment.strip()
+    ]
+    kept: list[str] = []
+    for fragment in fragments:
+        normalized = _norm(fragment)
+        if (
+            "?" in fragment
+            or _QUESTION_FRAGMENT_RE.match(fragment)
+            or "choose one" in normalized
+            or "select one" in normalized
+            or "please choose" in normalized
+            or "please select" in normalized
+        ):
+            break
+        kept.append(fragment)
+    return " ".join(kept).strip()
 
 
 def _finalize(decision, state):
@@ -1527,7 +1541,17 @@ def _finalize(decision, state):
             getattr(decision, "message", ""),
             plan,
         )
-        if plan.get("acknowledgement_required") and not acknowledgement:
+        raw_message = str(getattr(decision, "message", "") or "")
+        has_internal_label = any(
+            _LABEL_ONLY.match(line.strip())
+            for line in raw_message.replace("\\n", "\n").splitlines()
+            if line.strip()
+        )
+        if (
+            plan.get("acknowledgement_required")
+            and not acknowledgement
+            and not has_internal_label
+        ):
             acknowledgement = _fallback_acknowledgement(plan)
         if plan.get("acknowledgement_required") and not acknowledgement:
             raise EngagementError(
