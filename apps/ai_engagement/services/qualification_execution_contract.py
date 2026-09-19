@@ -591,6 +591,131 @@ def _configured_completion_reminders(config: dict[str, Any]) -> list[dict[str, A
     ]
 
 
+def _reconcile_completed_qualification(
+    *,
+    organization,
+    lead,
+    state: dict[str, Any],
+    requirements: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Self-heal only missing completion effects from older qualification runs.
+
+    Existing non-empty CRM attributes are never overwritten, and a lead that has
+    progressed beyond New Lead is never moved backward to Qualified. This makes
+    the repair safe for leads completed before newer execution fixes shipped.
+    """
+    from apps.ai_engagement.services import qualification_state as qs
+    from apps.ai_engagement.services.crm_executor import CRMActionExecutor
+    from apps.crm.models import LeadReminder
+
+    config = _config(
+        organization=organization,
+        requirements=requirements,
+    )
+    results: list[dict[str, Any]] = []
+
+    attributes = (
+        deepcopy(lead.attributes)
+        if isinstance(getattr(lead, "attributes", None), dict)
+        else {}
+    )
+    missing_updates: list[dict[str, Any]] = []
+    for requirement_id, answer_state in (state.get("requirement_states") or {}).items():
+        if not isinstance(answer_state, dict):
+            continue
+        if _norm(answer_state.get("status")) != "answered":
+            continue
+        value = answer_state.get("value")
+        if value is None or (isinstance(value, str) and not value.strip()):
+            continue
+        for key in _mapping_keys(config, str(requirement_id)):
+            existing = attributes.get(key)
+            if existing is None or (isinstance(existing, str) and not existing.strip()):
+                missing_updates.append({"key": key, "value": value})
+
+    if missing_updates:
+        by_key = {
+            str(item["key"]): item
+            for item in missing_updates
+            if str(item.get("key") or "").strip()
+        }
+        action = {
+            "type": "attribute_updates",
+            "updates": list(by_key.values()),
+        }
+        results.extend(
+            CRMActionExecutor().execute(
+                organization=organization,
+                lead=lead,
+                actions=[action],
+            )
+        )
+        lead.refresh_from_db(fields=["attributes", "pipeline", "stage"])
+
+    current_stage_name = qs.normalize_stage_name(
+        getattr(getattr(lead, "stage", None), "name", "")
+    )
+    target = _completion_target(
+        lead=lead,
+        state=state,
+        config=config,
+    )
+    if (
+        current_stage_name == qs.NEW_LEAD_STAGE
+        and isinstance(target, dict)
+        and target.get("id") is not None
+        and str(getattr(lead, "stage_id", "") or "") != str(target["id"])
+    ):
+        results.extend(
+            CRMActionExecutor().execute(
+                organization=organization,
+                lead=lead,
+                actions=[
+                    {
+                        "type": "pipeline_transition",
+                        "stage_shift": {"stage_id": str(target["id"])},
+                    }
+                ],
+            )
+        )
+        lead.refresh_from_db(fields=["attributes", "pipeline", "stage"])
+
+    reminder_actions = _configured_completion_reminders(config)
+    history = state.get("history") if isinstance(state.get("history"), list) else []
+    reminder_recorded = any(
+        isinstance(item, dict)
+        and item.get("event") == "qualification_completion_reminder_created"
+        for item in history
+    )
+    existing_completion_reminder = LeadReminder.objects.filter(
+        lead=lead,
+        title="Follow up with qualified lead",
+        description="Configured follow-up reminder after qualification completion.",
+    ).exists()
+
+    if reminder_actions and not reminder_recorded and not existing_completion_reminder:
+        reminder_results = CRMActionExecutor().execute(
+            organization=organization,
+            lead=lead,
+            actions=[reminder_actions[0]],
+        )
+        results.extend(reminder_results)
+        if any(
+            isinstance(item, dict)
+            and item.get("type") == "create_reminder"
+            and item.get("status") in {"executed", "no_op"}
+            for item in reminder_results
+        ):
+            refreshed = qs.state_for_lead(lead, requirements=requirements)
+            qs._append_history(
+                refreshed,
+                event="qualification_completion_reminder_created",
+            )
+            qs._persist_state(lead, refreshed)
+
+    return results
+
+
 def _render_requirement(requirement: dict[str, Any] | None) -> str:
     if not isinstance(requirement, dict):
         return ""
@@ -948,6 +1073,19 @@ def resolve_before_generation(
         if not requirements:
             return {"applied": False, "reason": "no_qualification_requirements"}
         if _norm(state.get("qualification_status")) == "completed":
+            repaired = _reconcile_completed_qualification(
+                organization=organization,
+                lead=locked,
+                state=state,
+                requirements=requirements,
+            )
+            if repaired:
+                return {
+                    "applied": True,
+                    "reason": "qualification_completion_reconciled",
+                    "execution_results": repaired,
+                    "stage_id": str(getattr(locked, "stage_id", "") or ""),
+                }
             return {"applied": False, "reason": "qualification_already_complete"}
 
         requirement = _asked_requirement(

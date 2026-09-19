@@ -392,6 +392,112 @@ class QualificationExecutionContractE2ETests(TestCase):
             ["lead_management_tool", "using_whatsapp"],
         )
 
+    def test_completed_pre_fix_lead_self_heals_missing_attributes_stage_and_reminder(self):
+        AttributeDefinition.objects.create(
+            organization=self.organization,
+            name="Lead Management Tool",
+            key="lead_management_tool",
+            field_type=AttributeDefinition.FieldType.TEXT,
+        )
+        AttributeDefinition.objects.create(
+            organization=self.organization,
+            name="Using Whatsapp",
+            key="using_whatsapp",
+            field_type=AttributeDefinition.FieldType.TEXT,
+        )
+        info, _ = OrgInfo.objects.get_or_create(organization=self.organization)
+        info.qualification_requirements = (
+            "[id: management] Where do you currently manage your leads?\n"
+            "A. WhatsApp chats\n"
+            "B. CRM\n"
+            "All questions are required\n"
+            "Acknowledgment message: \"Thanks for sharing the details. Our team will connect with you shortly.\""
+        )
+        info.engagement_instructions = (
+            "## Attribute mapped\n"
+            "management -> Lead Management Tool\n"
+            "management -> Using Whatsapp\n\n"
+            "## Reminders\n"
+            "When qualification is completed, create a reminder after 1 day.\n"
+        )
+        info.ai_enabled = True
+        info.save()
+
+        requirements = compile_qualification_requirements(
+            info.qualification_requirements
+        )["requirements"]
+        record_last_asked_requirement(
+            self.lead,
+            requirements[0]["id"],
+            requirements=requirements,
+        )
+        original = self._source("pre-fix-complete", "A")
+        completed = resolve_before_generation(
+            organization=self.organization,
+            lead=self.lead,
+            source_message_id=original.pk,
+        )
+        self.assertTrue(completed["applied"])
+
+        # Simulate the exact legacy production damage: qualification state was
+        # completed, but one mapped field, the completion-stage move, and the
+        # reminder were missing. Preserve a non-empty human-edited value.
+        self.lead.refresh_from_db()
+        attrs = dict(self.lead.attributes or {})
+        attrs["lead_management_tool"] = "Human override"
+        attrs.pop("using_whatsapp", None)
+        self.lead.attributes = attrs
+        self.lead.stage = self.new_lead
+        self.lead.save(update_fields=["attributes", "stage", "updated_at"])
+        LeadReminder.objects.filter(lead=self.lead).delete()
+
+        later = self._source("completed-repair-turn", "Thanks")
+        repaired = resolve_before_generation(
+            organization=self.organization,
+            lead=self.lead,
+            source_message_id=later.pk,
+        )
+
+        self.assertTrue(repaired["applied"])
+        self.assertEqual(
+            repaired["reason"],
+            "qualification_completion_reconciled",
+        )
+        self.lead.refresh_from_db()
+        self.assertEqual(
+            self.lead.attributes["lead_management_tool"],
+            "Human override",
+        )
+        self.assertEqual(
+            self.lead.attributes["using_whatsapp"],
+            "WhatsApp chats",
+        )
+        self.assertEqual(self.lead.stage_id, self.qualified.id)
+        self.assertEqual(
+            LeadReminder.objects.filter(
+                lead=self.lead,
+                title="Follow up with qualified lead",
+            ).count(),
+            1,
+        )
+
+        # A later inbound turn must not duplicate the completion reminder.
+        again = self._source("completed-repair-second-turn", "Okay")
+        second = resolve_before_generation(
+            organization=self.organization,
+            lead=self.lead,
+            source_message_id=again.pk,
+        )
+        self.assertFalse(second["applied"])
+        self.assertEqual(second["reason"], "qualification_already_complete")
+        self.assertEqual(
+            LeadReminder.objects.filter(
+                lead=self.lead,
+                title="Follow up with qualified lead",
+            ).count(),
+            1,
+        )
+
     def test_completion_reminder_runs_only_from_explicit_configured_rule(self):
         AttributeDefinition.objects.create(
             organization=self.organization,
