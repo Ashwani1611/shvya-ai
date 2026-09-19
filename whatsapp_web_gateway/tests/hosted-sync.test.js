@@ -161,6 +161,7 @@ test('live LID message is forwarded when message.getChat cannot resolve the LID'
     'resolveMessageIdentity', 'serializeMessage',
   ], {
     CONTACT_LOOKUP_TIMEOUT_MS: 5000,
+    resolveMessageBody: async (message) => message.body || '',
     resolveLidPhoneMap: async (_client, ids) => {
       requested.push(...ids);
       return new Map([[lid, phone]]);
