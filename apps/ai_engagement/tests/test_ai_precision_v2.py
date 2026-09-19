@@ -164,7 +164,7 @@ class DirectQualificationReplyTests(SimpleTestCase):
         self.assertEqual(result[0], REQUIREMENT_UNCLEAR)
         self.assertEqual(result[1], "500")
 
-    def test_intermitttent_ads_reply_resolves_to_yes(self):
+    def test_intermittent_ads_reply_resolves_to_yes(self):
         question = (
             "Do you currently run ads?\n"
             "A. Yes\n"
