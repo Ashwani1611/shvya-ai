@@ -11,7 +11,10 @@ function harness(reply) {
     const status = node();
     const button = { disabled: false };
     let submit;
-    const form = { action: 'https://example.test/ai-setup/', querySelector: () => button,
+    // A named form control masks the native HTMLFormElement.action property.
+    const saveUrl = 'https://example.test/ai-setup/';
+    const form = { action: { name: 'action', value: 'save_settings', toString: () => '[object HTMLInputElement]' },
+        getAttribute: name => name === 'action' ? saveUrl : null, querySelector: () => button,
         addEventListener: (event, handler) => { if (event === 'submit') submit = handler; } };
     const selected = { '#ai_playbook': playbook, '#org-ai-settings-form': form, '[data-save-status]': status };
     const page = { dataset: {}, querySelector: selector => selected[selector] || node(), querySelectorAll: () => [] };
@@ -25,7 +28,7 @@ function harness(reply) {
         window: { location: { assign: url => redirects.push(url) } },
         FormData,
         fetch: async (url, options) => {
-            assert.equal(url, form.action);
+            assert.equal(url, saveUrl);
             assert.equal(options.method, 'POST');
             assert.equal(options.headers.Accept, 'application/json');
             assert.equal(options.credentials, 'same-origin');
@@ -35,7 +38,7 @@ function harness(reply) {
     return { playbook, status, button, redirects, submit: () => submit({ preventDefault() {} }) };
 }
 
-test('a persisted multiline Playbook confirms despite multipart CRLF normalization', async () => {
+test('a named action input cannot mask the save endpoint or redirect, including multiline Playbooks', async () => {
     const h = harness(({ payload }) => ({ ok: true, json: async () => ({ saved: true, ai_playbook: payload.get('ai_playbook').replace(/\n/g, '\r\n') }) }));
     await h.submit();
     assert.equal(h.status.textContent, 'Saved successfully.');
