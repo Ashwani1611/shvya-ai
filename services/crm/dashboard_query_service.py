@@ -14,7 +14,7 @@ from apps.crm.models import (
     Stage,
 )
 from apps.crm.views.api import STAGE_THEMES, get_user_pipelines
-from apps.crm.views.bulk import bulk_permissions
+from apps.crm.views.bulk import bulk_campaign_available, bulk_permissions
 from apps.followups.models import LeadSequenceState
 from services.crm.attribute_cache import get_cached_attribute_definitions
 
@@ -331,6 +331,7 @@ def build_lead_table_context(
     return {
         "stage_groups": stage_groups,
         "bulk_permissions": bulk_permissions(user, pipeline),
+        "bulk_campaign_available": bulk_campaign_available(user, pipeline),
         "bulk_query": request.GET.urlencode(),
         "all_stages": stages,
         "selected_pipeline_id": str(pipeline.id),
