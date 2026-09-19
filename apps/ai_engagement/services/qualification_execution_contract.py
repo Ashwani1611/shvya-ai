@@ -449,8 +449,9 @@ def _completion_target(*, lead, state: dict[str, Any], config: dict[str, Any]):
     """Resolve the qualification-completion stage deterministically.
 
     An explicit Stage Shifting completion rule wins. Otherwise use the
-    qualification state's validated same-pipeline Qualified stage, which is
-    already tenant/pipeline scoped by qualification_state._qualified_stage().
+    qualification state's validated same-pipeline Qualified stage. If a pipeline
+    has no uniquely named Qualified stage, advance to the next active stage by
+    display order so a completed qualification is never left in New Lead.
     """
     target = config.get("completion_stage")
     if isinstance(target, dict) and target.get("id") is not None:
@@ -467,16 +468,12 @@ def _completion_target(*, lead, state: dict[str, Any], config: dict[str, Any]):
                 pipeline__is_active=True,
                 is_active=True,
             )
-            .values("id", "name", "pipeline_id", "pipeline__name")
+            .values("id", "name", "pipeline_id", "pipeline__name", "display_order")
             .first()
         )
         if target is not None:
             return target
 
-    # Some projected qualification states are normalized without a live Lead
-    # object and therefore do not carry qualified_stage_id. Derive the fallback
-    # from the lead's actual active pipeline instead of losing the completion
-    # transition.
     pipeline_id = getattr(lead, "pipeline_id", None)
     if not pipeline_id:
         return None
@@ -487,14 +484,32 @@ def _completion_target(*, lead, state: dict[str, Any], config: dict[str, Any]):
             pipeline__is_active=True,
             is_active=True,
         )
-        .values("id", "name", "pipeline_id", "pipeline__name")
+        .order_by("display_order", "name", "id")
+        .values("id", "name", "pipeline_id", "pipeline__name", "display_order")
     )
     qualified = [
         item
         for item in candidates
         if _norm(item.get("name")) == "qualified"
     ]
-    return qualified[0] if len(qualified) == 1 else None
+    if len(qualified) == 1:
+        return qualified[0]
+
+    current_stage_id = str(getattr(lead, "stage_id", "") or "")
+    current = next(
+        (item for item in candidates if str(item.get("id") or "") == current_stage_id),
+        None,
+    )
+    if current is None:
+        return None
+    current_order = int(current.get("display_order") or 0)
+    following = [
+        item
+        for item in candidates
+        if str(item.get("id") or "") != current_stage_id
+        and int(item.get("display_order") or 0) > current_order
+    ]
+    return following[0] if following else None
 
 
 _COMPLETION_REMINDER_SCOPE_RE = re.compile(
@@ -518,11 +533,12 @@ _REMINDER_RELATIVE_RE = re.compile(
 
 
 def _configured_completion_reminders(config: dict[str, Any]) -> list[dict[str, Any]]:
-    """Build completion reminders only from explicit authored reminder rules.
+    """Build one deterministic follow-up reminder when qualification completes.
 
-    No reminder is invented merely because qualification completed. A rule must
-    explicitly scope itself to qualification completion and include a resolvable
-    due time.
+    A valid organization-authored completion reminder keeps its configured due
+    time. If no usable completion rule exists, create the standard SHVYA
+    follow-up reminder for 24 hours later so a fully qualified lead cannot finish
+    the questionnaire without a next human action.
     """
     from apps.ai_engagement.services.reminder_time_runtime import parse_grounded_due_at
 
@@ -560,10 +576,19 @@ def _configured_completion_reminders(config: dict[str, Any]) -> list[dict[str, A
                 "due_at": due_at,
             }
         )
-        # One completion reminder per qualification is sufficient and avoids
-        # duplicate reminders from equivalent authored lines.
         break
-    return actions
+
+    if actions:
+        return actions
+
+    return [
+        {
+            "type": "create_reminder",
+            "title": "Follow up with qualified lead",
+            "description": "Automatic follow-up after qualification completion.",
+            "due_at": (timezone.now() + timedelta(days=1)).isoformat(),
+        }
+    ]
 
 
 def _render_requirement(requirement: dict[str, Any] | None) -> str:
