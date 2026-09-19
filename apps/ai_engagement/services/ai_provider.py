@@ -180,8 +180,29 @@ class OpenAIProvider:
             "properties": {
                 "key": {"type": "string"},
                 "value": scalar_value,
+                "name": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+                "field_type": {
+                    "anyOf": [
+                        {
+                            "type": "string",
+                            "enum": ["text", "numeric", "date", "datetime"],
+                        },
+                        {"type": "null"},
+                    ]
+                },
+                "create_if_missing": {"type": "boolean"},
             },
-            "required": ["key", "value"],
+            # Structured Outputs requires closed objects to make every property
+            # explicit. Existing attributes use null/null/false; a genuinely new
+            # reusable attribute uses name/field_type/true so those fields survive
+            # the provider boundary and reach the CRM executor.
+            "required": [
+                "key",
+                "value",
+                "name",
+                "field_type",
+                "create_if_missing",
+            ],
             "additionalProperties": False,
         }
         contact_item = {
