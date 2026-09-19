@@ -14,6 +14,7 @@ from apps.ai_engagement.services.conversation_policy import (
     ConversationPolicyOutcome,
 )
 from apps.ai_engagement.services.intent_engine import Intent, IntentDecision, IntentEngine
+from apps.ai_engagement.services.intent_types import ClassificationPath
 
 
 _INSTALLED = False
@@ -95,6 +96,48 @@ def _record_policy(decision: ConversationPolicyDecision, elapsed_ms: int) -> Non
         return
 
 
+_AFFIRMATIVE_CONTINUATIONS = {
+    "yes", "yes please", "yeah", "yep", "yup", "sure", "okay", "ok", "correct", "right",
+}
+_INFORMATION_OFFER_TERMS = (
+    "detail", "details", "feature", "features", "functionality", "functionalities",
+    "capability", "capabilities", "plan", "plans", "pricing", "price", "more about",
+    "more information", "tell you more",
+)
+_INFORMATION_OFFER_PHRASES = (
+    "would you like", "do you want", "want to know", "shall i", "can i share",
+    "would you want", "like to know", "want details", "want more",
+)
+
+
+def _normalized_reply(value: str) -> str:
+    return " ".join(str(value or "").strip().casefold().split()).strip(" .!?;,:\"'")
+
+
+def _affirmed_information_offer(*, lead, source) -> bool:
+    if _normalized_reply(getattr(source, "body", "")) not in _AFFIRMATIVE_CONTINUATIONS:
+        return False
+    created_at = getattr(source, "created_at", None)
+    if created_at is None:
+        return False
+    query = lead.whatsapp_messages.filter(
+        organization_id=lead.organization_id,
+        direction="outbound",
+        created_at__lt=created_at,
+    )
+    source_account_id = getattr(source, "account_id", None)
+    if source_account_id is not None:
+        query = query.filter(account_id=source_account_id)
+    previous = query.order_by("-created_at").only("body").first()
+    body = " ".join(str(getattr(previous, "body", "") or "").strip().casefold().split())
+    if not body:
+        return False
+    return (
+        any(term in body for term in _INFORMATION_OFFER_TERMS)
+        and any(phrase in body for phrase in _INFORMATION_OFFER_PHRASES)
+    )
+
+
 def _source_message(*, lead, source_message_id, account_id=None):
     query = lead.whatsapp_messages.filter(
         pk=source_message_id,
@@ -103,7 +146,7 @@ def _source_message(*, lead, source_message_id, account_id=None):
     )
     if account_id is not None:
         query = query.filter(account_id=account_id)
-    return query.only("id", "body", "raw_payload").first()
+    return query.only("id", "body", "raw_payload", "created_at", "account_id").first()
 
 
 def _classify_turn(
@@ -128,6 +171,16 @@ def _classify_turn(
         # The canonical finalizer owns duplicate handling. Replayed accepted
         # messages need no new intent model call before that existing check.
         return None
+    if _affirmed_information_offer(lead=lead, source=source):
+        decision = IntentDecision(
+            primary_intent=Intent.FOLLOW_UP_RESPONSE,
+            confidence=0.99,
+            classification_path=ClassificationPath.DETERMINISTIC,
+            requires_knowledge=True,
+            model="deterministic_context",
+        )
+        _record_intent(decision, 0)
+        return decision
     if _turn_matches(organization=organization, lead=lead, source_message_id=source_message_id):
         observed = (_TURN.get() or {}).get("intent_decision")
         if isinstance(observed, IntentDecision):
