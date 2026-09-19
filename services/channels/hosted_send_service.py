@@ -74,6 +74,17 @@ def queue_hosted_uploaded_media(
     if account.connection_type != WhatsAppAccount.ConnectionType.coexisted:
         raise HostedWhatsAppValidationError("This is not a Hosted Account session.")
 
+    if lead is not None:
+        from services.channels.whatsapp_service import (
+            WhatsAppSendError,
+            validate_account_for_lead_pipeline,
+        )
+
+        try:
+            validate_account_for_lead_pipeline(account=account, lead=lead)
+        except WhatsAppSendError as exc:
+            raise HostedWhatsAppValidationError(str(exc)) from exc
+
     recipient = _normalize_recipient(to_number)
     filename, mime_type = _validate_upload(uploaded_file, message_type)
     storage_path = (
