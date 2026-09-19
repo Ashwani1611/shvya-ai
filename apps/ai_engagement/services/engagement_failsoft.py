@@ -212,10 +212,10 @@ def _grounded_conversation_reply(*, about: str, inbound: str, organization_name:
     )
 
 
-def _qualification_completion_message(latest_inbound) -> str:
-    """Return a natural completion reply from backend-persisted response state."""
+def _qualification_plan_message(latest_inbound) -> dict:
+    """Build a customer-safe reply from a persisted backend qualification plan."""
     if latest_inbound is None:
-        return ""
+        return {}
     payload = (
         latest_inbound.raw_payload
         if isinstance(getattr(latest_inbound, "raw_payload", None), dict)
@@ -225,19 +225,49 @@ def _qualification_completion_message(latest_inbound) -> str:
     processing = processing if isinstance(processing, dict) else {}
     plan = processing.get("qualification_response_plan")
     plan = plan if isinstance(plan, dict) else {}
-    if str(plan.get("response_type") or "").strip().casefold() != "qualification_complete":
-        return ""
+    kind = str(plan.get("response_type") or "").strip().casefold()
+    if kind not in {"qualification_progress", "qualification_complete"}:
+        return {}
+
+    try:
+        from apps.ai_engagement.services.qualification_execution_contract import (
+            _fallback_acknowledgement,
+        )
+        acknowledgement = _fallback_acknowledgement(plan)
+    except Exception:
+        acknowledgement = "Thanks — that helps me understand your setup better."
+
+    if kind == "qualification_progress":
+        next_requirement = plan.get("next_requirement")
+        next_requirement = next_requirement if isinstance(next_requirement, dict) else {}
+        rendered = _clean(next_requirement.get("rendered"))
+        next_id = str(next_requirement.get("id") or "").strip() or None
+        if not rendered:
+            return {}
+        return {
+            "message": f"{acknowledgement}\n\n{rendered}".strip(),
+            "reason_code": "QUALIFICATION_NEXT",
+            "next_requirement_id": next_id,
+            "model": "deterministic-qualification-progress",
+        }
 
     configured = plan.get("final_configured_acknowledgement")
     configured = configured if isinstance(configured, dict) else {}
     final_ack = _clean(configured.get("value"))
-    natural_ack = "Got it — thanks, that gives me a clear picture of your current setup."
+    message = acknowledgement
     if final_ack:
-        return f"{natural_ack}\n\n{final_ack}"
-    return (
-        "Got it — thanks for sharing all those details. "
-        "I have what I need to keep this moving."
-    )
+        message = f"{acknowledgement}\n\n{final_ack}".strip()
+    elif not message:
+        message = (
+            "Thanks for sharing all those details. "
+            "I have what I need to keep this moving."
+        )
+    return {
+        "message": message,
+        "reason_code": "NORMAL_CONVERSATION",
+        "next_requirement_id": None,
+        "model": "deterministic-qualification-complete",
+    }
 
 
 def build_deterministic_fallback_decision(*, organization, lead, latest_inbound=None):
@@ -308,16 +338,18 @@ def build_deterministic_fallback_decision(*, organization, lead, latest_inbound=
     )
     state = state_for_lead(lead, requirements=requirements)
 
-    completion_message = _qualification_completion_message(latest_inbound)
-    if completion_message:
+    qualification_reply = _qualification_plan_message(latest_inbound)
+    if qualification_reply:
+        reason_code = qualification_reply["reason_code"]
         return EngagementDecision(
             should_engage=True,
-            message=completion_message,
+            message=qualification_reply["message"],
             file_document_id=None,
             crm_actions=[],
-            reason="NORMAL_CONVERSATION",
-            reason_code="NORMAL_CONVERSATION",
-            model="deterministic-qualification-complete",
+            reason=reason_code,
+            reason_code=reason_code,
+            next_requirement_id=qualification_reply.get("next_requirement_id"),
+            model=qualification_reply["model"],
         )
 
     about = org_info.about if org_info else ""
@@ -438,20 +470,21 @@ def _ensure_customer_reply(decision, *, lead):
             organization=organization,
             lead=lead,
         )
-        completion_message = _qualification_completion_message(latest_inbound)
-        if completion_message:
+        qualification_reply = _qualification_plan_message(latest_inbound)
+        if qualification_reply:
+            reason_code = qualification_reply["reason_code"]
             return replace(
                 decision,
                 should_engage=True,
-                message=completion_message,
-                reason="NORMAL_CONVERSATION",
-                reason_code="NORMAL_CONVERSATION",
+                message=qualification_reply["message"],
+                reason=reason_code,
+                reason_code=reason_code,
                 silence_rule=None,
                 crm_actions=[],
                 qualification_updates=[],
-                next_requirement_id=None,
+                next_requirement_id=qualification_reply.get("next_requirement_id"),
                 file_document_id=None,
-                model="deterministic-qualification-complete",
+                model=qualification_reply["model"],
             )
 
     return replace(
