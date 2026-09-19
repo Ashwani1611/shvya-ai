@@ -309,6 +309,89 @@ class BulkCampaignTests(CampaignFixture, TestCase):
         self.assertEqual(again["queued"], 0)
         self.assertEqual(delivery.attempts.count(), 1)
 
+    def test_recipient_actions_use_current_pipeline_chat_and_exact_crm_lead(self):
+        campaign = self.campaign()
+        delivery = campaign.campaign_delivery_rows.get()
+        lead = delivery.lead
+        current_account = WhatsAppAccount.objects.create(
+            organization=self.org,
+            business_name="Current Pipeline Number",
+            phone_number_id="222333444",
+            waba_id="current-waba",
+            access_token="current-token",
+            status="connected",
+            is_active=True,
+        )
+        current_pipeline = Pipeline.objects.create(
+            organization=self.org,
+            name="Current Pipeline",
+            phone_number=current_account.phone_number_id,
+        )
+        current_stage = current_pipeline.stages.order_by("display_order", "pk").first()
+        self.assertIsNotNone(current_stage)
+        lead.pipeline = current_pipeline
+        lead.stage = current_stage
+        lead.save(update_fields=["pipeline", "stage", "updated_at"])
+
+        response = self.client.get(self.url("detail-data", campaign_id=campaign.pk))
+        self.assertEqual(response.status_code, 200)
+        row = response.json()["recipients"][0]
+        self.assertEqual(
+            row["chat_url"],
+            reverse("whatsapp-chat-detail", kwargs={"lead_id": lead.pk})
+            + f"?account={current_account.pk}",
+        )
+        self.assertEqual(
+            row["crm_url"],
+            reverse("crm-dashboard") + f"?pipeline={current_pipeline.pk}&lead={lead.pk}",
+        )
+        self.assertNotIn("wa.me", row["chat_url"])
+
+    def test_manual_retry_reuses_campaign_template_snapshot_and_account(self):
+        campaign = self.campaign(retry_delay_hours=1)
+        plan = campaign.campaign_plan
+        delivery, original_message, _ = self.evidence(campaign, code="131000")
+        delivery.failed_at = timezone.now() - timedelta(hours=2)
+        delivery.save(update_fields=["failed_at", "updated_at"])
+
+        queued = retry_recipients(
+            user=self.user,
+            campaign=campaign,
+            selection=campaign.campaign_delivery_rows.all(),
+        )
+        self.assertEqual(queued["queued"], 1)
+
+        def accept_retry(message):
+            message.external_id = "wamid.retry.same-template"
+            message.status = "sent"
+            message.save(update_fields=["external_id", "status", "updated_at"])
+
+        with patch(
+            "services.channels.whatsapp_service.send_outbound_message",
+            side_effect=accept_retry,
+        ):
+            result = send_delivery(delivery.pk)
+
+        self.assertEqual(result["status"], "accepted")
+        delivery.refresh_from_db()
+        retry_attempt = delivery.attempts.order_by("-number").first()
+        self.assertEqual(retry_attempt.number, 2)
+        retry_message = retry_attempt.message
+        self.assertNotEqual(retry_message.pk, original_message.pk)
+        self.assertEqual(retry_message.account_id, campaign.account_id)
+        self.assertEqual(retry_message.body, delivery.body)
+        self.assertEqual(retry_message.media_payload["transport"], "template")
+        self.assertEqual(retry_message.media_payload["template_id"], str(plan.template_id))
+        self.assertEqual(
+            retry_message.media_payload["template_name"],
+            plan.template_snapshot["name"],
+        )
+        self.assertEqual(
+            retry_message.media_payload["language_code"],
+            plan.template_snapshot["language"],
+        )
+        self.assertEqual(retry_message.media_payload["components"], delivery.components)
+
     def test_automatic_retry_toggle_is_respected_for_delivery_failures(self):
         for enabled in [False, True]:
             with self.subTest(enabled=enabled):
