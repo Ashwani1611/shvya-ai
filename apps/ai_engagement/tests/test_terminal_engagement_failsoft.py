@@ -8,6 +8,12 @@ from apps.ai_engagement.services.ai_provider import AIProviderTransientError
 from apps.ai_engagement.services.engagement import EngagementError
 from apps.ai_engagement.services.engagement_failsoft import build_deterministic_fallback_decision
 from apps.ai_engagement.services.organization_profile import compile_qualification_requirements
+from apps.ai_engagement.services.qualification_execution_contract import (
+    resolve_before_generation,
+)
+from apps.ai_engagement.services.qualification_state import (
+    record_last_asked_requirement,
+)
 from apps.ai_engagement.tests import test_engagement_controls as controls
 from apps.channels.models import WhatsAppMessage
 
@@ -60,6 +66,57 @@ class TerminalEngagementFailsoftTests(TestCase):
         self.assertEqual(outbound.body, expected["question"])
         self.assertEqual(outbound.raw_payload["shvya_ai"]["model"], "deterministic-fallback")
         self.assertEqual(outbound.raw_payload["shvya_ai"]["next_requirement_id"], expected["id"])
+
+    def test_failsoft_uses_backend_completion_plan_instead_of_unknown_information(self):
+        info, _ = OrgInfo.objects.get_or_create(organization=self.organization)
+        info.qualification_requirements = (
+            "[id: volume] Approximately how many customer conversations do you handle per month?\n"
+            "A. Below 100\n"
+            "B. 100–500\n"
+            "C. 500–2,000\n"
+            "D. 2,000+\n"
+            "All questions are required\n"
+            "Acknowledgment message: \"Thanks for sharing the details. Our team will connect with you shortly.\""
+        )
+        info.engagement_instructions = "Be concise and natural."
+        info.ai_enabled = True
+        info.save()
+
+        requirements = compile_qualification_requirements(
+            info.qualification_requirements
+        )["requirements"]
+        record_last_asked_requirement(
+            self.lead,
+            requirements[0]["id"],
+            requirements=requirements,
+        )
+        source = self._inbound(external_id="wamid-completion-failsoft")
+        source.body = "300-400"
+        source.save(update_fields=["body", "updated_at"])
+
+        resolved = resolve_before_generation(
+            organization=self.organization,
+            lead=self.lead,
+            source_message_id=source.pk,
+        )
+        self.assertTrue(resolved["applied"])
+        source.refresh_from_db()
+
+        decision = build_deterministic_fallback_decision(
+            organization=self.organization,
+            lead=self.lead,
+            latest_inbound=source,
+        )
+
+        self.assertTrue(decision.should_engage)
+        self.assertEqual(decision.reason_code, "NORMAL_CONVERSATION")
+        self.assertEqual(decision.model, "deterministic-qualification-complete")
+        self.assertIn("clear picture", decision.message)
+        self.assertIn(
+            "Thanks for sharing the details. Our team will connect with you shortly.",
+            decision.message,
+        )
+        self.assertNotIn("enough verified information", decision.message)
 
     def test_failsoft_answers_lead_generation_from_authored_about(self):
         OrgInfo.objects.create(
