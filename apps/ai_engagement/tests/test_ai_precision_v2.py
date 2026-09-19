@@ -164,6 +164,18 @@ class DirectQualificationReplyTests(SimpleTestCase):
         self.assertEqual(result[0], REQUIREMENT_UNCLEAR)
         self.assertEqual(result[1], "500")
 
+    def test_intermitttent_ads_reply_resolves_to_yes(self):
+        question = (
+            "Do you currently run ads?\n"
+            "A. Yes\n"
+            "B. No"
+        )
+        for reply in ("some time", "sometimes", "occasionally", "from time to time"):
+            with self.subTest(reply=reply):
+                result = _classify_direct_reply(text=reply, question=question)
+                self.assertEqual(result[0], REQUIREMENT_ANSWERED)
+                self.assertEqual(result[1], "Yes")
+
     def test_multiple_places_is_resolved_from_two_named_tools(self):
         result = _classify_direct_reply(
             text="Chats and crm",
