@@ -4,7 +4,6 @@ Hosted Account conversations use a separate whatsapp-web.js transport and UI.
 Nothing in this module is allowed to read or select a Hosted account.
 """
 
-from django.db import models
 from django.db.models import Count, Max, OuterRef, Q, Subquery
 from django.utils import timezone
 
