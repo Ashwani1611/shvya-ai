@@ -178,7 +178,8 @@
             <div class="ins-card-stat"><strong>{{ overview.failed_template_messages }}</strong><span>Failed deliveries</span></div>
         </div>
 
-        <div class="ins-failed-toolbar" style="margin-bottom: 12px;">
+        <div id="failed-bulk-actions" class="ins-failed-toolbar" style="margin-bottom: 12px;" hidden>
+            <span id="failed-selected-count" class="ins-lead-phone" aria-live="polite"></span>
             <form id="bulk-retry-form" method="post" action="{% url 'crm-analytics-failed-whatsapp-retry' %}" class="ins-failed-toolbar">
                 {% csrf_token %}
                 <input type="hidden" name="next" value="{{ request.get_full_path }}">
@@ -191,7 +192,7 @@
                 <button class="ins-button ins-button-danger" type="submit"><i class="ti ti-refresh"></i> Retry selected</button>
             </form>
 
-            <form method="get" action="{% url 'crm-analytics-failed-whatsapp-export' %}">
+            <form id="bulk-export-form" method="get" action="{% url 'crm-analytics-failed-whatsapp-export' %}">
                 <input type="hidden" name="date_from" value="{{ date_from }}">
                 <input type="hidden" name="date_to" value="{{ date_to }}">
                 {% for pipeline_id in selected_pipeline_ids %}<input type="hidden" name="pipeline" value="{{ pipeline_id }}">{% endfor %}
@@ -216,7 +217,7 @@
                     <tbody>
                         {% for message in failed_page.object_list %}
                             <tr>
-                                <td><input class="failed-message-checkbox" form="bulk-retry-form" type="checkbox" name="message_ids" value="{{ message.id }}" aria-label="Select {{ message.lead.name|default:message.to_number }}"></td>
+                                <td><input class="failed-message-checkbox" type="checkbox" value="{{ message.id }}" aria-label="Select {{ message.lead.name|default:message.to_number }}"></td>
                                 <td>
                                     <div class="ins-lead-name">{% if message.lead %}{{ message.lead.name }}{% else %}Unknown lead{% endif %}</div>
                                     <div class="ins-lead-phone">{% if message.lead %}{{ message.lead.phone }}{% else %}{{ message.to_number }}{% endif %}</div>
@@ -243,9 +244,11 @@
                                             <input type="hidden" name="next" value="{{ request.get_full_path }}">
                                             <button class="ins-button ins-button-secondary ins-button-sm" type="submit"><i class="ti ti-refresh"></i> Retry</button>
                                         </form>
-                                        {% if message.lead %}
-                                            <a class="ins-link" href="{% url 'whatsapp-chat-detail' message.lead.id %}">View chat</a>
-                                            <a class="ins-link" href="{% url 'crm-lead-detail' message.lead.id %}">View in CRM</a>
+                                        {% if message.insights_chat_url %}
+                                            <a class="ins-link" href="{{ message.insights_chat_url }}">View chat</a>
+                                        {% endif %}
+                                        {% if message.insights_crm_url %}
+                                            <a class="ins-link" href="{{ message.insights_crm_url }}">View in CRM</a>
                                         {% endif %}
                                     </div>
                                 </td>
@@ -288,13 +291,52 @@
 
 <script>
 (function () {
-    // Retry selection must work even when the chart library is unavailable.
+    // Bulk actions appear only after the user selects failed messages.
     const selectAll = document.getElementById('select-all-failed');
+    const failedCheckboxes = Array.from(document.querySelectorAll('.failed-message-checkbox'));
+    const failedBulkActions = document.getElementById('failed-bulk-actions');
+    const failedSelectedCount = document.getElementById('failed-selected-count');
+    const bulkRetryForm = document.getElementById('bulk-retry-form');
+    const bulkExportForm = document.getElementById('bulk-export-form');
+
+    function syncFailedSelection() {
+        const selected = failedCheckboxes.filter(box => box.checked);
+        const selectedIds = selected.map(box => box.value);
+
+        if (failedBulkActions) failedBulkActions.hidden = selectedIds.length === 0;
+        if (failedSelectedCount) {
+            failedSelectedCount.textContent = selectedIds.length
+                ? `${selectedIds.length} selected`
+                : '';
+        }
+
+        [bulkRetryForm, bulkExportForm].forEach(form => {
+            if (!form) return;
+            form.querySelectorAll('[data-failed-selection]').forEach(input => input.remove());
+            selectedIds.forEach(id => {
+                const input = document.createElement('input');
+                input.type = 'hidden';
+                input.name = 'message_ids';
+                input.value = id;
+                input.dataset.failedSelection = '1';
+                form.appendChild(input);
+            });
+        });
+
+        if (selectAll) {
+            selectAll.checked = failedCheckboxes.length > 0 && selectedIds.length === failedCheckboxes.length;
+            selectAll.indeterminate = selectedIds.length > 0 && selectedIds.length < failedCheckboxes.length;
+        }
+    }
+
     if (selectAll) {
         selectAll.addEventListener('change', function () {
-            document.querySelectorAll('.failed-message-checkbox').forEach(box => { box.checked = selectAll.checked; });
+            failedCheckboxes.forEach(box => { box.checked = selectAll.checked; });
+            syncFailedSelection();
         });
     }
+    failedCheckboxes.forEach(box => box.addEventListener('change', syncFailedSelection));
+    syncFailedSelection();
     const palette = ['#38bdb8', '#ff9138', '#3b9ce8', '#9162f5', '#ff5579', '#f6b83f', '#63c76a', '#64748b', '#a855f7', '#06b6d4'];
     const formatter = new Intl.NumberFormat('en-IN');
     const read = id => JSON.parse(document.getElementById(id).textContent || '[]');
