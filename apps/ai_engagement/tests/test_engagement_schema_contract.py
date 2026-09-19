@@ -30,6 +30,33 @@ class EngagementStructuredOutputContractTests(SimpleTestCase):
                 set(action_schema["properties"]),
             )
 
+        attribute_action = next(
+            item
+            for item in crm_items
+            if item["properties"]["type"].get("enum") == ["attribute_updates"]
+        )
+        update_variants = attribute_action["properties"]["updates"]["items"]["anyOf"]
+        self.assertEqual(len(update_variants), 2)
+        existing_update, dynamic_update = update_variants
+        for update_schema in update_variants:
+            self.assertFalse(update_schema["additionalProperties"])
+            self.assertEqual(
+                set(update_schema["required"]),
+                set(update_schema["properties"]),
+            )
+        self.assertEqual(
+            set(existing_update["properties"]),
+            {"key", "value"},
+        )
+        self.assertEqual(
+            set(dynamic_update["properties"]),
+            {"key", "value", "name", "field_type", "create_if_missing"},
+        )
+        self.assertEqual(
+            dynamic_update["properties"]["field_type"]["enum"],
+            ["text", "numeric", "date", "datetime"],
+        )
+
         qualification_item = schema["properties"]["qualification_updates"]["items"]
         self.assertFalse(qualification_item["additionalProperties"])
         self.assertEqual(

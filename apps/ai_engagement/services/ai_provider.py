@@ -175,7 +175,7 @@ class OpenAIProvider:
                 },
             ]
         }
-        update_item = {
+        existing_update_item = {
             "type": "object",
             "properties": {
                 "key": {"type": "string"},
@@ -183,6 +183,33 @@ class OpenAIProvider:
             },
             "required": ["key", "value"],
             "additionalProperties": False,
+        }
+        dynamic_update_item = {
+            "type": "object",
+            "properties": {
+                "key": {"type": "string"},
+                "value": scalar_value,
+                "name": {"type": "string"},
+                "field_type": {
+                    "type": "string",
+                    "enum": ["text", "numeric", "date", "datetime"],
+                },
+                "create_if_missing": {"type": "boolean"},
+            },
+            "required": [
+                "key",
+                "value",
+                "name",
+                "field_type",
+                "create_if_missing",
+            ],
+            "additionalProperties": False,
+        }
+        update_item = {
+            "anyOf": [
+                existing_update_item,
+                dynamic_update_item,
+            ]
         }
         contact_item = {
             "type": "object",
