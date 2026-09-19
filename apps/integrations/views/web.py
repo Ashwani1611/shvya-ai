@@ -288,15 +288,40 @@ def shvya_api_view(request):
     if request.method == "POST":
         action = request.POST.get("action", "").strip()
 
-        if action == "create_key":
-            name = request.POST.get("name", "").strip() or "Connect Hub API Key"
+        if action in {"create_key", "create_diagnostic_key"}:
+            is_diagnostic = action == "create_diagnostic_key"
+            default_name = (
+                "ChatGPT Diagnostics"
+                if is_diagnostic
+                else "Connect Hub API Key"
+            )
+            name = request.POST.get("name", "").strip() or default_name
             api_key, raw_key = APIKey.issue(
                 organization=organization,
                 name=name[:100],
             )
+            if is_diagnostic:
+                api_key.can_upsert_leads = False
+                api_key.can_read_diagnostics = True
+                api_key.save(
+                    update_fields=[
+                        "can_upsert_leads",
+                        "can_read_diagnostics",
+                    ]
+                )
             request.session["connect_hub_raw_api_key"] = raw_key
+            request.session["connect_hub_raw_api_key_purpose"] = (
+                "diagnostics" if is_diagnostic else "lead_api"
+            )
             request.session.modified = True
-            messages.success(request, f"API key '{api_key.name}' created.")
+            messages.success(
+                request,
+                (
+                    f"Diagnostic key '{api_key.name}' created."
+                    if is_diagnostic
+                    else f"API key '{api_key.name}' created."
+                ),
+            )
             return redirect("crm-connect-hub-shvya-api")
 
         if action == "revoke_key":
@@ -314,6 +339,10 @@ def shvya_api_view(request):
         return redirect("crm-connect-hub-shvya-api")
 
     raw_api_key = request.session.pop("connect_hub_raw_api_key", None)
+    raw_api_key_purpose = request.session.pop(
+        "connect_hub_raw_api_key_purpose",
+        None,
+    )
     active_keys = APIKey.objects.filter(
         organization=organization,
         is_active=True,
@@ -328,8 +357,12 @@ def shvya_api_view(request):
         {
             "active_keys": active_keys,
             "raw_api_key": raw_api_key,
+            "raw_api_key_purpose": raw_api_key_purpose,
             "api_url": api_url,
             "list_api_url": list_api_url,
+            "diagnostic_mcp_url": request.build_absolute_uri(
+                reverse("shvya-diagnostic-mcp")
+            ),
         },
     )
 
