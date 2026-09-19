@@ -258,10 +258,13 @@ def _resolve_existing_attribute_key(candidate: str, definitions: list[dict[str, 
     return ranked[0][1]
 
 
-def _safe_candidate_name(raw_key: str) -> str | None:
-    if not raw_key.casefold().startswith("new:"):
-        return None
-    name = re.sub(r"\s+", " ", raw_key.split(":", 1)[1]).strip(" .:_-")
+def _safe_candidate_name(raw_key: str, proposed_name: str = "") -> str | None:
+    name = ""
+    if raw_key.casefold().startswith("new:"):
+        name = raw_key.split(":", 1)[1]
+    elif proposed_name:
+        name = proposed_name
+    name = re.sub(r"\s+", " ", name).strip(" .:_-")
     if not (3 <= len(name) <= 60):
         return None
     if len(name.split()) > 6:
@@ -271,59 +274,71 @@ def _safe_candidate_name(raw_key: str) -> str | None:
         return None
     if not re.search(r"[a-zA-Z]", name):
         return None
+
+    from apps.ai_engagement.services.confidentiality import (
+        is_sensitive_attribute_definition,
+    )
+    if is_sensitive_attribute_definition({"key": raw_key, "name": name}):
+        return None
     return name
 
 
-def _create_candidate_attribute(*, context, raw_key: str, value: Any, latest_text: str) -> str | None:
-    name = _safe_candidate_name(raw_key)
-    if name is None or not _value_supported_by_latest_message(value, latest_text):
-        return None
-    organization_payload = getattr(context, "organization", None)
-    organization_id = (
-        str(organization_payload.get("id") or "").strip()
-        if isinstance(organization_payload, dict)
-        else ""
+def _attribute_key_from_name(name: str) -> str:
+    key = re.sub(r"[^a-zA-Z0-9]+", "_", str(name or "").strip().lower())
+    return re.sub(r"_+", "_", key).strip("_")[:100]
+
+
+def _dynamic_attribute_update(
+    *,
+    update: dict[str, Any],
+    value: Any,
+    latest_text: str,
+) -> dict[str, Any] | None:
+    raw_key = str(update.get("key") or "").strip()
+    proposed_name = str(update.get("name") or "").strip()
+    explicitly_dynamic = (
+        raw_key.casefold().startswith("new:")
+        or update.get("create_if_missing") is True
     )
-    if not organization_id:
+    if not explicitly_dynamic or not _value_supported_by_latest_message(value, latest_text):
         return None
 
-    try:
-        from apps.crm.models import AttributeDefinition
-        from apps.organizations.models import Organization
-        from services.crm.attribute_service import create_attribute_definition
-        from django.core.exceptions import ValidationError
+    name = _safe_candidate_name(raw_key, proposed_name)
+    if name is None:
+        return None
 
-        organization = Organization.objects.get(pk=organization_id)
+    requested_type = str(update.get("field_type") or "").strip().casefold()
+    if requested_type in {"text", "numeric", "date", "datetime"}:
+        field_type = requested_type
+    else:
+        numeric = _numeric(value)
         field_type = (
-            AttributeDefinition.FieldType.NUMERIC
-            if _numeric(value) is not None and re.fullmatch(
+            "numeric"
+            if numeric is not None
+            and re.fullmatch(
                 r"[₹$]?\s*\d[\d,]*(?:\.\d+)?\s*(?:k|thousand|lakh|lac|m|million|cr|crore)?",
                 str(value or "").strip(),
                 flags=re.IGNORECASE,
             )
-            else AttributeDefinition.FieldType.TEXT
+            else "text"
         )
-        created = create_attribute_definition(
-            organization=organization,
-            name=name,
-            field_type=field_type,
-            description="Created by SHVYA AI from an explicit reusable lead fact.",
-        )
-        return str(created.key)
-    except (Organization.DoesNotExist, ValidationError):
-        # A concurrent turn may already have created the same/similar definition.
-        try:
-            from apps.crm.models import AttributeDefinition
-            definitions = list(
-                AttributeDefinition.objects.filter(organization_id=organization_id).values(
-                    "key", "name", "field_type", "options"
-                )
-            )
-            return _resolve_existing_attribute_key(name, definitions)
-        except Exception:
-            return None
-    except Exception:
+
+    if raw_key.casefold().startswith("new:"):
+        key = _attribute_key_from_name(name)
+    else:
+        key = raw_key.casefold()
+        if not re.fullmatch(r"[a-z0-9_]+", key):
+            key = _attribute_key_from_name(name)
+    if not key:
         return None
+
+    return {
+        "key": key,
+        "value": value,
+        "name": name,
+        "field_type": field_type,
+        "create_if_missing": True,
+    }
 
 
 def build_controlled_actions(
@@ -399,28 +414,33 @@ def build_controlled_actions(
             # overwrites any explicitly mapped key with its authoritative value.
             accepted = []
             for update in action.get("updates") or []:
-                raw_key = str(update.get("key") or "").strip()
-                value = update.get("value")
-                key = _resolve_existing_attribute_key(raw_key, attribute_definitions)
-                if key is None and raw_key.casefold().startswith("new:"):
-                    key = _create_candidate_attribute(
-                        context=context,
-                        raw_key=raw_key,
-                        value=value,
-                        latest_text=latest_text,
-                    )
-                    if key:
-                        attribute_by_key[key] = {
-                            "key": key,
-                            "name": raw_key.split(":", 1)[1].strip(),
-                            "field_type": "numeric" if _numeric(value) is not None else "text",
-                            "options": [],
-                        }
-                definition = attribute_by_key.get(key or "")
-                if not key or not definition:
+                if not isinstance(update, dict):
                     continue
-                if _value_supported_by_definition(value, latest_text, definition):
-                    accepted.append({"key": key, "value": value})
+                raw_key = str(update.get("key") or "").strip()
+                proposed_name = str(update.get("name") or "").strip()
+                value = update.get("value")
+                if not _value_supported_by_latest_message(value, latest_text):
+                    continue
+
+                key = _resolve_existing_attribute_key(
+                    raw_key if not proposed_name else f"{raw_key} {proposed_name}",
+                    attribute_definitions,
+                )
+                definition = attribute_by_key.get(key or "")
+                if key and definition:
+                    if _value_supported_by_definition(value, latest_text, definition):
+                        accepted.append({"key": key, "value": value})
+                    continue
+
+                if len(attribute_definitions) >= 15:
+                    continue
+                dynamic_update = _dynamic_attribute_update(
+                    update=update,
+                    value=value,
+                    latest_text=latest_text,
+                )
+                if dynamic_update is not None:
+                    accepted.append(dynamic_update)
             if accepted:
                 controlled.append({"type": "attribute_updates", "updates": accepted})
             continue
