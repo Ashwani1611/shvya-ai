@@ -5,7 +5,7 @@
 {% block extra_head %}
 {{ block.super }}
 <link rel="stylesheet" href="{% static 'channels/bulk_campaigns.css' %}">
-<script src="{% static 'channels/bulk_campaigns.js' %}?v=2" defer></script>
+<script src="{% static 'channels/bulk_campaigns.js' %}?v=3" defer></script>
 {% endblock %}
 {% block content %}
 {{ campaign_bootstrap|json_script:"bulk-campaign-config" }}
