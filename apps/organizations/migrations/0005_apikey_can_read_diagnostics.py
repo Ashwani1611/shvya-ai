@@ -11,6 +11,11 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name="apikey",
             name="can_read_diagnostics",
-            field=models.BooleanField(\n                default=False,\n                help_text="Allow this key to read organization-scoped diagnostic data.",\n            ),
+            field=models.BooleanField(
+                default=False,
+                help_text=(
+                    "Allow this key to read organization-scoped diagnostic data."
+                ),
+            ),
         ),
     ]
