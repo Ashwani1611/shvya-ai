@@ -137,6 +137,16 @@ class PreciseEngagementTests(SimpleTestCase):
 
         self.assertEqual(len(provider.calls), 2)
 
+    def test_prompt_requires_immediate_feature_details_and_affirmative_continuation(self):
+        self.assertIn(
+            "provide the available grounded detail immediately",
+            CUSTOMER_ENGAGEMENT_INSTRUCTIONS,
+        )
+        self.assertIn(
+            "fulfill that offer now",
+            CUSTOMER_ENGAGEMENT_INSTRUCTIONS,
+        )
+
     def test_prompt_forbids_chain_of_thought_and_duplicate_questions(self):
         self.assertIn("Never ask for information that is already present", CUSTOMER_ENGAGEMENT_INSTRUCTIONS)
         self.assertIn("Do not include chain-of-thought", CUSTOMER_ENGAGEMENT_INSTRUCTIONS)
