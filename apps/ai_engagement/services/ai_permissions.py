@@ -48,11 +48,9 @@ class AIPermissionService:
 
         Organization AI -> Pipeline AI -> Stage AI -> Lead AI
 
-    New WhatsApp conversations remain bound to the number configured for the
-    lead's current pipeline. An already-established conversation may continue on
-    its original authenticated organization account after a legitimate CRM
-    pipeline move; this prevents classification changes from stranding the chat
-    without allowing a brand-new message on an unrelated number to bypass routing.
+    WhatsApp automation is always bound to the number configured for the lead's
+    current pipeline. Conversation history never overrides current CRM routing:
+    after a pipeline move, the old WhatsApp number must not send to that lead.
     """
 
     WHATSAPP_AUTOMATION_CONNECTION_TYPES = {"api", "hosted"}
@@ -172,18 +170,6 @@ class AIPermissionService:
         )
         if expected_number and actual_number == expected_number:
             return True, "pipeline_whatsapp_account_match"
-
-        if self._has_established_conversation_transport(
-            organization=organization,
-            lead=lead,
-            account=account,
-            latest_message=latest_message,
-        ) or self._has_established_ai_transport(
-            organization=organization,
-            lead=lead,
-            account=account,
-        ):
-            return True, "conversation_whatsapp_account_bound"
 
         if not expected_number:
             return False, "pipeline_whatsapp_number_missing"
