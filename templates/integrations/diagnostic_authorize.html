@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Connect SHVYA Diagnostics</title>
+    <style>
+        :root {
+            color-scheme: light;
+            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Inter", "Segoe UI", sans-serif;
+            background: #f5f5f7;
+            color: #1d1d1f;
+        }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            min-height: 100vh;
+            display: grid;
+            place-items: center;
+            padding: 28px;
+            background:
+                radial-gradient(circle at top left, rgba(0,113,227,.10), transparent 34rem),
+                #f5f5f7;
+        }
+        .card {
+            width: min(100%, 560px);
+            border: 1px solid rgba(0,0,0,.08);
+            border-radius: 28px;
+            background: rgba(255,255,255,.92);
+            box-shadow: 0 24px 70px rgba(0,0,0,.10);
+            padding: 34px;
+        }
+        .icon {
+            width: 56px;
+            height: 56px;
+            display: grid;
+            place-items: center;
+            border-radius: 18px;
+            background: #0071e3;
+            color: white;
+            font-size: 26px;
+            font-weight: 700;
+        }
+        h1 {
+            margin: 22px 0 8px;
+            font-size: 30px;
+            line-height: 1.08;
+            letter-spacing: -.035em;
+        }
+        p {
+            color: #6e6e73;
+            line-height: 1.55;
+            margin: 0;
+        }
+        .scope {
+            margin: 24px 0;
+            border-radius: 18px;
+            background: #f5f5f7;
+            padding: 16px;
+        }
+        .scope strong { display: block; margin-bottom: 5px; }
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            font-size: 14px;
+        }
+        input[type=password] {
+            width: 100%;
+            height: 50px;
+            border: 1px solid #d2d2d7;
+            border-radius: 14px;
+            background: white;
+            padding: 0 15px;
+            font: inherit;
+            outline: none;
+        }
+        input[type=password]:focus {
+            border-color: #0071e3;
+            box-shadow: 0 0 0 4px rgba(0,113,227,.12);
+        }
+        button {
+            width: 100%;
+            height: 50px;
+            margin-top: 16px;
+            border: 0;
+            border-radius: 999px;
+            background: #0071e3;
+            color: white;
+            font: inherit;
+            font-weight: 650;
+            cursor: pointer;
+        }
+        button:hover { background: #0077ed; }
+        .error {
+            margin: 18px 0;
+            border-radius: 14px;
+            padding: 12px 14px;
+            background: #fff1f0;
+            color: #b42318;
+            font-size: 14px;
+        }
+        .fine {
+            margin-top: 18px;
+            font-size: 12px;
+            color: #86868b;
+        }
+        code {
+            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <main class="card">
+        <div class="icon">S</div>
+        <h1>Connect SHVYA Diagnostics</h1>
+        <p>
+            {{ client_name|default:"ChatGPT" }} is requesting read-only diagnostic access
+            to one SHVYA organization.
+        </p>
+
+        <div class="scope">
+            <strong>Allowed</strong>
+            <p>
+                Read CRM lead state, channel health, recent conversation events,
+                AI diagnostic status, workflow traces, and sanitized failures.
+            </p>
+        </div>
+
+        {% if authorization_error %}
+            <div class="error">{{ authorization_error }}</div>
+        {% endif %}
+
+        {% if not authorization_error or fields.client_id %}
+        <form method="post" autocomplete="off">
+            {% csrf_token %}
+            {% for key, value in fields.items %}
+                <input type="hidden" name="{{ key }}" value="{{ value }}">
+            {% endfor %}
+
+            <label for="diagnostic-api-key">SHVYA Diagnostic Key</label>
+            <input
+                id="diagnostic-api-key"
+                name="diagnostic_api_key"
+                type="password"
+                required
+                autofocus
+                autocomplete="off"
+                spellcheck="false"
+                placeholder="shvya_..."
+            >
+            <button type="submit">Authorize read-only access</button>
+        </form>
+        {% endif %}
+
+        <p class="fine">
+            The key is submitted only to SHVYA and is never returned to the requesting
+            client. Access is organization-scoped, audit logged, and can be revoked at
+            any time from Connect Hub. Passwords, provider access tokens, credentials,
+            and internal prompts are not exposed.
+        </p>
+    </main>
+</body>
+</html>

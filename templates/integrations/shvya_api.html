@@ -24,21 +24,38 @@
                 </div>
             </div>
 
-            <form method="post" class="flex w-full max-w-md gap-2">
-                {% csrf_token %}
-                <input type="hidden" name="action" value="create_key">
-                <input
-                    type="text"
-                    name="name"
-                    maxlength="100"
-                    placeholder="Key name, e.g. Website"
-                    class="h-10 min-w-0 flex-1 rounded-lg border border-gray-300 px-3 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-50"
-                >
-                <button type="submit" class="inline-flex h-10 shrink-0 items-center gap-2 rounded-lg bg-gray-900 px-4 text-sm font-semibold text-white transition hover:bg-gray-800">
-                    <i class="ti ti-key"></i>
-                    Create key
-                </button>
-            </form>
+            <div class="w-full max-w-lg space-y-2">
+                <form method="post" class="flex gap-2">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="create_key">
+                    <input
+                        type="text"
+                        name="name"
+                        maxlength="100"
+                        placeholder="Lead API key name"
+                        class="h-10 min-w-0 flex-1 rounded-lg border border-gray-300 px-3 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-50"
+                    >
+                    <button type="submit" class="inline-flex h-10 shrink-0 items-center gap-2 rounded-lg bg-gray-900 px-4 text-sm font-semibold text-white transition hover:bg-gray-800">
+                        <i class="ti ti-key"></i>
+                        Lead API key
+                    </button>
+                </form>
+                <form method="post" class="flex gap-2">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="create_diagnostic_key">
+                    <input
+                        type="text"
+                        name="name"
+                        maxlength="100"
+                        placeholder="Diagnostic key name, e.g. ChatGPT"
+                        class="h-10 min-w-0 flex-1 rounded-lg border border-blue-200 bg-blue-50/40 px-3 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-50"
+                    >
+                    <button type="submit" class="inline-flex h-10 shrink-0 items-center gap-2 rounded-lg bg-blue-600 px-4 text-sm font-semibold text-white transition hover:bg-blue-500">
+                        <i class="ti ti-stethoscope"></i>
+                        Diagnostic key
+                    </button>
+                </form>
+            </div>
         </div>
 
         {% if raw_api_key %}
@@ -46,8 +63,15 @@
             <div class="flex items-start gap-3">
                 <i class="ti ti-circle-check mt-0.5 text-xl text-emerald-600"></i>
                 <div class="min-w-0 flex-1">
-                    <p class="text-sm font-semibold text-emerald-800">Your new API key is ready</p>
-                    <p class="mt-1 text-xs leading-5 text-emerald-700">Copy it now. For security, the full key is shown only once.</p>
+                    <p class="text-sm font-semibold text-emerald-800">
+                        {% if raw_api_key_purpose == "diagnostics" %}Your new ChatGPT diagnostic key is ready{% else %}Your new API key is ready{% endif %}
+                    </p>
+                    <p class="mt-1 text-xs leading-5 text-emerald-700">
+                        Copy it now. For security, the full key is shown only once.
+                        {% if raw_api_key_purpose == "diagnostics" %}
+                        This key is read-only for diagnostics and cannot create or update leads through the Lead API.
+                        {% endif %}
+                    </p>
                     <div class="mt-3 flex gap-2">
                         <input id="new-api-key" readonly value="{{ raw_api_key }}" class="h-10 min-w-0 flex-1 rounded-lg border border-emerald-200 bg-white px-3 font-mono text-xs text-gray-800">
                         <button type="button" data-copy-target="new-api-key" class="inline-flex h-10 items-center gap-2 rounded-lg border border-emerald-300 bg-white px-3 text-sm font-semibold text-emerald-700 hover:bg-emerald-100">
@@ -59,6 +83,30 @@
             </div>
         </div>
         {% endif %}
+    </section>
+
+    <section class="rounded-2xl border border-blue-100 bg-gradient-to-br from-blue-50 to-white p-6 shadow-sm">
+        <div class="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+                <div class="flex items-center gap-2">
+                    <span class="rounded-full bg-blue-600 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-white">Read only</span>
+                    <span class="text-xs font-medium text-blue-700">ChatGPT / MCP Diagnostics</span>
+                </div>
+                <h3 class="mt-3 text-lg font-semibold text-gray-950">SHVYA Diagnostic MCP endpoint</h3>
+                <p class="mt-1 max-w-2xl text-sm leading-6 text-gray-600">
+                    Connect ChatGPT directly to organization-scoped SHVYA diagnostics. The connector can inspect lead state, conversation events, AI execution, channel health, workflows and sanitized failures, but it cannot change CRM data.
+                </p>
+            </div>
+            <div class="w-full max-w-xl">
+                <div class="flex gap-2">
+                    <input id="diagnostic-mcp-url" readonly value="{{ diagnostic_mcp_url }}" class="h-10 min-w-0 flex-1 rounded-lg border border-blue-100 bg-white px-3 font-mono text-xs text-gray-700">
+                    <button type="button" data-copy-target="diagnostic-mcp-url" class="inline-flex h-10 items-center justify-center rounded-lg border border-blue-200 bg-white px-3 text-blue-700 hover:bg-blue-50" title="Copy diagnostic MCP endpoint">
+                        <i class="ti ti-copy text-lg"></i>
+                    </button>
+                </div>
+                <p class="mt-2 text-xs text-gray-500">Create a Diagnostic key above, then use this endpoint when adding the custom ChatGPT app.</p>
+            </div>
+        </div>
     </section>
 
     <section class="grid gap-6 lg:grid-cols-2">
@@ -109,6 +157,12 @@
                     <div class="flex flex-wrap items-center gap-2">
                         <p class="font-medium text-gray-900">{{ key.name }}</p>
                         <code class="rounded bg-gray-100 px-2 py-0.5 text-xs text-gray-600">{{ key.key_prefix }}...</code>
+                        {% if key.can_read_diagnostics %}
+                        <span class="rounded bg-blue-50 px-2 py-0.5 text-[11px] font-semibold text-blue-700">Diagnostics</span>
+                        {% endif %}
+                        {% if key.can_upsert_leads %}
+                        <span class="rounded bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">Lead API</span>
+                        {% endif %}
                     </div>
                     <p class="mt-1 text-xs text-gray-500">
                         Created {{ key.created_at|date:"M j, Y, g:i A" }}
