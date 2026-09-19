@@ -127,6 +127,34 @@ class StructuredPlaybookCRMTests(TestCase):
     setUp = AIEngagementControlTests.setUp
     _inbound = AIEngagementControlTests._inbound
 
+    def test_other_stage_call_request_moves_only_with_matching_evidence(self):
+        from apps.ai_engagement.graph.policy_actions import build_controlled_actions
+        from apps.ai_engagement.graph.runtime_policy import get_runtime_policy
+        from apps.ai_engagement.services.context import AIContextBuilder
+        from apps.ai_engagement.services.crm_executor import CRMActionExecutor
+        from apps.ai_engagement.services.organization_profile import compile_org_ai_profile_from_context
+        from apps.ai_engagement.services.qualification_state import state_for_lead
+        from apps.crm.models import Stage
+        info, _ = OrgInfo.objects.get_or_create(organization=self.organization)
+        info.ai_playbook = (settings.BASE_DIR / 'tests/fixtures/structured_organization_playbook.txt').read_text(encoding='utf-8')
+        info.save()
+        target = Stage.objects.create(pipeline=self.pipeline, name='Call Requested', description='Move here when a call is requested.', display_order=100, ai_on=True)
+        self.lead.stage = self.qualified
+        self.lead.save(update_fields=['stage'])
+        context = AIContextBuilder().build(organization=self.organization, lead=self.lead)
+        profile = compile_org_ai_profile_from_context(context.organization)
+        requirements = profile['qualification']['requirements']
+        runtime_policy = get_runtime_policy(organization=self.organization, profile=profile)
+        for message, allowed in [('No demo please', False), ('I want a demo', True)]:
+            context.conversation['messages'] = [{'id': 'call-request', 'direction': 'inbound', 'body': message}]
+            actions, _ = build_controlled_actions(decision=SimpleNamespace(qualification_updates=[], crm_actions=[{'type': 'pipeline_transition', 'stage_shift': {'stage_id': str(target.id)}}]), context=context, runtime_policy=runtime_policy, qualification_state=state_for_lead(self.lead, requirements=requirements), requirements=requirements)
+            shifts = [action for action in actions if action['type'] == 'pipeline_transition']
+            self.assertEqual(bool(shifts), allowed, actions)
+            if allowed:
+                CRMActionExecutor().execute(organization=self.organization, lead=self.lead, actions=shifts)
+                self.lead.refresh_from_db()
+                self.assertEqual(self.lead.stage_id, target.id)
+
     def test_full_reference_playbook_qualifies_without_optional_attributes(self):
         raw = (settings.BASE_DIR / 'tests/fixtures/structured_organization_playbook.txt').read_text(encoding='utf-8')
         info, _ = OrgInfo.objects.get_or_create(organization=self.organization)
