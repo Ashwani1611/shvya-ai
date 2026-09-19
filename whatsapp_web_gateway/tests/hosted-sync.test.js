@@ -152,6 +152,47 @@ test('sync retries are bounded, deduplicated and fenced to the original running 
   assert.match(state.historyError, /temporary/);
 });
 
+test('live LID message is forwarded when message.getChat cannot resolve the LID', async () => {
+  const lid = '109698229481999@lid';
+  const phone = '+919811223344';
+  const requested = [];
+  const ctx = context([
+    'digits', 'phoneFromId', 'phoneFromContact', 'mapMessageType', 'ackStatus',
+    'resolveMessageIdentity', 'serializeMessage',
+  ], {
+    CONTACT_LOOKUP_TIMEOUT_MS: 5000,
+    resolveMessageBody: async (message) => message.body || '',
+    resolveLidPhoneMap: async (_client, ids) => {
+      requested.push(...ids);
+      return new Map([[lid, phone]]);
+    },
+  });
+  const message = {
+    id: 'LID-LIVE-1',
+    from: lid,
+    to: '918700274739@c.us',
+    fromMe: false,
+    body: 'Hello',
+    type: 'chat',
+    timestamp: 1_725_000_100,
+    ack: 0,
+    author: '',
+    getChat: async () => { throw new Error('No LID for user'); },
+    getContact: async () => ({ id: lid, pushname: 'Live LID Prospect' }),
+  };
+
+  const serialized = await ctx.serializeMessage(message, null, null, {});
+
+  assert.deepEqual(requested, [lid]);
+  assert.equal(serialized.rawChatId, lid);
+  assert.equal(serialized.peerKey, phone);
+  assert.equal(serialized.peerPhone, phone);
+  assert.equal(serialized.contactPhoneNumber, phone);
+  assert.equal(serialized.from, '919811223344@c.us');
+  assert.equal(serialized.contactName, 'Live LID Prospect');
+  assert.equal(serialized.isGroup, false);
+});
+
 test('WhatsApp public pushname takes precedence over a saved address-book nickname', async () => {
   const ctx = context(['resolveChatIdentity'], {
     CONTACT_LOOKUP_TIMEOUT_MS: 5000, phoneFromContact: () => '+919812345678',
