@@ -7,6 +7,8 @@ from django.urls import reverse
 from apps.accounts.models import User
 from apps.accounts.session_utils import set_authenticated_user
 from apps.channels.models import WhatsAppAccount
+from apps.channels.providers.whatsapp_web import WhatsAppWebGatewayError
+from apps.channels.tasks import reconcile_hosted_sessions
 from apps.crm.models import Pipeline
 from apps.organizations.models import Organization
 from services.channels.hosted_whatsapp_service import create_hosted_account
@@ -43,6 +45,42 @@ class HostedWhatsAppRecoveryTests(TestCase):
         set_authenticated_user(session, self.user)
         session.save()
         self.client.cookies["shvya_crm_sessionid"] = session.session_key
+
+    @patch("apps.channels.tasks.initialize_hosted_session_task.delay")
+    @patch("apps.channels.tasks.WhatsAppWebClient.get_session", create=True)
+    def test_periodic_reconcile_reinitializes_missing_connected_gateway_session(
+        self,
+        get_session,
+        initialize_delay,
+    ):
+        self.account.status = WhatsAppAccount.Status.CONNECTED
+        self.account.save(update_fields=["status", "updated_at"])
+        get_session.side_effect = WhatsAppWebGatewayError(
+            "Session not found.",
+            status_code=404,
+        )
+
+        result = reconcile_hosted_sessions()
+
+        self.account.refresh_from_db()
+        self.assertEqual(self.account.status, WhatsAppAccount.Status.PENDING)
+        initialize_delay.assert_called_once_with(str(self.account.id))
+        self.assertEqual(result["reinitialized"], 1)
+
+    @patch("apps.channels.tasks.WhatsAppWebClient.get_session", create=True)
+    def test_periodic_reconcile_keeps_running_hosted_session_connected(self, get_session):
+        self.account.status = WhatsAppAccount.Status.CONNECTED
+        self.account.save(update_fields=["status", "updated_at"])
+        get_session.return_value = {
+            "status": "running",
+            "phoneNumber": "+918700274739",
+        }
+
+        result = reconcile_hosted_sessions()
+
+        self.account.refresh_from_db()
+        self.assertEqual(self.account.status, WhatsAppAccount.Status.CONNECTED)
+        self.assertEqual(result["running"], 1)
 
     @patch("apps.channels.hosted_ui.WhatsAppWebClient.get_session")
     def test_status_endpoint_reconciles_running_gateway_to_connected(self, get_session):
