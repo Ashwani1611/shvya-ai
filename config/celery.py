@@ -57,6 +57,10 @@ app.conf.beat_schedule = {
         "task": "hosted.dispatch_due_ai",
         "schedule": 5.0,
     },
+    "reconcile-hosted-sessions-every-30-seconds": {
+        "task": "apps.channels.reconcile_hosted_sessions",
+        "schedule": 30.0,
+    },
     "dispatch-ai-bump-ups-every-minute": {
         "task": "ai.dispatch_bump_ups",
         "schedule": 60.0,
