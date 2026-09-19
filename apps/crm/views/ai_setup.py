@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from django.contrib import messages
+from django.http import JsonResponse
 from django.shortcuts import redirect, render
 
 from apps.ai_engagement.models import Document, KnowledgeSource
@@ -84,15 +85,20 @@ def ai_setup_view(request):
             try:
                 if not data["about"]:
                     raise OrgInfoServiceError("Describe what your company does.")
-                save_ai_brain_configuration(
+                saved = save_ai_brain_configuration(
                     organization=organization,
                     data=data,
                     urls=request.POST.getlist("knowledge_urls"),
                     uploaded_file=request.FILES.get("knowledge_file"),
                 )
             except (OrgInfoServiceError, KnowledgeSourceServiceError) as exc:
+                if request.headers.get("Accept") == "application/json":
+                    return JsonResponse({"saved": False, "error": str(exc)}, status=400)
                 messages.error(request, str(exc))
                 return _render_ai_setup(request, organization, form_values=data, status=400)
+            if request.headers.get("Accept") == "application/json":
+                saved.refresh_from_db()
+                return JsonResponse({"saved": True, "updated_at": saved.updated_at.isoformat(), "ai_playbook": saved.ai_playbook})
             messages.success(request, "AI Brain saved successfully.")
             return redirect("crm-knowledge-base-ai-setup")
 

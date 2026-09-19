@@ -154,6 +154,7 @@ def install_qualification_execution_policy_guard() -> None:
         _config,
         _configured_completion_reminders,
         _mapping_keys,
+        _mapped_value,
         _norm,
         _plan_from_reconciled,
         _requirement_ref,
@@ -353,7 +354,7 @@ def install_qualification_execution_policy_guard() -> None:
                     exact_updates.append(
                         {
                             "key": attribute_key,
-                            "value": update.get("value"),
+                            "value": _mapped_value(config, attribute_key, update.get("value")),
                         }
                     )
 

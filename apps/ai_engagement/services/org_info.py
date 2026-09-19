@@ -102,6 +102,7 @@ class OrgInfoService:
         org_info = self.get_or_create(
             organization=organization,
         )
+        org_info = OrgInfo.objects.select_for_update().get(pk=org_info.pk, organization=organization)
 
         # ----------------------------------------------------
         # TEXT CONFIGURATION
@@ -129,7 +130,9 @@ class OrgInfoService:
         if "organization_name" in data:
             organization.name = str(data["organization_name"] or "").strip()
             try:
-                organization.full_clean()
+                # AI Brain edits only the name; unrelated legacy billing/profile
+                # fields must not reject an otherwise valid Playbook save.
+                organization._meta.get_field("name").clean(organization.name, organization)
             except ValidationError as exc:
                 raise OrgInfoServiceError(str(exc)) from exc
             organization.save(update_fields=["name"])
@@ -208,6 +211,7 @@ class OrgInfoService:
                 str(exc)
             ) from exc
 
-        org_info.save()
+        fields = (set(data) & self.ALLOWED_FIELDS) - {"organization_name"}
+        org_info.save(update_fields=[*sorted(fields), "updated_at"])
 
         return org_info

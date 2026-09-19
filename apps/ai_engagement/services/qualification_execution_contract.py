@@ -204,6 +204,10 @@ def _attribute_refs(
 
 def _split_mapping(line: str) -> tuple[str, str] | None:
     text = str(line or "").strip()
+    attribute = re.search(r"(?im)^\s*[-*]?\s*Attribute name:\s*(.+)$", text)
+    source = re.search(r"(?im)^\s*[-*]?\s*Source:\s*Qualification Question\s*(\d+)\b", text)
+    if attribute:
+        return (f"Q{source.group(1)}", attribute.group(1).strip()) if source else None
     parts = re.split(r"\s*(?:->|=>|→)\s*", text, maxsplit=1)
     if len(parts) == 2 and parts[0].strip() and parts[1].strip():
         return parts[0].strip(), parts[1].strip()
@@ -237,6 +241,7 @@ def _config(*, organization, requirements: list[dict[str, Any]]) -> dict[str, An
 
     mappings: dict[str, str] = {}
     mapping_targets: dict[str, list[str]] = {}
+    value_rules: dict[str, str] = {}
     errors: list[dict[str, str]] = []
 
     mapping_lines = list(dict.fromkeys(section_lines(raw, "attribute_mapped")))
@@ -244,6 +249,10 @@ def _config(*, organization, requirements: list[dict[str, Any]]) -> dict[str, An
     for line in mapping_lines:
         pair = _split_mapping(line)
         if not pair:
+            # Optional mappings from volunteered conversation facts are supplied
+            # to the ordinary evidence-checked CRM path, not a question ID.
+            if re.search(r"(?im)^\s*[-*]?\s*Attribute name:", line):
+                continue
             errors.append(
                 {
                     "type": "configuration_error",
@@ -307,6 +316,7 @@ def _config(*, organization, requirements: list[dict[str, Any]]) -> dict[str, An
             # uses the full one-to-many mapping_targets list.
             if attribute_key:
                 mappings.setdefault(requirement_id, attribute_key)
+                value_rules[attribute_key] = line
 
     final_ack = _strip_quotes(sections["acknowledgment_message"]) or None
 
@@ -371,6 +381,7 @@ def _config(*, organization, requirements: list[dict[str, Any]]) -> dict[str, An
     return {
         "mappings": mappings,
         "mapping_targets": mapping_targets,
+        "mapping_value_rules": value_rules,
         "final_ack": final_ack,
         "completion_stage": completion_stage,
         "protected_completion_stage_ids": sorted(protected_completion_stage_ids),
@@ -385,6 +396,25 @@ def _mapping_keys(config: dict[str, Any], requirement_id: str) -> list[str]:
         return [str(item).strip() for item in targets if str(item or "").strip()]
     primary = str((config.get("mappings") or {}).get(str(requirement_id)) or "").strip()
     return [primary] if primary else []
+
+
+def _mapped_value(config, key, value):
+    """Translate a proven answer only through explicit authored value arrows."""
+    text = (config.get("mapping_value_rules") or {}).get(key, "")
+    if not re.search(r"(?im)^\s*[-*]?\s*Attribute name:", text):
+        return value
+    targets = set()
+    for line in text.splitlines():
+        pair = _split_mapping(line.strip().lstrip("-* "))
+        if not pair:
+            continue
+        source, target = pair
+        source = source.strip('"“”')
+        target = target.strip().rstrip(".").strip('"“”')
+        aliases = [source, *re.split(r"\s*/\s*", source)]
+        if _norm(value) == _norm(target) or any(_norm(value) == _norm(alias) for alias in aliases):
+            targets.add(target)
+    return next(iter(targets)) if len(targets) == 1 else value
 
 
 def _completion_target(*, lead, state: dict[str, Any], config: dict[str, Any]):
@@ -949,7 +979,7 @@ def resolve_before_generation(
         for item in updates:
             for attribute_key in _mapping_keys(config, item["requirement_id"]):
                 mapped_updates.append(
-                    {"key": attribute_key, "value": item["value"]}
+                    {"key": attribute_key, "value": _mapped_value(config, attribute_key, item["value"])}
                 )
         # A repeated authored mapping to the same key is harmless; keep only the
         # final value for that key in this turn.
@@ -1022,6 +1052,15 @@ def resolve_before_generation(
                                     for item in mapped_updates],
                     }
                 )
+
+        # Attribute-presence criteria must see the committed mapped values from
+        # this answer, including the last required answer in the questionnaire.
+        if completion_reached:
+            target = _completion_target(lead=locked, state=projected, config=config)
+            runtime_config["completion_stage"] = target
+            stage_action = ({"type": "pipeline_transition", "stage_shift": {"stage_id": str(target["id"])}}
+                            if isinstance(target, dict) else None)
+            execution_plan["stage_action"] = deepcopy(stage_action)
 
         # Stage completion is an independent configured downstream action. A
         # failed/missing mapped attribute is reported, but does not silently erase
@@ -1193,7 +1232,7 @@ def _plan_from_reconciled(*, lead, source_message_id, snapshot):
             verification = _verify_attribute(
                 lead,
                 attribute_key,
-                item.get("value"),
+                _mapped_value(config, attribute_key, item.get("value")),
             )
             results = [
                 result
@@ -1326,6 +1365,12 @@ def _ack_from_message(message: str, plan: dict[str, Any]) -> str:
             line = _strip_quotes(match.group("value"))
         if _LABEL_ONLY.match(line):
             continue
+        # Remove inline option lists before sentence splitting; otherwise "A."
+        # becomes one fragment and its option leaks as ordinary prose.
+        if next_rendered:
+            line = re.split(r"(?<!\w)[A-Z][).:]\s+", line, maxsplit=1)[0].strip()
+        if re.search(r"\b(?:do not tell the lead|send the qualification completion|internal CRM|their AI score|notes\s*:|rules\s*:)\b", line, re.I):
+            break
         normalized_line = _norm(line)
         if next_rendered and re.match(r"^[a-z0-9][).:\-]\s+", normalized_line):
             continue
@@ -1493,7 +1538,12 @@ def _finalize(decision, state):
                 raise EngagementError(
                     "Qualification completion requires a configured Acknowledgment message value."
                 )
-            message = f"{acknowledgement}\n\n{final_value}".strip()
+            # Keep a distinct answer acknowledgment, but not a second generated
+            # paraphrase of the organization's completion message.
+            ack_words = set(re.findall(r"[a-z]+", acknowledgement.casefold()))
+            final_words = set(re.findall(r"[a-z]+", final_value.casefold()))
+            duplicate = bool(ack_words) and len(ack_words & final_words) / len(ack_words) >= 0.7
+            message = final_value if duplicate else f"{acknowledgement}\n\n{final_value}".strip()
 
     if canonical._QUALIFIED_CLAIM_RE.search(message) and not _stage_success(state):
         message = canonical.ResponseActionValidator._replace_sentence(

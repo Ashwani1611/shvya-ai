@@ -18,6 +18,9 @@ def parse_engagement_instruction_sections(raw: str) -> dict[str, str]:
 
 def section_lines(raw: str, section: str) -> list[str]:
     value = parse_engagement_instruction_sections(raw).get(section, "")
+    if section in {"stage_shifting", "attribute_mapped", "reminders"}:
+        from apps.ai_engagement.services.playbook import policy_blocks
+        return policy_blocks(value)
     result: list[str] = []
     for line in value.splitlines():
         cleaned = _BULLET_RE.sub("", line).strip()
