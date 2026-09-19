@@ -100,6 +100,11 @@ _POSITIVE_BOOLEAN_RE = re.compile(
     r"\b(?:yes|yeah|yep|run|running|use|using|have|currently)\b",
     flags=re.IGNORECASE,
 )
+_INTERMITTENT_POSITIVE_BOOLEAN_RE = re.compile(
+    r"\b(?:sometimes?|some\s+times?|occasionally|at\s+times|from\s+time\s+to\s+time|"
+    r"on\s+and\s+off|off\s+and\s+on|once\s+in\s+a\s+while|rarely)\b",
+    flags=re.IGNORECASE,
+)
 _OPTION_KEY_RE = re.compile(
     r"^\s*(?:option\s+)?(?P<key>[a-z]|\d{1,2})\s*[\)\].:\-]?\s*$",
     flags=re.IGNORECASE,
@@ -310,6 +315,14 @@ def _match_boolean_option(
         return by_value["yes"]
     if re.match(r"^(?:no|nope)\b", normalized):
         return by_value["no"]
+    # Natural frequency answers still mean "Yes" for a binary current-ads
+    # requirement. Keep this deterministic so replies such as "some time"
+    # advance qualification instead of falling through to the grounding gate.
+    if (
+        _INTERMITTENT_POSITIVE_BOOLEAN_RE.search(normalized)
+        and not _NEGATIVE_RE.search(normalized)
+    ):
+        return by_value["yes"]
 
     question_tokens = _tokens(str(question or "").splitlines()[0])
     text_tokens = _tokens(text)

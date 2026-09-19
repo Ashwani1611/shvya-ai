@@ -57,6 +57,9 @@ def classify(env, text, *, active=None, provider=None, requirements=None, contex
     ("What is shvya ai", Intent.PRODUCT_OR_SERVICE_QUESTION),
     ("I want to know about shvya", Intent.PRODUCT_OR_SERVICE_QUESTION),
     ("What is its functionality", Intent.PRODUCT_OR_SERVICE_QUESTION),
+    ("what its featurs", Intent.PRODUCT_OR_SERVICE_QUESTION),
+    ("why I buy", Intent.PRODUCT_OR_SERVICE_QUESTION),
+    ("Why should I choose you?", Intent.PRODUCT_OR_SERVICE_QUESTION),
     ("What is your price?", Intent.PRICING_QUESTION),
     ("I want to speak with someone.", Intent.HUMAN_REQUEST),
     ("Please call me tomorrow.", Intent.CALL_REQUEST),
@@ -111,6 +114,14 @@ def test_numeric_qualification(env):
 def test_natural_numeric_qualification(env):
     result = classify(env, "Around 25 leads every day.", active="volume")
     assert result.qualification_candidate["value"] == 25
+
+
+@pytest.mark.parametrize("text", ["some time", "sometimes", "occasionally", "from time to time"])
+def test_intermittent_boolean_qualification_is_yes(env, text):
+    result = classify(env, text, active="ads")
+    assert result.primary_intent == Intent.QUALIFICATION_ANSWER
+    assert result.qualification_candidate["value"] is True
+    assert result.classification_path == ClassificationPath.DETERMINISTIC
 
 
 def test_configured_option_letter_and_natural_text(env):

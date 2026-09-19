@@ -98,7 +98,7 @@ def deterministic_intents(text: str) -> set[Intent]:
         (Intent.POLICY_QUESTION, ("refund policy", "refund", "cancellation policy", "cancel policy", "terms and conditions", "policy kya", "your policy", "policies")),
         (Intent.LOCATION_QUESTION, ("where are you", "where is your", "your location", "location kya", "located", "address kya", "your address", "office address")),
         (Intent.AVAILABILITY_QUESTION, ("availability", "available today", "available tomorrow", "are you available", "slot available", "slots available", "any slot", "open today")),
-        (Intent.PRODUCT_OR_SERVICE_QUESTION, ("your service", "your services", "your product", "your products", "what do you do", "what exactly do", "know more about", "tell me about", "what does your", "how does your", "your features", "what features")),
+        (Intent.PRODUCT_OR_SERVICE_QUESTION, ("your service", "your services", "your product", "your products", "what do you do", "what exactly do", "know more about", "tell me about", "what does your", "how does your", "your features", "what features", "featurs", "featres", "why should i buy", "why would i buy", "why i buy", "why buy", "why should i choose", "why choose", "benefit", "benefits", "advantages")),
         (Intent.HUMAN_REQUEST, ("speak with someone", "speak to someone", "talk with someone", "talk to someone", "speak with a person", "speak to a person", "human agent", "real person", "connect me to someone", "connect me with someone", "person se baat", "kisi person se baat", "human se baat", "agent se baat")),
         (Intent.CALL_REQUEST, ("call me", "please call", "give me a call", "call back", "callback", "phone me", "mujhe call", "call karna", "call karo", "call kijiye")),
         (Intent.BOOKING_INTENT, ("book a", "book an", "book me", "schedule a", "schedule an", "book demo", "schedule demo", "book appointment", "schedule appointment")),
@@ -227,13 +227,28 @@ def boolean_candidate(text: str, question: str) -> bool | None:
     value = normalize(text)
     yes = bool(re.search(r"\b(?:yes|yeah|yep|haan|ha|han|जी हाँ|हाँ)\b", value))
     no = bool(re.search(r"\b(?:no|nope|nahi|nahin|नहीं)\b", value))
+    intermittent = bool(
+        re.search(
+            r"\b(?:sometimes?|some\s+times?|occasionally|at\s+times|"
+            r"from\s+time\s+to\s+time|on\s+and\s+off|off\s+and\s+on|"
+            r"once\s+in\s+a\s+while|rarely)\b",
+            value,
+        )
+    )
+    if intermittent and not re.search(r"\b(?:not|never|no\s+longer)\b", value):
+        yes = True
     if yes == no:
         return None
     keywords = [
         token for token in re.findall(r"[a-z]{3,}", question)
         if token not in {"are", "you", "your", "the", "and", "with", "have", "has", "does", "do", "is"}
     ]
-    if len(value.split()) > 3 and keywords and not any(token in value for token in keywords[:5]):
+    if (
+        not intermittent
+        and len(value.split()) > 3
+        and keywords
+        and not any(token in value for token in keywords[:5])
+    ):
         if not ("ad" in question and re.search(r"\bads?\b", value)):
             return None
     return yes
