@@ -16,7 +16,7 @@ from services.crm.lead_filter_service import (
 )
 
 from .api import STAGE_THEMES
-from .bulk import bulk_permissions
+from .bulk import bulk_campaign_available, bulk_permissions
 
 
 def _pipeline_entered_at(lead):
@@ -190,6 +190,7 @@ def lead_table_partial(request):
             "selected_pipeline_id": str(current_pipeline.id),
             "active_stage_id": active_stage_id,
             "bulk_permissions": bulk_permissions(user, current_pipeline),
+            "bulk_campaign_available": bulk_campaign_available(user, current_pipeline),
             "cross_pipeline_matches": matches,
             "all_pipelines_query": query_with(
                 request.GET,
