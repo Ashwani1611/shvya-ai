@@ -152,6 +152,23 @@ def test_short_direct_qualification_answer_can_continue_immediately():
     assert result.next_requirement_id == "q4"
 
 
+def test_product_information_intent_without_question_mark_answers_before_qualification():
+    result = decide(
+        context(
+            intent(
+                Intent.PRODUCT_OR_SERVICE_QUESTION,
+                requires_knowledge=True,
+            ),
+            next_id="q1",
+        )
+    )
+    assert result.outcome == ConversationPolicyOutcome.ANSWER
+    assert result.answer_customer_question is True
+    assert result.continue_qualification is False
+    assert result.next_requirement_id is None
+    assert result.requires_knowledge is True
+
+
 def test_pricing_only_answers_without_forcing_qualification():
     result = decide(
         context(
