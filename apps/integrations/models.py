@@ -531,3 +531,13 @@ class MetaLeadForm(models.Model):
 
     def __str__(self):
         return self.form_name
+
+
+# Keep diagnostic connector persistence in a focused module while making the
+# models discoverable through Django's conventional apps.integrations.models import.
+from .diagnostic_models import (  # noqa: E402,F401
+    DiagnosticAccessLog,
+    DiagnosticOAuthAuthorizationCode,
+    DiagnosticOAuthClient,
+    DiagnosticOAuthToken,
+)
