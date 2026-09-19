@@ -66,6 +66,49 @@ class HostedAIIdentityRepairTests(TestCase):
         )
 
     @patch("apps.hosted_automation.signals.dispatch_due_hosted_ai.apply_async")
+    def test_live_lid_identity_repair_auto_creates_new_lead_and_ai_job(self, apply_async):
+        settings = dict(self.organization.settings or {})
+        settings["hosted_whatsapp"]["sessions"][str(self.account.id)]["auto_lead_creation"] = True
+        self.organization.settings = settings
+        self.organization.save(update_fields=["settings", "updated_at"])
+
+        phone = "+919811223344"
+        payload = {
+            "sessionId": str(self.account.id),
+            "event": "message",
+            "messageId": "LID-NEW-LEAD-AI-1",
+            "from": "109698229481999@lid",
+            "to": "918700274739@c.us",
+            "fromMe": False,
+            "body": "Hello, I need details",
+            "messageType": "text",
+            "timestamp": timezone.now().timestamp(),
+            "chatId": "109698229481999@lid",
+            "rawChatId": "109698229481999@lid",
+            "peerKey": phone,
+            "peerPhone": "",
+            "contactPhoneNumber": "",
+            "contactName": "New LID Prospect",
+            "isGroup": False,
+        }
+
+        with self.captureOnCommitCallbacks(execute=True):
+            message = handle_hosted_gateway_event(payload=payload)
+
+        message.refresh_from_db()
+        lead = Lead.objects.get(organization=self.organization, phone=phone)
+        self.assertEqual(message.lead_id, lead.id)
+        self.assertEqual(lead.pipeline_id, self.pipeline.id)
+        self.assertEqual(lead.stage_id, self.stage.id)
+        self.assertEqual(lead.lead_source, "whatsapp")
+        job = HostedAutomationJob.objects.get(source_message=message)
+        self.assertEqual(job.account_id, self.account.id)
+        self.assertEqual(job.lead_id, lead.id)
+        self.assertEqual(job.status, HostedAutomationJob.Status.QUEUED)
+        apply_async.assert_called()
+
+
+    @patch("apps.hosted_automation.signals.dispatch_due_hosted_ai.apply_async")
     def test_lid_identity_repair_still_creates_hosted_ai_job(self, apply_async):
         payload = {
             "sessionId": str(self.account.id),
