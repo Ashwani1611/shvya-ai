@@ -48,6 +48,12 @@ QUESTION_START = re.compile(
     r"^(?:what|which|where|when|why|how|who|can|could|would|will|is|are|do|does|did|have|has)\b",
     re.IGNORECASE,
 )
+GREETING_QUESTION = re.compile(
+    r"^(?:hi+|hello|hey|namaste)\b.{0,80}?\b"
+    r"(?P<question>what|which|where|when|why|how|who|can|could|would|will|is|are|do|does|did|have|has)\b"
+    r"(?P<rest>.*)$",
+    re.IGNORECASE | re.DOTALL,
+)
 OPTION_LINE = re.compile(
     r"^\s*(?:[-*•]\s*)?(?P<key>[A-Za-z]|\d{1,2})\s*[\)\].:\-]\s+(?P<value>.+?)\s*$"
 )
@@ -77,7 +83,20 @@ def direct_question(text: str) -> str | None:
     if questions:
         return questions[-1][:500]
     value = text.strip()
-    return value[:500] if QUESTION_START.match(value) else None
+    if QUESTION_START.match(value):
+        return value[:500]
+
+    # Leads often prefix a real question with a greeting or the assistant/brand
+    # name, e.g. "Hi shvya what is shvya". Treat the interrogative clause as
+    # the customer's question instead of allowing active qualification to
+    # consume the whole message as a free-form answer.
+    greeting_question = GREETING_QUESTION.match(value)
+    if greeting_question:
+        question = (
+            f"{greeting_question.group('question')}{greeting_question.group('rest')}"
+        ).strip()
+        return question[:500] or None
+    return None
 
 
 def deterministic_intents(text: str) -> set[Intent]:
@@ -145,9 +164,9 @@ def deterministic_intents(text: str) -> set[Intent]:
     # A lead asking "What is <brand/product>?" is an informational question,
     # even when they omit the question mark. Keep more specific question
     # families (pricing/policy/location/availability) authoritative.
+    detected_question = normalize(direct_question(text) or "")
     if (
-        direct_question(text)
-        and value.startswith("what is ")
+        detected_question.startswith("what is ")
         and not intents
         & {
             Intent.PRICING_QUESTION,
