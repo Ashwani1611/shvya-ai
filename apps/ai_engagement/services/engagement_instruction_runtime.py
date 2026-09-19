@@ -283,8 +283,6 @@ def _merge_authored_attribute_updates(
 
 def _stage_rule_references_destination(rule: str, destination: dict[str, Any]) -> bool:
     normalized = _normalized(rule)
-    if re.search(r"\bcurrent pipeline\b", normalized) and destination.get("is_current_pipeline") is False:
-        return False
     stage_name = _normalized(destination.get("name"))
     if stage_name and stage_name in normalized:
         return True
@@ -296,6 +294,10 @@ def _stage_rule_references_destination(rule: str, destination: dict[str, Any]) -
 
 
 def _condition_part(rule: str, destination: dict[str, Any]) -> str:
+    # The rule still names this stage, so callers must not fall back to its
+    # looser description when the explicitly required pipeline differs.
+    if re.search(r"\bcurrent pipeline\b", _normalized(rule)) and destination.get("is_current_pipeline") is False:
+        return ""
     # Preserve the relationship between a block's condition and destination.
     # Examples are illustrations, never additional mandatory predicates.
     body = re.sub(r"(?im)^\s*Rule\s+\d+\s*:\s*(?=(?:when|if|move|shift|route)\b)", "", str(rule))

@@ -98,6 +98,7 @@ def ai_setup_view(request):
                 return _render_ai_setup(request, organization, form_values=data, status=400)
             if request.headers.get("Accept") == "application/json":
                 saved.refresh_from_db()
+                messages.success(request, "AI Brain saved successfully.")
                 return JsonResponse({"saved": True, "updated_at": saved.updated_at.isoformat(), "ai_playbook": saved.ai_playbook})
             messages.success(request, "AI Brain saved successfully.")
             return redirect("crm-knowledge-base-ai-setup")

@@ -182,7 +182,8 @@ class AIBrainPersistenceTests(TestCase):
         self.assertTrue(self.info.bump_up_enabled)
         self.assertEqual(self.info.bump_up_count, 4)
 
-    def test_save_and_reload_json_confirms_database_content(self):
+    @patch('apps.crm.views.ai_setup.messages.success')
+    def test_save_and_reload_json_confirms_database_content(self, success):
         user = SimpleNamespace(organization=self.organization)
         request = RequestFactory().post('/', {**self.data, 'action': 'save_settings'}, HTTP_ACCEPT='application/json')
         with patch('apps.crm.authentication.get_crm_authenticated_user', return_value=user):
@@ -194,6 +195,7 @@ class AIBrainPersistenceTests(TestCase):
         self.info.refresh_from_db()
         self.assertEqual(result['ai_playbook'], self.info.ai_playbook)
         self.assertEqual(self.info.ai_playbook, self.data['ai_playbook'])
+        success.assert_called_once()
 
     def test_unrelated_legacy_organization_field_does_not_block_playbook_save(self):
         Organization.objects.filter(pk=self.organization.pk).update(payment_mode='legacy')

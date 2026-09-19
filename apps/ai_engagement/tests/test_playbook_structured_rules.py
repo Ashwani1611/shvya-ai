@@ -134,17 +134,22 @@ class StructuredPlaybookCRMTests(TestCase):
         from apps.ai_engagement.services.crm_executor import CRMActionExecutor
         from apps.ai_engagement.services.organization_profile import compile_org_ai_profile_from_context
         from apps.ai_engagement.services.qualification_state import state_for_lead
-        from apps.crm.models import Stage
+        from apps.crm.models import Pipeline, Stage
         info, _ = OrgInfo.objects.get_or_create(organization=self.organization)
         info.ai_playbook = (settings.BASE_DIR / 'tests/fixtures/structured_organization_playbook.txt').read_text(encoding='utf-8')
         info.save()
         target = Stage.objects.create(pipeline=self.pipeline, name='Call Requested', description='Move here when a call is requested.', display_order=100, ai_on=True)
+        other_pipeline = Pipeline.objects.create(organization=self.organization, name='Other Sales')
+        other_target = Stage.objects.create(pipeline=other_pipeline, name='Call Requested', description='Move here when a call is requested.', display_order=100, ai_on=True)
         self.lead.stage = self.qualified
         self.lead.save(update_fields=['stage'])
         context = AIContextBuilder().build(organization=self.organization, lead=self.lead)
         profile = compile_org_ai_profile_from_context(context.organization)
         requirements = profile['qualification']['requirements']
         runtime_policy = get_runtime_policy(organization=self.organization, profile=profile)
+        context.conversation['messages'] = [{'id': 'wrong-pipeline', 'direction': 'inbound', 'body': 'I want a demo'}]
+        actions, _ = build_controlled_actions(decision=SimpleNamespace(qualification_updates=[], crm_actions=[{'type': 'pipeline_transition', 'stage_shift': {'stage_id': str(other_target.id)}}]), context=context, runtime_policy=runtime_policy, qualification_state=state_for_lead(self.lead, requirements=requirements), requirements=requirements)
+        self.assertFalse(any(action.get('stage_shift', {}).get('stage_id') == str(other_target.id) for action in actions), actions)
         for message, allowed in [('No demo please', False), ('I want a demo', True)]:
             context.conversation['messages'] = [{'id': 'call-request', 'direction': 'inbound', 'body': message}]
             actions, _ = build_controlled_actions(decision=SimpleNamespace(qualification_updates=[], crm_actions=[{'type': 'pipeline_transition', 'stage_shift': {'stage_id': str(target.id)}}]), context=context, runtime_policy=runtime_policy, qualification_state=state_for_lead(self.lead, requirements=requirements), requirements=requirements)
