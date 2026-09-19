@@ -258,9 +258,92 @@ async function resolveChatIdentity(chat, client = null, lidPhoneMap = null) {
   };
 }
 
+async function resolveMessageIdentity(message, client = null) {
+  const fromMe = Boolean(message && message.fromMe);
+  const rawChatId = serializedId(
+    message && (fromMe ? message.to : message.from),
+  ) || String((message && (fromMe ? message.to : message.from)) || '');
+  const isGroup = rawChatId.endsWith('@g.us');
+
+  if (isGroup) {
+    return {
+      rawChatId,
+      peerKey: rawChatId,
+      peerPhone: '',
+      contactName: rawChatId,
+      profileName: '',
+      isGroup: true,
+    };
+  }
+
+  let peerPhone = phoneFromId(rawChatId);
+  if (!peerPhone && rawChatId.endsWith('@lid')) {
+    const one = await resolveLidPhoneMap(client, [rawChatId]);
+    peerPhone = one.get(rawChatId) || '';
+  }
+
+  let contact = null;
+  if (message && typeof message.getContact === 'function') {
+    try {
+      contact = await withTimeout(
+        message.getContact(),
+        CONTACT_LOOKUP_TIMEOUT_MS,
+        `getContact ${rawChatId}`,
+      );
+    } catch (_) {}
+  }
+
+  if (!peerPhone) peerPhone = phoneFromContact(contact);
+
+  const contactName = (
+    contact && (
+      contact.pushname ||
+      contact.name ||
+      contact.shortName ||
+      contact.verifiedName
+    )
+  ) || peerPhone || rawChatId;
+
+  return {
+    rawChatId,
+    peerKey: peerPhone || rawChatId,
+    peerPhone,
+    contactName,
+    profileName: String((contact && contact.pushname) || '').trim(),
+    isGroup: false,
+  };
+}
+
 async function serializeMessage(message, chat = null, identity = null, client = null) {
-  const resolvedChat = chat || await message.getChat();
-  const resolvedIdentity = identity || await resolveChatIdentity(resolvedChat, client);
+  let resolvedChat = chat;
+  if (!resolvedChat && message && typeof message.getChat === 'function') {
+    try {
+      resolvedChat = await message.getChat();
+    } catch (error) {
+      const rawChatId = serializedId(
+        message && (message.fromMe ? message.to : message.from),
+      );
+      console.warn(
+        `Could not resolve live chat ${rawChatId || 'unknown'}; using message identity fallback:`,
+        error.message,
+      );
+    }
+  }
+
+  let resolvedIdentity = identity;
+  if (!resolvedIdentity && resolvedChat) {
+    try {
+      resolvedIdentity = await resolveChatIdentity(resolvedChat, client);
+    } catch (error) {
+      console.warn(
+        'Could not resolve live chat identity; using message identity fallback:',
+        error.message,
+      );
+    }
+  }
+  if (!resolvedIdentity) {
+    resolvedIdentity = await resolveMessageIdentity(message, client);
+  }
   const fromMe = Boolean(message.fromMe);
   let from = serializedId(message.from) || String(message.from || '');
   let to = serializedId(message.to) || String(message.to || '');
