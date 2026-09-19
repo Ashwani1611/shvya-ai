@@ -277,6 +277,65 @@ class AuthoredPolicyCRMIntegrationTests(TestCase):
         for key, value in expected.items():
             self.assertEqual(self.lead.attributes.get(key), value)
 
+    def test_new_reusable_fact_is_created_and_filled_through_canonical_executor(self):
+        context, runtime_policy, requirements, _profile = self._context_policy_requirements(
+            message_id="dynamic-attribute-turn",
+            body="We have 8 salespeople handling enquiries",
+        )
+        qualification_state = state_for_lead(
+            self.lead,
+            requirements=requirements,
+        )
+        actions, _result = build_controlled_actions(
+            decision=SimpleNamespace(
+                qualification_updates=[],
+                crm_actions=[
+                    {
+                        "type": "attribute_updates",
+                        "updates": [
+                            {"key": "new:Sales Team Size", "value": 8},
+                        ],
+                    }
+                ],
+            ),
+            context=context,
+            runtime_policy=runtime_policy,
+            qualification_state=qualification_state,
+            requirements=requirements,
+        )
+
+        self.assertEqual(
+            actions,
+            [
+                {
+                    "type": "attribute_updates",
+                    "updates": [
+                        {
+                            "key": "sales_team_size",
+                            "value": 8,
+                            "name": "Sales Team Size",
+                            "field_type": "numeric",
+                            "create_if_missing": True,
+                        }
+                    ],
+                }
+            ],
+        )
+
+        CRMActionExecutor().execute(
+            organization=self.organization,
+            lead=self.lead,
+            actions=actions,
+        )
+        definition = AttributeDefinition.objects.get(
+            organization=self.organization,
+            name="Sales Team Size",
+        )
+        self.lead.refresh_from_db()
+        self.assertEqual(definition.key, "sales_team_size")
+        self.assertEqual(definition.field_type, AttributeDefinition.FieldType.NUMERIC)
+        self.assertEqual(self.lead.attributes.get("sales_team_size"), "8")
+
     def test_non_new_stage_can_shift_cross_pipeline_from_authored_stage_rule(self):
         self.lead.stage = self.follow_up
         self.lead.save(update_fields=["stage", "updated_at"])
