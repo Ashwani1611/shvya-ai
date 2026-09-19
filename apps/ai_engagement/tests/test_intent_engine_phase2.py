@@ -53,6 +53,7 @@ def classify(env, text, *, active=None, provider=None, requirements=None, contex
 @pytest.mark.parametrize(("text", "expected"), [
     ("Hi", Intent.GREETING),
     ("I want to know more about your services.", Intent.PRODUCT_OR_SERVICE_QUESTION),
+    ("What is shvya", Intent.PRODUCT_OR_SERVICE_QUESTION),
     ("What is your price?", Intent.PRICING_QUESTION),
     ("I want to speak with someone.", Intent.HUMAN_REQUEST),
     ("Please call me tomorrow.", Intent.CALL_REQUEST),
@@ -68,6 +69,20 @@ def test_canonical_deterministic_intents(env, text, expected):
     result = classify(env, text)
     assert result.primary_intent == expected
     assert result.classification_path == ClassificationPath.DETERMINISTIC
+
+
+def test_direct_product_question_without_question_mark_is_not_qualification_answer(env):
+    result = classify(env, "What is shvya", active="challenge")
+    assert result.primary_intent == Intent.PRODUCT_OR_SERVICE_QUESTION
+    assert result.direct_question == "What is shvya"
+    assert result.qualification_candidate is None
+    assert Intent.QUALIFICATION_ANSWER not in result.secondary_intents
+
+
+def test_specific_pricing_question_is_not_double_classified_as_product(env):
+    result = classify(env, "What is your pricing?")
+    assert result.primary_intent == Intent.PRICING_QUESTION
+    assert Intent.PRODUCT_OR_SERVICE_QUESTION not in result.secondary_intents
 
 
 def test_numeric_qualification(env):

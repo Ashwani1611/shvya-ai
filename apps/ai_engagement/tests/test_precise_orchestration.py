@@ -93,6 +93,11 @@ class PreciseEngagementTests(SimpleTestCase):
                 context=self._context("What does your premium package include?")
             )
         )
+        self.assertTrue(
+            service._should_retrieve_knowledge(
+                context=self._context("What is shvya")
+            )
+        )
 
     def test_malformed_json_gets_exactly_one_repair(self):
         valid = json.dumps(
