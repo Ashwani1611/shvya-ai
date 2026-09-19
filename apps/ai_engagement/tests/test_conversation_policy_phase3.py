@@ -11,6 +11,7 @@ from apps.ai_engagement.services.conversation_policy import (
 )
 from apps.ai_engagement.services.conversation_policy_runtime import (
     _affirmed_information_offer,
+    _information_detail_requested,
     _information_reply_has_substance,
     _record_policy,
 )
@@ -94,6 +95,16 @@ def test_yes_after_feature_offer_is_treated_as_conversation_continuation():
         body="What is your biggest challenge with managing leads?"
     )
     assert _affirmed_information_offer(lead=lead, source=source) is False
+
+
+def test_feature_typos_and_value_questions_request_detailed_answers():
+    for text in (
+        "what its featurs",
+        "why I buy",
+        "Why should I choose you?",
+        "what are the benefits",
+    ):
+        assert _information_detail_requested(text) is True
 
 
 def test_product_information_reply_must_be_substantive():
