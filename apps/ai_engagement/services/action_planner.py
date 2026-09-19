@@ -364,14 +364,23 @@ class ActionPlanner:
         elif action_type == "attribute_updates":
             from apps.crm.models import AttributeDefinition
 
-            keys = {str(item["key"]) for item in action.get("updates") or []}
+            updates = [
+                item for item in action.get("updates") or []
+                if isinstance(item, dict) and item.get("key")
+            ]
+            keys = {str(item["key"]) for item in updates}
             definitions = list(
                 AttributeDefinition.objects.filter(
                     organization=organization,
                     key__in=keys,
                 )
             )
-            if {str(item.key) for item in definitions} != keys:
+            existing = {str(item.key) for item in definitions}
+            unknown = [
+                item for item in updates
+                if str(item.get("key") or "") not in existing
+            ]
+            if any(item.get("create_if_missing") is not True for item in unknown):
                 raise ValueError("UNKNOWN_ATTRIBUTE")
 
         elif action_type == "create_reminder":
