@@ -229,24 +229,64 @@ class CRMActionExecutor:
         action: dict[str, Any],
     ) -> dict[str, Any]:
         updates = action["updates"]
-        requested_values = {item["key"]: item["value"] for item in updates}
         from apps.ai_engagement.services.confidentiality import (
             is_sensitive_attribute_definition,
         )
 
-        definitions = list(
-            AttributeDefinition.objects.filter(organization=organization).values(
-                "key", "name"
-            )
-        )
-        allowed_keys = {
-            item["key"]
-            for item in definitions
-            if not is_sensitive_attribute_definition(item)
+        existing = {
+            item.key: item
+            for item in AttributeDefinition.objects.filter(organization=organization)
         }
-        invalid_keys = sorted(set(requested_values) - allowed_keys)
-        if invalid_keys:
-            raise CRMActionExecutionError(f"Unknown attribute keys: {invalid_keys}.")
+        requested_values = {}
+        created_keys = []
+
+        for item in updates:
+            requested_key = str(item["key"]).strip().lower()
+            definition = existing.get(requested_key)
+            if definition is None and item.get("create_if_missing") is True:
+                requested_name = str(item.get("name") or "").strip()
+                # Reuse an equivalent explicitly named definition before creating
+                # another field. This keeps conversational extraction from
+                # producing duplicate CRM columns.
+                definition = (
+                    AttributeDefinition.objects.filter(
+                        organization=organization,
+                        name__iexact=requested_name,
+                    ).first()
+                )
+                if definition is None:
+                    from services.crm.attribute_service import create_attribute_definition
+
+                    try:
+                        definition = create_attribute_definition(
+                            organization=organization,
+                            name=requested_name,
+                            field_type=str(item.get("field_type") or "text").strip().casefold(),
+                            description=(
+                                "Created from explicit lead information captured by SHVYA AI."
+                            ),
+                            options=[],
+                        )
+                    except DjangoValidationError:
+                        # Dynamic capture is enrichment, not a reason to lose a
+                        # valid customer reply. Capacity/name/type validation can
+                        # safely skip this optional candidate.
+                        continue
+                    created_keys.append(definition.key)
+                existing[definition.key] = definition
+
+            if definition is None:
+                raise CRMActionExecutionError(
+                    f"Unknown attribute key: {requested_key}."
+                )
+            if is_sensitive_attribute_definition(
+                {"key": definition.key, "name": definition.name}
+            ):
+                raise CRMActionExecutionError(
+                    "Sensitive attributes cannot be written by AI."
+                )
+            requested_values[definition.key] = item["value"]
+
         try:
             update_lead_attribute_values(
                 organization=organization,
@@ -259,6 +299,7 @@ class CRMActionExecutor:
             "type": "attribute_updates",
             "status": "executed",
             "keys": list(requested_values.keys()),
+            "created_keys": created_keys,
         }
 
     def _execute_pipeline_transition(

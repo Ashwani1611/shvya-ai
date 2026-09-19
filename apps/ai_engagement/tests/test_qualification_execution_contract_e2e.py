@@ -232,6 +232,94 @@ class QualificationExecutionContractE2ETests(TestCase):
             for item in config["errors"]
         ))
 
+    def test_missing_secondary_targets_do_not_block_primary_and_numeric_mappings(self):
+        for name, key in (
+            ("Lead Management Tool", "lead_management_tool"),
+            ("Leads/d", "leads_d"),
+        ):
+            AttributeDefinition.objects.create(
+                organization=self.organization,
+                name=name,
+                key=key,
+                field_type=AttributeDefinition.FieldType.TEXT,
+            )
+
+        info, _ = OrgInfo.objects.get_or_create(organization=self.organization)
+        info.qualification_requirements = (
+            "[id: management] Where do you currently manage your leads?\n"
+            "A. WhatsApp chats\n"
+            "B. Excel / Sheets\n"
+            "C. CRM\n"
+            "D. Multiple places\n"
+            "[id: volume] How many leads do you receive per day?\n"
+            "A. 0-10\n"
+            "B. 10-30\n"
+            "C. 30+\n"
+            "All questions are required"
+        )
+        info.engagement_instructions = (
+            "## Attribute mapped\n"
+            "management -> Lead Management Tool (+ Using Whatsapp / CRM)\n"
+            "volume -> Leads/d\n"
+        )
+        info.ai_enabled = True
+        info.save()
+
+        requirements = compile_qualification_requirements(
+            info.qualification_requirements
+        )["requirements"]
+        config = _config(
+            organization=self.organization,
+            requirements=requirements,
+        )
+        self.assertEqual(
+            config["mapping_targets"][requirements[0]["id"]],
+            ["lead_management_tool"],
+        )
+        self.assertEqual(
+            config["mapping_targets"][requirements[1]["id"]],
+            ["leads_d"],
+        )
+        missing = {
+            item.get("detail")
+            for item in config["errors"]
+            if item.get("code") == "unknown_attribute_mapping_reference"
+        }
+        self.assertEqual(missing, {"Using Whatsapp", "CRM"})
+
+        record_last_asked_requirement(
+            self.lead,
+            requirements[0]["id"],
+            requirements=requirements,
+        )
+        first = self._source("partial-map-management", "Whatsapp")
+        first_result = resolve_before_generation(
+            organization=self.organization,
+            lead=self.lead,
+            source_message_id=first.pk,
+        )
+        self.assertTrue(first_result["applied"])
+        self.lead.refresh_from_db()
+        self.assertEqual(
+            self.lead.attributes.get("lead_management_tool"),
+            "WhatsApp chats",
+        )
+
+        record_last_asked_requirement(
+            self.lead,
+            requirements[1]["id"],
+            requirements=requirements,
+        )
+        second = self._source("partial-map-volume", "19")
+        second_result = resolve_before_generation(
+            organization=self.organization,
+            lead=self.lead,
+            source_message_id=second.pk,
+        )
+        self.assertTrue(second_result["applied"])
+        self.lead.refresh_from_db()
+        self.assertEqual(self.lead.attributes.get("leads_d"), "10-30")
+
     def test_one_answer_can_fill_multiple_explicitly_mapped_attributes_and_fallback_to_qualified(self):
         AttributeDefinition.objects.create(
             organization=self.organization,
