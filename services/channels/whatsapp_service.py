@@ -12,7 +12,7 @@ Per CLAUDE.md:
 
 from django.conf import settings
 from django.core.exceptions import ValidationError as DjangoValidationError
-from django.db import models, transaction
+from django.db import transaction
 
 from apps.channels.models import WhatsAppAccount, WhatsAppMessage
 from apps.channels.providers import whatsapp as whatsapp_provider
