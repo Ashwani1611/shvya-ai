@@ -475,15 +475,22 @@ class QualificationExecutionContractE2ETests(TestCase):
     def test_completion_uses_next_active_stage_when_qualified_stage_is_unavailable(self):
         self.qualified.is_active = False
         self.qualified.save(update_fields=["is_active"])
-        next_stage = Stage.objects.create(
-            pipeline=self.pipeline,
-            name="Sales Review",
-            display_order=max(
-                self.pipeline.stages.values_list("display_order", flat=True)
-            ) + 10,
-            is_active=True,
-            ai_on=True,
+        next_stage = (
+            self.pipeline.stages.filter(
+                is_active=True,
+                display_order__gt=self.new_lead.display_order,
+            )
+            .order_by("display_order", "name", "id")
+            .first()
         )
+        if next_stage is None:
+            next_stage = Stage.objects.create(
+                pipeline=self.pipeline,
+                name="Sales Review",
+                display_order=self.new_lead.display_order + 10,
+                is_active=True,
+                ai_on=True,
+            )
         info, _ = OrgInfo.objects.get_or_create(organization=self.organization)
         info.qualification_requirements = (
             "[id: source] Where do most of your leads currently come from?\n"
