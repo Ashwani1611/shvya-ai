@@ -233,6 +233,57 @@ def repair_gateway_message_identity(*, message, payload, historical=False):
             organization=message.organization,
             phone=peer_phone,
         ).first()
+
+        # A live WhatsApp privacy-LID message may reach the first persistence
+        # layer before its real phone number is available. Once identity repair
+        # resolves that phone, apply the same auto-lead rule used by the normal
+        # Hosted live-inbound path. Without this, new LID contacts remain
+        # message-only rows and Hosted AI can never enqueue because lead_id is
+        # still null.
+        if (
+            lead is None
+            and message.lead_id is None
+            and not historical
+            and not is_outbound
+        ):
+            from django.core.exceptions import ValidationError as DjangoValidationError
+
+            from services.channels.hosted_whatsapp_service import (
+                get_pipeline_for_account,
+                get_session_settings,
+            )
+            from services.crm.lead_service import DuplicateLeadError, upsert_lead
+
+            settings = get_session_settings(account=message.account)
+            pipeline = get_pipeline_for_account(account=message.account)
+            if settings.get("auto_lead_creation") and pipeline is not None:
+                stage = (
+                    pipeline.stages.filter(is_active=True)
+                    .order_by("display_order", "name")
+                    .first()
+                )
+                if stage is not None:
+                    name = (
+                        _raw_id(payload.get("profileName"))
+                        or _raw_id(payload.get("contactName"))
+                        or _raw_id(payload.get("chatName"))
+                        or peer_phone
+                    )
+                    try:
+                        lead, _created = upsert_lead(
+                            organization=message.organization,
+                            pipeline=pipeline,
+                            stage=stage,
+                            name=name,
+                            phone=peer_phone,
+                            lead_source="whatsapp",
+                        )
+                    except (DjangoValidationError, DuplicateLeadError):
+                        lead = Lead.objects.filter(
+                            organization=message.organization,
+                            phone=peer_phone,
+                        ).first()
+
         if lead and message.lead_id != lead.id:
             message.lead = lead
             update_fields.append("lead")
