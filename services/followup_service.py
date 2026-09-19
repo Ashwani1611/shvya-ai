@@ -704,9 +704,10 @@ def _validate_lead_sender(lead, sequence):
     if linked_account:
         if linked_account.id == account.id:
             return linked_account
+        sender_label = "Hosted Account" if is_hosted_sequence else "WhatsApp API"
         raise FollowupError(
-            "This pipeline is linked to a different WhatsApp number. "
-            "Choose a sequence created for the pipeline's linked WhatsApp number."
+            f"This pipeline is linked to a different {sender_label} number. "
+            f"Choose a sequence created for the pipeline's linked {sender_label} number."
         )
 
     pipeline_number = getattr(lead.pipeline, "phone_number", "") if lead.pipeline_id else ""
