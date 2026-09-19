@@ -273,6 +273,25 @@ def _match_text_option(text: str, options: list[dict[str, str]]) -> str | None:
     return candidates[0] if len(candidates) == 1 else None
 
 
+def _explicit_multi_text_option(text: str, options: list[dict[str, str]]) -> str | None:
+    """Accept clearly positive multi-option text without guessing contradictions."""
+    normalized = _normalized(text)
+    if not normalized or _NEGATIVE_RE.search(normalized):
+        return None
+    if not re.search(r"(?:\band\b|&|,|/)", normalized):
+        return None
+    candidates = set(_text_option_candidates(text, options))
+    if len(candidates) < 2:
+        return None
+    ordered = [
+        _clean(option.get("value"))
+        for option in options
+        if _clean(option.get("value")) in candidates
+    ]
+    ordered = list(dict.fromkeys(item for item in ordered if item))
+    return "; ".join(ordered) if len(ordered) >= 2 else None
+
+
 def _match_boolean_option(
     text: str,
     question: str,
@@ -378,6 +397,7 @@ def _enhanced_direct_classifier(original, state_module):
             or _match_boolean_option(raw_text, question, options)
             or _match_numeric_option(raw_text, options)
             or (None if scalar_number else _match_text_option(raw_text, options))
+            or (None if scalar_number else _explicit_multi_text_option(raw_text, options))
         )
         if matched is not None:
             return (state_module.REQUIREMENT_ANSWERED, matched, "high")

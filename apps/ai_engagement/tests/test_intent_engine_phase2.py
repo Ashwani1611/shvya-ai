@@ -85,6 +85,12 @@ def test_specific_pricing_question_is_not_double_classified_as_product(env):
     assert Intent.PRODUCT_OR_SERVICE_QUESTION not in result.secondary_intents
 
 
+def test_affirmative_ack_is_not_freeform_nonboolean_qualification(env):
+    result = classify(env, "yes", active="challenge", provider=FakeProvider())
+    assert result.qualification_candidate is None
+    assert Intent.QUALIFICATION_ANSWER not in {result.primary_intent, *result.secondary_intents}
+
+
 def test_numeric_qualification(env):
     result = classify(env, "30", active="volume")
     assert result.primary_intent == Intent.QUALIFICATION_ANSWER

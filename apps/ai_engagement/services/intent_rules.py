@@ -8,6 +8,10 @@ from apps.ai_engagement.services.intent_types import Intent
 
 EXACT_GREETING = {"hi", "hii", "hello", "hey", "hey there", "hello there", "namaste", "नमस्ते"}
 EXACT_THANKS = {"thanks", "thank you", "thankyou", "thx", "धन्यवाद", "shukriya", "thank u"}
+CONVERSATION_ACKS = {
+    "yes", "yes please", "yeah", "yep", "yup", "sure", "okay", "ok", "correct",
+    "right", "no", "nope", "not yet",
+}
 EXACT_OPT_OUT = {
     "stop", "unsubscribe", "remove me", "opt out", "don't message me", "dont message me",
     "do not message me", "stop messaging me", "stop contacting me", "don't contact me",
@@ -205,6 +209,8 @@ def boolean_candidate(text: str, question: str) -> bool | None:
 
 
 def generic_candidate(text: str, question: str, *, active: bool) -> tuple[Any, float, str] | None:
+    if normalize(text).strip(" .!?;,:\"'") in CONVERSATION_ACKS:
+        return None
     if contains_any(question, ("tool", "software", "crm", "system", "manage", "track", "platform")):
         match = re.search(
             r"\b(?:we|i|hum)\s+(?:currently\s+)?(?:use|using|manage(?:\s+them)?\s+(?:in|with))\s+([A-Za-z][A-Za-z0-9 ._+-]{1,40}?)(?=\s*(?:,|\.|\band\b|\baur\b|$))",
@@ -237,6 +243,12 @@ def qualification_facts(
         or qualification_state.get("next_requirement_id")
         or ""
     ).strip()
+    normalized_reply = normalize(text).strip(" .!?;,:\"'")
+    bare_boolean_reply = normalized_reply in {
+        "yes", "yeah", "yep", "y", "haan", "ha", "han",
+        "no", "nope", "n", "nahi", "nahin",
+    }
+    bare_numeric_reply = bool(re.fullmatch(r"\d+(?:\.\d+)?", normalized_reply))
     facts = []
     for requirement in requirements:
         rid = str(requirement.get("id") or "").strip()
@@ -252,11 +264,19 @@ def qualification_facts(
             if value is not None:
                 confidence, kind = 0.99, "configured_option"
         first_line = normalize(question.splitlines()[0])
-        if value is None and is_numeric_question(first_line):
+        if (
+            value is None
+            and is_numeric_question(first_line)
+            and not (rid != active_id and bare_numeric_reply)
+        ):
             value = numeric_candidate(text, first_line)
             if value is not None:
                 confidence, kind = (0.97 if rid == active_id else 0.9), "numeric"
-        if value is None and is_boolean_question(first_line):
+        if (
+            value is None
+            and is_boolean_question(first_line)
+            and not (rid != active_id and bare_boolean_reply)
+        ):
             value = boolean_candidate(text, first_line)
             if value is not None:
                 confidence, kind = (0.96 if rid == active_id else 0.88), "boolean"
