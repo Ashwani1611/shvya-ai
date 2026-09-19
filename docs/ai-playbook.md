@@ -58,7 +58,9 @@ messages containing the contact name and number; queued or inbound messages do
 not count. Qualification questions remain New Lead-only, so do not configure an
 intermediate stage move while also expecting qualification to continue there.
 
-AI Brain saves confirm the persisted Playbook by database readback. Failed saves
+AI Brain saves read the endpoint from the form action attribute, because the hidden
+`action` control masks the browser's form.action property. Both the save request
+and the success reload use that endpoint. Saves confirm the persisted Playbook by database readback. Failed saves
 retain the draft and show the error beside Save Changes. Saving the AI profile
 does not revalidate unrelated legacy billing fields or overwrite hidden controls.
 
