@@ -7,6 +7,37 @@
         page.dataset.brainInitialized = "true";
 
         const playbook = page.querySelector("#ai_playbook");
+        const settingsForm = page.querySelector("#org-ai-settings-form");
+        const saveStatus = page.querySelector("[data-save-status]");
+        const normalizedPlaybook = value => String(value || "").replace(/\r\n?/g, "\n").trim();
+        settingsForm.addEventListener("submit", async function (event) {
+            event.preventDefault();
+            const button = settingsForm.querySelector('button[type="submit"]');
+            if (button.disabled) return;
+            const payload = new FormData(settingsForm);
+            button.disabled = true;
+            saveStatus.textContent = "Saving…";
+            try {
+                const response = await fetch(settingsForm.action, {
+                    method: "POST", credentials: "same-origin",
+                    headers: { "Accept": "application/json" }, body: payload
+                });
+                const result = await response.json();
+                if (!response.ok || !result.saved) throw new Error(result.error || "Your changes could not be saved. Please try again.");
+                if (normalizedPlaybook(result.ai_playbook) !== normalizedPlaybook(payload.get("ai_playbook"))) throw new Error("The saved Playbook differs from your draft. Please refresh and check before testing.");
+                saveStatus.textContent = "Saved successfully.";
+                if (normalizedPlaybook(playbook.value) !== normalizedPlaybook(result.ai_playbook)) {
+                    saveStatus.textContent = "Saved the submitted version. You have newer unsaved edits.";
+                    return;
+                }
+                window.location.assign(settingsForm.action);
+            } catch (error) {
+                saveStatus.textContent = error instanceof SyntaxError ? "Could not confirm the save. Your draft is still here; refresh your session and try again." : error.message;
+                saveStatus.setAttribute("role", "alert");
+            } finally {
+                button.disabled = false;
+            }
+        });
         const count = page.querySelector("[data-playbook-count]");
         const updateCount = function () {
             count.textContent = playbook.value.length.toLocaleString() + " characters";

@@ -16,6 +16,7 @@ _GENERIC_RULE_TOKENS = {
     "this", "to", "user", "when", "whenever", "with",
     "ask", "asks", "asked", "says", "say", "states", "request", "requests",
     "wants", "want", "customer", "customers", "requesting", "here", "explicitly", "a", "an",
+    "clearly", "they", "he", "she",
 }
 _TOKEN_ALIASES = {
     "people": "human",
@@ -104,7 +105,7 @@ def _policy_lines(runtime_policy: dict[str, Any], key: str) -> list[str]:
     value = _crm_policy(runtime_policy).get(key)
     if not isinstance(value, list):
         return []
-    return [_clean(item) for item in value if _clean(item)]
+    return [str(item).strip() for item in value if _clean(item)]
 
 
 def _runtime_policy_wrapper(original):
@@ -257,7 +258,9 @@ def _merge_authored_attribute_updates(
             rules=rules,
         )
         if key:
-            updates.append({"key": key, "value": value})
+            from apps.ai_engagement.services.qualification_execution_contract import _mapped_value
+            authored = next((rule for rule in rules if _definition_reference_score(rule, next(item for item in definitions if item['key'] == key)) >= 98), "")
+            updates.append({"key": key, "value": _mapped_value({"mapping_value_rules": {key: authored}}, key, value)})
 
     if not updates:
         return
@@ -291,7 +294,19 @@ def _stage_rule_references_destination(rule: str, destination: dict[str, Any]) -
 
 
 def _condition_part(rule: str, destination: dict[str, Any]) -> str:
-    text = _clean(rule)
+    # The rule still names this stage, so callers must not fall back to its
+    # looser description when the explicitly required pipeline differs.
+    if re.search(r"\bcurrent pipeline\b", _normalized(rule)) and destination.get("is_current_pipeline") is False:
+        return ""
+    # Preserve the relationship between a block's condition and destination.
+    # Examples are illustrations, never additional mandatory predicates.
+    body = re.sub(r"(?im)^\s*Rule\s+\d+\s*:\s*(?=(?:when|if|move|shift|route)\b)", "", str(rule))
+    body = re.sub(r"(?im)^\s*(?:Rule\s+\d+[^\n]*|Examples?\s*:[\s\S]*)$", "", body)
+    body = re.sub(r"(?m)^\s*[-*•]\s*", "", body).strip()
+    block = re.match(r"^(?:move|shift|route)[^\n]+\s+when:\s*\n(.+)$", body, re.I | re.S)
+    if block:
+        return block.group(1).strip()
+    text = _clean(body)
     stage_name = _clean(destination.get("name"))
     pipeline_name = _clean(destination.get("pipeline_name"))
 
@@ -303,7 +318,12 @@ def _condition_part(rule: str, destination: dict[str, Any]) -> str:
     for pattern in patterns:
         match = re.match(pattern, text, flags=re.IGNORECASE)
         if match:
-            return _clean(match.group("condition"))
+            condition = _clean(match.group("condition"))
+            # A destination-side qualifier must not disappear during extraction.
+            suffix = re.search(r"\bonly if\s+(.+)$", text, re.I)
+            if suffix and suffix.group(1) not in condition:
+                condition += " and " + suffix.group(1)
+            return condition
 
     stripped = text
     for value in (stage_name, pipeline_name):
@@ -330,15 +350,23 @@ def _strong_evidence_match(latest_text: str, condition: str) -> bool:
     # because token overlap is high (for example, "not interested"). A rule
     # that is itself explicitly negative is still allowed to match.
     negative_pattern = re.compile(
-        r"\b(?:not|never|no longer|don't|dont|do not|isn't|isnt|cannot|can't|cant)\b"
+        r"\b(?:no|not|never|no longer|don't|dont|do not|isn't|isnt|cannot|can't|cant)\b"
     )
     latest_negative = bool(negative_pattern.search(latest_normalized))
     condition_negative = bool(negative_pattern.search(condition_normalized))
     if latest_negative and not condition_negative:
         return False
 
-    # A single intent word must not satisfy a compound or numeric policy.
-    if re.search(r"\b(?:and|or|unless|except)\b", condition_normalized) or re.search(r"\d", condition_normalized):
+    # Evaluate explicit alternatives independently, preserving each conjunction.
+    # Unsupported exceptions stay closed instead of being silently discarded.
+    if re.search(r"\b(?:unless|except|only if)\b", condition_normalized):
+        return False
+    if re.search(r"\bor\b", condition_normalized):
+        alternatives = re.split(r",\s*|\s+or\s+", condition_normalized)
+        return any(_strong_evidence_match(latest_text, part.strip(" ,")) for part in alternatives if part.strip(" ,"))
+    if re.search(r"\band\b", condition_normalized):
+        return all(_strong_evidence_match(latest_text, part) for part in re.split(r"\s+and\s+", condition_normalized))
+    if re.search(r"\d", condition_normalized):
         return condition_tokens.issubset(latest_tokens)
 
     overlap = latest_tokens & condition_tokens
@@ -364,6 +392,30 @@ def _strong_evidence_match(latest_text: str, condition: str) -> bool:
     if {"not", "interested"}.issubset(condition_tokens):
         return "not interested" in latest_normalized
     return False
+
+
+def _condition_evidence_match(latest_text: str, condition: str, context) -> bool:
+    """Historical send requirements need delivered outbound evidence, not a lead claim."""
+    if not re.search(r"has already been provided", condition, re.I):
+        return _strong_evidence_match(latest_text, condition)
+    messages = (getattr(context, "conversation", None) or {}).get("messages", [])
+    clauses = [part.strip(" .-*") for part in condition.splitlines() if part.strip()]
+    for clause in clauses:
+        provided = re.fullmatch(r"(.+?) has already been provided", clause, re.I)
+        if provided:
+            name = provided.group(1)
+            if not any(isinstance(message, dict) and message.get("direction") == "outbound"
+                       and message.get("status") in {"sent", "delivered", "read"}
+                       and re.search(rf"(?<!\w){re.escape(name)}(?!\w)", str(message.get("body", "")), re.I)
+                       and re.search(r"\+?\d[\d ()-]{7,}\d", str(message.get("body", "")))
+                       for message in messages):
+                return False
+        elif re.fullmatch(r"the lead still requests assistance or says the issue remains unresolved", clause, re.I):
+            if not re.search(r"\b(?:help|assistance|unresolved|still waiting|not resolved)\b", latest_text, re.I):
+                return False
+        elif not _strong_evidence_match(latest_text, clause):
+            return False
+    return bool(clauses)
 
 
 def _authored_stage_transition(
@@ -408,7 +460,7 @@ def _authored_stage_transition(
         ]
         if any(
             (condition := _condition_part(rule, destination))
-            and _strong_evidence_match(latest_text, condition)
+            and _condition_evidence_match(latest_text, condition, context)
             for rule in matching_rules
         ):
             controlled.append(
@@ -434,12 +486,12 @@ def _authored_stage_transition(
         pipeline_description = _clean(destination.get("pipeline_description"))
         if pipeline_description:
             texts.append(pipeline_description)
-        texts.extend(
-            rule for rule in rules if _stage_rule_references_destination(rule, destination)
-        )
+        matching = [rule for rule in rules if _stage_rule_references_destination(rule, destination)]
+        if matching:
+            texts = matching
         for authored in texts:
             condition = _condition_part(authored, destination)
-            if _strong_evidence_match(latest_text, condition):
+            if _condition_evidence_match(latest_text, condition, context):
                 score = len(_tokens(latest_text) & _tokens(condition))
                 candidates.append((score, stage_id))
                 break
