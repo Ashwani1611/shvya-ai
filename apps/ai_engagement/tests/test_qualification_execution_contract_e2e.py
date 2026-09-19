@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import timedelta
 from unittest.mock import patch
 
 from django.test import TestCase
@@ -466,14 +467,14 @@ class QualificationExecutionContractE2ETests(TestCase):
         reminder = LeadReminder.objects.get(lead=self.lead)
         self.assertEqual(reminder.status, "pending")
         self.assertEqual(reminder.title, "Follow up with qualified lead")
-        self.assertGreater(reminder.due_at, before + timezone.timedelta(hours=23))
-        self.assertLess(reminder.due_at, before + timezone.timedelta(hours=25))
+        self.assertGreater(reminder.due_at, before + timedelta(hours=23))
+        self.assertLess(reminder.due_at, before + timedelta(hours=25))
         self.lead.refresh_from_db()
         self.assertEqual(self.lead.stage_id, self.qualified.id)
 
     def test_completion_uses_next_active_stage_when_qualified_stage_is_unavailable(self):
         self.qualified.is_active = False
-        self.qualified.save(update_fields=["is_active", "updated_at"])
+        self.qualified.save(update_fields=["is_active"])
         next_stage = Stage.objects.create(
             pipeline=self.pipeline,
             name="Sales Review",
