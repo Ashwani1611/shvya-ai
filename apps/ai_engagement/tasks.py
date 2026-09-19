@@ -42,7 +42,8 @@ def _persist_engagement_answers(lead, decision, source_message_id):
     if (payload.get("shvya_ai_processing") or {}).get("processed"):
         return False
     org_info = OrgInfo.objects.filter(organization_id=lead.organization_id).first()
-    requirements = compile_qualification_requirements(org_info.qualification_requirements if org_info else "")["requirements"]
+    from apps.ai_engagement.services.playbook import qualification_questions
+    requirements = compile_qualification_requirements(qualification_questions(org_info.ai_playbook if org_info else ""))["requirements"]
     requirements = requirements_for_lead(lead, requirements)
     if getattr(decision, "backend_revision", "") and decision.backend_revision != state_revision(lead):
         raise ValueError("Backend state changed during response generation; retry required.")
@@ -630,6 +631,22 @@ def generate_lead_qualification(
 
     try:
 
+        # Semantic criteria use a signed, current-evidence receipt. Provider
+        # work happens here in the background, outside every CRM transaction.
+        from apps.ai_engagement.services.qualification_check import QualificationCheckService, QualificationCheckError
+        from apps.ai_engagement.services.semantic_criteria import apply_verified_semantic_completion
+        try:
+            criteria_verification = QualificationCheckService().refresh_semantic(
+                organization=lead.organization, lead=lead,
+            )
+        except QualificationCheckError:
+            logger.warning("Qualification criteria could not be verified for lead %s", lead_id)
+            criteria_verification = {"status": "unresolved", "reason": "criteria_verification_failed"}
+        if criteria_verification.get("status") in {"verified", "unchanged"}:
+            criteria_verification["completion"] = apply_verified_semantic_completion(
+                organization=lead.organization, lead=lead,
+            )
+
         note = (
             service.generate_and_append(
                 organization=lead.organization,
@@ -703,6 +720,7 @@ def generate_lead_qualification(
             "reason": (
                 "qualification_unchanged"
             ),
+            "criteria_verification": criteria_verification,
             "lead_id": str(
                 lead_id
             ),
@@ -729,6 +747,7 @@ def generate_lead_qualification(
             note.id
         ),
         "note_type": note.note_type,
+        "criteria_verification": criteria_verification,
     }
 
 # ============================================================

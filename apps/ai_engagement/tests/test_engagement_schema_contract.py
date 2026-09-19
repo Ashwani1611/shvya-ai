@@ -1,3 +1,5 @@
+from tests.playbook_fixtures import build_ai_playbook
+
 import json
 from types import SimpleNamespace
 from unittest.mock import Mock
@@ -97,8 +99,8 @@ class PlaygroundStructuredOutputTests(SimpleTestCase):
             ai_enabled=True,
             about="Test organization",
             bot_languages="English",
-            qualification_requirements="",
-            engagement_instructions="",
+            ai_playbook=build_ai_playbook(questions="", rules=""),
+
             bump_up_enabled=False,
             bump_up_count=0,
         )

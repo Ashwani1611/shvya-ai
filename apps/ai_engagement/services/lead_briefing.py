@@ -17,7 +17,7 @@ class LeadBriefingError(Exception):
 class LeadBriefingResult:
     notes: str
     attributes: dict[str, Any]
-    intent_score: int
+    intent_score: int | None
     high_priority_lead: bool
     model: str
 
@@ -43,6 +43,10 @@ class LeadBriefingService:
             note_limit=5,
         )
         data = context.as_dict()
+        from apps.ai_engagement.services.intent_score import compute_intent_score
+        score_state = compute_intent_score(lead=lead)
+        backend_score = score_state.get("score") if score_state.get("assessed") else None
+        backend_priority = backend_score is not None and backend_score >= 8
         input_text = json.dumps(
             {
                 "organization": data["organization"],
@@ -50,6 +54,7 @@ class LeadBriefingService:
                 "attributes": data["attributes"],
                 "conversation_summary": data["conversation_summary"],
                 "recent_conversation": data["conversation"],
+                "backend_scoring": {"intent_score": backend_score, "high_priority_lead": backend_priority},
             },
             ensure_ascii=False,
         )
@@ -78,11 +83,11 @@ class LeadBriefingService:
             raise LeadBriefingError("notes must be a string.")
         if not isinstance(payload["attributes"], dict):
             raise LeadBriefingError("attributes must be an object.")
-        if isinstance(payload["intent_score"], bool) or not isinstance(
+        if payload["intent_score"] is not None and (isinstance(payload["intent_score"], bool) or not isinstance(
             payload["intent_score"], int
-        ):
-            raise LeadBriefingError("intent_score must be an integer.")
-        if not 0 <= payload["intent_score"] <= 10:
+        )):
+            raise LeadBriefingError("intent_score must be an integer or null.")
+        if payload["intent_score"] is not None and not 0 <= payload["intent_score"] <= 10:
             raise LeadBriefingError("intent_score must be between 0 and 10.")
         if not isinstance(payload["high_priority_lead"], bool):
             raise LeadBriefingError("high_priority_lead must be boolean.")
@@ -90,7 +95,7 @@ class LeadBriefingService:
         return LeadBriefingResult(
             notes=payload["notes"].strip()[:300],
             attributes=payload["attributes"],
-            intent_score=payload["intent_score"],
-            high_priority_lead=payload["high_priority_lead"],
+            intent_score=backend_score,
+            high_priority_lead=backend_priority,
             model=result.model,
         )

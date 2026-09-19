@@ -1,3 +1,5 @@
+from tests.playbook_fixtures import build_ai_playbook
+
 import json
 import os
 from pathlib import Path
@@ -60,7 +62,7 @@ class OrganizationEngagementPolicyTests(SimpleTestCase):
 
     def test_model_silence_is_rejected_even_with_authored_rule(self):
         service = EngagementService()
-        for field in ['qualification_requirements', 'engagement_instructions']:
+        for field in ['ai_playbook']:
             rule = 'Do not reply when the lead says pause.'
             context = SimpleNamespace(organization={field: rule})
             decision = EngagementDecision(False, '', None, [], 'ORG_INSTRUCTION', 'test',
@@ -72,7 +74,7 @@ class OrganizationEngagementPolicyTests(SimpleTestCase):
         decision = EngagementDecision(False, '', None, [], 'NO_ACTION', 'test')
         with self.assertRaises(EngagementError):
             EngagementService()._validate_engagement_policy(
-                decision=decision, context=SimpleNamespace(organization={'engagement_instructions':'Be friendly.'}))
+                decision=decision, context=SimpleNamespace(organization={"ai_playbook": build_ai_playbook(rules='Be friendly.')}))
 
 
 class PlaygroundEngagementPolicyTests(SimpleTestCase):
@@ -81,7 +83,7 @@ class PlaygroundEngagementPolicyTests(SimpleTestCase):
         provider.generate_text.side_effect = [AITextResult(json.dumps(item), 'test') for item in results]
         info = Mock()
         info.get_or_create.return_value = SimpleNamespace(ai_enabled=True, about='Org',
-            bot_languages='English', qualification_requirements='', engagement_instructions='',
+            bot_languages='English', ai_playbook=build_ai_playbook(questions='', rules=''),
             bump_up_enabled=False, bump_up_count=0)
         for key, value in instructions.items():
             setattr(info.get_or_create.return_value, key, value)
@@ -127,7 +129,7 @@ class PlaygroundEngagementPolicyTests(SimpleTestCase):
         self.assertEqual(provider.generate_text.call_count, 2)
 
     def test_authored_model_silence_is_repaired_into_reply(self):
-        for field in ['qualification_requirements', 'engagement_instructions']:
+        for field in ['ai_playbook']:
             rule = 'Do not reply to no.'
             result, provider = self.run_turn(
                 [

@@ -137,7 +137,7 @@ class OrgInfoServiceTests(
                 "bot_languages": (
                     "English, Hindi, Hinglish"
                 ),
-                "qualification_requirements": (
+                "ai_playbook": (
                     "Identify course interest, "
                     "experience, budget and timeline."
                 ),
@@ -158,7 +158,7 @@ class OrgInfoServiceTests(
         )
 
         self.assertEqual(
-            result.qualification_requirements,
+            result.ai_playbook,
             (
                 "Identify course interest, "
                 "experience, budget and timeline."
@@ -195,7 +195,7 @@ class OrgInfoServiceTests(
             data={
                 "about": "Original business",
                 "bot_languages": "English",
-                "qualification_requirements": (
+                "ai_playbook": (
                     "Original qualification rules"
                 ),
             },
@@ -223,7 +223,7 @@ class OrgInfoServiceTests(
         )
 
         self.assertEqual(
-            result.qualification_requirements,
+            result.ai_playbook,
             "Original qualification rules",
         )
 

@@ -60,7 +60,7 @@ def evaluate_condition(value: Any, condition: dict[str, Any] | None) -> str:
     operator = str(condition.get("operator") or "").strip().casefold()
     target = condition.get("value")
 
-    if operator in {"gt", "gte", "lt", "lte"}:
+    if operator in {"gt", "gte", "lt", "lte", "numeric_eq"}:
         actual_num = _numeric(value)
         target_num = _numeric(target)
         if actual_num is None or target_num is None:
@@ -70,6 +70,7 @@ def evaluate_condition(value: Any, condition: dict[str, Any] | None) -> str:
             "gte": actual_num >= target_num,
             "lt": actual_num < target_num,
             "lte": actual_num <= target_num,
+            "numeric_eq": actual_num == target_num,
         }
         return "pass" if checks[operator] else "fail"
 
@@ -130,7 +131,14 @@ def evaluate_qualification(*, runtime_policy: dict[str, Any], projected_state: d
     else:
         outcome = "not_configured"
 
-    return {"outcome": outcome, "criteria": results}
+    from apps.ai_engagement.services.playbook import evaluate_playbook_criteria
+    authored = evaluate_playbook_criteria(
+        "## Qualification Criteria\n" + str((runtime_policy.get("qualification") or {}).get("criteria_text") or ""),
+        requirements=criteria, state=projected_state,
+    )
+    if outcome == "qualified" and not authored["qualified"]:
+        outcome = "in_progress" if authored["rules"] else "not_configured"
+    return {"outcome": outcome, "criteria": results, "authored_criteria": authored}
 
 
 def _range_contains_latest(value: Any, latest_text: str) -> bool:
@@ -411,6 +419,12 @@ def build_controlled_actions(
                     proposed_name=proposed_name,
                     definitions=attribute_definitions,
                 )
+                mapping_rules = ((runtime_policy.get("crm") or {}).get("attribute_mapped") or [])
+                from apps.ai_engagement.services.engagement_instruction_runtime import _definition_reference_score
+                definition = next((item for item in attribute_definitions if item.get("key") == resolved_key), {"key": proposed_key, "name": proposed_name})
+                permitted = any(_definition_reference_score(rule, definition) >= 98 for rule in mapping_rules)
+                if not permitted:
+                    continue
                 if resolved_key:
                     accepted.append({"key": resolved_key, "value": value})
                     continue

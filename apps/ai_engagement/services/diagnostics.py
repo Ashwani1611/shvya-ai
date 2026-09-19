@@ -1,6 +1,7 @@
 """Inspect a conversation without calling providers or modifying CRM state."""
 
 from django.conf import settings
+from apps.ai_engagement.services.playbook import qualification_questions
 
 from apps.ai_engagement.models import AICreditWallet
 from apps.ai_engagement.services.ai_permissions import AIPermissionService
@@ -52,7 +53,7 @@ def diagnose_engagement(*, lead):
     from apps.ai_engagement.services.organization_profile import compile_qualification_requirements
     from apps.ai_engagement.models import OrgInfo
     info = OrgInfo.objects.filter(organization=lead.organization).first()
-    requirements = requirements_for_lead(lead, compile_qualification_requirements(info.qualification_requirements if info else "")["requirements"])
+    requirements = requirements_for_lead(lead, compile_qualification_requirements(qualification_questions(info.ai_playbook if info else ""))["requirements"])
     qualification = state_for_lead(lead, requirements=requirements)
     report["qualification"] = {key: qualification.get(key) for key in
         ("qualification_status", "conversation_mode", "current_requirement_id", "last_asked_requirement_id")}

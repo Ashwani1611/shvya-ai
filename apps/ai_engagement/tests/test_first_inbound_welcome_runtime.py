@@ -1,4 +1,5 @@
 from types import SimpleNamespace
+from unittest.mock import patch
 
 from django.test import SimpleTestCase
 
@@ -83,3 +84,32 @@ class FirstInboundWelcomeRuntimeTests(SimpleTestCase):
             first_turn=False,
         )
         self.assertEqual(result.message, original.message)
+
+
+    @patch("apps.ai_engagement.models.OrgInfo.objects.filter")
+    def test_synthetic_organization_pk_never_queries_tenant_configuration(self, query):
+        result = apply_first_inbound_welcome(
+            decision=self._decision("What is your goal?"),
+            organization=SimpleNamespace(pk="sandbox-org", name="Example"),
+            lead=SimpleNamespace(name="Alex"),
+            first_turn=True,
+        )
+        query.assert_not_called()
+        self.assertTrue(result.message.startswith("Hi Alex!"))
+
+    @patch("apps.ai_engagement.models.OrgInfo.objects.filter")
+    def test_persisted_organization_uses_its_authored_welcome(self, query):
+        from apps.organizations.models import Organization
+        organization = Organization(name="Example")
+        organization._state.adding = False
+        query.return_value.only.return_value.first.return_value = SimpleNamespace(
+            ai_playbook="##Welcome Message\nWelcome to our studio!",
+        )
+        result = apply_first_inbound_welcome(
+            decision=self._decision("What is your goal?"),
+            organization=organization,
+            lead=SimpleNamespace(name="Alex"),
+            first_turn=True,
+        )
+        query.assert_called_once_with(organization_id=organization.pk)
+        self.assertEqual(result.message, "Welcome to our studio!\n\nWhat is your goal?")

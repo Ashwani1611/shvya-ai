@@ -24,8 +24,7 @@ class OrgInfoSerializer(
             "id",
             "about",
             "bot_languages",
-            "qualification_requirements",
-            "engagement_instructions",
+            "ai_playbook",
             "ai_enabled",
             "bump_up_enabled",
             "bump_up_count",
@@ -49,3 +48,15 @@ class OrgInfoSerializer(
             )
 
         return value
+    def validate_ai_playbook(self, value):
+        from apps.ai_engagement.services.playbook import validate_playbook
+        try:
+            return validate_playbook(value)
+        except (TypeError, ValueError) as exc:
+            raise serializers.ValidationError(str(exc)) from exc
+
+    def to_internal_value(self, data):
+        removed = {"qualification_requirements", "engagement_instructions"} & set(data)
+        if removed:
+            raise serializers.ValidationError({key: "Use ai_playbook instead." for key in removed})
+        return super().to_internal_value(data)

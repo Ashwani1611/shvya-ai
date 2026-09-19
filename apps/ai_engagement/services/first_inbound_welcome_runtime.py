@@ -78,12 +78,32 @@ def apply_first_inbound_welcome(*, decision, organization, lead, first_turn=None
         return decision
 
     message = str(getattr(decision, "message", "") or "").strip()
-    if not message or _GREETING_RE.match(message):
+    if not message:
         return decision
 
     if first_turn is None:
         first_turn = _is_first_inbound_turn(lead)
     if not first_turn:
+        return decision
+
+    from apps.ai_engagement.models import OrgInfo
+    from apps.ai_engagement.services.playbook import parse_playbook
+    from apps.organizations.models import Organization
+
+    # Sandbox/test organization values are in-memory contexts, not ORM keys.
+    # Only persisted organization models can authorize a tenant-scoped lookup.
+    info = None
+    if isinstance(organization, Organization) and not organization._state.adding:
+        info = OrgInfo.objects.filter(organization_id=organization.pk).only("ai_playbook").first()
+    authored = parse_playbook(info.ai_playbook if info else "")["welcome_message"]
+    if authored:
+        if authored in message:
+            return decision
+        if _GREETING_RE.match(message):
+            parts = message.split("\n\n", 1)
+            message = parts[1] if len(parts) > 1 else message
+        return replace(decision, message=f"{authored}\n\n{message}")
+    if _GREETING_RE.match(message):
         return decision
 
     organization_name = " ".join(str(getattr(organization, "name", "") or "").strip().split())

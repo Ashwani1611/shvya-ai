@@ -4,7 +4,7 @@ import os
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
-from django.test import TestCase, override_settings
+from django.test import SimpleTestCase, TestCase, override_settings
 
 from apps.ai_engagement.models import (
     AICreditReservation,
@@ -463,3 +463,13 @@ class EmbeddingCreditGuardTests(TestCase):
         self.assertEqual(wallet.balance, 9)
         self.assertEqual(wallet.reserved_credits, 0)
 
+
+
+class PlaybookActionBillingTests(SimpleTestCase):
+    def test_actions_keep_distinct_ledger_features_without_changing_coin_rate(self):
+        from apps.ai_engagement.coins import AI_CREDITS_PER_COIN
+        for task, feature in (("engagement", "engagement"), ("qualification", "qualification"),
+                              ("internal_conversation_summary", "internal_summary"),
+                              ("bump_up", "bump_up"), ("intent_score", "intent_score")):
+            self.assertEqual(AICreditService.feature_from_metadata({"task": task}), feature)
+        self.assertEqual(AI_CREDITS_PER_COIN, 30)

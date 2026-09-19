@@ -180,7 +180,7 @@ def check_grounding(state):
         "allowed_grounding": resolution.prompt_dict() if resolution is not None else None,
         "organization_facts": (context.organization or {}).get("about", ""),
         "organization_name": (context.organization or {}).get("name", ""),
-        "engagement_instructions": (context.organization or {}).get("engagement_instructions", ""),
+        "ai_playbook": (context.organization or {}).get("ai_playbook", ""),
         "bot_languages": (context.organization or {}).get("bot_languages", ""),
         "knowledge": context.knowledge or [],
         "qualification_question_id": decision.next_requirement_id,

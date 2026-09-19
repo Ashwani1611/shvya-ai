@@ -15,7 +15,7 @@ from apps.ai_engagement.services.qualification_state import QUALIFICATION_STATE_
 
 
 INTENT_SCORE_STATE_KEY = "_shvya_ai_intent_score"
-INTENT_SCORE_VERSION = 2
+INTENT_SCORE_VERSION = 4
 
 _SOCIAL_ONLY = {
     "hi", "hii", "hello", "hey", "ok", "okay", "thanks", "thank you",
@@ -34,7 +34,7 @@ _MEDIUM_URGENCY_RE = re.compile(
     re.I,
 )
 _LIGHT_URGENCY_RE = re.compile(
-    r"\b(?:next quarter|within\s+[23]\s+months?|later|soon)\b",
+    r"\b(?:next quarter|(?:within|in)\s+(?:[123]|one|two|three)\s+months?|later|soon)\b",
     re.I,
 )
 _LONG_TERM_OR_BROWSING_RE = re.compile(
@@ -44,15 +44,15 @@ _LONG_TERM_OR_BROWSING_RE = re.compile(
     re.I,
 )
 _STRONG_COMMITMENT_RE = re.compile(
-    r"\b(?:ready to (?:buy|purchase|proceed|start)|want to proceed|"
-    r"book|schedule)\b.{0,50}\b(?:demo|call|meeting|appointment)\b|"
-    r"\b(?:call me|arrange a call|set up a demo|demo booked|meeting booked|"
+    r"\b(?:demo|call|meeting|appointment)\s+(?:is\s+)?(?:booked|scheduled|confirmed)\b|"
+    r"\b(?:booked|scheduled|confirmed)\b.{0,30}\b(?:demo|call|meeting|appointment)\b|"
+    r"\b(?:"
     r"budget approved|approved budget|decision[- ]?maker|final purchase decision)\b",
     re.I,
 )
 _SOFT_COMMITMENT_RE = re.compile(
     r"\b(?:maybe later|follow[- ]?up|contact me|check back|let me think|"
-    r"get back to me|reach out later|interested)\b",
+    r"get back to me|reach out later|interested|call me|book|schedule|arrange a call)\b",
     re.I,
 )
 _CLARITY_RE = re.compile(
@@ -60,6 +60,17 @@ _CLARITY_RE = re.compile(
     r"leads?|crm|whatsapp|sales|conversion|tracking)\b",
     re.I,
 )
+
+_NEGATED_SIGNAL_RE = re.compile(
+    r"\b(?:no|not|never|cannot|can't|don't|dont|isn't|isnt|haven't|hasn't|"
+    r"without|cancel|cancelled|canceled)\b", re.I,
+)
+
+
+def _affirmative_sentences(text):
+    """Conservative signals: do not turn a negated claim into buying intent."""
+    return [part for part in re.split(r"[.!?;\n]+", str(text or ""))
+            if part.strip() and not _NEGATED_SIGNAL_RE.search(part)]
 
 
 def _normalized(value) -> str:
@@ -132,7 +143,7 @@ def _qualification_facts(lead) -> list[dict[str, str]]:
         requirement = requirement_by_id.get(str(requirement_id), {})
         question = str(
             requirement.get("label")
-            or str(requirement.get("question") or "").splitlines()[0]
+            or (str(requirement.get("question") or "").splitlines() or [""])[0]
             or requirement_id
         ).strip()
         facts.append({"question": question, "value": str(value).strip()})
@@ -146,22 +157,22 @@ def _qualification_answer_count(lead) -> int:
 def _engagement_points(texts: list[str]) -> tuple[int, str]:
     meaningful = [
         text for text in texts
-        if _normalized(text) not in _SOCIAL_ONLY and len(_normalized(text)) > 2
+        if _normalized(text) not in _SOCIAL_ONLY and len(_normalized(text).split()) > 1
     ]
     if not meaningful:
         return 0, "Only one-word or generic replies so far."
 
-    joined = " ".join(meaningful[-20:])
-    rich_detail = any(len(text) >= 80 for text in meaningful)
+    joined = " ".join(part for text in meaningful[-20:] for part in _affirmative_sentences(text))
+    rich_detail = any(len(text.split()) >= 15 and _CLARITY_RE.search(text) for text in meaningful)
     actively_driving = bool(re.search(
         r"\b(?:book|schedule|request|want|need|show me|explain)\b.{0,40}"
         r"\b(?:demo|call|meeting|pricing|details)\b",
         joined,
         re.I,
     ))
-    if rich_detail or actively_driving or len(meaningful) >= 4:
+    if rich_detail or actively_driving:
         return 3, "Lead volunteered rich information or actively drove the conversation."
-    if any("?" in text for text in meaningful) or len(meaningful) >= 2:
+    if any("?" in text or len(text.split()) >= 7 for text in meaningful):
         return 2, "Lead asked clarifying questions or supplied useful detail."
     return 1, "Lead answered questions but offered little extra detail."
 
@@ -170,31 +181,46 @@ def _urgency_points(
     texts: list[str],
     qualification_facts: list[dict[str, str]] | None = None,
 ) -> tuple[int, str]:
-    fact_text = " ".join(
-        f"{item.get('question', '')} {item.get('value', '')}"
-        for item in (qualification_facts or [])
-    )
-    joined = " ".join([*texts[-20:], fact_text])
-    if _STRONG_URGENCY_RE.search(joined):
-        return 3, "Needs action this week or ASAP."
-    if _MEDIUM_URGENCY_RE.search(joined):
-        return 2, "Wants a solution within one month."
-    if _LONG_TERM_OR_BROWSING_RE.search(joined):
-        return 0, "Timeline is beyond three months or the lead is only browsing."
-    if _LIGHT_URGENCY_RE.search(joined):
-        return 1, "Timeline is roughly one to three months or otherwise vague."
+    # Authored questions can contain every timeline option; only accepted values
+    # are evidence. A newer explicit timeline supersedes an earlier urgent one.
+    fact_values = [str(item.get("value") or "") for item in (qualification_facts or [])]
+    for source in [list(reversed(texts[-20:])), fact_values]:
+        for text in source:
+            if _LONG_TERM_OR_BROWSING_RE.search(text):
+                return 0, "Timeline is beyond three months or the lead is only browsing."
+            if _NEGATED_SIGNAL_RE.search(text) and re.search(r"\b(?:urgent|asap|this week|timeline)\b", text, re.I):
+                return 0, "No affirmative near-term timeline."
+            joined = " ".join(_affirmative_sentences(text))
+            duration = re.search(r"\b(?:in|within)\s+(\d+)\s+(days?|weeks?|months?)\b", joined, re.I)
+            if duration:
+                days = int(duration.group(1)) * (7 if duration.group(2).lower().startswith("week") else 30 if duration.group(2).lower().startswith("month") else 1)
+                if days <= 7:
+                    return 3, "Needs action this week or ASAP."
+                if days < 30:
+                    return 2, "Wants a solution within one month."
+                if days <= 90:
+                    return 1, "Timeline is roughly one to three months."
+                return 0, "Timeline is beyond three months."
+            if _STRONG_URGENCY_RE.search(joined):
+                return 3, "Needs action this week or ASAP."
+            if _MEDIUM_URGENCY_RE.search(joined):
+                return 2, "Wants a solution within one month."
+            if _LIGHT_URGENCY_RE.search(joined):
+                return 1, "Timeline is roughly one to three months or otherwise vague."
     return 0, "No explicit timeline yet."
 
 
 def _clarity_points(lead, texts: list[str]) -> tuple[int, str]:
-    answered = _qualification_answer_count(lead)
+    facts = _qualification_facts(lead)
     specific = sum(
         1 for text in texts[-20:]
         if len(_normalized(text)) >= 12 and _CLARITY_RE.search(text)
     )
-    if answered >= 3 or specific >= 2:
+    details = " ".join(texts[-20:] + [item["value"] for item in facts])
+    workflow_detail = bool(re.search(r"\b(?:workflow|roi|conversion|per day|per month|every month|daily|monthly|\d+\s*(?:leads?|customers?|hours?|%))\b", details, re.I))
+    if specific and workflow_detail:
         return 2, "Need/use case is supported by multiple concrete details."
-    if answered >= 1 or specific >= 1:
+    if specific >= 1:
         return 1, "A basic need or use case is clear."
     return 0, "Need is still vague or not stated."
 
@@ -203,10 +229,10 @@ def _commitment_points(
     texts: list[str],
     qualification_facts: list[dict[str, str]] | None = None,
 ) -> tuple[int, str]:
-    joined = " ".join(texts[-20:])
+    joined = " ".join(part for text in texts[-20:] for part in _affirmative_sentences(text))
     facts = qualification_facts or []
     fact_text = " ".join(
-        f"{item.get('question', '')} {item.get('value', '')}"
+        " ".join(_affirmative_sentences(item.get('value', '')))
         for item in facts
     )
     combined = f"{joined} {fact_text}"
@@ -216,7 +242,8 @@ def _commitment_points(
 
     supplied_budget = any(
         "budget" in _normalized(item.get("question"))
-        and bool(_normalized(item.get("value")))
+        and bool(re.search(r"\d", str(item.get("value") or "")))
+        and not _NEGATED_SIGNAL_RE.search(str(item.get("value") or ""))
         for item in facts
     )
     if supplied_budget or _SOFT_COMMITMENT_RE.search(joined):
@@ -231,22 +258,31 @@ def _qualification_answer_ratio(lead) -> tuple[int, int, float]:
         return 0, 0, 0.0
     snapshot = state.get("flow_snapshot")
     snapshot = snapshot if isinstance(snapshot, list) else []
-    required_ids = [
+    configured_ids = {
         str(item.get("id") or "")
         for item in snapshot
         if isinstance(item, dict)
-        and item.get("required", True)
         and str(item.get("id") or "").strip()
-    ]
+    }
     states = state.get("requirement_states")
     states = states if isinstance(states, dict) else {}
+    # Answers captured before a question is asked are useful facts, but cannot
+    # establish that the lead answered a question the bot actually asked.
+    asked_ids = {
+        key for key in configured_ids
+        if isinstance(states.get(key), dict) and (
+            states[key].get("asked_at")
+            or states[key].get("status") == "asked"
+        )
+    }
     answered = sum(
         1
-        for requirement_id in required_ids
+        for requirement_id in asked_ids
         if str((states.get(requirement_id) or {}).get("status") or "").casefold()
-        == "answered"
+        == "answered" and (states[requirement_id].get("value") is not None)
+        and str(states[requirement_id].get("value")).strip() != ""
     )
-    total = len(required_ids)
+    total = len(asked_ids)
     ratio = answered / total if total else 0.0
     return answered, total, ratio
 
@@ -268,12 +304,14 @@ def compute_intent_score(*, lead) -> dict:
         "assessed": bool(texts or qualification_facts),
         "evidence_count": len(texts),
         "raw_score": int(max(0, min(10, raw_score))),
+        "floor_adjustment": int(max(0, score - raw_score)),
         "max_score": 10,
         "qualified_threshold": 8,
         "meets_qualified_threshold": score >= 8,
         "eighty_percent_override": eighty_percent_override,
         "questions_answered": answered,
         "questions_required": required,
+        "questions_asked": required,
         "answered_ratio": round(answer_ratio, 4),
         "components": {
             "engagement": {
@@ -302,6 +340,7 @@ def compute_intent_score(*, lead) -> dict:
             },
         },
         "authority": "deterministic_conversation_evidence",
+        "billing": "included_in_engagement",
         "updated_at": timezone.now().isoformat(),
     }
 

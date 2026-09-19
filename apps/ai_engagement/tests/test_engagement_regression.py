@@ -1,3 +1,6 @@
+from tests.playbook_fixtures import build_ai_playbook, replace_playbook_questions
+from apps.ai_engagement.services.playbook import parse_playbook
+
 import json
 from copy import deepcopy
 from types import SimpleNamespace
@@ -20,7 +23,7 @@ from apps.ai_engagement.tests import test_precise_orchestration as precise
 class GenerationPolicyRegressionTests(SimpleTestCase):
     def test_graph_preserves_authoring_instead_of_recompiling_question_text(self):
         context = precise.PreciseEngagementTests()._context()
-        context.organization['qualification_requirements'] = '[id: owner] Do you own a business?\nA. Yes\nB. No'
+        context.organization["ai_playbook"] = replace_playbook_questions(context.organization["ai_playbook"], '[id: owner] Do you own a business?\nA. Yes\nB. No')
         before = deepcopy(context.organization)
         legacy = Mock()
         _generate({'context': context, 'requirements': [{'id': 'owner', 'question': 'Do you own a business?'}],
@@ -59,7 +62,7 @@ class GenerationPolicyRegressionTests(SimpleTestCase):
 
     def test_service_keeps_in_progress_flow_when_admin_edits_configuration(self):
         context = precise.PreciseEngagementTests()._context('Hello')
-        context.organization['qualification_requirements'] = 'What is your occupation?'
+        context.organization["ai_playbook"] = replace_playbook_questions(context.organization["ai_playbook"], 'What is your occupation?')
         requirements = compile_qualification_requirements('[id: city] Which city?')['requirements']
         lead = SimpleNamespace(id='lead-1', stage=SimpleNamespace(name='New Lead'), attributes={
             '_shvya_ai_qualification': {'qualification_status': 'in_progress', 'flow_snapshot': requirements}})
@@ -77,7 +80,7 @@ class GenerationPolicyRegressionTests(SimpleTestCase):
 
     def test_changed_state_uses_a_new_generation_claim(self):
         context = precise.PreciseEngagementTests()._context('Hello')
-        context.organization['qualification_requirements'] = ''
+        context.organization["ai_playbook"] = replace_playbook_questions(context.organization["ai_playbook"], '')
         context.conversation['messages'][0]['id'] = 'same-inbound'
         provider = Mock()
         provider.generate_text.return_value = AITextResult(json.dumps({
@@ -103,9 +106,7 @@ class ChannelQualificationRegressionTests(TestCase):
         from apps.channels.models import WhatsAppMessage
         from apps.crm.models import Lead
         source = '[id: owner] Do you own a business?\nA. Yes\nB. No\n[id: budget] What is your budget?'
-        OrgInfo.objects.update_or_create(organization=self.organization, defaults={
-            'qualification_requirements': source, 'about': 'Shvya Test business information',
-            'engagement_instructions': 'Be concise and friendly', 'bot_languages': 'English'})
+        OrgInfo.objects.update_or_create(organization=self.organization, defaults={"ai_playbook": build_ai_playbook(questions=source, rules='Be concise and friendly'), 'about': 'Shvya Test business information', 'bot_languages': 'English'})
         requirements = compile_qualification_requirements(source)['requirements']
         self.account.connection_type = connection_type
         self.account.save(update_fields=['connection_type'])
@@ -145,7 +146,7 @@ class ChannelQualificationRegressionTests(TestCase):
                 self.assertEqual(decision.next_requirement_id, requirements[1]['id'])
                 payload = json.loads(provider.generate_text.call_args.kwargs['input_text'])
                 self.assertEqual(payload['organization']['about'], 'Shvya Test business information')
-                self.assertEqual(payload['organization']['engagement_instructions'], 'Be concise and friendly')
+                self.assertEqual(parse_playbook(payload['organization']["ai_playbook"])["rules"], 'Be concise and friendly')
 
     def test_api_options_advance_and_finalize_once(self):
         self._advance_option('api')

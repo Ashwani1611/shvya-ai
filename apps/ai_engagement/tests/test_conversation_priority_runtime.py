@@ -1,4 +1,6 @@
 from __future__ import annotations
+from tests.playbook_fixtures import replace_playbook_questions, qualification_questions
+
 
 import json
 from types import SimpleNamespace
@@ -22,13 +24,11 @@ class ConversationPriorityPayloadTests(SimpleTestCase):
     def test_full_questionnaire_is_not_exposed_to_generation_payload(self):
         context = PreciseEngagementTests()._context("I need some details")
         context.conversation["messages"][0]["id"] = "inbound-1"
-        context.organization["qualification_requirements"] = (
-            "What is your budget?\n"
+        context.organization["ai_playbook"] = replace_playbook_questions(context.organization["ai_playbook"], "What is your budget?\n"
             "Which city are you in?\n"
-            "Which product do you need?"
-        )
+            "Which product do you need?")
         requirements = compile_qualification_requirements(
-            context.organization["qualification_requirements"]
+            qualification_questions(context.organization["ai_playbook"])
         )["requirements"]
         states = {
             item["id"]: {

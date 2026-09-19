@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from apps.ai_engagement.services.playbook import qualification_questions
+
 from dataclasses import dataclass
 import json
 import re
@@ -158,8 +160,8 @@ class QualificationService:
         from apps.ai_engagement.services.qualification_state import state_for_lead
         messages = InternalSummaryService().get_messages(organization=organization, lead=lead)
         profile = compile_org_ai_profile_from_context({
-            "qualification_requirements": AIContextBuilder()._build_organization_context(
-                organization=organization).get("qualification_requirements", ""),
+            "ai_playbook": AIContextBuilder()._build_organization_context(
+                organization=organization).get("ai_playbook", ""),
         })
         requirements = profile.get("qualification", {}).get("requirements", [])
         return json.dumps({
@@ -611,7 +613,7 @@ class QualificationService:
             return None
         org_info = OrgInfo.objects.filter(organization=organization).first()
         configured = compile_qualification_requirements(
-            org_info.qualification_requirements if org_info else ""
+            qualification_questions(org_info.ai_playbook if org_info else "")
         )["requirements"]
         requirements = requirements_for_lead(lead, configured)
         state = state_for_lead(lead, requirements=requirements)

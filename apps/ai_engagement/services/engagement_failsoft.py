@@ -9,6 +9,8 @@ business facts, pipeline movement, attributes, reminders, or identifiers.
 
 from __future__ import annotations
 
+from apps.ai_engagement.services.playbook import qualification_questions
+
 import logging
 import re
 from dataclasses import replace
@@ -326,11 +328,11 @@ def build_deterministic_fallback_decision(*, organization, lead, latest_inbound=
 
     org_info = (
         OrgInfo.objects.filter(organization_id=organization.pk)
-        .only("qualification_requirements", "about")
+        .only("ai_playbook", "about")
         .first()
     )
     compiled = compile_qualification_requirements(
-        org_info.qualification_requirements if org_info else ""
+        qualification_questions(org_info.ai_playbook if org_info else "")
     )
     requirements = requirements_for_lead(
         lead,

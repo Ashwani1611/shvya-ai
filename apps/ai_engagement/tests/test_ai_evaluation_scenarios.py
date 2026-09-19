@@ -3,6 +3,8 @@
 No live provider is called and no delivery task is dispatched. This tests backend
 behaviour, not the open-ended quality of the configured production language model.
 """
+from tests.playbook_fixtures import build_ai_playbook
+
 import json
 import os
 from types import SimpleNamespace
@@ -62,8 +64,8 @@ def test_conversation_scenario(scenario, transport, record_property):
                     "\n## Stage shifting\nWhen all required qualification questions are answered, move to Ready for review.\n"
                     'Acknowledgment message: "Your details are complete. Thank you."')
     info, _ = OrgInfo.objects.get_or_create(organization=org)
-    info.qualification_requirements = requirements_text
-    info.engagement_instructions = instructions
+    info.ai_playbook = build_ai_playbook(questions=requirements_text, rules=instructions)
+
     info.bot_languages = "English, Hindi, Hinglish"
     info.about = str(scenario.get("about", ""))
     info.ai_enabled = True

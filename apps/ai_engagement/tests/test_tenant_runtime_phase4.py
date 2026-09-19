@@ -1,4 +1,6 @@
 from __future__ import annotations
+from tests.playbook_fixtures import build_ai_playbook
+
 
 import json
 from datetime import timedelta
@@ -89,21 +91,17 @@ class Phase4TenantRuntimeTests(TestCase):
             organization=cls.org_a,
             about="Gym business information for Apex Fitness.",
             bot_languages="English, Hindi",
-            qualification_requirements=(
-                "What is your fitness goal?\n"
-                "When would you like to start training?"
-            ),
-            engagement_instructions="Use the approved gym information only.",
+            ai_playbook=build_ai_playbook(questions="What is your fitness goal?\n"
+                "When would you like to start training?", rules="Use the approved gym information only."),
+
         )
         OrgInfo.objects.create(
             organization=cls.org_b,
             about="University admissions information for Beacon University.",
             bot_languages="English",
-            qualification_requirements=(
-                "Which course are you interested in?\n"
-                "Which admission intake are you targeting?"
-            ),
-            engagement_instructions="Use the approved admissions information only.",
+            ai_playbook=build_ai_playbook(questions="Which course are you interested in?\n"
+                "Which admission intake are you targeting?", rules="Use the approved admissions information only."),
+
         )
 
         cls.pipeline_a = Pipeline.objects.create(
@@ -123,7 +121,7 @@ class Phase4TenantRuntimeTests(TestCase):
         cls.stage_a_next = (
             cls.pipeline_a.stages
             .filter(is_active=True)
-            .exclude(pk=cls.stage_a.pk)
+            .exclude(pk=cls.stage_a.pk).exclude(name__iexact="qualified")
             .order_by("display_order", "id")
             .first()
         )
