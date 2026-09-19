@@ -227,6 +227,16 @@ def boolean_candidate(text: str, question: str) -> bool | None:
     value = normalize(text)
     yes = bool(re.search(r"\b(?:yes|yeah|yep|haan|ha|han|जी हाँ|हाँ)\b", value))
     no = bool(re.search(r"\b(?:no|nope|nahi|nahin|नहीं)\b", value))
+    intermittent = bool(
+        re.search(
+            r"\b(?:sometimes?|some\s+times?|occasionally|at\s+times|"
+            r"from\s+time\s+to\s+time|on\s+and\s+off|off\s+and\s+on|"
+            r"once\s+in\s+a\s+while|rarely)\b",
+            value,
+        )
+    )
+    if intermittent and not re.search(r"\b(?:not|never|no\s+longer)\b", value):
+        yes = True
     if yes == no:
         return None
     keywords = [
