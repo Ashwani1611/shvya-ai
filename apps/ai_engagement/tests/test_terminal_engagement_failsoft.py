@@ -118,6 +118,59 @@ class TerminalEngagementFailsoftTests(TestCase):
         )
         self.assertNotIn("enough verified information", decision.message)
 
+    def test_failsoft_progress_reply_acknowledges_answer_before_next_question(self):
+        info, _ = OrgInfo.objects.get_or_create(organization=self.organization)
+        info.qualification_requirements = (
+            "[id: acquisition] Where do most enquiries originate?\n"
+            "A. Search\n"
+            "B. Partner referrals\n"
+            "[id: motion] How are new enquiries handled today?\n"
+            "A. Dedicated sales team\n"
+            "B. Founder-led\n"
+            "C. Shared inbox\n"
+            "All questions are required"
+        )
+        info.engagement_instructions = "Be concise and natural."
+        info.ai_enabled = True
+        info.save()
+
+        requirements = compile_qualification_requirements(
+            info.qualification_requirements
+        )["requirements"]
+        record_last_asked_requirement(
+            self.lead,
+            requirements[0]["id"],
+            requirements=requirements,
+        )
+        source = self._inbound(external_id="wamid-progress-failsoft")
+        source.body = "B"
+        source.save(update_fields=["body", "updated_at"])
+
+        resolved = resolve_before_generation(
+            organization=self.organization,
+            lead=self.lead,
+            source_message_id=source.pk,
+        )
+        self.assertTrue(resolved["applied"])
+        source.refresh_from_db()
+
+        decision = build_deterministic_fallback_decision(
+            organization=self.organization,
+            lead=self.lead,
+            latest_inbound=source,
+        )
+
+        self.assertTrue(decision.should_engage)
+        self.assertEqual(decision.reason_code, "QUALIFICATION_NEXT")
+        self.assertEqual(decision.model, "deterministic-qualification-progress")
+        self.assertIn("Partner referrals", decision.message)
+        self.assertIn("useful context", decision.message)
+        self.assertIn("How are new enquiries handled today?", decision.message)
+        self.assertNotEqual(
+            decision.message.strip(),
+            resolved["response_plan"]["next_requirement"]["rendered"].strip(),
+        )
+
     def test_failsoft_answers_lead_generation_from_authored_about(self):
         OrgInfo.objects.create(
             organization=self.organization,
