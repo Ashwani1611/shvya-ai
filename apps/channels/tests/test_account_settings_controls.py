@@ -25,6 +25,7 @@ from services.channels.whatsapp_service import (
     WhatsAppSendError,
     handle_inbound_message,
     queue_outbound_message,
+    resolve_account_for_lead,
     send_outbound_message,
 )
 from services.followup_service import (
@@ -133,6 +134,51 @@ class AccountControlsMixin:
             message.raw_payload = {"shvya_ai": ai}
             message.save(update_fields=["raw_payload", "updated_at"])
         return message
+
+    def _move_lead_to_other_pipeline(self):
+        other = Pipeline.objects.create(
+            organization=self.org,
+            owner=self.user,
+            name="Other pipeline",
+            phone_number="+919999999992",
+            ai_enabled=True,
+        )
+        stage, _ = Stage.objects.get_or_create(
+            pipeline=other,
+            display_order=1,
+            defaults={"name": "New Lead"},
+        )
+        self.lead.pipeline = other
+        self.lead.stage = stage
+        self.lead.save(update_fields=["pipeline", "stage", "updated_at"])
+        self.lead.refresh_from_db()
+        return other
+
+    def test_resolver_does_not_keep_previous_number_after_pipeline_move(self):
+        self.outbound()
+        self._move_lead_to_other_pipeline()
+
+        self.assertIsNone(
+            resolve_account_for_lead(
+                organization=self.org,
+                lead=self.lead,
+            )
+        )
+
+    def test_queue_blocks_number_from_previous_pipeline(self):
+        self._move_lead_to_other_pipeline()
+
+        with self.assertRaisesMessage(
+            WhatsAppSendError,
+            "current pipeline is linked to a different WhatsApp number",
+        ):
+            queue_outbound_message(
+                organization=self.org,
+                account=self.account,
+                lead=self.lead,
+                to_number=self.lead.phone,
+                body="Must not cross pipelines",
+            )
 
     def test_all_four_toggles_persist_false_and_true(self):
         keys = ("ai_auto_reply", "auto_lead_creation", "bump_up_messages", "auto_follow_up")
