@@ -12,7 +12,7 @@ Per CLAUDE.md:
 
 from django.conf import settings
 from django.core.exceptions import ValidationError as DjangoValidationError
-from django.db import models, transaction
+from django.db import transaction
 
 from apps.channels.models import WhatsAppAccount, WhatsAppMessage
 from apps.channels.providers import whatsapp as whatsapp_provider
@@ -40,67 +40,87 @@ class WhatsAppEmbeddedSignupError(Exception):
 # .first() needs to instead pick the RIGHT one for a given lead.
 
 
-def resolve_account_for_lead(*, organization, lead):
-    """
-    Picks which connected WhatsAppAccount should be used to message
-    a given lead, in priority order:
+def account_matches_lead_pipeline(*, account, lead):
+    """Return True only when this account belongs to the lead's current pipeline."""
+    if account is None or lead is None:
+        return False
+    if account.organization_id != lead.organization_id or not lead.pipeline_id:
+        return False
 
-      1. Whichever account this lead has messaged with before
-         (their most recent WhatsAppMessage) -- keeps a
-         conversation on the same number it started on.
-      2. The account matching the lead's pipeline's configured
-         phone_number (Pipeline.phone_number), if set.
-      3. The organization's first connected account, as a
-         last-resort fallback so sending never hard-fails just
-         because there's more than one number.
+    pipeline = lead.pipeline
+    raw_pipeline_number = str(getattr(pipeline, "phone_number", "") or "").strip()
+    if not raw_pipeline_number:
+        return False
 
-    Returns None if the organization has no connected account at all.
-    """
-    last_message = (
-        WhatsAppMessage.objects.filter(
-            lead=lead,
-        )
-        .select_related("account")
-        .order_by("-created_at")
-        .first()
+    # Some legacy pipeline rows store Meta's phone-number resource ID directly.
+    if raw_pipeline_number == str(getattr(account, "phone_number_id", "") or "").strip():
+        return True
+
+    from services.channels.hosted_whatsapp_service import (
+        normalize_whatsapp_number,
+        pipeline_whatsapp_number,
     )
 
-    if (
-        last_message
-        and last_message.account.status
-        == last_message.account.Status.CONNECTED
-    ):
-        return last_message.account
+    expected_number = pipeline_whatsapp_number(pipeline)
+    actual_number = normalize_whatsapp_number(
+        phone_number=(
+            getattr(account, "display_phone_number", "")
+            or getattr(account, "phone_number_id", "")
+        )
+    )
+    return bool(expected_number and actual_number and expected_number == actual_number)
 
-    if lead.pipeline_id and lead.pipeline.phone_number:
-        account = (
-            WhatsAppAccount.objects.filter(
-                organization=organization,
-                is_active=True,
-                status=WhatsAppAccount.Status.CONNECTED,
-            )
-            .filter(
-                models.Q(
-                    display_phone_number=lead.pipeline.phone_number
-                )
-                | models.Q(
-                    phone_number_id=lead.pipeline.phone_number
-                )
-            )
-            .first()
+
+def validate_account_for_lead_pipeline(*, account, lead):
+    """Fail closed when an outbound lead message uses another pipeline's number."""
+    if lead is None:
+        return
+
+    if account is None or account.organization_id != lead.organization_id:
+        raise WhatsAppSendError(
+            "WhatsApp account does not belong to the lead organization."
+        )
+    if not lead.pipeline_id:
+        raise WhatsAppSendError("This lead is not assigned to a pipeline.")
+
+    pipeline_number = str(getattr(lead.pipeline, "phone_number", "") or "").strip()
+    if not pipeline_number:
+        raise WhatsAppSendError(
+            "This lead's current pipeline has no linked WhatsApp number."
+        )
+    if not account_matches_lead_pipeline(account=account, lead=lead):
+        raise WhatsAppSendError(
+            "This lead's current pipeline is linked to a different WhatsApp number. "
+            "Message sending was blocked."
         )
 
-        if account:
-            return account
 
-    return (
+def resolve_account_for_lead(*, organization, lead):
+    """Return only the connected account linked to the lead's current pipeline.
+
+    Conversation history never overrides the lead's current CRM pipeline, and
+    there is deliberately no organization-level fallback.
+    """
+    if (
+        organization is None
+        or lead is None
+        or lead.organization_id != organization.id
+        or not lead.pipeline_id
+    ):
+        return None
+
+    accounts = (
         WhatsAppAccount.objects.filter(
             organization=organization,
             is_active=True,
             status=WhatsAppAccount.Status.CONNECTED,
         )
-        .first()
+        .order_by("-updated_at", "-pk")
     )
+    for account in accounts:
+        if account_matches_lead_pipeline(account=account, lead=lead):
+            return account
+    return None
 
 
 # ============================================================
@@ -802,6 +822,9 @@ def queue_outbound_message(
             "media_id": "META_MEDIA_ID",
         }
     """
+    if lead is not None:
+        validate_account_for_lead_pipeline(account=account, lead=lead)
+
     normalized_media_payload = (
         _validate_outbound_message_content(
             message_type=message_type,
@@ -1099,6 +1122,11 @@ def send_outbound_message(
         raise WhatsAppSendError(
             "WhatsApp account is not connected."
         )
+
+    # Re-check the live CRM pipeline immediately before the provider call.
+    # This blocks stale queued jobs when a lead has moved to another pipeline.
+    if message.lead_id:
+        validate_account_for_lead_pipeline(account=account, lead=message.lead)
 
     payload = message.raw_payload if isinstance(message.raw_payload, dict) else {}
     ai_metadata = payload.get("shvya_ai") or {}

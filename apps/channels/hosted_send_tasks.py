@@ -37,7 +37,7 @@ def _cleanup_upload(message):
 @shared_task(bind=True, max_retries=3, default_retry_delay=20)
 def send_hosted_whatsapp_message_task(self, message_id):
     message = (
-        WhatsAppMessage.objects.select_related("account", "organization")
+        WhatsAppMessage.objects.select_related("account", "organization", "lead__pipeline")
         .filter(id=message_id)
         .first()
     )
@@ -61,6 +61,25 @@ def send_hosted_whatsapp_message_task(self, message_id):
         message.save(update_fields=["status", "error", "updated_at"])
         _cleanup_upload(message)
         return {"status": "failed", "reason": "session_not_connected"}
+
+    if message.lead_id:
+        from services.channels.whatsapp_service import (
+            WhatsAppSendError,
+            validate_account_for_lead_pipeline,
+        )
+
+        try:
+            validate_account_for_lead_pipeline(account=account, lead=message.lead)
+        except WhatsAppSendError as exc:
+            message.status = WhatsAppMessage.Status.FAILED
+            message.error = str(exc)
+            message.save(update_fields=["status", "error", "updated_at"])
+            _cleanup_upload(message)
+            return {
+                "status": "failed",
+                "reason": "pipeline_whatsapp_mismatch",
+                "error": str(exc),
+            }
 
     # This worker is also used by direct Hosted UI sends and by the AI-generated
     # new-lead welcome path. Only SHVYA automation is subject to Account Health;

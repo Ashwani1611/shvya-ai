@@ -702,11 +702,12 @@ def _validate_lead_sender(lead, sequence):
     )
     linked_account = resolve_linked_whatsapp_account(lead=lead, connection_type=expected_type)
     if linked_account:
-        if is_hosted_sequence or linked_account.id == account.id:
+        if linked_account.id == account.id:
             return linked_account
+        sender_label = "Hosted Account" if is_hosted_sequence else "WhatsApp API"
         raise FollowupError(
-            "This pipeline is linked to a different WhatsApp API number. "
-            "Choose a sequence created for the pipeline's linked WhatsApp API number."
+            f"This pipeline is linked to a different {sender_label} number. "
+            f"Choose a sequence created for the pipeline's linked {sender_label} number."
         )
 
     pipeline_number = getattr(lead.pipeline, "phone_number", "") if lead.pipeline_id else ""
@@ -992,6 +993,7 @@ def _send_whatsapp_step(state, step, execution):
         return
     if account.status != WhatsAppAccount.Status.CONNECTED or not account.is_active:
         raise FollowupError("The sequence WhatsApp API number is not connected.")
+    _validate_lead_sender(lead, state.sequence)
     if not template or template.status != WhatsAppTemplate.Status.APPROVED:
         raise FollowupError("The selected WhatsApp template is no longer approved.")
     if template.account_id != account.id:

@@ -712,6 +712,17 @@ def handle_gateway_event(*, payload):
 
 
 def queue_hosted_text_message(*, account, to_number, body, lead=None, metadata=None):
+    if lead is not None:
+        from services.channels.whatsapp_service import (
+            WhatsAppSendError,
+            validate_account_for_lead_pipeline,
+        )
+
+        try:
+            validate_account_for_lead_pipeline(account=account, lead=lead)
+        except WhatsAppSendError as exc:
+            raise HostedWhatsAppValidationError(str(exc)) from exc
+
     raw_to = str(to_number or "").strip()
     if raw_to.endswith("@g.us"):
         normalized_to = raw_to

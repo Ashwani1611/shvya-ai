@@ -52,6 +52,11 @@ def send_hosted_message(*, message, defer_on_pause=True):
     if account.status != account.Status.CONNECTED:
         raise WhatsAppSendError("Hosted WhatsApp session is not running.")
 
+    if message.lead_id:
+        from services.channels.whatsapp_service import validate_account_for_lead_pipeline
+
+        validate_account_for_lead_pipeline(account=account, lead=message.lead)
+
     raw_payload = message.raw_payload if isinstance(message.raw_payload, dict) else {}
     if raw_payload.get("shvya_ai"):
         reason = (

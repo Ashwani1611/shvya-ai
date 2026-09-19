@@ -45,7 +45,11 @@ class CampaignFixture:
         self.org = Organization.objects.create(name="Campaign Test Organization")
         self.user = User.objects.create_user(email="campaign-test@example.com", password="test-password",
                                              name="Campaign Admin", organization=self.org, role=User.Role.ADMIN)
-        self.pipeline = Pipeline.objects.create(organization=self.org, name="Campaign Sales")
+        self.pipeline = Pipeline.objects.create(
+            organization=self.org,
+            name="Campaign Sales",
+            phone_number="123456789",
+        )
         self.stage = self.pipeline.stages.order_by("display_order", "pk").first()
         self.assertIsNotNone(self.stage)
         self.attribute, _ = AttributeDefinition.objects.get_or_create(organization=self.org, key="campaign_company",

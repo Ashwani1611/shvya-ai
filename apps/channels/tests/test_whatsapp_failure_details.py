@@ -34,7 +34,11 @@ class WhatsAppFailureDetailsTests(TestCase):
             status=WhatsAppAccount.Status.CONNECTED,
             is_active=True,
         )
-        self.pipeline = Pipeline.objects.create(organization=self.org, name="Sales")
+        self.pipeline = Pipeline.objects.create(
+            organization=self.org,
+            name="Sales",
+            phone_number="123456789",
+        )
         self.stage = Stage.objects.create(pipeline=self.pipeline, name="New")
         self.lead = Lead.objects.create(
             organization=self.org,

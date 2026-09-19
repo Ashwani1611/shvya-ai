@@ -102,7 +102,7 @@ class AIEngagementControlTests(TestCase):
         self.assertEqual(state["qualification_result"], RESULT_QUALIFIED)
         self.assertEqual(state["engagement_mode"], MODE_CONVERSATION)
 
-    def test_established_ai_transport_survives_crm_pipeline_number_change(self):
+    def test_established_ai_transport_is_blocked_after_pipeline_number_change(self):
         inbound = self._inbound()
         decision = AIPermissionService().evaluate(
             organization=self.organization,
@@ -126,8 +126,8 @@ class AIEngagementControlTests(TestCase):
             },
         )
 
-        # The CRM classification may move after a conversation starts. The
-        # established organization-owned account remains the reply route.
+        # Current CRM routing is authoritative. Once the pipeline mapping changes,
+        # the old WhatsApp transport must not keep replying to this lead.
         self.pipeline.phone_number = "8888888888"
         self.pipeline.save(update_fields=["phone_number", "updated_at"])
         self.lead.refresh_from_db()
@@ -135,7 +135,8 @@ class AIEngagementControlTests(TestCase):
             organization=self.organization,
             lead=self.lead,
         )
-        self.assertTrue(decision.allowed)
+        self.assertFalse(decision.allowed)
+        self.assertEqual(decision.reason, "pipeline_whatsapp_account_mismatch")
 
     def test_organization_ai_toggle_blocks_active_whatsapp_inbound(self):
         self._inbound()
