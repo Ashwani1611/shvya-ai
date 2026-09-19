@@ -182,6 +182,38 @@ class AIBrainPersistenceTests(TestCase):
         self.assertTrue(self.info.bump_up_enabled)
         self.assertEqual(self.info.bump_up_count, 4)
 
+    @patch('apps.crm.views.ai_setup.messages.success')
+    def test_save_and_reload_json_confirms_database_content(self, success):
+        user = SimpleNamespace(organization=self.organization)
+        request = RequestFactory().post('/', {**self.data, 'action': 'save_settings'}, HTTP_ACCEPT='application/json')
+        with patch('apps.crm.authentication.get_crm_authenticated_user', return_value=user):
+            response = ai_setup_view(request)
+        import json
+        result = json.loads(response.content)
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(result['saved'])
+        self.info.refresh_from_db()
+        self.assertEqual(result['ai_playbook'], self.info.ai_playbook)
+        self.assertEqual(self.info.ai_playbook, self.data['ai_playbook'])
+        success.assert_called_once()
+
+    def test_unrelated_legacy_organization_field_does_not_block_playbook_save(self):
+        Organization.objects.filter(pk=self.organization.pk).update(payment_mode='legacy')
+        self.organization.refresh_from_db()
+        save_ai_brain_configuration(organization=self.organization, data=self.data)
+        self.info.refresh_from_db()
+        self.assertEqual(self.info.ai_playbook, self.data['ai_playbook'])
+
+    def test_json_validation_failure_never_reports_saved(self):
+        request = RequestFactory().post('/', {**self.data, 'organization_name': '', 'action': 'save_settings'}, HTTP_ACCEPT='application/json')
+        with patch('apps.crm.authentication.get_crm_authenticated_user', return_value=SimpleNamespace(organization=self.organization)):
+            response = ai_setup_view(request)
+        import json
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(json.loads(response.content)['saved'])
+        self.info.refresh_from_db()
+        self.assertNotEqual(self.info.ai_playbook, self.data['ai_playbook'])
+
     @patch("apps.ai_engagement.services.ai_brain_setup.KnowledgeSourceService")
     def test_invalid_source_rolls_back_the_entire_configuration_save(self, sources):
         sources.return_value.create_url_source.side_effect = KnowledgeSourceServiceError("Invalid website URL")

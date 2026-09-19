@@ -285,6 +285,7 @@ def _stage_action_supported(
         _condition_part,
         _stage_rule_references_destination,
         _strong_evidence_match,
+        _condition_evidence_match,
     )
 
     evidence_texts = [latest_text]
@@ -293,14 +294,19 @@ def _stage_action_supported(
         evidence_texts.append(confirmation)
 
     rules = ((runtime_policy or {}).get("crm") or {}).get("stage_shifting") or []
+    authored_destination = False
     for rule in rules:
         if not isinstance(rule, str) or not _stage_rule_references_destination(rule, destination):
             continue
+        authored_destination = True
         condition = _condition_part(rule, destination)
         if condition and any(
-            _strong_evidence_match(text, condition) for text in evidence_texts
+            _condition_evidence_match(text, condition, context) for text in evidence_texts
         ):
             return True
+
+    if authored_destination:
+        return False
 
     description = _clean(destination.get("description"))
     pipeline_description = _clean(destination.get("pipeline_description"))

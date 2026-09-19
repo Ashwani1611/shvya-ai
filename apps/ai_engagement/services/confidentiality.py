@@ -76,6 +76,11 @@ _PROMPT_SECTION_RE = re.compile(
     r"customer-facing safety|output discipline)\b",
     flags=re.IGNORECASE,
 )
+_POLICY_COPY_RE = re.compile(
+    r"(?:^\s*(?:#{1,6}\s*)?(?:notes?|rules|qualification criteria|stage shifting logic|attribute mapping logic|reminder creation logic)\s*:|"
+    r"\bdo not tell the lead\b|\bsend the qualification completion acknowledgment only once\b)",
+    re.I | re.M,
+)
 _INTERNAL_ROUTE_RE = re.compile(
     r"(?:\b(?:internal|crm|lead)\b.{0,45}\b(?:pipeline|stage)\b|"
     r"\b(?:pipeline|stage)\b.{0,45}\b(?:internal|crm|lead|id|routing)\b|"
@@ -172,6 +177,8 @@ def customer_message_violation(message: Any) -> str | None:
     text = str(message or "").strip()
     if not text:
         return None
+    if _POLICY_COPY_RE.search(text):
+        return "internal_instructions"
     if redact_text(text) != text:
         return "credential_material"
     if (

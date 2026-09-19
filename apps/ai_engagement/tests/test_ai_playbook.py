@@ -93,8 +93,11 @@ class PlaybookCriteriaTests(SimpleTestCase):
         self.assertFalse(self.evaluate("Budget >= 50000 and location is UK")["qualified"])
         self.assertFalse(self.evaluate("Budget >= 50000 and magic happens")["qualified"])
 
-    def test_unknown_or_clause_never_silently_passes(self):
-        self.assertFalse(self.evaluate("Budget >= 50000 or something else")["qualified"])
+    def test_or_requires_at_least_one_proven_alternative(self):
+        self.assertTrue(self.evaluate("Budget >= 50000 or location is UK")["qualified"])
+        self.assertFalse(self.evaluate("Budget >= 100000 or something else")["qualified"])
+        self.assertTrue(self.evaluate("If Budget >= 50000 and location is India then qualify else do not qualify")["qualified"])
+        self.assertFalse(self.evaluate("If Budget >= 100000 and location is India then qualify else do not qualify")["qualified"])
 
     def test_scalar_comparison_does_not_ignore_another_predicate(self):
         for rule in ("Budget with manager approval >= 50000", "Budget pending approval is captured", "Verified location is India"):

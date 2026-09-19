@@ -10,7 +10,7 @@ from django.core.cache import cache
 from django.utils.text import slugify
 
 
-PROFILE_VERSION = 3
+PROFILE_VERSION = 4
 PROFILE_CACHE_SECONDS = 300
 
 _OPTION_LINE_RE = re.compile(
@@ -398,7 +398,7 @@ def compile_org_ai_profile(*, organization_name: str, org_info) -> dict[str, Any
 
     updated_at = getattr(org_info, "updated_at", None)
     cache_key = (
-        f"shvya:ai:org-profile:v3:{getattr(org_info, 'pk', 'none')}:"
+        f"shvya:ai:org-profile:v{PROFILE_VERSION}:{getattr(org_info, 'pk', 'none')}:"
         f"{updated_at.isoformat() if updated_at else 'na'}"
     )
     cached = cache.get(cache_key)

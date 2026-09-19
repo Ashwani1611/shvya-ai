@@ -14,7 +14,7 @@
 <div id="ai-setup-page" class="max-w-7xl mx-auto" data-ai-brain-playbook>
     <div class="ai-brain-layout grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_420px] gap-6 items-start">
         <div class="ai-brain-editor min-w-0">
-            <form id="org-ai-settings-form" method="post" enctype="multipart/form-data" class="brain-card">
+            <form id="org-ai-settings-form" action="{% url 'crm-knowledge-base-ai-setup' %}" method="post" enctype="multipart/form-data" class="brain-card">
                 {% csrf_token %}
                 <input type="hidden" name="action" value="save_settings">
                 <div class="brain-card-heading">
@@ -112,7 +112,7 @@
                         {% endif %}
                     </section>
                 </div>
-                <div class="brain-save-bar"><span class="brain-help">Save your changes before testing in AI Sandbox.</span><button type="submit" class="brain-button brain-button-primary">Save Changes</button></div>
+                <div class="brain-save-bar"><span class="brain-help" data-save-status role="status" aria-live="polite">Save your changes before testing in AI Sandbox.</span><button type="submit" class="brain-button brain-button-primary">Save Changes</button></div>
             </form>
 
             <section class="brain-card brain-guided-files" aria-labelledby="guided-files-heading">
