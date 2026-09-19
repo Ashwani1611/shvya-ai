@@ -278,7 +278,17 @@ def _apply(run, lead):
                 "No active WhatsApp reply window. Use an approved-template follow-up sequence.",
             )
             return
-        from services.channels.whatsapp_service import queue_outbound_message
+        from services.channels.whatsapp_service import (
+            account_matches_lead_pipeline,
+            queue_outbound_message,
+        )
+
+        if not account_matches_lead_pipeline(account=account, lead=lead):
+            run.status, run.detail = (
+                "blocked",
+                "Lead is in a pipeline linked to a different WhatsApp number.",
+            )
+            return
 
         run.message = queue_outbound_message(
             organization=org,
