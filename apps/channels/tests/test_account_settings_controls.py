@@ -387,9 +387,39 @@ class AccountControlsMixin:
 class APIAccountControlsTests(AccountControlsMixin, TestCase):
     provider = "api"
 
+    def test_api_transport_rechecks_pipeline_after_message_was_queued(self):
+        message = self.outbound()
+        self._move_lead_to_other_pipeline()
+
+        with patch(
+            "services.channels.whatsapp_service.WhatsAppClient.send_text_message"
+        ) as provider:
+            with self.assertRaisesMessage(
+                WhatsAppSendError,
+                "current pipeline is linked to a different WhatsApp number",
+            ):
+                send_outbound_message(message=message)
+        provider.assert_not_called()
+
 
 class HostedAccountControlsTests(AccountControlsMixin, TestCase):
     provider = "hosted"
+
+    def test_hosted_transport_rechecks_pipeline_after_message_was_queued(self):
+        from services.channels.hosted_whatsapp_transport import send_hosted_message
+
+        message = self.outbound()
+        self._move_lead_to_other_pipeline()
+
+        with patch(
+            "services.channels.hosted_whatsapp_transport.WhatsAppWebClient.send_message"
+        ) as gateway:
+            with self.assertRaisesMessage(
+                WhatsAppSendError,
+                "current pipeline is linked to a different WhatsApp number",
+            ):
+                send_hosted_message(message=message)
+        gateway.assert_not_called()
 
     def test_queued_followup_checks_switch_again_at_transport_boundary(self):
         from services.channels.hosted_automation_service import HostedAutomationPaused
