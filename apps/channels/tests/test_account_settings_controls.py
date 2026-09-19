@@ -421,6 +421,22 @@ class HostedAccountControlsTests(AccountControlsMixin, TestCase):
                 send_hosted_message(message=message)
         gateway.assert_not_called()
 
+    def test_hosted_ui_worker_blocks_stale_pipeline_sender(self):
+        from apps.channels.hosted_send_tasks import send_hosted_whatsapp_message_task
+
+        message = self.outbound()
+        self._move_lead_to_other_pipeline()
+
+        with patch(
+            "apps.channels.hosted_send_tasks.WhatsAppWebClient.send_message"
+        ) as gateway:
+            result = send_hosted_whatsapp_message_task(str(message.pk))
+
+        gateway.assert_not_called()
+        message.refresh_from_db()
+        self.assertEqual(message.status, WhatsAppMessage.Status.FAILED)
+        self.assertEqual(result["reason"], "pipeline_whatsapp_mismatch")
+
     def test_queued_followup_checks_switch_again_at_transport_boundary(self):
         from services.channels.hosted_automation_service import HostedAutomationPaused
         from services.channels.hosted_whatsapp_transport import send_hosted_message
