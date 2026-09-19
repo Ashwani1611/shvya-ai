@@ -212,6 +212,34 @@ def _grounded_conversation_reply(*, about: str, inbound: str, organization_name:
     )
 
 
+def _qualification_completion_message(latest_inbound) -> str:
+    """Return a natural completion reply from backend-persisted response state."""
+    if latest_inbound is None:
+        return ""
+    payload = (
+        latest_inbound.raw_payload
+        if isinstance(getattr(latest_inbound, "raw_payload", None), dict)
+        else {}
+    )
+    processing = payload.get("shvya_ai_processing")
+    processing = processing if isinstance(processing, dict) else {}
+    plan = processing.get("qualification_response_plan")
+    plan = plan if isinstance(plan, dict) else {}
+    if str(plan.get("response_type") or "").strip().casefold() != "qualification_complete":
+        return ""
+
+    configured = plan.get("final_configured_acknowledgement")
+    configured = configured if isinstance(configured, dict) else {}
+    final_ack = _clean(configured.get("value"))
+    natural_ack = "Got it — thanks, that gives me a clear picture of your current setup."
+    if final_ack:
+        return f"{natural_ack}\n\n{final_ack}"
+    return (
+        "Got it — thanks for sharing all those details. "
+        "I have what I need to keep this moving."
+    )
+
+
 def build_deterministic_fallback_decision(*, organization, lead, latest_inbound=None):
     """Build a provider-free, RAG-free response from persisted backend state.
 
@@ -279,6 +307,18 @@ def build_deterministic_fallback_decision(*, organization, lead, latest_inbound=
         compiled.get("requirements", []),
     )
     state = state_for_lead(lead, requirements=requirements)
+
+    completion_message = _qualification_completion_message(latest_inbound)
+    if completion_message:
+        return EngagementDecision(
+            should_engage=True,
+            message=completion_message,
+            file_document_id=None,
+            crm_actions=[],
+            reason="NORMAL_CONVERSATION",
+            reason_code="NORMAL_CONVERSATION",
+            model="deterministic-qualification-complete",
+        )
 
     about = org_info.about if org_info else ""
     organization_name = str(getattr(organization, "name", "") or "")
@@ -391,6 +431,28 @@ def _ensure_customer_reply(decision, *, lead):
             file_document_id=None,
             model="deterministic-paused-ack",
         )
+
+    organization = getattr(lead, "organization", None)
+    if organization is not None:
+        latest_inbound = _latest_inbound_for_lead(
+            organization=organization,
+            lead=lead,
+        )
+        completion_message = _qualification_completion_message(latest_inbound)
+        if completion_message:
+            return replace(
+                decision,
+                should_engage=True,
+                message=completion_message,
+                reason="NORMAL_CONVERSATION",
+                reason_code="NORMAL_CONVERSATION",
+                silence_rule=None,
+                crm_actions=[],
+                qualification_updates=[],
+                next_requirement_id=None,
+                file_document_id=None,
+                model="deterministic-qualification-complete",
+            )
 
     return replace(
         decision,
