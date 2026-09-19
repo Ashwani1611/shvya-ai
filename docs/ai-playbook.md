@@ -27,6 +27,41 @@ shifting headings are also recognized. Keep questions explicit and describe the
 eligibility criteria separately; merely answering a question does not prove that
 its value is eligible.
 
+Message blocks accept both `<welcome_message>...</welcome_message>` and the
+historical repeated opening-marker format. The same applies to `question_content`
+and `acknowledgement_message`. Only message-block content is customer copy.
+Notes outside blocks, and explicit `Notes:` sections inside blocks, remain private
+policy. Keep the assistant name consistent between Rules and Welcome Message.
+
+Structured CRM mappings are supported alongside the short `Q1 -> Budget` form:
+
+```text
+Mapping 1:
+- Attribute name: LEAD MANAGEMENT TOOL
+- Description: Where the lead manages enquiries.
+- Source: Qualification Question 1 or an equivalent customer statement.
+- Value rule:
+  - Excel / Google Sheets → Excel / Sheets
+```
+
+Use exact existing attribute names. Explicit value translations run before field
+type/dropdown validation. `FIELD has a clear value` criteria inspect the mapped
+CRM value. A section headed `The following attributes are optional and must not
+block qualification:` does not add required fields. Unknown predicates still
+remain unresolved. Scalar comparisons support AND, OR, and `If ... then qualify
+else do not qualify`; unsupported exceptions are not guessed.
+
+Numbered Rule, Mapping and Reminder blocks retain their child conditions.
+Explicit stage rules take precedence over a looser stage description. Escalation
+conditions requiring contacts already provided need sent/delivered outbound
+messages containing the contact name and number; queued or inbound messages do
+not count. Qualification questions remain New Lead-only, so do not configure an
+intermediate stage move while also expecting qualification to continue there.
+
+AI Brain saves confirm the persisted Playbook by database readback. Failed saves
+retain the draft and show the error beside Save Changes. Saving the AI profile
+does not revalidate unrelated legacy billing fields or overwrite hidden controls.
+
 Rules should describe identity, tone, language, prohibited claims, and how to
 continue a conversation. Business answers must come from the organization's
 approved information and knowledge sources. Configure each guided file with

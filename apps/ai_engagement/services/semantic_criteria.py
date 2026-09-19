@@ -24,10 +24,10 @@ MAX_EVIDENCE = 100
 
 def criteria_clauses(ai_playbook: str) -> list[dict]:
     """Keep each authored condition; split conjunctions rather than dropping one."""
-    from apps.ai_engagement.services.playbook import parse_playbook
+    from apps.ai_engagement.services.playbook import parse_playbook, criteria_rules
     text = parse_playbook(ai_playbook)["qualification_criteria"]
     clauses = []
-    for line in re.split(r"[\n;]+|(?<=\.)\s+", text):
+    for line in re.split(r"[\n;]+|(?<=\.)\s+", "\n".join(criteria_rules(text))):
         line = re.sub(r"^\s*(?:[-*•]+|\d+[.)])\s*", "", line).strip()
         if not line or re.fullmatch(r"(?:the )?lead (?:is )?qualified (?:only )?(?:if|when):?", line, re.I):
             continue
