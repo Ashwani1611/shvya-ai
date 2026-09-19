@@ -41,7 +41,7 @@ Mapping 1:
 - Description: Where the lead manages enquiries.
 - Source: Qualification Question 1 or an equivalent customer statement.
 - Value rule:
-  - Excel / Google Sheets â†’ Excel / Sheets
+  - Excel / Google Sheets → Excel / Sheets
 ```
 
 Use exact existing attribute names. Explicit value translations run before field
@@ -105,8 +105,8 @@ language model can never make an error.
 
 ## Lead score and coins
 
-Scores use the supplied 0â€“10 rubric: engagement 0â€“3, urgency 0â€“3, clarity 0â€“2,
-and commitment 0â€“2. Current inbound evidence drives scoring; question wording
+Scores use the supplied 0–10 rubric: engagement 0–3, urgency 0–3, clarity 0–2,
+and commitment 0–2. Current inbound evidence drives scoring; question wording
 and options do not count as customer intent. Negated claims do not establish
 urgency or commitment. Requesting a demo is distinct from a confirmed booking.
 
