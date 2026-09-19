@@ -68,17 +68,16 @@ def _configured_completion_allowed(*, organization, lead, destination) -> bool:
             organization=organization,
             lead=lead,
         )
-        if not requirements:
-            return False
         state = qs.state_for_lead(lead, requirements=requirements)
-        if str(state.get("qualification_status") or "").casefold() != "completed":
+        if requirements and str(state.get("qualification_status") or "").casefold() != "completed":
             return False
 
         config = _config(
             organization=organization,
             requirements=requirements,
         )
-        target = config.get("completion_stage")
+        from apps.ai_engagement.services.qualification_execution_contract import _completion_target
+        target = _completion_target(lead=lead, state=state, config=config)
         return bool(
             isinstance(target, dict)
             and str(target.get("id") or "") == str(destination.id)
@@ -110,7 +109,7 @@ def _nonqualified_evidence_matches(*, organization, destination, latest_text: st
     }
     org_info = OrgInfo.objects.filter(organization=organization).first()
     policy = compile_engagement_instruction_policy(
-        getattr(org_info, "engagement_instructions", "") if org_info else ""
+        getattr(org_info, "ai_playbook", "") if org_info else ""
     )
     rules = policy.get("stage_shifting") or []
     for rule in rules:

@@ -46,7 +46,7 @@ class ActionPlannerTests(TestCase):
         if len(cls.stages) < 2:
             raise AssertionError("Expected default pipeline stages.")
         cls.stage_one = cls.stages[0]
-        cls.stage_two = cls.stages[1]
+        cls.stage_two = next(stage for stage in cls.stages[1:] if stage.name.casefold() != "qualified")
         cls.other_pipeline = Pipeline.objects.create(
             organization=cls.other_org,
             name="Other",

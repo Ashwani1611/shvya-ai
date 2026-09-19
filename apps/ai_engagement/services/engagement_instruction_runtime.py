@@ -14,6 +14,8 @@ _GENERIC_RULE_TOKENS = {
     "in", "into", "is", "it", "lead", "leads", "move", "moves", "moving",
     "pipeline", "rule", "shift", "shifting", "stage", "stages", "the", "then",
     "this", "to", "user", "when", "whenever", "with",
+    "ask", "asks", "asked", "says", "say", "states", "request", "requests",
+    "wants", "want", "customer", "customers", "requesting", "here", "explicitly", "a", "an",
 }
 _TOKEN_ALIASES = {
     "people": "human",
@@ -23,6 +25,7 @@ _TOKEN_ALIASES = {
     "agents": "human",
     "representative": "human",
     "representatives": "human",
+    "assistance": "support",
     "speak": "talk",
     "speaking": "talk",
     "talking": "talk",
@@ -45,7 +48,7 @@ _TOKEN_ALIASES = {
 _AUTHORED_POLICY_PROMPT = r"""
 AI BRAIN AUTHORED CRM POLICY
 - RUNTIME_POLICY.crm is compiled from the organization-owned sections in
-  Engagement Instructions. Treat it as mandatory CRM policy, not conversational
+  AI Playbook. Treat it as mandatory CRM policy, not conversational
   background text.
 - crm.stage_shifting contains authored conditions for moving a lead to an
   available stage/pipeline. When current conversation evidence clearly matches a
@@ -104,41 +107,6 @@ def _policy_lines(runtime_policy: dict[str, Any], key: str) -> list[str]:
     return [_clean(item) for item in value if _clean(item)]
 
 
-def _profile_wrapper(original):
-    def profile_from_values(
-        *,
-        organization_name: str,
-        about: str,
-        bot_languages: str,
-        qualification_requirements: str,
-        engagement_instructions: str,
-    ):
-        from apps.ai_engagement.services.engagement_instruction_policy import (
-            compile_engagement_instruction_policy,
-            effective_qualification_source,
-        )
-
-        effective_raw, source = effective_qualification_source(
-            qualification_requirements=qualification_requirements,
-            engagement_instructions=engagement_instructions,
-        )
-        profile = original(
-            organization_name=organization_name,
-            about=about,
-            bot_languages=bot_languages,
-            qualification_requirements=effective_raw,
-            engagement_instructions=engagement_instructions,
-        )
-        qualification = profile.setdefault("qualification", {})
-        qualification["source"] = source
-        profile["engagement_policy"] = compile_engagement_instruction_policy(
-            engagement_instructions
-        )
-        return profile
-
-    return profile_from_values
-
-
 def _runtime_policy_wrapper(original):
     def compile_runtime_policy(*, organization, profile):
         policy = original(organization=organization, profile=profile)
@@ -158,7 +126,7 @@ def _runtime_policy_wrapper(original):
         }
         qualification = policy.setdefault("qualification", {})
         qualification["source"] = str(
-            ((profile.get("qualification") or {}).get("source") or "qualification_requirements")
+            ((profile.get("qualification") or {}).get("source") or "ai_playbook.qualification_questions")
         )
 
         source = json.dumps(
@@ -369,10 +337,14 @@ def _strong_evidence_match(latest_text: str, condition: str) -> bool:
     if latest_negative and not condition_negative:
         return False
 
+    # A single intent word must not satisfy a compound or numeric policy.
+    if re.search(r"\b(?:and|or|unless|except)\b", condition_normalized) or re.search(r"\d", condition_normalized):
+        return condition_tokens.issubset(latest_tokens)
+
     overlap = latest_tokens & condition_tokens
     if condition_tokens.issubset(latest_tokens):
         return True
-    if len(overlap) >= 2 and len(overlap) / len(condition_tokens) >= 0.5:
+    if len(overlap) >= 2 and len(overlap) / len(condition_tokens) >= 0.8:
         return True
 
     intent_groups = (
@@ -386,7 +358,7 @@ def _strong_evidence_match(latest_text: str, condition: str) -> bool:
     for group in intent_groups:
         condition_intent = condition_tokens & group
         latest_intent = latest_tokens & group
-        if condition_intent and latest_intent and condition_intent & latest_intent:
+        if condition_intent and latest_intent and condition_intent & latest_intent and condition_tokens.issubset(group):
             return True
 
     if {"not", "interested"}.issubset(condition_tokens):
@@ -533,17 +505,11 @@ def _action_wrapper(current_builder):
 
 
 def install_engagement_instruction_runtime() -> None:
-    """Turn authored Engagement Instruction headings into backend CRM policy."""
+    """Turn authored AI Playbook headings into backend CRM policy."""
 
     global _INSTALLED
     if _INSTALLED:
         return
-
-    from apps.ai_engagement.services import organization_profile as profile_module
-
-    profile_module._profile_from_values = _profile_wrapper(
-        profile_module._profile_from_values
-    )
 
     from apps.ai_engagement.graph import runtime_policy as runtime_policy_module
 

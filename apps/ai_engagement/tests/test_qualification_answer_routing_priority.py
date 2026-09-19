@@ -1,4 +1,7 @@
 from __future__ import annotations
+from tests.playbook_fixtures import build_ai_playbook, replace_playbook_questions
+from apps.ai_engagement.services.playbook import playbook_for_engagement
+
 
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -39,7 +42,7 @@ class QualificationAnswerRoutingPriorityTests(TestCase):
         self.org_info = OrgInfo.objects.create(
             organization=self.organization,
             bot_languages="English",
-            engagement_instructions="Reply naturally and concisely.",
+            ai_playbook=build_ai_playbook(rules="Reply naturally and concisely."),
             ai_enabled=True,
         )
 
@@ -53,8 +56,8 @@ class QualificationAnswerRoutingPriorityTests(TestCase):
         )
 
     def _requirements(self, raw: str):
-        self.org_info.qualification_requirements = raw
-        self.org_info.save(update_fields=["qualification_requirements", "updated_at"])
+        self.org_info.ai_playbook = replace_playbook_questions(self.org_info.ai_playbook, raw)
+        self.org_info.save(update_fields=["ai_playbook", "updated_at"])
         return compile_qualification_requirements(raw)["requirements"]
 
     def _context_and_policy(self, *, lead: Lead, message_id: str, body: str):
@@ -311,12 +314,7 @@ class QualificationAnswerRoutingPriorityTests(TestCase):
         )
         lead.refresh_from_db()
         context = SimpleNamespace(
-            organization={
-                "name": self.organization.name,
-                "about": "",
-                "engagement_instructions": self.org_info.engagement_instructions,
-                "bot_languages": self.org_info.bot_languages,
-            },
+            organization={'name': self.organization.name, 'about': '', "ai_playbook": build_ai_playbook(rules=playbook_for_engagement(self.org_info.ai_playbook)), 'bot_languages': self.org_info.bot_languages},
             lead={"attributes": lead.attributes},
             conversation={
                 "messages": [{
@@ -361,12 +359,7 @@ class QualificationAnswerRoutingPriorityTests(TestCase):
             model="test",
         )
         context = SimpleNamespace(
-            organization={
-                "name": self.organization.name,
-                "about": "",
-                "engagement_instructions": "",
-                "bot_languages": "English",
-            },
+            organization={'name': self.organization.name, 'about': '', "ai_playbook": build_ai_playbook(rules=''), 'bot_languages': 'English'},
             lead={"attributes": lead.attributes},
             conversation={
                 "messages": [{

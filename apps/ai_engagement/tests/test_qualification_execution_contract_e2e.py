@@ -1,11 +1,11 @@
 from __future__ import annotations
+from tests.playbook_fixtures import build_ai_playbook, qualification_questions
+
 
 import json
-from datetime import timedelta
 from unittest.mock import patch
 
 from django.test import TestCase
-from django.utils import timezone
 
 from apps.ai_engagement.models import OrgInfo
 from apps.ai_engagement.services.ai_provider import AITextResult
@@ -76,8 +76,7 @@ class QualificationExecutionContractE2ETests(TestCase):
             field_type=AttributeDefinition.FieldType.TEXT,
         )
         info, _ = OrgInfo.objects.get_or_create(organization=self.organization)
-        info.qualification_requirements = (
-            "[id: acquisition] Where do most enquiries originate?\n"
+        info.ai_playbook = build_ai_playbook(questions="[id: acquisition] Where do most enquiries originate?\n"
             "A. Search\n"
             "B. Partner referrals\n"
             "C. Events\n"
@@ -85,23 +84,20 @@ class QualificationExecutionContractE2ETests(TestCase):
             "A. Dedicated sales team\n"
             "B. Founder-led\n"
             "C. Shared inbox\n"
-            "All questions are required"
-        )
-        info.engagement_instructions = (
-            "Be concise, specific, and natural.\n\n"
+            "All questions are required", rules="Be concise, specific, and natural.\n\n"
             "## Attribute mapped\n"
             "acquisition -> Acquisition Route\n"
             "motion -> Sales Motion\n\n"
             "## Stage shifting\n"
             "When all required qualification questions are answered, move to "
             "Ready for Consultation.\n"
-            "Acknowledgment message: \"Your details are complete and our team can take the next step.\""
-        )
+            "Acknowledgment message: \"Your details are complete and our team can take the next step.\"")
+
         info.bot_languages = "English"
         info.ai_enabled = True
         info.save()
         requirements = compile_qualification_requirements(
-            info.qualification_requirements
+            qualification_questions(info.ai_playbook)
         )["requirements"]
         return target, requirements
 
@@ -161,8 +157,7 @@ class QualificationExecutionContractE2ETests(TestCase):
             field_type=AttributeDefinition.FieldType.TEXT,
         )
         info, _ = OrgInfo.objects.get_or_create(organization=self.organization)
-        info.qualification_requirements = (
-            "Q1. What is your biggest challenge?\n"
+        info.ai_playbook = build_ai_playbook(questions="Q1. What is your biggest challenge?\n"
             "A. Slow replies\n"
             "B. Missed follow-ups\n"
             "Acknowledgment Message:\n"
@@ -170,13 +165,12 @@ class QualificationExecutionContractE2ETests(TestCase):
             "ATTRIBUTE MAPPING\n"
             "Q1 -> Biggest Problem\n"
             "RULES\n"
-            "- Ask only the next unanswered question."
-        )
-        info.engagement_instructions = "Be concise and natural."
+            "- Ask only the next unanswered question.", rules="Be concise and natural.")
+
         info.save()
 
         requirements = compile_qualification_requirements(
-            info.qualification_requirements
+            qualification_questions(info.ai_playbook)
         )["requirements"]
         self.assertEqual(len(requirements), 1)
 
@@ -207,22 +201,18 @@ class QualificationExecutionContractE2ETests(TestCase):
                 field_type=AttributeDefinition.FieldType.TEXT,
             )
         info, _ = OrgInfo.objects.get_or_create(organization=self.organization)
-        info.qualification_requirements = (
-            "[id: management] Where do you currently manage your leads?\n"
+        info.ai_playbook = build_ai_playbook(questions="[id: management] Where do you currently manage your leads?\n"
             "A. WhatsApp chats\n"
             "B. CRM\n"
             "[id: volume] How many leads do you receive per day?\n"
             "A. 0-10\n"
-            "B. 10-30\n"
-        )
-        info.engagement_instructions = (
-            "## Attribute mapped\n"
+            "B. 10-30\n", rules="## Attribute mapped\n"
             "management -> Lead Management Tool (+ Using Whatsapp / CRM)\n"
-            "volume -> Leads/d\n"
-        )
+            "volume -> Leads/d\n")
+
         info.save()
         requirements = compile_qualification_requirements(
-            info.qualification_requirements
+            qualification_questions(info.ai_playbook)
         )["requirements"]
 
         config = _config(
@@ -256,8 +246,7 @@ class QualificationExecutionContractE2ETests(TestCase):
             )
 
         info, _ = OrgInfo.objects.get_or_create(organization=self.organization)
-        info.qualification_requirements = (
-            "[id: management] Where do you currently manage your leads?\n"
+        info.ai_playbook = build_ai_playbook(questions="[id: management] Where do you currently manage your leads?\n"
             "A. WhatsApp chats\n"
             "B. Excel / Sheets\n"
             "C. CRM\n"
@@ -266,18 +255,15 @@ class QualificationExecutionContractE2ETests(TestCase):
             "A. 0-10\n"
             "B. 10-30\n"
             "C. 30+\n"
-            "All questions are required"
-        )
-        info.engagement_instructions = (
-            "## Attribute mapped\n"
+            "All questions are required", rules="## Attribute mapped\n"
             "management -> Lead Management Tool (+ Using Whatsapp / CRM)\n"
-            "volume -> Leads/d\n"
-        )
+            "volume -> Leads/d\n")
+
         info.ai_enabled = True
         info.save()
 
         requirements = compile_qualification_requirements(
-            info.qualification_requirements
+            qualification_questions(info.ai_playbook)
         )["requirements"]
         config = _config(
             organization=self.organization,
@@ -345,25 +331,21 @@ class QualificationExecutionContractE2ETests(TestCase):
             field_type=AttributeDefinition.FieldType.TEXT,
         )
         info, _ = OrgInfo.objects.get_or_create(organization=self.organization)
-        info.qualification_requirements = (
-            "[id: management] Where do you currently manage your leads?\n"
+        info.ai_playbook = build_ai_playbook(questions="[id: management] Where do you currently manage your leads?\n"
             "A. WhatsApp chats\n"
             "B. Excel / Sheets\n"
             "C. CRM\n"
             "D. Multiple places\n"
             "All questions are required\n"
-            "Acknowledgment message: \"Thanks for sharing the details. Our team will connect with you shortly.\""
-        )
-        info.engagement_instructions = (
-            "## Attribute mapped\n"
+            "Acknowledgment message: \"Thanks for sharing the details. Our team will connect with you shortly.\"", rules="## Attribute mapped\n"
             "management -> Lead Management Tool\n"
-            "management -> Using Whatsapp\n"
-        )
+            "management -> Using Whatsapp\n")
+
         info.ai_enabled = True
         info.save()
 
         requirements = compile_qualification_requirements(
-            info.qualification_requirements
+            qualification_questions(info.ai_playbook)
         )["requirements"]
         record_last_asked_requirement(
             self.lead,
@@ -400,24 +382,20 @@ class QualificationExecutionContractE2ETests(TestCase):
             field_type=AttributeDefinition.FieldType.TEXT,
         )
         info, _ = OrgInfo.objects.get_or_create(organization=self.organization)
-        info.qualification_requirements = (
-            "[id: source] Where do most of your leads currently come from?\n"
+        info.ai_playbook = build_ai_playbook(questions="[id: source] Where do most of your leads currently come from?\n"
             "A. Referrals\n"
             "B. Organic search\n"
             "All questions are required\n"
-            "Acknowledgment message: \"Thanks for sharing the details. Our team will connect with you shortly.\""
-        )
-        info.engagement_instructions = (
-            "## Attribute mapped\n"
+            "Acknowledgment message: \"Thanks for sharing the details. Our team will connect with you shortly.\"", rules="## Attribute mapped\n"
             "source -> Lead Source Answer\n\n"
             "## Reminders\n"
-            "When qualification is completed, create a reminder after 1 day.\n"
-        )
+            "When qualification is completed, create a reminder after 1 day.\n")
+
         info.ai_enabled = True
         info.save()
 
         requirements = compile_qualification_requirements(
-            info.qualification_requirements
+            qualification_questions(info.ai_playbook)
         )["requirements"]
         record_last_asked_requirement(
             self.lead,
@@ -442,21 +420,20 @@ class QualificationExecutionContractE2ETests(TestCase):
             for item in result["execution_results"]
         ))
 
-    def test_completion_without_authored_reminder_creates_standard_follow_up(self):
+    def test_completion_without_authored_reminder_does_not_create_reminder(self):
         info, _ = OrgInfo.objects.get_or_create(organization=self.organization)
-        info.qualification_requirements = (
-            "[id: source] Where do most of your leads currently come from?\n"
+        info.ai_playbook = build_ai_playbook(questions="[id: source] Where do most of your leads currently come from?\n"
             "A. Referrals\n"
             "B. Organic search\n"
             "All questions are required\n"
             "Acknowledgment message: \"Thanks — we have what we need to take the next step.\""
-        )
-        info.engagement_instructions = "Be concise and natural."
+ , rules="Be concise and natural.")
+
         info.ai_enabled = True
         info.save()
 
         requirements = compile_qualification_requirements(
-            info.qualification_requirements
+            qualification_questions(info.ai_playbook)
         )["requirements"]
         record_last_asked_requirement(
             self.lead,
@@ -464,7 +441,6 @@ class QualificationExecutionContractE2ETests(TestCase):
             requirements=requirements,
         )
         source = self._source("default-completion-reminder", "A")
-        before = timezone.now()
 
         result = resolve_before_generation(
             organization=self.organization,
@@ -473,17 +449,14 @@ class QualificationExecutionContractE2ETests(TestCase):
         )
 
         self.assertTrue(result["applied"])
-        reminder = LeadReminder.objects.get(lead=self.lead)
-        self.assertEqual(reminder.status, "pending")
-        self.assertEqual(reminder.title, "Follow up with qualified lead")
-        self.assertGreater(reminder.due_at, before + timedelta(hours=23))
-        self.assertLess(reminder.due_at, before + timedelta(hours=25))
+        self.assertFalse(LeadReminder.objects.filter(lead=self.lead).exists())
         self.lead.refresh_from_db()
         self.assertEqual(self.lead.stage_id, self.qualified.id)
 
-    def test_completion_uses_next_active_stage_when_qualified_stage_is_unavailable(self):
-        self.qualified.is_active = False
-        self.qualified.save(update_fields=["is_active"])
+    def test_completion_does_not_invent_target_when_qualified_stage_is_unavailable(self):
+        # Stage.save deliberately keeps the default Qualified stage active.
+        # Simulate a missing/inactive imported configuration below that guard.
+        Stage.objects.filter(pk=self.qualified.pk).update(is_active=False)
         next_stage = (
             self.pipeline.stages.filter(
                 is_active=True,
@@ -501,18 +474,16 @@ class QualificationExecutionContractE2ETests(TestCase):
                 ai_on=True,
             )
         info, _ = OrgInfo.objects.get_or_create(organization=self.organization)
-        info.qualification_requirements = (
-            "[id: source] Where do most of your leads currently come from?\n"
+        info.ai_playbook = build_ai_playbook(questions="[id: source] Where do most of your leads currently come from?\n"
             "A. Referrals\n"
             "B. Organic search\n"
-            "All questions are required"
-        )
-        info.engagement_instructions = "Be concise and natural."
+            "All questions are required", rules="Be concise and natural.")
+
         info.ai_enabled = True
         info.save()
 
         requirements = compile_qualification_requirements(
-            info.qualification_requirements
+            qualification_questions(info.ai_playbook)
         )["requirements"]
         record_last_asked_requirement(
             self.lead,
@@ -529,10 +500,10 @@ class QualificationExecutionContractE2ETests(TestCase):
 
         self.assertTrue(result["applied"])
         self.lead.refresh_from_db()
-        self.assertEqual(self.lead.stage_id, next_stage.id)
-        stage_result = result["response_plan"]["execution_results"]["stage_transition"]["result"]
-        self.assertTrue(stage_result["verified"])
-        self.assertEqual(stage_result["actual_stage_id"], str(next_stage.id))
+        self.assertEqual(self.lead.stage_id, self.new_lead.id)
+        stage_result = result["response_plan"]["execution_results"]["stage_transition"]
+        self.assertFalse(stage_result["configured"])
+        self.assertIsNone(stage_result["result"])
 
     def test_non_final_answer_persists_exact_mapping_and_builds_progress_response(self):
         target, requirements = self._configure_two_step_org()
@@ -806,22 +777,18 @@ class QualificationExecutionContractE2ETests(TestCase):
             field_type=AttributeDefinition.FieldType.TEXT,
         )
         info, _ = OrgInfo.objects.get_or_create(organization=self.organization)
-        info.qualification_requirements = (
-            "[id: origin] Where do enquiries come from?\n"
+        info.ai_playbook = build_ai_playbook(questions="[id: origin] Where do enquiries come from?\n"
             "A. Community\n"
             "B. Search\n"
-            "All questions are required"
-        )
-        info.engagement_instructions = (
-            "## Attribute mapped\n"
+            "All questions are required", rules="## Attribute mapped\n"
             "origin -> Missing Attribute\n\n"
             "## Stage shifting\n"
             "When all required qualification questions are answered, move to Review Queue.\n"
-            "Acknowledgment message: \"We have what we need.\""
-        )
+            "Acknowledgment message: \"We have what we need.\"")
+
         info.save()
         requirements = compile_qualification_requirements(
-            info.qualification_requirements
+            qualification_questions(info.ai_playbook)
         )["requirements"]
         record_last_asked_requirement(
             self.lead,
@@ -860,22 +827,18 @@ class QualificationExecutionContractE2ETests(TestCase):
             field_type=AttributeDefinition.FieldType.TEXT,
         )
         info, _ = OrgInfo.objects.get_or_create(organization=self.organization)
-        info.qualification_requirements = (
-            "[id: fit] Which route fits you best?\n"
+        info.ai_playbook = build_ai_playbook(questions="[id: fit] Which route fits you best?\n"
             "A. Guided setup\n"
             "B. Self service\n"
-            "All questions are required"
-        )
-        info.engagement_instructions = (
-            "## Attribute mapped\n"
+            "All questions are required", rules="## Attribute mapped\n"
             "fit -> Fit Signal\n\n"
             "## Stage shifting\n"
             "When all required qualification questions are answered, move to Advisor Review.\n"
-            "Acknowledgment message: \"Your answers have been recorded.\""
-        )
+            "Acknowledgment message: \"Your answers have been recorded.\"")
+
         info.save()
         requirements = compile_qualification_requirements(
-            info.qualification_requirements
+            qualification_questions(info.ai_playbook)
         )["requirements"]
         record_last_asked_requirement(
             self.lead,
@@ -949,21 +912,17 @@ class QualificationExecutionContractE2ETests(TestCase):
             field_type=AttributeDefinition.FieldType.TEXT,
         )
         info, _ = OrgInfo.objects.get_or_create(organization=self.organization)
-        info.qualification_requirements = (
-            "[id: timing] When would you like to get started?\n"
-            "All questions are required"
-        )
-        info.engagement_instructions = (
-            "## Attribute mapped\n"
+        info.ai_playbook = build_ai_playbook(questions="[id: timing] When would you like to get started?\n"
+            "All questions are required", rules="## Attribute mapped\n"
             "timing -> Decision Window\n"
             "timing -> Timeline Mirror\n\n"
             "## Stage shifting\n"
             "When all required qualification questions are answered, move to Discovery Complete.\n"
-            "Acknowledgment message: \"We have captured your requirements.\""
-        )
+            "Acknowledgment message: \"We have captured your requirements.\"")
+
         info.save()
         requirements = compile_qualification_requirements(
-            info.qualification_requirements
+            qualification_questions(info.ai_playbook)
         )["requirements"]
         record_last_asked_requirement(
             self.lead,
@@ -1018,6 +977,79 @@ class QualificationExecutionContractE2ETests(TestCase):
         )
         self.assertNotIn("timeline_guess", self.lead.attributes)
         self.assertEqual(self.lead.stage_id, target.id)
+
+    def test_qualification_turn_preserves_distinct_volunteered_crm_fact(self):
+        AttributeDefinition.objects.create(
+            organization=self.organization,
+            name="Decision Window",
+            key="decision_window",
+            field_type=AttributeDefinition.FieldType.TEXT,
+        )
+        AttributeDefinition.objects.create(
+            organization=self.organization,
+            name="Company Name",
+            key="company_name",
+            field_type=AttributeDefinition.FieldType.TEXT,
+        )
+        info, _ = OrgInfo.objects.get_or_create(organization=self.organization)
+        info.ai_playbook = build_ai_playbook(questions="[id: timing] When would you like to get started?\n"
+            "All questions are required", rules="## Attribute mapped\n"
+            "timing -> Decision Window\n\n"
+            "Acknowledgment message: \"Thanks, that gives us enough context.\"")
+
+        info.save()
+        requirements = compile_qualification_requirements(
+            qualification_questions(info.ai_playbook)
+        )["requirements"]
+        record_last_asked_requirement(
+            self.lead,
+            requirements[0]["id"],
+            requirements=requirements,
+        )
+        source = self._source(
+            "qualification-plus-company",
+            "Next month. My company is ABC Technologies.",
+        )
+        decision = EngagementDecision(
+            should_engage=True,
+            message="Thanks, that gives me useful context.",
+            file_document_id=None,
+            crm_actions=[
+                {
+                    "type": "attribute_updates",
+                    "updates": [
+                        {
+                            "key": "company_name",
+                            "value": "ABC Technologies",
+                        }
+                    ],
+                }
+            ],
+            qualification_updates=[
+                {
+                    "requirement_id": requirements[0]["id"],
+                    "value": "Next month",
+                    "source_message_id": str(source.id),
+                    "evidence": "Next month",
+                }
+            ],
+            next_requirement_id=None,
+            reason="NORMAL_CONVERSATION",
+            reason_code="NORMAL_CONVERSATION",
+            model="test",
+        )
+
+        result = transactional_turn_runtime._resolve_state_before_response(
+            organization=self.organization,
+            lead=self.lead,
+            source_message_id=source.id,
+            decision=decision,
+        )
+
+        self.assertTrue(result["applied"])
+        self.lead.refresh_from_db()
+        self.assertEqual(self.lead.attributes["decision_window"], "Next month")
+        self.assertEqual(self.lead.attributes["company_name"], "ABC Technologies")
 
     def test_internal_completion_label_is_rejected_instead_of_sent(self):
         _target, requirements = self._configure_two_step_org()

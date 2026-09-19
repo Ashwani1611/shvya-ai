@@ -1,3 +1,5 @@
+from tests.playbook_fixtures import build_ai_playbook, qualification_questions
+
 from unittest.mock import Mock, patch
 
 from celery.exceptions import Retry
@@ -49,7 +51,7 @@ class TerminalEngagementFailsoftTests(TestCase):
 
     def test_permanent_generation_error_uses_exact_authored_qualification_question(self):
         raw = "What is your budget? A) Under 10k B) Above 10k?"
-        OrgInfo.objects.create(organization=self.organization, qualification_requirements=raw)
+        OrgInfo.objects.create(organization=self.organization, ai_playbook=build_ai_playbook(questions=raw))
         expected = compile_qualification_requirements(raw)["requirements"][0]
         self._inbound(external_id="wamid-fallback-qualification")
 
@@ -69,21 +71,19 @@ class TerminalEngagementFailsoftTests(TestCase):
 
     def test_failsoft_uses_backend_completion_plan_instead_of_unknown_information(self):
         info, _ = OrgInfo.objects.get_or_create(organization=self.organization)
-        info.qualification_requirements = (
-            "[id: volume] Approximately how many customer conversations do you handle per month?\n"
+        info.ai_playbook = build_ai_playbook(questions="[id: volume] Approximately how many customer conversations do you handle per month?\n"
             "A. Below 100\n"
             "B. 100–500\n"
             "C. 500–2,000\n"
             "D. 2,000+\n"
             "All questions are required\n"
-            "Acknowledgment message: \"Thanks for sharing the details. Our team will connect with you shortly.\""
-        )
-        info.engagement_instructions = "Be concise and natural."
+            "Acknowledgment message: \"Thanks for sharing the details. Our team will connect with you shortly.\"", rules="Be concise and natural.")
+
         info.ai_enabled = True
         info.save()
 
         requirements = compile_qualification_requirements(
-            info.qualification_requirements
+            qualification_questions(info.ai_playbook)
         )["requirements"]
         record_last_asked_requirement(
             self.lead,
@@ -120,22 +120,20 @@ class TerminalEngagementFailsoftTests(TestCase):
 
     def test_failsoft_progress_reply_acknowledges_answer_before_next_question(self):
         info, _ = OrgInfo.objects.get_or_create(organization=self.organization)
-        info.qualification_requirements = (
-            "[id: acquisition] Where do most enquiries originate?\n"
+        info.ai_playbook = build_ai_playbook(questions="[id: acquisition] Where do most enquiries originate?\n"
             "A. Search\n"
             "B. Partner referrals\n"
             "[id: motion] How are new enquiries handled today?\n"
             "A. Dedicated sales team\n"
             "B. Founder-led\n"
             "C. Shared inbox\n"
-            "All questions are required"
-        )
-        info.engagement_instructions = "Be concise and natural."
+            "All questions are required", rules="Be concise and natural.")
+
         info.ai_enabled = True
         info.save()
 
         requirements = compile_qualification_requirements(
-            info.qualification_requirements
+            qualification_questions(info.ai_playbook)
         )["requirements"]
         record_last_asked_requirement(
             self.lead,

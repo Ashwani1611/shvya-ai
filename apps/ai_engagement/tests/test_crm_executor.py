@@ -55,7 +55,7 @@ class CRMActionExecutorTests(TestCase):
             )
 
         cls.stage_one = cls.stages[0]
-        cls.stage_two = cls.stages[1]
+        cls.stage_two = next(stage for stage in cls.stages[1:] if stage.name.casefold() != "qualified")
 
         cls.other_organization = Organization.objects.create(
             name="Other Organization",
@@ -85,6 +85,40 @@ class CRMActionExecutorTests(TestCase):
     # ============================================================
     # EMPTY
     # ============================================================
+
+    def test_qualified_stage_rejects_unconfigured_criteria(self):
+        qualified = self.pipeline.stages.get(name__iexact="qualified")
+        with self.assertRaisesMessage(CRMActionExecutionError, "qualification criteria are not satisfied"):
+            self.executor.execute(organization=self.organization, lead=self.lead, actions=[{
+                "type": "pipeline_transition", "stage_shift": {"stage_id": str(qualified.id)},
+            }])
+        self.lead.refresh_from_db()
+        self.assertEqual(self.lead.stage_id, self.stage_one.id)
+
+    def test_explicit_criteria_can_use_confirmed_crm_values(self):
+        from apps.ai_engagement.models import OrgInfo
+        OrgInfo.objects.create(organization=self.organization, ai_playbook="## Qualification Criteria\nName is captured\nPhone is captured")
+        qualified = self.pipeline.stages.get(name__iexact="qualified")
+        self.executor.execute(organization=self.organization, lead=self.lead, actions=[{
+            "type": "pipeline_transition", "stage_shift": {"stage_id": str(qualified.id)},
+        }])
+        self.lead.refresh_from_db()
+        self.assertEqual(self.lead.stage_id, qualified.id)
+
+    def test_custom_completion_stage_cannot_bypass_unsatisfied_criteria(self):
+        from apps.ai_engagement.models import OrgInfo
+        OrgInfo.objects.create(
+            organization=self.organization,
+            ai_playbook=("## Qualification Criteria\nBudget >= 50000\n"
+                         "## Stage shifting logic\nWhen all required questions are answered, move to "
+                         + self.stage_two.name + "."),
+        )
+        with self.assertRaisesMessage(CRMActionExecutionError, "qualification criteria are not satisfied"):
+            self.executor.execute(organization=self.organization, lead=self.lead, actions=[{
+                "type": "pipeline_transition", "stage_shift": {"stage_id": str(self.stage_two.id)},
+            }])
+        self.lead.refresh_from_db()
+        self.assertEqual(self.lead.stage_id, self.stage_one.id)
 
     def test_empty_actions_returns_empty_result(self):
         result = self.executor.execute(
@@ -188,6 +222,76 @@ class CRMActionExecutorTests(TestCase):
                     }
                 ],
             )
+
+    def test_creates_safe_dynamic_attribute_and_fills_value(self):
+        result = self.executor.execute(
+            organization=self.organization,
+            lead=self.lead,
+            actions=[
+                {
+                    "type": "attribute_updates",
+                    "updates": [
+                        {
+                            "key": "sales_team_size",
+                            "name": "Sales Team Size",
+                            "field_type": "numeric",
+                            "create_if_missing": True,
+                            "value": 8,
+                        }
+                    ],
+                }
+            ],
+        )
+
+        definition = AttributeDefinition.objects.get(
+            organization=self.organization,
+            key="sales_team_size",
+        )
+        self.lead.refresh_from_db()
+        self.assertEqual(definition.name, "Sales Team Size")
+        self.assertEqual(definition.field_type, "numeric")
+        self.assertEqual(self.lead.attributes["sales_team_size"], "8")
+        self.assertEqual(result[0]["created_keys"], ["sales_team_size"])
+
+    def test_dynamic_attribute_reuses_same_named_existing_definition(self):
+        AttributeDefinition.objects.create(
+            organization=self.organization,
+            name="Sales Team Size",
+            key="number_of_sales_reps",
+            field_type="numeric",
+            description="Existing field.",
+            options=[],
+        )
+
+        self.executor.execute(
+            organization=self.organization,
+            lead=self.lead,
+            actions=[
+                {
+                    "type": "attribute_updates",
+                    "updates": [
+                        {
+                            "key": "sales_team_size",
+                            "name": "Sales Team Size",
+                            "field_type": "numeric",
+                            "create_if_missing": True,
+                            "value": 8,
+                        }
+                    ],
+                }
+            ],
+        )
+
+        self.lead.refresh_from_db()
+        self.assertEqual(
+            AttributeDefinition.objects.filter(
+                organization=self.organization,
+                name="Sales Team Size",
+            ).count(),
+            1,
+        )
+        self.assertEqual(self.lead.attributes["number_of_sales_reps"], "8")
+        self.assertNotIn("sales_team_size", self.lead.attributes)
 
     def test_rejects_ai_update_to_credential_attribute(self):
         AttributeDefinition.objects.create(

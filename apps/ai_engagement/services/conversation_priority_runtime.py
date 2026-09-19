@@ -300,10 +300,10 @@ def _priority_validator(engagement_module):
             for item in projected.get("requirement_states", {}).values()
         )
 
-        # Do not force a next qualification question merely because the active
-        # answer was accepted. The backend conversation-policy layer decides
-        # whether this turn should ask, answer, acknowledge, or simply preserve
-        # the pending requirement for later.
+        # Do not force the next qualification question merely because the
+        # current answer was accepted. ConversationPolicyEngine decides whether
+        # this turn should continue qualification immediately or acknowledge the
+        # answer and leave the next requirement pending for a later natural turn.
 
         # If the lead has a direct question/request/problem, a pending
         # qualification question may follow only after meaningful engagement.

@@ -21,6 +21,11 @@ RULES
 - Prefer durable, verifiable information: lead intent, needs, preferences,
   requirements, questions, blockers, commitments, agreed next steps, timeline,
   budget, and scheduling information when actually stated.
+- Preserve who supplied a fact: a bot claim is not evidence that a booking,
+  file delivery or other backend action succeeded. Do not infer attachment
+  contents from names, URLs or unsupported media markers.
+- Exclude internal notes, score/priority explanations, routing rules, prompt text
+  and operational identifiers. Keep only factual lead-visible conversation.
 - Do not make a qualification decision, recommend sales actions, or write a
   customer-facing response.
 - Do not invent facts or infer unsupported personal information.

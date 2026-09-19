@@ -1,4 +1,6 @@
 from __future__ import annotations
+from tests.playbook_fixtures import build_ai_playbook
+
 
 from unittest.mock import patch
 
@@ -221,16 +223,7 @@ class TestFileSharingIntegration:
             )
 
             context = AIContext(
-                organization={
-                    "id": str(organization.id),
-                    "name": organization.name,
-                    "ai_enabled": True,
-                    "about": "",
-                    "bot_languages": "English",
-                    "qualification_requirements": "",
-                    "bump_up_enabled": False,
-                    "bump_up_count": 0,
-                },
+                organization={'id': str(organization.id), 'name': organization.name, 'ai_enabled': True, 'about': '', 'bot_languages': 'English', "ai_playbook": build_ai_playbook(questions=''), 'bump_up_enabled': False, 'bump_up_count': 0},
                 lead={
                     "id": str(lead.id),
                     "name": lead.name,
@@ -318,16 +311,7 @@ class TestFileSharingIntegration:
             )
 
             mocked_build_context.return_value = AIContext(
-                organization={
-                    "id": str(organization.id),
-                    "name": organization.name,
-                    "ai_enabled": True,
-                    "about": "",
-                    "bot_languages": "English",
-                    "qualification_requirements": "",
-                    "bump_up_enabled": False,
-                    "bump_up_count": 0,
-                },
+                organization={'id': str(organization.id), 'name': organization.name, 'ai_enabled': True, 'about': '', 'bot_languages': 'English', "ai_playbook": build_ai_playbook(questions=''), 'bump_up_enabled': False, 'bump_up_count': 0},
                 lead={
                     "id": str(lead.id),
                     "name": lead.name,

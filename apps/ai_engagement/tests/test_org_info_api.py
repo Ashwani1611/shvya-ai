@@ -36,15 +36,12 @@ class OrgInfoAPITests(APITestCase):
     # GET
     # ========================================================
 
-    def test_get_org_info_returns_engagement_instructions(self):
+    def test_get_org_info_returns_ai_playbook(self):
         OrgInfo.objects.create(
             organization=self.organization,
             about="Cybersecurity academy.",
             bot_languages="English, Hindi",
-            qualification_requirements=(
-                "Identify course interest and budget."
-            ),
-            engagement_instructions=(
+            ai_playbook=(
                 "Be helpful, concise, and professional."
             ),
             ai_enabled=True,
@@ -62,7 +59,7 @@ class OrgInfoAPITests(APITestCase):
         )
 
         self.assertEqual(
-            response.data["engagement_instructions"],
+            response.data["ai_playbook"],
             "Be helpful, concise, and professional.",
         )
 
@@ -70,11 +67,11 @@ class OrgInfoAPITests(APITestCase):
     # PATCH
     # ========================================================
 
-    def test_patch_updates_engagement_instructions(self):
+    def test_patch_updates_ai_playbook(self):
         response = self.client.patch(
             self.url,
             {
-                "engagement_instructions": (
+                "ai_playbook": (
                     "Speak naturally and professionally."
                 ),
             },
@@ -87,7 +84,7 @@ class OrgInfoAPITests(APITestCase):
         )
 
         self.assertEqual(
-            response.data["engagement_instructions"],
+            response.data["ai_playbook"],
             "Speak naturally and professionally.",
         )
 
@@ -96,7 +93,7 @@ class OrgInfoAPITests(APITestCase):
         )
 
         self.assertEqual(
-            org_info.engagement_instructions,
+            org_info.ai_playbook,
             "Speak naturally and professionally.",
         )
 
@@ -104,11 +101,11 @@ class OrgInfoAPITests(APITestCase):
     # PATCH TRIMS TEXT
     # ========================================================
 
-    def test_patch_trims_engagement_instructions(self):
+    def test_patch_trims_ai_playbook(self):
         response = self.client.patch(
             self.url,
             {
-                "engagement_instructions": (
+                "ai_playbook": (
                     "   Be concise and helpful.   "
                 ),
             },
@@ -121,7 +118,7 @@ class OrgInfoAPITests(APITestCase):
         )
 
         self.assertEqual(
-            response.data["engagement_instructions"],
+            response.data["ai_playbook"],
             "Be concise and helpful.",
         )
 
@@ -129,11 +126,11 @@ class OrgInfoAPITests(APITestCase):
     # EMPTY VALUE
     # ========================================================
 
-    def test_empty_engagement_instructions_is_allowed(self):
+    def test_empty_ai_playbook_is_allowed(self):
         response = self.client.patch(
             self.url,
             {
-                "engagement_instructions": "",
+                "ai_playbook": "",
             },
             format="json",
         )
@@ -144,7 +141,7 @@ class OrgInfoAPITests(APITestCase):
         )
 
         self.assertEqual(
-            response.data["engagement_instructions"],
+            response.data["ai_playbook"],
             "",
         )
 
@@ -159,14 +156,14 @@ class OrgInfoAPITests(APITestCase):
 
         OrgInfo.objects.create(
             organization=self.organization,
-            engagement_instructions=(
+            ai_playbook=(
                 "Organization A instructions."
             ),
         )
 
         OrgInfo.objects.create(
             organization=other_organization,
-            engagement_instructions=(
+            ai_playbook=(
                 "Organization B instructions."
             ),
         )
@@ -181,7 +178,7 @@ class OrgInfoAPITests(APITestCase):
         )
 
         self.assertEqual(
-            response.data["engagement_instructions"],
+            response.data["ai_playbook"],
             "Organization A instructions.",
         )
 
@@ -196,7 +193,7 @@ class OrgInfoAPITests(APITestCase):
                 "organization_id": str(
                     self.organization.id,
                 ),
-                "engagement_instructions": (
+                "ai_playbook": (
                     "Valid engagement instructions."
                 ),
             },
@@ -209,7 +206,7 @@ class OrgInfoAPITests(APITestCase):
         )
 
         self.assertEqual(
-            response.data["engagement_instructions"],
+            response.data["ai_playbook"],
             "Valid engagement instructions.",
         )
 
@@ -221,3 +218,14 @@ class OrgInfoAPITests(APITestCase):
             org_info.organization_id,
             self.organization.id,
         )
+    def test_legacy_authoring_fields_are_rejected(self):
+        for field in ("qualification_requirements", "engagement_instructions"):
+            response = self.client.patch(self.url, {field: "old config"}, format="json")
+            self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+            self.assertIn(field, response.data["detail"])
+
+    def test_response_has_one_authoring_field_only(self):
+        response = self.client.get(self.url)
+        self.assertIn("ai_playbook", response.data)
+        self.assertNotIn("qualification_requirements", response.data)
+        self.assertNotIn("engagement_instructions", response.data)

@@ -1,4 +1,6 @@
 from __future__ import annotations
+from tests.playbook_fixtures import build_ai_playbook
+
 
 from types import SimpleNamespace
 
@@ -308,8 +310,8 @@ class QualificationAntiRepeatTests(SimpleTestCase):
     def _context(self, body="Gurugram"):
         return SimpleNamespace(
             organization={
-                "qualification_requirements": "Which city are you located in?\nWhen do you plan to buy?",
-                "engagement_instructions": "",
+                "ai_playbook": build_ai_playbook(questions="Which city are you located in?\nWhen do you plan to buy?", rules=""),
+
             },
             conversation={
                 "messages": [

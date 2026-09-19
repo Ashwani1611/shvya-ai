@@ -344,7 +344,6 @@ async function serializeMessage(message, chat = null, identity = null, client = 
   if (!resolvedIdentity) {
     resolvedIdentity = await resolveMessageIdentity(message, client);
   }
-
   const fromMe = Boolean(message.fromMe);
   let from = serializedId(message.from) || String(message.from || '');
   let to = serializedId(message.to) || String(message.to || '');

@@ -1,4 +1,6 @@
 from __future__ import annotations
+from tests.playbook_fixtures import build_ai_playbook
+
 
 import json
 from unittest.mock import patch
@@ -63,9 +65,7 @@ class FileSharingServiceTests(TestCase):
                 "providing certification-focused programs."
             ),
             bot_languages="English, Hindi, Hinglish",
-            qualification_requirements=(
-                "Understand the lead's course and buying intent."
-            ),
+            ai_playbook=build_ai_playbook(questions="Understand the lead's course and buying intent."),
             ai_enabled=True,
         )
 
@@ -206,18 +206,7 @@ class FileSharingServiceTests(TestCase):
         lead,
     ):
         return AIContext(
-            organization={
-                "id": str(
-                    self.organization.id
-                ),
-                "name": self.organization.name,
-                "ai_enabled": True,
-                "about": "Test organization",
-                "bot_languages": "English",
-                "qualification_requirements": "",
-                "bump_up_enabled": False,
-                "bump_up_count": 0,
-            },
+            organization={'id': str(self.organization.id), 'name': self.organization.name, 'ai_enabled': True, 'about': 'Test organization', 'bot_languages': 'English', "ai_playbook": build_ai_playbook(questions=''), 'bump_up_enabled': False, 'bump_up_count': 0},
             lead={
                 "id": str(
                     lead.id

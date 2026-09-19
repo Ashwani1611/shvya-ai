@@ -221,9 +221,10 @@ def _config(*, organization, requirements: list[dict[str, Any]]) -> dict[str, An
     from apps.crm.models import AttributeDefinition, Stage
 
     info = OrgInfo.objects.filter(organization=organization).first()
-    engagement_raw = str(getattr(info, "engagement_instructions", "") or "")
-    qualification_raw = str(getattr(info, "qualification_requirements", "") or "")
-    raw = engagement_raw
+    from apps.ai_engagement.services.playbook import parse_playbook
+    raw = str(getattr(info, "ai_playbook", "") or "")
+    sections = parse_playbook(raw)
+    engagement_raw = raw
     definitions = list(
         AttributeDefinition.objects.filter(organization=organization).values(
             "key",
@@ -238,16 +239,7 @@ def _config(*, organization, requirements: list[dict[str, Any]]) -> dict[str, An
     mapping_targets: dict[str, list[str]] = {}
     errors: list[dict[str, str]] = []
 
-    mapping_lines = list(section_lines(engagement_raw, "attribute_mapped"))
-    # Attribute mappings are configuration, not qualification prose. Accept
-    # explicit mapping-shaped lines from either AI Setup field so organizations
-    # do not silently lose CRM writes when they keep Q1 -> Attribute next to the
-    # questionnaire. Only lines that parse as mappings are admitted here.
-    for raw_line in qualification_raw.splitlines():
-        cleaned = raw_line.strip().lstrip("-*• ").strip()
-        if cleaned and _split_mapping(cleaned):
-            mapping_lines.append(cleaned)
-    mapping_lines = list(dict.fromkeys(mapping_lines))
+    mapping_lines = list(dict.fromkeys(section_lines(raw, "attribute_mapped")))
 
     for line in mapping_lines:
         pair = _split_mapping(line)
@@ -316,63 +308,7 @@ def _config(*, organization, requirements: list[dict[str, Any]]) -> dict[str, An
             if attribute_key:
                 mappings.setdefault(requirement_id, attribute_key)
 
-    acknowledgement_values: list[str] = []
-    for source_text in (engagement_raw, qualification_raw):
-        source_lines = source_text.splitlines()
-        for index, line in enumerate(source_lines):
-            stripped = line.strip()
-            match = _ACK_LABEL.match(stripped)
-            if match:
-                value = _strip_quotes(match.group("value"))
-                if value and not _LABEL_ONLY.match(value):
-                    acknowledgement_values.append(value)
-                else:
-                    errors.append(
-                        {
-                            "type": "configuration_error",
-                            "status": "failed",
-                            "code": "invalid_final_acknowledgement_value",
-                            "detail": match.group("label"),
-                        }
-                    )
-                continue
-
-            if not _ACK_HEADING_ONLY.match(stripped):
-                continue
-            # Also support the natural two-line UI format:
-            # Acknowledgment Message:
-            # "Thanks for sharing the details..."
-            value = ""
-            for following in source_lines[index + 1:]:
-                candidate = following.strip()
-                if not candidate:
-                    continue
-                if _LABEL_ONLY.match(candidate):
-                    break
-                value = _strip_quotes(candidate.lstrip("-*• ").strip())
-                break
-            if value:
-                acknowledgement_values.append(value)
-            else:
-                errors.append(
-                    {
-                        "type": "configuration_error",
-                        "status": "failed",
-                        "code": "invalid_final_acknowledgement_value",
-                        "detail": stripped.rstrip(":"),
-                    }
-                )
-    acknowledgement_values = list(dict.fromkeys(acknowledgement_values))
-    final_ack = acknowledgement_values[0] if len(acknowledgement_values) == 1 else None
-    if len(acknowledgement_values) > 1:
-        errors.append(
-            {
-                "type": "configuration_error",
-                "status": "failed",
-                "code": "ambiguous_final_acknowledgement",
-                "detail": "Multiple values configured.",
-            }
-        )
+    final_ack = _strip_quotes(sections["acknowledgment_message"]) or None
 
     stages = list(
         Stage.objects.filter(
@@ -382,6 +318,7 @@ def _config(*, organization, requirements: list[dict[str, Any]]) -> dict[str, An
         ).values("id", "name", "pipeline_id", "pipeline__name")
     )
     stage_targets = []
+    protected_completion_stage_ids = set()
     for line in section_lines(raw, "stage_shifting"):
         if not _COMPLETION_RULE.search(line):
             continue
@@ -395,6 +332,9 @@ def _config(*, organization, requirements: list[dict[str, Any]]) -> dict[str, An
                 normalized,
             )
         ]
+        # Even an ambiguous completion rule must not let a model route to one
+        # of its possible targets through the generic CRM action path.
+        possible_targets = matches
         if len(matches) > 1:
             matches = [
                 stage
@@ -402,6 +342,7 @@ def _config(*, organization, requirements: list[dict[str, Any]]) -> dict[str, An
                 if _norm(stage["pipeline__name"])
                 and _norm(stage["pipeline__name"]) in normalized
             ]
+        protected_completion_stage_ids.update(str(stage["id"]) for stage in (matches or possible_targets))
         if len(matches) == 1:
             stage_targets.append(matches[0])
         else:
@@ -432,6 +373,7 @@ def _config(*, organization, requirements: list[dict[str, Any]]) -> dict[str, An
         "mapping_targets": mapping_targets,
         "final_ack": final_ack,
         "completion_stage": completion_stage,
+        "protected_completion_stage_ids": sorted(protected_completion_stage_ids),
         "reminder_rules": section_lines(engagement_raw, "reminders"),
         "errors": errors,
     }
@@ -448,11 +390,13 @@ def _mapping_keys(config: dict[str, Any], requirement_id: str) -> list[str]:
 def _completion_target(*, lead, state: dict[str, Any], config: dict[str, Any]):
     """Resolve the qualification-completion stage deterministically.
 
-    An explicit Stage Shifting completion rule wins. Otherwise use the
-    qualification state's validated same-pipeline Qualified stage. If a pipeline
-    has no uniquely named Qualified stage, advance to the next active stage by
-    display order so a completed qualification is never left in New Lead.
+    Criteria must pass before an authored completion target or a uniquely
+    configured same-pipeline Qualified stage is eligible. Never guess a stage.
     """
+    from apps.ai_engagement.services.playbook import criteria_for_lead
+    if not criteria_for_lead(lead=lead, state=state).get("qualified"):
+        return None
+
     target = config.get("completion_stage")
     if isinstance(target, dict) and target.get("id") is not None:
         return target
@@ -495,21 +439,7 @@ def _completion_target(*, lead, state: dict[str, Any], config: dict[str, Any]):
     if len(qualified) == 1:
         return qualified[0]
 
-    current_stage_id = str(getattr(lead, "stage_id", "") or "")
-    current = next(
-        (item for item in candidates if str(item.get("id") or "") == current_stage_id),
-        None,
-    )
-    if current is None:
-        return None
-    current_order = int(current.get("display_order") or 0)
-    following = [
-        item
-        for item in candidates
-        if str(item.get("id") or "") != current_stage_id
-        and int(item.get("display_order") or 0) > current_order
-    ]
-    return following[0] if following else None
+    return None
 
 
 _COMPLETION_REMINDER_SCOPE_RE = re.compile(
@@ -535,10 +465,8 @@ _REMINDER_RELATIVE_RE = re.compile(
 def _configured_completion_reminders(config: dict[str, Any]) -> list[dict[str, Any]]:
     """Build one deterministic follow-up reminder when qualification completes.
 
-    A valid organization-authored completion reminder keeps its configured due
-    time. If no usable completion rule exists, create the standard SHVYA
-    follow-up reminder for 24 hours later so a fully qualified lead cannot finish
-    the questionnaire without a next human action.
+    Only an explicit organization-authored completion reminder creates an action.
+    Its due time must be grounded in that rule.
     """
     from apps.ai_engagement.services.reminder_time_runtime import parse_grounded_due_at
 
@@ -578,17 +506,7 @@ def _configured_completion_reminders(config: dict[str, Any]) -> list[dict[str, A
         )
         break
 
-    if actions:
-        return actions
-
-    return [
-        {
-            "type": "create_reminder",
-            "title": "Follow up with qualified lead",
-            "description": "Automatic follow-up after qualification completion.",
-            "due_at": (timezone.now() + timedelta(days=1)).isoformat(),
-        }
-    ]
+    return actions
 
 
 def _render_requirement(requirement: dict[str, Any] | None) -> str:

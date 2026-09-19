@@ -326,6 +326,24 @@ class CRMActionExecutor:
                 "Requested stage does not belong to an active pipeline in this organization."
             )
 
+        from apps.ai_engagement.services.transactional_turn_runtime import _requirements_for_turn
+        from apps.ai_engagement.services.qualification_execution_contract import _config
+        requirements = _requirements_for_turn(organization=organization, lead=lead)
+        completion_config = _config(organization=organization, requirements=requirements)
+        completion_target = completion_config.get("completion_stage")
+        is_completion_target = (
+            str(stage.name or "").strip().casefold() == "qualified"
+            or (isinstance(completion_target, dict) and str(completion_target.get("id")) == str(stage.id))
+            or str(stage.id) in completion_config.get("protected_completion_stage_ids", [])
+        )
+        if is_completion_target and stage.id != lead.stage_id:
+            from apps.ai_engagement.services.qualification_state import normalize_stage_name
+            if normalize_stage_name(getattr(lead.stage, "name", "")) != "new lead":
+                raise CRMActionExecutionError("Automatic qualification is only available in New Leads.")
+            from apps.ai_engagement.services.playbook import criteria_for_lead
+            if not criteria_for_lead(lead=lead, requirements=requirements).get("qualified"):
+                raise CRMActionExecutionError("AI Playbook qualification criteria are not satisfied.")
+
         old_pipeline_id = str(lead.pipeline_id) if lead.pipeline_id else None
         old_stage_id = str(lead.stage_id) if lead.stage_id else None
         try:

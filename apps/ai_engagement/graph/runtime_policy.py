@@ -120,7 +120,7 @@ def compile_runtime_policy(*, organization, profile: dict[str, Any]) -> dict[str
         "organization_id": str(getattr(organization, "id", "")),
         "about": _compact((profile.get("identity") or {}).get("about")),
         "languages": communication.get("languages") or [],
-        "engagement_instructions": authored_engagement,
+        "ai_playbook": authored_engagement,
         "qualification_raw": str(qualification.get("raw") or "").strip(),
         "criteria": criteria,
     }
@@ -146,6 +146,7 @@ def compile_runtime_policy(*, organization, profile: dict[str, Any]) -> dict[str
         },
         "qualification": {
             "mode": str(qualification.get("mode") or "configured"),
+            "criteria_text": str(qualification.get("criteria_text") or ""),
             "criteria": criteria,
         },
         "knowledge": {

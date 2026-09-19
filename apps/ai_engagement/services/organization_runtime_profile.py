@@ -259,8 +259,7 @@ class OrganizationAIRuntimeProfileBuilder:
             .values(
                 "about",
                 "bot_languages",
-                "qualification_requirements",
-                "engagement_instructions",
+                "ai_playbook",
                 "ai_enabled",
                 "bump_up_enabled",
                 "bump_up_count",
@@ -274,12 +273,7 @@ class OrganizationAIRuntimeProfileBuilder:
             "ai_enabled": bool(org_info.get("ai_enabled", False)),
             "about": str(org_info.get("about") or ""),
             "bot_languages": str(org_info.get("bot_languages") or ""),
-            "qualification_requirements": str(
-                org_info.get("qualification_requirements") or ""
-            ),
-            "engagement_instructions": str(
-                org_info.get("engagement_instructions") or ""
-            ),
+            "ai_playbook": str(org_info.get("ai_playbook") or ""),
             "bump_up_enabled": bool(org_info.get("bump_up_enabled", False)),
             "bump_up_count": int(org_info.get("bump_up_count") or 0),
         }
@@ -448,7 +442,7 @@ class OrganizationAIRuntimeProfileBuilder:
             ),
         }
         ai_instructions = {
-            "engagement_instructions": legacy_organization["engagement_instructions"],
+            "ai_playbook": legacy_organization["ai_playbook"],
             "languages": list((compiled.get("communication") or {}).get("languages") or []),
             "configured": _selected_settings(raw_settings, _AI_INSTRUCTION_KEYS),
         }
