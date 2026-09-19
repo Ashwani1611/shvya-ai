@@ -114,10 +114,6 @@ _INFORMATION_OFFER_PHRASES = (
 )
 _INFORMATION_INTENTS = {
     Intent.PRODUCT_OR_SERVICE_QUESTION,
-    Intent.PRICING_QUESTION,
-    Intent.POLICY_QUESTION,
-    Intent.LOCATION_QUESTION,
-    Intent.AVAILABILITY_QUESTION,
 }
 _DETAIL_REQUEST_TERMS = (
     "detail", "details", "functionality", "functionalities", "feature", "features",
@@ -167,7 +163,7 @@ def _information_reply_has_substance(message: str, *, detailed: bool = False) ->
             continue
         meaningful.extend(
             token
-            for token in re.findall(r"[a-z0-9]+", normalized)
+            for token in re.findall(r"\w+", normalized, flags=re.UNICODE)
             if len(token) > 2 and token not in _INFORMATION_STOP_WORDS
         )
 
