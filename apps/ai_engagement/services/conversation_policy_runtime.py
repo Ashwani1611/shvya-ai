@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import time
 from contextvars import ContextVar
 from copy import deepcopy
@@ -33,7 +34,10 @@ BACKEND CONVERSATION POLICY CONTRACT
 - Follow conversation_policy.outcome and allowed_response_goal. Do not choose a
   different overall workflow.
 - ANSWER: answer the customer's direct question from permitted organization evidence;
-  do not append a qualification question on this turn.
+  do not append a qualification question on this turn. For product/service,
+  functionality, feature, pricing, policy, location, or availability requests,
+  provide the available answer itself; never reply only with an invitation such
+  as "Would you like to know more?" or another question.
 - ASK_QUALIFICATION: ask exactly the backend-selected next_requirement_id and no
   answered requirement.
 - ANSWER_THEN_QUALIFY: answer the direct customer question first from permitted
@@ -108,6 +112,68 @@ _INFORMATION_OFFER_PHRASES = (
     "would you like", "do you want", "want to know", "shall i", "can i share",
     "would you want", "like to know", "want details", "want more",
 )
+_INFORMATION_INTENTS = {
+    Intent.PRODUCT_OR_SERVICE_QUESTION,
+}
+_DETAIL_REQUEST_TERMS = (
+    "detail", "details", "functionality", "functionalities", "feature", "features",
+    "capability", "capabilities", "what can you do", "what do you offer",
+)
+_INFORMATION_CTA_PREFIXES = (
+    "would you like",
+    "do you want",
+    "would you want",
+    "shall i",
+    "can i share",
+    "let me know if",
+    "which feature",
+    "which plan",
+    "what would you like",
+)
+_INFORMATION_STOP_WORDS = {
+    "a", "an", "and", "are", "as", "at", "be", "can", "do", "for", "from",
+    "i", "if", "in", "is", "it", "me", "more", "of", "on", "or", "our",
+    "the", "to", "we", "what", "which", "with", "would", "you", "your",
+}
+
+
+def _information_reply_has_substance(message: str, *, detailed: bool = False) -> bool:
+    """Reject question-only/CTA replies for backend-classified information turns."""
+    text = " ".join(str(message or "").strip().split())
+    if not text:
+        return False
+
+    meaningful: list[str] = []
+    parts = [
+        part.strip()
+        for part in re.split(r"(?<=[.!?])\s+|\n+", str(message or ""))
+        if part.strip()
+    ]
+    for part in parts:
+        normalized = " ".join(part.casefold().split()).strip(" \t\r\n")
+        if not normalized:
+            continue
+        if normalized.strip(" .!?;,:\"'") in {
+            "sure", "okay", "ok", "absolutely", "certainly", "of course",
+        }:
+            continue
+        if normalized.startswith(_INFORMATION_CTA_PREFIXES):
+            continue
+        # A standalone question is not an answer to the information request.
+        if part.rstrip().endswith("?"):
+            continue
+        meaningful.extend(
+            token
+            for token in re.findall(r"\w+", normalized, flags=re.UNICODE)
+            if len(token) > 2 and token not in _INFORMATION_STOP_WORDS
+        )
+
+    return len(meaningful) >= (10 if detailed else 4)
+
+
+def _information_detail_requested(text: str) -> bool:
+    normalized = " ".join(str(text or "").casefold().split())
+    return any(term in normalized for term in _DETAIL_REQUEST_TERMS)
 
 
 def _normalized_reply(value: str) -> str:
@@ -439,12 +505,20 @@ def _patch_engagement() -> None:
     current_input = EngagementService._build_input
     current_instructions = EngagementService._build_instructions
     current_validate = EngagementService._validate_qualification_decision
+    current_should_retrieve = EngagementService._should_retrieve_knowledge
 
     @wraps(current_engage)
     def engage(self, *, organization, lead, **kwargs):
         _POLICY.set(None)
         _policy_for_turn(organization=organization, lead=lead)
         return current_engage(self, organization=organization, lead=lead, **kwargs)
+
+    @wraps(current_should_retrieve)
+    def should_retrieve_knowledge(self, *, context):
+        policy = _POLICY.get()
+        if policy is not None and policy.requires_knowledge:
+            return True
+        return current_should_retrieve(self, context=context)
 
     @wraps(current_input)
     def build_input(self, *, context, **kwargs):
@@ -501,7 +575,25 @@ def _patch_engagement() -> None:
                 "Response must not continue qualification for this policy outcome."
             )
 
+        turn = _TURN.get()
+        intent = turn.get("intent_decision") if isinstance(turn, dict) else None
+        if (
+            policy.outcome == ConversationPolicyOutcome.ANSWER
+            and isinstance(intent, IntentDecision)
+            and _intent_values(intent) & _INFORMATION_INTENTS
+        ):
+            latest_text = self._latest_inbound_text(context=context)
+            if not _information_reply_has_substance(
+                getattr(decision, "message", ""),
+                detailed=_information_detail_requested(latest_text),
+            ):
+                raise engagement_module.EngagementError(
+                    "Information requests require a substantive grounded answer; "
+                    "a question-only invitation or generic CTA is not an answer."
+                )
+
     EngagementService.engage = engage
+    EngagementService._should_retrieve_knowledge = should_retrieve_knowledge
     EngagementService._build_input = build_input
     EngagementService._build_instructions = build_instructions
     EngagementService._validate_qualification_decision = validate

@@ -27,7 +27,10 @@ _HUMAN_TERMS = (
 )
 _BOOKING_TERMS = ("booked", "scheduled", "appointment", "demo", "meeting", "session")
 _PLAN_TERMS = ("plan", "plans", "pack", "packs", "package", "packages", "price", "pricing", "cost", "fees")
-_CAPABILITY_TERMS = ("feature", "features", "service", "services", "capability", "capabilities", "automate", "automation")
+_CAPABILITY_TERMS = (
+    "feature", "features", "service", "services", "capability", "capabilities",
+    "functionality", "functionalities", "automate", "automation",
+)
 _FRUSTRATION_TERMS = (
     "same thing", "same message", "repeating", "repeat", "100 bar", "chup",
     "bc", "mc", "fucker", "fuck", "randi",
@@ -188,6 +191,8 @@ def _grounded_conversation_reply(*, about: str, inbound: str, organization_name:
     overview_intent = (
         normalized.startswith("what is ")
         or normalized.startswith("tell me about ")
+        or "want to know about" in normalized
+        or "would like to know about" in normalized
         or (organization_name and _normalized(organization_name) in normalized)
     )
     if overview_intent:

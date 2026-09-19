@@ -54,6 +54,9 @@ def classify(env, text, *, active=None, provider=None, requirements=None, contex
     ("Hi", Intent.GREETING),
     ("I want to know more about your services.", Intent.PRODUCT_OR_SERVICE_QUESTION),
     ("What is shvya", Intent.PRODUCT_OR_SERVICE_QUESTION),
+    ("What is shvya ai", Intent.PRODUCT_OR_SERVICE_QUESTION),
+    ("I want to know about shvya", Intent.PRODUCT_OR_SERVICE_QUESTION),
+    ("What is its functionality", Intent.PRODUCT_OR_SERVICE_QUESTION),
     ("What is your price?", Intent.PRICING_QUESTION),
     ("I want to speak with someone.", Intent.HUMAN_REQUEST),
     ("Please call me tomorrow.", Intent.CALL_REQUEST),
@@ -77,6 +80,14 @@ def test_direct_product_question_without_question_mark_is_not_qualification_answ
     assert result.direct_question == "What is shvya"
     assert result.qualification_candidate is None
     assert Intent.QUALIFICATION_ANSWER not in result.secondary_intents
+
+
+def test_natural_product_request_is_not_consumed_by_active_qualification(env):
+    result = classify(env, "I want to know about shvya", active="challenge")
+    assert result.primary_intent == Intent.PRODUCT_OR_SERVICE_QUESTION
+    assert result.qualification_candidate is None
+    assert Intent.QUALIFICATION_ANSWER not in result.secondary_intents
+    assert result.requires_knowledge is True
 
 
 def test_specific_pricing_question_is_not_double_classified_as_product(env):
