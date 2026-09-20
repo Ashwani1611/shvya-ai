@@ -118,6 +118,44 @@ def test_valid_page_specific_sha256_signature_is_accepted(client):
 
 
 @override_settings(META_APP_SECRET="")
+def test_payload_with_multiple_pages_accepts_any_configured_page_secret(client):
+    _page_with_secret(page_id="page-a", secret="secret-a")
+    _page_with_secret(page_id="page-b", secret="secret-b")
+    body = _payload_bytes(
+        {
+            "entry": [
+                {"id": "page-a", "changes": []},
+                {"id": "page-b", "changes": []},
+            ]
+        }
+    )
+
+    response = client.post(
+        WEBHOOK_PATH,
+        data=body,
+        content_type="application/json",
+        HTTP_X_HUB_SIGNATURE_256=_sha256_signature("secret-b", body),
+    )
+
+    assert response.status_code == 200
+    assert response.content == b"EVENT_RECEIVED"
+
+
+@override_settings(META_APP_SECRET="global-secret")
+def test_non_object_payload_is_rejected_as_bad_request(client):
+    body = _payload_bytes([])
+
+    response = client.post(
+        WEBHOOK_PATH,
+        data=body,
+        content_type="application/json",
+        HTTP_X_HUB_SIGNATURE_256=_sha256_signature("global-secret", body),
+    )
+
+    assert response.status_code == 400
+
+
+@override_settings(META_APP_SECRET="")
 def test_invalid_signature_cannot_reach_meta_lead_fetch(client):
     _page_with_secret(page_id="page-789", secret="page-secret")
     body = _payload_bytes(
