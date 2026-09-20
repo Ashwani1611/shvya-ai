@@ -59,6 +59,42 @@
         </article>
 
         <aside class="sy-detail-side">
+            {% with derived=document.derived_documents.all %}
+            {% if document.source_document or document.document_type != 'invoice' or derived %}
+            <article class="sy-panel sy-next-card">
+                <p class="sy-eyebrow">SALES FLOW</p>
+                {% if document.source_document %}
+                <a class="sy-lineage-source" href="{% url 'shvya-sales-document-detail' document.source_document.id %}">
+                    <span><small>Created from</small><strong>{{ document.source_document.document_number }}</strong></span>
+                    <i class="ti ti-arrow-up-right"></i>
+                </a>
+                {% endif %}
+
+                {% if document.document_type == 'quotation' %}
+                <h3>Move the deal forward.</h3>
+                <div class="sy-next-actions">
+                    <a href="{% url 'shvya-sales-document-create' 'agreement' %}?from={{ document.id }}"><span class="sy-doc-avatar sy-doc-agreement"><i class="ti ti-signature"></i></span><span><strong>Create agreement</strong><small>Carry customer, scope and pricing forward</small></span><i class="ti ti-chevron-right"></i></a>
+                    <a href="{% url 'shvya-sales-document-create' 'invoice' %}?from={{ document.id }}"><span class="sy-doc-avatar sy-doc-invoice"><i class="ti ti-receipt-2"></i></span><span><strong>Create invoice</strong><small>Convert pricing into a billable draft</small></span><i class="ti ti-chevron-right"></i></a>
+                </div>
+                {% elif document.document_type == 'agreement' %}
+                <h3>Ready to bill?</h3>
+                <div class="sy-next-actions">
+                    <a href="{% url 'shvya-sales-document-create' 'invoice' %}?from={{ document.id }}"><span class="sy-doc-avatar sy-doc-invoice"><i class="ti ti-receipt-2"></i></span><span><strong>Create invoice</strong><small>Carry agreed customer and commercial data forward</small></span><i class="ti ti-chevron-right"></i></a>
+                </div>
+                {% endif %}
+
+                {% if derived %}
+                <div class="sy-derived-list">
+                    <small>Created from this document</small>
+                    {% for item in derived %}
+                    <a href="{% url 'shvya-sales-document-detail' item.id %}"><span>{{ item.document_number }}</span><span class="sy-status sy-status-{{ item.status }}">{{ item.get_status_display }}</span></a>
+                    {% endfor %}
+                </div>
+                {% endif %}
+            </article>
+            {% endif %}
+            {% endwith %}
+
             <article class="sy-panel sy-summary-card">
                 <p class="sy-eyebrow">SUMMARY</p>
                 <div class="sy-summary-total"><span>Total</span><strong>{{ document.currency }} {{ document.total|floatformat:2 }}</strong></div>
