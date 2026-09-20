@@ -55,7 +55,8 @@ def superuser_required(view_func):
     key_func=lambda r: r.POST.get("username", "") if r.method == "POST" else "",
     limit=5,
     window=300,
-    )
+    methods=("POST",),
+)
 def superadmin_login_view(request):
     """
     Authenticate SHVYA Superadmin users using the dedicated
