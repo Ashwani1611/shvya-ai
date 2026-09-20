@@ -288,10 +288,32 @@ def whatsapp_send_template_view(request, lead_id):
 
 
 def _unlinked_conversations(organization, account=None, query=""):
-    from django.db.models.functions import RowNumber
-    rows = WhatsAppMessage.objects.filter(organization=organization, account__organization=organization,
-        account__connection_type="api", account__is_active=True, lead__isnull=True).annotate(
-        peer=models.Case(models.When(direction="inbound", then=models.F("from_number")), default=models.F("to_number")),
+    from django.db.models.functions import RowNumber, Substr
+
+    rows = WhatsAppMessage.objects.filter(
+        organization=organization,
+        account__organization=organization,
+        account__connection_type="api",
+        account__is_active=True,
+        lead__isnull=True,
+    ).annotate(
+        peer=models.Case(
+            models.When(direction="inbound", then=models.F("from_number")),
+            default=models.F("to_number"),
+        ),
+    )
+
+    # Provider history can keep lead=NULL even after the same phone already
+    # exists in CRM. Never offer a duplicate "Create lead" action for it.
+    lead_phones = Lead.objects.filter(organization=organization)
+    rows = rows.exclude(
+        peer__in=models.Subquery(lead_phones.values("phone")),
+    ).exclude(
+        peer__in=models.Subquery(
+            lead_phones.annotate(phone_without_plus=Substr("phone", 2)).values(
+                "phone_without_plus"
+            )
+        ),
     )
     if account:
         rows = rows.filter(account=account)
