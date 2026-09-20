@@ -101,6 +101,7 @@ def dispatch_scheduled_deliveries_task():
                         body=schedule.email_body,
                         base_url=base_url,
                         attach_pdf=True,
+                        scheduled_delivery=schedule,
                     )
                     successes.append("email")
                 elif channel == "whatsapp":
@@ -110,6 +111,7 @@ def dispatch_scheduled_deliveries_task():
                         body=schedule.whatsapp_body,
                         base_url=base_url,
                         attach_pdf=True,
+                        scheduled_delivery=schedule,
                     )
                     successes.append("whatsapp")
             except SalesDeliveryError as exc:
@@ -193,6 +195,7 @@ def _send_email_reminder(document, reminder, *, subject, body, base_url):
             body=body,
             base_url=base_url,
             attach_pdf=True,
+            reminder=reminder,
         )
     except SalesDeliveryError as exc:
         reminder.status = SalesReminder.Status.FAILED
