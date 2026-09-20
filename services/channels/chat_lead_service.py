@@ -73,10 +73,15 @@ def _queue_created_lead_engagement(*, organization_id, account_id, lead_id, sour
         return
 
     # Meta/API automation owns the durable execution marker and duplicate-turn
-    # protection. Keep the existing lead-only task contract.
-    from services.channels.whatsapp_service import _queue_whatsapp_engagement
+    # protection. Pin this manually linked turn to the exact inbound/account;
+    # the Celery payload still remains lead-id-only.
+    from apps.ai_engagement.services.execution_tracker import queue_api_engagement
 
-    _queue_whatsapp_engagement(lead_id=str(lead_id))
+    queue_api_engagement(
+        lead_id=str(lead_id),
+        source_message_id=source_message_id,
+        account_id=account.pk,
+    )
 
 
 @transaction.atomic
@@ -108,20 +113,38 @@ def create_chat_lead(*, user, account, chat, name, pipeline_id):
     # Explicit creation happens after the inbound message already exists. Rejoin
     # the same post-commit AI path used by normal live inbound processing.
     if created:
-        source_message_id = (
+        source = (
             messages.filter(direction=WhatsAppMessage.Direction.INBOUND)
             .order_by("-created_at", "-id")
-            .values_list("pk", flat=True)
             .first()
         )
-        if source_message_id:
-            transaction.on_commit(
-                lambda: _queue_created_lead_engagement(
-                    organization_id=user.organization_id,
-                    account_id=account.pk,
-                    lead_id=lead.pk,
-                    source_message_id=source_message_id,
-                )
+        if source:
+            raw_payload = dict(source.raw_payload or {})
+            media_payload = (
+                source.media_payload if isinstance(source.media_payload, dict) else {}
             )
+            historical = bool(
+                raw_payload.get("isHistory") is True
+                or media_payload.get("historical") is True
+            )
+            if not historical:
+                raw_payload["leadCreationMessage"] = True
+                source.raw_payload = raw_payload
+                source.save(update_fields=["raw_payload", "updated_at"])
+
+                # Match the normal inbound safety path before publishing AI work.
+                # In particular, STOP/opt-out must disable lead AI immediately.
+                from services.channels.whatsapp_service import _apply_reply_intent
+
+                _apply_reply_intent(lead=lead, body=source.body)
+
+                transaction.on_commit(
+                    lambda source_message_id=source.pk: _queue_created_lead_engagement(
+                        organization_id=user.organization_id,
+                        account_id=account.pk,
+                        lead_id=lead.pk,
+                        source_message_id=source_message_id,
+                    )
+                )
 
     return lead
