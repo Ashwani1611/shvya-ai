@@ -582,6 +582,104 @@
 .sy-public-confirmed p { margin: 3px 0 0; color: #3b6f49; }
 .sy-public-powered { text-align: center; color: #86868b; font-size: 10px; padding: 24px; }
 
+
+.sy-field-note {
+    margin: 1px 0 0;
+    color: #86868b;
+    font-size: 10px;
+    line-height: 1.4;
+}
+.sy-inline-check {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    color: #6e6e73;
+    font-size: 10px;
+    margin-top: 2px;
+}
+.sy-inline-check input { width: auto; min-height: 0; }
+.sy-advanced-fields {
+    padding: 12px 14px;
+    border: 1px solid var(--sy-border);
+    border-radius: 15px;
+    background: #fafafa;
+}
+.sy-advanced-fields summary {
+    cursor: pointer;
+    color: #6e6e73;
+    font-size: 11px;
+    font-weight: 650;
+}
+.sy-advanced-fields .sy-form-grid { margin-top: 14px; }
+
+.sy-rich-shell {
+    overflow: hidden;
+    border: 1px solid rgba(29,29,31,.12);
+    border-radius: 18px;
+    background: #fff;
+    transition: border .15s ease, box-shadow .15s ease;
+}
+.sy-rich-shell:focus-within {
+    border-color: #0071e3;
+    box-shadow: 0 0 0 4px rgba(0,113,227,.09);
+}
+.sy-rich-toolbar {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 4px;
+    padding: 8px;
+    border-bottom: 1px solid var(--sy-border);
+    background: #f7f7f8;
+}
+.sy-rich-toolbar button {
+    width: 34px;
+    height: 34px;
+    border: 0;
+    border-radius: 9px;
+    background: transparent;
+    color: #3a3a3c;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 16px;
+}
+.sy-rich-toolbar button:hover,
+.sy-rich-toolbar button:focus-visible {
+    background: #fff;
+    box-shadow: 0 1px 4px rgba(0,0,0,.06);
+    outline: none;
+}
+.sy-rich-toolbar > span {
+    width: 1px;
+    height: 22px;
+    margin: 0 3px;
+    background: #d2d2d7;
+}
+.sy-rich-editor {
+    min-height: 360px;
+    max-height: 640px;
+    overflow: auto;
+    padding: 28px;
+    outline: none;
+    color: #1d1d1f;
+    font-size: 14px;
+    line-height: 1.65;
+}
+.sy-rich-editor h1,
+.sy-rich-editor h2,
+.sy-rich-editor h3 { letter-spacing: -.035em; }
+.sy-rich-editor table {
+    width: 100%;
+    border-collapse: collapse;
+}
+.sy-rich-editor td,
+.sy-rich-editor th {
+    padding: 8px;
+    border-bottom: 1px solid #e5e5e7;
+}
+
 @media (max-width: 1100px) {
     .sy-kpi-grid { grid-template-columns: repeat(2, 1fr); }
     .sy-template-grid { grid-template-columns: repeat(2, 1fr); }
