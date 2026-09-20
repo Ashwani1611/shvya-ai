@@ -34,6 +34,7 @@ from apps.sales.services import (
     calculate_line_items,
     default_email_body,
     default_email_subject,
+    default_item_table_config,
     default_template_body,
     default_whatsapp_body,
     deliver_email,
@@ -41,6 +42,7 @@ from apps.sales.services import (
     delivery_drafts,
     ensure_default_templates,
     next_document_number,
+    normalize_item_table_config,
     public_url_for,
     refresh_whatsapp_delivery_statuses,
     sanitize_layout_html,
@@ -949,6 +951,32 @@ def sales_template_form_view(request, template_id=None):
                 request.POST.get("body_template") or default_template_body(selected_type)
             )
             template.footer_text = (request.POST.get("footer_text") or "").strip()
+            template.item_table_config = normalize_item_table_config(
+                {
+                    "show_name": request.POST.get("item_show_name") == "on",
+                    "show_description": request.POST.get("item_show_description") == "on",
+                    "description_separate": (
+                        request.POST.get("item_description_separate") == "on"
+                    ),
+                    "show_qty": request.POST.get("item_show_qty") == "on",
+                    "show_rate": request.POST.get("item_show_rate") == "on",
+                    "show_tax": request.POST.get("item_show_tax") == "on",
+                    "show_amount": request.POST.get("item_show_amount") == "on",
+                    "show_summary": request.POST.get("item_show_summary") == "on",
+                    "labels": {
+                        "name": request.POST.get("item_label_name"),
+                        "description": request.POST.get("item_label_description"),
+                        "qty": request.POST.get("item_label_qty"),
+                        "rate": request.POST.get("item_label_rate"),
+                        "tax": request.POST.get("item_label_tax"),
+                        "amount": request.POST.get("item_label_amount"),
+                        "subtotal": request.POST.get("item_label_subtotal"),
+                        "tax_total": request.POST.get("item_label_tax_total"),
+                        "discount": request.POST.get("item_label_discount"),
+                        "total": request.POST.get("item_label_total"),
+                    },
+                }
+            )
             template.email_subject_template = (
                 request.POST.get("email_subject_template")
                 or default_email_subject(selected_type)
@@ -1009,6 +1037,11 @@ def sales_template_form_view(request, template_id=None):
             "default_email_subject": default_email_subject(selected_type),
             "default_email_body": default_email_body(selected_type),
             "default_whatsapp_body": default_whatsapp_body(selected_type),
+            "item_table_config": normalize_item_table_config(
+                template.item_table_config
+                if template
+                else default_item_table_config()
+            ),
         },
     )
 
