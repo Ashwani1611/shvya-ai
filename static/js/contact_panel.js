@@ -77,7 +77,7 @@
       host.querySelector('[data-note-editor]')?.removeAttribute('onsubmit');
       if(window.htmx)window.htmx.process(host);
       if(selected)select(host,selected);
-    }catch(error){if(error.name!=='AbortError'){delete host.dataset.loadedUrl;host.innerHTML='<p class="contact-empty" role="alert">Could not load contact details.</p><button type="button" class="contact-primary" data-panel-retry>Retry</button>';}}
+    }catch(error){if(error.name!=='AbortError'&&host.dataset.sidebarUrl===url){delete host.dataset.loadedUrl;host.innerHTML='<p class="contact-empty" role="alert">Could not load contact details.</p><button type="button" class="contact-primary" data-panel-retry>Retry</button>';panelChrome(host);}}
   }
   function select(host,name){
     host.querySelectorAll('[data-contact-panel]').forEach(p=>p.hidden=p.dataset.contactPanel!==name);

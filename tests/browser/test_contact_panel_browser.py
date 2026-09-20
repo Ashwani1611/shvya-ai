@@ -239,3 +239,12 @@ def test_hosted_shared_sidebar_drafts_and_touchpoints(browser):
     expect(page.locator('[data-contact-panel="touchpoints"]')).not_to_be_visible()
     assert not errors
     page.close()
+
+
+def test_collapsed_panel_can_expand_after_load_failure(inbox):
+    page, _, _ = inbox
+    page.get_by_role("button", name="Collapse contact details").click()
+    page.route("**/panel/**", lambda route: route.fulfill(status=500, body="Unavailable"))
+    page.evaluate("window.ShvyaContact.load(document.querySelector('[data-contact-host]'),true)")
+    page.get_by_role("button", name="Expand contact details").click()
+    expect(page.get_by_role("button", name="Retry", exact=True)).to_be_visible()
