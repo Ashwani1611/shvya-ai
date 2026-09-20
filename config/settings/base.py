@@ -29,6 +29,22 @@ BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
 SECRET_KEY = config("SECRET_KEY")
 
+# Recoverable provider credentials use a dedicated encryption key when
+# configured. Existing SECRET_KEY-derived ciphertext remains readable through
+# the legacy fallback path in apps.core.crypto for safe staged migration.
+CREDENTIAL_ENCRYPTION_KEY = config(
+    "CREDENTIAL_ENCRYPTION_KEY",
+    default="",
+)
+CREDENTIAL_ENCRYPTION_KEY_FALLBACKS = [
+    value.strip()
+    for value in config(
+        "CREDENTIAL_ENCRYPTION_KEY_FALLBACKS",
+        default="",
+    ).split(",")
+    if value.strip()
+]
+
 DEBUG = config(
     "DEBUG",
     default=False,
@@ -506,7 +522,13 @@ REST_FRAMEWORK = {
 }
 
 
+JWT_SECRET = config(
+    "JWT_SECRET",
+    default=SECRET_KEY,
+)
+
 SIMPLE_JWT = {
+    "SIGNING_KEY": JWT_SECRET,
     "ACCESS_TOKEN_LIFETIME": timedelta(
         hours=8,
     ),
