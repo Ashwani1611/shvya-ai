@@ -756,7 +756,12 @@ def generate_lead_qualification(
 
 
 def _latest_whatsapp_message(*, lead):
-    """Return the latest WhatsApp message for this Lead."""
+    """Return the authoritative message for this Lead's current AI turn."""
+    from apps.ai_engagement.services.execution_tracker import active_pinned_source
+
+    pinned = active_pinned_source(lead=lead)
+    if pinned is not None:
+        return pinned
     return (
         lead.whatsapp_messages
         .filter(
@@ -1740,13 +1745,17 @@ def _execute_ai_engagement_response(*, task, lead_id):
     from celery.exceptions import Retry
     from apps.channels.models import WhatsAppMessage
     from apps.ai_engagement.services.execution_tracker import (
+        active_pinned_source,
         claim_execution,
         record_execution,
     )
-    source = WhatsAppMessage.objects.filter(
-        lead_id=lead_id,
-        direction="inbound",
-    ).order_by("-created_at", "-id").first()
+
+    source = active_pinned_source(lead_id=lead_id)
+    if source is None:
+        source = WhatsAppMessage.objects.filter(
+            lead_id=lead_id,
+            direction="inbound",
+        ).order_by("-created_at", "-id").first()
     if source and not claim_execution(source.pk):
         return {
             "status": "skipped",
