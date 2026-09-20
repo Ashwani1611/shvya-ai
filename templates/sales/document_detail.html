@@ -146,7 +146,7 @@
                     <span><small>Credits</small><strong>{{ document.currency }} {{ invoice_ledger.credits|floatformat:2 }}</strong></span>
                 </div>
 
-                {% if invoice_ledger.balance > 0 and payment_gateways %}
+                {% if sales_admin and invoice_ledger.balance > 0 and payment_gateways %}
                 <div class="sy-finance-section">
                     <strong>Create payment link</strong>
                     <div class="sy-gateway-actions">
@@ -161,6 +161,7 @@
                 </div>
                 {% endif %}
 
+                {% if sales_admin %}
                 <details class="sy-compact-details">
                     <summary>Record payment / refund</summary>
                     <div class="sy-finance-forms">
@@ -194,12 +195,13 @@
                         <button class="sy-btn sy-btn-secondary sy-btn-small" type="submit">Create credit note</button>
                     </form>
                 </details>
+                {% endif %}
 
                 {% if document.payments.all %}
                 <div class="sy-ledger-list">
                     {% for payment in document.payments.all|slice:":10" %}
                     <div class="sy-ledger-entry"><span><strong>{{ payment.get_kind_display }}</strong><small>{{ payment.payment_date|date:"d M Y" }} · {{ payment.get_method_display }}{% if payment.provider %} · {{ payment.provider|title }}{% endif %}</small></span><strong>{% if payment.kind == 'refund' %}-{% endif %}{{ document.currency }} {{ payment.amount|floatformat:2 }}</strong>
-                    {% if payment.kind == 'payment' and payment.provider and payment.external_payment_id %}
+                    {% if sales_admin and payment.kind == 'payment' and payment.provider and payment.external_payment_id %}
                     <details class="sy-ledger-refund"><summary>Refund</summary><form method="post" action="{% url 'shvya-sales-gateway-refund' payment.id %}">{% csrf_token %}<input type="number" name="amount" min="0.01" step="0.01" max="{{ payment.amount }}" required placeholder="Amount"><button class="sy-text-action" type="submit">Refund via {{ payment.provider|title }}</button></form></details>
                     {% endif %}
                     </div>
@@ -210,12 +212,13 @@
                 <div class="sy-ledger-list sy-credit-list">
                     {% for credit in document.credit_notes.all|slice:":10" %}
                     <div><span><strong>{{ credit.credit_number }}</strong><small>{{ credit.get_status_display }} · {{ credit.reason|truncatechars:50 }}</small></span><strong>-{{ document.currency }} {{ credit.amount|floatformat:2 }}</strong>
-                    {% if credit.status == 'draft' %}<form method="post" action="{% url 'shvya-sales-credit-apply' credit.id %}">{% csrf_token %}<button class="sy-text-action" type="submit">Apply</button></form>{% endif %}</div>
+                    {% if sales_admin and credit.status == 'draft' %}<form method="post" action="{% url 'shvya-sales-credit-apply' credit.id %}">{% csrf_token %}<button class="sy-text-action" type="submit">Apply</button></form>{% endif %}</div>
                     {% endfor %}
                 </div>
                 {% endif %}
             </article>
 
+            {% if sales_admin %}
             <article class="sy-panel sy-lifecycle-card">
                 <p class="sy-eyebrow">RECURRING INVOICE</p>
                 {% if recurring_rule and recurring_rule.is_active %}
@@ -237,6 +240,7 @@
                     </form>
                 {% endif %}
             </article>
+            {% endif %}
             {% endif %}
 
             <article class="sy-panel sy-attachments-card">
