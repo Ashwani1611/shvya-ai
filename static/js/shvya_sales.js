@@ -146,7 +146,28 @@
         var header = form.querySelector("[data-preview-header]");
         var footer = form.querySelector("[data-preview-footer]");
         var logo = form.querySelector("[data-preview-logo]");
-        var editor = form.querySelector("[data-layout-editor]");
+        var logoUpload = form.querySelector("[data-preview-logo-upload]");
+        var source = form.querySelector("[data-layout-editor]");
+        var rich = form.querySelector("[data-rich-editor]");
+        var objectUrl = "";
+
+        function syncRichSource() {
+            if (source && rich) source.value = rich.innerHTML;
+        }
+
+        function updateLogoPreview(url) {
+            var box = form.querySelector("[data-preview-logo-box]");
+            if (!box) return;
+            box.innerHTML = "";
+            if (url) {
+                var image = document.createElement("img");
+                image.src = url;
+                image.alt = "";
+                box.appendChild(image);
+            } else {
+                box.innerHTML = '<i class="ti ti-building"></i>';
+            }
+        }
 
         if (color && preview) {
             color.addEventListener("input", function () {
@@ -167,30 +188,71 @@
         }
         if (logo) {
             logo.addEventListener("change", function () {
-                var box = form.querySelector("[data-preview-logo-box]");
-                if (!box) return;
-                box.innerHTML = "";
-                if (logo.value.trim()) {
-                    var image = document.createElement("img");
-                    image.src = logo.value.trim();
-                    image.alt = "";
-                    box.appendChild(image);
+                if (logoUpload && logoUpload.files && logoUpload.files.length) return;
+                updateLogoPreview(logo.value.trim());
+            });
+        }
+        if (logoUpload) {
+            logoUpload.addEventListener("change", function () {
+                if (objectUrl) URL.revokeObjectURL(objectUrl);
+                objectUrl = "";
+                if (logoUpload.files && logoUpload.files[0]) {
+                    objectUrl = URL.createObjectURL(logoUpload.files[0]);
+                    updateLogoPreview(objectUrl);
                 } else {
-                    box.innerHTML = '<i class="ti ti-building"></i>';
+                    updateLogoPreview(logo ? logo.value.trim() : "");
                 }
             });
         }
-        form.querySelectorAll("[data-insert-merge]").forEach(function (button) {
+
+        form.querySelectorAll("[data-rich-command]").forEach(function (button) {
             button.addEventListener("click", function () {
-                if (!editor) return;
-                var text = button.dataset.insertMerge || "";
-                var start = editor.selectionStart || editor.value.length;
-                var end = editor.selectionEnd || editor.value.length;
-                editor.value = editor.value.slice(0, start) + text + editor.value.slice(end);
-                editor.focus();
-                editor.selectionStart = editor.selectionEnd = start + text.length;
+                if (!rich) return;
+                rich.focus();
+                var command = button.dataset.richCommand;
+                var value = button.dataset.richValue || null;
+                document.execCommand(command, false, value);
+                syncRichSource();
             });
         });
+
+        function selectionInsideRich(selection) {
+            if (!rich || !selection || selection.rangeCount === 0) return false;
+            var range = selection.getRangeAt(0);
+            var container = range.commonAncestorContainer;
+            if (container.nodeType === Node.TEXT_NODE) container = container.parentNode;
+            return container === rich || rich.contains(container);
+        }
+
+        function insertMergeField(text) {
+            if (!rich) return;
+            rich.focus();
+            var selection = window.getSelection();
+            if (!selectionInsideRich(selection)) {
+                rich.appendChild(document.createTextNode(text));
+                syncRichSource();
+                return;
+            }
+            var range = selection.getRangeAt(0);
+            range.deleteContents();
+            var node = document.createTextNode(text);
+            range.insertNode(node);
+            range.setStartAfter(node);
+            range.collapse(true);
+            selection.removeAllRanges();
+            selection.addRange(range);
+            syncRichSource();
+        }
+
+        form.querySelectorAll("[data-insert-merge]").forEach(function (button) {
+            button.addEventListener("click", function () {
+                insertMergeField(button.dataset.insertMerge || "");
+            });
+        });
+
+        if (rich) rich.addEventListener("input", syncRichSource);
+        form.addEventListener("submit", syncRichSource);
+        syncRichSource();
     }
 
     document.addEventListener("DOMContentLoaded", function () {
