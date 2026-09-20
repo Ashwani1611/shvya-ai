@@ -7,6 +7,19 @@ from .base import *  # noqa
 
 APP_ENV = "production"
 
+# Production security is explicit and must not inherit DEBUG-dependent values
+# calculated in base.py. Even if the deployment environment accidentally sets
+# DEBUG=True, production remains fail-closed instead of disabling HTTPS,
+# secure cookies, HSTS, or broadening CORS.
+DEBUG = False
+SESSION_COOKIE_SECURE = True
+CSRF_COOKIE_SECURE = True
+SECURE_SSL_REDIRECT = True
+SECURE_HSTS_SECONDS = 31536000
+SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+SECURE_HSTS_PRELOAD = True
+CORS_ALLOW_ALL_ORIGINS = False
+
 INSTALLED_APPS = [
     *INSTALLED_APPS,
     "django.contrib.postgres",

@@ -143,7 +143,7 @@ def clear_authentication_failures(
 
 
 
-def ratelimit(key_func=None, limit=5, window=300):
+def ratelimit(key_func=None, limit=5, window=300, methods=None):
     """
     Rate limit a view to `limit` requests per `window` seconds,
     keyed by client IP (and optionally an extra key, e.g. the
@@ -162,14 +162,19 @@ def ratelimit(key_func=None, limit=5, window=300):
             key_func=lambda r: r.POST.get("email", ""),
             limit=5,
             window=900,
+            methods=("POST",),
         )
         def crm_forgot_password_view(request):
             ...
     """
 
+    limited_methods = {method.upper() for method in (methods or ())}
+
     def decorator(view_func):
         @wraps(view_func)
         def wrapped(request, *args, **kwargs):
+            if limited_methods and request.method.upper() not in limited_methods:
+                return view_func(request, *args, **kwargs)
 
             ip = _client_ip(request)
             extra = key_func(request) if key_func else ""
