@@ -24,6 +24,21 @@ NAV_ITEMS = [
         "search_keywords": ["copilot", "sales", "ai sales"],
     },
     {
+        "label": "SHVYA Sales",
+        "icon": "ti-file-invoice",
+        "url_name": "shvya-sales-dashboard",
+        "path_prefix": "/dashboard/sales/",
+        "section": "workspace",
+        "search_keywords": [
+            "quotation",
+            "agreement",
+            "invoice",
+            "sales",
+            "documents",
+            "templates",
+        ],
+    },
+    {
         "label": "Cadence",
         "icon": "ti-camera-plus",
         "path_prefix": "/dashboard/cadence/",
