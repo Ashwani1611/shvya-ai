@@ -1,6 +1,5 @@
 import logging
 
-import requests
 from celery import shared_task
 from django.core.exceptions import ValidationError
 from django.utils import timezone
@@ -12,6 +11,7 @@ from apps.integrations.services.webhook import (
     WEBHOOK_SECRET_HEADER,
     WEBHOOK_USER_AGENT,
     assert_public_webhook_target,
+    post_webhook_json,
 )
 
 logger = logging.getLogger(__name__)
@@ -128,14 +128,13 @@ def deliver_webhook_task(self, delivery_id):
     }
 
     try:
-        response = requests.post(
+        response_status, response_body = post_webhook_json(
             target_url,
-            json=delivery.payload,
+            payload=delivery.payload,
             headers=headers,
             timeout=WEBHOOK_TIMEOUT_SECONDS,
-            allow_redirects=False,
         )
-    except requests.RequestException as exc:
+    except (OSError, RuntimeError) as exc:
         logger.warning(
             "Webhook delivery %s request failed: %s",
             delivery.id,
@@ -143,10 +142,10 @@ def deliver_webhook_task(self, delivery_id):
         )
         return _retry_or_fail(self, delivery, str(exc))
 
-    delivery.response_status = response.status_code
-    delivery.response_body = response.text[:MAX_RESPONSE_BODY_LENGTH]
+    delivery.response_status = response_status
+    delivery.response_body = response_body[:MAX_RESPONSE_BODY_LENGTH]
 
-    if 200 <= response.status_code < 300:
+    if 200 <= response_status < 300:
         delivery.status = WebhookDelivery.Status.SENT
         delivery.error_message = ""
         delivery.delivered_at = timezone.now()
@@ -164,10 +163,10 @@ def deliver_webhook_task(self, delivery_id):
         return {
             "status": "sent",
             "delivery_id": str(delivery.id),
-            "response_status": response.status_code,
+            "response_status": response_status,
         }
 
-    reason = f"Webhook endpoint returned HTTP {response.status_code}."
+    reason = f"Webhook endpoint returned HTTP {response_status}."
     return _retry_or_fail(self, delivery, reason)
 
 
