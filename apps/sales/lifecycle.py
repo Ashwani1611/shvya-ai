@@ -393,9 +393,9 @@ def add_attachment(*, document, uploaded_file, actor=None, visible_to_customer=F
 
 @transaction.atomic
 def create_agreement_revision(*, agreement, kind, actor=None):
-    agreement = SalesDocument.objects.select_for_update().select_related(
-        "template", "lead"
-    ).get(pk=agreement.pk)
+    # Lock only the agreement row. template/lead are nullable relations and
+    # PostgreSQL cannot apply FOR UPDATE to the nullable side of outer joins.
+    agreement = SalesDocument.objects.select_for_update().get(pk=agreement.pk)
     if agreement.document_type != DocumentType.AGREEMENT:
         raise ValidationError("Only agreements can be amended or renewed.")
     if agreement.status == SalesDocument.Status.DRAFT:
@@ -531,10 +531,13 @@ def _advance_recurrence(rule):
 
 @transaction.atomic
 def create_recurring_invoice_instance(rule):
-    rule = SalesRecurringInvoice.objects.select_for_update().select_related(
-        "source_invoice__template",
-        "source_invoice__lead",
-    ).get(pk=rule.pk)
+    # Lock only the recurring rule row. Nested template/lead relations are
+    # nullable and must not be pulled into the FOR UPDATE query.
+    rule = (
+        SalesRecurringInvoice.objects.select_for_update()
+        .select_related("source_invoice")
+        .get(pk=rule.pk)
+    )
     now = timezone.now()
     if not rule.is_active or rule.next_run_at > now:
         return None
