@@ -74,6 +74,18 @@ class SalesTemplate(models.Model):
                 name="sales_template_org_type_name_uniq",
             )
         ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["scheduled_delivery", "channel"],
+                condition=models.Q(scheduled_delivery__isnull=False),
+                name="sales_delivery_schedule_channel_uniq",
+            ),
+            models.UniqueConstraint(
+                fields=["reminder", "channel"],
+                condition=models.Q(reminder__isnull=False),
+                name="sales_delivery_reminder_channel_uniq",
+            ),
+        ]
         indexes = [
             models.Index(
                 fields=["organization", "document_type", "is_active"],
@@ -277,6 +289,20 @@ class SalesDocumentDelivery(models.Model):
     document = models.ForeignKey(
         SalesDocument,
         on_delete=models.CASCADE,
+        related_name="deliveries",
+    )
+    scheduled_delivery = models.ForeignKey(
+        "sales.SalesScheduledDelivery",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="deliveries",
+    )
+    reminder = models.ForeignKey(
+        "sales.SalesReminder",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
         related_name="deliveries",
     )
     channel = models.CharField(max_length=12, choices=Channel.choices)
