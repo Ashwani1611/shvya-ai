@@ -26,6 +26,8 @@ from apps.sales.services import (
     deliver_email,
     deliver_whatsapp,
     delivery_drafts,
+    merge_values,
+    render_text_template,
 )
 
 
@@ -178,6 +180,28 @@ def _ensure_reminder(document, kind, due_on):
     return reminder
 
 
+def _reminder_copy(
+    *,
+    document,
+    settings_row,
+    subject_template,
+    body_template,
+    base_url,
+    days_overdue=None,
+):
+    values = merge_values(
+        document,
+        public_url=_public_url(document, base_url),
+    )
+    values["invoice.days_overdue"] = (
+        str(days_overdue) if days_overdue is not None else ""
+    )
+    return (
+        render_text_template(subject_template, values),
+        render_text_template(body_template, values),
+    )
+
+
 def _send_email_reminder(document, reminder, *, subject, body, base_url):
     if reminder.status == SalesReminder.Status.SENT:
         return
@@ -250,16 +274,18 @@ def _maintain_document(document, today, base_url):
                 SalesReminder.Kind.QUOTATION_EXPIRY,
                 document.valid_until,
             )
+            subject, body = _reminder_copy(
+                document=document,
+                settings_row=settings_row,
+                subject_template=settings_row.quotation_reminder_subject,
+                body_template=settings_row.quotation_reminder_body,
+                base_url=base_url,
+            )
             _send_email_reminder(
                 document,
                 reminder,
-                subject=f"Quotation {document.document_number} expires soon",
-                body=(
-                    f"Hi {document.recipient_name or 'there'},\n\n"
-                    f"Quotation {document.document_number} expires on "
-                    f"{document.valid_until:%d %b %Y}.\n\n"
-                    f"Review it here: {_public_url(document, base_url)}"
-                ),
+                subject=subject,
+                body=body,
                 base_url=base_url,
             )
 
@@ -290,16 +316,18 @@ def _maintain_document(document, today, base_url):
                 SalesReminder.Kind.AGREEMENT_EXPIRY,
                 document.valid_until,
             )
+            subject, body = _reminder_copy(
+                document=document,
+                settings_row=settings_row,
+                subject_template=settings_row.agreement_reminder_subject,
+                body_template=settings_row.agreement_reminder_body,
+                base_url=base_url,
+            )
             _send_email_reminder(
                 document,
                 reminder,
-                subject=f"Agreement {document.document_number} expires soon",
-                body=(
-                    f"Hi {document.recipient_name or 'there'},\n\n"
-                    f"Agreement {document.document_number} reaches its end/review date on "
-                    f"{document.valid_until:%d %b %Y}.\n\n"
-                    f"View it here: {_public_url(document, base_url)}"
-                ),
+                subject=subject,
+                body=body,
                 base_url=base_url,
             )
 
@@ -320,16 +348,18 @@ def _maintain_document(document, today, base_url):
                 SalesReminder.Kind.INVOICE_DUE,
                 invoice.due_date,
             )
+            subject, body = _reminder_copy(
+                document=invoice,
+                settings_row=settings_row,
+                subject_template=settings_row.invoice_due_subject,
+                body_template=settings_row.invoice_due_body,
+                base_url=base_url,
+            )
             _send_email_reminder(
                 invoice,
                 reminder,
-                subject=f"Invoice {invoice.document_number} is due soon",
-                body=(
-                    f"Hi {invoice.recipient_name or 'there'},\n\n"
-                    f"Invoice {invoice.document_number} is due on "
-                    f"{invoice.due_date:%d %b %Y}.\n\n"
-                    f"View invoice: {_public_url(invoice, base_url)}"
-                ),
+                subject=subject,
+                body=body,
                 base_url=base_url,
             )
         elif days_left < 0 and settings_row.automatic_email_reminders:
@@ -341,16 +371,19 @@ def _maintain_document(document, today, base_url):
                     SalesReminder.Kind.INVOICE_OVERDUE,
                     today,
                 )
+                subject, body = _reminder_copy(
+                    document=invoice,
+                    settings_row=settings_row,
+                    subject_template=settings_row.invoice_overdue_subject,
+                    body_template=settings_row.invoice_overdue_body,
+                    base_url=base_url,
+                    days_overdue=days_overdue,
+                )
                 _send_email_reminder(
                     invoice,
                     reminder,
-                    subject=f"Invoice {invoice.document_number} is overdue",
-                    body=(
-                        f"Hi {invoice.recipient_name or 'there'},\n\n"
-                        f"Invoice {invoice.document_number} is overdue by "
-                        f"{days_overdue} day{'s' if days_overdue != 1 else ''}.\n\n"
-                        f"View invoice: {_public_url(invoice, base_url)}"
-                    ),
+                    subject=subject,
+                    body=body,
                     base_url=base_url,
                 )
 
