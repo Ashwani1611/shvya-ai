@@ -19,6 +19,7 @@
     var path = window.location.pathname || '';
     var pageClass = '';
     if (path.indexOf('/dashboard/sales-desk/') === 0) pageClass = 'sales-desk';
+    else if (path.indexOf('/dashboard/sales/') === 0) pageClass = 'shvya-sales';
     else if (path.indexOf('/dashboard/insights/') === 0) pageClass = 'insights';
     else if (path.indexOf('/dashboard/cadence/') === 0) pageClass = 'cadence';
     else if (path.indexOf('/dashboard/playbooks/') === 0) pageClass = 'playbooks';
