@@ -143,6 +143,41 @@
                     <textarea name="terms" rows="5" placeholder="Payment terms, validity, cancellation policy, legal note or any organisation-specific text...">{{ initial.terms }}</textarea>
                 </label>
             </article>
+
+            <article class="sy-panel sy-form-card">
+                <div class="sy-card-title">
+                    <span>5</span>
+                    <div><h2>Custom format <small class="sy-optional-label">Optional</small></h2><p>Override the selected template only for this document. Leave empty to keep the organisation template.</p></div>
+                </div>
+                {% verbatim %}
+                <div class="sy-merge-chips">
+                    <button type="button" data-document-merge="{{document.title}}">{{document.title}}</button>
+                    <button type="button" data-document-merge="{{document.number}}">{{document.number}}</button>
+                    <button type="button" data-document-merge="{{recipient.name}}">{{recipient.name}}</button>
+                    <button type="button" data-document-merge="{{document.content}}">{{document.content}}</button>
+                    <button type="button" data-document-merge="{{items_table}}">{{items_table}}</button>
+                    <button type="button" data-document-merge="{{document.terms}}">{{document.terms}}</button>
+                </div>
+                {% endverbatim %}
+                <div class="sy-rich-shell">
+                    <div class="sy-rich-toolbar" role="toolbar" aria-label="Document formatting">
+                        <button type="button" data-document-rich-command="bold"><i class="ti ti-bold"></i></button>
+                        <button type="button" data-document-rich-command="italic"><i class="ti ti-italic"></i></button>
+                        <span></span>
+                        <button type="button" data-document-rich-command="formatBlock" data-rich-value="h2"><i class="ti ti-h-2"></i></button>
+                        <button type="button" data-document-rich-command="formatBlock" data-rich-value="p"><i class="ti ti-letter-p"></i></button>
+                        <span></span>
+                        <button type="button" data-document-rich-command="justifyLeft"><i class="ti ti-align-left"></i></button>
+                        <button type="button" data-document-rich-command="justifyCenter"><i class="ti ti-align-center"></i></button>
+                        <button type="button" data-document-rich-command="justifyRight"><i class="ti ti-align-right"></i></button>
+                        <span></span>
+                        <button type="button" data-document-rich-command="insertUnorderedList"><i class="ti ti-list"></i></button>
+                    </div>
+                    <div class="sy-rich-editor sy-document-rich-editor" contenteditable="true" data-document-rich-editor>{% if initial.layout_override %}{{ initial.layout_override|safe }}{% endif %}</div>
+                    <textarea name="layout_override" hidden data-document-layout-source>{{ initial.layout_override }}</textarea>
+                </div>
+                <p class="sy-field-note">If this editor is empty, SHVYA uses the selected template unchanged. Unsafe scripts/attributes are removed server-side.</p>
+            </article>
         </section>
 
         <aside class="sy-builder-side">
