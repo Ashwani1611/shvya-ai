@@ -368,7 +368,7 @@ def shvya_api_view(request):
     )
 
 
-@crm_login_required
+@connect_hub_admin_required
 def integration_detail_view(request, integration_slug):
     integration = INTEGRATION_DETAILS.get(integration_slug)
     if integration is None:
