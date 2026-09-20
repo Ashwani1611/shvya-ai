@@ -1,5 +1,6 @@
 import base64
 import hashlib
+import hmac
 
 from cryptography.fernet import Fernet, InvalidToken
 from django.test import SimpleTestCase, override_settings
@@ -9,6 +10,15 @@ from apps.core.crypto import credential_cipher
 
 def _legacy_cipher(secret):
     digest = hashlib.sha256(secret.encode("utf-8")).digest()
+    return Fernet(base64.urlsafe_b64encode(digest))
+
+
+def _dedicated_cipher(secret, purpose):
+    digest = hmac.new(
+        secret.encode("utf-8"),
+        purpose.encode("utf-8"),
+        hashlib.sha256,
+    ).digest()
     return Fernet(base64.urlsafe_b64encode(digest))
 
 
@@ -58,9 +68,10 @@ class CredentialCipherTests(SimpleTestCase):
         CREDENTIAL_ENCRYPTION_KEY_FALLBACKS=["previous-dedicated-key"],
     )
     def test_previous_dedicated_key_remains_decryptable_during_rotation(self):
-        previous_ciphertext = credential_cipher(
-            purpose="shvya-channels-v1"
-        )._fernets[1].encrypt(b"rotating-token")
+        previous_ciphertext = _dedicated_cipher(
+            "previous-dedicated-key",
+            "shvya-channels-v1",
+        ).encrypt(b"rotating-token")
 
         self.assertEqual(
             credential_cipher(
