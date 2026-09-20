@@ -16,7 +16,9 @@
             bg-white
             rounded-xl
             w-full
-            max-w-md
+            max-w-sm
+            max-h-[85vh]
+            overflow-y-auto
             shadow-xl
         "
     >
@@ -87,7 +89,7 @@
 
             class="
                 p-5
-                space-y-5
+                space-y-3
             "
         >
 
@@ -240,7 +242,7 @@
 
             <div
                 id="call-done-fields-{{ lead.id }}"
-                class="space-y-5"
+                class="space-y-3"
             >
 
                 <!-- Duration -->
@@ -313,7 +315,7 @@
 
                     <textarea
                         name="notes"
-                        rows="4"
+                        rows="2"
 
                         placeholder="What was discussed during the call?"
 

@@ -1,6 +1,7 @@
 from django.urls import path
 from django.views.generic import RedirectView
 
+from apps.followups.touchpoint_views import touchpoints
 from apps.channels import instagram_ui
 from apps.channels.instagram_lead_ui import instagram_link_lead
 from apps.core.coming_soon import coming_soon
@@ -48,12 +49,10 @@ coming_soon_urlpatterns = [
         ),
     ),
 
-    # Cadence Touchpoints remains a future phase. Sequences is implemented
-    # by apps.followups and owns /dashboard/cadence/sequences/.
+    # Shared saved replies for Cadence and the inbox.
     path(
         "cadence/touchpoints/",
-        coming_soon,
-        {"feature": "auto-follow-ups-touchpoints"},
+        touchpoints,
         name="crm-auto-follow-ups-touchpoints",
     ),
     # Preserve existing bookmarks from the older Auto Follow-ups routes.

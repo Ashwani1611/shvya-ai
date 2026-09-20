@@ -174,36 +174,11 @@ def whatsapp_chat_detail_view(request, lead_id):
     lead.initials = _lead_initials(lead)
     lead.stage_color = (lead.stage.color if lead.stage_id else "") or "#9ca3af"
 
-    lead_templates = WhatsAppTemplate.objects.filter(
-        organization=user.organization,
-        account__connection_type=WhatsAppAccount.ConnectionType.API,
-        account__is_active=True,
-        account__status=WhatsAppAccount.Status.CONNECTED,
-        status=WhatsAppTemplate.Status.APPROVED,
-    ).order_by("name")
-
-    if selected_account:
-        lead_templates = lead_templates.filter(account=selected_account)
-
-    from apps.crm.models.call import LeadCall
-    from apps.crm.models.note import LeadNote
-    from apps.crm.models.stage import Stage
-
-    from apps.ai_engagement.services.intent_score import intent_score_for_lead
-
     context = _chat_sidebar_context(request, user)
     context.update(
         {
             "active_lead": lead,
-            "intent_score": intent_score_for_lead(lead=lead),
             "chat_messages": chat_messages,
-            "lead_templates": lead_templates,
-            "lead_calls": LeadCall.objects.filter(lead=lead).order_by("-called_at")[:10],
-            "lead_notes": LeadNote.objects.filter(lead=lead).order_by("-created_at")[:5],
-            "lead_stages": Stage.objects.filter(
-                pipeline=lead.pipeline,
-                is_active=True,
-            ).order_by("display_order"),
         }
     )
     response = render(request, "channels/whatsapp_chat_list.html", context)

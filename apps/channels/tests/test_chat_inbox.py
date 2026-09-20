@@ -79,14 +79,10 @@ class WhatsAppChatInboxTests(TestCase):
         lead.save(update_fields=["attributes", "updated_at"])
         self.make_message(lead, body="I need this within 30 days")
 
-        response = self.client.get(reverse("whatsapp-chat-detail", args=[lead.pk]))
-
+        response = self.client.get(reverse("chat-contact-panel", args=[lead.pk]))
         self.assertContains(response, "Intent Score")
-        self.assertContains(response, "7")
-        self.assertContains(response, "Engagement")
-        self.assertContains(response, "Urgency / Timeline")
-        self.assertContains(response, "Clarity of Need")
-        self.assertContains(response, "Commitment Signal")
+        self.assertContains(response, "7/10")
+        self.assertLess(response.content.index(b'Email'), response.content.index(b'Intent Score'))
 
     def test_tabs_use_latest_message_and_unread_count(self):
         waiting = self.make_lead("Waiting", "+919000000002")

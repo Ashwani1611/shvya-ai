@@ -1,0 +1,24 @@
+{% extends 'base.html' %}{% load static %}
+{% block title %}Touchpoints · SHVYA AI{% endblock %}
+{% block header %}Touchpoints{% endblock %}
+{% block content %}
+<link rel="stylesheet" href="{% static 'css/contact_panel.css' %}">
+<div class="touchpoint-workspace">
+  <header class="touchpoint-top"><div><p class="contact-eyebrow">CADENCE</p><h1>A thoughtful reply. In a moment.</h1><p>Organize the replies your team reaches for every day.</p></div><button type="button" class="contact-primary" data-new-category>+ New category</button></header>
+  <div class="touchpoint-layout"><aside class="touchpoint-nav"><button type="button" data-filter-category="" aria-current="true">All Touchpoints</button>{% for category in categories %}<button type="button" data-filter-category="{{ category.id }}">{{ category.name }} <span>({{ category.replies.count }})</span></button>{% endfor %}</aside>
+  <section><div class="touchpoint-toolbar"><input type="search" id="touchpoint-search" placeholder="Search quick replies" aria-label="Search quick replies"><button type="button" class="contact-primary" data-new-reply>+ New reply</button></div>
+    <div id="touchpoint-category-actions" class="touchpoint-actions" hidden><button type="button" class="contact-link" data-edit-category>Rename category</button><button type="button" class="contact-link touchpoint-delete" data-delete-category>Delete category</button></div>
+    <p id="touchpoint-status" role="status" class="contact-help"></p>
+    <div class="touchpoint-grid">{% for category in categories %}{% for reply in category.replies.all %}<article class="contact-card" data-managed-reply="{{ reply.id }}" data-category="{{ category.id }}"><p class="contact-eyebrow">{{ category.name }}</p><h3>{{ reply.title }}</h3><p class="contact-preserve" data-body>{{ reply.body }}</p><div class="touchpoint-actions"><button type="button" class="contact-link" data-edit-reply>Edit reply</button><button type="button" class="contact-link touchpoint-delete" data-delete-reply>Delete</button></div></article>{% endfor %}{% endfor %}</div><p id="touchpoint-empty" class="contact-empty" hidden>No replies here yet. Add a reply to get started.</p>
+  </section></div>
+  <dialog id="touchpoint-dialog"><form id="touchpoint-form">{% csrf_token %}<h2 class="text-xl font-semibold" id="touchpoint-dialog-title">New reply</h2><input type="hidden" name="action"><input type="hidden" name="reply_id"><input type="hidden" name="category_id" data-category-id>
+    <label data-category-field><span>Category name</span><input name="name" maxlength="100"></label>
+    <label data-reply-field><span>Category</span><select data-category-select>{% for category in categories %}<option value="{{ category.id }}">{{ category.name }}</option>{% endfor %}</select></label>
+    <label data-reply-field><span>Reply title</span><input name="title" maxlength="150"></label>
+    <label data-reply-field><span>Message</span><textarea name="body" maxlength="1000" rows="5" placeholder="Write a helpful reply…"></textarea></label>
+    <p role="alert" id="touchpoint-form-error" class="touchpoint-delete"></p><div class="touchpoint-actions"><button type="button" class="contact-link" data-close-dialog>Cancel</button><button type="submit" class="contact-primary">Save</button></div>
+  </form></dialog>
+  <dialog id="touchpoint-delete-dialog"><form id="touchpoint-delete-form">{% csrf_token %}<h2 class="text-xl font-semibold">Delete this Touchpoint?</h2><p class="contact-help" id="touchpoint-delete-description"></p><p role="alert" id="touchpoint-delete-error"></p><div class="touchpoint-actions"><button type="button" class="contact-link" data-close-dialog>Cancel</button><button type="submit" class="contact-primary">Delete</button></div></form></dialog>
+</div>
+<script src="{% static 'js/touchpoints.js' %}" defer></script>
+{% endblock %}

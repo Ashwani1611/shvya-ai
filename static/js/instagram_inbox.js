@@ -141,7 +141,20 @@
     surface.id = active ? 'thread' : 'ig-thread';
     byId('ig-empty').hidden = !!active;
     byId('ig-chat-name').textContent = active?.participant_name || 'Instagram';
-    byId('ig-details-name').textContent = active?.participant_name || 'Instagram inbox';
+    const contactHost = shell.querySelector('[data-contact-host]');
+    if (contactHost && contactHost.dataset.sidebarUrl !== (active?.sidebar_url || '')) {
+      contactHost._panelRequest?.abort();
+      contactHost.dataset.sidebarUrl = active?.sidebar_url || '';
+      delete contactHost.dataset.loadedUrl;
+      if (active?.sidebar_url) window.ShvyaContact?.load(contactHost);
+      else {
+        contactHost.replaceChildren();
+        const message = document.createElement('p'); message.className = 'contact-empty';
+        message.textContent = 'Link this conversation to a CRM lead to manage its details.';
+        contactHost.appendChild(message);
+        if (active?.lead_url) { const link = document.createElement('a'); link.className = 'contact-link p-5'; link.href = active.lead_url; link.textContent = 'Link to a CRM lead'; contactHost.appendChild(link); }
+      }
+    }
     byId('ig-chat-username').textContent = active ? '@' + active.participant_username : '';
     if (active) {
       form.action = active.send_url;
@@ -198,6 +211,7 @@
     }
   }
   async function navigate(path, push = true) {
+    if (window.ShvyaContact && !await window.ShvyaContact.flush()) { sendError('Contact changes could not be saved. Retry before switching chats.'); return; }
     generation += 1;
     navigationRunning = true;
     const epoch = generation;

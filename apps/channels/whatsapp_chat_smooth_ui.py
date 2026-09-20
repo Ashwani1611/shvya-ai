@@ -15,6 +15,8 @@ _SMOOTH_INBOX_SCRIPT = b"""
   let chatSocket = null;
   let chatSocketPath = '';
   let chatReconnect = null;
+  let navigationVersion = 0;
+  let navigationRequest = null;
 
   // Replacement shells do not execute inline scripts. Delegate context tabs
   // from the persistent document, including navigation from the empty inbox.
@@ -91,11 +93,23 @@ _SMOOTH_INBOX_SCRIPT = b"""
       return;
     }
 
+    const version = ++navigationVersion;
+    navigationRequest?.abort();
+    if (window.ShvyaContact && !await window.ShvyaContact.flush()) return;
+    if (version !== navigationVersion) return;
+    const request = new AbortController(); navigationRequest = request;
     const target = withCurrentFilters(rawUrl, preserveFilters);
-    showLoading(shell, true);
+    const sameChat = target.pathname === window.location.pathname && target.search === window.location.search;
+    const oldThread = shell.querySelector('#thread');
+    const threadTop = oldThread?.scrollTop || 0;
+    const atBottom = !oldThread || oldThread.scrollHeight - oldThread.scrollTop - oldThread.clientHeight < 80;
+    const oldPanel = sameChat ? shell.querySelector('[data-contact-host]') : null;
+    const focused = sameChat ? document.activeElement : null;
+    if (!sameChat) showLoading(shell, true);
     try {
       const response = await fetch(target.toString(), {
         credentials: 'same-origin',
+        signal: request.signal,
         headers: {'X-Requested-With': 'XMLHttpRequest'}
       });
       if (!response.ok) throw new Error('Unable to load WhatsApp chats');
@@ -104,7 +118,9 @@ _SMOOTH_INBOX_SCRIPT = b"""
       const nextShell = shellFromDocument(doc);
       if (!nextShell) throw new Error('WhatsApp inbox shell missing');
 
+      if (version !== navigationVersion) return;
       shell.innerHTML = nextShell.innerHTML;
+      if (oldPanel) shell.querySelector('[data-contact-host]')?.replaceWith(oldPanel);
       // Update the browser URL before binding the replacement shell. The socket
       // selector reads window.location to decide whether it should subscribe to
       // the org inbox or the active lead thread. Previously bindShell() ran
@@ -114,11 +130,15 @@ _SMOOTH_INBOX_SCRIPT = b"""
       decorateShell(shell);
       if (window.htmx) window.htmx.process(shell);
       bindShell(shell);
+      document.dispatchEvent(new Event('shvya:contact-refresh'));
+      if (sameChat && !atBottom && shell.querySelector('#thread')) shell.querySelector('#thread').scrollTop = threadTop;
+      if (focused?.isConnected) focused.focus({preventScroll:true});
     } catch (error) {
+      if (error.name === 'AbortError' || version !== navigationVersion) return;
       window.location.assign(target.toString());
       return;
     } finally {
-      showLoading(shell, false);
+      if (version === navigationVersion) showLoading(shell, false);
     }
   }
 
@@ -196,7 +216,7 @@ _SMOOTH_INBOX_SCRIPT = b"""
 
     pane.addEventListener('click', function (event) {
       const anchor = event.target.closest('a[href]');
-      if (!anchor) return;
+      if (!anchor || event.ctrlKey || event.metaKey || event.shiftKey || event.button !== 0) return;
       const target = new URL(anchor.href, window.location.origin);
       if (target.origin !== window.location.origin || target.pathname.indexOf('/dashboard/whatsapp/chats/') !== 0) return;
       event.preventDefault();
@@ -229,6 +249,8 @@ _SMOOTH_INBOX_SCRIPT = b"""
     connectChatSocket();
   }
 
+  function shellLoading() { return document.getElementById('wa-web-shell')?.style.pointerEvents === 'none'; }
+
   function connectChatSocket() {
     const match = window.location.pathname.match(/\/dashboard\/whatsapp\/chats\/([0-9a-f-]+)\//i);
     const nextPath = match ? '/ws/whatsapp/' + match[1] + '/' : '/ws/whatsapp/inbox/';
@@ -239,6 +261,7 @@ _SMOOTH_INBOX_SCRIPT = b"""
     try {
       chatSocket = new WebSocket(protocol + '://' + window.location.host + nextPath);
       chatSocket.onmessage = function () {
+        if (navigationRequest && !navigationRequest.signal.aborted && shellLoading()) return;
         // A live message must not discard an unsaved note draft.
         if (document.querySelector('[data-note-editor]:not([hidden])')) return;
         // The server remains the source of truth for message/media rendering.

@@ -51,6 +51,13 @@ def whatsapp_send_template_view(request, lead_id):
             status=404,
         )
 
+    from .contact_panel_ui import linked_api
+    linked_account = linked_api(lead)
+    requested_account = request.POST.get("account") or request.GET.get("account")
+    if (not linked_account or template.account_id != linked_account.id
+            or (requested_account and requested_account != str(linked_account.id))):
+        return JsonResponse({"error": "Choose a template for this pipeline's linked WhatsApp number."}, status=400)
+
     try:
         message = queue_template_message(
             template=template,
