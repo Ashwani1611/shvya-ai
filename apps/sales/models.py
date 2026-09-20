@@ -27,7 +27,15 @@ class SalesTemplate(models.Model):
     number_prefix = models.CharField(max_length=12, blank=True)
 
     logo_url = models.URLField(max_length=2048, blank=True)
+    logo_file = models.FileField(
+        upload_to="sales/template-assets/logos/",
+        blank=True,
+    )
     signature_url = models.URLField(max_length=2048, blank=True)
+    signature_file = models.FileField(
+        upload_to="sales/template-assets/signatures/",
+        blank=True,
+    )
     accent_color = models.CharField(
         max_length=7,
         default="#0071e3",
