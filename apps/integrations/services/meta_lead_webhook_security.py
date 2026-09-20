@@ -54,17 +54,4 @@ def _signature_matches_secret(request, secret: str) -> bool:
         ).hexdigest()
         return hmac.compare_digest(signature_256, expected)
 
-    # Retain legacy SHA-1 compatibility only for deployments still receiving
-    # that header. Missing signatures still fail closed.
-    signature_sha1 = str(
-        request.headers.get("X-Hub-Signature", "") or ""
-    ).strip()
-    if signature_sha1:
-        expected = "sha1=" + hmac.new(
-            secret.encode("utf-8"),
-            request.body,
-            hashlib.sha1,
-        ).hexdigest()
-        return hmac.compare_digest(signature_sha1, expected)
-
     return False
