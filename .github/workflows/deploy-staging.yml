@@ -25,7 +25,7 @@ jobs:
 
     steps:
       - name: Deploy staging over SSH
-        uses: appleboy/ssh-action@v1.2.2
+        uses: appleboy/ssh-action@2ead5e36573f08b82fbfce1504f1a4b05a647c6f
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
@@ -93,6 +93,8 @@ jobs:
             fi
 
             ensure_env_secret SECRET_KEY
+            ensure_env_secret JWT_SECRET
+            ensure_env_secret CREDENTIAL_ENCRYPTION_KEY
             ensure_env_secret DB_PASSWORD
             ensure_env_secret META_VERIFY_TOKEN
             ensure_env_secret WHATSAPP_WEB_GATEWAY_TOKEN
