@@ -96,6 +96,24 @@ class BookingTests(TestCase):
             self.assertContains(confirmation, "Your request is saved.")
             self.assertContains(confirmation, str(booking.pk))
 
+    def test_pricing_and_footer_copy(self):
+        from django.test import override_settings
+
+        with override_settings(ALLOWED_HOSTS=["testserver"]):
+            pricing = self.client.get("/pricing/")
+            self.assertContains(pricing, "₹2,999")
+            self.assertContains(pricing, "5,000 AI Coins included")
+            self.assertContains(pricing, "Ticket-based support")
+            self.assertContains(pricing, "Above plan prices include one seat.")
+            self.assertContains(pricing, "[One seat = one user login]")
+            self.assertContains(pricing, "Additional seat: ₹2,999 per seat/month.")
+            self.assertNotContains(pricing, "₹3,000")
+            self.assertNotContains(pricing, "Email-based support")
+
+            home = self.client.get("/")
+            self.assertContains(home, "© 2026 Shvya AI")
+            self.assertNotContains(home, "Tecjnanam Academy LLP")
+
     def test_marketing_pages_share_dark_design_and_real_booking_link(self):
         from django.test import override_settings
         with override_settings(ALLOWED_HOSTS=["testserver"]):
