@@ -209,6 +209,8 @@ def post_webhook_json(target, *, payload, headers, timeout):
         if len(raw) > MAX_WEBHOOK_RESPONSE_BYTES:
             raw = raw[:MAX_WEBHOOK_RESPONSE_BYTES]
         return response.status, raw.decode("utf-8", errors="replace")
+    except (OSError, ssl.SSLError, http.client.HTTPException) as exc:
+        raise RuntimeError("Webhook connection could not be established safely.") from exc
     finally:
         if response is not None:
             response.close()
