@@ -92,6 +92,7 @@ class Migration(migrations.Migration):
                 ("created_by", models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name="sales_documents_created", to=settings.AUTH_USER_MODEL)),
                 ("lead", models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name="sales_documents", to="crm.lead")),
                 ("organization", models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name="sales_documents", to="organizations.organization")),
+                ("source_document", models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name="derived_documents", to="sales.salesdocument")),
                 ("template", models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name="documents", to="sales.salestemplate")),
             ],
             options={"ordering": ["-created_at"]},
