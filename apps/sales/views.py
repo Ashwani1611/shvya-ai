@@ -2,6 +2,7 @@ import json
 
 from django.contrib import messages
 from django.core.exceptions import ValidationError
+from django.db import transaction
 from django.db.models import Count, Q
 from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
@@ -28,6 +29,7 @@ from apps.sales.services import (
     ensure_default_templates,
     next_document_number,
     public_url_for,
+    refresh_whatsapp_delivery_statuses,
     sanitize_layout_html,
     snapshot_document_presentation,
     validate_brand_asset,
@@ -280,6 +282,7 @@ def sales_document_detail_view(request, document_id):
     )
     public_url = public_url_for(document, request)
     drafts = delivery_drafts(document, public_url=public_url)
+    refresh_whatsapp_delivery_statuses(document)
 
     email_configuration = EmailConfiguration.objects.filter(
         organization=organization,
@@ -515,8 +518,12 @@ def public_document_view(request, token):
 
 
 @require_POST
+@transaction.atomic
 def public_document_action_view(request, token):
-    document = get_object_or_404(SalesDocument, public_token=token)
+    document = get_object_or_404(
+        SalesDocument.objects.select_for_update(),
+        public_token=token,
+    )
     if document.status == SalesDocument.Status.DRAFT:
         raise Http404
 
