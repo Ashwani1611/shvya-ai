@@ -1,5 +1,7 @@
 # CRM bulk lead actions
 
+> **Implementation baseline:** verified 2026-09-20 against production `main` at `7fb74946b35f189a66f92d6ffd0677909dca4c9f`. Runtime code, migrations and tests remain authoritative when later commits change behavior.
+
 Select individual cards or all matching leads in the current stage. The selection toolbar appears only while leads are selected. Stage switches and table replacements clear selection; exports and cancelled dialogs retain it. All leads matching the current stage and filters are rendered by the existing dashboard, so select-all includes the complete matching stage rather than a page-sized subset.
 
 Update Leads supports pipeline/stage movement and assignment or clearing of Auto Followup sequences. Updates are opt-in; untouched fields remain unchanged. The existing transition and follow-up services preserve history, stage timing, trigger signals, sender validation, and scheduling. Assigned sequence names now appear on lead cards.
@@ -36,3 +38,20 @@ Local validation: 31 tests and 11 subtests passed on PostgreSQL 18. The local Wi
 Browser checks against a seeded local Django dashboard covered 18 assertions: empty/single/all/partial selection, opt-in updates, destination-stage reset, attribute selection, actual XLSX download, safe cancellation, stage/search selection reset, sequence assignment and clearing, visible sequence names, stage movement, confirmed deletion, mobile dialog width, and absence of JavaScript errors. Desktop and 390px mobile layouts were visually inspected. The existing dashboard query-count regression test remains at seven queries for both one and multiple leads.
 
 No database migration or new dependency is required. Deploy the updated Django files/templates and collect the new `static/crm/bulk.js` and `static/crm/bulk.css` assets using the existing deployment process.
+
+
+## Bulk Campaign handoff
+
+The CRM bulk-selection toolbar may expose **Bulk Campaign** only when the current pipeline has an eligible connected Meta API-family WhatsApp sender (Cloud API or Business App Coexistence). Hosted linked-device accounts are not silently substituted for this action.
+
+The campaign flow keeps the selected lead identity/pipeline scope, then creates a frozen delivery audience through the Bulk Campaign service. Campaign import/review is separate from CRM lead creation until the user confirms the reviewed audience.
+
+Recipient/history actions follow the same source of truth:
+
+- **WhatsApp / View chat** resolves the selected lead through the WhatsApp account linked to that lead's current pipeline and opens that exact conversation.
+- **View in CRM** routes to the exact CRM lead rather than a generic pipeline view.
+- **Retry** creates a bounded retry for the failed recipient using the same campaign/template snapshot; it does not silently choose a different template.
+- Bulk **Retry selected** and **Export leads** controls appear only when recipient rows are selected.
+- Failed-template actions in Insights use the same linked-chat / exact-lead routing contract.
+
+See the campaign tables in [`../database.md`](../database.md) for the frozen plan, delivery, attempt, provider-event and suppression records.

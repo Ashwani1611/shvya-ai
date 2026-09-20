@@ -1,5 +1,9 @@
 # Help & Support: response-required sidebar indicator
 
+> **Implementation baseline:** verified 2026-09-20 against production `main` at `7fb74946b35f189a66f92d6ffd0677909dca4c9f`. Runtime code, migrations and tests remain authoritative when later commits change behavior.
+
+This indicator is one behavior inside the broader [Help & Support / Shvya-Ops portal](./support-portal.md).
+
 The authenticated organization dashboard highlights Help & Support with a continuous,
 gentle blue pulse and a ticket-count badge when Shvya-Ops is waiting for a response.
 This is not an unread notification: viewing a ticket, clicking the link, changing pages,

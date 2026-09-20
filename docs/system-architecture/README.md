@@ -2,7 +2,7 @@
 
 This folder is the end-to-end runtime architecture reference for SHVYA AI. It explains how requests enter the application, where data moves, how leads are created and routed, how AI decisions are produced and validated, how RAG knowledge is ingested and retrieved, and how background jobs and realtime updates connect the system.
 
-> **Implementation snapshot:** traced against `staging` at `88a71f8a02c911c5c963c9f0d8235ff60684ab17` on 2026-09-16. Source code and Django migrations remain the executable source of truth. Update these documents when the runtime contract changes.
+> **Implementation snapshot:** verified against production `main` at `7fb74946b35f189a66f92d6ffd0677909dca4c9f` on 2026-09-20. Source code, Django models/migrations and tests remain the executable source of truth.
 
 ## Documentation map
 
@@ -17,7 +17,7 @@ This folder is the end-to-end runtime architecture reference for SHVYA AI. It ex
 | [`07-source-code-map.md`](./07-source-code-map.md) | Responsibility-to-file map for developers and reviewers. |
 | [`08-security-idempotency-failure-model.md`](./08-security-idempotency-failure-model.md) | Tenant isolation, authentication boundaries, idempotency keys, locks, retries and fail-safe behavior. |
 
-The database structure itself is documented separately in [`../../database.md`](../../database.md).
+The database structure itself is documented separately in [`../../database.md`](../../database.md). Support portal behavior is documented in [`../support-portal.md`](../support-portal.md), AI Playbook authority in [`../ai-playbook.md`](../ai-playbook.md), and Workflows execution in [`../workflows-runtime-contract.md`](../workflows-runtime-contract.md).
 
 ---
 
@@ -211,3 +211,16 @@ When changing a flow, follow the path in this order:
 8. Use `08-security-idempotency-failure-model.md` before changing retries, locks, webhooks or authentication.
 
 When the architecture changes, update the relevant files in this folder in the same pull request.
+
+## Current architecture additions
+
+The production baseline now also includes:
+
+- canonical organization `OrgInfo.ai_playbook` with backend-owned qualification execution;
+- `AITrace`, `AIActionReceipt` and `LeadSignal` for bounded observability, CRM-action idempotency and explainable source-backed signals;
+- strict lead-pipeline → WhatsApp-account affinity across AI, CRM chat, Cadence, Workflows and Bulk Campaigns;
+- Bulk Campaign preparation/delivery/attempt/provider-event/suppression ledgers;
+- Hosted live LID phone resolution, chat read-boundary persistence and session reconciliation;
+- Instagram conversation → CRM lead linkage;
+- Help & Support + Shvya-Ops ticketing with private attachments and durable mail outbox;
+- read-only organization-scoped diagnostic MCP/OAuth access with hashed token material and safe audit metadata.

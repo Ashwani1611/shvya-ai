@@ -1,5 +1,7 @@
 # Organization AI Playbook
 
+> **Implementation baseline:** verified 2026-09-20 against production `main` at `7fb74946b35f189a66f92d6ffd0677909dca4c9f`. Runtime code, migrations and tests remain authoritative when later commits change behavior.
+
 AI Brain has one organization-owned operating specification: `OrgInfo.ai_playbook`.
 The dashboard and configuration API no longer accept the separate qualification
 requirements or engagement instructions fields. AI Sandbox retains its existing
@@ -72,12 +74,16 @@ organization-owned records, never from invented model identifiers.
 
 ## Runtime authority
 
+- Direct customer questions about the product, features, pricing, capabilities, policy or other requested information are answered before qualification continues. A greeting prefixed to a substantive question does not make it a greeting-only turn.
+- A short conversational “yes/no” is interpreted as a qualification answer only when the immediately preceding question supports that meaning. It must not consume an unrelated free-form question.
+- Explicit compound answers can satisfy more than one option/fact when the customer's text clearly states them; ambiguous single-letter/number replies remain bound to the active authored question.
 - Qualification questions run only in New Lead / New Leads.
 - Only satisfied Playbook qualification criteria authorize automatic movement
   to Qualified. An intent score or an enthusiastic response is not authority.
 - Other stages continue the conversation and use explicitly authored CRM rules.
 - Attribute values require inbound evidence and a Playbook mapping. Attribute
   names, types, dropdown values and descriptions resolve against the CRM.
+- Outside authored qualification mappings, the AI may propose a new CRM attribute only through the validated dynamic `create_if_missing` contract when the customer explicitly supplied a durable non-sensitive fact, no equivalent definition exists, and the requested type/name/key passes organization/confidentiality validation.
 - Stage and pipeline targets must be active, belong to the organization and be
   mutually consistent. Compound routing conditions must all be supported.
 - Reminders require explicit authored instructions and valid timing. There is
@@ -90,7 +96,7 @@ backend. For eligible completed collections, the existing background qualifier
 can evaluate remaining natural-language conditions using exact inbound evidence.
 Every clause needs a verdict; successful semantic judgments require verified
 source messages. A signed result binds the organization, lead, Playbook, answers,
-current stage/pipeline and latest inbound message. Changed or stale state rejects
+current stage/pipeline and latest inbound message. The final qualification answer is executed through the backend qualification contract so the accepted answer, mapped CRM write, completion decision, criteria check, permitted stage action, reconciliation and response are one controlled flow rather than independent best-effort steps. Changed or stale state rejects
 that result. Model calls occur outside database mutation transactions.
 
 ## Internal and customer data
@@ -125,7 +131,7 @@ an AI charge.
 
 ## Migration and deployment
 
-Migration 0018 copies both former authored sources into the Playbook before
+Migration `0018_orginfo_ai_playbook` copies both former authored sources into the Playbook before
 removing their columns. Existing sectioned instructions are retained. Missing
 qualification criteria are not invented; AI Brain displays guidance when
 questions exist without criteria. Review these organizations' criteria before

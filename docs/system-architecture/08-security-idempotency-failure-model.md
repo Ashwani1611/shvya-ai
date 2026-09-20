@@ -1,6 +1,6 @@
 # 08. Security, Idempotency and Failure Model
 
-> Snapshot: `staging` traced from `88a71f8a02c911c5c963c9f0d8235ff60684ab17`.
+> **Implementation snapshot:** verified against production `main` at `7fb74946b35f189a66f92d6ffd0677909dca4c9f` on 2026-09-20. Source code, Django models/migrations and tests remain the executable source of truth.
 
 This document explains the defensive architecture around tenant isolation, authentication, secret storage, provider verification, retries, duplicate events, concurrency and partial failures.
 
@@ -764,3 +764,25 @@ Before merging a new endpoint/task/integration, answer:
 - Is sensitive data absent from broad organization-wide realtime payloads?
 
 If these questions do not have concrete answers, the path is not production-complete yet.
+
+## Current security/idempotency additions
+
+### AI CRM actions
+
+`AIActionReceipt` provides database uniqueness for source-bound CRM actions. The lead row is locked during canonical execution, and the receipt/action commit together. Failed transactions do not leave a successful receipt.
+
+### Pipeline-bound WhatsApp identity
+
+A connected WhatsApp account is not sufficient by itself. Outbound operations must prove that the account is the eligible sender linked to the lead's current pipeline. A mismatch fails closed rather than falling back to another number.
+
+### Bulk Campaigns
+
+Frozen `CampaignDelivery` rows prevent mutable CRM changes from rewriting an already prepared audience. Delivery+attempt uniqueness, provider-event digests, sender gates and organization+phone suppressions protect retries and opt-outs. Unknown provider outcomes are marked uncertain/review instead of blind replay.
+
+### Support
+
+Support attachment storage is private and downloads are authorized. Ticket/reply submission keys provide browser retry idempotency. Share tokens are hashed, expiring and revocable. Cross-organization requester/pipeline/merge relationships are rejected.
+
+### Diagnostic MCP/OAuth
+
+Diagnostic access requires the dedicated API-key capability. OAuth authorization/access/refresh tokens are stored as hashes, and access logs keep only safe metadata plus an argument fingerprint. Diagnostic tools are read-only and tenant scoped; they must never become an alternate CRM mutation API.

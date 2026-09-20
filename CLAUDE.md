@@ -6,6 +6,8 @@ SHVYA AI is a multi-tenant AI sales engagement and CRM platform. The CRM is the 
 
 For project setup and product overview, see [`README.md`](./README.md). For feature-specific operational documentation, see [`docs/`](./docs/).
 
+> **Implementation baseline:** verified 2026-09-20 against production `main` at `7fb74946b35f189a66f92d6ffd0677909dca4c9f`. Code, migrations and tests remain authoritative when a later commit changes behavior.
+
 ---
 
 ## 1. Source of truth
@@ -249,6 +251,13 @@ Rules:
 8. Keep prompt/context growth bounded. Use existing summary and retrieval mechanisms rather than sending unbounded conversation history.
 9. Preserve AI credit accounting and usage measurement when changing model execution paths.
 10. Do not fabricate an answer when grounding rules require a fallback, clarification, or no-answer path.
+11. `OrgInfo.ai_playbook` is the canonical organization-owned AI operating specification. Do not recreate the removed split `qualification_requirements` / `engagement_instructions` contract.
+12. Direct customer questions (product, feature, price, policy, capability, or another explicit information request) take precedence over an active qualification prompt. Answer the question first, then continue with the next unresolved Playbook question when appropriate.
+13. Qualification questions run only in the New Lead/New Leads stage family. A greeting, generic acknowledgement, unrelated number, or conversational yes/no must not be misclassified as an answer unless the immediately preceding question makes that interpretation valid.
+14. Qualification completion is backend-owned: persist validated evidence/attribute changes, evaluate authored Playbook criteria, then perform any permitted stage/pipeline action. Intent score, tone, enthusiasm, or an LLM suggestion is not stage authority.
+15. Safe dynamic attributes may be created only through the existing validated `create_if_missing` contract, only from explicit inbound evidence, only for supported non-sensitive field types, and only when no equivalent organization attribute already exists.
+16. Source-bound CRM mutations must preserve `AIActionReceipt` idempotency. `AITrace` is observability and `LeadSignal` is an explainable source-backed signal; neither is a substitute for qualification state or CRM truth.
+17. Customer-facing context must exclude credentials, prompts, private notes, internal IDs, billing state, hidden scores, execution plans, and other confidential operational data.
 
 Knowledge Base semantic retrieval uses PostgreSQL + pgvector. Do not replace vector storage with an unrelated service without an explicit architecture decision.
 
@@ -293,6 +302,16 @@ Rules:
 
 Do not "fix" a Hosted problem by routing it through Cloud API or vice versa.
 
+### Pipeline-bound sender invariant
+
+A lead may be messaged only through the connected WhatsApp account linked to the lead's **current pipeline**. This applies to API, Coexistence, Hosted, CRM chat links, follow-ups, AI replies, Workflows and Bulk Campaigns.
+
+- Never silently fall back to a different organization's or pipeline's sender.
+- If the pipeline has no linked/eligible WhatsApp account, block or surface a configuration error instead of sending from another number.
+- Inbound routing resolves the receiving business number/account first; existing leads keep their CRM pipeline unless an explicit validated transition changes it.
+- Hosted live contacts that arrive with LID identifiers must resolve the usable phone identity before automatic lead creation. Historical sync is not a new live lead/message trigger.
+- Links such as "View chat" must resolve the same pipeline-bound account and conversation rather than whichever WhatsApp account was opened most recently.
+
 ---
 
 ## 12. Meta and Instagram integrations
@@ -327,7 +346,33 @@ See:
 
 ---
 
-## 13. WebSockets and realtime delivery
+## 13. Support portal and read-only diagnostics
+
+### Help & Support / Shvya-Ops
+
+The customer portal lives under `/dashboard/support-portal/`; the platform staff Client's Portal lives under `/superadmin/client-portal/`.
+
+- Ticket organization/requester/pipeline context is server-derived and tenant validated.
+- Customer attachments use private storage and authorized download paths; never publish support uploads as general media.
+- Public staff/customer replies, internal notes, merge/share/close operations and email intake must go through the established support service/policy boundaries.
+- The dashboard response-required indicator is derived from committed public ticket history. Do not add a competing browser/localStorage dismissal or duplicated mutable "unread" flag.
+- Support email delivery uses a durable outbox. Raw mailbox credentials and raw inbound email bodies do not belong in diagnostic/audit rows.
+
+### Read-only diagnostic MCP/OAuth
+
+SHVYA exposes an organization-scoped diagnostic connector for read-only troubleshooting.
+
+- Access requires an organization API key with `can_read_diagnostics=True` or an OAuth token bound to such a key.
+- Diagnostic OAuth authorization/access/refresh secrets are stored only as hashes where the original is not required.
+- Tools must stay read-only and tenant scoped. Do not add mutation capability through the diagnostic connector.
+- Audit rows store metadata and request fingerprints, not raw conversation text, lead attributes, credentials, tokens, provider payloads, or tool arguments.
+- Revocation/expiry and organization/API-key scope must be rechecked at access time.
+
+See `docs/support-portal.md` for support operations and the integration code under `apps/integrations/diagnostic_*.py` for the diagnostic authorization boundary.
+
+---
+
+## 14. WebSockets and realtime delivery
 
 Production uses separate WSGI and ASGI processes.
 
@@ -341,7 +386,7 @@ When changing realtime behavior, verify both the HTTP path and the ASGI route. D
 
 ---
 
-## 14. Database and migration rules
+## 15. Database and migration rules
 
 Every model/schema change requires a migration.
 
@@ -368,7 +413,7 @@ If a migration depends on PostgreSQL extensions, make that dependency explicit a
 
 ---
 
-## 15. API rules
+## 16. API rules
 
 Public/application APIs are versioned under `/api/v1/` where applicable.
 
@@ -390,7 +435,7 @@ When changing a documented API contract, update tests and relevant documentation
 
 ---
 
-## 16. Frontend rules
+## 17. Frontend rules
 
 The application frontend remains server rendered:
 
@@ -413,7 +458,7 @@ Marketing pages may use richer static JavaScript/CSS, but they must not create a
 
 ---
 
-## 17. Performance rules
+## 18. Performance rules
 
 Performance fixes must be based on actual query/workload behavior.
 
@@ -433,7 +478,7 @@ A change is not complete if it fixes correctness but introduces an obvious per-r
 
 ---
 
-## 18. Security rules
+## 19. Security rules
 
 Never commit or expose secrets.
 
@@ -465,7 +510,7 @@ Additional rules:
 
 ---
 
-## 19. Error handling and observability
+## 20. Error handling and observability
 
 Errors should be actionable without leaking sensitive information.
 
@@ -486,7 +531,7 @@ Health endpoints currently include:
 
 ---
 
-## 20. Testing requirements
+## 21. Testing requirements
 
 A bug fix should include a regression test whenever the behavior can reasonably be automated.
 
@@ -515,7 +560,7 @@ When changing an external provider integration, mock the network boundary in uni
 
 ---
 
-## 21. Docker and runtime rules
+## 22. Docker and runtime rules
 
 Production and staging are separate environments.
 
@@ -547,7 +592,7 @@ Do not make manual production-container edits that are not represented in Git.
 
 ---
 
-## 22. Deployment and branch workflow
+## 23. Deployment and branch workflow
 
 The normal promotion path is:
 
@@ -576,6 +621,7 @@ Rules:
 7. Before a staging → main promotion, verify the diff so unrelated staging work is not accidentally shipped.
 8. Production deployment is driven by the successful `main` CI workflow.
 9. Staging deployment is driven by successful `staging` CI or its explicit workflow dispatch path.
+10. When the deployment workflow performs schema migrations, drain/stop application workers that can execute schema-dependent work before migration, then bring web/workers back on the same tested release after the schema is ready.
 
 Do not bypass CI for convenience.
 
@@ -583,7 +629,7 @@ Deployment workflows intentionally deploy the validated Git commit. Do not repla
 
 ---
 
-## 23. Change discipline
+## 24. Change discipline
 
 Keep changes focused.
 
@@ -600,7 +646,7 @@ Prefer one coherent implementation over multiple fallback implementations that d
 
 ---
 
-## 24. Prohibited shortcuts
+## 25. Prohibited shortcuts
 
 Do not:
 
@@ -621,7 +667,7 @@ Do not:
 
 ---
 
-## 25. Required pre-change checklist
+## 26. Required pre-change checklist
 
 Before editing code:
 
@@ -638,7 +684,7 @@ If any of these are unclear, inspect the code rather than guessing.
 
 ---
 
-## 26. Required pre-PR checklist
+## 27. Required pre-PR checklist
 
 Before opening a PR, run the relevant subset and preferably the full CI-equivalent checks:
 
@@ -669,7 +715,7 @@ Then confirm:
 
 ---
 
-## 27. Useful source references
+## 28. Useful source references
 
 Use these files as starting points when working in the corresponding area:
 
@@ -679,10 +725,12 @@ Use these files as starting points when working in the corresponding area:
 - `apps/crm/models/lead.py` — lead invariants
 - `apps/channels/` — WhatsApp and Instagram HTTP/runtime boundaries
 - `services/channels/` — provider integration services
-- `apps/ai_engagement/` — AI engagement execution contracts
+- `apps/ai_engagement/` — AI Playbook, engagement, trace, qualification and CRM execution contracts
 - `apps/hosted_automation/` — Hosted WhatsApp AI/automation
 - `apps/followups/` — cadence/follow-up execution
-- `apps/triggers/` — workflow engine
+- `apps/triggers/` — Workflows engine (historical/internal SmartTrigger model names remain in code)
+- `apps/support/` — Help & Support / Shvya-Ops ticketing, storage, mail and attention state
+- `apps/integrations/diagnostic_auth.py` / `diagnostic_models.py` / `diagnostic_tools.py` — read-only diagnostic connector
 - `config/celery.py` — queues and recurring jobs
 - `config/settings/` — environment-specific settings
 - `config/urls.py` — top-level routes and webhook endpoints
@@ -692,9 +740,14 @@ Use these files as starting points when working in the corresponding area:
 - `.github/workflows/deploy.yml` — production deployment
 - `.github/workflows/deploy-staging.yml` — staging deployment
 - `docs/deployment_environments.md` — environment separation
+- `database.md` — database architecture and current model catalog
+- `docs/ai-playbook.md` — canonical organization AI Playbook
 - `docs/grounded-engagement.md` — grounded AI engagement
 - `docs/instagram-setup.md` — Instagram integration
-- `docs/smart-triggers.md` — workflow/trigger behavior
+- `docs/smart-triggers.md` — Workflows product behavior
+- `docs/workflows-runtime-contract.md` — Workflows execution contract
+- `docs/support-portal.md` — support portal architecture and operations
+- `docs/support-response-indicator.md` — customer response-required attention state
 - `docs/whatsapp_ai_troubleshooting.md` — WhatsApp AI diagnostics
 
 ---

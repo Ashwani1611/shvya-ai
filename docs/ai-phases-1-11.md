@@ -1,5 +1,7 @@
 # AI reliability phases 1–11
 
+> **Implementation baseline:** verified 2026-09-20 against production `main` at `7fb74946b35f189a66f92d6ffd0677909dca4c9f`. Runtime code, migrations and tests remain authoritative when later commits change behavior.
+
 This extends the existing SHVYA AI runtime. API/Coexistence and Hosted still use
 one qualification/policy/CRM core with their existing account-scoped delivery
 owners. There is no model upgrade, new agent, or additional extraction model.
@@ -7,7 +9,7 @@ owners. There is no model upgrade, new agent, or additional extraction model.
 ## Runtime ownership
 
 Inbound tenant/account resolution → permission checks → isolated turn/AI Trace →
-organization runtime profile → existing intent and qualification resolution →
+organization runtime profile + canonical AI Playbook → direct-question/intent and qualification resolution →
 evidence/semantic+keyword retrieval → backend conversation policy → structured
 action proposals → locked canonical CRM execution → reconciled state → controlled
 response composition/final grounding → existing transport queue → accepted-turn
@@ -128,10 +130,12 @@ still retain a categorical observation. Signals can be disabled independently.
 
 ## Database and release steps
 
-Two additive migrations are required:
+The current production baseline includes the following AI schema migrations:
 
+* `0015_aitrace`: bounded per-turn observability.
 * `0016_aiactionreceipt`: durable source/action execution results and uniqueness.
 * `0017_leadsignal`: unique organization/lead/source/kind/detail observations.
+* `0018_orginfo_ai_playbook`: canonical organization AI Playbook and removal of the former split authored instruction fields.
 
 Run the existing migration/deployment workflow before new workers serve traffic.
 No existing migration is rewritten. The receipt table must not be rolled back
@@ -179,3 +183,16 @@ Natural-language extraction still has bounded deterministic coverage; ambiguous
 language continues through the existing model/clarification path. Recordings test
 backend decisions and invariants, not every possible phrasing. Organization
 configuration remains authoritative for terminology, questions, language and facts.
+
+
+## Current conversation-priority refinements
+
+The current runtime keeps the reliability phases while applying these additional invariants:
+
+- a direct product/feature/pricing/capability question wins over an active qualification prompt for that turn;
+- the answer is substantive and grounded rather than a CTA-only deflection, then qualification may continue naturally;
+- greeting-prefixed questions remain questions;
+- short yes/no replies are interpreted using the immediately preceding authored context rather than as universal qualification answers;
+- explicit multi-option answers can persist multiple customer-stated facts;
+- the final qualification answer runs through the backend execution contract before any criteria-authorized Qualified transition;
+- pipeline/account affinity is revalidated before outbound delivery, so a lead cannot be messaged through a WhatsApp sender linked to another pipeline.

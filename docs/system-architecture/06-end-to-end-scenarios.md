@@ -1,6 +1,6 @@
 # 06. End-to-End Production Scenarios
 
-> Snapshot: `staging` traced from `88a71f8a02c911c5c963c9f0d8235ff60684ab17`.
+> **Implementation snapshot:** verified against production `main` at `7fb74946b35f189a66f92d6ffd0677909dca4c9f` on 2026-09-20. Source code, Django models/migrations and tests remain the executable source of truth.
 
 This document connects the individual architecture layers into real production scenarios. Use it when debugging a user-visible behavior because each sequence shows the expected handoff between transport, CRM, AI, queues and providers.
 
@@ -643,3 +643,37 @@ flowchart LR
 ```
 
 This is the overall request/response cycle in one view: inbound provider event becomes durable CRM/message state; AI works from that state; validated effects become durable outbound/action state; provider and browser are updated from durable state.
+
+# Scenario: Direct question during qualification
+
+1. Inbound message is persisted on the pipeline-bound WhatsApp account.
+2. Intent/conversation priority detects the explicit product/feature/pricing/capability question.
+3. Approved organization/RAG evidence is retrieved when required.
+4. SHVYA answers the requested question substantively.
+5. If qualification remains active in New Lead/New Leads, the response may continue with the next unanswered authored Playbook question.
+6. The direct question itself is not incorrectly consumed as a qualification answer.
+
+# Scenario: Final qualification answer
+
+1. Source inbound evidence is bound to the active authored question.
+2. The backend qualification execution contract validates and writes mapped CRM values.
+3. Authored criteria are evaluated.
+4. Only a satisfied configured rule may move pipeline/stage; intent score alone cannot.
+5. `AIActionReceipt` prevents replay of the same source-bound CRM action.
+6. Reconciled state is used to compose and send the final acknowledgement/continuation.
+
+# Scenario: Bulk Campaign recipient action
+
+1. Campaign delivery history selects a frozen recipient.
+2. “View chat” resolves the live CRM lead and the WhatsApp account linked to the lead's current pipeline.
+3. “View in CRM” resolves the exact lead.
+4. Retry uses the campaign/template snapshot and creates bounded new attempt evidence.
+5. Bulk retry/export controls are available only for selected rows.
+
+# Scenario: Support response required
+
+1. Shvya-Ops posts a public reply.
+2. The committed message history makes the customer dashboard Help & Support link pulse/count.
+3. Merely opening the ticket does not clear the state.
+4. An authorized organization user replies publicly or closes the ticket.
+5. The derived attention query clears/reduces the count without a separate unread mutation.

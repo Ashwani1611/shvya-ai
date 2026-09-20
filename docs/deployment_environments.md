@@ -1,5 +1,7 @@
 # SHVYA AI deployment environments
 
+> **Implementation baseline:** verified 2026-09-20 against production `main` at `7fb74946b35f189a66f92d6ffd0677909dca4c9f`. Runtime code, migrations and tests remain authoritative when later commits change behavior.
+
 SHVYA AI uses two long-lived environments and short-lived feature/fix branches.
 
 ## Branches and environments
@@ -26,8 +28,7 @@ network only so it can proxy to the isolated staging Nginx container.
 7. Open a pull request from `staging` into `main`.
 8. CI must pass again.
 9. Merge to `main`.
-10. `Deploy` backs up PostgreSQL, migrates, updates services, performs readiness
-    checks, and deploys production.
+10. `Deploy` backs up PostgreSQL, drains schema-dependent application workers before migrations, migrates, brings the tested web/worker release back up, performs readiness checks, and deploys production.
 
 Do not merge feature branches directly to `main` except for a documented
 emergency hotfix.
@@ -126,4 +127,4 @@ Application rollback:
    database backup before bringing the previous application version back.
 
 Prefer backward-compatible, expand/contract database migrations so ordinary
-application rollbacks do not require a database restore.
+application rollbacks do not require a database restore. Web, Celery workers and Beat must not intentionally run mixed schema expectations across a migration boundary.

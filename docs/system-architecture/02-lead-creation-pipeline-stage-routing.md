@@ -1,6 +1,6 @@
 # 02. Lead Creation, Pipeline and Stage Routing
 
-> Snapshot: `staging` traced from `88a71f8a02c911c5c963c9f0d8235ff60684ab17`.
+> **Implementation snapshot:** verified against production `main` at `7fb74946b35f189a66f92d6ffd0677909dca4c9f` on 2026-09-20. Source code, Django models/migrations and tests remain the executable source of truth.
 
 This document answers four questions precisely:
 
@@ -542,3 +542,11 @@ When modifying lead creation, keep these invariants unless intentionally redesig
 10. Async welcome/AI work starts only after the lead/message transaction commits.
 11. `lead_source` describes origin and should not be confused with current messaging transport.
 12. Number-to-pipeline mapping changes are operational routing changes and must be tested end to end.
+
+## Current routing refinements
+
+- **Pipeline-bound WhatsApp sender:** the lead's current pipeline owns the eligible WhatsApp number/account for outbound chat, AI, Cadence, Workflows and campaign actions. A different connected account is not a fallback.
+- **Hosted LID live contacts:** when a live Hosted event identifies a contact by WhatsApp LID, the gateway/service resolves the usable phone identity before automatic CRM lead creation. Unresolved live LIDs must not become fake phone leads.
+- **Hosted history:** historical sync can populate message/read state but does not behave like a new live inbound lead event.
+- **Instagram:** a persisted Instagram conversation may link to a tenant-matching CRM lead through `InstagramConversation.lead`. Provider participant identity remains channel state; it is not a cross-tenant CRM key.
+- **Lead source:** the current `Lead.lead_source` choices/migration are authoritative for UI labels and Workflows Source conditions; custom CRM attributes named “Source” do not overwrite the built-in creation origin.
