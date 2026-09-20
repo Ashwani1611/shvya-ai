@@ -24,7 +24,26 @@
         }
 
         .signup-auth-panel .signin-button {
-            margin-top: 28px;
+            margin-top: 16px;
+        }
+
+        .signup-consent {
+            margin: 8px 2px 0;
+            color: #6e6e73;
+            font-size: 12px;
+            line-height: 1.55;
+        }
+
+        .signup-consent a {
+            color: #2476d4;
+            font-weight: 600;
+            text-decoration: none;
+            text-underline-offset: 2px;
+        }
+
+        .signup-consent a:hover,
+        .signup-consent a:focus-visible {
+            text-decoration: underline;
         }
 
         .signup-auth-panel .signup-footer {
@@ -241,8 +260,18 @@
                     {% endif %}
                 </div>
 
+                <p class="signup-consent">
+                    By signing up, you agree to SHVYA’s
+                    <a href="/terms-conditions/" target="_blank" rel="noopener noreferrer">Terms &amp; Conditions</a>
+                    and
+                    <a href="/privacy-policy/" target="_blank" rel="noopener noreferrer">Privacy Policy</a>,
+                    and consent to receive service-related and marketing communications from SHVYA and its authorized service providers.
+                    Your information may be shared with trusted service providers where necessary to process your signup,
+                    respond to product enquiries, provide and support SHVYA services, and operate your account.
+                </p>
+
                 <button type="submit" class="signin-button">
-                    <span>Create account</span>
+                    <span>Start My Trial</span>
                     <span class="signin-arrow" aria-hidden="true">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                             <path d="M5 12h13"></path>
