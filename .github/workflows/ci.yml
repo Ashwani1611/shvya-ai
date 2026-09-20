@@ -30,9 +30,102 @@ env:
   CHANNEL_LAYER_REDIS_URL: redis://127.0.0.1:6379/1
 
 jobs:
-  test:
-    name: Lint, checks and tests
+  changes:
+    name: Change plan
     runs-on: ubuntu-latest
+    outputs:
+      docs_only: ${{ steps.plan.outputs.docs_only }}
+      full: ${{ steps.plan.outputs.full }}
+      python: ${{ steps.plan.outputs.python }}
+      django: ${{ steps.plan.outputs.django }}
+      migration_check: ${{ steps.plan.outputs.migration_check }}
+      ai: ${{ steps.plan.outputs.ai }}
+      gateway: ${{ steps.plan.outputs.gateway }}
+      browser: ${{ steps.plan.outputs.browser }}
+      docker_app: ${{ steps.plan.outputs.docker_app }}
+      compose: ${{ steps.plan.outputs.compose }}
+      targeted: ${{ steps.plan.outputs.targeted }}
+      pytest_targets: ${{ steps.plan.outputs.pytest_targets }}
+      browser_targets: ${{ steps.plan.outputs.browser_targets }}
+      changed_count: ${{ steps.plan.outputs.changed_count }}
+
+    steps:
+      - name: Checkout repository history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+
+      - name: Build conservative CI plan
+        id: plan
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          set -euo pipefail
+          args=(--head "$GITHUB_SHA" --github-output "$GITHUB_OUTPUT")
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            args+=(--force-full)
+          else
+            args+=(--base "$BASE_SHA")
+          fi
+          python scripts/ci_change_plan.py "${args[@]}"
+
+  fast-checks:
+    name: Changed-file checks
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.full != 'true' && (needs.changes.outputs.python == 'true' || needs.changes.outputs.django == 'true' || needs.changes.outputs.migration_check == 'true')
+
+    steps:
+      - name: Checkout repository history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+
+      - name: Install runtime/check dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ "${{ needs.changes.outputs.python }}" = "true" ]; then
+            pip install -r requirements-dev.txt
+          else
+            pip install -r requirements.txt
+          fi
+
+      - name: Ruff changed Python files
+        if: needs.changes.outputs.python == 'true'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          set -euo pipefail
+          mapfile -d '' files < <(git diff --name-only --diff-filter=ACMR -z "$BASE_SHA" "$GITHUB_SHA" -- '*.py')
+          if [ "${#files[@]}" -gt 0 ]; then
+            ruff check "${files[@]}"
+          else
+            echo "No changed Python files require Ruff."
+          fi
+
+      - name: Check for missing migrations
+        if: needs.changes.outputs.migration_check == 'true'
+        run: python manage.py makemigrations --check --dry-run --settings=config.settings.testing
+
+      - name: Django system check
+        if: needs.changes.outputs.django == 'true'
+        run: python manage.py check --settings=config.settings.testing
+
+  targeted-tests:
+    name: Targeted application tests
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.full != 'true' && needs.changes.outputs.targeted == 'true'
 
     services:
       postgres:
@@ -48,7 +141,6 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
-
       redis:
         image: redis:8-alpine
         ports:
@@ -77,7 +169,162 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements-dev.txt
 
-      - name: Install Chromium for isolated inbox browser tests
+      - name: Run affected application tests
+        id: pytest
+        env:
+          PYTEST_TARGETS: ${{ needs.changes.outputs.pytest_targets }}
+        run: |
+          set -euo pipefail
+          read -r -a targets <<< "$PYTEST_TARGETS"
+          pytest "${targets[@]}" \
+            --ignore=tests/browser \
+            --ignore=apps/support/tests/test_attention_browser.py \
+            --ignore=apps/support/tests/test_csrf.py \
+            2>&1 | tee pytest-output.log
+
+      - name: Upload pytest failure log
+        if: failure() && steps.pytest.outcome == 'failure'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: targeted-pytest-failure-log
+          path: pytest-output.log
+          if-no-files-found: error
+
+      - name: AI behaviour evaluation
+        if: needs.changes.outputs.ai == 'true'
+        run: python manage.py evaluate_ai --settings=config.settings.testing --output ai-evaluation.json
+
+      - name: Upload AI evaluation report
+        if: always() && needs.changes.outputs.ai == 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ai-evaluation-report
+          path: ai-evaluation.json
+          if-no-files-found: warn
+
+  browser-tests:
+    name: Relevant browser tests
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.full != 'true' && needs.changes.outputs.browser == 'true'
+
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_DB: shvya_ci
+          POSTGRES_USER: shvya_ci
+          POSTGRES_PASSWORD: shvya_ci_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U shvya_ci -d shvya_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:8-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+
+      - name: Install dependencies and Chromium
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+          python -m playwright install --with-deps chromium
+
+      - name: Run affected real-browser regressions
+        env:
+          BROWSER_TARGETS: ${{ needs.changes.outputs.browser_targets }}
+        run: |
+          set -euo pipefail
+          read -r -a targets <<< "$BROWSER_TARGETS"
+          if [ "${#targets[@]}" -eq 0 ]; then
+            echo "No browser targets were selected."
+            exit 0
+          fi
+          pytest "${targets[@]}"
+
+  gateway-tests:
+    name: Hosted gateway tests
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.full != 'true' && needs.changes.outputs.gateway == 'true'
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - name: Hosted gateway regression tests
+        run: node --test whatsapp_web_gateway/tests/hosted-sync.test.js
+
+  full-tests:
+    name: Full regression suite
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.full == 'true'
+
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_DB: shvya_ci
+          POSTGRES_USER: shvya_ci
+          POSTGRES_PASSWORD: shvya_ci_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U shvya_ci -d shvya_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:8-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      - name: Install Chromium for isolated browser tests
         run: python -m playwright install --with-deps chromium
 
       - name: Hosted gateway regression tests
@@ -131,31 +378,90 @@ jobs:
   docker-build:
     name: Docker build
     runs-on: ubuntu-latest
-    needs: test
+    needs: [changes, fast-checks, targeted-tests, browser-tests, gateway-tests, full-tests]
+    if: always()
 
     steps:
+      - name: Verify prerequisite checks
+        env:
+          CHANGES: ${{ needs.changes.result }}
+          FAST: ${{ needs.fast-checks.result }}
+          TARGETED: ${{ needs.targeted-tests.result }}
+          BROWSER: ${{ needs.browser-tests.result }}
+          GATEWAY: ${{ needs.gateway-tests.result }}
+          FULL: ${{ needs.full-tests.result }}
+        run: |
+          set -euo pipefail
+          for result in "$CHANGES" "$FAST" "$TARGETED" "$BROWSER" "$GATEWAY" "$FULL"; do
+            case "$result" in
+              failure|cancelled)
+                echo "A prerequisite CI check failed or was cancelled."
+                exit 1
+                ;;
+            esac
+          done
+
       - name: Checkout repository
+        if: needs.changes.outputs.docker_app == 'true' || needs.changes.outputs.gateway == 'true' || needs.changes.outputs.compose == 'true'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
       - name: Prepare Compose environment files
+        if: needs.changes.outputs.compose == 'true'
         run: |
           cp .env.example .env
           cp .env.staging.example .env.staging
 
       - name: Validate production Compose
+        if: needs.changes.outputs.compose == 'true'
         run: docker compose --env-file .env.example -f docker-compose.yml config --quiet
 
       - name: Validate staging Compose
+        if: needs.changes.outputs.compose == 'true'
         run: docker compose --env-file .env.staging.example -f docker-compose.staging.yml config --quiet
 
       - name: Build application image
+        if: needs.changes.outputs.docker_app == 'true'
         run: docker build --tag shvya-ai:${{ github.sha }} .
 
       - name: Verify application image runs as non-root
+        if: needs.changes.outputs.docker_app == 'true'
         run: |
           IMAGE="shvya-ai:${{ github.sha }}"
           test "$(docker image inspect "$IMAGE" --format '{{.Config.User}}')" = "10001:10001"
           docker run --rm --entrypoint sh "$IMAGE" -c 'test "$(id -u)" = "10001" && test "$(id -g)" = "10001" && test -w /app'
 
       - name: Build WhatsApp Web gateway image
+        if: needs.changes.outputs.gateway == 'true'
         run: docker build --tag shvya-whatsapp-web-gateway:${{ github.sha }} ./whatsapp_web_gateway
+
+      - name: No image build required
+        if: needs.changes.outputs.docker_app != 'true' && needs.changes.outputs.gateway != 'true' && needs.changes.outputs.compose != 'true'
+        run: echo "No Docker or Compose inputs changed; image build safely skipped."
+
+  test:
+    name: Lint, checks and tests
+    runs-on: ubuntu-latest
+    needs: [changes, fast-checks, targeted-tests, browser-tests, gateway-tests, full-tests, docker-build]
+    if: always()
+
+    steps:
+      - name: Enforce CI gate
+        env:
+          CHANGES: ${{ needs.changes.result }}
+          FAST: ${{ needs.fast-checks.result }}
+          TARGETED: ${{ needs.targeted-tests.result }}
+          BROWSER: ${{ needs.browser-tests.result }}
+          GATEWAY: ${{ needs.gateway-tests.result }}
+          FULL: ${{ needs.full-tests.result }}
+          DOCKER: ${{ needs.docker-build.result }}
+        run: |
+          set -euo pipefail
+          for result in "$CHANGES" "$FAST" "$TARGETED" "$BROWSER" "$GATEWAY" "$FULL" "$DOCKER"; do
+            case "$result" in
+              failure|cancelled)
+                echo "CI gate failed because a required check failed or was cancelled."
+                exit 1
+                ;;
+            esac
+          done
+          echo "Change-aware CI gate passed."
