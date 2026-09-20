@@ -1,6 +1,6 @@
-# Smart Triggers
+# Workflows
 
-Smart Triggers is available at `/dashboard/smart-triggers/` through the existing dashboard sidebar. It uses Django templates and JavaScript, with Django services and Celery background processing.
+Workflows is available at `/dashboard/smart-triggers/` through the existing dashboard sidebar. It uses Django templates and JavaScript, with Django services and Celery background processing.
 
 ## Supported behavior
 
