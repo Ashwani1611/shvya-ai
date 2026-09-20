@@ -56,6 +56,7 @@
 
             <article class="sy-panel sy-form-card">
                 <div class="sy-card-title"><span>3</span><div><h2>Document layout</h2><p>Safe HTML formatting is supported. Script and unsafe attributes are stripped when saved.</p></div></div>
+                {% verbatim %}
                 <div class="sy-merge-chips">
                     <button type="button" data-insert-merge="{{document.title}}">{{document.title}}</button>
                     <button type="button" data-insert-merge="{{document.number}}">{{document.number}}</button>
@@ -64,9 +65,11 @@
                     <button type="button" data-insert-merge="{{items_table}}">{{items_table}}</button>
                     <button type="button" data-insert-merge="{{document.terms}}">{{document.terms}}</button>
                 </div>
+                {% endverbatim %}
                 <label class="sy-field"><span>Layout HTML / content template</span><textarea name="body_template" rows="16" data-layout-editor>{% if template %}{{ template.body_template }}{% else %}{{ default_body }}{% endif %}</textarea></label>
                 <details class="sy-merge-help">
                     <summary>Available merge fields</summary>
+                    {% verbatim %}
                     <div>
                         <code>{{organization.name}}</code>
                         <code>{{recipient.name}}</code>
@@ -86,6 +89,7 @@
                         <code>{{items_table}}</code>
                         <code>{{document.terms}}</code>
                     </div>
+                    {% endverbatim %}
                 </details>
             </article>
 
