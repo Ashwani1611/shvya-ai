@@ -45,6 +45,17 @@ body {
 .signature { margin-top: 24pt; }
 .signature img { max-width: 160pt; max-height: 58pt; }
 .signature small { color: #777; display: block; margin-top: 3pt; }
+.acceptance {
+    margin-top: 24pt;
+    padding: 12pt;
+    border: 1px solid #c9c9ce;
+    background: #f7f7f8;
+}
+.acceptance-title { font-size: 11pt; font-weight: bold; margin-bottom: 7pt; }
+.acceptance table { width: 100%; }
+.acceptance td { padding: 3pt 8pt 3pt 0; vertical-align: top; }
+.acceptance small { color: #777; font-size: 7pt; text-transform: uppercase; }
+.acceptance strong { display: block; margin-top: 2pt; font-size: 9pt; }
 .footer {
     margin-top: 28pt;
     border-top: 1px solid #ddd;
@@ -78,6 +89,22 @@ body {
 </table>
 
 <div class="content">{{ document.rendered_html|safe }}</div>
+
+{% if document.status == 'accepted' or document.status == 'signed' %}
+<div class="acceptance">
+<div class="acceptance-title">{% if document.status == 'signed' %}Electronic signature certificate{% else %}Acceptance certificate{% endif %}</div>
+<table>
+<tr>
+<td><small>Name</small><strong>{{ document.accepted_by_name|default:"Recorded customer" }}</strong></td>
+<td><small>Email</small><strong>{{ document.accepted_by_email|default:"—" }}</strong></td>
+</tr>
+<tr>
+<td><small>Recorded at</small><strong>{% if document.signed_at %}{{ document.signed_at|date:"d M Y, H:i T" }}{% else %}{{ document.accepted_at|date:"d M Y, H:i T" }}{% endif %}</strong></td>
+<td><small>IP address</small><strong>{{ document.accepted_ip|default:"—" }}</strong></td>
+</tr>
+</table>
+</div>
+{% endif %}
 
 {% if pdf_signature_src %}
 <div class="signature">
