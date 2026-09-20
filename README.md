@@ -324,7 +324,7 @@ The canonical template is [`.env.example`](./.env.example).
 | Meta | `META_VERIFY_TOKEN`, `META_APP_ID`, `META_APP_SECRET`, `META_WA_EMBEDDED_SIGNUP_CONFIG_ID` |
 | Instagram | `META_INSTAGRAM_APP_ID`, `META_INSTAGRAM_APP_SECRET` |
 | Hosted WhatsApp | `WHATSAPP_WEB_GATEWAY_URL`, `WHATSAPP_WEB_GATEWAY_TOKEN`, `WHATSAPP_WEB_CALLBACK_TOKEN`, `WHATSAPP_WEB_SESSION_PATH` |
-| Mail | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD` |
+| Mail | `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD` |
 
 Production and staging values must be maintained outside Git.
 
