@@ -66,7 +66,7 @@
         </section>
         {% endif %}
 
-        {% if document.document_type == 'quotation' and document.status != 'accepted' and document.status != 'declined' %}
+        {% if document.document_type == 'quotation' and document.status == 'sent' %}
         <section class="sy-public-action">
             <div><p class="sy-eyebrow">YOUR RESPONSE</p><h2>Ready to move forward?</h2><p>Confirm your decision below. SHVYA records the document version, time and response details.</p></div>
             <form method="post" action="{% url 'shvya-sales-public-action' document.public_token %}">
@@ -81,7 +81,7 @@
                 </div>
             </form>
         </section>
-        {% elif document.document_type == 'agreement' and document.status != 'signed' %}
+        {% elif document.document_type == 'agreement' and document.status == 'sent' %}
         <section class="sy-public-action">
             <div><p class="sy-eyebrow">SIGN AGREEMENT</p><h2>Confirm your acceptance.</h2><p>Type your full name and email to create the electronic acceptance record.</p></div>
             <form method="post" action="{% url 'shvya-sales-public-action' document.public_token %}">
