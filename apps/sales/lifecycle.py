@@ -439,6 +439,7 @@ def create_scheduled_delivery(
     email_subject="",
     email_body="",
     whatsapp_body="",
+    whatsapp_template=None,
     base_url="",
     actor=None,
 ):
@@ -460,6 +461,7 @@ def create_scheduled_delivery(
         email_subject=str(email_subject or "")[:255],
         email_body=str(email_body or ""),
         whatsapp_body=str(whatsapp_body or ""),
+        whatsapp_template=whatsapp_template,
         base_url=str(base_url or "")[:2048],
         scheduled_at=scheduled_at,
         created_by=actor,
