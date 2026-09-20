@@ -298,6 +298,12 @@
   });
   addEventListener('offline', () => report('Offline — messages and drafts stay visible'));
   addEventListener('online', () => { failures = 0; poll(); });
+  document.addEventListener('shvya:lead-created', () => {
+    // The contact panel has already persisted the CRM link. Refresh the active
+    // conversation immediately so "Create/Link lead" cannot remain stale until
+    // the next polling interval.
+    if (active?.url) navigate(active.url, false);
+  });
   const policyTimer = setInterval(policy, 1000);
   addEventListener('pagehide', () => { stopped = true; controller?.abort(); clearTimeout(timer); clearTimeout(searchTimer); clearInterval(policyTimer); }, {once:true});
   formatTimes(shell); bindMedia(shell); policy();
