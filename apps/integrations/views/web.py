@@ -5,6 +5,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 
 from apps.crm.authentication import crm_login_required
+from apps.integrations.access import connect_hub_admin_required
 from apps.organizations.models import APIKey
 
 
@@ -280,7 +281,7 @@ def connect_hub_view(request):
     )
 
 
-@crm_login_required
+@connect_hub_admin_required
 def shvya_api_view(request):
     user = request.crm_user
     organization = user.organization
