@@ -1,5 +1,8 @@
 # Instagram OAuth incident: Instagram 404 before login
 
+> **Historical incident record:** preserved for debugging context. Current behavior was re-verified on 2026-09-20 against production `main` at `7fb74946b35f189a66f92d6ffd0677909dca4c9f`; use `instagram-setup.md` and `instagram-oauth-checklist.md` for the current operator contract.
+
+
 ## Symptom
 
 Clicking **Continue with Instagram** opened Instagram and immediately rendered:

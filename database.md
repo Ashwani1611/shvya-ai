@@ -2,7 +2,7 @@
 
 This document is the database architecture reference for **SHVYA AI**. It documents the current Django ORM schema, the important database constraints and indexes, the relationships between domains, and the reason each major group of tables exists.
 
-> **Schema snapshot:** reviewed on 2026-09-16 against `main` at `26cad372932fe9f12635d658cf3a87f2ae2b3fd4` and `staging` at `70dec1a7a875629ee598b7878da3b45e1240fdce` before this documentation commit. At that point, the branch-exclusive changes did not include model files. The Django models and migrations remain the executable source of truth. A deployed database can differ if migrations have not been applied.
+> **Schema snapshot:** verified on 2026-09-20 against production `main` at `7fb74946b35f189a66f92d6ffd0677909dca4c9f`. This includes the AI trace/action-receipt/lead-signal and AI Playbook migrations, Hosted read-state, Bulk Campaign operational ledger, Instagram lead linkage, CRM reminder acknowledgements, support portal schema, diagnostic MCP/OAuth schema, and the marketing booking table. Django models and migrations remain the executable source of truth; a deployed database can differ until its migrations are applied.
 
 ---
 
@@ -45,7 +45,13 @@ pg_trgm  # trigram search, used by CRM lead search indexes
 
 7. **AI billing uses wallet + reservation + ledger.** Reservations prevent concurrent AI requests from overspending the same balance, while immutable-ish transaction rows provide an audit trail.
 
-8. **Knowledge retrieval separates documents from chunks.** A document can be versioned and processed once, then split into many searchable chunks with embeddings. This is substantially easier to scale than storing one embedding or one large text blob per organization.
+8. **AI execution evidence is durable.** `AITrace` records bounded execution diagnostics, `AIActionReceipt` gives source-bound CRM mutation idempotency, and `LeadSignal` stores source-backed observations without replacing qualification state.
+
+9. **Campaign delivery is a frozen ledger.** Bulk Campaign preview/import state is separate from committed campaign plans, recipient delivery snapshots, attempts and provider events so retries cannot silently change the audience or template evidence.
+
+10. **Support is an auditable tenant-scoped subsystem.** Tickets, public/internal messages, private attachments, share grants, work items, mail outbox rows, inbound receipts and configuration audit rows are persisted independently of browser state.
+
+11. **Knowledge retrieval separates documents from chunks.** A document can be versioned and processed once, then split into many searchable chunks with embeddings. This is substantially easier to scale than storing one embedding or one large text blob per organization.
 
 ---
 
@@ -344,7 +350,7 @@ Implicit many-to-many join table between `Organization` and `OrganizationTag`.
 
 **PK:** `id UUID`
 
-**Columns:** `organization_id FK`, `name`, `key_prefix UNIQUE`, `key_hash`, `can_upsert_leads`, `last_used_at NULL`, `expires_at NULL`, `is_active`, `created_at`.
+**Columns:** `organization_id FK`, `name`, `key_prefix UNIQUE`, `key_hash`, `can_upsert_leads`, `can_read_diagnostics`, `last_used_at NULL`, `expires_at NULL`, `is_active`, `created_at`.
 
 **Security:** raw API keys are returned once and are never stored; only the prefix and password hash are persisted.
 
@@ -618,7 +624,7 @@ Implicit many-to-many join table from `accounts_user` to `auth_permission`.
 
 **PK:** `id UUID`
 
-**Columns:** `organization_id FK`, `account_id FK`, `meta_conversation_id UNIQUE NULL`, participant identity/profile fields, last-message fields, `unread_count`, `last_synced_at`, `raw_payload JSON`, `created_at`, `updated_at`.
+**Columns:** `organization_id FK`, `account_id FK`, `lead_id FK → crm_lead SET_NULL NULL`, `meta_conversation_id UNIQUE NULL`, participant identity/profile fields, last-message fields, `unread_count`, `last_synced_at`, `raw_payload JSON`, `created_at`, `updated_at`.
 
 **Constraint:** `UNIQUE (account_id, participant_id)`.
 
@@ -786,7 +792,9 @@ Implicit many-to-many join table from `accounts_user` to `auth_permission`.
 
 **PK:** `id BIGINT`
 
-**Columns:** `organization_id O2O`, `about`, `bot_languages`, `qualification_requirements`, `engagement_instructions`, `ai_enabled`, `bump_up_enabled`, `bump_up_count`, timestamps.
+**Columns:** `organization_id O2O`, `about`, `bot_languages`, `ai_playbook`, `ai_enabled`, `bump_up_enabled`, `bump_up_count`, timestamps.
+
+**Why:** `ai_playbook` is now the canonical organization-owned AI operating specification for rules, welcome copy, qualification questions/criteria, CRM routing, attribute mapping and reminders. The former split `qualification_requirements` and `engagement_instructions` columns were removed by migration `0018_orginfo_ai_playbook`.
 
 ### `ai_engagement_knowledgesource`
 
@@ -922,11 +930,176 @@ Implicit many-to-many join table from `accounts_user` to `auth_permission`.
 
 ---
 
-## 9.16 Apps with no current custom tables
+## 9.16 Additional current tables and schema extensions
+
+These tables/fields were added after the earlier 2026-09-16 schema snapshot and are part of the current production model set.
+
+### AI observability, idempotency and signals
+
+#### `ai_engagement_aitrace`
+
+**PK:** `id UUID`
+
+**Columns:** organization/lead FKs; pipeline/stage/WhatsApp-account UUID snapshots; indexed source inbound message UUID; optional outbound message UUID; connection type (`api` / `hosted`); execution status; indexed reason code; execution path; model name; bounded inbound/response previews; total duration; `details JSON`; start/completion/update timestamps.
+
+**Indexes:** organization + chronology, organization + lead + chronology, organization + status + chronology, organization + connection type + chronology.
+
+**Why:** bounded tenant-scoped observability for one AI turn. It is not customer memory and is not qualification authority.
+
+#### `ai_engagement_aiactionreceipt`
+
+**PK:** `id UUID`
+
+**Columns:** organization FK, lead FK, `source_message_id UUID`, `idempotency_key`, `action_type`, result JSON containing IDs/status rather than prompt/note secrets, `created_at`.
+
+**Constraint:** `UNIQUE (organization, lead, idempotency_key)`.
+
+**Index:** `(organization, lead, source_message_id)`.
+
+**Why:** the durable source-bound receipt commits with the CRM mutation so message/task replay cannot repeat the same note, reminder, attribute update or transition.
+
+#### `ai_engagement_leadsignal`
+
+**Columns:** organization FK, lead FK, source-message UUID, signal kind/detail, created timestamp.
+
+**Constraint:** `UNIQUE (organization, lead, source_message_id, kind, detail)`.
+
+**Index:** `(organization, lead, kind)`.
+
+**Why:** explainable source-backed intent/engagement observations. These signals never replace the lead's CRM/qualification state.
+
+### CRM reminder notification acknowledgement
+
+#### `crm_leadremindernotificationack`
+
+**PK:** `id UUID`
+
+**Columns:** `reminder_id FK → crm_leadreminder`, `user_id FK → accounts_user`, `acknowledged_at`.
+
+**Constraint:** `UNIQUE (reminder, user)`.
+
+**Index:** `(user, acknowledged_at)`.
+
+**Why:** remembers that a specific dashboard user clicked a persistent reminder popup without completing, snoozing or deleting the reminder itself.
+
+### Hosted inbox read boundary
+
+#### `channels_hostedchatreadstate`
+
+**Columns:** account FK, `chat_key`, `read_through_at`, `updated_at`.
+
+**Constraint:** `UNIQUE (account, chat_key)`.
+
+**Why:** late historical sync cannot recreate unread badges after a user has read the Hosted conversation. Live messages do not inherit this historical boundary.
+
+### Bulk Campaign operational ledger
+
+The legacy `BulkMessageCampaign` / `BulkMessageRecipient` models remain the canonical campaign/audience records. Migration `channels.0014_bulk_campaigns` adds the following operational state around them.
+
+#### `channels_campaignupload`
+
+Private expiring import/review state: organization/user, original filename, headers/rows/reviewed rows, review configuration/stats/digest, expiry and creation timestamps. Preview does not create CRM leads.
+
+#### `channels_campaignplan`
+
+One-to-one with the canonical campaign. Stores optional upload, selected template and immutable template snapshot, bindings, schedule/timezone, retry policy, consent actor/time, preparation cursor/stats/errors and cancellation state.
+
+#### `channels_campaigndelivery`
+
+Frozen per-phone delivery ledger with nullable links back to the live lead/legacy recipient plus name/phone/pipeline/stage/value/template-body snapshots. Tracks due/claim/publish/accept/sent/delivered/read/replied/failed evidence, attempt count, provider error/http evidence and uncertain outcomes.
+
+**Constraint:** `UNIQUE (campaign, phone)`.
+
+**Indexes:** `(state, due_at)`, `(campaign, state)`.
+
+#### `channels_campaignattempt`
+
+Append-style send attempts with one optional produced WhatsApp message, unique provider ID, monotonic provider timestamps/errors and uncertainty state.
+
+**Constraint:** `UNIQUE (delivery, number)`.
+
+#### `channels_campaignevent`
+
+Deduplicated verified-provider event inbox. `digest` is unique; account/message/provider IDs, status, recipient, provider occurrence time, bounded data and applied/received timestamps are persisted so early/out-of-order callbacks can be reconciled.
+
+#### `channels_campaignsuppression`
+
+Organization-level campaign opt-out by normalized phone, optional source message and reason.
+
+**Constraint:** `UNIQUE (organization, phone)`.
+
+#### `channels_campaignsendergate`
+
+One row per WhatsApp account (`account_id` is the O2O primary key) with `next_slot_at` for shared campaign send throttling.
+
+### Instagram CRM linkage
+
+`channels_instagramconversation.lead_id` is an optional `SET_NULL` FK to `crm_lead`. The conversation still remains scoped by organization/account; the link lets the Instagram inbox and CRM resolve the same customer without making the provider participant ID the CRM source of truth.
+
+### Read-only diagnostic connector
+
+#### `integrations_diagnosticoauthclient`
+
+Dynamically registered OAuth client metadata: unique client ID, name/application type, redirect/grant/response JSON lists, active flag and creation timestamp.
+
+#### `integrations_diagnosticoauthauthorizationcode`
+
+Client/API-key/organization scoped authorization code with **hashed** unique code, redirect URI, PKCE challenge, scope/resource, expiry, used timestamp and creation timestamp.
+
+#### `integrations_diagnosticoauthtoken`
+
+Client/API-key/organization scoped OAuth access + refresh token **hashes**, scope/resource, access/refresh expiry, revocation/last-used timestamps and audit timestamps.
+
+**Index:** `(api_key, revoked_at, expires_at)`.
+
+#### `integrations_diagnosticaccesslog`
+
+Append-style diagnostic access metadata: organization, optional API key, OAuth client snapshot, tool name, outcome, auth type, request fingerprint, duration and safe error code.
+
+**Indexes:** `(organization, created_at)`, `(tool_name, created_at)`.
+
+**Privacy rule:** raw tool arguments, conversation text, lead attributes, provider errors, API keys and OAuth tokens are deliberately not stored in this audit table.
+
+### Support portal
+
+The `support` app is a first-class platform subsystem.
+
+- `support_ticketstatus`: named status + immutable behavior family/key for built-in statuses.
+- `support_ticketpriority`: ordered active priorities.
+- `support_ticketcategory`: unique category and description.
+- `support_ticketissue`: issue belongs to a category; `UNIQUE (category, name)`.
+- `support_customfield`: immutable field key/type, choices, visibility/required flags and help text.
+- `support_supportsettings`: singleton row (`id=1`) controlling assignment/notifications, close policy, attachment limits/extensions, email intake/defaults/blocks and ticket-rate limit.
+- `support_organizationsupportpolicy`: O2O organization policy for own-ticket visibility and email notifications.
+- `support_ticket`: UUID/reference, protected organization/requester, optional pipeline, safe context JSON, subject/category/issue/status/priority/assignee, custom values, idempotent submission key, source, merge target, staff/public-activity timestamps and optimistic `version`.
+- `support_ticketmessage`: UUID message, current/origin ticket, nullable author snapshot, author kind, internal flag, body, timestamp and client idempotency key.
+- `support_attachment`: private file reference, original name, byte size and SHA-256.
+- `support_ticketevent`: ticket/actor/action/detail audit event.
+- `support_sharedaccess`: hashed share token, reply/close permissions, expiry/revocation and creator.
+- `support_workitem`: staff-only task/reminder, assignee, due/completion/notification timestamps.
+- `support_savedreply`: reusable response body and validated HTTPS knowledge link.
+- `support_emaildelivery`: durable event/recipient mail outbox with claim/attempt/send/error state; `UNIQUE (event, recipient)`; index `(state, available_at)`.
+- `support_inboundreceipt`: digest-keyed safe inbound-email receipt metadata; raw mail bodies/credentials are not audit-log payloads.
+- `support_configurationevent`: staff config audit containing changed field names rather than secret values.
+
+Important ticket constraints include no self-merge, requester+submission-key idempotency, tenant validation for requester/pipeline/merge targets, issue/category consistency, and public/shared reply idempotency.
+
+### Marketing booking request
+
+#### `core_marketingbookingrequest`
+
+**PK:** `id UUID`
+
+**Columns:** lead FK, name, email, phone, optional company, preferred date/time, goal, optional interest, consent, source path, status, created/updated timestamps.
+
+**Why:** persists public “book a call / walkthrough” requests while linking the request to the CRM lead created for the enquiry.
+
+---
+
+## 9.17 Apps with no current custom tables
 
 - `apps.calls`: `models.py` currently defines no models.
 - `apps.telephony`: current model modules define no models.
-- `apps.core`: `models.py` is empty and the app is not part of the business model set in base settings.
 
 Do not invent tables for these apps until a migration creates them.
 
@@ -970,6 +1143,16 @@ The following constraints are especially important because application correctne
 | Instagram conversation | `(account, participant_id)` unique | One local one-to-one thread per participant/account |
 | Trigger event | `key` unique | Event replay/idempotency boundary |
 | Trigger run | `(rule, event)` unique | A rule cannot execute twice for the same event row |
+| AI action receipt | `(organization, lead, idempotency_key)` unique | A source-bound CRM action cannot execute twice |
+| AI lead signal | `(organization, lead, source_message_id, kind, detail)` unique | One source cannot duplicate the same signal |
+| Reminder acknowledgement | `(reminder, user)` unique | One popup acknowledgement per user/reminder |
+| Hosted read state | `(account, chat_key)` unique | One historical read boundary per Hosted chat |
+| Campaign delivery | `(campaign, phone)` unique | One frozen delivery row per campaign recipient phone |
+| Campaign attempt | `(delivery, number)` unique | Stable ordered attempt identity |
+| Campaign provider event | `digest` unique | Duplicate/out-of-order callbacks remain idempotent |
+| Campaign suppression | `(organization, phone)` unique | One tenant campaign opt-out per phone |
+| Support ticket submit | `(requester, submission_key)` unique | Browser retries cannot duplicate a ticket |
+| Support mail delivery | `(event, recipient)` unique | One outbox delivery per event/recipient |
 | Follow-up state | `(lead, sequence)` unique | Durable progress per lead/sequence |
 | Active follow-up | one active/paused sequence per lead | Prevents competing sequences for one lead |
 | Document version | `(organization, source_key, version)` unique | Deterministic knowledge versioning |
@@ -1047,6 +1230,11 @@ The following tables behave like database-backed work queues or outboxes and hav
 - `hosted_automation_hostedautomationjob`
 - `integrations_webhookdelivery`
 - `channels_instagramwebhookdelivery`
+- `channels_campaigndelivery`
+- `channels_campaignattempt`
+- `channels_campaignevent`
+- `support_emaildelivery`
+- `ai_engagement_aitrace`
 
 Worker queries should keep using the indexed `status`, `due_at`, `available_at`, `scheduled_for`, or `processed_at` columns.
 

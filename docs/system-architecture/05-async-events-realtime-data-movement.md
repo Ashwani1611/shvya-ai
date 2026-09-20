@@ -1,6 +1,6 @@
 # 05. Async Events, Queues, Realtime Updates and Data Movement
 
-> Snapshot: `staging` traced from `88a71f8a02c911c5c963c9f0d8235ff60684ab17`.
+> **Implementation snapshot:** verified against production `main` at `7fb74946b35f189a66f92d6ffd0677909dca4c9f` on 2026-09-20. Source code, Django models/migrations and tests remain the executable source of truth.
 
 This document explains where SHVYA moves work asynchronously, which state is durable, how Celery queues are separated, how Beat recovers or schedules recurring work, and how database commits become WebSocket updates.
 
@@ -644,3 +644,21 @@ Before adding a task or queue, decide:
 12. Can one transport starve another?
 
 A new Celery task without answers to these questions is not yet a complete production design.
+
+## Current durable async additions
+
+### Bulk Campaigns
+
+Campaign preparation and delivery are represented by durable `CampaignPlan`, `CampaignDelivery`, `CampaignAttempt` and deduplicated `CampaignEvent` rows. Worker retries operate on the frozen delivery/template snapshot; an uncertain provider outcome is retained for review rather than blindly creating another send.
+
+### Support mail
+
+Support notification email uses `EmailDelivery` as a transactional outbox. Browser request completion is not treated as proof that SMTP delivery succeeded.
+
+### Hosted recovery
+
+Hosted WhatsApp has separate concerns for AI-job recovery and gateway/session reconciliation. Historical synchronization and unread-read boundaries are persisted without turning history into a live AI trigger.
+
+### Deployment/migrations
+
+Production deployment drains schema-dependent application workers before applying migrations, then starts web/workers on the compatible tested release. This avoids workers executing old ORM expectations across a migration boundary.

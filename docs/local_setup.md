@@ -1,9 +1,12 @@
 # Local Setup — SHVYA AI
 
+> **Implementation baseline:** verified 2026-09-20 against production `main` at `7fb74946b35f189a66f92d6ffd0677909dca4c9f`. Runtime code, migrations and tests remain authoritative when later commits change behavior.
+
 ## 1. Prerequisites
 - Python 3.13
-- PostgreSQL (15+)
+- PostgreSQL 17+ with the `vector`/pgvector extension available
 - Redis
+- Node.js 18+ only when running the Hosted WhatsApp gateway locally
 
 macOS:
 ```bash
@@ -50,29 +53,46 @@ python manage.py runserver
 ```
 Visit `http://127.0.0.1:8000/dashboard/login/`.
 
-## 6. Run tests
+## 6. Run tests and workers
+
 ```bash
+ruff check .
+python manage.py makemigrations --check --dry-run --settings=config.settings.testing
+python manage.py check --settings=config.settings.testing
 pytest --cov
 ```
 
-## 7. Branch workflow
-We use feature branches + pull requests. `main` is protected — no direct pushes.
+For message/AI/automation development, also run the required processes in separate shells:
 
 ```bash
-git checkout main
-git pull
+celery -A config worker -l info
+celery -A config worker -l info -Q ai_realtime --concurrency=2 --prefetch-multiplier=1
+celery -A config worker -l info -Q hosted_ai --concurrency=1 --prefetch-multiplier=1
+celery -A config beat -l info
+```
+
+Run the Node gateway only when testing Hosted WhatsApp. Never use production provider credentials in local development.
+
+## 7. Branch workflow
+Normal development starts from `staging`, not `main`.
+
+```bash
+git checkout staging
+git pull origin staging
 git checkout -b feature/<short-description>
 # ...work...
 git add .
 git commit -m "feat: <what you did>"
 git push -u origin feature/<short-description>
 ```
-Then open a pull request on GitHub into `main`. Wait for review before merging.
+
+Open the first pull request into `staging`. After CI and staging verification, promote only the verified change to `main` through a focused pull request. Do not use a broad staging→main merge when the branches contain unrelated work.
 
 Branch prefixes:
 - `feature/...` — new functionality
 - `fix/...` — bug fixes
 - `chore/...` — tooling, config, cleanup
+- `docs/...` — documentation-only changes
 
 ## 8. Before committing
 A pre-commit hook runs `ruff` automatically to catch undefined names and

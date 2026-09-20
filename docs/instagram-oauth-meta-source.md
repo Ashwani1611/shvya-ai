@@ -1,5 +1,8 @@
 # Meta source of truth for Instagram Login
 
+> **Implementation baseline:** verified 2026-09-20 against production `main` at `7fb74946b35f189a66f92d6ffd0677909dca4c9f`. Runtime code, migrations and tests remain authoritative when later commits change behavior.
+
+
 SHVYA uses Meta's **Instagram API with Instagram Login** for professional Business/Creator accounts.
 
 The integration intentionally uses:

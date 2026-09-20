@@ -1,6 +1,6 @@
 # 01. Full Request / Response Cycle
 
-> Snapshot: `staging` traced from `88a71f8a02c911c5c963c9f0d8235ff60684ab17`.
+> **Implementation snapshot:** verified against production `main` at `7fb74946b35f189a66f92d6ffd0677909dca4c9f` on 2026-09-20. Source code, Django models/migrations and tests remain the executable source of truth.
 
 This document follows a request from the network edge through authentication, Django routing, services, PostgreSQL, Celery, external providers and realtime browser updates. It distinguishes the **HTTP response cycle** from the **business response cycle**. For a webhook, HTTP may finish in milliseconds while the final WhatsApp AI reply is produced asynchronously afterward.
 
@@ -466,3 +466,17 @@ When adding a new request path, verify:
 - How does a retry avoid duplicate side effects?
 - Does the browser need an after-commit WebSocket/HTMX update?
 - Does the flow need documentation updates in this folder?
+
+## Current request families added to the baseline
+
+### Support portal
+
+Customer support requests enter through `/dashboard/support-portal/`; Shvya-Ops staff operate through `/superadmin/client-portal/`. Both paths resolve committed `support` models and service/policy checks. Private attachment downloads re-authorize access rather than exposing a public media URL. Support email notifications are produced through a durable `EmailDelivery` outbox.
+
+### Diagnostic MCP/OAuth
+
+The diagnostic connector is a separate **read-only** authorization boundary. Access is organization/API-key scoped and requires `can_read_diagnostics`. OAuth authorization/access/refresh secret material is hashed, and diagnostic access logs persist only safe metadata/fingerprints.
+
+### Bulk Campaign UI/actions
+
+Bulk Campaign HTTP flows prepare audience/template/schedule state, then asynchronous send workers operate on frozen delivery rows. Recipient “View chat” and CRM actions resolve the same lead/current pipeline instead of trusting browser-provided arbitrary account/pipeline IDs.

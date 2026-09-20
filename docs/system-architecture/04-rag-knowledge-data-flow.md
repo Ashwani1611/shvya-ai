@@ -1,6 +1,6 @@
 # 04. RAG, Knowledge Ingestion and Data Flow
 
-> Snapshot: `staging` traced from `88a71f8a02c911c5c963c9f0d8235ff60684ab17`.
+> **Implementation snapshot:** verified against production `main` at `7fb74946b35f189a66f92d6ffd0677909dca4c9f` on 2026-09-20. Source code, Django models/migrations and tests remain the executable source of truth.
 
 This document explains how organization knowledge moves from a file or URL into PostgreSQL/pgvector, how a customer question becomes a query embedding, how relevant chunks are selected, and how those chunks become grounded AI context.
 
@@ -758,3 +758,11 @@ When changing RAG, verify all of these:
 - model output remains schema/policy validated after RAG context is added;
 - AI-selected document sharing still revalidates file ownership/activity at finalization and send time;
 - docs in this folder are updated if live engagement begins using hybrid/keyword fallback.
+
+## Current grounding integration
+
+The canonical AI Playbook controls conversation/qualification policy, while RAG supplies organization-approved evidence. These responsibilities remain separate: Playbook instructions cannot manufacture business facts, and retrieved text cannot directly authorize CRM mutations.
+
+Retrieved candidates are revalidated for tenant ownership and active document state before use. Final customer responses pass the grounding/confidentiality boundaries that exclude internal notes, credentials, execution metadata, prompt text, IDs and unsupported live availability claims.
+
+Guided-file delivery uses validated organization-owned document/file identifiers. A model-generated identifier is never sufficient authority to expose a file.
