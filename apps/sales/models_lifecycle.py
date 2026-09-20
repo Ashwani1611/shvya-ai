@@ -224,6 +224,51 @@ class SalesSettings(models.Model):
     invoice_overdue_repeat_days = models.PositiveSmallIntegerField(default=3)
     automatic_email_reminders = models.BooleanField(default=True)
     attach_customer_files_to_email = models.BooleanField(default=False)
+
+    quotation_reminder_subject = models.CharField(
+        max_length=255,
+        default="Quotation {{document.number}} expires soon",
+    )
+    quotation_reminder_body = models.TextField(
+        default=(
+            "Hi {{recipient.name}},\n\n"
+            "Quotation {{document.number}} expires on {{document.valid_until}}.\n\n"
+            "Review it here: {{document.url}}"
+        )
+    )
+    agreement_reminder_subject = models.CharField(
+        max_length=255,
+        default="Agreement {{document.number}} expires soon",
+    )
+    agreement_reminder_body = models.TextField(
+        default=(
+            "Hi {{recipient.name}},\n\n"
+            "Agreement {{document.number}} reaches its end/review date on "
+            "{{document.valid_until}}.\n\nView it here: {{document.url}}"
+        )
+    )
+    invoice_due_subject = models.CharField(
+        max_length=255,
+        default="Invoice {{document.number}} is due soon",
+    )
+    invoice_due_body = models.TextField(
+        default=(
+            "Hi {{recipient.name}},\n\n"
+            "Invoice {{document.number}} is due on {{document.due_date}}.\n\n"
+            "View invoice: {{document.url}}"
+        )
+    )
+    invoice_overdue_subject = models.CharField(
+        max_length=255,
+        default="Invoice {{document.number}} is overdue",
+    )
+    invoice_overdue_body = models.TextField(
+        default=(
+            "Hi {{recipient.name}},\n\n"
+            "Invoice {{document.number}} is overdue by {{invoice.days_overdue}} day(s).\n\n"
+            "View invoice: {{document.url}}"
+        )
+    )
     updated_at = models.DateTimeField(auto_now=True)
 
 
