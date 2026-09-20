@@ -5,6 +5,7 @@ import logging
 import smtplib
 import socket
 import ssl
+from dataclasses import dataclass
 from email.utils import formataddr
 
 from django.core.exceptions import ValidationError
@@ -20,16 +21,84 @@ class EmailConfigurationError(RuntimeError):
     """Raised when an organization email configuration cannot be used."""
 
 
+@dataclass(frozen=True)
+class ValidatedSMTPTarget:
+    hostname: str
+    port: int
+    connect_ip: str
+
+
+class _PinnedSMTP(smtplib.SMTP):
+    """SMTP client whose TCP destination is a pre-validated public IP."""
+
+    def __init__(self, host="", port=0, *, connect_ip, **kwargs):
+        self._connect_ip = connect_ip
+        super().__init__(host=host, port=port, **kwargs)
+
+    def _get_socket(self, host, port, timeout):
+        if timeout is not None and not timeout:
+            raise ValueError("Non-blocking socket (timeout=0) is not supported")
+        return socket.create_connection(
+            (self._connect_ip, port),
+            timeout,
+            self.source_address,
+        )
+
+
+class _PinnedSMTPSSL(smtplib.SMTP_SSL):
+    """SMTPS client pinned to an IP while verifying the configured hostname."""
+
+    def __init__(self, host="", port=0, *, connect_ip, **kwargs):
+        self._connect_ip = connect_ip
+        super().__init__(host=host, port=port, **kwargs)
+
+    def _get_socket(self, host, port, timeout):
+        if timeout is not None and not timeout:
+            raise ValueError("Non-blocking socket (timeout=0) is not supported")
+        raw_socket = socket.create_connection(
+            (self._connect_ip, port),
+            timeout,
+            self.source_address,
+        )
+        try:
+            context = getattr(self, "context", None) or getattr(self, "_context", None)
+            if context is None:  # pragma: no cover - defensive across Python versions
+                context = ssl.create_default_context()
+            return context.wrap_socket(
+                raw_socket,
+                server_hostname=self._host,
+            )
+        except Exception:
+            raw_socket.close()
+            raise
+
+
+class PinnedEmailBackend(EmailBackend):
+    """Django SMTP backend that never performs a second DNS lookup."""
+
+    def __init__(self, *args, connect_ip, **kwargs):
+        self.connect_ip = str(connect_ip)
+        super().__init__(*args, **kwargs)
+
+    @property
+    def connection_class(self):
+        client_class = _PinnedSMTPSSL if self.use_ssl else _PinnedSMTP
+        connect_ip = self.connect_ip
+
+        def factory(host="", port=0, **kwargs):
+            return client_class(
+                host=host,
+                port=port,
+                connect_ip=connect_ip,
+                **kwargs,
+            )
+
+        return factory
+
+
 def _validate_public_ip(ip_value):
     ip_obj = ipaddress.ip_address(ip_value)
-    if (
-        ip_obj.is_private
-        or ip_obj.is_loopback
-        or ip_obj.is_link_local
-        or ip_obj.is_multicast
-        or ip_obj.is_reserved
-        or ip_obj.is_unspecified
-    ):
+    if not ip_obj.is_global:
         raise ValidationError(
             "SMTP host must resolve to a public internet address."
         )
@@ -37,7 +106,7 @@ def _validate_public_ip(ip_value):
 
 def validate_smtp_host(value):
     """Validate stored SMTP host text without requiring DNS to be live yet."""
-    host = str(value or "").strip().lower()
+    host = str(value or "").strip().lower().rstrip(".")
     if not host:
         raise ValidationError("SMTP host is required.")
 
@@ -58,33 +127,66 @@ def validate_smtp_host(value):
 
 
 def assert_public_smtp_target(host, port):
-    """Resolve SMTP immediately before use to reduce SSRF/DNS-rebinding risk."""
+    """Resolve once and bind SMTP use to an exact validated public IP."""
     host = validate_smtp_host(host)
     try:
-        addresses = socket.getaddrinfo(
-            host,
-            port,
-            type=socket.SOCK_STREAM,
-        )
-    except socket.gaierror as exc:
-        raise EmailConfigurationError(
-            "SMTP hostname could not be resolved."
-        ) from exc
+        port = int(port)
+    except (TypeError, ValueError) as exc:
+        raise EmailConfigurationError("SMTP port is invalid.") from exc
+
+    if not 1 <= port <= 65535:
+        raise EmailConfigurationError("SMTP port is invalid.")
+
+    try:
+        literal = ipaddress.ip_address(host)
+    except ValueError:
+        literal = None
+
+    if literal is not None:
+        addresses = [literal]
+    else:
+        try:
+            records = socket.getaddrinfo(
+                host,
+                port,
+                type=socket.SOCK_STREAM,
+            )
+        except OSError as exc:
+            raise EmailConfigurationError(
+                "SMTP hostname could not be resolved."
+            ) from exc
+
+        addresses = []
+        for record in records:
+            try:
+                address = ipaddress.ip_address(record[4][0])
+            except (IndexError, ValueError):
+                continue
+            if address not in addresses:
+                addresses.append(address)
 
     if not addresses:
         raise EmailConfigurationError("SMTP hostname could not be resolved.")
 
     try:
         for address in addresses:
-            _validate_public_ip(address[4][0])
+            _validate_public_ip(address)
     except ValidationError as exc:
         raise EmailConfigurationError("; ".join(exc.messages)) from exc
 
-    return host
+    return ValidatedSMTPTarget(
+        hostname=host,
+        port=port,
+        connect_ip=str(addresses[0]),
+    )
 
 
-def build_email_backend(configuration: EmailConfiguration) -> EmailBackend:
-    """Create a Django SMTP backend from one organization configuration."""
+def build_email_backend(
+    configuration: EmailConfiguration,
+    *,
+    target: ValidatedSMTPTarget | None = None,
+) -> EmailBackend:
+    """Create a DNS-pinned Django SMTP backend from one organization configuration."""
     password = configuration.get_password()
     if not password:
         raise EmailConfigurationError(
@@ -96,14 +198,20 @@ def build_email_backend(configuration: EmailConfiguration) -> EmailBackend:
             "SMTP host and username are required before testing the connection."
         )
 
+    target = target or assert_public_smtp_target(
+        configuration.smtp_host,
+        configuration.smtp_port,
+    )
+
     use_tls = (
         configuration.smtp_security == EmailConfiguration.Security.STARTTLS
     )
     use_ssl = configuration.smtp_security == EmailConfiguration.Security.SSL
 
-    return EmailBackend(
-        host=configuration.smtp_host,
-        port=configuration.smtp_port,
+    return PinnedEmailBackend(
+        host=target.hostname,
+        port=target.port,
+        connect_ip=target.connect_ip,
         username=configuration.smtp_username,
         password=password,
         use_tls=use_tls,
@@ -115,11 +223,11 @@ def build_email_backend(configuration: EmailConfiguration) -> EmailBackend:
 
 def test_email_configuration(configuration: EmailConfiguration) -> None:
     """Authenticate to the configured SMTP server without sending a message."""
-    assert_public_smtp_target(
+    target = assert_public_smtp_target(
         configuration.smtp_host,
         configuration.smtp_port,
     )
-    backend = build_email_backend(configuration)
+    backend = build_email_backend(configuration, target=target)
 
     try:
         opened = backend.open()
@@ -160,11 +268,7 @@ def send_organization_email(
     reply_to=None,
     headers=None,
 ) -> int:
-    """Send through the organization's connected mailbox.
-
-    Email automations and future email-event handlers should call this function
-    instead of reading credentials directly.
-    """
+    """Send through the organization's connected mailbox without DNS rebinding."""
     try:
         configuration = EmailConfiguration.objects.get(
             organization=organization,
@@ -182,11 +286,11 @@ def send_organization_email(
             "At least one recipient email address is required."
         )
 
-    assert_public_smtp_target(
+    target = assert_public_smtp_target(
         configuration.smtp_host,
         configuration.smtp_port,
     )
-    backend = build_email_backend(configuration)
+    backend = build_email_backend(configuration, target=target)
     from_email = (
         formataddr((configuration.sender_name, configuration.email_address))
         if configuration.sender_name
