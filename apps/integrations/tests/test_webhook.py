@@ -1,4 +1,4 @@
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 
 from django.core.exceptions import ValidationError
 from django.test import TestCase
@@ -8,6 +8,8 @@ from apps.integrations.models import WebhookConfiguration, WebhookDelivery
 from apps.integrations.services.webhook import (
     WEBHOOK_DELIVERY_HEADER,
     WEBHOOK_SECRET_HEADER,
+    WebhookHTTPResponse,
+    WebhookTarget,
     validate_webhook_url,
 )
 from apps.integrations.tasks import deliver_webhook_task
@@ -120,14 +122,25 @@ class WebhookDeliveryTaskTests(TestCase):
         )
 
     @patch("apps.integrations.tasks.assert_public_webhook_target")
-    @patch("apps.integrations.tasks.requests.post")
-    def test_successful_delivery_sends_headers_and_marks_sent(
+    @patch("apps.integrations.tasks.send_webhook_request")
+    def test_successful_delivery_uses_pinned_transport_and_marks_sent(
         self,
-        mock_post,
-        mock_public_target,
+        send_request,
+        public_target,
     ):
-        mock_public_target.return_value = "https://example.com/webhook"
-        mock_post.return_value = Mock(status_code=200, text="ok")
+        target = WebhookTarget(
+            url="https://example.com/webhook",
+            hostname="example.com",
+            port=443,
+            connect_ip="93.184.216.34",
+            request_target="/webhook",
+            host_header="example.com",
+        )
+        public_target.return_value = target
+        send_request.return_value = WebhookHTTPResponse(
+            status_code=200,
+            text="ok",
+        )
 
         result = deliver_webhook_task.run(str(self.delivery.id))
 
@@ -138,14 +151,15 @@ class WebhookDeliveryTaskTests(TestCase):
         self.assertIsNotNone(self.delivery.delivered_at)
         self.assertEqual(result["status"], "sent")
 
-        call_kwargs = mock_post.call_args.kwargs
-        self.assertEqual(call_kwargs["json"], self.delivery.payload)
+        public_target.assert_called_once_with("https://example.com/webhook")
+        call_args = send_request.call_args
+        self.assertEqual(call_args.args[0], target)
+        self.assertEqual(call_args.kwargs["payload"], self.delivery.payload)
         self.assertEqual(
-            call_kwargs["headers"][WEBHOOK_SECRET_HEADER],
+            call_args.kwargs["headers"][WEBHOOK_SECRET_HEADER],
             "task-secret",
         )
         self.assertEqual(
-            call_kwargs["headers"][WEBHOOK_DELIVERY_HEADER],
+            call_args.kwargs["headers"][WEBHOOK_DELIVERY_HEADER],
             str(self.delivery.id),
         )
-        self.assertFalse(call_kwargs["allow_redirects"])
