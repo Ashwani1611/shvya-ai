@@ -22,6 +22,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_POST
 
 from apps.crm.decorators import crm_login_required
+from apps.sales.access import is_sales_admin
 from apps.sales.activity import record_activity
 from apps.sales.lifecycle import (
     add_attachment,
@@ -292,6 +293,10 @@ def sales_agreement_revision_view(request, document_id):
 @crm_login_required
 @require_POST
 def sales_manual_payment_view(request, document_id):
+    if not is_sales_admin(request.crm_user):
+        return HttpResponseForbidden(
+            "Only organization admins can perform this Sales finance/configuration action."
+        )
     invoice = _document(request, document_id)
     try:
         record_payment(
@@ -313,6 +318,10 @@ def sales_manual_payment_view(request, document_id):
 @crm_login_required
 @require_POST
 def sales_manual_refund_view(request, document_id):
+    if not is_sales_admin(request.crm_user):
+        return HttpResponseForbidden(
+            "Only organization admins can perform this Sales finance/configuration action."
+        )
     invoice = _document(request, document_id)
     try:
         record_refund(
@@ -333,6 +342,10 @@ def sales_manual_refund_view(request, document_id):
 @crm_login_required
 @require_POST
 def sales_gateway_refund_view(request, payment_id):
+    if not is_sales_admin(request.crm_user):
+        return HttpResponseForbidden(
+            "Only organization admins can perform this Sales finance/configuration action."
+        )
     payment = get_object_or_404(
         SalesPayment.objects.select_related("invoice", "organization"),
         pk=payment_id,
@@ -356,6 +369,10 @@ def sales_gateway_refund_view(request, payment_id):
 @crm_login_required
 @require_POST
 def sales_credit_note_create_view(request, document_id):
+    if not is_sales_admin(request.crm_user):
+        return HttpResponseForbidden(
+            "Only organization admins can perform this Sales finance/configuration action."
+        )
     invoice = _document(request, document_id)
     try:
         note = create_credit_note(
@@ -376,6 +393,10 @@ def sales_credit_note_create_view(request, document_id):
 @crm_login_required
 @require_POST
 def sales_credit_note_apply_view(request, credit_id):
+    if not is_sales_admin(request.crm_user):
+        return HttpResponseForbidden(
+            "Only organization admins can perform this Sales finance/configuration action."
+        )
     note = get_object_or_404(
         SalesCreditNote.objects.select_related("invoice"),
         pk=credit_id,
@@ -393,6 +414,10 @@ def sales_credit_note_apply_view(request, credit_id):
 @crm_login_required
 @require_POST
 def sales_recurring_invoice_view(request, document_id):
+    if not is_sales_admin(request.crm_user):
+        return HttpResponseForbidden(
+            "Only organization admins can perform this Sales finance/configuration action."
+        )
     invoice = _document(request, document_id)
     if invoice.document_type != DocumentType.INVOICE:
         raise Http404
@@ -484,6 +509,10 @@ def sales_schedule_cancel_view(request, schedule_id):
 
 @crm_login_required
 def sales_settings_view(request):
+    if not is_sales_admin(request.crm_user):
+        return HttpResponseForbidden(
+            "Only organization admins can perform this Sales finance/configuration action."
+        )
     organization = _organization(request)
     sales_settings, _ = SalesSettings.objects.get_or_create(organization=organization)
     gateways = {
@@ -593,6 +622,10 @@ def sales_settings_view(request):
 @crm_login_required
 @require_POST
 def sales_payment_link_create_view(request, document_id):
+    if not is_sales_admin(request.crm_user):
+        return HttpResponseForbidden(
+            "Only organization admins can perform this Sales finance/configuration action."
+        )
     invoice = _document(request, document_id)
     if invoice.document_type != DocumentType.INVOICE:
         raise Http404
