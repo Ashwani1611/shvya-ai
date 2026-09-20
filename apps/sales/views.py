@@ -120,6 +120,7 @@ def sales_dashboard_view(request):
             "recent_deliveries": recent_deliveries,
             "email_connected": email_connected,
             "whatsapp_connected": whatsapp_connected,
+            "sales_admin": is_sales_admin(request.crm_user),
         },
     )
 
@@ -672,6 +673,7 @@ def sales_document_detail_view(request, document_id):
             "payment_gateways": gateways,
             "active_checkout": active_checkout,
             "recurring_rule": recurring_rule,
+            "sales_admin": is_sales_admin(request.crm_user),
         },
     )
 
