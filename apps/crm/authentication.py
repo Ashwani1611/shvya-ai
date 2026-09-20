@@ -1,6 +1,7 @@
 import logging
 
 from django.contrib.auth import authenticate
+from django.http import HttpResponse
 from django.shortcuts import redirect, render
 from django.utils import timezone
 from rest_framework.authentication import BaseAuthentication
@@ -13,6 +14,11 @@ from apps.accounts.session_utils import (
     set_authenticated_user,
 )
 
+from apps.core.ratelimit import (
+    authentication_failure_is_limited,
+    clear_authentication_failures,
+    record_authentication_failure,
+)
 from apps.crm.constants import CRM_SESSION_AREA
 from apps.organizations.access import (
     crm_user_is_authorized,
@@ -21,6 +27,13 @@ from apps.organizations.access import (
 from apps.organizations.models import APIKey
 
 logger = logging.getLogger(__name__)
+
+CRM_LOGIN_IP_SCOPE = "crm-login-ip"
+CRM_LOGIN_ACCOUNT_SCOPE = "crm-login-account"
+CRM_LOGIN_IP_FAILURE_LIMIT = 30
+CRM_LOGIN_IP_WINDOW_SECONDS = 300
+CRM_LOGIN_ACCOUNT_FAILURE_LIMIT = 10
+CRM_LOGIN_ACCOUNT_WINDOW_SECONDS = 900
 
 
 class APIKeyPrincipal:
@@ -301,6 +314,26 @@ def crm_login_view(request):
             "",
         )
 
+        login_identifier = email.casefold()
+        if authentication_failure_is_limited(
+            CRM_LOGIN_IP_SCOPE,
+            request,
+            limit=CRM_LOGIN_IP_FAILURE_LIMIT,
+        ) or (
+            login_identifier
+            and authentication_failure_is_limited(
+                CRM_LOGIN_ACCOUNT_SCOPE,
+                request,
+                identifier=login_identifier,
+                limit=CRM_LOGIN_ACCOUNT_FAILURE_LIMIT,
+                include_ip=False,
+            )
+        ):
+            return HttpResponse(
+                "Too many failed login attempts. Please try again later.",
+                status=429,
+            )
+
         # ----------------------------------------------------
         # Basic validation
         # ----------------------------------------------------
@@ -348,6 +381,19 @@ def crm_login_view(request):
         # ----------------------------------------------------
 
         if user is None:
+            record_authentication_failure(
+                CRM_LOGIN_IP_SCOPE,
+                request,
+                window=CRM_LOGIN_IP_WINDOW_SECONDS,
+            )
+            if login_identifier:
+                record_authentication_failure(
+                    CRM_LOGIN_ACCOUNT_SCOPE,
+                    request,
+                    identifier=login_identifier,
+                    window=CRM_LOGIN_ACCOUNT_WINDOW_SECONDS,
+                    include_ip=False,
+                )
 
             return render(
                 request,
@@ -358,6 +404,7 @@ def crm_login_view(request):
                     ),
                     "email": email,
                 },
+                status=401,
             )
 
         # ----------------------------------------------------
@@ -424,6 +471,17 @@ def crm_login_view(request):
         crm_session = get_crm_session(
             request
         )
+        # Rotate the browser-controlled session identifier at the privilege
+        # boundary so a pre-authentication session cannot be fixed and reused.
+        crm_session.cycle_key()
+
+        if login_identifier:
+            clear_authentication_failures(
+                CRM_LOGIN_ACCOUNT_SCOPE,
+                request,
+                identifier=login_identifier,
+                include_ip=False,
+            )
 
         # ====================================================
         # AUTHENTICATE USER INTO CRM SESSION
