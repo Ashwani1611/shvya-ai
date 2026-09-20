@@ -45,6 +45,23 @@ class SalesCalculationTests(SimpleTestCase):
                 discount_total="101",
             )
 
+    def test_non_finite_numbers_are_rejected(self):
+        with self.assertRaises(ValidationError):
+            calculate_line_items(
+                [{"name": "Service", "qty": "NaN", "rate": "100", "tax_rate": "0"}]
+            )
+
+    def test_excessive_document_amount_is_rejected(self):
+        with self.assertRaises(ValidationError):
+            calculate_line_items(
+                [{
+                    "name": "Service",
+                    "qty": "1000000000",
+                    "rate": "999999999999.99",
+                    "tax_rate": "0",
+                }]
+            )
+
 
 class SalesTemplateSafetyTests(SimpleTestCase):
     def test_layout_sanitizer_removes_scripts_events_and_unsafe_styles(self):
