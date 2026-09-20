@@ -1,9 +1,9 @@
 import uuid
 
-from cryptography.fernet import Fernet, InvalidToken
-from django.conf import settings
+from cryptography.fernet import InvalidToken
 from django.db import models
 
+from apps.core.crypto import credential_cipher
 from apps.organizations.models import Organization
 
 
@@ -12,28 +12,13 @@ from apps.organizations.models import Organization
 # ============================================================
 
 
-# Meta access tokens must be stored reversibly (we need the raw
-# value to call the Graph API), so they can't be hashed like
-# APIKey.key_hash. They're encrypted at rest with Fernet, keyed
-# off settings.SECRET_KEY.
-
-# NOTE: rotating SECRET_KEY invalidates every stored token. If
-# that becomes a problem, move this to its own dedicated
-# encryption key read from .env instead of reusing SECRET_KEY.
+# Meta access tokens must be stored reversibly (we need the raw value to
+# call the Graph API), so they use the shared rotating credential keyring.
+# Legacy SECRET_KEY-derived ciphertext remains readable during migration.
 
 
 def _fernet():
-    key = settings.SECRET_KEY.encode("utf-8")
-
-    # Fernet requires a 32-byte url-safe base64 key.
-    import base64
-    import hashlib
-
-    digest = hashlib.sha256(key).digest()
-
-    return Fernet(
-        base64.urlsafe_b64encode(digest)
-    )
+    return credential_cipher(purpose="shvya-channels-v1")
 
 
 class EncryptedTextField(models.TextField):
@@ -80,7 +65,7 @@ class EncryptedTextField(models.TextField):
             # sending a garbled token to Meta's API.
             raise ValueError(
                 "Stored WhatsApp credential could not be decrypted. "
-                "SECRET_KEY may have changed since it was saved."
+                "The credential encryption keyring may have changed."
             )
 
 
