@@ -238,6 +238,7 @@ INSTALLED_APPS = [
     "apps.followups",
     "apps.analytics",
     "apps.integrations",
+    "apps.sales",
     "apps.teams",
     "apps.telephony",
     "apps.support.apps.SupportConfig",
