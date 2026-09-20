@@ -756,6 +756,12 @@ def _state_conversation_delay(state):
 
 @transaction.atomic
 def assign_sequence(*, lead, sequence, actor=None):
+    # Serialize assignment against the lead-level switch, including callers
+    # holding a stale Lead instance (workflows and queued automation).
+    from apps.crm.models import Lead
+    lead = Lead.objects.select_for_update().get(pk=lead.pk, organization_id=lead.organization_id)
+    if not lead.auto_followup_enabled:
+        raise FollowupError("Auto follow-ups are off for this lead. Turn them on before starting a sequence.")
     if lead.organization_id != sequence.organization_id:
         raise FollowupError("Lead and sequence must belong to the same organization.")
     if not sequence.is_active:
@@ -808,16 +814,18 @@ def clear_sequence(*, lead):
     )
 
 
+@transaction.atomic
 def set_lead_followup_enabled(*, lead, enabled):
-    state = LeadSequenceState.objects.filter(
-        lead=lead,
-        status__in=[LeadSequenceState.Status.ACTIVE, LeadSequenceState.Status.PAUSED],
-    ).first()
-    if not state:
-        raise FollowupError("This lead does not have an active Auto Follow-up sequence.")
-    state.lead_auto_followup_enabled = bool(enabled)
-    state.save(update_fields=["lead_auto_followup_enabled", "updated_at"])
-    return state
+    from apps.crm.models import Lead
+    locked = Lead.objects.select_for_update().get(pk=lead.pk, organization_id=lead.organization_id)
+    locked.auto_followup_enabled = bool(enabled)
+    locked.save(update_fields=["auto_followup_enabled", "updated_at"])
+    lead.auto_followup_enabled = locked.auto_followup_enabled
+    states = LeadSequenceState.objects.select_for_update().filter(
+        lead=locked, organization_id=locked.organization_id,
+    )
+    states.update(lead_auto_followup_enabled=bool(enabled))
+    return states.filter(status__in=[LeadSequenceState.Status.ACTIVE, LeadSequenceState.Status.PAUSED]).first()
 
 
 def _conversation_delay(config):
@@ -1206,7 +1214,7 @@ def process_due_state(state_id):
         return False
     if state.sequence.whatsapp_account.connection_type != WhatsAppAccount.ConnectionType.API:
         return False
-    if not state.lead_auto_followup_enabled or not state.sequence.is_active:
+    if not state.lead.auto_followup_enabled or not state.lead_auto_followup_enabled or not state.sequence.is_active:
         return False
 
     automation_settings = _automation_settings_for_state(state)
@@ -1248,7 +1256,7 @@ def dispatch_one_due_state():
         state_ids = list(
             LeadSequenceState.objects.filter(
                 status=LeadSequenceState.Status.ACTIVE,
-                lead_auto_followup_enabled=True,
+                lead_auto_followup_enabled=True, lead__auto_followup_enabled=True,
                 sequence__is_active=True,
                 sequence__whatsapp_account__connection_type=WhatsAppAccount.ConnectionType.API,
                 upcoming_send_at__isnull=False,
@@ -1287,7 +1295,7 @@ def live_followup_due(state, *, automation_settings=None, now=None):
     controls = automation_settings or _automation_settings_for_state(state)
     if (
         state.status != LeadSequenceState.Status.ACTIVE
-        or not state.lead_auto_followup_enabled or not state.sequence.is_active
+        or not state.lead.auto_followup_enabled or not state.lead_auto_followup_enabled or not state.sequence.is_active
         or not controls or not controls.get("auto_follow_up", True)
     ):
         return now + timedelta(minutes=5)
@@ -1308,7 +1316,7 @@ def reschedule_account_followups(*, account_id, organization_id, previous_settin
         return
     candidates = LeadSequenceState.objects.filter(
         organization_id=organization_id, status=LeadSequenceState.Status.ACTIVE,
-        lead_auto_followup_enabled=True, sequence__is_active=True,
+        lead_auto_followup_enabled=True, lead__auto_followup_enabled=True, sequence__is_active=True,
         sequence__whatsapp_account__connection_type=account.connection_type,
         next_step__isnull=False,
     ).values_list("pk", flat=True)
@@ -1318,7 +1326,7 @@ def reschedule_account_followups(*, account_id, organization_id, previous_settin
                 "organization", "lead__pipeline", "sequence__whatsapp_account", "next_step",
             ).filter(
                 pk=state_id, organization_id=organization_id,
-                status=LeadSequenceState.Status.ACTIVE, lead_auto_followup_enabled=True,
+                status=LeadSequenceState.Status.ACTIVE, lead_auto_followup_enabled=True, lead__auto_followup_enabled=True,
                 sequence__is_active=True,
             ).first()
             if state is None or not state.next_step:

@@ -678,6 +678,7 @@ def build_hosted_chat_snapshot(
         "conversations": rows,
         "selected_chat": selected,
         "selected_name": selected_name,
+        "selected_contact": selected_row,
         "thread": thread,
         "total_conversations": len(conversations),
         "has_more": has_more,

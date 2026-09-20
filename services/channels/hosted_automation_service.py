@@ -706,7 +706,7 @@ def process_hosted_due_state(state_id):
     if not account:
         _defer_state(state, timezone.now() + timedelta(minutes=5))
         return False
-    if not state.lead_auto_followup_enabled or not state.sequence.is_active:
+    if not state.lead.auto_followup_enabled or not state.lead_auto_followup_enabled or not state.sequence.is_active:
         return False
 
     from services.channels.hosted_whatsapp_service import get_session_settings
@@ -874,7 +874,7 @@ def dispatch_one_hosted_due_state():
         state_ids = list(
             LeadSequenceState.objects.filter(
                 status=LeadSequenceState.Status.ACTIVE,
-                lead_auto_followup_enabled=True,
+                lead_auto_followup_enabled=True, lead__auto_followup_enabled=True,
                 sequence__is_active=True,
                 sequence__whatsapp_account__connection_type=HOSTED_CONNECTION_TYPE,
                 upcoming_send_at__isnull=False,
@@ -903,7 +903,7 @@ def dispatch_one_api_due_state():
         state_ids = list(
             LeadSequenceState.objects.filter(
                 status=LeadSequenceState.Status.ACTIVE,
-                lead_auto_followup_enabled=True,
+                lead_auto_followup_enabled=True, lead__auto_followup_enabled=True,
                 sequence__is_active=True,
                 sequence__whatsapp_account__connection_type="api",
                 upcoming_send_at__isnull=False,
@@ -956,7 +956,7 @@ def hosted_queue_items(*, account):
         LeadSequenceState.objects.filter(
             sequence__whatsapp_account__connection_type=HOSTED_CONNECTION_TYPE,
             status=LeadSequenceState.Status.ACTIVE,
-            lead_auto_followup_enabled=True,
+            lead_auto_followup_enabled=True, lead__auto_followup_enabled=True,
             next_step__isnull=False,
         )
         .select_related("lead", "lead__pipeline", "next_step", "sequence")

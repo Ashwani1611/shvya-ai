@@ -25,6 +25,8 @@
   const csrf = document.querySelector('input[name=csrfmiddlewaretoken]')?.value || '';
   const initial = new URLSearchParams(location.search);
 
+  let navigationVersion=0;
+  const drafts=new Map();
   const state = {
     selected: initial.get('chat') || '',
     query: initial.get('q') || search?.value || '',
@@ -424,6 +426,10 @@
       state.accountStatus = data.account_status || state.accountStatus;
       renderThread(data);
       renderList(data);
+      const host=app.querySelector('[data-contact-host]');
+      const url=selected ? app.dataset.contactUrl+'?'+new URLSearchParams({chat:selected}) : '';
+      if(host&&host.dataset.sidebarUrl!==url){host._panelRequest?.abort();host.dataset.sidebarUrl=url;delete host.dataset.loadedUrl;if(url)window.ShvyaContact?.load(host);else host.replaceChildren();}
+
       state.lastRefresh = Date.now();
       updateUrl();
     } catch (error) {
@@ -442,9 +448,16 @@
     }
   }
 
-  function selectChat(next, name = '') {
+  async function selectChat(next, name = '') {
+    const version=++navigationVersion;
+    if(window.ShvyaContact&&!await window.ShvyaContact.flush())return;
+    if(version!==navigationVersion)return;
+    const input=form.querySelector('[name=body]');
+    drafts.set(state.selected,input.value);input.value=drafts.get(next)||'';
     olderController?.abort();
     state.olderBusy = false;
+    const host=app.querySelector('[data-contact-host]');
+    if(host){host._panelRequest?.abort();host.dataset.sidebarUrl='';delete host.dataset.loadedUrl;host.innerHTML='<p class="contact-empty">Loading contact…</p>';window.ShvyaContact?.init(app);}
     state.selected = next;
     state.threadLoaded = false;
     state.messages.clear();
@@ -492,6 +505,7 @@
     }
   }
 
+  document.addEventListener('shvya:lead-created',()=>refresh({force:true}));
   list?.addEventListener('click', event => {
     const link = event.target.closest('[data-chat-key]');
     if (!link) return;

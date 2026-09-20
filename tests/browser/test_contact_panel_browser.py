@@ -26,6 +26,7 @@ def panel_html(identifier=A):
         phone="+919876543210",
         email="",
         ai_enabled=True,
+        auto_followup_enabled=True,
         pipeline_id=A,
         stage_id=A,
         notes="",
@@ -171,3 +172,79 @@ def test_pipeline_post_does_not_resubmit_stale_stage(inbox):
     assert len(posts) == 1
     assert "pipeline" in posts[0][1]
     assert 'name="stage"' not in posts[0][1]
+
+
+def test_collapse_preserves_draft_and_survives_chat_switch(inbox):
+    page, _, _ = inbox
+    page.locator("#message-body").fill("Keep this draft")
+    page.get_by_role("button", name="Collapse contact details").click()
+    expect(page.locator("[data-contact-panel=personal]")).not_to_be_visible()
+    expect(page.locator("#message-body")).to_have_value("Keep this draft")
+    page.get_by_role("link", name="Lead 2", exact=True).click()
+    expect(page.get_by_role("button", name="Expand contact details")).to_be_visible()
+    page.get_by_role("button", name="Expand contact details").click()
+    expect(page.locator("[name=name]")).to_have_value("Second lead")
+
+
+def test_checking_in_toggle_posts_explicit_disabled_value(inbox):
+    page, posts, _ = inbox
+    page.get_by_role("tab", name="Checking In").click()
+    page.get_by_role("switch", name="Auto follow-ups", exact=True).click()
+    expect(page.get_by_role("switch", name="Auto follow-ups", exact=True)).to_be_enabled()
+    assert any("followups-toggle" in path and "false" in body for path, body in posts)
+
+
+def test_hosted_shared_sidebar_drafts_and_touchpoints(browser):
+    from django.template import Template, Context
+    from urllib.parse import parse_qs
+    source = (ROOT / "templates/channels/hosted_whatsapp_chats.html").read_text(encoding="utf-8")
+    body = source.split("{% block content %}", 1)[1].rsplit("{% endblock %}", 1)[0]
+    body = Template("{% load static %}" + body).render(Context({"account": NS(id=A, status="connected", display_phone_number="+919000000000"), "selected_chat": "", "selected_name": "", "conversations": [], "thread": []}))
+    html = '<html><head><style>.hidden{display:none}body{margin:0}*{box-sizing:border-box}</style><script>window.WebSocket=class{static OPEN=1;constructor(){this.readyState=1}close(){}}</script></head><body>' + body + '</body></html>'
+    page = browser.new_page(viewport={"width": 1500, "height": 950})
+    posts, errors = [], []
+    page.on("pageerror", lambda error: errors.append(str(error)))
+    keys = ["+919111111111", "+919222222222"]
+    rows = [{"key": key, "name": f"Hosted {i+1}", "phone": key, "last_message": "Hello", "last_at": "2026-09-20T12:00:00Z", "unread": 0} for i, key in enumerate(keys)]
+    def route(r):
+        parsed = urlparse(r.request.url)
+        if r.request.method == "POST":
+            posts.append((parsed.path, r.request.post_data))
+            r.fulfill(json={"ok": True})
+        elif parsed.path.startswith("/static/"):
+            r.fulfill(path=str(ROOT / parsed.path.lstrip("/")))
+        elif parsed.path.endswith("/data/"):
+            selected = parse_qs(parsed.query).get("chat", [""])[0]
+            r.fulfill(json={"ok": True, "account_status": "connected", "selected_chat": selected, "selected_name": "Hosted contact", "conversations": rows, "thread": [], "total_conversations": 2})
+        elif parsed.path.endswith("/contact/"):
+            selected = parse_qs(parsed.query).get("chat", [""])[0]
+            r.fulfill(body=panel_html(A if selected == keys[0] else B), content_type="text/html")
+        else:
+            r.fulfill(body=html, content_type="text/html")
+    page.route("**/*", route)
+    page.goto("http://hosted.test/inbox/")
+    page.locator('[data-chat-key="'+keys[0]+'"]').click()
+    expect(page.locator('[data-contact-panel="personal"]')).to_be_visible()
+    page.locator('#message-body').fill("Hosted draft")
+    page.locator('[name=name]').fill("Saved hosted name")
+    page.locator('[data-chat-key="'+keys[1]+'"]').click()
+    expect(page.locator('[name=name]')).to_have_value("Second lead")
+    assert any(A in path and "Saved hosted name" in body for path, body in posts)
+    page.locator('[data-chat-key="'+keys[0]+'"]').click()
+    expect(page.locator('#message-body')).to_have_value("Hosted draft")
+    page.get_by_role("button", name="Touchpoints", exact=True).click()
+    page.get_by_role("button", name="Use reply").click()
+    expect(page.locator('#message-body')).to_have_value("Hosted draft\nHello! How can we help?")
+    page.get_by_role("button", name="Collapse contact details").click()
+    expect(page.locator('[data-contact-panel="touchpoints"]')).not_to_be_visible()
+    assert not errors
+    page.close()
+
+
+def test_collapsed_panel_can_expand_after_load_failure(inbox):
+    page, _, _ = inbox
+    page.get_by_role("button", name="Collapse contact details").click()
+    page.route("**/panel/**", lambda route: route.fulfill(status=500, body="Unavailable"))
+    page.evaluate("window.ShvyaContact.load(document.querySelector('[data-contact-host]'),true)")
+    page.get_by_role("button", name="Expand contact details").click()
+    expect(page.get_by_role("button", name="Retry", exact=True)).to_be_visible()
