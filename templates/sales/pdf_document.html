@@ -99,7 +99,7 @@ body {
 <td><small>Email</small><strong>{{ document.accepted_by_email|default:"—" }}</strong></td>
 </tr>
 <tr>
-<td><small>Recorded at</small><strong>{% if document.signed_at %}{{ document.signed_at|date:"d M Y, H:i T" }}{% else %}{{ document.accepted_at|date:"d M Y, H:i T" }}{% endif %}</strong></td>
+<td><small>Recorded at</small><strong>{{ acceptance_recorded_display|default:"—" }}</strong></td>
 <td><small>IP address</small><strong>{{ document.accepted_ip|default:"—" }}</strong></td>
 </tr>
 </table>
