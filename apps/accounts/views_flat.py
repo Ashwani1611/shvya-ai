@@ -115,6 +115,11 @@ class ThrottledTokenObtainPairView(TokenObtainPairView):
 # ============================================================
 
 
+@ratelimit(
+    limit=10,
+    window=3600,
+    methods=("POST",),
+)
 def crm_signup_view(request):
     """
     Public SHVYA CRM signup.
