@@ -29,6 +29,23 @@ BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
 SECRET_KEY = config("SECRET_KEY")
 
+# Recoverable provider credentials (Meta tokens, SMTP passwords, webhook
+# secrets, etc.) use a dedicated encryption key when configured. Existing
+# ciphertext encrypted under SECRET_KEY remains readable through the legacy
+# fallback path in apps.core.crypto, allowing a safe staged migration.
+CREDENTIAL_ENCRYPTION_KEY = config(
+    "CREDENTIAL_ENCRYPTION_KEY",
+    default="",
+)
+CREDENTIAL_ENCRYPTION_KEY_FALLBACKS = [
+    value.strip()
+    for value in config(
+        "CREDENTIAL_ENCRYPTION_KEY_FALLBACKS",
+        default="",
+    ).split(",")
+    if value.strip()
+]
+
 DEBUG = config(
     "DEBUG",
     default=False,
