@@ -53,17 +53,16 @@ def test_invalid_typed_action_is_rejected_before_execution(env, field_type, valu
 
 
 @pytest.mark.parametrize("overwrite", [False, True])
-def test_reminder_overwrite_is_explicit(env, overwrite):
+def test_reminder_always_replaces_existing(env, overwrite):
     old = LeadReminder.objects.create(lead=env.lead, title="Existing", due_at=timezone.now())
     data = configuration(env, action="reminder")
     data["action"]["overwrite"] = overwrite
     run = queue_run(env, action="reminder", data=data)
     execute(run.id)
-    old.refresh_from_db()
     run.refresh_from_db()
-    assert old.status == ("cancelled" if overwrite else "pending")
-    assert run.status == ("completed" if overwrite else "skipped")
-    assert LeadReminder.objects.filter(lead=env.lead, status="pending").count() == 1
+    assert run.status == "completed"
+    assert not LeadReminder.objects.filter(pk=old.pk).exists()
+    assert LeadReminder.objects.filter(lead=env.lead).count() == 1
 
 
 @pytest.mark.parametrize("action", ["ai", "followup"])
