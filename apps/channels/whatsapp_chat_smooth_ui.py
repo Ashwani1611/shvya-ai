@@ -104,7 +104,6 @@ _SMOOTH_INBOX_SCRIPT = b"""
     const threadTop = oldThread?.scrollTop || 0;
     const atBottom = !oldThread || oldThread.scrollHeight - oldThread.scrollTop - oldThread.clientHeight < 80;
     const oldPanel = sameChat ? shell.querySelector('[data-contact-host]') : null;
-    const focused = sameChat ? document.activeElement : null;
     if (!sameChat) showLoading(shell, true);
     try {
       const response = await fetch(target.toString(), {
@@ -119,6 +118,8 @@ _SMOOTH_INBOX_SCRIPT = b"""
       if (!nextShell) throw new Error('WhatsApp inbox shell missing');
 
       if (version !== navigationVersion) return;
+      const focused = sameChat ? document.activeElement : null;
+      const composerSelection = focused?.id === 'message-body' ? [focused.selectionStart, focused.selectionEnd] : null;
       shell.innerHTML = nextShell.innerHTML;
       if (oldPanel) shell.querySelector('[data-contact-host]')?.replaceWith(oldPanel);
       // Update the browser URL before binding the replacement shell. The socket
@@ -133,6 +134,11 @@ _SMOOTH_INBOX_SCRIPT = b"""
       document.dispatchEvent(new Event('shvya:contact-refresh'));
       if (sameChat && !atBottom && shell.querySelector('#thread')) shell.querySelector('#thread').scrollTop = threadTop;
       if (focused?.isConnected) focused.focus({preventScroll:true});
+      else if (composerSelection) {
+        const input = shell.querySelector('#message-body');
+        input?.focus({preventScroll:true});
+        input?.setSelectionRange(...composerSelection);
+      }
     } catch (error) {
       if (error.name === 'AbortError' || version !== navigationVersion) return;
       window.location.assign(target.toString());

@@ -82,7 +82,7 @@ def inbox(browser):
             )
             + '''</aside><main><h2>Conversation</h2><div id="thread" class="wa-chat-surface">Latest customer message</div><form id="composer-form" data-lead-id="'''
             + identifier
-            + """" action="/send/"><input name="csrfmiddlewaretoken" type="hidden" value="test-token"><input id="message-body"><button type="submit">Send</button></form></main><aside class="contact-sidebar" data-contact-host data-sidebar-url="/panel/"""
+            + """" action="/send/"><input name="csrfmiddlewaretoken" type="hidden" value="test-token"><textarea id="message-body"></textarea><button type="submit">Send</button></form></main><aside class="contact-sidebar" data-contact-host data-sidebar-url="/panel/"""
             + identifier
             + """/"></aside></div><div id="modal-root"></div><script src="/static/js/contact_panel.js" defer></script><script src="/static/js/whatsapp_composer.js" defer></script><script src="/smooth.js" defer></script></body></html>"""
         )
@@ -118,7 +118,7 @@ def test_touchpoints_insert_reply_and_keep_existing_draft(inbox):
     page.get_by_placeholder("Search quick replies").fill("Welcome")
     page.get_by_role("button", name="Use reply").click()
     expect(page.locator("#message-body")).to_have_value(
-        "My draft Hello! How can we help?"
+        "My draft\nHello! How can we help?"
     )
     assert not posts
 
@@ -143,6 +143,7 @@ def test_live_refresh_preserves_open_panel_draft_and_scroll(inbox):
     page.evaluate("window.shvyaWhatsAppNavigate(location.href,false,false)")
     expect(page.locator("[data-contact-panel=touchpoints]")).to_be_visible()
     expect(page.locator("#message-body")).to_have_value("Unsent draft")
+    expect(page.locator("#message-body")).to_be_focused()
 
 
 def test_latest_chat_navigation_wins(inbox):

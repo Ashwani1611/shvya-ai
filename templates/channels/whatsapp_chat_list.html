@@ -298,9 +298,9 @@
 
                 {% csrf_token %}
 
-                <input id="message-body" type="text" autocomplete="off" placeholder="Type a message"
+                <textarea id="message-body" name="body" rows="1" autocomplete="off" placeholder="Type a message"
 
-                       class="min-w-0 flex-1 rounded-full border border-transparent bg-white px-4 py-3 text-sm shadow-sm outline-none transition focus:border-green-300 focus:ring-2 focus:ring-green-100">
+                       class="min-w-0 flex-1 resize-none rounded-2xl border border-transparent bg-white px-4 py-3 text-sm shadow-sm outline-none transition focus:border-green-300 focus:ring-2 focus:ring-green-100"></textarea>
 
                 <button class="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full bg-[#25d366] text-white shadow-sm transition hover:bg-[#20bd5a] focus:outline-none focus:ring-2 focus:ring-green-200" type="submit" title="Send message"><i class="ti ti-send"></i></button>
 

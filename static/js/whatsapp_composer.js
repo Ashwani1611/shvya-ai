@@ -1,6 +1,9 @@
 /* Persisted delegation works after the inbox shell changes. */
 (() => {
   const drafts=new Map();
+  document.addEventListener('keydown',event=>{
+    if(event.target.matches('#wa-web-shell #message-body') && event.key==='Enter' && !event.shiftKey && !event.isComposing){event.preventDefault();event.target.form.requestSubmit();}
+  });
   document.addEventListener('input',event=>{const form=event.target.closest('#wa-web-shell #composer-form');if(form)drafts.set(form.dataset.leadId,event.target.value);});
   document.addEventListener('shvya:contact-refresh',()=>{const form=document.querySelector('#wa-web-shell #composer-form');if(form)form.querySelector('#message-body').value=drafts.get(form.dataset.leadId)||'';});
   document.addEventListener('submit',async event=>{
