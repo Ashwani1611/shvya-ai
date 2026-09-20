@@ -134,6 +134,8 @@ def record_payment(
     )
     if invoice.document_type != DocumentType.INVOICE:
         raise ValidationError("Payments can only be recorded against invoices.")
+    if invoice.status in {SalesDocument.Status.DRAFT, SalesDocument.Status.CANCELLED}:
+        raise ValidationError("Send the invoice before recording payments.")
     amount = Decimal(str(amount))
     if not amount.is_finite() or amount <= 0:
         raise ValidationError("Payment amount must be greater than zero.")
@@ -184,6 +186,8 @@ def record_refund(
     invoice = SalesDocument.objects.select_for_update().get(pk=invoice.pk)
     if invoice.document_type != DocumentType.INVOICE:
         raise ValidationError("Refunds can only be recorded against invoices.")
+    if invoice.status in {SalesDocument.Status.DRAFT, SalesDocument.Status.CANCELLED}:
+        raise ValidationError("Draft or cancelled invoices cannot be refunded.")
     amount = Decimal(str(amount))
     if not amount.is_finite() or amount <= 0:
         raise ValidationError("Refund amount must be greater than zero.")
@@ -237,6 +241,8 @@ def create_credit_note(*, invoice, amount, reason="", actor=None, apply=True):
     invoice = SalesDocument.objects.select_for_update().get(pk=invoice.pk)
     if invoice.document_type != DocumentType.INVOICE:
         raise ValidationError("Credit notes can only be created for invoices.")
+    if invoice.status in {SalesDocument.Status.DRAFT, SalesDocument.Status.CANCELLED}:
+        raise ValidationError("Send the invoice before creating a credit note.")
     amount = Decimal(str(amount))
     if not amount.is_finite() or amount <= 0:
         raise ValidationError("Credit note amount must be greater than zero.")
@@ -306,8 +312,10 @@ def validate_attachment(uploaded_file):
     extension = Path(original_name).suffix.lower()
     if extension not in ALLOWED_ATTACHMENT_EXTENSIONS:
         raise ValidationError("This attachment file type is not supported.")
+    filename = get_valid_filename(original_name) or f"attachment{extension}"
+    uploaded_file.name = filename
     return (
-        get_valid_filename(original_name) or f"attachment{extension}",
+        filename,
         str(getattr(uploaded_file, "content_type", "") or "application/octet-stream")[:120],
     )
 
@@ -344,6 +352,8 @@ def create_agreement_revision(*, agreement, kind, actor=None):
     ).get(pk=agreement.pk)
     if agreement.document_type != DocumentType.AGREEMENT:
         raise ValidationError("Only agreements can be amended or renewed.")
+    if agreement.status == SalesDocument.Status.DRAFT:
+        raise ValidationError("Edit the draft directly instead of creating a revision.")
     if kind not in {"amendment", "renewal"}:
         raise ValidationError("Agreement revision type is invalid.")
 
