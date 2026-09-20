@@ -3,8 +3,8 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+from datetime import datetime
 from decimal import Decimal
-from pathlib import Path
 
 from django.conf import settings
 from django.contrib import messages
@@ -411,9 +411,12 @@ def sales_recurring_invoice_view(request, document_id):
         interval_count = int(request.POST.get("interval_count") or 1)
         max_cycles_raw = str(request.POST.get("max_cycles") or "").strip()
         max_cycles = int(max_cycles_raw) if max_cycles_raw else None
-        next_run = timezone.make_aware(
-            timezone.datetime.fromisoformat(request.POST.get("next_run_at"))
-        )
+        next_run = datetime.fromisoformat(request.POST.get("next_run_at"))
+        if timezone.is_naive(next_run):
+            next_run = timezone.make_aware(
+                next_run,
+                timezone.get_current_timezone(),
+            )
     except (TypeError, ValueError):
         messages.error(request, "Recurring schedule values are invalid.")
         return redirect("shvya-sales-document-detail", document_id=invoice.id)
@@ -575,8 +578,7 @@ def sales_payment_link_create_view(request, document_id):
         text = "; ".join(getattr(exc, "messages", None) or [str(exc)])
         messages.error(request, text)
     else:
-        messages.success(request, "Payment link created.")
-        return redirect(checkout.checkout_url)
+        messages.success(request, "Payment link created and ready to share.")
     return redirect("shvya-sales-document-detail", document_id=invoice.id)
 
 
