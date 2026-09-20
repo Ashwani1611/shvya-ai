@@ -3,7 +3,13 @@ from django.db import models
 from django.test import TestCase
 from django.utils import timezone
 
-from apps.ai_engagement.models import InternalConversationSummary
+from apps.ai_engagement.models import (
+    AIActionReceipt,
+    AITrace,
+    InternalConversationSummary,
+    LeadSignal,
+)
+from apps.copilot.models import CopilotLeadFlag
 from apps.channels.models import WhatsAppAccount, WhatsAppMessage
 from apps.crm.models import (
     Lead,
@@ -85,6 +91,48 @@ class LeadDataIntegrityTests(TestCase):
             last_lead=self.lead,
         )
 
+        # Intent score is Lead-owned state, while its supporting AI observations,
+        # receipts, traces and Co-Pilot flags are separate durable rows. A CRM
+        # deletion must remove the whole lead-owned AI footprint.
+        attributes = dict(self.lead.attributes or {})
+        attributes["_shvya_ai_intent_score"] = {
+            "version": 4,
+            "assessed": True,
+            "score": 9,
+            "max_score": 10,
+        }
+        Lead.objects.filter(pk=self.lead.pk).update(attributes=attributes)
+        self.lead.refresh_from_db()
+
+        signal = LeadSignal.objects.create(
+            organization=self.organization,
+            lead=self.lead,
+            source_message_id=message.pk,
+            kind="intent",
+            detail="high",
+        )
+        receipt = AIActionReceipt.objects.create(
+            organization=self.organization,
+            lead=self.lead,
+            source_message_id=message.pk,
+            idempotency_key="lead-delete-intent",
+            action_type="intent_test",
+            result={"score": 9},
+        )
+        trace = AITrace.objects.create(
+            organization=self.organization,
+            lead=self.lead,
+            source_inbound_message_id=message.pk,
+            connection_type=AITrace.ConnectionType.API,
+            status=AITrace.Status.COMPLETED,
+        )
+        flag = CopilotLeadFlag.objects.create(
+            organization=self.organization,
+            lead=self.lead,
+            flag_code=CopilotLeadFlag.FlagCode.HIGH_INTENT_NO_ACTION,
+            severity=CopilotLeadFlag.Severity.HIGH,
+        )
+
         lead_id = self.lead.id
         pipeline_id = self.pipeline.id
         stage_id = self.stage.id
@@ -107,6 +155,10 @@ class LeadDataIntegrityTests(TestCase):
             InternalConversationSummary.objects.filter(pk=summary.pk).exists()
         )
         self.assertFalse(WhatsAppMessage.objects.filter(pk=message.pk).exists())
+        self.assertFalse(LeadSignal.objects.filter(pk=signal.pk).exists())
+        self.assertFalse(AIActionReceipt.objects.filter(pk=receipt.pk).exists())
+        self.assertFalse(AITrace.objects.filter(pk=trace.pk).exists())
+        self.assertFalse(CopilotLeadFlag.objects.filter(pk=flag.pk).exists())
         self.assertFalse(
             LeadActivity.objects.filter(pk__in=activity_ids).exists()
         )
