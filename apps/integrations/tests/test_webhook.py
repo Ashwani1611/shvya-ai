@@ -8,6 +8,8 @@ from apps.integrations.models import WebhookConfiguration, WebhookDelivery
 from apps.integrations.services.webhook import (
     WEBHOOK_DELIVERY_HEADER,
     WEBHOOK_SECRET_HEADER,
+    _PinnedHTTPSConnection,
+    assert_public_webhook_target,
     validate_webhook_url,
 )
 from apps.integrations.tasks import deliver_webhook_task
@@ -44,6 +46,54 @@ class WebhookConfigurationTests(TestCase):
 
         with self.assertRaises(ValidationError):
             validate_webhook_url("https://127.0.0.1/webhook")
+
+    @patch("apps.integrations.services.webhook.socket.getaddrinfo")
+    def test_public_target_is_pinned_to_resolved_ip(self, getaddrinfo):
+        getaddrinfo.return_value = [
+            (2, 1, 6, "", ("93.184.216.34", 443)),
+        ]
+
+        target = assert_public_webhook_target(
+            "https://example.com/hooks/lead?source=shvya"
+        )
+
+        self.assertEqual(target.hostname, "example.com")
+        self.assertEqual(target.connect_ip, "93.184.216.34")
+        self.assertEqual(target.request_target, "/hooks/lead?source=shvya")
+
+    @patch("apps.integrations.services.webhook.socket.create_connection")
+    @patch("apps.integrations.services.webhook.ssl.create_default_context")
+    def test_pinned_https_socket_uses_validated_ip_and_original_sni(
+        self,
+        default_context,
+        create_connection,
+    ):
+        raw_socket = Mock()
+        wrapped_socket = Mock()
+        create_connection.return_value = raw_socket
+        context = Mock()
+        context.wrap_socket.return_value = wrapped_socket
+        default_context.return_value = context
+
+        connection = _PinnedHTTPSConnection(
+            hostname="example.com",
+            connect_ip="93.184.216.34",
+            port=443,
+            timeout=10,
+        )
+        connection.connect()
+
+        create_connection.assert_called_once_with(
+            ("93.184.216.34", 443),
+            10,
+            None,
+        )
+        context.wrap_socket.assert_called_once_with(
+            raw_socket,
+            server_hostname="example.com",
+        )
+        self.assertIs(connection.sock, wrapped_socket)
+
 
 
 class LeadWebhookSignalTests(TestCase):
@@ -119,15 +169,16 @@ class WebhookDeliveryTaskTests(TestCase):
             payload={"lead_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"},
         )
 
+    @patch("apps.integrations.tasks.post_webhook_json")
     @patch("apps.integrations.tasks.assert_public_webhook_target")
-    @patch("apps.integrations.tasks.requests.post")
     def test_successful_delivery_sends_headers_and_marks_sent(
         self,
-        mock_post,
         mock_public_target,
+        mock_post,
     ):
-        mock_public_target.return_value = "https://example.com/webhook"
-        mock_post.return_value = Mock(status_code=200, text="ok")
+        target = Mock()
+        mock_public_target.return_value = target
+        mock_post.return_value = (200, "ok")
 
         result = deliver_webhook_task.run(str(self.delivery.id))
 
@@ -139,7 +190,7 @@ class WebhookDeliveryTaskTests(TestCase):
         self.assertEqual(result["status"], "sent")
 
         call_kwargs = mock_post.call_args.kwargs
-        self.assertEqual(call_kwargs["json"], self.delivery.payload)
+        self.assertEqual(call_kwargs["payload"], self.delivery.payload)
         self.assertEqual(
             call_kwargs["headers"][WEBHOOK_SECRET_HEADER],
             "task-secret",
@@ -148,4 +199,4 @@ class WebhookDeliveryTaskTests(TestCase):
             call_kwargs["headers"][WEBHOOK_DELIVERY_HEADER],
             str(self.delivery.id),
         )
-        self.assertFalse(call_kwargs["allow_redirects"])
+        self.assertIs(mock_post.call_args.args[0], target)
