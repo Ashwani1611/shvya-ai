@@ -1,19 +1,16 @@
-import base64
-import hashlib
 import uuid
 
-from cryptography.fernet import Fernet, InvalidToken
-from django.conf import settings
+from cryptography.fernet import InvalidToken
 from django.core.exceptions import ValidationError
 from django.db import models
 
+from apps.core.crypto import credential_cipher
 from apps.organizations.models import Organization
 
 
 def _integration_fernet():
-    """Return a stable Fernet instance derived from Django's SECRET_KEY."""
-    digest = hashlib.sha256(settings.SECRET_KEY.encode("utf-8")).digest()
-    return Fernet(base64.urlsafe_b64encode(digest))
+    """Return the rotating credential cipher for Connect Hub secrets."""
+    return credential_cipher(purpose="shvya-integrations-v1")
 
 
 class WebhookConfiguration(models.Model):
