@@ -128,7 +128,7 @@ class Migration(migrations.Migration):
         ),
         migrations.AddConstraint(
             model_name="salesdocument",
-            constraint=models.UniqueConstraint(fields=("organization", "document_number"), name="sales_document_org_number_uniq"),
+            constraint=models.UniqueConstraint(fields=("organization", "document_type", "document_number"), name="sales_doc_org_type_number_uniq"),
         ),
         migrations.AddIndex(
             model_name="salesdocument",
