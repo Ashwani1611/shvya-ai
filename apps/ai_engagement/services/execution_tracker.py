@@ -8,7 +8,85 @@ from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 
 KEY = 'shvya_ai_execution'
+ACTIVE_STATUSES = {'queued', 'processing', 'retrying'}
 logger = logging.getLogger(__name__)
+
+
+def active_pinned_source(*, lead=None, lead_id=None, account_id=None):
+    """Return the exact manually queued inbound while its AI turn is active.
+
+    Manual inbox lead creation happens after the inbound row already exists.
+    Pinning that row prevents later task execution from drifting to another
+    message/account while preserving the normal lead-id-only Celery contract.
+    """
+    from apps.channels.models import WhatsAppMessage
+
+    resolved_lead_id = getattr(lead, "pk", None) or lead_id
+    if not resolved_lead_id:
+        return None
+
+    query = WhatsAppMessage.objects.filter(
+        lead_id=resolved_lead_id,
+        direction=WhatsAppMessage.Direction.INBOUND,
+        raw_payload__shvya_ai_execution__pinned_source=True,
+        raw_payload__shvya_ai_execution__status__in=ACTIVE_STATUSES,
+    ).select_related("account")
+    if lead is not None:
+        query = query.filter(organization_id=lead.organization_id)
+    if account_id is not None:
+        query = query.filter(account_id=account_id)
+
+    source = query.order_by("-created_at", "-id").first()
+    if source is None:
+        return None
+
+    execution = (source.raw_payload or {}).get(KEY) or {}
+    pinned_account_id = str(execution.get("account_id") or "")
+    if pinned_account_id and pinned_account_id != str(source.account_id):
+        return None
+
+    # A staff/customer message that arrived later in this same conversation
+    # supersedes the manual-create turn. Never answer stale content.
+    latest = (
+        WhatsAppMessage.objects.filter(
+            lead_id=resolved_lead_id,
+            organization_id=source.organization_id,
+            account_id=source.account_id,
+        )
+        .order_by("-created_at", "-id")
+        .only("id")
+        .first()
+    )
+    if latest is None or latest.pk != source.pk:
+        return None
+    return source
+
+
+def _pin_execution_source(*, message, account_id):
+    from apps.channels.models import WhatsAppMessage
+
+    with transaction.atomic():
+        locked = (
+            WhatsAppMessage.objects.select_for_update()
+            .filter(
+                pk=message.pk,
+                lead_id=message.lead_id,
+                direction=WhatsAppMessage.Direction.INBOUND,
+            )
+            .first()
+        )
+        if locked is None:
+            return False
+        payload = dict(locked.raw_payload or {})
+        previous = dict(payload.get(KEY) or {})
+        payload[KEY] = {
+            **previous,
+            'pinned_source': True,
+            'account_id': str(account_id),
+        }
+        WhatsAppMessage.objects.filter(pk=locked.pk).update(raw_payload=payload)
+        message.raw_payload = payload
+        return True
 
 
 def record_execution(message_id, *, status, reason='', increment=False):
@@ -70,11 +148,55 @@ def claim_execution(message_id, *, stale_after_seconds=180):
         return True
 
 
-def queue_api_engagement(*, lead_id):
+def queue_api_engagement(*, lead_id, source_message_id=None, account_id=None):
     from apps.channels.models import WhatsAppMessage
     from apps.ai_engagement.tasks import generate_ai_engagement_response
-    message = WhatsAppMessage.objects.filter(lead_id=lead_id, direction='inbound',
-        account__connection_type='api').order_by('-created_at', '-id').first()
+
+    if source_message_id is not None:
+        message_query = WhatsAppMessage.objects.filter(
+            pk=source_message_id,
+            lead_id=lead_id,
+            direction=WhatsAppMessage.Direction.INBOUND,
+            account__connection_type='api',
+            account__is_active=True,
+        ).select_related("account")
+        if account_id is not None:
+            message_query = message_query.filter(account_id=account_id)
+        message = message_query.first()
+        if message is None:
+            return None
+
+        media = message.media_payload if isinstance(message.media_payload, dict) else {}
+        if media.get("historical") is True:
+            record_execution(message.pk, status='skipped', reason='historical_source')
+            return None
+
+        latest = (
+            WhatsAppMessage.objects.filter(
+                lead_id=lead_id,
+                organization_id=message.organization_id,
+                account_id=message.account_id,
+            )
+            .order_by("-created_at", "-id")
+            .only("id", "direction")
+            .first()
+        )
+        if (
+            latest is None
+            or latest.pk != message.pk
+            or latest.direction != WhatsAppMessage.Direction.INBOUND
+        ):
+            record_execution(message.pk, status='skipped', reason='conversation_changed')
+            return None
+        if not _pin_execution_source(message=message, account_id=message.account_id):
+            return None
+    else:
+        message = WhatsAppMessage.objects.filter(
+            lead_id=lead_id,
+            direction='inbound',
+            account__connection_type='api',
+        ).order_by('-created_at', '-id').first()
+
     if message is None:
         return None
     record_execution(message.pk, status='queued')
@@ -112,7 +234,11 @@ def recover_api_engagement():
         if int(execution.get('attempts', 0)) >= 5:
             record_execution(message.pk, status='failed', reason='retry_limit_reached')
             continue
-        latest = message.lead.whatsapp_messages.order_by('-created_at', '-id').first()
+        execution = (message.raw_payload or {}).get(KEY) or {}
+        latest_query = message.lead.whatsapp_messages
+        if execution.get('pinned_source'):
+            latest_query = latest_query.filter(account_id=message.account_id)
+        latest = latest_query.order_by('-created_at', '-id').first()
         if latest is None or latest.pk != message.pk:
             record_execution(message.pk, status='skipped', reason='conversation_changed')
             continue
