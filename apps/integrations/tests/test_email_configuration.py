@@ -7,7 +7,6 @@ from django.test import TestCase
 from apps.integrations.models import EmailConfiguration
 from apps.integrations.services.email import (
     EmailConfigurationError,
-    PinnedEmailBackend,
     ValidatedSMTPTarget,
     _PinnedSMTP,
     _PinnedSMTPSSL,
