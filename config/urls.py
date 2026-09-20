@@ -20,6 +20,7 @@ urlpatterns = [
     path("", include("apps.integrations.urls.diagnostics")),
     path("health/live/", health_live, name="health-live"),
     path("health/ready/", health_ready, name="health-ready"),
+    path("sales/", include("apps.sales.public_urls")),
     path("features/", FeaturesView.as_view(), name="features"),
     path('dashboard/workflows/', include('apps.triggers.urls.web')),
     # Dedicated support routes must precede the broad dashboard/admin includes.
@@ -124,6 +125,14 @@ urlpatterns = [
     path(
         "dashboard/cadence/",
         include("apps.followups.urls.web"),
+    ),
+
+    # =========================================================
+    # SHVYA Sales Web Dashboard
+    # =========================================================
+    path(
+        "dashboard/sales/",
+        include("apps.sales.urls"),
     ),
 
     # =========================================================

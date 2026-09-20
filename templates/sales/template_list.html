@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Sales Templates · SHVYA{% endblock %}
+{% block header %}SHVYA Sales Templates{% endblock %}
+
+{% block extra_head %}
+{{ block.super }}
+<link rel="stylesheet" href="{% static 'css/shvya_sales.css' %}?v=20260921-1">
+{% endblock %}
+
+{% block content %}
+<main class="sy-sales">
+    <section class="sy-page-head">
+        <div>
+            <a class="sy-back" href="{% url 'shvya-sales-dashboard' %}"><i class="ti ti-arrow-left"></i> SHVYA Sales</a>
+            <p class="sy-eyebrow">TEMPLATES</p>
+            <h1>Your brand. Your format.</h1>
+            <p>Create different layouts and communication drafts for every organisation use case.</p>
+        </div>
+        <a class="sy-btn sy-btn-primary" href="{% url 'shvya-sales-template-create' %}"><i class="ti ti-plus"></i> New template</a>
+    </section>
+
+    <section class="sy-template-grid">
+        {% for template in templates %}
+        <article class="sy-template-card {% if not template.is_active %}is-inactive{% endif %}" style="--template-accent: {{ template.accent_color }}">
+            <div class="sy-template-top">
+                <span class="sy-template-type">{{ template.get_document_type_display }}</span>
+                {% if template.is_default %}<span class="sy-default-pill">Default</span>{% endif %}
+            </div>
+            <div class="sy-template-preview">
+                <div class="sy-template-paper">
+                    <span class="sy-template-accent"></span>
+                    {% if template.logo_file %}<img src="{{ template.logo_file.url }}" alt="">{% elif template.logo_url %}<img src="{{ template.logo_url }}" alt="">{% else %}<span class="sy-template-logo-fallback">{{ template.organization.name|slice:":1" }}</span>{% endif %}
+                    <i></i><i></i><i class="short"></i>
+                    <div class="sy-template-lines"><b></b><b></b><b></b></div>
+                </div>
+            </div>
+            <div class="sy-template-copy">
+                <h2>{{ template.name }}</h2>
+                <p>{{ template.header_text|default:"Custom document layout" }}</p>
+                <div class="sy-template-meta">
+                    <span><i class="ti ti-mail"></i> Email draft</span>
+                    <span><i class="ti ti-brand-whatsapp"></i> WhatsApp draft</span>
+                </div>
+            </div>
+            <a class="sy-card-link" href="{% url 'shvya-sales-template-edit' template.id %}">Edit template <i class="ti ti-arrow-up-right"></i></a>
+        </article>
+        {% endfor %}
+    </section>
+</main>
+{% endblock %}
