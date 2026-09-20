@@ -226,6 +226,7 @@ class Migration(migrations.Migration):
                 ("email_subject", models.CharField(blank=True, max_length=255)),
                 ("email_body", models.TextField(blank=True)),
                 ("whatsapp_body", models.TextField(blank=True)),
+                ("base_url", models.URLField(blank=True, max_length=2048)),
                 ("scheduled_at", models.DateTimeField()),
                 ("status", models.CharField(choices=[("pending", "Pending"), ("processing", "Processing"), ("completed", "Completed"), ("partial", "Partially completed"), ("failed", "Failed"), ("cancelled", "Cancelled")], default="pending", max_length=16)),
                 ("error_message", models.TextField(blank=True)),
