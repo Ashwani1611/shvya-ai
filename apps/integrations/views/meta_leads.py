@@ -178,25 +178,48 @@ def _fetch_lead(leadgen_id, page):
 
 
 def _signature_is_valid(request, secret):
+    """Validate Meta webhook HMAC and fail closed on missing inputs."""
+    secret = str(secret or "").strip()
     if not secret:
-        return True
+        return False
 
-    signature_256 = request.headers.get("X-Hub-Signature-256", "")
+    signature_256 = str(
+        request.headers.get("X-Hub-Signature-256", "") or ""
+    ).strip()
     if signature_256:
         expected = "sha256=" + hmac.new(
             secret.encode("utf-8"), request.body, hashlib.sha256
         ).hexdigest()
         return hmac.compare_digest(signature_256, expected)
 
-    signature_sha1 = request.headers.get("X-Hub-Signature", "")
+    signature_sha1 = str(
+        request.headers.get("X-Hub-Signature", "") or ""
+    ).strip()
     if signature_sha1:
         expected = "sha1=" + hmac.new(
             secret.encode("utf-8"), request.body, hashlib.sha1
         ).hexdigest()
         return hmac.compare_digest(signature_sha1, expected)
 
-    logger.warning("Meta webhook received without a signature header")
-    return True
+    return False
+
+
+def _webhook_app_secrets(pages_by_id):
+    """Return all configured secrets that may legitimately sign this payload."""
+    secrets = []
+
+    global_secret = str(
+        getattr(settings, "META_APP_SECRET", "") or ""
+    ).strip()
+    if global_secret:
+        secrets.append(global_secret)
+
+    for page in pages_by_id.values():
+        secret = str(page.get_app_secret() or "").strip()
+        if secret:
+            secrets.append(secret)
+
+    return tuple(dict.fromkeys(secrets))
 
 
 @csrf_exempt
@@ -215,7 +238,12 @@ def meta_lead_webhook(request):
     except (TypeError, ValueError):
         return HttpResponse(status=400)
 
+    if not isinstance(payload, dict):
+        return HttpResponse(status=400)
+
     entries = payload.get("entry", [])
+    if not isinstance(entries, list):
+        return HttpResponse(status=400)
     page_ids = [str(entry.get("id") or "") for entry in entries]
     pages_by_id = {
         page.page_id: page
@@ -224,15 +252,21 @@ def meta_lead_webhook(request):
         )
     }
 
-    page = next(iter(pages_by_id.values()), None)
-    secret = (
-        page.get_app_secret() if page else ""
-    ) or getattr(settings, "META_APP_SECRET", "")
-    if not _signature_is_valid(request, secret):
-        logger.warning(
-            "Meta webhook signature mismatch for configured Page; accepting event "
-            "and validating lead access through the stored Page token."
+    secrets = _webhook_app_secrets(pages_by_id)
+    if not secrets:
+        logger.error(
+            "Rejected Meta Lead Ads webhook because no app secret is configured"
         )
+        return HttpResponse(
+            "Webhook signature verification unavailable",
+            status=403,
+        )
+
+    if not any(_signature_is_valid(request, secret) for secret in secrets):
+        logger.warning(
+            "Rejected Meta Lead Ads webhook with invalid or missing signature"
+        )
+        return HttpResponse("Invalid webhook signature", status=403)
 
     for entry in entries:
         page = pages_by_id.get(str(entry.get("id") or ""))
