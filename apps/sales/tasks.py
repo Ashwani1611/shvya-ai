@@ -123,7 +123,7 @@ def dispatch_scheduled_deliveries_task():
                     successes.append("whatsapp")
             except SalesDeliveryError as exc:
                 errors.append(f"{channel}: {exc}")
-            except Exception as exc:
+            except Exception:
                 logger.exception("Scheduled SHVYA Sales delivery failed: %s", schedule_id)
                 errors.append(f"{channel}: delivery failed")
 
