@@ -1,0 +1,11 @@
+<div class="shvya-stage-editor-overlay fixed inset-0 z-[180] flex items-center justify-center p-4" data-stage-editor-overlay>
+<section class="shvya-stage-editor-surface w-full max-w-lg" role="dialog" aria-modal="true" aria-labelledby="stage-entry-title" data-stage-editor-surface>
+<header class="shvya-stage-editor-header"><div><p class="shvya-stage-editor-eyebrow">Move to {{ target_stage.name }}</p><h2 id="stage-entry-title" class="shvya-stage-editor-title">One more step.</h2><p class="shvya-stage-editor-subtitle">Fill the required attributes for {{ lead.name }} before moving this lead.</p></div><button type="button" class="shvya-stage-editor-close" data-stage-editor-close aria-label="Cancel move">×</button></header>
+<form method="post" action="{{ entry_action }}" hx-post="{{ entry_action }}" hx-target="#modal-root" hx-swap="innerHTML" class="shvya-stage-editor-scroll">
+{% csrf_token %}{% for key,value in entry_payload %}<input type="hidden" name="{{ key }}" value="{{ value }}">{% endfor %}{% for key,value in other_attributes %}<input type="hidden" name="{{ key }}" value="{{ value }}">{% endfor %}
+{% for error in entry_errors %}<p class="shvya-stage-editor-alert" role="alert">{{ error }}</p>{% endfor %}
+{% for attribute in entry_fields %}<label class="shvya-stage-editor-field-label" for="entry-{{ attribute.id }}">{{ attribute.name }}</label>
+{% if attribute.field_type == 'option' %}<select id="entry-{{ attribute.id }}" name="attr_{{ attribute.key }}" class="shvya-stage-editor-input" required><option value="">Choose an option</option>{% for option in attribute.options %}<option {% if option == attribute.entry_value %}selected{% endif %}>{{ option }}</option>{% endfor %}</select>
+{% else %}<input id="entry-{{ attribute.id }}" name="attr_{{ attribute.key }}" value="{{ attribute.entry_value }}" class="shvya-stage-editor-input" required {% if attribute.field_type == 'numeric' %}type="number" step="any"{% elif attribute.field_type == 'date' %}type="date"{% elif attribute.field_type == 'datetime' %}type="datetime-local"{% else %}type="text"{% endif %}>{% endif %}{% endfor %}
+<div class="shvya-stage-editor-add-actions"><button type="button" class="shvya-stage-editor-close-text" data-stage-editor-close>Cancel</button><button type="submit" class="shvya-stage-editor-primary">Save &amp; move lead</button></div>
+</form></section></div>

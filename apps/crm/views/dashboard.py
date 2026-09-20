@@ -3800,8 +3800,28 @@ def lead_card_partial(
         context,
     )
 
+
+
+def _stage_entry_prompt(request, lead, stage, errors=None):
+    from services.crm.stage_requirements import required_attributes
+    fields = list(required_attributes(stage))
+    for field in fields:
+        field.entry_value = request.POST.get(f"attr_{field.key}", (lead.attributes or {}).get(field.key, ""))
+    response = render(request, "crm/partials/stage_entry_modal.html", {
+        "lead": lead, "target_stage": stage, "entry_fields": fields,
+        "entry_errors": errors or [], "entry_action": request.path,
+        "entry_payload": [(key, value) for key, value in request.POST.items()
+                          if key != "csrfmiddlewaretoken" and not key.startswith("attr_")],
+        "other_attributes": [(key, value) for key, value in request.POST.items()
+                             if key.startswith("attr_") and key[5:] not in {a.key for a in fields}],
+    })
+    response["HX-Retarget"] = "#modal-root"
+    response["HX-Reswap"] = "innerHTML"
+    return response
+
 @crm_login_required
 @require_POST
+@transaction.atomic
 def lead_stage_move(
     request,
     lead_id,
@@ -3810,7 +3830,7 @@ def lead_stage_move(
     user = request.crm_user
 
     lead = get_object_or_404(
-        Lead,
+        Lead.objects.select_for_update(),
         id=lead_id,
         organization=user.organization,
     )
@@ -3909,6 +3929,12 @@ def lead_stage_move(
 
         return response
 
+    from services.crm.stage_requirements import clean_entry_values, missing_attributes
+    values, errors = clean_entry_values(stage, lead.attributes, request.POST)
+    if errors or missing_attributes(stage, values):
+        return _stage_entry_prompt(request, lead, stage, errors)
+    lead.attributes = values
+
     # --------------------------------------------------------
     # SAVE LEAD + ACTIVITY ATOMICALLY
     # --------------------------------------------------------
@@ -3926,6 +3952,7 @@ def lead_stage_move(
 
             lead.save(
                 update_fields=[
+                    "attributes",
                     "stage",
                     "stage_entered_at",
                     "updated_at",
@@ -4632,6 +4659,7 @@ def lead_edit_stages(
 
 @crm_login_required
 @require_POST
+@transaction.atomic
 def lead_edit_save(
     request,
     lead_id,
@@ -4642,7 +4670,7 @@ def lead_edit_save(
     organization = user.organization
 
     lead = get_object_or_404(
-        Lead,
+        Lead.objects.select_for_update(),
         id=lead_id,
         organization=organization,
     )
@@ -4757,6 +4785,11 @@ def lead_edit_save(
 
             attributes[attr_key] = value
 
+    if stage_changed:
+        from services.crm.stage_requirements import clean_entry_values, missing_attributes
+        attributes, errors = clean_entry_values(lead.stage, attributes, request.POST)
+        if errors or missing_attributes(lead.stage, attributes):
+            return _stage_entry_prompt(request, lead, lead.stage, errors)
     lead.attributes = attributes
 
     try:

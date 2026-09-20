@@ -499,3 +499,54 @@ html.shvya-crm-apple-v2 .stage-manager-popover {
         width: 100%;
     }
 }
+/* Compact stage editor: one disclosure per stage, explicit text saves. */
+html.shvya-crm-apple-v2 .shvya-stage-editor-surface {border-radius:22px;background:#fff;backdrop-filter:none;}
+html.shvya-crm-apple-v2 .shvya-stage-editor-overlay {background:rgba(25,29,38,.26);backdrop-filter:blur(6px);}
+html.shvya-crm-apple-v2 .shvya-stage-editor-card {padding:0;border:0;border-bottom:1px solid #e8e8ed;border-radius:0;background:#fff;box-shadow:none;}
+html.shvya-crm-apple-v2 .shvya-stage-editor-list {gap:0;}
+.shvya-stage-editor-surface [hidden] {display:none!important;}
+.stage-summary {display:flex;align-items:center;gap:14px;padding:17px 4px;cursor:pointer;list-style:none;}
+.stage-summary::-webkit-details-marker {display:none;}
+.stage-order {color:#86868b;font-size:12px;font-variant-numeric:tabular-nums;}
+.stage-summary-copy {flex:1;min-width:0;display:grid;gap:4px;}
+.stage-summary-copy strong {font-size:15px;font-weight:600;color:#1d1d1f;overflow-wrap:anywhere;}
+.stage-summary-copy>span {font-size:12px;color:#6e6e73;overflow-wrap:anywhere;}
+[data-stage-editor-row][open]>.stage-summary>.ti {transform:rotate(180deg);}
+.stage-details {padding:4px 4px 16px 32px;}
+.stage-details .shvya-stage-editor-field-label {margin:12px 0 6px;}
+.stage-muted {color:#6e6e73;font-size:12px;font-weight:400;}
+.stage-setting {display:flex;align-items:center;justify-content:space-between;gap:16px;border-top:1px solid #e8e8ed;margin-top:16px;padding-top:16px;font-size:13px;}
+.stage-setting strong {font-weight:600;}
+.stage-setting small {display:block;color:#6e6e73;font-size:12px;line-height:1.5;margin-top:4px;}
+.stage-switch {width:42px;height:26px;border:0;border-radius:20px;background:#99999f;padding:3px;flex-shrink:0;}
+.stage-switch>span {display:block;width:20px;height:20px;border-radius:50%;background:white;box-shadow:0 1px 3px #0002;}
+.stage-switch[aria-checked=true] {background:#28a85d;}
+.stage-switch[aria-checked=true]>span {transform:translateX(16px);}
+.stage-text-actions {display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:10px;font-size:12px;}
+.stage-quiet {padding:8px 12px;background:#f5f5f7;border:0;border-radius:8px;font-size:12px;color:#303038;}
+.stage-quiet:disabled,.stage-delete-text:disabled {opacity:.45;cursor:not-allowed;}
+.stage-order-actions {display:flex;gap:5px;flex-shrink:0;}
+.stage-delete-text {color:#c33228;background:transparent;border:0;font-size:13px;padding:5px 0;}
+.stage-requirements {display:block;}
+.stage-requirements summary {display:flex;justify-content:space-between;gap:12px;cursor:pointer;list-style:none;}
+.stage-attribute-grid {display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px;}
+.stage-attribute-grid label {display:flex;align-items:center;gap:8px;background:#f5f5f7;padding:10px;border-radius:8px;overflow-wrap:anywhere;}
+.stage-attribute-grid input {accent-color:#0071e3;}
+.stage-action-status {font-size:12px;color:#6e6e73;margin-top:8px;}
+.stage-add {margin-top:20px;font-size:14px;}
+.stage-add>summary {cursor:pointer;color:#0071e3;list-style:none;}
+.stage-add form {margin-top:14px;}
+.stage-add .shvya-stage-editor-field-label {margin:12px 0 6px;}
+.shvya-stage-editor-close-text {background:transparent;border:0;padding:10px;color:#6e6e73;}
+.shvya-stage-editor-surface button:focus-visible,.shvya-stage-editor-surface summary:focus-visible {outline:2px solid #0071e3;outline-offset:3px;}
+@media(max-width:540px){.stage-details{padding-left:4px}.stage-attribute-grid{grid-template-columns:1fr}.stage-setting{flex-wrap:wrap}.stage-requirements summary{flex-wrap:wrap}.stage-text-actions{flex-wrap:wrap}}
+@media(pointer:coarse){.stage-quiet,.stage-delete-text{min-height:44px}.stage-switch{outline:9px solid transparent}}
+html.shvya-crm-apple-v2 .shvya-stage-editor-surface {display:flex;flex-direction:column;max-width:660px;}
+html.shvya-crm-apple-v2 .shvya-stage-editor-header {flex-shrink:0;}
+html.shvya-crm-apple-v2 .shvya-stage-editor-scroll {min-height:0;max-height:none;flex:1;}
+html.shvya-crm-apple-v2 .shvya-stage-editor-input,html.shvya-crm-apple-v2 .shvya-stage-editor-textarea {font:inherit;font-size:14px;border-radius:10px;}
+html.shvya-crm-apple-v2 .shvya-stage-editor-field-label {text-transform:none;letter-spacing:0;font-size:12px;}
+html.shvya-crm-apple-v2 .shvya-stage-editor-primary {border:0;border-radius:10px;font-size:13px;width:auto;box-shadow:none;}
+html.shvya-crm-apple-v2 .shvya-stage-editor-add-actions {justify-content:flex-end;gap:12px;margin-top:18px;}
+.stage-text-actions:has([data-stage-save-actions][hidden]) {min-height:0;margin-top:4px;}
+@media(max-width:760px){html.shvya-crm-apple-v2 .shvya-stage-editor-surface{border-radius:22px 22px 0 0;max-height:92dvh}.shvya-stage-editor-scroll{padding-bottom:calc(24px + env(safe-area-inset-bottom))!important}}
