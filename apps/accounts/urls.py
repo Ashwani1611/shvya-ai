@@ -7,6 +7,7 @@ from .views import (
     crm_password_reset_sent_view,
     crm_password_reset_view,
     crm_signup_view,
+    crm_verify_email_view,
     one_time_login_view,
 )
 
@@ -72,5 +73,10 @@ urlpatterns = [
         "signup/",
         crm_signup_view,
         name="crm-signup",
+    ),
+    path(
+        "signup/verify-email/",
+        crm_verify_email_view,
+        name="crm-verify-email",
     ),
 ]
