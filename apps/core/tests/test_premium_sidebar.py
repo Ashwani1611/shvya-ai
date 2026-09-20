@@ -21,7 +21,7 @@ def test_sidebar_navigation_is_grouped_for_premium_shell():
     automate = sections[2]
     connect = sections[3]
 
-    assert [item["label"] for item in workspace["items"]] == ["Sales Desk"]
+    assert [item["label"] for item in workspace["items"]] == ["Sales Desk", "SHVYA Sales"]
     assert [item["label"] for item in customers["items"]] == ["CRM", "Insights"]
     assert [item["label"] for item in automate["items"]] == [
         "Cadence",
@@ -55,3 +55,18 @@ def test_sidebar_context_resolves_links_and_footer_utilities():
     ]
     assert utilities[-1]["label"] == "Settings"
     assert utilities[-1]["href"] == reverse("crm-profile")
+
+
+def test_shvya_sales_sidebar_link_and_active_state():
+    request = RequestFactory().get("/dashboard/sales/")
+    context = sidebar_nav(request)
+
+    workspace = next(
+        section
+        for section in context["sidebar_nav_sections"]
+        if section["key"] == "workspace"
+    )
+    sales = next(item for item in workspace["items"] if item["label"] == "SHVYA Sales")
+
+    assert sales["href"] == reverse("shvya-sales-dashboard")
+    assert sales["is_active"]
