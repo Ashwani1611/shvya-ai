@@ -38,6 +38,29 @@ HEX_COLOR_RE = re.compile(r"^#[0-9A-Fa-f]{6}$")
 MAX_BRAND_ASSET_BYTES = 5 * 1024 * 1024
 ALLOWED_BRAND_ASSET_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
 
+DEFAULT_ITEM_TABLE_CONFIG = {
+    "show_name": True,
+    "show_description": True,
+    "description_separate": False,
+    "show_qty": True,
+    "show_rate": True,
+    "show_tax": True,
+    "show_amount": True,
+    "show_summary": True,
+    "labels": {
+        "name": "Item",
+        "description": "Description",
+        "qty": "Qty",
+        "rate": "Rate",
+        "tax": "Tax",
+        "amount": "Amount",
+        "subtotal": "Subtotal",
+        "tax_total": "Tax",
+        "discount": "Discount",
+        "total": "Total",
+    },
+}
+
 _ALLOWED_TAGS = {
     "div",
     "section",
@@ -263,6 +286,42 @@ def sanitize_layout_html(value):
     return str(soup)
 
 
+def normalize_item_table_config(value):
+    raw = value if isinstance(value, dict) else {}
+    config = {
+        key: bool(raw.get(key, default))
+        for key, default in DEFAULT_ITEM_TABLE_CONFIG.items()
+        if key != "labels"
+    }
+    labels_raw = raw.get("labels") if isinstance(raw.get("labels"), dict) else {}
+    labels = {}
+    for key, default in DEFAULT_ITEM_TABLE_CONFIG["labels"].items():
+        text = str(labels_raw.get(key) or default).strip()
+        labels[key] = text[:40] or default
+    config["labels"] = labels
+
+    # Never render a structurally empty line-item table.
+    if not any(
+        config.get(key)
+        for key in (
+            "show_name",
+            "show_description",
+            "show_qty",
+            "show_rate",
+            "show_tax",
+            "show_amount",
+        )
+    ):
+        config["show_name"] = True
+    if not config["show_description"]:
+        config["description_separate"] = False
+    return config
+
+
+def default_item_table_config():
+    return normalize_item_table_config(DEFAULT_ITEM_TABLE_CONFIG)
+
+
 def default_template_body(document_type):
     intro = {
         DocumentType.QUOTATION: "We are pleased to share the following quotation.",
@@ -324,6 +383,7 @@ def ensure_default_templates(*, organization, user=None):
             number_prefix=DEFAULT_PREFIXES[document_type],
             header_text=organization.name,
             body_template=default_template_body(document_type),
+            item_table_config=default_item_table_config(),
             footer_text="Thank you for your business.",
             email_subject_template=default_email_subject(document_type),
             email_body_template=default_email_body(document_type),
@@ -357,34 +417,90 @@ def _money_text(value, currency):
 def _items_table(document):
     if not document.line_items:
         return ""
+
+    snapshot = (
+        document.presentation_snapshot
+        if isinstance(document.presentation_snapshot, dict)
+        else {}
+    )
+    config = normalize_item_table_config(
+        snapshot.get("item_table_config")
+        or (
+            document.template.item_table_config
+            if document.template_id and document.template
+            else {}
+        )
+    )
+    labels = config["labels"]
+
+    columns = []
+    if config["show_name"]:
+        columns.append(("name", labels["name"]))
+    if config["show_description"] and config["description_separate"]:
+        columns.append(("description", labels["description"]))
+    if config["show_qty"]:
+        columns.append(("qty", labels["qty"]))
+    if config["show_rate"]:
+        columns.append(("rate", labels["rate"]))
+    if config["show_tax"]:
+        columns.append(("tax", labels["tax"]))
+    if config["show_amount"]:
+        columns.append(("amount", labels["amount"]))
+
+    headers = "".join(
+        f"<th>{html.escape(label)}</th>"
+        for _key, label in columns
+    )
     rows = []
     for item in document.line_items:
-        rows.append(
-            "<tr>"
-            f"<td>{html.escape(str(item.get('name') or ''))}"
-            + (
-                f"<small>{html.escape(str(item.get('description') or ''))}</small>"
-                if item.get("description")
-                else ""
-            )
-            + "</td>"
-            f"<td>{html.escape(str(item.get('qty') or ''))}</td>"
-            f"<td>{html.escape(str(item.get('rate') or ''))}</td>"
-            f"<td>{html.escape(str(item.get('tax_rate') or '0'))}%</td>"
-            f"<td>{html.escape(str(item.get('amount') or ''))}</td>"
-            "</tr>"
+        cells = []
+        for key, _label in columns:
+            if key == "name":
+                value = html.escape(str(item.get("name") or ""))
+                if (
+                    config["show_description"]
+                    and not config["description_separate"]
+                    and item.get("description")
+                ):
+                    value += (
+                        "<small>"
+                        + html.escape(str(item.get("description") or ""))
+                        + "</small>"
+                    )
+            elif key == "description":
+                value = html.escape(str(item.get("description") or ""))
+            elif key == "qty":
+                value = html.escape(str(item.get("qty") or ""))
+            elif key == "rate":
+                value = html.escape(str(item.get("rate") or ""))
+            elif key == "tax":
+                value = html.escape(str(item.get("tax_rate") or "0")) + "%"
+            else:
+                value = html.escape(str(item.get("amount") or ""))
+            cells.append(f"<td>{value}</td>")
+        rows.append("<tr>" + "".join(cells) + "</tr>")
+
+    summary = ""
+    if config["show_summary"]:
+        summary = (
+            f'<div class="sales-total-row"><span>{html.escape(labels["subtotal"])}</span>'
+            f"<strong>{_money_text(document.subtotal, document.currency)}</strong></div>"
+            f'<div class="sales-total-row"><span>{html.escape(labels["tax_total"])}</span>'
+            f"<strong>{_money_text(document.tax_total, document.currency)}</strong></div>"
+            f'<div class="sales-total-row"><span>{html.escape(labels["discount"])}</span>'
+            f"<strong>- {_money_text(document.discount_total, document.currency)}</strong></div>"
+            f'<div class="sales-total-row sales-total-final"><span>{html.escape(labels["total"])}</span>'
+            f"<strong>{_money_text(document.total, document.currency)}</strong></div>"
         )
-    summary = (
-        f"<div class=\"sales-total-row\"><span>Subtotal</span><strong>{_money_text(document.subtotal, document.currency)}</strong></div>"
-        f"<div class=\"sales-total-row\"><span>Tax</span><strong>{_money_text(document.tax_total, document.currency)}</strong></div>"
-        f"<div class=\"sales-total-row\"><span>Discount</span><strong>- {_money_text(document.discount_total, document.currency)}</strong></div>"
-        f"<div class=\"sales-total-row sales-total-final\"><span>Total</span><strong>{_money_text(document.total, document.currency)}</strong></div>"
-    )
+
     return (
         '<div class="sales-items-wrap"><table class="sales-items-table">'
-        "<thead><tr><th>Item</th><th>Qty</th><th>Rate</th><th>Tax</th><th>Amount</th></tr></thead>"
-        f"<tbody>{''.join(rows)}</tbody></table><div class=\"sales-totals\">{summary}</div></div>"
+        f"<thead><tr>{headers}</tr></thead>"
+        f"<tbody>{''.join(rows)}</tbody></table>"
+        f'<div class="sales-totals">{summary}</div></div>'
     )
+
+
 
 
 def merge_values(document, *, public_url=""):
@@ -506,6 +622,9 @@ def snapshot_document_presentation(document, *, public_url=""):
         ),
         "header_text": template.header_text if template else document.organization.name,
         "footer_text": template.footer_text if template else "",
+        "item_table_config": normalize_item_table_config(
+            template.item_table_config if template else {}
+        ),
         "custom_layout": bool(document.layout_override),
     }
     document.presentation_snapshot = snapshot
