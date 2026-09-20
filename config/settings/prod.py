@@ -32,11 +32,9 @@ EMAIL_HOST = config(
     "EMAIL_HOST",
     default=config("SMTP_HOST", default=EMAIL_HOST),
 )
-EMAIL_PORT = config(
-    "EMAIL_PORT",
-    default=config("SMTP_PORT", default=EMAIL_PORT),
-    cast=int,
-)
+_email_port = str(config("EMAIL_PORT", default="") or "").strip()
+_smtp_port = str(config("SMTP_PORT", default="") or "").strip()
+EMAIL_PORT = int(_email_port or _smtp_port or EMAIL_PORT)
 EMAIL_HOST_USER = config(
     "EMAIL_HOST_USER",
     default=config("SMTP_USERNAME", default=EMAIL_HOST_USER),
