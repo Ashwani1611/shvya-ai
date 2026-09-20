@@ -197,6 +197,10 @@ class ConnectHubAuthorizationTests(TestCase):
             "crm-connect-hub-email",
             "crm-connect-hub-google-sheets",
             "crm-connect-hub-meta-lead-ad-forms",
+            "crm-connect-hub-meta-conversions-api",
+            "crm-connect-hub-razorpay",
+            "crm-connect-hub-justdial",
+            "crm-connect-hub-indiamart",
         ):
             with self.subTest(route_name=route_name):
                 response = self.client.get(reverse(route_name))
@@ -211,6 +215,10 @@ class ConnectHubAuthorizationTests(TestCase):
             "crm-connect-hub-email",
             "crm-connect-hub-google-sheets",
             "crm-connect-hub-meta-lead-ad-forms",
+            "crm-connect-hub-meta-conversions-api",
+            "crm-connect-hub-razorpay",
+            "crm-connect-hub-justdial",
+            "crm-connect-hub-indiamart",
         ):
             with self.subTest(route_name=route_name):
                 response = self.client.get(reverse(route_name))
