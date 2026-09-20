@@ -434,9 +434,12 @@ def render_document_html(document, *, public_url=""):
     values["document.terms"] = html.escape(document.terms or "").replace("\n", "<br>")
 
     source = (
-        document.template.body_template
-        if document.template_id and document.template
-        else default_template_body(document.document_type)
+        document.layout_override
+        or (
+            document.template.body_template
+            if document.template_id and document.template
+            else default_template_body(document.document_type)
+        )
     )
     source = sanitize_layout_html(source)
     safe_keys = {"items_table", "document.content", "document.terms"}
@@ -472,6 +475,7 @@ def snapshot_document_presentation(document, *, public_url=""):
         ),
         "header_text": template.header_text if template else document.organization.name,
         "footer_text": template.footer_text if template else "",
+        "custom_layout": bool(document.layout_override),
     }
     document.presentation_snapshot = snapshot
     document.rendered_html = render_document_html(document, public_url=public_url)
@@ -499,7 +503,8 @@ def delivery_drafts(document, *, public_url):
     }
 
 
-def _mark_document_sent(document):
+def _mark_document_sent(document, *, actor=None):
+    old_status = document.status
     if document.status == SalesDocument.Status.DRAFT:
         document.status = (
             SalesDocument.Status.UNPAID
@@ -509,21 +514,83 @@ def _mark_document_sent(document):
     if document.sent_at is None:
         document.sent_at = timezone.now()
     document.save(update_fields=["status", "sent_at", "updated_at"])
+    if old_status != document.status or document.sent_at:
+        from apps.sales.activity import record_activity
+
+        record_activity(
+            document,
+            event_type="document_sent",
+            message=f"{document.document_number} sent.",
+            actor=actor,
+            metadata={"status": document.status},
+        )
 
 
 def _record_failure(delivery, exc):
     delivery.status = SalesDocumentDelivery.Status.FAILED
     delivery.error_message = str(exc)[:1500]
     delivery.save(update_fields=["status", "error_message"])
+    from apps.sales.activity import record_activity
+
+    record_activity(
+        delivery.document,
+        event_type="delivery_failed",
+        message=f"{delivery.get_channel_display()} delivery failed.",
+        actor=delivery.sent_by,
+        metadata={
+            "delivery_id": str(delivery.id),
+            "channel": delivery.channel,
+        },
+    )
     raise SalesDeliveryError(str(exc)) from exc
 
 
-def deliver_email(*, document, user, subject, body):
+def _attachment_payloads(document):
+    payloads = []
+    try:
+        settings_row = document.organization.sales_settings
+    except Exception:
+        settings_row = None
+    if not settings_row or not settings_row.attach_customer_files_to_email:
+        return payloads
+
+    for attachment in document.attachments.filter(visible_to_customer=True)[:10]:
+        try:
+            attachment.file.open("rb")
+            content = attachment.file.read()
+        finally:
+            try:
+                attachment.file.close()
+            except Exception:
+                pass
+        if len(content) > 10 * 1024 * 1024:
+            continue
+        payloads.append(
+            (
+                attachment.original_name,
+                content,
+                attachment.mime_type or "application/octet-stream",
+            )
+        )
+    return payloads
+
+
+def deliver_email(
+    *,
+    document,
+    user,
+    subject,
+    body,
+    base_url="",
+    attach_pdf=True,
+):
     from apps.integrations.models import EmailConfiguration
     from apps.integrations.services.email import (
         EmailConfigurationError,
         send_organization_email,
     )
+    from apps.sales.pdf_service import read_document_pdf
+    from apps.sales.tracking import build_tracked_email_html
 
     delivery = SalesDocumentDelivery.objects.create(
         organization=document.organization,
@@ -559,17 +626,46 @@ def deliver_email(*, document, user, subject, body):
         )
 
     delivery.from_identity = configuration.email_address
-    delivery.save(update_fields=["from_identity"])
+    message_id = f"<sales-{delivery.id}@shvya.ai>"
+    delivery.provider_message_id = message_id
+    delivery.save(update_fields=["from_identity", "provider_message_id"])
 
-    escaped = html.escape(delivery.body).replace("\n", "<br>")
+    attachments = []
+    if attach_pdf:
+        try:
+            pdf_bytes = read_document_pdf(document, actor=user)
+        except Exception as exc:
+            return _record_failure(
+                delivery,
+                SalesDeliveryError("The PDF could not be generated for this send."),
+            )
+        attachments.append(
+            (
+                f"{document.document_number}.pdf",
+                pdf_bytes,
+                "application/pdf",
+            )
+        )
+    attachments.extend(_attachment_payloads(document))
+
+    tracked_html = build_tracked_email_html(
+        delivery=delivery,
+        body=delivery.body,
+        base_url=base_url,
+    )
     try:
         send_organization_email(
             organization=document.organization,
             to=document.recipient_email,
             subject=delivery.subject,
             text_body=delivery.body,
-            html_body=f"<div style=\"font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;line-height:1.6\">{escaped}</div>",
-            headers={"X-SHVYA-Sales-Document": document.document_number},
+            html_body=tracked_html,
+            headers={
+                "X-SHVYA-Sales-Document": document.document_number,
+                "X-SHVYA-Sales-Delivery": str(delivery.id),
+                "Message-ID": message_id,
+            },
+            attachments=attachments,
         )
     except EmailConfigurationError as exc:
         return _record_failure(delivery, exc)
@@ -577,12 +673,34 @@ def deliver_email(*, document, user, subject, body):
     delivery.status = SalesDocumentDelivery.Status.SENT
     delivery.sent_at = timezone.now()
     delivery.save(update_fields=["status", "sent_at"])
-    _mark_document_sent(document)
+    _mark_document_sent(document, actor=user)
+
+    from apps.sales.activity import record_activity
+
+    record_activity(
+        document,
+        event_type="email_sent",
+        message=f"Email sent to {document.recipient_email}.",
+        actor=user,
+        metadata={
+            "delivery_id": str(delivery.id),
+            "pdf_attached": bool(attach_pdf),
+        },
+    )
     return delivery
 
 
-def deliver_whatsapp(*, document, user, body):
-    from apps.channels.models import WhatsAppAccount
+def deliver_whatsapp(
+    *,
+    document,
+    user,
+    body,
+    base_url="",
+    attach_pdf=True,
+):
+    from urllib.parse import urljoin
+
+    from apps.channels.models import WhatsAppAccount, WhatsAppMessage
     from apps.channels.tasks import send_whatsapp_message_task
     from services.crm.lead_chat import pipeline_chat_account
 
@@ -613,14 +731,32 @@ def deliver_whatsapp(*, document, user, body):
     delivery.save(update_fields=["from_identity", "to_identity"])
 
     try:
+        from services.channels.whatsapp_service import queue_outbound_message
+
         if account.connection_type == WhatsAppAccount.ConnectionType.API:
             from services.channels.whatsapp_api_chat_service import is_within_api_24h_window
-            from services.channels.whatsapp_service import queue_outbound_message
 
             if not is_within_api_24h_window(lead=document.lead, account=account):
                 raise SalesDeliveryError(
                     "Meta requires an approved WhatsApp template outside the active 24-hour service window. "
                     "Send an approved template from Chats first; once the customer replies, this document can be sent."
+                )
+
+        if attach_pdf:
+            from apps.sales.pdf_service import ensure_document_pdf
+
+            ensure_document_pdf(document, actor=user)
+            pdf_path = reverse(
+                "shvya-sales-public-pdf",
+                args=[document.public_token],
+            )
+            pdf_url = urljoin(
+                str(base_url or "").rstrip("/") + "/",
+                pdf_path.lstrip("/"),
+            )
+            if not pdf_url.startswith(("http://", "https://")):
+                raise SalesDeliveryError(
+                    "A public HTTPS base URL is required to attach PDFs on WhatsApp."
                 )
             message = queue_outbound_message(
                 organization=document.organization,
@@ -628,22 +764,37 @@ def deliver_whatsapp(*, document, user, body):
                 to_number=document.lead.phone,
                 body=delivery.body,
                 lead=document.lead,
+                message_type=WhatsAppMessage.MessageType.DOCUMENT,
+                media_payload={
+                    "source": "url",
+                    "url": pdf_url,
+                    "filename": f"{document.document_number}.pdf",
+                    "caption": delivery.body,
+                },
             )
         else:
-            from services.channels.hosted_whatsapp_service import queue_hosted_text_message
-
-            message = queue_hosted_text_message(
+            message = queue_outbound_message(
+                organization=document.organization,
                 account=account,
                 to_number=document.lead.phone,
                 body=delivery.body,
                 lead=document.lead,
-                metadata={
-                    "shvya_sales": {
-                        "document_id": str(document.id),
-                        "document_number": document.document_number,
-                    }
-                },
             )
+
+        raw_payload = message.raw_payload if isinstance(message.raw_payload, dict) else {}
+        raw_payload = dict(raw_payload)
+        raw_payload["shvya_sales"] = {
+            "document_id": str(document.id),
+            "document_number": document.document_number,
+            "delivery_id": str(delivery.id),
+        }
+        if account.connection_type == WhatsAppAccount.ConnectionType.coexisted:
+            raw_payload.setdefault(
+                "shvya_hosted",
+                {"origin": "agent", "chat_id": document.lead.phone},
+            )
+        message.raw_payload = raw_payload
+        message.save(update_fields=["raw_payload", "updated_at"])
         send_whatsapp_message_task.delay(str(message.id))
     except SalesDeliveryError as exc:
         return _record_failure(delivery, exc)
@@ -656,7 +807,21 @@ def deliver_whatsapp(*, document, user, body):
     delivery.provider_message_id = str(message.id)
     delivery.status = SalesDocumentDelivery.Status.QUEUED
     delivery.save(update_fields=["provider_message_id", "status"])
-    _mark_document_sent(document)
+    _mark_document_sent(document, actor=user)
+
+    from apps.sales.activity import record_activity
+
+    record_activity(
+        document,
+        event_type="whatsapp_queued",
+        message=f"WhatsApp delivery queued to {document.lead.phone}.",
+        actor=user,
+        metadata={
+            "delivery_id": str(delivery.id),
+            "whatsapp_message_id": str(message.id),
+            "pdf_attached": bool(attach_pdf),
+        },
+    )
     return delivery
 
 
