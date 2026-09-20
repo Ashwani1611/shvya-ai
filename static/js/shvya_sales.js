@@ -104,6 +104,63 @@
             });
         }
 
+        var documentRich = form.querySelector("[data-document-rich-editor]");
+        var documentLayoutSource = form.querySelector("[data-document-layout-source]");
+
+        function syncDocumentLayout() {
+            if (!documentRich || !documentLayoutSource) return;
+            var visibleText = (documentRich.textContent || "").trim();
+            var hasStructuralContent = documentRich.querySelector("table,hr,img,ul,ol,h1,h2,h3");
+            documentLayoutSource.value = (
+                visibleText || hasStructuralContent
+            ) ? documentRich.innerHTML : "";
+        }
+
+        function selectionInsideEditor(selection, editor) {
+            if (!editor || !selection || selection.rangeCount === 0) return false;
+            var range = selection.getRangeAt(0);
+            var container = range.commonAncestorContainer;
+            if (container.nodeType === Node.TEXT_NODE) container = container.parentNode;
+            return container === editor || editor.contains(container);
+        }
+
+        form.querySelectorAll("[data-document-rich-command]").forEach(function (button) {
+            button.addEventListener("click", function () {
+                if (!documentRich) return;
+                documentRich.focus();
+                document.execCommand(
+                    button.dataset.documentRichCommand,
+                    false,
+                    button.dataset.richValue || null
+                );
+                syncDocumentLayout();
+            });
+        });
+
+        form.querySelectorAll("[data-document-merge]").forEach(function (button) {
+            button.addEventListener("click", function () {
+                if (!documentRich) return;
+                var text = button.dataset.documentMerge || "";
+                documentRich.focus();
+                var selection = window.getSelection();
+                if (!selectionInsideEditor(selection, documentRich)) {
+                    documentRich.appendChild(document.createTextNode(text));
+                } else {
+                    var range = selection.getRangeAt(0);
+                    range.deleteContents();
+                    var node = document.createTextNode(text);
+                    range.insertNode(node);
+                    range.setStartAfter(node);
+                    range.collapse(true);
+                    selection.removeAllRanges();
+                    selection.addRange(range);
+                }
+                syncDocumentLayout();
+            });
+        });
+        if (documentRich) documentRich.addEventListener("input", syncDocumentLayout);
+        form.addEventListener("submit", syncDocumentLayout);
+
         var initialNode = document.getElementById("shvya-sales-initial-items");
         var initialItems = [];
         if (initialNode) {
@@ -146,12 +203,24 @@
             });
         }
 
+        var sendModeInputs = sheet.querySelectorAll('input[name="send_mode"]');
+        var schedulePanel = sheet.querySelector("[data-schedule-panel]");
+        function updateSchedulePanel() {
+            var selected = sheet.querySelector('input[name="send_mode"]:checked');
+            if (schedulePanel) {
+                schedulePanel.hidden = !selected || selected.value !== "schedule";
+            }
+        }
+
         if (open) open.addEventListener("click", function () { setOpen(true); });
         closes.forEach(function (button) {
             button.addEventListener("click", function () { setOpen(false); });
         });
         toggles.forEach(function (toggle) {
             toggle.addEventListener("change", updateEditors);
+        });
+        sendModeInputs.forEach(function (input) {
+            input.addEventListener("change", updateSchedulePanel);
         });
         sheet.addEventListener("click", function (event) {
             if (event.target === sheet) setOpen(false);
@@ -160,6 +229,7 @@
             if (event.key === "Escape" && !sheet.hidden) setOpen(false);
         });
         updateEditors();
+        updateSchedulePanel();
     }
 
     function templateBuilder() {
