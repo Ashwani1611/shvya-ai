@@ -15,7 +15,10 @@
                 {% if presentation.logo_url %}<img src="{{ presentation.logo_url }}" alt="">{% endif %}
                 <span><strong>{{ presentation.header_text|default:document.organization.name }}</strong><small>{{ document.get_document_type_display }} · {{ document.document_number }}</small></span>
             </div>
-            <span class="sy-status sy-status-{{ document.status }}">{{ document.get_status_display }}</span>
+            <div class="sy-public-top-actions">
+                <span class="sy-status sy-status-{{ document.status }}">{{ document.get_status_display }}</span>
+                <a class="sy-btn sy-btn-secondary sy-btn-small" href="{% url 'shvya-sales-public-pdf' document.public_token %}"><i class="ti ti-download"></i> PDF</a>
+            </div>
         </header>
 
         <article class="sy-public-paper">
@@ -36,6 +39,32 @@
             <footer class="sy-paper-footer">{{ presentation.footer_text }}</footer>
             {% endif %}
         </article>
+
+        {% if document.document_type == 'invoice' %}
+        <section class="sy-public-finance">
+            <div>
+                <p class="sy-eyebrow">INVOICE BALANCE</p>
+                <h2>{{ document.currency }} {{ invoice_ledger.balance|floatformat:2 }}</h2>
+                <p>Paid {{ document.currency }} {{ invoice_ledger.paid|floatformat:2 }}{% if invoice_ledger.credits %} · Credits {{ document.currency }} {{ invoice_ledger.credits|floatformat:2 }}{% endif %}</p>
+            </div>
+            {% if active_checkout and invoice_ledger.balance > 0 %}
+            <a class="sy-btn sy-btn-primary" href="{{ active_checkout.checkout_url }}" target="_blank" rel="noopener"><i class="ti ti-credit-card"></i> Pay securely</a>
+            {% elif document.status == 'paid' %}
+            <span class="sy-public-paid"><i class="ti ti-circle-check-filled"></i> Paid</span>
+            {% endif %}
+        </section>
+        {% endif %}
+
+        {% if customer_attachments %}
+        <section class="sy-public-files">
+            <div><p class="sy-eyebrow">ATTACHMENTS</p><h2>Supporting files</h2></div>
+            <div>
+                {% for attachment in customer_attachments %}
+                <a href="{% url 'shvya-sales-public-attachment' document.public_token attachment.id %}"><i class="ti ti-paperclip"></i><span><strong>{{ attachment.original_name }}</strong><small>{{ attachment.size|filesizeformat }}</small></span><i class="ti ti-download"></i></a>
+                {% endfor %}
+            </div>
+        </section>
+        {% endif %}
 
         {% if document.document_type == 'quotation' and document.status != 'accepted' and document.status != 'declined' %}
         <section class="sy-public-action">
