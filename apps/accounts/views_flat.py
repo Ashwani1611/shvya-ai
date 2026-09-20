@@ -16,10 +16,17 @@ from django.utils.encoding import force_bytes, force_str
 from django.utils.http import urlsafe_base64_decode, urlsafe_base64_encode
 
 # in that view file
+from rest_framework.exceptions import APIException
+from rest_framework.response import Response
 from rest_framework_simplejwt.views import TokenObtainPairView
-from rest_framework.throttling import ScopedRateThrottle
 
-from apps.core.ratelimit import ratelimit
+from apps.core.ratelimit import (
+    authentication_failure_is_limited,
+    clear_authentication_failures,
+    ratelimit,
+    record_authentication_failure,
+)
+from apps.organizations.access import crm_user_is_authorized
 from apps.organizations.models import Organization
 
 from .models import OneTimeLoginToken, User
@@ -31,9 +38,77 @@ from .session_utils import (
 )
 
 
+JWT_LOGIN_IP_SCOPE = "jwt-login-ip"
+JWT_LOGIN_ACCOUNT_SCOPE = "jwt-login-account"
+JWT_LOGIN_IP_FAILURE_LIMIT = 30
+JWT_LOGIN_IP_WINDOW_SECONDS = 300
+JWT_LOGIN_ACCOUNT_FAILURE_LIMIT = 10
+JWT_LOGIN_ACCOUNT_WINDOW_SECONDS = 900
+
+
 class ThrottledTokenObtainPairView(TokenObtainPairView):
-    throttle_classes = [ScopedRateThrottle]
-    throttle_scope = "jwt_login"
+    """SimpleJWT login with failure-only IP and account throttling."""
+
+    @staticmethod
+    def _identifier(request):
+        payload = getattr(request, "data", {}) or {}
+        return str(
+            payload.get("email") or payload.get("username") or ""
+        ).strip().casefold()
+
+    @staticmethod
+    def _record_failure(request, identifier):
+        record_authentication_failure(
+            JWT_LOGIN_IP_SCOPE,
+            request,
+            window=JWT_LOGIN_IP_WINDOW_SECONDS,
+        )
+        if identifier:
+            record_authentication_failure(
+                JWT_LOGIN_ACCOUNT_SCOPE,
+                request,
+                identifier=identifier,
+                window=JWT_LOGIN_ACCOUNT_WINDOW_SECONDS,
+                include_ip=False,
+            )
+
+    def post(self, request, *args, **kwargs):
+        identifier = self._identifier(request)
+        if authentication_failure_is_limited(
+            JWT_LOGIN_IP_SCOPE,
+            request,
+            limit=JWT_LOGIN_IP_FAILURE_LIMIT,
+        ) or (
+            identifier
+            and authentication_failure_is_limited(
+                JWT_LOGIN_ACCOUNT_SCOPE,
+                request,
+                identifier=identifier,
+                limit=JWT_LOGIN_ACCOUNT_FAILURE_LIMIT,
+                include_ip=False,
+            )
+        ):
+            return Response(
+                {"detail": "Too many failed login attempts. Please try again later."},
+                status=429,
+            )
+
+        try:
+            response = super().post(request, *args, **kwargs)
+        except APIException:
+            self._record_failure(request, identifier)
+            raise
+
+        if response.status_code >= 400:
+            self._record_failure(request, identifier)
+        elif identifier:
+            clear_authentication_failures(
+                JWT_LOGIN_ACCOUNT_SCOPE,
+                request,
+                identifier=identifier,
+                include_ip=False,
+            )
+        return response
 
 # ============================================================
 # PUBLIC CRM SIGNUP
@@ -432,6 +507,12 @@ def one_time_login_view(request):
             status=403,
         )
 
+    if not token.organization.is_active:
+        return HttpResponse(
+            "This organization account is disabled.",
+            status=403,
+        )
+
     # ---------------------------------------------------------
     # User organization must match token organization
     # ---------------------------------------------------------
@@ -452,6 +533,27 @@ def one_time_login_view(request):
             status=400,
         )
 
+    if not crm_user_is_authorized(user):
+        return HttpResponse(
+            "This CRM account is not authorized.",
+            status=403,
+        )
+
+    # Atomically consume the token before creating an authenticated session.
+    # Concurrent requests may both read the token, but only one can change the
+    # unused row; every later request fails closed without receiving a session.
+    consumed = OneTimeLoginToken.objects.filter(
+        pk=token.pk,
+        token_hash=token_hash,
+        used_at__isnull=True,
+        expires_at__gt=now,
+    ).update(used_at=now)
+    if consumed != 1:
+        return HttpResponse(
+            "This login link has already been used or expired.",
+            status=400,
+        )
+
     # =========================================================
     # LOAD DEDICATED CRM SESSION
     # =========================================================
@@ -460,6 +562,7 @@ def one_time_login_view(request):
         request,
         "dashboard",
     )
+    crm_session.cycle_key()
 
     # =========================================================
     # AUTHENTICATE USER INTO CRM SESSION
@@ -480,23 +583,6 @@ def one_time_login_view(request):
     set_authenticated_user(
         crm_session,
         user,
-    )
-
-    # =========================================================
-    # MARK TOKEN AS USED
-    # =========================================================
-    #
-    # Only mark the token as used after all validation has
-    # succeeded and immediately before returning the successful
-    # login response.
-    #
-
-    token.used_at = now
-
-    token.save(
-        update_fields=[
-            "used_at",
-        ],
     )
 
     # =========================================================
