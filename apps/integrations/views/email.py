@@ -6,7 +6,7 @@ from django.core.validators import validate_email
 from django.shortcuts import redirect, render
 from django.utils import timezone
 
-from apps.crm.authentication import crm_login_required
+from apps.integrations.access import connect_hub_admin_required
 from apps.integrations.models import EmailConfiguration
 from apps.integrations.services.email import (
     EmailConfigurationError,
@@ -183,7 +183,7 @@ def _connection_changed(configuration, values):
     return current != incoming or bool(values["password"])
 
 
-@crm_login_required
+@connect_hub_admin_required
 def email_configuration_view(request):
     organization = request.crm_user.organization
     configuration = EmailConfiguration.objects.filter(

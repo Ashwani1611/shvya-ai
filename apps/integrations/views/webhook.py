@@ -2,12 +2,12 @@ from django.contrib import messages
 from django.core.exceptions import ValidationError
 from django.shortcuts import redirect, render
 
-from apps.crm.authentication import crm_login_required
+from apps.integrations.access import connect_hub_admin_required
 from apps.integrations.models import WebhookConfiguration
 from apps.integrations.services.webhook import validate_webhook_url
 
 
-@crm_login_required
+@connect_hub_admin_required
 def webhook_view(request):
     organization = request.crm_user.organization
     webhook, _ = WebhookConfiguration.objects.get_or_create(
