@@ -17,7 +17,8 @@
         var discount = form.querySelector("[data-discount-total]");
         var currency = form.querySelector('input[name="currency"]');
 
-        function rowTemplate() {
+        function rowTemplate(item) {
+            item = item || {};
             var row = document.createElement("div");
             row.className = "sy-line-row";
             row.setAttribute("data-line-row", "");
@@ -28,6 +29,11 @@
                 '<input type="number" min="0" step="0.01" value="0" data-item-tax aria-label="Tax percentage">' +
                 '<strong data-item-amount>0.00</strong>' +
                 '<button type="button" class="sy-icon-btn sy-remove-line" data-remove-line aria-label="Remove item"><i class="ti ti-trash"></i></button>';
+            row.querySelector("[data-item-name]").value = item.name || "";
+            row.querySelector("[data-item-description]").value = item.description || "";
+            row.querySelector("[data-item-qty]").value = item.qty == null ? "1" : item.qty;
+            row.querySelector("[data-item-rate]").value = item.rate == null ? "0" : item.rate;
+            row.querySelector("[data-item-tax]").value = item.tax_rate == null ? "0" : item.tax_rate;
             return row;
         }
 
@@ -60,14 +66,16 @@
             totalNode.textContent = (currency.value || "INR").toUpperCase() + " " + finalTotal.toFixed(2);
         }
 
-        function addRow() {
-            var row = rowTemplate();
+        function addRow(item, shouldFocus) {
+            var row = rowTemplate(item);
             list.appendChild(row);
-            row.querySelector("[data-item-name]").focus();
+            if (shouldFocus !== false) row.querySelector("[data-item-name]").focus();
             sync();
         }
 
-        add.addEventListener("click", addRow);
+        add.addEventListener("click", function () {
+            addRow({}, true);
+        });
         list.addEventListener("input", sync);
         list.addEventListener("click", function (event) {
             var remove = event.target.closest("[data-remove-line]");
@@ -96,7 +104,23 @@
             });
         }
 
-        addRow();
+        var initialNode = document.getElementById("shvya-sales-initial-items");
+        var initialItems = [];
+        if (initialNode) {
+            try {
+                initialItems = JSON.parse(initialNode.textContent || "[]");
+            } catch (error) {
+                initialItems = [];
+            }
+        }
+        if (Array.isArray(initialItems) && initialItems.length) {
+            initialItems.forEach(function (item) {
+                addRow(item, false);
+            });
+        } else {
+            addRow({}, false);
+        }
+        sync();
     }
 
     function sendSheet() {
