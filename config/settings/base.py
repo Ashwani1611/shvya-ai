@@ -669,6 +669,18 @@ META_WA_EMBEDDED_SIGNUP_CONFIG_ID = config(
 # ---------------------------------------------------------------------------
 SUPPORT_PUBLIC_BASE_URL = config("SUPPORT_PUBLIC_BASE_URL", default="")
 SUPPORT_PRIVATE_ROOT = config("SUPPORT_PRIVATE_ROOT", default="")
+
+# SHVYA Sales public document URLs used by background reminders/schedules.
+# Browser-originated sends use request.build_absolute_uri and do not depend on
+# this setting. Configure the canonical dashboard origin in deployed environments.
+SALES_PUBLIC_BASE_URL = config("SALES_PUBLIC_BASE_URL", default="")
+
+# Optional generic provider-event bridge for SMTP delivery/bounce callbacks.
+# When empty, the public event endpoint fails closed.
+SALES_EMAIL_EVENT_WEBHOOK_SECRET = config(
+    "SALES_EMAIL_EVENT_WEBHOOK_SECRET",
+    default="",
+)
 SUPPORT_FROM_EMAIL = config("SUPPORT_FROM_EMAIL", default=DEFAULT_FROM_EMAIL)
 SUPPORT_REPLY_TO_EMAIL = config("SUPPORT_REPLY_TO_EMAIL", default=DEFAULT_FROM_EMAIL)
 SUPPORT_ATTACHMENT_SCANNER = config("SUPPORT_ATTACHMENT_SCANNER", default="")
