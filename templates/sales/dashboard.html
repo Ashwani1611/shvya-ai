@@ -1,0 +1,177 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}SHVYA Sales{% endblock %}
+{% block header %}SHVYA Sales{% endblock %}
+
+{% block extra_head %}
+{{ block.super }}
+<link rel="stylesheet" href="{% static 'css/shvya_sales.css' %}?v=20260921-1">
+<script src="{% static 'js/shvya_sales.js' %}?v=20260921-1" defer></script>
+{% endblock %}
+
+{% block content %}
+<main class="sy-sales sy-sales-home">
+    <section class="sy-hero">
+        <div>
+            <p class="sy-eyebrow">SHVYA SALES</p>
+            <h1>Documents that look<br>like your business.</h1>
+            <p class="sy-hero-copy">Create, personalise and send quotations, agreements and invoices from one calm workspace. Email, WhatsApp, or both — you choose every time.</p>
+        </div>
+        <div class="sy-hero-actions">
+            <a class="sy-btn sy-btn-primary" href="{% url 'shvya-sales-document-create' 'quotation' %}">
+                <i class="ti ti-plus"></i> New quotation
+            </a>
+            {% if sales_admin %}
+            <a class="sy-btn sy-btn-secondary" href="{% url 'shvya-sales-template-list' %}">
+                <i class="ti ti-layout-board"></i> Templates
+            </a>
+            <a class="sy-btn sy-btn-secondary" href="{% url 'shvya-sales-settings' %}">
+                <i class="ti ti-settings"></i> Settings
+            </a>
+            {% endif %}
+        </div>
+    </section>
+
+    <section class="sy-kpi-grid" aria-label="Sales overview">
+        <article class="sy-kpi sy-kpi-feature">
+            <span class="sy-kpi-icon"><i class="ti ti-currency-rupee"></i></span>
+            <div>
+                <span class="sy-kpi-label">Open document value</span>
+                <strong>₹{{ open_value|floatformat:2 }}</strong>
+                <small>Across active quotations and invoices</small>
+            </div>
+        </article>
+        <article class="sy-kpi">
+            <span class="sy-kpi-label">Quotations</span>
+            <strong>{{ quotation_count }}</strong>
+            <a href="{% url 'shvya-sales-document-list' %}?type=quotation">View all <i class="ti ti-arrow-up-right"></i></a>
+        </article>
+        <article class="sy-kpi">
+            <span class="sy-kpi-label">Agreements</span>
+            <strong>{{ agreement_count }}</strong>
+            <a href="{% url 'shvya-sales-document-list' %}?type=agreement">View all <i class="ti ti-arrow-up-right"></i></a>
+        </article>
+        <article class="sy-kpi">
+            <span class="sy-kpi-label">Invoices</span>
+            <strong>{{ invoice_count }}</strong>
+            <a href="{% url 'shvya-sales-document-list' %}?type=invoice">View all <i class="ti ti-arrow-up-right"></i></a>
+        </article>
+    </section>
+
+    <section class="sy-section">
+        <div class="sy-section-head">
+            <div>
+                <p class="sy-eyebrow">CREATE</p>
+                <h2>Start with what you need.</h2>
+            </div>
+            <p>Each document uses your organisation’s branding, layout and communication defaults — and remains editable before you send it.</p>
+        </div>
+
+        <div class="sy-document-tiles">
+            <a class="sy-document-tile sy-tile-blue" href="{% url 'shvya-sales-document-create' 'quotation' %}">
+                <span class="sy-tile-number">01</span>
+                <span class="sy-tile-icon"><i class="ti ti-file-description"></i></span>
+                <div>
+                    <h3>Quotation</h3>
+                    <p>Pricing, scope, line items, tax, terms and secure customer acceptance.</p>
+                </div>
+                <span class="sy-tile-cta">Create quotation <i class="ti ti-arrow-right"></i></span>
+            </a>
+
+            <a class="sy-document-tile sy-tile-violet" href="{% url 'shvya-sales-document-create' 'agreement' %}">
+                <span class="sy-tile-number">02</span>
+                <span class="sy-tile-icon"><i class="ti ti-signature"></i></span>
+                <div>
+                    <h3>Agreement</h3>
+                    <p>Custom legal or commercial text, branding, signatures and a frozen signed version.</p>
+                </div>
+                <span class="sy-tile-cta">Create agreement <i class="ti ti-arrow-right"></i></span>
+            </a>
+
+            <a class="sy-document-tile sy-tile-green" href="{% url 'shvya-sales-document-create' 'invoice' %}">
+                <span class="sy-tile-number">03</span>
+                <span class="sy-tile-icon"><i class="ti ti-receipt-2"></i></span>
+                <div>
+                    <h3>Invoice</h3>
+                    <p>Itemised billing with server-calculated totals and delivery history.</p>
+                </div>
+                <span class="sy-tile-cta">Create invoice <i class="ti ti-arrow-right"></i></span>
+            </a>
+
+            {% if sales_admin %}
+            <a class="sy-document-tile sy-tile-neutral" href="{% url 'shvya-sales-template-list' %}">
+                <span class="sy-tile-number">04</span>
+                <span class="sy-tile-icon"><i class="ti ti-template"></i></span>
+                <div>
+                    <h3>Templates</h3>
+                    <p>Control layout, text, logo, signature, email subject/body and WhatsApp copy.</p>
+                </div>
+                <span class="sy-tile-cta">Manage templates <i class="ti ti-arrow-right"></i></span>
+            </a>
+            {% endif %}
+        </div>
+    </section>
+
+    <section class="sy-split-grid">
+        <article class="sy-panel">
+            <div class="sy-panel-head">
+                <div>
+                    <p class="sy-eyebrow">RECENT</p>
+                    <h2>Your latest documents.</h2>
+                </div>
+                <a class="sy-link" href="{% url 'shvya-sales-document-list' %}">See all</a>
+            </div>
+            <div class="sy-list">
+                {% for document in recent_documents %}
+                <a class="sy-list-row" href="{% url 'shvya-sales-document-detail' document.id %}">
+                    <span class="sy-doc-avatar sy-doc-{{ document.document_type }}">
+                        {% if document.document_type == 'quotation' %}<i class="ti ti-file-description"></i>
+                        {% elif document.document_type == 'agreement' %}<i class="ti ti-signature"></i>
+                        {% else %}<i class="ti ti-receipt-2"></i>{% endif %}
+                    </span>
+                    <span class="sy-list-main">
+                        <strong>{{ document.document_number }}</strong>
+                        <small>{{ document.recipient_name|default:"No recipient" }} · {{ document.get_document_type_display }}</small>
+                    </span>
+                    <span class="sy-list-value">{{ document.currency }} {{ document.total|floatformat:2 }}</span>
+                    <span class="sy-status sy-status-{{ document.status }}">{{ document.get_status_display }}</span>
+                </a>
+                {% empty %}
+                <div class="sy-empty">
+                    <i class="ti ti-sparkles"></i>
+                    <h3>Your first sales document starts here.</h3>
+                    <p>Create a quotation and SHVYA will keep every version and delivery together.</p>
+                </div>
+                {% endfor %}
+            </div>
+        </article>
+
+        <aside class="sy-panel sy-readiness">
+            <div class="sy-panel-head">
+                <div>
+                    <p class="sy-eyebrow">READY TO SEND</p>
+                    <h2>Your channels.</h2>
+                </div>
+            </div>
+            <div class="sy-channel-card {% if email_connected %}is-ready{% endif %}">
+                <span class="sy-channel-icon"><i class="ti ti-mail"></i></span>
+                <div>
+                    <strong>Email</strong>
+                    <small>{% if email_connected %}Connected and tested{% else %}Connect an email account in Connect Hub{% endif %}</small>
+                </div>
+                <span class="sy-ready-dot"></span>
+            </div>
+            <div class="sy-channel-card {% if whatsapp_connected %}is-ready{% endif %}">
+                <span class="sy-channel-icon"><i class="ti ti-brand-whatsapp"></i></span>
+                <div>
+                    <strong>WhatsApp</strong>
+                    <small>{% if whatsapp_connected %}{{ whatsapp_connected }} connected sender{{ whatsapp_connected|pluralize }}{% else %}No connected WhatsApp sender{% endif %}</small>
+                </div>
+                <span class="sy-ready-dot"></span>
+            </div>
+            <p class="sy-readiness-note">When both are available, the Send sheet lets the user choose Email, WhatsApp, or both. A failure on one channel never resends the other.</p>
+        </aside>
+    </section>
+</main>
+{% endblock %}
