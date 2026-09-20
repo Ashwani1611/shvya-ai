@@ -20,6 +20,10 @@ def keep_newest_reminder_per_lead(apps, schema_editor):
 
 
 class Migration(migrations.Migration):
+    # PostgreSQL cannot ALTER a table while row deletes in the same transaction
+    # still have pending FK trigger events. Commit duplicate cleanup first.
+    atomic = False
+
     dependencies = [
         ("crm", "0026_alter_lead_lead_source"),
     ]
