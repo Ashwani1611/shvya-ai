@@ -33,6 +33,33 @@
                 </div>
                 <label class="sy-inline-check"><input type="checkbox" name="automatic_email_reminders" {% if sales_settings.automatic_email_reminders %}checked{% endif %}> Send automatic email reminders</label>
                 <label class="sy-inline-check"><input type="checkbox" name="attach_customer_files_to_email" {% if sales_settings.attach_customer_files_to_email %}checked{% endif %}> Attach customer-visible supporting files to document emails</label>
+
+                <details class="sy-compact-details sy-reminder-copy">
+                    <summary>Customize reminder email drafts</summary>
+                    <p class="sy-field-note">Use the same merge fields as Sales templates, including <code>{% verbatim %}{{recipient.name}}, {{document.number}}, {{document.valid_until}}, {{document.due_date}}, {{document.url}}{% endverbatim %}</code>. Overdue copy also supports <code>{% verbatim %}{{invoice.days_overdue}}{% endverbatim %}</code>.</p>
+                    <div class="sy-reminder-template-grid">
+                        <div>
+                            <strong>Quotation expiry</strong>
+                            <label class="sy-field"><span>Subject</span><input name="quotation_reminder_subject" value="{{ sales_settings.quotation_reminder_subject }}"></label>
+                            <label class="sy-field"><span>Body</span><textarea name="quotation_reminder_body" rows="5">{{ sales_settings.quotation_reminder_body }}</textarea></label>
+                        </div>
+                        <div>
+                            <strong>Agreement expiry</strong>
+                            <label class="sy-field"><span>Subject</span><input name="agreement_reminder_subject" value="{{ sales_settings.agreement_reminder_subject }}"></label>
+                            <label class="sy-field"><span>Body</span><textarea name="agreement_reminder_body" rows="5">{{ sales_settings.agreement_reminder_body }}</textarea></label>
+                        </div>
+                        <div>
+                            <strong>Invoice due</strong>
+                            <label class="sy-field"><span>Subject</span><input name="invoice_due_subject" value="{{ sales_settings.invoice_due_subject }}"></label>
+                            <label class="sy-field"><span>Body</span><textarea name="invoice_due_body" rows="5">{{ sales_settings.invoice_due_body }}</textarea></label>
+                        </div>
+                        <div>
+                            <strong>Invoice overdue</strong>
+                            <label class="sy-field"><span>Subject</span><input name="invoice_overdue_subject" value="{{ sales_settings.invoice_overdue_subject }}"></label>
+                            <label class="sy-field"><span>Body</span><textarea name="invoice_overdue_body" rows="5">{{ sales_settings.invoice_overdue_body }}</textarea></label>
+                        </div>
+                    </div>
+                </details>
                 <button class="sy-btn sy-btn-primary sy-btn-small" type="submit">Save reminder settings</button>
             </form>
         </article>
