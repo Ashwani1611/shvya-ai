@@ -116,6 +116,7 @@ class SalesDocument(models.Model):
         PARTIAL = "partial", "Partially paid"
         PAID = "paid", "Paid"
         OVERDUE = "overdue", "Overdue"
+        EXPIRED = "expired", "Expired"
         CANCELLED = "cancelled", "Cancelled"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -179,6 +180,10 @@ class SalesDocument(models.Model):
 
     content = models.TextField(blank=True)
     terms = models.TextField(blank=True)
+    layout_override = models.TextField(
+        blank=True,
+        help_text="Optional sanitized per-document layout overriding the selected template.",
+    )
 
     presentation_snapshot = models.JSONField(default=dict, blank=True)
     rendered_html = models.TextField(blank=True)
@@ -187,6 +192,37 @@ class SalesDocument(models.Model):
     whatsapp_body_snapshot = models.TextField(blank=True)
 
     public_token = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+
+    pdf_file = models.FileField(
+        upload_to="sales/pdfs/%Y/%m/",
+        blank=True,
+        max_length=400,
+    )
+    pdf_sha256 = models.CharField(max_length=64, blank=True)
+    pdf_generated_at = models.DateTimeField(null=True, blank=True)
+
+    revision_number = models.PositiveIntegerField(default=1)
+    revision_kind = models.CharField(
+        max_length=16,
+        choices=[
+            ("original", "Original"),
+            ("amendment", "Amendment"),
+            ("renewal", "Renewal"),
+        ],
+        default="original",
+    )
+    supersedes = models.ForeignKey(
+        "self",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="superseded_by",
+    )
+    is_current_version = models.BooleanField(default=True)
+
+    first_viewed_at = models.DateTimeField(null=True, blank=True)
+    last_viewed_at = models.DateTimeField(null=True, blank=True)
+    view_count = models.PositiveIntegerField(default=0)
 
     accepted_by_name = models.CharField(max_length=180, blank=True)
     accepted_by_email = models.EmailField(blank=True)
@@ -256,7 +292,16 @@ class SalesDocumentDelivery(models.Model):
     body = models.TextField(blank=True)
 
     provider_message_id = models.CharField(max_length=255, blank=True)
+    tracking_token = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
     error_message = models.TextField(blank=True)
+
+    delivered_at = models.DateTimeField(null=True, blank=True)
+    opened_at = models.DateTimeField(null=True, blank=True)
+    first_clicked_at = models.DateTimeField(null=True, blank=True)
+    bounced_at = models.DateTimeField(null=True, blank=True)
+    open_count = models.PositiveIntegerField(default=0)
+    click_count = models.PositiveIntegerField(default=0)
+    bounce_reason = models.TextField(blank=True)
 
     sent_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -279,3 +324,20 @@ class SalesDocumentDelivery(models.Model):
 
     def __str__(self):
         return f"{self.document.document_number} via {self.channel}"
+
+
+# Extended lifecycle/payment/tracking models live in a focused module while
+# remaining discoverable from apps.sales.models.
+from .models_lifecycle import (  # noqa: E402,F401
+    SalesActivity,
+    SalesAttachment,
+    SalesCreditNote,
+    SalesEmailTrackedLink,
+    SalesPayment,
+    SalesPaymentCheckout,
+    SalesPaymentGateway,
+    SalesRecurringInvoice,
+    SalesReminder,
+    SalesScheduledDelivery,
+    SalesSettings,
+)
