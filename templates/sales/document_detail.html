@@ -334,7 +334,7 @@
         {% if whatsapp_account and not whatsapp_window_open %}
         <div class="sy-policy-note">
             <i class="ti ti-info-circle"></i>
-            <div><strong>Meta service window is closed.</strong><p>An approved WhatsApp template is required before free-form document text can be sent. SHVYA will block the WhatsApp leg instead of violating Meta policy; Email can still send normally.</p></div>
+            <div><strong>Meta service window is closed.</strong><p>{% if has_whatsapp_templates %}SHVYA will use the approved document-header template selected below and attach this PDF compliantly.{% else %}No approved document-header template exists for this pipeline-linked number. Create or sync one under WhatsApp Templates before sending.{% endif %}</p></div>
         </div>
         {% endif %}
 
