@@ -940,11 +940,41 @@
 .sy-ledger-refund form { display: flex; justify-content: flex-end; gap: 7px; margin-top: 6px; }
 .sy-ledger-refund input { width: 110px; min-height: 30px; border: 1px solid var(--sy-border); border-radius: 9px; padding: 4px 7px; font-size: 9px; }
 
+
+.sy-item-config-toggles {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 7px 16px;
+    padding: 14px;
+    margin-bottom: 14px;
+    border-radius: 16px;
+    background: #f7f7f8;
+}
+.sy-item-label-grid { margin-top: 14px; }
+.sy-reminder-template-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+    margin-top: 14px;
+}
+.sy-reminder-template-grid > div {
+    padding: 14px;
+    border: 1px solid var(--sy-border);
+    border-radius: 15px;
+    background: #fff;
+}
+.sy-reminder-template-grid > div > strong {
+    display: block;
+    margin-bottom: 10px;
+    font-size: 11px;
+}
+
 @media (max-width: 1100px) {
     .sy-kpi-grid { grid-template-columns: repeat(2, 1fr); }
     .sy-template-grid { grid-template-columns: repeat(2, 1fr); }
     .sy-builder, .sy-template-builder { grid-template-columns: 1fr; }
     .sy-settings-grid { grid-template-columns: 1fr; }
+    .sy-reminder-template-grid { grid-template-columns: 1fr; }
     .sy-sticky-card { position: static; }
     .sy-detail-grid, .sy-split-grid { grid-template-columns: 1fr; }
 }
