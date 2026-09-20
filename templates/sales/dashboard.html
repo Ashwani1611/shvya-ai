@@ -22,12 +22,14 @@
             <a class="sy-btn sy-btn-primary" href="{% url 'shvya-sales-document-create' 'quotation' %}">
                 <i class="ti ti-plus"></i> New quotation
             </a>
+            {% if sales_admin %}
             <a class="sy-btn sy-btn-secondary" href="{% url 'shvya-sales-template-list' %}">
                 <i class="ti ti-layout-board"></i> Templates
             </a>
             <a class="sy-btn sy-btn-secondary" href="{% url 'shvya-sales-settings' %}">
                 <i class="ti ti-settings"></i> Settings
             </a>
+            {% endif %}
         </div>
     </section>
 
@@ -97,6 +99,7 @@
                 <span class="sy-tile-cta">Create invoice <i class="ti ti-arrow-right"></i></span>
             </a>
 
+            {% if sales_admin %}
             <a class="sy-document-tile sy-tile-neutral" href="{% url 'shvya-sales-template-list' %}">
                 <span class="sy-tile-number">04</span>
                 <span class="sy-tile-icon"><i class="ti ti-template"></i></span>
@@ -106,6 +109,7 @@
                 </div>
                 <span class="sy-tile-cta">Manage templates <i class="ti ti-arrow-right"></i></span>
             </a>
+            {% endif %}
         </div>
     </section>
 
