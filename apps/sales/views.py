@@ -30,6 +30,7 @@ from apps.sales.services import (
     public_url_for,
     sanitize_layout_html,
     snapshot_document_presentation,
+    validate_brand_asset,
 )
 
 
@@ -447,6 +448,24 @@ def sales_template_form_view(request, template_id=None):
             template.is_default = request.POST.get("is_default") == "on"
 
             try:
+                logo_upload = validate_brand_asset(
+                    request.FILES.get("logo_file"),
+                    label="Logo",
+                )
+                signature_upload = validate_brand_asset(
+                    request.FILES.get("signature_file"),
+                    label="Signature",
+                )
+                if logo_upload is not None:
+                    template.logo_file = logo_upload
+                if signature_upload is not None:
+                    template.signature_file = signature_upload
+                if request.POST.get("remove_logo") == "on":
+                    template.logo_file = ""
+                    template.logo_url = ""
+                if request.POST.get("remove_signature") == "on":
+                    template.signature_file = ""
+                    template.signature_url = ""
                 template.full_clean()
             except ValidationError as exc:
                 for errors in exc.message_dict.values():
