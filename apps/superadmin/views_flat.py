@@ -55,7 +55,8 @@ def superuser_required(view_func):
     key_func=lambda r: r.POST.get("username", "") if r.method == "POST" else "",
     limit=5,
     window=300,
-    )
+    methods=("POST",),
+)
 def superadmin_login_view(request):
     """
     Authenticate SHVYA Superadmin users using the dedicated
@@ -144,6 +145,11 @@ def superadmin_login_view(request):
                 #
                 #     shvya_superadmin_sessionid
                 # -------------------------------------------------
+
+                # Rotate the browser-controlled session identifier at the
+                # privilege boundary so a pre-authentication session cannot
+                # be fixed and reused after Superadmin login.
+                superadmin_session.cycle_key()
 
                 set_authenticated_user(
                     superadmin_session,
