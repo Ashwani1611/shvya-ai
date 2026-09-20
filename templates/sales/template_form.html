@@ -134,13 +134,43 @@
             </article>
 
             <article class="sy-panel sy-form-card">
-                <div class="sy-card-title"><span>4</span><div><h2>Email draft</h2><p>Reusable default, still editable every time the user sends.</p></div></div>
+                <div class="sy-card-title"><span>4</span><div><h2>Line-item table</h2><p>Choose what customers see and rename columns for your industry. Calculations remain standardized.</p></div></div>
+                <div class="sy-item-config-toggles">
+                    <label class="sy-inline-check"><input type="checkbox" name="item_show_name" {% if item_table_config.show_name %}checked{% endif %}> Item/name</label>
+                    <label class="sy-inline-check"><input type="checkbox" name="item_show_description" {% if item_table_config.show_description %}checked{% endif %}> Description</label>
+                    <label class="sy-inline-check"><input type="checkbox" name="item_description_separate" {% if item_table_config.description_separate %}checked{% endif %}> Description as separate column</label>
+                    <label class="sy-inline-check"><input type="checkbox" name="item_show_qty" {% if item_table_config.show_qty %}checked{% endif %}> Quantity</label>
+                    <label class="sy-inline-check"><input type="checkbox" name="item_show_rate" {% if item_table_config.show_rate %}checked{% endif %}> Rate</label>
+                    <label class="sy-inline-check"><input type="checkbox" name="item_show_tax" {% if item_table_config.show_tax %}checked{% endif %}> Tax</label>
+                    <label class="sy-inline-check"><input type="checkbox" name="item_show_amount" {% if item_table_config.show_amount %}checked{% endif %}> Amount</label>
+                    <label class="sy-inline-check"><input type="checkbox" name="item_show_summary" {% if item_table_config.show_summary %}checked{% endif %}> Totals summary</label>
+                </div>
+                <details class="sy-advanced-fields sy-field-wide" open>
+                    <summary>Column & total labels</summary>
+                    <div class="sy-form-grid sy-item-label-grid">
+                        <label class="sy-field"><span>Item/name</span><input name="item_label_name" value="{{ item_table_config.labels.name }}"></label>
+                        <label class="sy-field"><span>Description</span><input name="item_label_description" value="{{ item_table_config.labels.description }}"></label>
+                        <label class="sy-field"><span>Quantity</span><input name="item_label_qty" value="{{ item_table_config.labels.qty }}"></label>
+                        <label class="sy-field"><span>Rate</span><input name="item_label_rate" value="{{ item_table_config.labels.rate }}"></label>
+                        <label class="sy-field"><span>Tax</span><input name="item_label_tax" value="{{ item_table_config.labels.tax }}"></label>
+                        <label class="sy-field"><span>Amount</span><input name="item_label_amount" value="{{ item_table_config.labels.amount }}"></label>
+                        <label class="sy-field"><span>Subtotal</span><input name="item_label_subtotal" value="{{ item_table_config.labels.subtotal }}"></label>
+                        <label class="sy-field"><span>Tax total</span><input name="item_label_tax_total" value="{{ item_table_config.labels.tax_total }}"></label>
+                        <label class="sy-field"><span>Discount</span><input name="item_label_discount" value="{{ item_table_config.labels.discount }}"></label>
+                        <label class="sy-field"><span>Grand total</span><input name="item_label_total" value="{{ item_table_config.labels.total }}"></label>
+                    </div>
+                </details>
+                <p class="sy-field-note">Examples: “Course / Students / Price per student”, “SKU / Product / Units / MRP”, or your own labels.</p>
+            </article>
+
+            <article class="sy-panel sy-form-card">
+                <div class="sy-card-title"><span>5</span><div><h2>Email draft</h2><p>Reusable default, still editable every time the user sends.</p></div></div>
                 <label class="sy-field"><span>Subject</span><input name="email_subject_template" value="{% if template %}{{ template.email_subject_template }}{% else %}{{ default_email_subject }}{% endif %}"></label>
                 <label class="sy-field"><span>Body</span><textarea name="email_body_template" rows="8">{% if template %}{{ template.email_body_template }}{% else %}{{ default_email_body }}{% endif %}</textarea></label>
             </article>
 
             <article class="sy-panel sy-form-card">
-                <div class="sy-card-title"><span>5</span><div><h2>WhatsApp draft</h2><p>Used only when the user chooses WhatsApp. Pipeline sender rules still apply.</p></div></div>
+                <div class="sy-card-title"><span>6</span><div><h2>WhatsApp draft</h2><p>Used only when the user chooses WhatsApp. Pipeline sender rules still apply.</p></div></div>
                 <label class="sy-field"><span>Message</span><textarea name="whatsapp_body_template" rows="7">{% if template %}{{ template.whatsapp_body_template }}{% else %}{{ default_whatsapp_body }}{% endif %}</textarea></label>
             </article>
         </section>
