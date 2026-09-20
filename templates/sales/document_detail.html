@@ -198,7 +198,11 @@
                 {% if document.payments.all %}
                 <div class="sy-ledger-list">
                     {% for payment in document.payments.all|slice:":10" %}
-                    <div><span><strong>{{ payment.get_kind_display }}</strong><small>{{ payment.payment_date|date:"d M Y" }} · {{ payment.get_method_display }}</small></span><strong>{% if payment.kind == 'refund' %}-{% endif %}{{ document.currency }} {{ payment.amount|floatformat:2 }}</strong></div>
+                    <div class="sy-ledger-entry"><span><strong>{{ payment.get_kind_display }}</strong><small>{{ payment.payment_date|date:"d M Y" }} · {{ payment.get_method_display }}{% if payment.provider %} · {{ payment.provider|title }}{% endif %}</small></span><strong>{% if payment.kind == 'refund' %}-{% endif %}{{ document.currency }} {{ payment.amount|floatformat:2 }}</strong>
+                    {% if payment.kind == 'payment' and payment.provider and payment.external_payment_id %}
+                    <details class="sy-ledger-refund"><summary>Refund</summary><form method="post" action="{% url 'shvya-sales-gateway-refund' payment.id %}">{% csrf_token %}<input type="number" name="amount" min="0.01" step="0.01" max="{{ payment.amount }}" required placeholder="Amount"><button class="sy-text-action" type="submit">Refund via {{ payment.provider|title }}</button></form></details>
+                    {% endif %}
+                    </div>
                     {% endfor %}
                 </div>
                 {% endif %}
