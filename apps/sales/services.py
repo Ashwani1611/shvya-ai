@@ -796,6 +796,9 @@ def deliver_whatsapp(
             )
         message.raw_payload = raw_payload
         message.save(update_fields=["raw_payload", "updated_at"])
+        # Make the tokenized PDF URL customer-accessible before a fast worker
+        # asks Meta/Hosted to fetch the attachment.
+        _mark_document_sent(document, actor=user)
         send_whatsapp_message_task.delay(str(message.id))
     except SalesDeliveryError as exc:
         return _record_failure(delivery, exc)
@@ -808,7 +811,6 @@ def deliver_whatsapp(
     delivery.provider_message_id = str(message.id)
     delivery.status = SalesDocumentDelivery.Status.QUEUED
     delivery.save(update_fields=["provider_message_id", "status"])
-    _mark_document_sent(document, actor=user)
 
     from apps.sales.activity import record_activity
 
