@@ -1,6 +1,7 @@
 from urllib.parse import urlsplit, urlunsplit
 
 from decouple import config
+from django.core.exceptions import ImproperlyConfigured
 
 from .base import *  # noqa
 
@@ -20,13 +21,53 @@ SECURE_HSTS_INCLUDE_SUBDOMAINS = True
 SECURE_HSTS_PRELOAD = True
 CORS_ALLOW_ALL_ORIGINS = False
 
-# Prefer a dedicated JWT signing secret rather than Django's SECRET_KEY.
-# The fallback keeps management commands, CI and existing deployments working
-# during rollout; production should set JWT_SECRET to a separate random value.
-JWT_SECRET = config(
-    "JWT_SECRET",
-    default=SECRET_KEY,
+# Public signup verification and CRM password-reset email must leave the server
+# in production. Support both canonical Django EMAIL_* names and SHVYA's
+# historical SMTP_* environment names during migration.
+EMAIL_BACKEND = config(
+    "EMAIL_BACKEND",
+    default="django.core.mail.backends.smtp.EmailBackend",
 )
+EMAIL_HOST = config(
+    "EMAIL_HOST",
+    default=config("SMTP_HOST", default=EMAIL_HOST),
+)
+EMAIL_PORT = config(
+    "EMAIL_PORT",
+    default=config("SMTP_PORT", default=EMAIL_PORT),
+    cast=int,
+)
+EMAIL_HOST_USER = config(
+    "EMAIL_HOST_USER",
+    default=config("SMTP_USERNAME", default=EMAIL_HOST_USER),
+)
+EMAIL_HOST_PASSWORD = config(
+    "EMAIL_HOST_PASSWORD",
+    default=config("SMTP_PASSWORD", default=EMAIL_HOST_PASSWORD),
+)
+
+# Production fails closed unless signing and recoverable-provider credentials
+# use secrets distinct from Django's SECRET_KEY. Deploy workflows provision
+# these values server-side before application containers start.
+JWT_SECRET = str(config("JWT_SECRET", default="") or "").strip()
+CREDENTIAL_ENCRYPTION_KEY = str(
+    config("CREDENTIAL_ENCRYPTION_KEY", default="") or ""
+).strip()
+if not JWT_SECRET:
+    raise ImproperlyConfigured("JWT_SECRET is required in production.")
+if not CREDENTIAL_ENCRYPTION_KEY:
+    raise ImproperlyConfigured(
+        "CREDENTIAL_ENCRYPTION_KEY is required in production."
+    )
+if JWT_SECRET == SECRET_KEY:
+    raise ImproperlyConfigured(
+        "JWT_SECRET must be distinct from SECRET_KEY in production."
+    )
+if CREDENTIAL_ENCRYPTION_KEY == SECRET_KEY:
+    raise ImproperlyConfigured(
+        "CREDENTIAL_ENCRYPTION_KEY must be distinct from SECRET_KEY in production."
+    )
+
 SIMPLE_JWT = {
     **SIMPLE_JWT,
     "SIGNING_KEY": JWT_SECRET,

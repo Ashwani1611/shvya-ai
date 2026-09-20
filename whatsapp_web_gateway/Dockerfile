@@ -11,7 +11,7 @@ RUN apt-get update \
 WORKDIR /app
 
 COPY package*.json ./
-RUN npm install --omit=dev
+RUN npm ci --omit=dev
 
 # whatsapp-web.js 1.34.7 is currently incompatible with WhatsApp Web's
 # 2.3000.104xxx LID/message-key changes. Apply the reviewed upstream fix
@@ -47,6 +47,12 @@ RUN node scripts/patch-hosted-uploaded-media-send.js
 # message media downloads, and drop WhatsApp Status/broadcast callbacks.
 RUN node scripts/patch-hosted-media-download-and-filter.js
 RUN node --check src/index.js
+
+# npm is required only while assembling node_modules. The production gateway
+# runs directly with Node and never invokes npm/npx, so remove the package
+# manager and its bundled dependency tree from the runtime image.
+RUN rm -rf /usr/local/lib/node_modules/npm \
+    && rm -f /usr/local/bin/npm /usr/local/bin/npx
 
 RUN mkdir -p /data/wwebjs_auth && chown -R node:node /app /data/wwebjs_auth
 USER node

@@ -22,7 +22,7 @@ jobs:
 
     steps:
       - name: Deploy over SSH
-        uses: appleboy/ssh-action@v1.2.2
+        uses: appleboy/ssh-action@2ead5e36573f08b82fbfce1504f1a4b05a647c6f
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
@@ -90,7 +90,9 @@ jobs:
               echo "Generated missing ${key} in production .env."
             }
 
-            echo "Ensuring internal WhatsApp gateway secrets exist..."
+            echo "Ensuring production security secrets exist..."
+            ensure_env_secret JWT_SECRET
+            ensure_env_secret CREDENTIAL_ENCRYPTION_KEY
             ensure_env_secret WHATSAPP_WEB_GATEWAY_TOKEN
             ensure_env_secret WHATSAPP_WEB_CALLBACK_TOKEN
             chmod 600 .env
