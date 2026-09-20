@@ -12,7 +12,7 @@ from django.utils import timezone
 from django.utils.dateparse import parse_date, parse_datetime
 from django.views.decorators.http import require_POST
 
-from apps.channels.models import WhatsAppAccount
+from apps.channels.models import WhatsAppAccount, WhatsAppTemplate
 from apps.crm.decorators import crm_login_required
 from apps.crm.models import Lead
 from apps.integrations.models import EmailConfiguration
@@ -593,6 +593,22 @@ def sales_document_detail_view(request, document_id):
         except ValidationError as exc:
             whatsapp_error = "; ".join(getattr(exc, "messages", None) or [str(exc)])
 
+    whatsapp_templates = WhatsAppTemplate.objects.none()
+    if (
+        whatsapp_account
+        and whatsapp_account.connection_type == WhatsAppAccount.ConnectionType.API
+    ):
+        whatsapp_templates = (
+            WhatsAppTemplate.objects.filter(
+                organization=organization,
+                account=whatsapp_account,
+                status=WhatsAppTemplate.Status.APPROVED,
+                attachment_type=WhatsAppTemplate.AttachmentType.DOCUMENT,
+            )
+            .exclude(meta_template_id="")
+            .order_by("name")
+        )
+
     ledger = invoice_ledger(document) if document.document_type == DocumentType.INVOICE else None
     gateways = (
         SalesPaymentGateway.objects.filter(
@@ -628,6 +644,7 @@ def sales_document_detail_view(request, document_id):
             "whatsapp_account": whatsapp_account,
             "whatsapp_error": whatsapp_error,
             "whatsapp_window_open": whatsapp_window_open,
+            "whatsapp_templates": whatsapp_templates,
             "attachments": document.attachments.all()[:30],
             "activities": document.activities.all()[:50],
             "scheduled_deliveries": document.scheduled_deliveries.all()[:20],
@@ -662,6 +679,9 @@ def sales_document_send_view(request, document_id):
     email_subject = request.POST.get("email_subject", "")
     email_body = request.POST.get("email_body", "")
     whatsapp_body = request.POST.get("whatsapp_body", "")
+    whatsapp_template_id = str(
+        request.POST.get("whatsapp_template_id") or ""
+    ).strip()
     send_mode = str(request.POST.get("send_mode") or "now")
 
     if send_mode == "schedule":
@@ -680,6 +700,50 @@ def sales_document_send_view(request, document_id):
         if scheduled_at is None:
             messages.error(request, "Choose a valid future schedule time.")
             return redirect("shvya-sales-document-detail", document_id=document.id)
+        whatsapp_template = None
+        if SalesDocumentDelivery.Channel.WHATSAPP in channels:
+            if not document.lead_id:
+                messages.error(
+                    request,
+                    "Link this document to a CRM lead before scheduling WhatsApp.",
+                )
+                return redirect(
+                    "shvya-sales-document-detail",
+                    document_id=document.id,
+                )
+            from services.crm.lead_chat import pipeline_chat_account
+
+            try:
+                scheduled_account = pipeline_chat_account(document.lead)
+            except ValidationError as exc:
+                messages.error(request, "; ".join(exc.messages))
+                return redirect(
+                    "shvya-sales-document-detail",
+                    document_id=document.id,
+                )
+            if scheduled_account.connection_type == WhatsAppAccount.ConnectionType.API:
+                whatsapp_template = (
+                    WhatsAppTemplate.objects.filter(
+                        id=whatsapp_template_id,
+                        organization=organization,
+                        account=scheduled_account,
+                        status=WhatsAppTemplate.Status.APPROVED,
+                        attachment_type=WhatsAppTemplate.AttachmentType.DOCUMENT,
+                    )
+                    .exclude(meta_template_id="")
+                    .first()
+                )
+                if whatsapp_template is None:
+                    messages.error(
+                        request,
+                        "Scheduled Cloud API/Coexistence sends require an "
+                        "approved document-header template for this pipeline number.",
+                    )
+                    return redirect(
+                        "shvya-sales-document-detail",
+                        document_id=document.id,
+                    )
+
         try:
             schedule = create_scheduled_delivery(
                 document=document,
@@ -688,6 +752,7 @@ def sales_document_send_view(request, document_id):
                 email_subject=email_subject,
                 email_body=email_body,
                 whatsapp_body=whatsapp_body,
+                whatsapp_template=whatsapp_template,
                 base_url=base_url,
                 actor=request.crm_user,
             )
@@ -724,6 +789,7 @@ def sales_document_send_view(request, document_id):
                 body=whatsapp_body,
                 base_url=base_url,
                 attach_pdf=True,
+                whatsapp_template_id=whatsapp_template_id or None,
             )
             successes.append("WhatsApp")
         except SalesDeliveryError as exc:
