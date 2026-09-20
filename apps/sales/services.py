@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import html
 import re
+import uuid
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from pathlib import Path
 
@@ -602,6 +603,67 @@ def deliver_whatsapp(*, document, user, body):
     delivery.save(update_fields=["provider_message_id", "status"])
     _mark_document_sent(document)
     return delivery
+
+
+def refresh_whatsapp_delivery_statuses(document):
+    """Reflect the canonical WhatsApp message state in sales delivery history."""
+    from apps.channels.models import WhatsAppMessage
+
+    deliveries = list(
+        document.deliveries.filter(
+            channel=SalesDocumentDelivery.Channel.WHATSAPP,
+        ).exclude(provider_message_id="")
+    )
+    ids = []
+    for delivery in deliveries:
+        try:
+            ids.append(uuid.UUID(str(delivery.provider_message_id)))
+        except (TypeError, ValueError, AttributeError):
+            continue
+
+    if not ids:
+        return
+
+    messages = {
+        str(message.id): message
+        for message in WhatsAppMessage.objects.filter(
+            organization=document.organization,
+            id__in=ids,
+        )
+    }
+    successful_states = {
+        WhatsAppMessage.Status.SENT,
+        WhatsAppMessage.Status.DELIVERED,
+        WhatsAppMessage.Status.READ,
+    }
+
+    for delivery in deliveries:
+        message = messages.get(str(delivery.provider_message_id))
+        if message is None:
+            continue
+
+        if message.status == WhatsAppMessage.Status.FAILED:
+            desired_status = SalesDocumentDelivery.Status.FAILED
+            desired_error = message.error or "WhatsApp delivery failed."
+        elif message.status in successful_states:
+            desired_status = SalesDocumentDelivery.Status.SENT
+            desired_error = ""
+        else:
+            desired_status = SalesDocumentDelivery.Status.QUEUED
+            desired_error = ""
+
+        update_fields = []
+        if delivery.status != desired_status:
+            delivery.status = desired_status
+            update_fields.append("status")
+        if delivery.error_message != desired_error:
+            delivery.error_message = desired_error
+            update_fields.append("error_message")
+        if desired_status == SalesDocumentDelivery.Status.SENT and delivery.sent_at is None:
+            delivery.sent_at = timezone.now()
+            update_fields.append("sent_at")
+        if update_fields:
+            delivery.save(update_fields=update_fields)
 
 
 def public_url_for(document, request):
