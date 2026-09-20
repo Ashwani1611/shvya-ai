@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}SHVYA Sales Settings{% endblock %}
+{% block header %}SHVYA Sales Settings{% endblock %}
+
+{% block extra_head %}
+{{ block.super }}
+<link rel="stylesheet" href="{% static 'css/shvya_sales.css' %}?v=20260921-2">
+{% endblock %}
+
+{% block content %}
+<main class="sy-sales">
+    <section class="sy-page-head sy-page-head-compact">
+        <div>
+            <a class="sy-back" href="{% url 'shvya-sales-dashboard' %}"><i class="ti ti-arrow-left"></i> SHVYA Sales</a>
+            <p class="sy-eyebrow">SALES SETTINGS</p>
+            <h1>Automation with control.</h1>
+            <p>Configure reminders, email attachment behavior and payment gateways for this organization.</p>
+        </div>
+    </section>
+
+    <section class="sy-settings-grid">
+        <article class="sy-panel sy-form-card">
+            <div class="sy-card-title"><span>1</span><div><h2>Reminders & attachments</h2><p>Automatic reminders use the connected organization mailbox.</p></div></div>
+            <form method="post" class="sy-stack-form">
+                {% csrf_token %}<input type="hidden" name="action" value="reminders">
+                <div class="sy-form-grid">
+                    <label class="sy-field"><span>Quotation reminder · days before expiry</span><input type="number" min="0" max="90" name="quotation_expiry_reminder_days" value="{{ sales_settings.quotation_expiry_reminder_days }}"></label>
+                    <label class="sy-field"><span>Agreement reminder · days before end</span><input type="number" min="0" max="365" name="agreement_expiry_reminder_days" value="{{ sales_settings.agreement_expiry_reminder_days }}"></label>
+                    <label class="sy-field"><span>Invoice due reminder · days before</span><input type="number" min="0" max="90" name="invoice_due_reminder_days" value="{{ sales_settings.invoice_due_reminder_days }}"></label>
+                    <label class="sy-field"><span>Repeat overdue reminder every</span><input type="number" min="1" max="90" name="invoice_overdue_repeat_days" value="{{ sales_settings.invoice_overdue_repeat_days }}"></label>
+                </div>
+                <label class="sy-inline-check"><input type="checkbox" name="automatic_email_reminders" {% if sales_settings.automatic_email_reminders %}checked{% endif %}> Send automatic email reminders</label>
+                <label class="sy-inline-check"><input type="checkbox" name="attach_customer_files_to_email" {% if sales_settings.attach_customer_files_to_email %}checked{% endif %}> Attach customer-visible supporting files to document emails</label>
+
+                <details class="sy-compact-details sy-reminder-copy">
+                    <summary>Customize reminder email drafts</summary>
+                    <p class="sy-field-note">Use the same merge fields as Sales templates, including <code>{% verbatim %}{{recipient.name}}, {{document.number}}, {{document.valid_until}}, {{document.due_date}}, {{document.url}}{% endverbatim %}</code>. Overdue copy also supports <code>{% verbatim %}{{invoice.days_overdue}}{% endverbatim %}</code>.</p>
+                    <div class="sy-reminder-template-grid">
+                        <div>
+                            <strong>Quotation expiry</strong>
+                            <label class="sy-field"><span>Subject</span><input name="quotation_reminder_subject" value="{{ sales_settings.quotation_reminder_subject }}"></label>
+                            <label class="sy-field"><span>Body</span><textarea name="quotation_reminder_body" rows="5">{{ sales_settings.quotation_reminder_body }}</textarea></label>
+                        </div>
+                        <div>
+                            <strong>Agreement expiry</strong>
+                            <label class="sy-field"><span>Subject</span><input name="agreement_reminder_subject" value="{{ sales_settings.agreement_reminder_subject }}"></label>
+                            <label class="sy-field"><span>Body</span><textarea name="agreement_reminder_body" rows="5">{{ sales_settings.agreement_reminder_body }}</textarea></label>
+                        </div>
+                        <div>
+                            <strong>Invoice due</strong>
+                            <label class="sy-field"><span>Subject</span><input name="invoice_due_subject" value="{{ sales_settings.invoice_due_subject }}"></label>
+                            <label class="sy-field"><span>Body</span><textarea name="invoice_due_body" rows="5">{{ sales_settings.invoice_due_body }}</textarea></label>
+                        </div>
+                        <div>
+                            <strong>Invoice overdue</strong>
+                            <label class="sy-field"><span>Subject</span><input name="invoice_overdue_subject" value="{{ sales_settings.invoice_overdue_subject }}"></label>
+                            <label class="sy-field"><span>Body</span><textarea name="invoice_overdue_body" rows="5">{{ sales_settings.invoice_overdue_body }}</textarea></label>
+                        </div>
+                    </div>
+                </details>
+                <button class="sy-btn sy-btn-primary sy-btn-small" type="submit">Save reminder settings</button>
+            </form>
+        </article>
+
+        <article class="sy-panel sy-form-card sy-webhook-card">
+            <div class="sy-card-title"><span>2</span><div><h2>Email delivery events</h2><p>Open and click tracking works directly through SHVYA. Delivered/bounce needs your SMTP provider to POST a signed event.</p></div></div>
+            <div class="sy-code-field">
+                <span>Provider event endpoint</span>
+                <code>{{ email_event_webhook_url }}</code>
+            </div>
+            <p class="sy-field-note">Set the deployment secret <code>SALES_EMAIL_EVENT_WEBHOOK_SECRET</code>. Provider callbacks sign their raw JSON body with HMAC-SHA256 and send it as <code>X-SHVYA-Sales-Signature</code>. Payload accepts <code>delivery_id</code> or <code>message_id</code>, plus <code>event=delivered|bounce</code>.</p>
+        </article>
+
+        <article class="sy-panel sy-form-card">
+            <div class="sy-card-title"><span>3</span><div><h2>Razorpay</h2><p>Create invoice-specific Payment Links and reconcile signed webhooks.</p></div></div>
+            <form method="post" class="sy-stack-form">
+                {% csrf_token %}<input type="hidden" name="action" value="gateway"><input type="hidden" name="provider" value="razorpay">
+                <div class="sy-form-grid">
+                    <label class="sy-field"><span>Display name</span><input name="display_name" value="{{ razorpay.display_name|default:'Razorpay' }}"></label>
+                    <label class="sy-field"><span>Key ID</span><input name="public_key" value="{{ razorpay.public_key|default:'' }}" autocomplete="off"></label>
+                    <label class="sy-field"><span>Key secret {% if razorpay.encrypted_secret %}· saved{% endif %}</span><input type="password" name="secret" autocomplete="new-password" placeholder="{% if razorpay.encrypted_secret %}Leave blank to keep current{% endif %}"></label>
+                    <label class="sy-field"><span>Webhook secret {% if razorpay.encrypted_webhook_secret %}· saved{% endif %}</span><input type="password" name="webhook_secret" autocomplete="new-password" placeholder="{% if razorpay.encrypted_webhook_secret %}Leave blank to keep current{% endif %}"></label>
+                </div>
+                {% if razorpay %}<div class="sy-code-field"><span>Razorpay webhook URL</span><code>{{ request.scheme }}://{{ request.get_host }}{% url 'shvya-sales-payment-webhook' razorpay.id %}</code></div>{% endif %}
+                <label class="sy-inline-check"><input type="checkbox" name="is_enabled" {% if razorpay.is_enabled %}checked{% endif %}> Enable Razorpay for invoices</label>
+                <button class="sy-btn sy-btn-secondary sy-btn-small" type="submit">Save Razorpay</button>
+            </form>
+        </article>
+
+        <article class="sy-panel sy-form-card">
+            <div class="sy-card-title"><span>4</span><div><h2>Stripe</h2><p>Create Checkout Sessions and reconcile signed checkout events.</p></div></div>
+            <form method="post" class="sy-stack-form">
+                {% csrf_token %}<input type="hidden" name="action" value="gateway"><input type="hidden" name="provider" value="stripe">
+                <div class="sy-form-grid">
+                    <label class="sy-field"><span>Display name</span><input name="display_name" value="{{ stripe.display_name|default:'Stripe' }}"></label>
+                    <label class="sy-field"><span>Publishable key · optional</span><input name="public_key" value="{{ stripe.public_key|default:'' }}" autocomplete="off"></label>
+                    <label class="sy-field"><span>Secret key {% if stripe.encrypted_secret %}· saved{% endif %}</span><input type="password" name="secret" autocomplete="new-password" placeholder="{% if stripe.encrypted_secret %}Leave blank to keep current{% endif %}"></label>
+                    <label class="sy-field"><span>Webhook signing secret {% if stripe.encrypted_webhook_secret %}· saved{% endif %}</span><input type="password" name="webhook_secret" autocomplete="new-password" placeholder="{% if stripe.encrypted_webhook_secret %}Leave blank to keep current{% endif %}"></label>
+                </div>
+                {% if stripe %}<div class="sy-code-field"><span>Stripe webhook URL</span><code>{{ request.scheme }}://{{ request.get_host }}{% url 'shvya-sales-payment-webhook' stripe.id %}</code></div>{% endif %}
+                <label class="sy-inline-check"><input type="checkbox" name="is_enabled" {% if stripe.is_enabled %}checked{% endif %}> Enable Stripe for invoices</label>
+                <button class="sy-btn sy-btn-secondary sy-btn-small" type="submit">Save Stripe</button>
+            </form>
+        </article>
+    </section>
+</main>
+{% endblock %}
