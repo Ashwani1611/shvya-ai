@@ -9,11 +9,9 @@ from apps.core.health import live as health_live, ready as health_ready
 from apps.integrations.views.meta_leads import meta_lead_webhook
 from apps.superadmin.views import admin_global_search
 
-from rest_framework_simplejwt.views import (
-    TokenObtainPairView,
-    TokenRefreshView,
-)
+from rest_framework_simplejwt.views import TokenRefreshView
 
+from apps.accounts.views import ThrottledTokenObtainPairView
 from apps.core.views import BookCallView, DocumentationView, FeaturesView, HomeView, PricingView
 
 
@@ -68,7 +66,7 @@ urlpatterns = [
     # =========================================================
     path(
         "api/v1/auth/token/",
-        TokenObtainPairView.as_view(),
+        ThrottledTokenObtainPairView.as_view(),
         name="token_obtain_pair",
     ),
     path(
