@@ -167,7 +167,8 @@ def queue_api_engagement(*, lead_id, source_message_id=None, account_id=None):
             return None
 
         media = message.media_payload if isinstance(message.media_payload, dict) else {}
-        if media.get("historical") is True:
+        payload = message.raw_payload if isinstance(message.raw_payload, dict) else {}
+        if media.get("historical") is True or payload.get("isHistory") is True:
             record_execution(message.pk, status='skipped', reason='historical_source')
             return None
 
