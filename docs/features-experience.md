@@ -1,5 +1,8 @@
 # Public Features experience
 
+> **Implementation baseline:** verified 2026-09-20 against production `main` at `7fb74946b35f189a66f92d6ffd0677909dca4c9f`. Runtime code, migrations and tests remain authoritative when later commits change behavior.
+
+
 `/features/` renders `templates/features.html` inside the same `marketing/dark_base.html`, header and footer as the current public landing page. Keep this interactive experience when changing the marketing theme; route tests assert its assets and controls so a static catalogue cannot silently replace it again.
 
 The page-specific CSS and JavaScript are scoped to `.premium-features`. The existing sidebar product catalogue is represented by accessible tabs. The customer journey is an illustrative office-space enquiry, not a customer testimonial or a live account.
@@ -17,3 +20,10 @@ The film loads only after a visitor opens the native dialog. Closing it pauses p
 ## Release verification
 
 Check the public URL with and without the trailing slash, shared header links, all feature tabs, the four journey steps, motion pause, mobile overflow, film play/close/Escape and voice/captions. After deployment verify the page includes `premium-features.js` and `shvya-cinematic-film.mp4`, rather than relying only on the service health endpoint.
+
+
+## Current platform naming
+
+The public and authenticated product surfaces use the current module names **Sales Desk**, **Cadence**, **Playbooks**, **Workflows** and **Insights**. Historical implementation identifiers such as `copilot` and `smart-trigger` may remain in URLs, Python modules or test names and should not be copied into customer-facing navigation.
+
+The public marketing shell supports day/night presentation. The initial theme follows the browser/system color preference unless the visitor has made an explicit theme choice, and the header control lets the visitor switch themes without changing product data or authentication state.
