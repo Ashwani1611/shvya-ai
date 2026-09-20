@@ -9,6 +9,8 @@
 
 The CRM remains the system of record. AI, messaging, automation, and analytics operate on top of tenant-scoped CRM data rather than replacing it.
 
+> **Implementation baseline:** documentation verified on 2026-09-20 against production `main` at `7fb74946b35f189a66f92d6ffd0677909dca4c9f`. This documentation change is docs-only; Django models, migrations, tests, and runtime configuration remain the executable source of truth.
+
 > Engineering rules and architectural constraints are defined in [`CLAUDE.md`](./CLAUDE.md). Changes to tenant isolation, business logic, async work, idempotency, model structure, or external integrations must follow those rules.
 
 ---
@@ -22,15 +24,17 @@ Current platform capabilities include:
 | Area | Capabilities |
 | --- | --- |
 | CRM | Leads, pipelines, stages, attributes, activities, teams, bulk operations, tenant-scoped data |
-| AI engagement | AI replies, lead qualification, CRM actions, summaries, configurable models, AI credit tracking |
+| AI engagement | Organization AI Playbook, direct-question handling, qualification, validated CRM actions, dynamic safe attributes, AI Trace, lead signals, summaries, configurable models, AI credit tracking |
 | Knowledge | Connected knowledge, document ingestion, embeddings, semantic retrieval with pgvector |
-| WhatsApp Cloud API | Meta Embedded Signup, API inbox, message templates, campaigns, AI engagement |
+| WhatsApp Cloud API | Meta Embedded Signup, API inbox, message templates, Bulk Campaigns, recipient delivery history/retry actions, AI engagement |
 | WhatsApp Coexistence | WhatsApp Business App onboarding, phone selection, history/state sync, shared Cloud API inbox |
 | Hosted WhatsApp | Linked-device sessions through the internal `whatsapp-web.js` gateway, QR login, inbox, media, automation |
-| Instagram | Instagram professional account OAuth, signed webhooks, inbox, messaging, token refresh |
+| Instagram | Instagram professional account OAuth, signed webhooks, WhatsApp-style inbox, CRM lead linkage, media/story-reply handling, messaging, token refresh |
 | Meta Lead Ads | Signed lead webhook ingestion into the CRM |
-| Automation | Cadences, workflows, triggers, scheduled/background execution |
+| Automation | Cadence, Workflows, trigger/event outbox processing, scheduled/background execution |
 | Analytics | CRM and engagement insights, operational reporting, account health |
+| Support | Organization Help & Support portal, Shvya-Ops Client's Portal, private attachments, ticket response indicator, email delivery/outbox |
+| Diagnostics | Read-only organization-scoped diagnostic MCP/OAuth connector with explicit API-key permission and audit metadata |
 | Administration | Organization management, roles, API keys, Superadmin console, global search |
 
 ---
@@ -126,6 +130,7 @@ shvya-ai/
 │   ├── hosted_automation/    # Hosted WhatsApp automation runtime
 │   ├── integrations/         # External integrations and Connect Hub
 │   ├── organizations/        # Tenant / organization models and API keys
+│   ├── support/              # Customer Help & Support + Shvya-Ops ticketing
 │   ├── superadmin/           # Platform administration
 │   ├── teams/                # Teams and assignment features
 │   ├── telephony/            # Telephony domain code
@@ -336,9 +341,10 @@ SHVYA supports Meta WhatsApp Cloud API onboarding and messaging, including:
 - API inbox
 - inbound/outbound messages
 - template creation, synchronization and sending
-- campaigns
+- Bulk Campaigns with frozen recipient delivery history, retry evidence and export/action views
 - AI engagement
 - lead/CRM updates from conversations
+- strict pipeline-to-WhatsApp sender affinity: a lead is messaged only through the connected WhatsApp account linked to its current pipeline
 
 The public WhatsApp webhook endpoint is:
 
@@ -356,11 +362,13 @@ Hosted accounts use the internal Node.js gateway in [`whatsapp_web_gateway/`](./
 
 The gateway handles linked-device sessions and sends authenticated callbacks to Django. Session state is isolated from the application container and persisted in the configured WhatsApp session volume.
 
-Hosted gateway tokens are mandatory outside throwaway local development.
+Hosted gateway tokens are mandatory outside throwaway local development. Live Hosted contacts that arrive with WhatsApp LID identifiers are resolved before CRM lead creation, and session reconciliation repairs stale connected/reconnecting state without treating historical sync as a new live inbound conversation.
 
 ### Instagram
 
 SHVYA uses Meta's **Instagram API with Instagram Login** for professional Business/Creator accounts.
+
+Instagram conversations may be linked to an organization-scoped CRM lead so the inbox and CRM can navigate to the same customer record. Story replies and supported image/video/reel/shared-media payloads are normalized into the inbox without weakening Meta's messaging-window rules.
 
 The public Instagram webhook endpoint is:
 
@@ -392,11 +400,16 @@ SHVYA separates customer-facing AI engagement from internal enrichment and knowl
 
 Key runtime concepts:
 
+- `OrgInfo.ai_playbook` is the organization-owned operating specification for rules, welcome copy, qualification questions/criteria, CRM attribute mapping, stage routing and reminders
+- direct product, feature, pricing, policy, or other explicit questions are answered before qualification continues; qualification never suppresses a substantive customer question
+- qualification questions run only in the New Lead/New Leads stage family and advance using backend-validated evidence
+- final qualification actions use deterministic backend execution; stage movement requires the authored Playbook criteria, not an intent score alone
+- safe, explicitly evidenced non-sensitive CRM attributes may be created through the validated dynamic-attribute contract when no equivalent definition exists
+- source-bound CRM actions use durable `AIActionReceipt` idempotency; `AITrace` provides bounded observability and `LeadSignal` provides explainable source-backed signals without becoming a second qualification state
 - customer-facing engagement uses a dedicated realtime queue
-- recent conversation context is bounded
-- summaries carry older context forward
-- lead qualification and CRM actions follow validated contracts
+- recent conversation context is bounded and summaries carry older context forward
 - connected knowledge is embedded and retrieved semantically through pgvector
+- private notes, credentials, prompts, internal scoring and execution metadata are excluded from customer-facing answers and protected by confidentiality/grounding checks
 - transient AI failures are retried by the background job layer rather than by multiple competing retry mechanisms
 - usage is tracked through SHVYA's internal AI credit system
 
@@ -564,11 +577,18 @@ Useful project documentation includes:
 - [`CLAUDE.md`](./CLAUDE.md) - architecture and engineering rules
 - [`docs/local_setup.md`](./docs/local_setup.md) - local development notes
 - [`docs/deployment_environments.md`](./docs/deployment_environments.md) - staging and production separation
-- [`docs/grounded-engagement.md`](./docs/grounded-engagement.md) - grounded AI engagement design
-- [`docs/smart-triggers.md`](./docs/smart-triggers.md) - workflow/trigger behavior
-- [`docs/crm-bulk-actions.md`](./docs/crm-bulk-actions.md) - CRM bulk actions
+- [`database.md`](./database.md) - current relational schema and data-integrity map
+- [`docs/ai-playbook.md`](./docs/ai-playbook.md) - canonical organization AI Playbook and runtime authority
+- [`docs/ai-phases-1-11.md`](./docs/ai-phases-1-11.md) - AI reliability/observability phases
+- [`docs/grounded-engagement.md`](./docs/grounded-engagement.md) - grounded AI engagement and summaries
+- [`docs/smart-triggers.md`](./docs/smart-triggers.md) - Workflows product behavior (internal SmartTrigger engine)
+- [`docs/workflows-runtime-contract.md`](./docs/workflows-runtime-contract.md) - Workflows execution and verification contract
+- [`docs/crm-bulk-actions.md`](./docs/crm-bulk-actions.md) - CRM bulk actions and Bulk Campaign handoff
+- [`docs/support-portal.md`](./docs/support-portal.md) - Help & Support / Shvya-Ops architecture and operations
+- [`docs/support-response-indicator.md`](./docs/support-response-indicator.md) - response-required sidebar indicator
 - [`docs/whatsapp_ai_troubleshooting.md`](./docs/whatsapp_ai_troubleshooting.md) - WhatsApp AI troubleshooting
 - [`docs/instagram-setup.md`](./docs/instagram-setup.md) - Instagram integration setup
+- [`docs/system-architecture/README.md`](./docs/system-architecture/README.md) - end-to-end architecture map
 
 ---
 
