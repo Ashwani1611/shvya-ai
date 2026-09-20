@@ -56,9 +56,9 @@ class ReminderNotificationTests(TestCase):
             phone="+919000001111",
         )
 
-    def _reminder(self, *, due_at=None, status="pending", title="Follow up"):
+    def _reminder(self, *, lead=None, due_at=None, status="pending", title="Follow up"):
         return LeadReminder.objects.create(
-            lead=self.lead,
+            lead=lead or self.lead,
             assigned_to=self.user,
             title=title,
             description="Call the lead about their requirement.",
@@ -74,11 +74,27 @@ class ReminderNotificationTests(TestCase):
 
     def test_feed_returns_only_due_pending_unacknowledged_reminders(self):
         due = self._reminder(title="Due now")
+        future_lead = Lead.objects.create(
+            organization=self.organization,
+            pipeline=self.pipeline,
+            stage=self.stage,
+            name="Future Reminder Lead",
+            phone="+919000001112",
+        )
+        completed_lead = Lead.objects.create(
+            organization=self.organization,
+            pipeline=self.pipeline,
+            stage=self.stage,
+            name="Completed Reminder Lead",
+            phone="+919000001113",
+        )
         self._reminder(
+            lead=future_lead,
             title="Future",
             due_at=timezone.now() + timedelta(hours=1),
         )
         self._reminder(
+            lead=completed_lead,
             title="Completed",
             status="completed",
         )
