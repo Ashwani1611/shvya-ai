@@ -20,6 +20,18 @@ SECURE_HSTS_INCLUDE_SUBDOMAINS = True
 SECURE_HSTS_PRELOAD = True
 CORS_ALLOW_ALL_ORIGINS = False
 
+# Prefer a dedicated JWT signing secret rather than Django's SECRET_KEY.
+# The fallback keeps management commands, CI and existing deployments working
+# during rollout; production should set JWT_SECRET to a separate random value.
+JWT_SECRET = config(
+    "JWT_SECRET",
+    default=SECRET_KEY,
+)
+SIMPLE_JWT = {
+    **SIMPLE_JWT,
+    "SIGNING_KEY": JWT_SECRET,
+}
+
 INSTALLED_APPS = [
     *INSTALLED_APPS,
     "django.contrib.postgres",
