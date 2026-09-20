@@ -990,4 +990,18 @@ def public_document_action_view(request, token):
             "signer_email": document.accepted_by_email,
         },
     )
+    if document.status in {
+        SalesDocument.Status.ACCEPTED,
+        SalesDocument.Status.SIGNED,
+    }:
+        from apps.sales.pdf_service import SalesPDFError, ensure_document_pdf
+
+        try:
+            ensure_document_pdf(document, force=True)
+        except SalesPDFError:
+            record_activity(
+                document,
+                event_type="pdf_finalize_failed",
+                message="Final accepted/signed PDF could not be regenerated.",
+            )
     return redirect("shvya-sales-public-document", token=token)
