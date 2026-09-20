@@ -13,8 +13,8 @@ from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 
-from apps.crm.authentication import crm_login_required
 from apps.crm.models import AttributeDefinition, Pipeline, Stage
+from apps.integrations.access import connect_hub_admin_required
 from apps.integrations.models import GoogleSheetIntegration
 from apps.integrations.services.google_sheets import (
     CORE_TARGETS,
@@ -62,7 +62,7 @@ def _redirect_to_integration(integration_id=None, *, new=False):
     return redirect(url)
 
 
-@crm_login_required
+@connect_hub_admin_required
 def google_sheets_view(request):
     organization = request.crm_user.organization
 
