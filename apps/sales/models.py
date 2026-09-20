@@ -188,8 +188,8 @@ class SalesDocument(models.Model):
         ordering = ["-created_at"]
         constraints = [
             models.UniqueConstraint(
-                fields=["organization", "document_number"],
-                name="sales_document_org_number_uniq",
+                fields=["organization", "document_type", "document_number"],
+                name="sales_doc_org_type_number_uniq",
             )
         ]
         indexes = [
