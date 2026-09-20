@@ -597,12 +597,31 @@ def sales_settings_view(request):
                 gateway.set_secret(secret)
             if webhook_secret:
                 gateway.set_webhook_secret(webhook_secret)
-            gateway.is_enabled = request.POST.get("is_enabled") == "on"
+
+            requested_enabled = request.POST.get("is_enabled") == "on"
+            missing = []
+            if provider == SalesPaymentGateway.Provider.RAZORPAY and not gateway.public_key:
+                missing.append("Key ID")
+            if not gateway.get_secret():
+                missing.append("secret key")
+            if not gateway.get_webhook_secret():
+                missing.append("webhook signing secret")
+
+            gateway.is_enabled = requested_enabled and not missing
             gateway.save()
-            messages.success(
-                request,
-                f"{gateway.get_provider_display()} settings saved.",
-            )
+            if requested_enabled and missing:
+                messages.warning(
+                    request,
+                    (
+                        f"{gateway.get_provider_display()} was saved but left disabled. "
+                        f"Add: {', '.join(missing)}."
+                    ),
+                )
+            else:
+                messages.success(
+                    request,
+                    f"{gateway.get_provider_display()} settings saved.",
+                )
             return redirect("shvya-sales-settings")
 
     return render(
@@ -663,8 +682,8 @@ def sales_payment_webhook_view(request, gateway_id):
             return HttpResponseForbidden("Invalid signature.")
         try:
             checkout = apply_razorpay_event(gateway=gateway, body=request.body)
-        except (ValueError, json.JSONDecodeError):
-            return HttpResponseBadRequest("Invalid payload.")
+        except (ValueError, json.JSONDecodeError, SalesGatewayError) as exc:
+            return HttpResponseBadRequest(str(exc) or "Invalid payload.")
     elif gateway.provider == SalesPaymentGateway.Provider.STRIPE:
         if not verify_stripe_webhook(
             gateway=gateway,
@@ -674,8 +693,8 @@ def sales_payment_webhook_view(request, gateway_id):
             return HttpResponseForbidden("Invalid signature.")
         try:
             checkout = apply_stripe_event(gateway=gateway, body=request.body)
-        except (ValueError, json.JSONDecodeError):
-            return HttpResponseBadRequest("Invalid payload.")
+        except (ValueError, json.JSONDecodeError, SalesGatewayError) as exc:
+            return HttpResponseBadRequest(str(exc) or "Invalid payload.")
     else:
         raise Http404
     return JsonResponse(
