@@ -7,6 +7,10 @@ from django.test import TestCase
 from apps.integrations.models import EmailConfiguration
 from apps.integrations.services.email import (
     EmailConfigurationError,
+    ValidatedSMTPTarget,
+    _PinnedSMTP,
+    _PinnedSMTPSSL,
+    assert_public_smtp_target,
     send_organization_email,
     test_email_configuration as verify_email_configuration,
     validate_smtp_host,
@@ -101,13 +105,74 @@ class EmailConfigurationServiceTests(TestCase):
                 with self.assertRaises(ValidationError):
                     validate_smtp_host(value)
 
+    @patch("apps.integrations.services.email.socket.getaddrinfo")
+    def test_public_smtp_target_is_pinned_to_resolved_ip(self, getaddrinfo):
+        getaddrinfo.return_value = [
+            (2, 1, 6, "", ("142.250.190.109", 587)),
+        ]
+
+        target = assert_public_smtp_target("smtp.gmail.com", 587)
+
+        self.assertEqual(target.hostname, "smtp.gmail.com")
+        self.assertEqual(target.port, 587)
+        self.assertEqual(target.connect_ip, "142.250.190.109")
+
+    @patch("apps.integrations.services.email.socket.create_connection")
+    def test_starttls_socket_uses_validated_ip(self, create_connection):
+        raw_socket = Mock()
+        create_connection.return_value = raw_socket
+        client = _PinnedSMTP(connect_ip="142.250.190.109")
+        client.source_address = None
+
+        socket_result = client._get_socket("smtp.gmail.com", 587, 15)
+
+        self.assertIs(socket_result, raw_socket)
+        create_connection.assert_called_once_with(
+            ("142.250.190.109", 587),
+            15,
+            None,
+        )
+
+    @patch("apps.integrations.services.email.socket.create_connection")
+    def test_smtps_socket_uses_validated_ip_but_original_tls_hostname(
+        self,
+        create_connection,
+    ):
+        raw_socket = Mock()
+        wrapped_socket = Mock()
+        create_connection.return_value = raw_socket
+        context = Mock()
+        context.wrap_socket.return_value = wrapped_socket
+        client = _PinnedSMTPSSL(connect_ip="142.250.190.109", context=context)
+        client.source_address = None
+        client._host = "smtp.gmail.com"
+
+        socket_result = client._get_socket("smtp.gmail.com", 465, 15)
+
+        self.assertIs(socket_result, wrapped_socket)
+        create_connection.assert_called_once_with(
+            ("142.250.190.109", 465),
+            15,
+            None,
+        )
+        context.wrap_socket.assert_called_once_with(
+            raw_socket,
+            server_hostname="smtp.gmail.com",
+        )
+
     @patch("apps.integrations.services.email.assert_public_smtp_target")
-    @patch("apps.integrations.services.email.EmailBackend")
+    @patch("apps.integrations.services.email.PinnedEmailBackend")
     def test_connection_test_uses_saved_smtp_credentials(
         self,
         email_backend_class,
         public_target,
     ):
+        target = ValidatedSMTPTarget(
+            hostname="smtp.gmail.com",
+            port=587,
+            connect_ip="142.250.190.109",
+        )
+        public_target.return_value = target
         backend = Mock()
         backend.open.return_value = True
         email_backend_class.return_value = backend
@@ -118,6 +183,7 @@ class EmailConfigurationServiceTests(TestCase):
         email_backend_class.assert_called_once_with(
             host="smtp.gmail.com",
             port=587,
+            connect_ip="142.250.190.109",
             username="sales@example.com",
             password="app-password-value",
             use_tls=True,
@@ -137,6 +203,12 @@ class EmailConfigurationServiceTests(TestCase):
         message_class,
         public_target,
     ):
+        target = ValidatedSMTPTarget(
+            hostname="smtp.gmail.com",
+            port=587,
+            connect_ip="142.250.190.109",
+        )
+        public_target.return_value = target
         backend = Mock()
         build_backend.return_value = backend
         message = Mock()
@@ -153,6 +225,7 @@ class EmailConfigurationServiceTests(TestCase):
 
         self.assertEqual(result, 1)
         public_target.assert_called_once_with("smtp.gmail.com", 587)
+        build_backend.assert_called_once_with(self.configuration, target=target)
         message_class.assert_called_once()
         kwargs = message_class.call_args.kwargs
         self.assertEqual(kwargs["to"], ["lead@example.com"])
