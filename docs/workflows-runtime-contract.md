@@ -1,6 +1,8 @@
 # Workflows runtime and verification contract
 
-Workflows reuse the existing CRM, Cadence, connected-mailbox and WhatsApp transports. They do not bypass tenant permissions, account health or messaging restrictions.
+> **Implementation baseline:** verified 2026-09-20 against production `main` at `7fb74946b35f189a66f92d6ffd0677909dca4c9f`. Runtime code, migrations and tests remain authoritative when later commits change behavior.
+
+Workflows are exposed at `/dashboard/workflows/` and reuse the existing CRM, Cadence, connected-mailbox and WhatsApp transports. They do not bypass tenant permissions, account health or messaging restrictions.
 
 ## Trigger and action coverage
 
@@ -24,7 +26,7 @@ Pending, scheduled and queued runs have no completion timestamp. Relative schedu
 
 Dispatch uses the same durable message and a ten-minute lease so repeated Beat passes do not reset the sender's bounded retry backoff. Explicit temporary provider errors retain bounded retry; exhausted attempts stop. Unknown provider outcomes and stale in-flight sends require review rather than automatic replay. Connected-mailbox emails similarly use an at-most-once claim and expose interrupted/uncertain delivery for review.
 
-Disabling a workflow remains possible even when a saved dependency was deleted. Re-enabling validates its configuration. Manual messaging and unrelated AI/bulk contracts remain unchanged.
+All WhatsApp actions must resolve the sender that belongs to the lead's current pipeline; a workflow must not fall back to another connected WhatsApp number. Disabling a workflow remains possible even when a saved dependency was deleted. Re-enabling validates its configuration. Manual messaging and unrelated AI/bulk contracts remain unchanged.
 
 ## Release validation
 
