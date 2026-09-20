@@ -377,6 +377,54 @@ class ContactPanelTests(TestCase):
         self.assertEqual(message.lead.phone, "+919123456789")
         self.assertEqual(Lead.objects.filter(organization=self.org, phone="+919123456789").count(), 1)
 
+    def test_existing_matching_lead_link_still_queues_ai_for_newly_attached_inbound(self):
+        existing = Lead.objects.create(
+            organization=self.org,
+            pipeline=self.pipeline,
+            stage=self.stage,
+            name="Already in CRM",
+            phone="+919123456789",
+            lead_source="system",
+        )
+        message = self.message(phone=existing.phone)
+        url = reverse("chat-unlinked-contact", args=[self.account.pk])
+
+        with (
+            patch("services.channels.chat_lead_service._queue_created_lead_engagement") as engagement,
+            self.captureOnCommitCallbacks(execute=True),
+        ):
+            response = self.client.post(
+                url,
+                {
+                    "chat": str(message.pk),
+                    "name": "Ignored duplicate name",
+                    "pipeline": str(self.pipeline.pk),
+                },
+            )
+
+        self.assertEqual(response.status_code, 200, response.content)
+        message.refresh_from_db()
+        self.assertEqual(message.lead_id, existing.pk)
+        engagement.assert_called_once()
+        self.assertEqual(engagement.call_args.kwargs["lead_id"], existing.pk)
+        self.assertEqual(engagement.call_args.kwargs["source_message_id"], message.pk)
+
+        # A retry after the history is already linked must not enqueue again.
+        with (
+            patch("services.channels.chat_lead_service._queue_created_lead_engagement") as retry_engagement,
+            self.captureOnCommitCallbacks(execute=True),
+        ):
+            retry = self.client.post(
+                url,
+                {
+                    "chat": str(message.pk),
+                    "name": "Ignored duplicate name",
+                    "pipeline": str(self.pipeline.pk),
+                },
+            )
+        self.assertEqual(retry.status_code, 200, retry.content)
+        retry_engagement.assert_not_called()
+
     def test_create_lead_rejects_wrong_pipeline_and_foreign_account(self):
         message = self.message()
         wrong = Pipeline.objects.create(organization=self.org, name="Wrong sender")
