@@ -24,7 +24,11 @@
             </div>
         </div>
         <div class="sy-head-actions">
+            {% if document.status == 'draft' %}
+            <a class="sy-btn sy-btn-secondary" href="{% url 'shvya-sales-document-edit' document.id %}"><i class="ti ti-pencil"></i> Edit draft</a>
+            {% else %}
             <a class="sy-btn sy-btn-secondary" href="{{ public_url }}" target="_blank" rel="noopener"><i class="ti ti-eye"></i> Open customer view</a>
+            {% endif %}
             <button class="sy-btn sy-btn-primary" type="button" data-open-send><i class="ti ti-send"></i> Send</button>
         </div>
     </section>
