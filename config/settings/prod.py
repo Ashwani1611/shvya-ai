@@ -23,27 +23,34 @@ CORS_ALLOW_ALL_ORIGINS = False
 
 # Public signup verification and CRM password-reset email must leave the server
 # in production. Support both canonical Django EMAIL_* names and SHVYA's
-# historical SMTP_* environment names during migration.
-EMAIL_BACKEND = config(
-    "EMAIL_BACKEND",
-    default="django.core.mail.backends.smtp.EmailBackend",
+# historical SMTP_* environment names during migration. Empty legacy values
+# are treated as unset so old .env templates such as SMTP_PORT= cannot crash
+# production settings during deploy.
+def _nonempty_email_env(primary, legacy, default):
+    value = str(config(primary, default="") or "").strip()
+    if value:
+        return value
+    value = str(config(legacy, default="") or "").strip()
+    return value or default
+
+
+EMAIL_BACKEND = (
+    str(config("EMAIL_BACKEND", default="") or "").strip()
+    or "django.core.mail.backends.smtp.EmailBackend"
 )
-EMAIL_HOST = config(
-    "EMAIL_HOST",
-    default=config("SMTP_HOST", default=EMAIL_HOST),
+EMAIL_HOST = _nonempty_email_env("EMAIL_HOST", "SMTP_HOST", EMAIL_HOST)
+EMAIL_PORT = int(
+    _nonempty_email_env("EMAIL_PORT", "SMTP_PORT", str(EMAIL_PORT))
 )
-EMAIL_PORT = config(
-    "EMAIL_PORT",
-    default=config("SMTP_PORT", default=EMAIL_PORT),
-    cast=int,
-)
-EMAIL_HOST_USER = config(
+EMAIL_HOST_USER = _nonempty_email_env(
     "EMAIL_HOST_USER",
-    default=config("SMTP_USERNAME", default=EMAIL_HOST_USER),
+    "SMTP_USERNAME",
+    EMAIL_HOST_USER,
 )
-EMAIL_HOST_PASSWORD = config(
+EMAIL_HOST_PASSWORD = _nonempty_email_env(
     "EMAIL_HOST_PASSWORD",
-    default=config("SMTP_PASSWORD", default=EMAIL_HOST_PASSWORD),
+    "SMTP_PASSWORD",
+    EMAIL_HOST_PASSWORD,
 )
 
 # Production fails closed unless signing and recoverable-provider credentials
