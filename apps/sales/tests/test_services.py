@@ -1,12 +1,14 @@
 from decimal import Decimal
 
 from django.core.exceptions import ValidationError
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import SimpleTestCase
 
 from apps.sales.services import (
     calculate_line_items,
     render_text_template,
     sanitize_layout_html,
+    validate_brand_asset,
 )
 
 
@@ -74,3 +76,26 @@ class SalesTemplateSafetyTests(SimpleTestCase):
             rendered,
             "Hi Aarav — QT-00001 — {{custom.future}}",
         )
+
+
+class SalesBrandAssetTests(SimpleTestCase):
+    def test_png_brand_asset_requires_matching_file_signature(self):
+        upload = SimpleUploadedFile(
+            "logo.png",
+            b"\x89PNG\r\n\x1a\n" + b"safe-image-body",
+            content_type="image/png",
+        )
+
+        validated = validate_brand_asset(upload, label="Logo")
+
+        self.assertEqual(validated.name, "logo.png")
+
+    def test_spoofed_image_extension_is_rejected(self):
+        upload = SimpleUploadedFile(
+            "signature.jpg",
+            b"<html>not an image</html>",
+            content_type="image/jpeg",
+        )
+
+        with self.assertRaises(ValidationError):
+            validate_brand_asset(upload, label="Signature")
