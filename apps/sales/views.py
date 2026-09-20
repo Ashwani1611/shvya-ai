@@ -388,6 +388,13 @@ def sales_document_edit_view(request, document_id):
         organization=organization,
         status=SalesDocument.Status.DRAFT,
     )
+    if document.scheduled_deliveries.filter(status="pending").exists():
+        messages.error(
+            request,
+            "Cancel the pending scheduled send before editing this draft.",
+        )
+        return redirect("shvya-sales-document-detail", document_id=document.id)
+
     document_type = document.document_type
     ensure_default_templates(organization=organization, user=request.crm_user)
 
