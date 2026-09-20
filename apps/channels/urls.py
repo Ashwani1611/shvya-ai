@@ -26,6 +26,10 @@ from . import whatsapp_template_send_ui
 from . import whatsapp_ui
 
 urlpatterns = [
+    path("chats/account/<uuid:account_id>/unlinked/<uuid:message_id>/", whatsapp_api_chat_ui.unlinked_chat_view, name="whatsapp-unlinked-chat"),
+    path("chats/account/<uuid:account_id>/contact/", contact_panel_ui.unlinked_contact, name="chat-unlinked-contact"),
+    path("chats/instagram/<uuid:conversation_id>/contact/", contact_panel_ui.instagram_contact, name="chat-instagram-contact"),
+    path("chats/<uuid:lead_id>/followups-toggle/", contact_panel_ui.toggle_followups, name="chat-followups-toggle"),
     path("leads/<uuid:lead_id>/contact-panel/", contact_panel_ui.contact_panel, name="chat-contact-panel"),
     path("leads/<uuid:lead_id>/checking-in/", contact_panel_ui.start_checking_in, name="chat-checking-in"),
     path("leads/<uuid:lead_id>/ai-status/", ai_reply_status_ui.ai_reply_status, name="whatsapp-ai-reply-status"),

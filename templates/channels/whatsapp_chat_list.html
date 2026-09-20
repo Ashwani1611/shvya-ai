@@ -4,7 +4,7 @@
 
 
 
-{% block title %}SHVYA AI — {% if active_lead %}{{ active_lead.name|default:active_lead.phone }}{% else %}WhatsApp Chats{% endif %}{% endblock %}
+{% block title %}SHVYA AI — {% if active_lead %}{% if active_lead %}{{ active_lead.name|default:active_lead.phone }}{% else %}{{ unlinked_contact.name }}{% endif %}{% else %}WhatsApp Chats{% endif %}{% endblock %}
 
 {% block header %}WhatsApp Chats{% endblock %}
 
@@ -116,6 +116,9 @@
 
         <div class="wa-scrollbar flex-1 overflow-y-auto">
 
+            {% for message in unlinked_conversations %}
+            <a class="conversation-row flex gap-3 border-b border-gray-100 px-3 py-3" href="{% url 'whatsapp-unlinked-chat' message.account_id message.pk %}?account={{ message.account_id }}"><div class="min-w-0"><p class="text-sm font-semibold">{{ message.peer }}</p><p class="text-xs text-gray-500">{{ message.body|truncatechars:34 }}</p><span class="contact-link">Create lead</span></div></a>
+            {% endfor %}
             {% for lead in conversations %}
 
             <a href="{% url 'whatsapp-chat-detail' lead.id %}?{% if selected_account %}account={{ selected_account.id }}&{% endif %}tab={{ active_tab }}{% if search_query %}&q={{ search_query|urlencode }}{% endif %}"
@@ -186,7 +189,7 @@
 
     <main class="flex min-w-0 flex-1 flex-col bg-[#efeae2]">
 
-        {% if active_lead %}
+        {% if active_lead or unlinked_contact %}
 
         <div class="flex h-[64px] flex-shrink-0 items-center justify-between border-b border-[#dfe8e3] bg-[#f3faf6] px-4 shadow-sm">
 
@@ -196,9 +199,9 @@
 
                 <div class="min-w-0">
 
-                    <p class="truncate text-sm font-semibold text-gray-900">{{ active_lead.name|default:active_lead.phone }}</p>
+                    <p class="truncate text-sm font-semibold text-gray-900">{% if active_lead %}{{ active_lead.name|default:active_lead.phone }}{% else %}{{ unlinked_contact.name }}{% endif %}</p>
 
-                    <p class="mt-0.5 flex items-center gap-1.5 truncate text-[11px] text-gray-500"><span class="h-1.5 w-1.5 rounded-full bg-green-500"></span>{{ active_lead.phone }}</p>
+                    <p class="mt-0.5 flex items-center gap-1.5 truncate text-[11px] text-gray-500"><span class="h-1.5 w-1.5 rounded-full bg-green-500"></span>{% if active_lead %}{{ active_lead.phone }}{% else %}{{ unlinked_contact.phone }}{% endif %}</p>
 
                 </div>
 
@@ -294,7 +297,7 @@
 
             <div id="send-error" class="mb-2 hidden max-w-full break-words rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-600 [overflow-wrap:anywhere]"></div>
 
-            <form id="composer-form" action="{% url 'whatsapp-send-message' active_lead.id %}{% if selected_account %}?account={{ selected_account.id }}{% endif %}" data-lead-id="{{ active_lead.id }}" class="flex items-center gap-2">
+            {% if active_lead %}<form id="composer-form" action="{% url 'whatsapp-send-message' active_lead.id %}{% if selected_account %}?account={{ selected_account.id }}{% endif %}" data-lead-id="{{ active_lead.id }}" class="flex items-center gap-2">
 
                 {% csrf_token %}
 
@@ -304,7 +307,7 @@
 
                 <button class="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full bg-[#25d366] text-white shadow-sm transition hover:bg-[#20bd5a] focus:outline-none focus:ring-2 focus:ring-green-200" type="submit" title="Send message"><i class="ti ti-send"></i></button>
 
-            </form>
+            </form>{% else %}<p class="text-sm text-gray-500">Create a lead in the contact panel to reply.</p>{% endif %}
 
         </div>
 
@@ -330,6 +333,8 @@
 
     <aside class="contact-sidebar hidden w-[340px] flex-shrink-0 flex-col border-l border-gray-200 xl:flex" data-contact-host data-sidebar-url="{% url 'chat-contact-panel' active_lead.id %}?{% if selected_account %}account={{ selected_account.id }}{% endif %}"><p class="contact-empty">Loading contact…</p></aside>
 
+    {% elif unlinked_contact %}
+    <aside class="contact-sidebar" data-contact-host data-sidebar-url="{% url 'chat-unlinked-contact' selected_account.pk %}?chat={{ unlinked_contact.id }}"><p class="contact-empty">Loading contact…</p></aside>
     {% endif %}
 
 </div>

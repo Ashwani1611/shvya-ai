@@ -278,3 +278,120 @@ class ContactPanelTests(TestCase):
             self.client.get(reverse("chat-contact-panel", args=[lead.pk])).status_code,
             404,
         )
+
+
+    def sequence(self, account=None, name="Sequence"):
+        sequence = FollowupSequence.objects.create(organization=self.org, whatsapp_account=account or self.account, name=name)
+        FollowupStep.objects.create(sequence=sequence, position=1, step_type="reminder", reminder_text="Call customer")
+        return sequence
+
+    def test_disabled_lead_rejects_new_assignments_even_with_stale_instance(self):
+        from services.followup_service import assign_sequence, FollowupError
+        sequence = self.sequence()
+        url = reverse("chat-followups-toggle", args=[self.lead.pk])
+        self.assertEqual(self.client.post(url, {"enabled": "false"}).status_code, 200)
+        with self.assertRaises(FollowupError):
+            assign_sequence(lead=self.lead, sequence=sequence)
+        self.assertEqual(self.client.post(reverse("chat-checking-in", args=[self.lead.pk]), {"sequence": sequence.pk}).status_code, 400)
+        self.assertFalse(LeadSequenceState.objects.filter(lead=self.lead).exists())
+        self.client.post(url, {"enabled": "true"})
+        self.assertEqual(self.client.post(reverse("chat-checking-in", args=[self.lead.pk]), {"sequence": sequence.pk}).status_code, 200)
+
+    def test_disabled_lead_is_checked_at_api_and_hosted_execution(self):
+        from services.followup_service import assign_sequence, process_due_state, set_lead_followup_enabled, live_followup_due
+        from services.channels.hosted_automation_service import process_hosted_due_state
+        from django.utils import timezone
+        state = assign_sequence(lead=self.lead, sequence=self.sequence())
+        set_lead_followup_enabled(lead=self.lead, enabled=False)
+        # Even a stale assignment flag must not bypass the persisted lead switch.
+        LeadSequenceState.objects.filter(pk=state.pk).update(lead_auto_followup_enabled=True, upcoming_send_at=timezone.now())
+        state.refresh_from_db()
+        self.assertGreater(live_followup_due(state), timezone.now())
+        with patch("services.followup_service._create_execution") as execution:
+            self.assertFalse(process_due_state(state.pk))
+            execution.assert_not_called()
+        self.account.connection_type = "hosted"
+        self.account.save(update_fields=["connection_type"])
+        with patch("services.followup_service._create_execution") as execution:
+            self.assertFalse(process_hosted_due_state(state.pk))
+            execution.assert_not_called()
+
+    def test_hosted_picker_and_start_only_use_current_hosted_account(self):
+        self.account.connection_type = "hosted"
+        self.account.save(update_fields=["connection_type"])
+        self.unlinked.connection_type = "hosted"
+        self.unlinked.save(update_fields=["connection_type"])
+        selected = self.sequence(name="Correct hosted sequence")
+        other = self.sequence(self.unlinked, "Wrong hosted sequence")
+        response = self.client.get(self.panel, {"channel": "hosted", "account": self.account.pk})
+        self.assertContains(response, "Correct hosted sequence")
+        self.assertNotContains(response, "Wrong hosted sequence")
+        url = reverse("chat-checking-in", args=[self.lead.pk])
+        self.assertEqual(self.client.post(url, {"channel": "hosted", "account": self.account.pk, "sequence": selected.pk}).status_code, 200)
+        self.assertEqual(self.client.post(url, {"channel": "hosted", "account": self.account.pk, "sequence": other.pk}).status_code, 404)
+
+    def message(self, phone="+919123456789", **kwargs):
+        from apps.channels.models import WhatsAppMessage
+        return WhatsAppMessage.objects.create(organization=self.org, account=self.account, direction="inbound", from_number=phone,
+                                              to_number="+919000000000", body="Hello", **kwargs)
+
+    def test_api_unlinked_chat_creates_and_links_lead_idempotently(self):
+        message = self.message()
+        self.assertContains(self.client.get(reverse("whatsapp-chats")), "Create lead")
+        self.assertContains(self.client.get(reverse("whatsapp-unlinked-chat", args=[self.account.pk, message.pk])), "Create a lead")
+        url = reverse("chat-unlinked-contact", args=[self.account.pk])
+        self.assertContains(self.client.get(url, {"chat": message.pk}), "Create lead")
+        data = {"chat": str(message.pk), "name": "New customer", "pipeline": str(self.pipeline.pk), "phone": "+919999999999"}
+        with patch("services.crm.lead_service._schedule_new_lead_welcome") as welcome:
+            response = self.client.post(url, data)
+            self.assertEqual(response.status_code, 200, response.content)
+            self.assertEqual(self.client.post(url, data).status_code, 200)
+            welcome.assert_not_called()
+        message.refresh_from_db()
+        self.assertEqual(message.lead.phone, "+919123456789")
+        self.assertEqual(Lead.objects.filter(organization=self.org, phone="+919123456789").count(), 1)
+
+    def test_create_lead_rejects_wrong_pipeline_and_foreign_account(self):
+        message = self.message()
+        wrong = Pipeline.objects.create(organization=self.org, name="Wrong sender")
+        url = reverse("chat-unlinked-contact", args=[self.account.pk])
+        self.assertEqual(self.client.post(url, {"chat": str(message.pk), "name": "Test", "pipeline": str(wrong.pk)}).status_code, 400)
+        self.account.organization = self.other
+        self.account.save(update_fields=["organization"])
+        self.assertEqual(self.client.get(url, {"chat": message.pk}).status_code, 404)
+
+    def test_hosted_unlinked_contact_creates_lead_but_group_cannot(self):
+        self.account.connection_type = "hosted"
+        self.account.save(update_fields=["connection_type"])
+        message = self.message(raw_payload={"peerPhone": "+919123456789", "peerKey": "+919123456789", "contactName": "New customer"})
+        url = reverse("chat-unlinked-contact", args=[self.account.pk])
+        data = {"chat": "+919123456789", "name": "New customer", "pipeline": str(self.pipeline.pk)}
+        self.assertContains(self.client.get(url, {"chat": data["chat"]}), "Create lead")
+        self.assertEqual(self.client.post(url, data).status_code, 200)
+        message.refresh_from_db()
+        self.assertIsNotNone(message.lead_id)
+        self.message(phone="12345@g.us", raw_payload={"isGroup": True, "chatId": "12345@g.us", "peerKey": "12345@g.us"})
+        self.assertEqual(self.client.post(url, {**data, "chat": "12345@g.us"}).status_code, 400)
+
+    def test_followup_toggle_rejects_invalid_values_and_other_tenant(self):
+        url = reverse("chat-followups-toggle", args=[self.lead.pk])
+        self.assertEqual(self.client.post(url, {"enabled": "maybe"}).status_code, 400)
+        Lead.objects.filter(pk=self.lead.pk).update(organization=self.other)
+        self.assertEqual(self.client.post(url, {"enabled": "false"}).status_code, 404)
+
+
+    def test_instagram_create_requires_confirmed_phone_and_links_without_duplicates(self):
+        from apps.channels.instagram_models import InstagramAccount, InstagramConversation
+        account = InstagramAccount.objects.create(organization=self.org, ig_user_id="contact-panel-ig", access_token="test", status="connected")
+        conversation = InstagramConversation.objects.create(organization=self.org, account=account, participant_id="contact", participant_name="IG Contact")
+        url = reverse("chat-instagram-contact", args=[conversation.pk])
+        self.assertContains(self.client.get(url), "Create lead")
+        data = {"phone": "+919111222333", "name": "IG Contact", "pipeline": str(self.pipeline.pk)}
+        self.assertEqual(self.client.post(url, data).status_code, 400)
+        data["confirmed"] = "yes"
+        self.assertEqual(self.client.post(url, data).status_code, 200)
+        self.assertEqual(self.client.post(url, data).status_code, 200)
+        conversation.refresh_from_db()
+        self.assertEqual(conversation.lead.phone, data["phone"])
+        self.assertEqual(conversation.lead.lead_source, "instagram")
+        self.assertEqual(Lead.objects.filter(organization=self.org, phone=data["phone"]).count(), 1)

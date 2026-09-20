@@ -99,6 +99,8 @@ class Lead(models.Model):
         default=dict,
         blank=True,
     )
+    auto_followup_enabled = models.BooleanField(default=True)
+
     ai_enabled = models.BooleanField(
         default=True,
         help_text=(
