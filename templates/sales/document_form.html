@@ -1,8 +1,8 @@
 {% extends "base.html" %}
 {% load static %}
 
-{% block title %}New {{ document_type_label }} · SHVYA Sales{% endblock %}
-{% block header %}New {{ document_type_label }}{% endblock %}
+{% block title %}{% if document %}Edit {{ document.document_number }}{% else %}New {{ document_type_label }}{% endif %} · SHVYA Sales{% endblock %}
+{% block header %}{% if document %}Edit {{ document.document_number }}{% else %}New {{ document_type_label }}{% endif %}{% endblock %}
 
 {% block extra_head %}
 {{ block.super }}
@@ -15,9 +15,9 @@
     <section class="sy-page-head sy-page-head-compact">
         <div>
             <a class="sy-back" href="{% url 'shvya-sales-dashboard' %}"><i class="ti ti-arrow-left"></i> SHVYA Sales</a>
-            <p class="sy-eyebrow">NEW {{ document_type_label|upper }}</p>
-            <h1>Build it around the customer.</h1>
-            <p>The template controls presentation. SHVYA keeps calculations and document history reliable.</p>
+            <p class="sy-eyebrow">{% if document %}EDIT DRAFT · {{ document.document_number }}{% else %}NEW {{ document_type_label|upper }}{% endif %}</p>
+            <h1>{% if document %}Refine the draft.{% else %}Build it around the customer.{% endif %}</h1>
+            <p>{% if document %}Update any draft detail before it is sent. The document number and lineage stay unchanged.{% else %}The template controls presentation. SHVYA keeps calculations and document history reliable.{% endif %}</p>
         </div>
     </section>
 
@@ -156,7 +156,7 @@
                     {% if document_type == 'quotation' %}<li><span>4</span><div><strong>Accept</strong><small>Customer action</small></div></li>{% endif %}
                     {% if document_type == 'agreement' %}<li><span>4</span><div><strong>Sign</strong><small>Customer action</small></div></li>{% endif %}
                 </ol>
-                <button class="sy-btn sy-btn-primary sy-btn-block" type="submit">Create {{ document_type_label|lower }} <i class="ti ti-arrow-right"></i></button>
+                <button class="sy-btn sy-btn-primary sy-btn-block" type="submit">{% if document %}Save draft{% else %}Create {{ document_type_label|lower }}{% endif %} <i class="ti ti-arrow-right"></i></button>
                 <p class="sy-form-hint"><i class="ti ti-shield-check"></i> Totals, numbering and organisation ownership are validated again on the backend.</p>
             </div>
         </aside>
