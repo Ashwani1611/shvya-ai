@@ -505,16 +505,17 @@ def delivery_drafts(document, *, public_url):
 
 def _mark_document_sent(document, *, actor=None):
     old_status = document.status
+    was_unsent = document.sent_at is None
     if document.status == SalesDocument.Status.DRAFT:
         document.status = (
             SalesDocument.Status.UNPAID
             if document.document_type == DocumentType.INVOICE
             else SalesDocument.Status.SENT
         )
-    if document.sent_at is None:
+    if was_unsent:
         document.sent_at = timezone.now()
     document.save(update_fields=["status", "sent_at", "updated_at"])
-    if old_status != document.status or document.sent_at:
+    if old_status != document.status or was_unsent:
         from apps.sales.activity import record_activity
 
         record_activity(
