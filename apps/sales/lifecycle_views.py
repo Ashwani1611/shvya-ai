@@ -4,8 +4,6 @@ import hashlib
 import hmac
 import json
 from datetime import datetime
-from decimal import Decimal
-
 from django.conf import settings
 from django.contrib import messages
 from django.core.exceptions import ValidationError
@@ -424,6 +422,12 @@ def sales_recurring_invoice_view(request, document_id):
     if interval_count < 1 or interval_count > 365:
         messages.error(request, "Recurring interval must be between 1 and 365.")
         return redirect("shvya-sales-document-detail", document_id=invoice.id)
+    if max_cycles is not None and (max_cycles < 1 or max_cycles > 10000):
+        messages.error(request, "Max cycles must be between 1 and 10,000.")
+        return redirect("shvya-sales-document-detail", document_id=invoice.id)
+    if invoice.status in {SalesDocument.Status.DRAFT, SalesDocument.Status.CANCELLED}:
+        messages.error(request, "Send the invoice before making it recurring.")
+        return redirect("shvya-sales-document-detail", document_id=invoice.id)
     if next_run <= timezone.now():
         messages.error(request, "Next recurring invoice time must be in the future.")
         return redirect("shvya-sales-document-detail", document_id=invoice.id)
@@ -568,7 +572,7 @@ def sales_payment_link_create_view(request, document_id):
         is_enabled=True,
     )
     try:
-        checkout = create_payment_checkout(
+        create_payment_checkout(
             invoice=invoice,
             gateway=gateway,
             actor=request.crm_user,
