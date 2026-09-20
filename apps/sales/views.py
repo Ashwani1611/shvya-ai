@@ -609,6 +609,16 @@ def sales_document_detail_view(request, document_id):
             .order_by("name")
         )
 
+    has_whatsapp_templates = whatsapp_templates.exists()
+    whatsapp_send_ready = bool(whatsapp_account)
+    if (
+        whatsapp_account
+        and whatsapp_account.connection_type == WhatsAppAccount.ConnectionType.API
+        and not whatsapp_window_open
+        and not has_whatsapp_templates
+    ):
+        whatsapp_send_ready = False
+
     ledger = invoice_ledger(document) if document.document_type == DocumentType.INVOICE else None
     gateways = (
         SalesPaymentGateway.objects.filter(
@@ -645,6 +655,8 @@ def sales_document_detail_view(request, document_id):
             "whatsapp_error": whatsapp_error,
             "whatsapp_window_open": whatsapp_window_open,
             "whatsapp_templates": whatsapp_templates,
+            "has_whatsapp_templates": has_whatsapp_templates,
+            "whatsapp_send_ready": whatsapp_send_ready,
             "attachments": document.attachments.all()[:30],
             "activities": document.activities.all()[:50],
             "scheduled_deliveries": document.scheduled_deliveries.all()[:20],
