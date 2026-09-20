@@ -32,11 +32,16 @@ EMAIL_HOST = config(
     "EMAIL_HOST",
     default=config("SMTP_HOST", default=EMAIL_HOST),
 )
-EMAIL_PORT = config(
-    "EMAIL_PORT",
-    default=config("SMTP_PORT", default=EMAIL_PORT),
-    cast=int,
-)
+_email_port = str(config("EMAIL_PORT", default="") or "").strip()
+if not _email_port:
+    _email_port = str(config("SMTP_PORT", default="") or "").strip()
+if _email_port:
+    try:
+        EMAIL_PORT = int(_email_port)
+    except ValueError as exc:
+        raise ImproperlyConfigured(
+            "EMAIL_PORT or SMTP_PORT must be a valid integer when configured."
+        ) from exc
 EMAIL_HOST_USER = config(
     "EMAIL_HOST_USER",
     default=config("SMTP_USERNAME", default=EMAIL_HOST_USER),
