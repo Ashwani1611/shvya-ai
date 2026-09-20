@@ -103,7 +103,7 @@ See [`CLAUDE.md`](./CLAUDE.md) for the authoritative engineering contract.
 | AI | OpenAI SDK + LangGraph |
 | Frontend | Django Templates, HTMX, JavaScript, Tailwind CSS |
 | Production HTTP | Gunicorn + Nginx |
-| Hosted WhatsApp gateway | Node.js 18+ + Express + `whatsapp-web.js` |
+| Hosted WhatsApp gateway | Node.js 22.12+ + Express + `whatsapp-web.js` |
 | Containers | Docker + Docker Compose |
 | CI/CD | GitHub Actions |
 | TLS | Nginx + Certbot |
@@ -166,7 +166,7 @@ For a native local setup:
 - PostgreSQL 17 with the `vector` extension available
 - Redis
 - Git
-- Node.js 18+ only if you need to run the Hosted WhatsApp gateway locally
+- Node.js 22.12+ only if you need to run the Hosted WhatsApp gateway locally
 
 Docker is required for production/staging parity and for validating the Compose stack.
 
