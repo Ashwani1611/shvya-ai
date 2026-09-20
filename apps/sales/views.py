@@ -1,4 +1,5 @@
 import json
+from datetime import datetime
 
 from django.contrib import messages
 from django.core.exceptions import ValidationError
@@ -668,7 +669,7 @@ def sales_document_send_view(request, document_id):
         scheduled_at = parse_datetime(raw)
         if scheduled_at is None:
             try:
-                scheduled_at = timezone.datetime.fromisoformat(raw)
+                scheduled_at = datetime.fromisoformat(raw)
             except (TypeError, ValueError):
                 scheduled_at = None
         if scheduled_at is not None and timezone.is_naive(scheduled_at):
