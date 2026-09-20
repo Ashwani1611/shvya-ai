@@ -17,6 +17,8 @@ concurrency:
 env:
   PYTHON_VERSION: "3.13"
   SECRET_KEY: "ci-only-secret-key-not-for-production"
+  JWT_SECRET: "ci-only-jwt-secret-not-for-production"
+  CREDENTIAL_ENCRYPTION_KEY: "ci-only-credential-key-not-for-production"
   DEBUG: "False"
   ALLOWED_HOSTS: "localhost,127.0.0.1"
   DB_NAME: shvya_ci
