@@ -506,7 +506,13 @@ REST_FRAMEWORK = {
 }
 
 
+JWT_SECRET = config(
+    "JWT_SECRET",
+    default=SECRET_KEY,
+)
+
 SIMPLE_JWT = {
+    "SIGNING_KEY": JWT_SECRET,
     "ACCESS_TOKEN_LIFETIME": timedelta(
         hours=8,
     ),
