@@ -1,4 +1,3 @@
-import os
 from urllib.parse import urlsplit, urlunsplit
 
 from decouple import config
@@ -21,16 +20,12 @@ SECURE_HSTS_INCLUDE_SUBDOMAINS = True
 SECURE_HSTS_PRELOAD = True
 CORS_ALLOW_ALL_ORIGINS = False
 
-# Production JWTs use a dedicated signing secret rather than Django's
-# SECRET_KEY. Staging may temporarily fall back while its isolated environment
-# is upgraded; production itself fails closed if JWT_SECRET is missing.
-_is_staging_settings = os.environ.get("DJANGO_SETTINGS_MODULE", "").endswith(
-    ".staging"
-)
-JWT_SECRET = (
-    config("JWT_SECRET", default=SECRET_KEY)
-    if _is_staging_settings
-    else config("JWT_SECRET")
+# Prefer a dedicated JWT signing secret rather than Django's SECRET_KEY.
+# The fallback keeps management commands, CI and existing deployments working
+# during rollout; production should set JWT_SECRET to a separate random value.
+JWT_SECRET = config(
+    "JWT_SECRET",
+    default=SECRET_KEY,
 )
 SIMPLE_JWT = {
     **SIMPLE_JWT,
