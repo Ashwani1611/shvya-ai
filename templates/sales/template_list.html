@@ -31,7 +31,7 @@
             <div class="sy-template-preview">
                 <div class="sy-template-paper">
                     <span class="sy-template-accent"></span>
-                    {% if template.logo_url %}<img src="{{ template.logo_url }}" alt="">{% else %}<span class="sy-template-logo-fallback">{{ template.organization.name|slice:":1" }}</span>{% endif %}
+                    {% if template.logo_file %}<img src="{{ template.logo_file.url }}" alt="">{% elif template.logo_url %}<img src="{{ template.logo_url }}" alt="">{% else %}<span class="sy-template-logo-fallback">{{ template.organization.name|slice:":1" }}</span>{% endif %}
                     <i></i><i></i><i class="short"></i>
                     <div class="sy-template-lines"><b></b><b></b><b></b></div>
                 </div>
