@@ -415,6 +415,37 @@ def merge_values(document, *, public_url=""):
     if lead:
         for key, value in (lead.attributes or {}).items():
             values[f"lead.attribute.{key}"] = value
+    if document.document_type == DocumentType.INVOICE:
+        from apps.sales.lifecycle import invoice_ledger
+        from apps.sales.models_lifecycle import SalesPaymentCheckout
+
+        ledger = invoice_ledger(document)
+        checkout = document.payment_checkouts.filter(
+            status=SalesPaymentCheckout.Status.CREATED,
+        ).first()
+        values.update(
+            {
+                "invoice.paid": _money_text(
+                    ledger["paid"],
+                    document.currency,
+                ),
+                "invoice.refunded": _money_text(
+                    ledger["refunded"],
+                    document.currency,
+                ),
+                "invoice.credits": _money_text(
+                    ledger["credits"],
+                    document.currency,
+                ),
+                "invoice.balance": _money_text(
+                    ledger["balance"],
+                    document.currency,
+                ),
+                "invoice.payment_url": (
+                    checkout.checkout_url if checkout else ""
+                ),
+            }
+        )
     return values
 
 
