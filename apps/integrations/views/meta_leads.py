@@ -14,8 +14,8 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_POST
 
-from apps.crm.authentication import crm_login_required
 from apps.crm.models import AttributeDefinition, Pipeline, Stage
+from apps.integrations.access import connect_hub_admin_required
 from apps.integrations.models import MetaLeadForm, MetaLeadPage
 from services.crm.lead_service import upsert_lead
 
@@ -351,7 +351,7 @@ def meta_lead_webhook(request):
     return HttpResponse("EVENT_RECEIVED")
 
 
-@crm_login_required
+@connect_hub_admin_required
 @require_GET
 def meta_lead_forms_view(request):
     organization = request.crm_user.organization
@@ -387,7 +387,7 @@ def meta_lead_forms_view(request):
     )
 
 
-@crm_login_required
+@connect_hub_admin_required
 @require_POST
 def meta_lead_page_save(request):
     organization = request.crm_user.organization
@@ -409,7 +409,7 @@ def meta_lead_page_save(request):
     return redirect("crm-connect-hub-meta-lead-ad-forms")
 
 
-@crm_login_required
+@connect_hub_admin_required
 @require_POST
 def meta_lead_page_delete(request):
     organization = request.crm_user.organization
@@ -423,7 +423,7 @@ def meta_lead_page_delete(request):
     return redirect("crm-connect-hub-meta-lead-ad-forms")
 
 
-@crm_login_required
+@connect_hub_admin_required
 @require_POST
 def meta_lead_form_save(request):
     organization = request.crm_user.organization
@@ -473,7 +473,7 @@ def meta_lead_form_save(request):
     return redirect("crm-connect-hub-meta-lead-ad-forms")
 
 
-@crm_login_required
+@connect_hub_admin_required
 @require_POST
 def meta_lead_form_delete(request):
     organization = request.crm_user.organization
