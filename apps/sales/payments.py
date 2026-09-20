@@ -4,7 +4,7 @@ import hashlib
 import hmac
 import json
 import time
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from urllib.parse import urljoin
 
 import requests
@@ -24,6 +24,16 @@ from apps.sales.models_lifecycle import (
 
 class SalesGatewayError(RuntimeError):
     pass
+
+
+def _provider_amount(value):
+    try:
+        amount = Decimal(str(value or 0)) / Decimal("100")
+    except (InvalidOperation, TypeError, ValueError):
+        return None
+    if not amount.is_finite() or amount <= 0:
+        return None
+    return amount
 
 
 def _minor_units(amount):
@@ -207,7 +217,7 @@ def verify_stripe_webhook(*, gateway, body, signature_header, tolerance=300):
 
 
 def _checkout_from_event(*, gateway, provider_reference="", checkout_id=""):
-    queryset = SalesPaymentCheckout.objects.select_related("invoice").filter(
+    queryset = SalesPaymentCheckout.objects.select_for_update().select_related("invoice").filter(
         gateway=gateway,
         organization=gateway.organization,
     )
@@ -251,9 +261,12 @@ def apply_razorpay_event(*, gateway, body):
     external_payment_id = str(payment.get("id") or "")
     if not external_payment_id:
         return None
-    amount = Decimal(str(payment.get("amount") or 0)) / Decimal("100")
-    if amount <= 0:
+    amount = _provider_amount(payment.get("amount"))
+    currency = str(payment.get("currency") or "").upper()
+    if amount is None:
         return None
+    if amount != checkout.amount or currency != checkout.currency.upper():
+        raise SalesGatewayError("Razorpay payment does not match the checkout amount/currency.")
 
     if checkout.payments.filter(
         provider=gateway.provider,
@@ -308,9 +321,12 @@ def apply_stripe_event(*, gateway, body):
     ).exists():
         return checkout
 
-    amount = Decimal(str(session.get("amount_total") or 0)) / Decimal("100")
-    if amount <= 0:
+    amount = _provider_amount(session.get("amount_total"))
+    currency = str(session.get("currency") or "").upper()
+    if amount is None:
         return None
+    if amount != checkout.amount or currency != checkout.currency.upper():
+        raise SalesGatewayError("Stripe payment does not match the checkout amount/currency.")
     record_payment(
         invoice=checkout.invoice,
         amount=amount,
@@ -350,7 +366,10 @@ def refund_gateway_payment(*, payment, amount, actor=None, note=""):
     if not secret:
         raise SalesGatewayError("Payment gateway secret is missing.")
 
-    amount = Decimal(str(amount))
+    try:
+        amount = Decimal(str(amount))
+    except (InvalidOperation, TypeError, ValueError) as exc:
+        raise ValidationError("Refund amount must be a valid amount.") from exc
     if not amount.is_finite() or amount <= 0:
         raise ValidationError("Refund amount must be greater than zero.")
 
