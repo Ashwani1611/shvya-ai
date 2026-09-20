@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}{% if template %}Edit {{ template.name }}{% else %}New Sales Template{% endif %} · SHVYA{% endblock %}
+{% block header %}Sales Template Builder{% endblock %}
+
+{% block extra_head %}
+{{ block.super }}
+<link rel="stylesheet" href="{% static 'css/shvya_sales.css' %}?v=20260921-1">
+<script src="{% static 'js/shvya_sales.js' %}?v=20260921-1" defer></script>
+{% endblock %}
+
+{% block content %}
+<main class="sy-sales">
+    <section class="sy-page-head sy-page-head-compact">
+        <div>
+            <a class="sy-back" href="{% url 'shvya-sales-template-list' %}"><i class="ti ti-arrow-left"></i> Templates</a>
+            <p class="sy-eyebrow">TEMPLATE BUILDER</p>
+            <h1>{% if template %}{{ template.name }}{% else %}Design without a fixed format.{% endif %}</h1>
+            <p>Layout, branding and communication drafts belong to the organisation — not to SHVYA.</p>
+        </div>
+    </section>
+
+    <form method="post" class="sy-template-builder" data-template-builder>
+        {% csrf_token %}
+        <section class="sy-template-controls">
+            <article class="sy-panel sy-form-card">
+                <div class="sy-card-title"><span>1</span><div><h2>Template identity</h2><p>Choose where this template appears.</p></div></div>
+                <div class="sy-form-grid">
+                    <label class="sy-field"><span>Document type</span>
+                        <select name="document_type" data-template-type>
+                            {% for value, label in document_types.choices %}
+                            <option value="{{ value }}" {% if selected_type == value %}selected{% endif %}>{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                    <label class="sy-field"><span>Template name</span><input name="name" required value="{{ template.name|default:'' }}" placeholder="Enterprise quotation"></label>
+                    <label class="sy-field"><span>Number prefix</span><input name="number_prefix" maxlength="12" value="{{ template.number_prefix|default:'' }}" placeholder="QT"></label>
+                    <label class="sy-field"><span>Accent colour</span><input type="color" name="accent_color" value="{{ template.accent_color|default:'#0071e3' }}" data-accent-picker></label>
+                </div>
+                <div class="sy-toggle-row">
+                    <label><input type="checkbox" name="is_default" {% if template.is_default %}checked{% endif %}><span>Default for this document type</span></label>
+                    <label><input type="checkbox" name="is_active" {% if not template or template.is_active %}checked{% endif %}><span>Active</span></label>
+                </div>
+            </article>
+
+            <article class="sy-panel sy-form-card">
+                <div class="sy-card-title"><span>2</span><div><h2>Branding</h2><p>Use organisation-specific identity and signatures.</p></div></div>
+                <div class="sy-form-grid">
+                    <label class="sy-field sy-field-wide"><span>Header text</span><input name="header_text" value="{{ template.header_text|default:'' }}" placeholder="Legal company name or document header" data-preview-header></label>
+                    <label class="sy-field"><span>Logo URL</span><input type="url" name="logo_url" value="{{ template.logo_url|default:'' }}" placeholder="https://..." data-preview-logo></label>
+                    <label class="sy-field"><span>Signature URL</span><input type="url" name="signature_url" value="{{ template.signature_url|default:'' }}" placeholder="https://..."></label>
+                    <label class="sy-field sy-field-wide"><span>Footer text</span><textarea name="footer_text" rows="3" data-preview-footer>{{ template.footer_text|default:'' }}</textarea></label>
+                </div>
+            </article>
+
+            <article class="sy-panel sy-form-card">
+                <div class="sy-card-title"><span>3</span><div><h2>Document layout</h2><p>Safe HTML formatting is supported. Script and unsafe attributes are stripped when saved.</p></div></div>
+                <div class="sy-merge-chips">
+                    <button type="button" data-insert-merge="{{document.title}}">{{document.title}}</button>
+                    <button type="button" data-insert-merge="{{document.number}}">{{document.number}}</button>
+                    <button type="button" data-insert-merge="{{recipient.name}}">{{recipient.name}}</button>
+                    <button type="button" data-insert-merge="{{document.content}}">{{document.content}}</button>
+                    <button type="button" data-insert-merge="{{items_table}}">{{items_table}}</button>
+                    <button type="button" data-insert-merge="{{document.terms}}">{{document.terms}}</button>
+                </div>
+                <label class="sy-field"><span>Layout HTML / content template</span><textarea name="body_template" rows="16" data-layout-editor>{% if template %}{{ template.body_template }}{% else %}{{ default_body }}{% endif %}</textarea></label>
+                <details class="sy-merge-help">
+                    <summary>Available merge fields</summary>
+                    <div>
+                        <code>{{organization.name}}</code>
+                        <code>{{recipient.name}}</code>
+                        <code>{{recipient.email}}</code>
+                        <code>{{recipient.phone}}</code>
+                        <code>{{lead.name}}</code>
+                        <code>{{lead.pipeline}}</code>
+                        <code>{{lead.stage}}</code>
+                        <code>{{lead.attribute.ATTRIBUTE_NAME}}</code>
+                        <code>{{document.number}}</code>
+                        <code>{{document.title}}</code>
+                        <code>{{document.issue_date}}</code>
+                        <code>{{document.valid_until}}</code>
+                        <code>{{document.due_date}}</code>
+                        <code>{{document.total}}</code>
+                        <code>{{document.content}}</code>
+                        <code>{{items_table}}</code>
+                        <code>{{document.terms}}</code>
+                    </div>
+                </details>
+            </article>
+
+            <article class="sy-panel sy-form-card">
+                <div class="sy-card-title"><span>4</span><div><h2>Email draft</h2><p>Reusable default, still editable every time the user sends.</p></div></div>
+                <label class="sy-field"><span>Subject</span><input name="email_subject_template" value="{% if template %}{{ template.email_subject_template }}{% else %}{{ default_email_subject }}{% endif %}"></label>
+                <label class="sy-field"><span>Body</span><textarea name="email_body_template" rows="8">{% if template %}{{ template.email_body_template }}{% else %}{{ default_email_body }}{% endif %}</textarea></label>
+            </article>
+
+            <article class="sy-panel sy-form-card">
+                <div class="sy-card-title"><span>5</span><div><h2>WhatsApp draft</h2><p>Used only when the user chooses WhatsApp. Pipeline sender rules still apply.</p></div></div>
+                <label class="sy-field"><span>Message</span><textarea name="whatsapp_body_template" rows="7">{% if template %}{{ template.whatsapp_body_template }}{% else %}{{ default_whatsapp_body }}{% endif %}</textarea></label>
+            </article>
+        </section>
+
+        <aside class="sy-template-preview-side">
+            <div class="sy-sticky-card">
+                <p class="sy-eyebrow">LIVE STYLE PREVIEW</p>
+                <div class="sy-builder-preview" data-builder-preview style="--preview-accent: {{ template.accent_color|default:'#0071e3' }}">
+                    <div class="sy-builder-preview-head">
+                        <div class="sy-preview-brand">
+                            <span data-preview-logo-box>{% if template.logo_url %}<img src="{{ template.logo_url }}" alt="">{% else %}<i class="ti ti-building"></i>{% endif %}</span>
+                            <strong data-preview-header-text>{{ template.header_text|default:"Your company" }}</strong>
+                        </div>
+                        <span>QT-00001</span>
+                    </div>
+                    <div class="sy-builder-preview-body">
+                        <p class="sy-preview-kicker">QUOTATION</p>
+                        <h3>Project proposal</h3>
+                        <p>Prepared for Customer Name</p>
+                        <div class="sy-preview-bars"><i></i><i></i><i></i></div>
+                        <div class="sy-preview-table"><span></span><span></span><span></span></div>
+                        <strong class="sy-preview-amount">INR 52,000.00</strong>
+                    </div>
+                    <footer data-preview-footer-text>{{ template.footer_text|default:"Thank you for your business." }}</footer>
+                </div>
+                <button type="submit" class="sy-btn sy-btn-primary sy-btn-block">Save template <i class="ti ti-check"></i></button>
+                <p class="sy-form-hint"><i class="ti ti-lock"></i> A document freezes this template when created. Editing the template later does not rewrite previously created documents.</p>
+            </div>
+        </aside>
+    </form>
+</main>
+{% endblock %}
