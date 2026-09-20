@@ -342,6 +342,11 @@ def sales_document_create_view(request, document_type):
             "source_document": source_document,
             "initial_line_items": initial_items,
             "initial": initial_values,
+            "selected_template_id": (
+                request.POST.get("template_id", "").strip()
+                if request.method == "POST"
+                else ""
+            ),
         },
     )
 
