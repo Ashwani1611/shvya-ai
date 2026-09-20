@@ -3,12 +3,14 @@ from __future__ import annotations
 import html
 import re
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+from pathlib import Path
 
 from bs4 import BeautifulSoup
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.urls import reverse
 from django.utils import timezone
+from django.utils.text import get_valid_filename
 
 from apps.sales.models import (
     DocumentType,
@@ -27,6 +29,8 @@ DEFAULT_PREFIXES = {
 }
 MERGE_RE = re.compile(r"{{\s*([^{}]+?)\s*}}")
 HEX_COLOR_RE = re.compile(r"^#[0-9A-Fa-f]{6}$")
+MAX_BRAND_ASSET_BYTES = 5 * 1024 * 1024
+ALLOWED_BRAND_ASSET_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
 
 _ALLOWED_TAGS = {
     "div",
@@ -79,6 +83,28 @@ _ALLOWED_STYLE_PROPERTIES = {
 
 class SalesDeliveryError(RuntimeError):
     pass
+
+
+def validate_brand_asset(uploaded_file, *, label):
+    """Validate organization-uploaded logo/signature images before storage."""
+    if uploaded_file is None:
+        return None
+    if uploaded_file.size <= 0:
+        raise ValidationError(f"{label} file is empty.")
+    if uploaded_file.size > MAX_BRAND_ASSET_BYTES:
+        raise ValidationError(f"{label} must be 5 MB or smaller.")
+
+    original_name = Path(uploaded_file.name or label).name
+    extension = Path(original_name).suffix.lower()
+    if extension not in ALLOWED_BRAND_ASSET_EXTENSIONS:
+        raise ValidationError(f"{label} must be PNG, JPG, JPEG or WEBP.")
+
+    content_type = str(getattr(uploaded_file, "content_type", "") or "").split(";", 1)[0]
+    if not content_type.startswith("image/"):
+        raise ValidationError(f"{label} must be a valid image file.")
+
+    uploaded_file.name = get_valid_filename(original_name) or f"{label.lower().replace(' ', '-')}{extension}"
+    return uploaded_file
 
 
 def _decimal(value, *, default="0"):
@@ -381,10 +407,18 @@ def render_document_html(document, *, public_url=""):
 
 def snapshot_document_presentation(document, *, public_url=""):
     template = document.template
+    logo_url = ""
+    signature_url = ""
+    if template:
+        logo_url = template.logo_file.url if template.logo_file else template.logo_url
+        signature_url = (
+            template.signature_file.url if template.signature_file else template.signature_url
+        )
+
     snapshot = {
         "template_name": template.name if template else "Standard",
-        "logo_url": template.logo_url if template else "",
-        "signature_url": template.signature_url if template else "",
+        "logo_url": logo_url,
+        "signature_url": signature_url,
         "accent_color": (
             template.accent_color
             if template and HEX_COLOR_RE.match(template.accent_color or "")
