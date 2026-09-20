@@ -180,6 +180,59 @@ class DurableExecutionTests(TestCase):
         )
         enqueue.assert_called_once_with(args=[str(self.lead.pk)], countdown=0)
 
+    def test_worker_claims_pinned_source_not_newer_other_account(self):
+        from apps.ai_engagement.services.execution_tracker import queue_api_engagement
+        from apps.ai_engagement.tasks import _execute_ai_engagement_response
+        from apps.channels.models import WhatsAppAccount, WhatsAppMessage
+
+        source = self._inbound(external_id="wamid-pinned-worker")
+        other = WhatsAppAccount.objects.create(
+            organization=self.organization,
+            connection_type=WhatsAppAccount.ConnectionType.API,
+            business_name="Other worker number",
+            phone_number_id="other-worker-phone-id",
+            display_phone_number="+919999999997",
+            status=WhatsAppAccount.Status.CONNECTED,
+            is_active=True,
+        )
+        newer = WhatsAppMessage.objects.create(
+            organization=self.organization,
+            account=other,
+            lead=self.lead,
+            direction=WhatsAppMessage.Direction.INBOUND,
+            external_id="wamid-other-worker-newer",
+            from_number=self.lead.phone,
+            to_number=other.display_phone_number,
+            body="Newer message on another account",
+            status=WhatsAppMessage.Status.RECEIVED,
+        )
+        with patch(
+            "apps.ai_engagement.tasks.generate_ai_engagement_response.apply_async"
+        ):
+            queue_api_engagement(
+                lead_id=self.lead.pk,
+                source_message_id=source.pk,
+                account_id=self.account.pk,
+            )
+
+        with patch(
+            "apps.ai_engagement.tasks._execute_ai_engagement_response_impl",
+            return_value={"status": "completed", "reason": ""},
+        ):
+            result = _execute_ai_engagement_response(
+                task=Mock(),
+                lead_id=self.lead.pk,
+            )
+
+        self.assertEqual(result["status"], "completed")
+        source.refresh_from_db()
+        newer.refresh_from_db()
+        self.assertEqual(
+            source.raw_payload["shvya_ai_execution"]["status"],
+            "completed",
+        )
+        self.assertNotIn("shvya_ai_execution", newer.raw_payload)
+
     def test_manual_queue_rejects_historical_source(self):
         from apps.ai_engagement.services.execution_tracker import queue_api_engagement
 
