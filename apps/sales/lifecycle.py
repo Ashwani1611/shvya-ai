@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 from datetime import timedelta
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 from dateutil.relativedelta import relativedelta
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.db.models import Sum
+from django.urls import reverse
 from django.utils import timezone
 from django.utils.text import get_valid_filename
 
@@ -47,6 +48,16 @@ ALLOWED_ATTACHMENT_EXTENSIONS = {
     ".ppt",
     ".pptx",
 }
+
+
+def _positive_amount(value, *, label):
+    try:
+        amount = Decimal(str(value))
+    except (InvalidOperation, TypeError, ValueError) as exc:
+        raise ValidationError(f"{label} must be a valid amount.") from exc
+    if not amount.is_finite() or amount <= 0:
+        raise ValidationError(f"{label} must be greater than zero.")
+    return amount
 
 
 def invoice_ledger(invoice):
@@ -136,9 +147,9 @@ def record_payment(
         raise ValidationError("Payments can only be recorded against invoices.")
     if invoice.status in {SalesDocument.Status.DRAFT, SalesDocument.Status.CANCELLED}:
         raise ValidationError("Send the invoice before recording payments.")
-    amount = Decimal(str(amount))
-    if not amount.is_finite() or amount <= 0:
-        raise ValidationError("Payment amount must be greater than zero.")
+    amount = _positive_amount(amount, label="Payment amount")
+    if method not in SalesPayment.Method.values:
+        raise ValidationError("Payment method is invalid.")
 
     payment = SalesPayment.objects.create(
         organization=invoice.organization,
@@ -188,9 +199,7 @@ def record_refund(
         raise ValidationError("Refunds can only be recorded against invoices.")
     if invoice.status in {SalesDocument.Status.DRAFT, SalesDocument.Status.CANCELLED}:
         raise ValidationError("Draft or cancelled invoices cannot be refunded.")
-    amount = Decimal(str(amount))
-    if not amount.is_finite() or amount <= 0:
-        raise ValidationError("Refund amount must be greater than zero.")
+    amount = _positive_amount(amount, label="Refund amount")
 
     ledger = invoice_ledger(invoice)
     if amount > ledger["net_paid"]:
@@ -243,9 +252,7 @@ def create_credit_note(*, invoice, amount, reason="", actor=None, apply=True):
         raise ValidationError("Credit notes can only be created for invoices.")
     if invoice.status in {SalesDocument.Status.DRAFT, SalesDocument.Status.CANCELLED}:
         raise ValidationError("Send the invoice before creating a credit note.")
-    amount = Decimal(str(amount))
-    if not amount.is_finite() or amount <= 0:
-        raise ValidationError("Credit note amount must be greater than zero.")
+    amount = _positive_amount(amount, label="Credit note amount")
 
     ledger = invoice_ledger(invoice)
     if amount > ledger["balance"]:
@@ -354,6 +361,8 @@ def create_agreement_revision(*, agreement, kind, actor=None):
         raise ValidationError("Only agreements can be amended or renewed.")
     if agreement.status == SalesDocument.Status.DRAFT:
         raise ValidationError("Edit the draft directly instead of creating a revision.")
+    if not agreement.is_current_version:
+        raise ValidationError("Create revisions only from the current agreement version.")
     if kind not in {"amendment", "renewal"}:
         raise ValidationError("Agreement revision type is invalid.")
 
@@ -393,7 +402,13 @@ def create_agreement_revision(*, agreement, kind, actor=None):
         terms=agreement.terms,
         layout_override=agreement.layout_override,
     )
-    snapshot_document_presentation(new_document)
+    snapshot_document_presentation(
+        new_document,
+        public_url=reverse(
+            "shvya-sales-public-document",
+            args=[new_document.public_token],
+        ),
+    )
     new_document.save()
     record_activity(
         agreement,
@@ -492,6 +507,15 @@ def create_recurring_invoice_instance(rule):
         return None
 
     source = rule.source_invoice
+    if source.document_type != DocumentType.INVOICE:
+        rule.is_active = False
+        rule.save(update_fields=["is_active", "updated_at"])
+        raise ValidationError("Recurring source must be an invoice.")
+    if source.status in {SalesDocument.Status.DRAFT, SalesDocument.Status.CANCELLED}:
+        rule.is_active = False
+        rule.save(update_fields=["is_active", "updated_at"])
+        raise ValidationError("Recurring source invoice must be sent and active.")
+
     number = next_document_number(
         organization=source.organization,
         document_type=DocumentType.INVOICE,
@@ -527,7 +551,13 @@ def create_recurring_invoice_instance(rule):
         terms=source.terms,
         layout_override=source.layout_override,
     )
-    snapshot_document_presentation(invoice)
+    snapshot_document_presentation(
+        invoice,
+        public_url=reverse(
+            "shvya-sales-public-document",
+            args=[invoice.public_token],
+        ),
+    )
     invoice.save()
 
     rule.cycles_created += 1
