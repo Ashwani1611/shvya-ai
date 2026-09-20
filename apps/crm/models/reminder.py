@@ -1,9 +1,26 @@
 import uuid
 
 from django.conf import settings
-from django.db import models
+from django.db import models, transaction
 
 from .lead import Lead
+
+
+class LeadReminderQuerySet(models.QuerySet):
+    def create(self, **kwargs):
+        lead = kwargs.get("lead")
+        lead_id = kwargs.get("lead_id") or getattr(lead, "pk", None)
+        if not lead_id:
+            return super().create(**kwargs)
+
+        with transaction.atomic(using=self.db):
+            Lead.objects.using(self.db).select_for_update().only("pk").get(pk=lead_id)
+            self.model._base_manager.using(self.db).filter(lead_id=lead_id).delete()
+            return super().create(**kwargs)
+
+
+class LeadReminderManager(models.Manager.from_queryset(LeadReminderQuerySet)):
+    pass
 
 
 class LeadReminder(models.Model):
@@ -35,8 +52,16 @@ class LeadReminder(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    objects = LeadReminderManager()
+
     class Meta:
         ordering = ["due_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["lead"],
+                name="uniq_lead_reminder_per_lead",
+            )
+        ]
 
     def __str__(self):
         return f"{self.title} — {self.lead.name}"
