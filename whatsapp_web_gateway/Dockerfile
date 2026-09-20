@@ -48,6 +48,12 @@ RUN node scripts/patch-hosted-uploaded-media-send.js
 RUN node scripts/patch-hosted-media-download-and-filter.js
 RUN node --check src/index.js
 
+# npm is required only while assembling node_modules. The production gateway
+# runs directly with Node and never invokes npm/npx, so remove the package
+# manager and its bundled dependency tree from the runtime image.
+RUN rm -rf /usr/local/lib/node_modules/npm \
+    && rm -f /usr/local/bin/npm /usr/local/bin/npx
+
 RUN mkdir -p /data/wwebjs_auth && chown -R node:node /app /data/wwebjs_auth
 USER node
 
