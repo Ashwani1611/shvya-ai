@@ -1,0 +1,77 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>{{ document.document_number }} · {{ document.organization.name }}</title>
+    <link rel="stylesheet" href="{% static 'css/shvya_sales.css' %}?v=20260921-1">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.34.0/dist/tabler-icons.min.css">
+</head>
+<body class="sy-public-body" style="--sales-accent: {{ presentation.accent_color|default:'#0071e3' }}">
+    <main class="sy-public-shell">
+        <header class="sy-public-topbar">
+            <div class="sy-public-brand">
+                {% if presentation.logo_url %}<img src="{{ presentation.logo_url }}" alt="">{% endif %}
+                <span><strong>{{ presentation.header_text|default:document.organization.name }}</strong><small>{{ document.get_document_type_display }} · {{ document.document_number }}</small></span>
+            </div>
+            <span class="sy-status sy-status-{{ document.status }}">{{ document.get_status_display }}</span>
+        </header>
+
+        <article class="sy-public-paper">
+            <div class="sy-public-meta">
+                <div><small>Prepared for</small><strong>{{ document.recipient_name|default:"Customer" }}</strong></div>
+                <div><small>Issued</small><strong>{{ document.issue_date|date:"d M Y" }}</strong></div>
+                {% if document.valid_until %}<div><small>Valid until</small><strong>{{ document.valid_until|date:"d M Y" }}</strong></div>{% endif %}
+                {% if document.due_date %}<div><small>Due</small><strong>{{ document.due_date|date:"d M Y" }}</strong></div>{% endif %}
+            </div>
+
+            <div class="sy-paper-body">{{ document.rendered_html|safe }}</div>
+
+            {% if presentation.signature_url %}
+            <div class="sy-paper-signature"><img src="{{ presentation.signature_url }}" alt="Authorised signature"><small>Authorised signature</small></div>
+            {% endif %}
+
+            {% if presentation.footer_text %}
+            <footer class="sy-paper-footer">{{ presentation.footer_text }}</footer>
+            {% endif %}
+        </article>
+
+        {% if document.document_type == 'quotation' and document.status != 'accepted' and document.status != 'declined' %}
+        <section class="sy-public-action">
+            <div><p class="sy-eyebrow">YOUR RESPONSE</p><h2>Ready to move forward?</h2><p>Confirm your decision below. SHVYA records the document version, time and response details.</p></div>
+            <form method="post" action="{% url 'shvya-sales-public-action' document.public_token %}">
+                {% csrf_token %}
+                <div class="sy-public-fields">
+                    <input name="name" placeholder="Your full name">
+                    <input type="email" name="email" placeholder="Email">
+                </div>
+                <div class="sy-public-buttons">
+                    <button class="sy-btn sy-btn-primary" type="submit" name="action" value="accept"><i class="ti ti-check"></i> Accept quotation</button>
+                    <button class="sy-btn sy-btn-secondary" type="submit" name="action" value="decline">Decline</button>
+                </div>
+            </form>
+        </section>
+        {% elif document.document_type == 'agreement' and document.status != 'signed' %}
+        <section class="sy-public-action">
+            <div><p class="sy-eyebrow">SIGN AGREEMENT</p><h2>Confirm your acceptance.</h2><p>Type your full name and email to create the electronic acceptance record.</p></div>
+            <form method="post" action="{% url 'shvya-sales-public-action' document.public_token %}">
+                {% csrf_token %}
+                <div class="sy-public-fields">
+                    <input name="name" required placeholder="Full legal name">
+                    <input type="email" name="email" placeholder="Email">
+                </div>
+                <button class="sy-btn sy-btn-primary" type="submit" name="action" value="sign"><i class="ti ti-signature"></i> Sign agreement</button>
+            </form>
+        </section>
+        {% elif document.status == 'accepted' or document.status == 'signed' %}
+        <section class="sy-public-confirmed">
+            <i class="ti ti-circle-check-filled"></i>
+            <div><strong>{% if document.status == 'signed' %}Agreement signed{% else %}Quotation accepted{% endif %}</strong><p>Recorded{% if document.accepted_by_name %} for {{ document.accepted_by_name }}{% endif %}.</p></div>
+        </section>
+        {% endif %}
+
+        <footer class="sy-public-powered">Secure document powered by <strong>SHVYA</strong></footer>
+    </main>
+</body>
+</html>
