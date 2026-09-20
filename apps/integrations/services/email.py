@@ -267,6 +267,7 @@ def send_organization_email(
     html_body=None,
     reply_to=None,
     headers=None,
+    attachments=None,
 ) -> int:
     """Send through the organization's connected mailbox without DNS rebinding."""
     try:
@@ -315,6 +316,15 @@ def send_organization_email(
     )
     if html_body:
         message.attach_alternative(html_body, "text/html")
+    for attachment in list(attachments or []):
+        if not isinstance(attachment, (tuple, list)) or len(attachment) != 3:
+            raise EmailConfigurationError("Email attachment metadata is invalid.")
+        filename, content, mimetype = attachment
+        message.attach(
+            str(filename or "attachment"),
+            content,
+            str(mimetype or "application/octet-stream"),
+        )
 
     try:
         return message.send(fail_silently=False)
