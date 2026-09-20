@@ -6,10 +6,22 @@ from apps.crm.views.stage_editor import (
     stage_editor_delete,
     stage_editor_modal,
     stage_editor_update,
+    stage_editor_requirements,
+    stage_editor_reorder,
 )
 
 
 urlpatterns = [
+    path(
+        "<uuid:stage_id>/requirements/",
+        stage_editor_requirements,
+        name="crm-stage-editor-requirements",
+    ),
+    path(
+        "<uuid:stage_id>/reorder/",
+        stage_editor_reorder,
+        name="crm-stage-editor-reorder",
+    ),
     path(
         "",
         stage_editor_modal,
