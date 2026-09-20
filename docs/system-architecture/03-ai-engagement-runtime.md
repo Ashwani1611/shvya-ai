@@ -1,6 +1,6 @@
 # 03. AI Engagement Runtime Design
 
-> Snapshot: `staging` traced from `88a71f8a02c911c5c963c9f0d8235ff60684ab17`.
+> **Implementation snapshot:** verified against production `main` at `7fb74946b35f189a66f92d6ffd0677909dca4c9f` on 2026-09-20. Source code, Django models/migrations and tests remain the executable source of truth.
 
 This document describes the production AI engagement architecture from inbound message to validated CRM actions and outbound WhatsApp reply.
 
@@ -718,3 +718,34 @@ Preserve these unless intentionally redesigning the contract:
 13. Conversation summary is derived context, not source of truth.
 14. A later inbound makes an older generated response stale.
 15. Permanent and transient provider failures must stay distinguishable.
+
+## Current Playbook and execution authority
+
+`OrgInfo.ai_playbook` is the canonical organization-owned operating specification. The former split qualification/instruction columns are no longer the runtime contract.
+
+Current turn priority is:
+
+```text
+resolve tenant/account/source
+→ permission + freshness checks
+→ direct-question / intent resolution
+→ Playbook qualification state
+→ evidence / RAG when needed
+→ guarded response/action plan
+→ deterministic CRM execution
+→ reconciliation
+→ grounded customer response
+→ pipeline-bound transport delivery
+```
+
+A direct product, feature, pricing, capability or policy question is answered before the next qualification question is appended. Greetings do not suppress the substantive intent. Short yes/no or numeric replies are interpreted against the immediately preceding authored question, not as universal qualification answers.
+
+The final qualification answer is not merely stored as conversational state. The backend execution contract validates inbound evidence, persists mapped CRM values, evaluates authored qualification criteria, performs only permitted stage/pipeline actions, reconciles state, and then composes the response.
+
+### Durable AI evidence
+
+- `AITrace`: bounded internal execution observability.
+- `AIActionReceipt`: unique organization + lead + idempotency-key receipt written with CRM mutations.
+- `LeadSignal`: source-backed explainable observation; never stage/qualification authority.
+
+Safe dynamic attribute creation is allowed only through the validated `create_if_missing` path for explicit non-sensitive facts and supported field types. Credentials, secrets and sensitive/internal fields are rejected.
