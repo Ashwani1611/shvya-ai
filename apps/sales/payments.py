@@ -42,6 +42,8 @@ def _absolute(base_url, path):
 def create_payment_checkout(*, invoice, gateway, actor=None, base_url):
     if invoice.document_type != DocumentType.INVOICE:
         raise ValidationError("Payment links can only be created for invoices.")
+    if invoice.status in {"draft", "cancelled"}:
+        raise ValidationError("Send the invoice before creating a payment link.")
     if gateway.organization_id != invoice.organization_id or not gateway.is_enabled:
         raise ValidationError("Payment gateway is not enabled for this organization.")
 
@@ -351,6 +353,19 @@ def refund_gateway_payment(*, payment, amount, actor=None, note=""):
     amount = Decimal(str(amount))
     if not amount.is_finite() or amount <= 0:
         raise ValidationError("Refund amount must be greater than zero.")
+
+    previous_refunds = payment.invoice.payments.filter(
+        kind="refund",
+        status="succeeded",
+        provider=payment.provider,
+        reference_number=payment.external_payment_id,
+    )
+    already_refunded = sum(
+        (item.amount for item in previous_refunds),
+        start=Decimal("0"),
+    )
+    if amount > payment.amount - already_refunded:
+        raise ValidationError("Refund exceeds the remaining amount of this payment.")
 
     try:
         if gateway.provider == SalesPaymentGateway.Provider.RAZORPAY:
