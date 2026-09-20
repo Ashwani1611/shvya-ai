@@ -319,6 +319,45 @@ def validate_attachment(uploaded_file):
     extension = Path(original_name).suffix.lower()
     if extension not in ALLOWED_ATTACHMENT_EXTENSIONS:
         raise ValidationError("This attachment file type is not supported.")
+
+    position = uploaded_file.tell() if hasattr(uploaded_file, "tell") else 0
+    header = uploaded_file.read(4096)
+    if hasattr(uploaded_file, "seek"):
+        uploaded_file.seek(position)
+
+    image_signatures = {
+        ".png": header.startswith(b"\x89PNG\r\n\x1a\n"),
+        ".jpg": header.startswith(b"\xff\xd8\xff"),
+        ".jpeg": header.startswith(b"\xff\xd8\xff"),
+        ".webp": (
+            len(header) >= 12
+            and header[:4] == b"RIFF"
+            and header[8:12] == b"WEBP"
+        ),
+    }
+    if extension in image_signatures and not image_signatures[extension]:
+        raise ValidationError("Attachment content does not match its image file type.")
+    if extension == ".pdf" and not header.startswith(b"%PDF-"):
+        raise ValidationError("Attachment content is not a valid PDF.")
+    if extension in {".docx", ".xlsx", ".pptx"} and not header.startswith(
+        (b"PK\x03\x04", b"PK\x05\x06", b"PK\x07\x08")
+    ):
+        raise ValidationError("Attachment content is not a valid Office document.")
+    if extension in {".doc", ".xls", ".ppt"} and not header.startswith(
+        b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"
+    ):
+        raise ValidationError("Attachment content is not a valid legacy Office document.")
+    if extension in {".txt", ".csv"}:
+        if b"\x00" in header:
+            raise ValidationError("Text/CSV attachments cannot contain binary NUL bytes.")
+        control_bytes = sum(
+            1
+            for value in header
+            if value < 32 and value not in {9, 10, 13}
+        )
+        if header and control_bytes / len(header) > 0.05:
+            raise ValidationError("Text/CSV attachment appears to contain binary data.")
+
     filename = get_valid_filename(original_name) or f"attachment{extension}"
     uploaded_file.name = filename
     return (
