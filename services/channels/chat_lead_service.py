@@ -103,13 +103,19 @@ def create_chat_lead(*, user, account, chat, name, pipeline_id):
                            name=name.strip(), phone=phone, send_welcome=False,
                            lead_source="whatsapp" if account.connection_type == "hosted" else "whatsapp_api")
 
-    messages.filter(lead__isnull=True).update(lead=lead)
+    linked_count = messages.filter(lead__isnull=True).update(lead=lead)
 
-    # Explicit creation happens after the inbound message already exists. Rejoin
-    # the same post-commit AI path used by normal live inbound processing.
-    if created:
+    # Explicit linking happens after the inbound message already exists. Rejoin
+    # the same post-commit AI path whenever this action actually attaches an
+    # unlinked conversation, even if a matching CRM Lead appeared just before
+    # the click. The downstream execution tracker / Hosted one-to-one job makes
+    # this safe against retries and duplicate Create clicks.
+    if linked_count:
         source_message_id = (
-            messages.filter(direction=WhatsAppMessage.Direction.INBOUND)
+            messages.filter(
+                lead=lead,
+                direction=WhatsAppMessage.Direction.INBOUND,
+            )
             .order_by("-created_at", "-id")
             .values_list("pk", flat=True)
             .first()
