@@ -41,6 +41,15 @@ jobs:
               exit 1
             fi
 
+            # This marker advances only after every production verification succeeds.
+            # It lets routine deploys safely skip migration/gateway work that cannot
+            # be relevant to the commits since the last known-good release.
+            STATE_FILE="/opt/shvya-ai/.last-successful-production-deploy"
+            LAST_SUCCESS_SHA=""
+            if [ -s "$STATE_FILE" ]; then
+              LAST_SUCCESS_SHA="$(tr -d '[:space:]' < "$STATE_FILE")"
+            fi
+
             echo "Fetching production branch for deployment SHA validation..."
             git fetch --no-tags origin main
 
@@ -52,6 +61,21 @@ jobs:
             if ! git merge-base --is-ancestor "$DEPLOY_SHA" origin/main; then
               echo "Refusing deployment: ${DEPLOY_SHA} is not part of origin/main."
               exit 1
+            fi
+
+            MIGRATION_FILES_CHANGED=1
+            GATEWAY_CHANGED=1
+            if [ -n "$LAST_SUCCESS_SHA" ] \
+              && git cat-file -e "${LAST_SUCCESS_SHA}^{commit}" 2>/dev/null \
+              && git merge-base --is-ancestor "$LAST_SUCCESS_SHA" "$DEPLOY_SHA"; then
+              if git diff --quiet "$LAST_SUCCESS_SHA" "$DEPLOY_SHA" -- ':(glob)**/migrations/*.py'; then
+                MIGRATION_FILES_CHANGED=0
+              fi
+              if git diff --quiet "$LAST_SUCCESS_SHA" "$DEPLOY_SHA" -- whatsapp_web_gateway docker-compose.yml; then
+                GATEWAY_CHANGED=0
+              fi
+            else
+              echo "No trusted previous production marker; using the full safe deployment path."
             fi
 
             echo "Deploying exact validated commit: ${DEPLOY_SHA}"
@@ -100,8 +124,15 @@ jobs:
             echo "Validating Docker Compose configuration..."
             docker compose config --quiet
 
-            echo "Building updated application containers..."
-            docker compose build web ws worker ai_realtime_worker hosted_ai_worker beat whatsapp-web-gateway
+            echo "Building updated Python application containers..."
+            docker compose build web ws worker ai_realtime_worker hosted_ai_worker beat
+
+            if [ "$GATEWAY_CHANGED" -eq 1 ]; then
+              echo "WhatsApp Web gateway changed; rebuilding its image..."
+              docker compose build whatsapp-web-gateway
+            else
+              echo "WhatsApp Web gateway is unchanged; reusing the verified running image."
+            fi
 
             echo "Preparing writable application bind mounts for the non-root runtime user..."
             docker compose run --rm --no-deps --user 0 web sh -c \
@@ -110,20 +141,12 @@ jobs:
             echo "Ensuring database and Redis are healthy..."
             docker compose up -d --wait db redis
 
-            echo "Creating a production database backup before migrations..."
-            mkdir -p /opt/shvya-ai/backups
-            BACKUP_FILE="/opt/shvya-ai/backups/shvya-prod-$(date -u +%Y%m%dT%H%M%SZ).sql"
-            docker compose exec -T db sh -c 'pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB"' > "$BACKUP_FILE"
-            test -s "$BACKUP_FILE"
-            gzip "$BACKUP_FILE"
-            find /opt/shvya-ai/backups -type f -name 'shvya-prod-*.sql.gz' -mtime +14 -delete
-
             APPLICATION_MAINTENANCE=0
             report_maintenance_failure() {
               deploy_status=$?
               if [ "$deploy_status" -ne 0 ] && [ "$APPLICATION_MAINTENANCE" -eq 1 ]; then
                 echo "Deployment failed during application maintenance; application services may remain stopped."
-                echo "Database, Redis, and gateway state are preserved. Backup: ${BACKUP_FILE}.gz"
+                echo "Database, Redis, and gateway state are preserved."
                 echo "Review the failed migration/startup before recovery; do not restart old images against the new schema."
                 docker compose ps || true
               fi
@@ -131,22 +154,25 @@ jobs:
             }
             trap report_maintenance_failure EXIT
 
-            # Column-removal migrations require every old Python process to
-            # finish before the schema changes. Stop producers first, then let
-            # Celery finish active tasks. Keep queues, database, edge, and linked
-            # WhatsApp gateway sessions running throughout this maintenance window.
-            APPLICATION_MAINTENANCE=1
-            echo "Pausing schedulers and HTTP/WebSocket traffic before schema changes..."
-            docker compose stop --timeout 60 beat web ws
-            echo "Draining application workers with a bounded graceful shutdown..."
-            docker compose stop --timeout 300 worker ai_realtime_worker hosted_ai_worker
-            if [ -n "$(docker compose ps --status running -q web ws worker ai_realtime_worker hosted_ai_worker beat)" ]; then
-              echo "Refusing migrations while an old application service is still running."
-              exit 1
-            fi
+            # Schema-changing migrations still use the conservative maintenance
+            # path. Routine commits with no migration-file changes keep the live
+            # application running until the replacement containers are ready.
+            if [ "$MIGRATION_FILES_CHANGED" -eq 1 ]; then
+              APPLICATION_MAINTENANCE=1
+              echo "Migration files changed; pausing HTTP/WebSocket traffic and schedulers..."
+              docker compose stop --timeout 60 beat web ws
+              echo "Draining application workers with a bounded graceful shutdown..."
+              docker compose stop --timeout 300 worker ai_realtime_worker hosted_ai_worker
+              if [ -n "$(docker compose ps --status running -q web ws worker ai_realtime_worker hosted_ai_worker beat)" ]; then
+                echo "Refusing migrations while an old application service is still running."
+                exit 1
+              fi
 
-            echo "Applying database migrations while old application services are stopped..."
-            docker compose run --rm --no-deps web python manage.py migrate --noinput
+              echo "Applying database migrations while old application services are stopped..."
+              docker compose run --rm --no-deps web python manage.py migrate --noinput
+            else
+              echo "No migration files changed since the last successful production deploy; skipping migration maintenance."
+            fi
 
             echo "Collecting static files before replacing the live web container..."
             docker compose run --rm --no-deps web python manage.py collectstatic --noinput
@@ -154,9 +180,22 @@ jobs:
             echo "Updating application services..."
             docker compose up -d --no-deps web ws worker ai_realtime_worker hosted_ai_worker beat
 
-            echo "Waiting for Django/Gunicorn to become healthy..."
-            if ! docker compose up -d --wait --no-deps web; then
-              echo "Web service did not become healthy."
+            echo "Waiting for Django/Gunicorn dependency readiness..."
+            ready=0
+            for attempt in $(seq 1 30); do
+              if curl --fail --silent --show-error --max-time 2 \
+                -H "Host: dashboard.shvya-ai.com" \
+                -H "X-Forwarded-Proto: https" \
+                http://127.0.0.1:8000/health/ready/ >/dev/null; then
+                ready=1
+                echo "Django dependency readiness check passed."
+                break
+              fi
+              echo "Waiting for Django readiness... attempt ${attempt}/30"
+              sleep 1
+            done
+            if [ "$ready" -ne 1 ]; then
+              echo "Web service did not become ready."
               docker compose ps
               docker compose logs --tail=150 web
               exit 1
@@ -202,8 +241,25 @@ jobs:
               exit 1
             fi
 
-            echo "Recreating WhatsApp Web gateway with the freshly built image..."
-            if ! docker compose up -d --wait --no-deps --force-recreate whatsapp-web-gateway; then
+            if [ "$GATEWAY_CHANGED" -eq 1 ]; then
+              echo "Recreating WhatsApp Web gateway with the freshly built image..."
+              docker compose up -d --no-deps --force-recreate whatsapp-web-gateway
+            else
+              echo "WhatsApp Web gateway is unchanged; keeping the existing container when possible..."
+              docker compose up -d --no-deps whatsapp-web-gateway
+            fi
+
+            echo "Waiting for the WhatsApp Web gateway health endpoint..."
+            gateway_healthy=0
+            for attempt in $(seq 1 20); do
+              if docker compose exec -T whatsapp-web-gateway node -e "fetch('http://127.0.0.1:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"; then
+                gateway_healthy=1
+                break
+              fi
+              echo "Waiting for WhatsApp Web gateway... attempt ${attempt}/20"
+              sleep 1
+            done
+            if [ "$gateway_healthy" -ne 1 ]; then
               echo "WhatsApp Web gateway did not become healthy."
               docker compose ps
               docker compose logs --tail=150 whatsapp-web-gateway
@@ -223,28 +279,6 @@ jobs:
               echo "WhatsApp Web gateway cannot post callbacks to Django."
               docker compose ps
               docker compose logs --tail=150 whatsapp-web-gateway web
-              exit 1
-            fi
-
-            echo "Verifying Django dependency readiness through the host port..."
-            ready=0
-            for attempt in $(seq 1 10); do
-              if curl --fail --silent --show-error --max-time 3 \
-                -H "Host: dashboard.shvya-ai.com" \
-                -H "X-Forwarded-Proto: https" \
-                http://127.0.0.1:8000/health/ready/ >/dev/null; then
-                ready=1
-                echo "Django dependency readiness check passed."
-                break
-              fi
-              echo "Waiting for Django readiness... attempt ${attempt}/10"
-              sleep 2
-            done
-
-            if [ "$ready" -ne 1 ]; then
-              echo "Django readiness verification failed."
-              docker compose ps
-              docker compose logs --tail=150 web
               exit 1
             fi
 
@@ -285,6 +319,12 @@ jobs:
 
             echo "Current service status:"
             docker compose ps
+
+            # Advance the marker only after application, gateway, Nginx and
+            # public HTTPS verification have all completed successfully.
+            printf '%s\n' "$DEPLOY_SHA" > "${STATE_FILE}.tmp"
+            mv "${STATE_FILE}.tmp" "$STATE_FILE"
+            echo "Recorded successful production deployment: ${DEPLOY_SHA}"
 
             echo "Removing unused Docker images..."
             docker image prune -f
