@@ -1,6 +1,7 @@
 from django.contrib.sessions.backends.db import SessionStore
 from django.test import TestCase
 from django.urls import reverse
+from django.utils.html import escapejs
 
 from apps.accounts.models import User
 from apps.accounts.session_utils import get_session_cookie_name, set_authenticated_user
@@ -73,4 +74,7 @@ class CrossPipelineLeadNavigationTests(TestCase):
             + f"&stage={self.target_stage.pk}"
         )
         self.assertContains(response, expected_partial)
-        self.assertContains(response, str(self.lead.pk))
+        self.assertContains(
+            response,
+            f'const requestedLeadId = "{escapejs(str(self.lead.pk))}";',
+        )
