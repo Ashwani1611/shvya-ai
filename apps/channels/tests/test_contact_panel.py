@@ -316,6 +316,17 @@ class ContactPanelTests(TestCase):
             self.assertFalse(process_hosted_due_state(state.pk))
             execution.assert_not_called()
 
+    def test_hosted_contact_panel_replaces_templates_with_touchpoints(self):
+        self.account.connection_type = "hosted"
+        self.account.save(update_fields=["connection_type"])
+        response = self.client.get(
+            self.panel,
+            {"channel": "hosted", "account": self.account.pk},
+        )
+        self.assertNotContains(response, 'data-contact-tab="templates"')
+        self.assertContains(response, 'data-contact-tab="touchpoints"')
+        self.assertContains(response, 'data-contact-panel="touchpoints"')
+
     def test_hosted_picker_and_start_only_use_current_hosted_account(self):
         self.account.connection_type = "hosted"
         self.account.save(update_fields=["connection_type"])
@@ -335,6 +346,15 @@ class ContactPanelTests(TestCase):
         return WhatsAppMessage.objects.create(organization=self.org, account=self.account, direction="inbound", from_number=phone,
                                               to_number="+919000000000", body="Hello", **kwargs)
 
+    def test_api_existing_crm_phone_is_not_offered_as_create_lead(self):
+        # Historical provider rows can remain unlinked even though CRM already
+        # owns this phone. Both +E.164 and digits-only forms must be recognized.
+        for phone in (self.lead.phone, self.lead.phone.lstrip("+")):
+            message = self.message(phone=phone)
+            response = self.client.get(reverse("whatsapp-chats"))
+            self.assertNotContains(response, f'href="{reverse("whatsapp-unlinked-chat", args=[self.account.pk, message.pk])}"')
+            message.delete()
+
     def test_api_unlinked_chat_creates_and_links_lead_idempotently(self):
         message = self.message()
         self.assertContains(self.client.get(reverse("whatsapp-chats")), "Create lead")
@@ -342,11 +362,17 @@ class ContactPanelTests(TestCase):
         url = reverse("chat-unlinked-contact", args=[self.account.pk])
         self.assertContains(self.client.get(url, {"chat": message.pk}), "Create lead")
         data = {"chat": str(message.pk), "name": "New customer", "pipeline": str(self.pipeline.pk), "phone": "+919999999999"}
-        with patch("services.crm.lead_service._schedule_new_lead_welcome") as welcome:
+        with (
+            patch("services.crm.lead_service._schedule_new_lead_welcome") as welcome,
+            patch("services.channels.chat_lead_service._queue_created_lead_engagement") as engagement,
+            self.captureOnCommitCallbacks(execute=True),
+        ):
             response = self.client.post(url, data)
             self.assertEqual(response.status_code, 200, response.content)
             self.assertEqual(self.client.post(url, data).status_code, 200)
             welcome.assert_not_called()
+        engagement.assert_called_once()
+        self.assertEqual(engagement.call_args.kwargs["source_message_id"], message.pk)
         message.refresh_from_db()
         self.assertEqual(message.lead.phone, "+919123456789")
         self.assertEqual(Lead.objects.filter(organization=self.org, phone="+919123456789").count(), 1)
