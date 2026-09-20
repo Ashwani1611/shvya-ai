@@ -69,7 +69,7 @@ def dispatch_scheduled_deliveries_task():
         with transaction.atomic():
             schedule = (
                 SalesScheduledDelivery.objects.select_for_update()
-                .select_related("document", "created_by")
+                .select_related("document", "created_by", "whatsapp_template")
                 .filter(pk=schedule_id)
                 .first()
             )
@@ -111,6 +111,11 @@ def dispatch_scheduled_deliveries_task():
                         body=schedule.whatsapp_body,
                         base_url=base_url,
                         attach_pdf=True,
+                        whatsapp_template_id=(
+                            str(schedule.whatsapp_template_id)
+                            if schedule.whatsapp_template_id
+                            else None
+                        ),
                         scheduled_delivery=schedule,
                     )
                     successes.append("whatsapp")
