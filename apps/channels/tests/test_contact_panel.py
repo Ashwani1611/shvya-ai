@@ -341,10 +341,10 @@ class ContactPanelTests(TestCase):
         self.assertEqual(self.client.post(url, {"channel": "hosted", "account": self.account.pk, "sequence": selected.pk}).status_code, 200)
         self.assertEqual(self.client.post(url, {"channel": "hosted", "account": self.account.pk, "sequence": other.pk}).status_code, 404)
 
-    def message(self, phone="+919123456789", **kwargs):
+    def message(self, phone="+919123456789", body="Hello", **kwargs):
         from apps.channels.models import WhatsAppMessage
         return WhatsAppMessage.objects.create(organization=self.org, account=self.account, direction="inbound", from_number=phone,
-                                              to_number="+919000000000", body="Hello", **kwargs)
+                                              to_number="+919000000000", body=body, **kwargs)
 
     def test_api_existing_crm_phone_is_not_offered_as_create_lead(self):
         # Historical provider rows can remain unlinked even though CRM already
