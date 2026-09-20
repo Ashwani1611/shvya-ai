@@ -103,7 +103,7 @@ See [`CLAUDE.md`](./CLAUDE.md) for the authoritative engineering contract.
 | AI | OpenAI SDK + LangGraph |
 | Frontend | Django Templates, HTMX, JavaScript, Tailwind CSS |
 | Production HTTP | Gunicorn + Nginx |
-| Hosted WhatsApp gateway | Node.js 18+ + Express + `whatsapp-web.js` |
+| Hosted WhatsApp gateway | Node.js 22.12+ + Express + `whatsapp-web.js` |
 | Containers | Docker + Docker Compose |
 | CI/CD | GitHub Actions |
 | TLS | Nginx + Certbot |
@@ -166,7 +166,7 @@ For a native local setup:
 - PostgreSQL 17 with the `vector` extension available
 - Redis
 - Git
-- Node.js 18+ only if you need to run the Hosted WhatsApp gateway locally
+- Node.js 22.12+ only if you need to run the Hosted WhatsApp gateway locally
 
 Docker is required for production/staging parity and for validating the Compose stack.
 
@@ -324,7 +324,7 @@ The canonical template is [`.env.example`](./.env.example).
 | Meta | `META_VERIFY_TOKEN`, `META_APP_ID`, `META_APP_SECRET`, `META_WA_EMBEDDED_SIGNUP_CONFIG_ID` |
 | Instagram | `META_INSTAGRAM_APP_ID`, `META_INSTAGRAM_APP_SECRET` |
 | Hosted WhatsApp | `WHATSAPP_WEB_GATEWAY_URL`, `WHATSAPP_WEB_GATEWAY_TOKEN`, `WHATSAPP_WEB_CALLBACK_TOKEN`, `WHATSAPP_WEB_SESSION_PATH` |
-| Mail | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD` |
+| Mail | `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD` |
 
 Production and staging values must be maintained outside Git.
 

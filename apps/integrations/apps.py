@@ -8,8 +8,3 @@ class IntegrationsConfig(AppConfig):
 
     def ready(self):
         from . import signals  # noqa: F401
-        from .services.meta_lead_webhook_security import (
-            install_meta_lead_webhook_security,
-        )
-
-        install_meta_lead_webhook_security()
