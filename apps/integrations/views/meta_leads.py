@@ -1,5 +1,3 @@
-import hashlib
-import hmac
 import json
 import logging
 import re
@@ -17,6 +15,10 @@ from django.views.decorators.http import require_GET, require_POST
 from apps.crm.models import AttributeDefinition, Pipeline, Stage
 from apps.integrations.access import connect_hub_admin_required
 from apps.integrations.models import MetaLeadForm, MetaLeadPage
+from apps.integrations.services.meta_lead_webhook_security import (
+    _configured_secrets,
+    _signature_matches_secret,
+)
 from services.crm.lead_service import upsert_lead
 
 logger = logging.getLogger(__name__)
@@ -178,25 +180,8 @@ def _fetch_lead(leadgen_id, page):
 
 
 def _signature_is_valid(request, secret):
-    if not secret:
-        return True
-
-    signature_256 = request.headers.get("X-Hub-Signature-256", "")
-    if signature_256:
-        expected = "sha256=" + hmac.new(
-            secret.encode("utf-8"), request.body, hashlib.sha256
-        ).hexdigest()
-        return hmac.compare_digest(signature_256, expected)
-
-    signature_sha1 = request.headers.get("X-Hub-Signature", "")
-    if signature_sha1:
-        expected = "sha1=" + hmac.new(
-            secret.encode("utf-8"), request.body, hashlib.sha1
-        ).hexdigest()
-        return hmac.compare_digest(signature_sha1, expected)
-
-    logger.warning("Meta webhook received without a signature header")
-    return True
+    """Fail closed for missing secrets, missing signatures, or invalid HMACs."""
+    return _signature_matches_secret(request, secret)
 
 
 @csrf_exempt
@@ -215,24 +200,36 @@ def meta_lead_webhook(request):
     except (TypeError, ValueError):
         return HttpResponse(status=400)
 
+    if not isinstance(payload, dict):
+        return HttpResponse(status=400)
+
+    secrets = _configured_secrets(payload)
+    if not secrets:
+        logger.error(
+            "Rejected Meta Lead Ads webhook because no app secret is configured"
+        )
+        return HttpResponse(
+            "Webhook signature verification unavailable",
+            status=403,
+        )
+
+    if not any(_signature_is_valid(request, secret) for secret in secrets):
+        logger.warning(
+            "Rejected Meta Lead Ads webhook with invalid or missing signature"
+        )
+        return HttpResponse("Invalid webhook signature", status=403)
+
     entries = payload.get("entry", [])
-    page_ids = [str(entry.get("id") or "") for entry in entries]
+    if not isinstance(entries, list):
+        return HttpResponse(status=400)
+
+    page_ids = [str(entry.get("id") or "") for entry in entries if isinstance(entry, dict)]
     pages_by_id = {
         page.page_id: page
         for page in MetaLeadPage.objects.filter(
             page_id__in=page_ids, is_active=True
         )
     }
-
-    page = next(iter(pages_by_id.values()), None)
-    secret = (
-        page.get_app_secret() if page else ""
-    ) or getattr(settings, "META_APP_SECRET", "")
-    if not _signature_is_valid(request, secret):
-        logger.warning(
-            "Meta webhook signature mismatch for configured Page; accepting event "
-            "and validating lead access through the stored Page token."
-        )
 
     for entry in entries:
         page = pages_by_id.get(str(entry.get("id") or ""))
