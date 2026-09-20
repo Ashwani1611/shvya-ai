@@ -1159,7 +1159,6 @@ def _send_email_step(state, step, execution):
 def _create_reminder_step(state, step, execution):
     lead = state.lead
     now = timezone.now()
-    LeadReminder.objects.filter(lead=lead, status="pending").update(status="cancelled")
     assignee = getattr(lead.pipeline, "owner", None) if lead.pipeline_id else None
     assignee = assignee or state.sequence.created_by
     reminder = LeadReminder.objects.create(
