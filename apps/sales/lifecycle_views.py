@@ -517,6 +517,38 @@ def sales_settings_view(request):
                 sales_settings.attach_customer_files_to_email = (
                     request.POST.get("attach_customer_files_to_email") == "on"
                 )
+                sales_settings.quotation_reminder_subject = (
+                    request.POST.get("quotation_reminder_subject")
+                    or sales_settings.quotation_reminder_subject
+                )[:255]
+                sales_settings.quotation_reminder_body = (
+                    request.POST.get("quotation_reminder_body")
+                    or sales_settings.quotation_reminder_body
+                )
+                sales_settings.agreement_reminder_subject = (
+                    request.POST.get("agreement_reminder_subject")
+                    or sales_settings.agreement_reminder_subject
+                )[:255]
+                sales_settings.agreement_reminder_body = (
+                    request.POST.get("agreement_reminder_body")
+                    or sales_settings.agreement_reminder_body
+                )
+                sales_settings.invoice_due_subject = (
+                    request.POST.get("invoice_due_subject")
+                    or sales_settings.invoice_due_subject
+                )[:255]
+                sales_settings.invoice_due_body = (
+                    request.POST.get("invoice_due_body")
+                    or sales_settings.invoice_due_body
+                )
+                sales_settings.invoice_overdue_subject = (
+                    request.POST.get("invoice_overdue_subject")
+                    or sales_settings.invoice_overdue_subject
+                )[:255]
+                sales_settings.invoice_overdue_body = (
+                    request.POST.get("invoice_overdue_body")
+                    or sales_settings.invoice_overdue_body
+                )
                 sales_settings.save()
                 messages.success(request, "Sales reminder settings saved.")
             return redirect("shvya-sales-settings")
