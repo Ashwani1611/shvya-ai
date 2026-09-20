@@ -673,7 +673,10 @@ SUPPORT_PRIVATE_ROOT = config("SUPPORT_PRIVATE_ROOT", default="")
 # SHVYA Sales public document URLs used by background reminders/schedules.
 # Browser-originated sends use request.build_absolute_uri and do not depend on
 # this setting. Configure the canonical dashboard origin in deployed environments.
-SALES_PUBLIC_BASE_URL = config("SALES_PUBLIC_BASE_URL", default="")
+SALES_PUBLIC_BASE_URL = config(
+    "SALES_PUBLIC_BASE_URL",
+    default=SUPPORT_PUBLIC_BASE_URL,
+)
 
 # Optional generic provider-event bridge for SMTP delivery/bounce callbacks.
 # When empty, the public event endpoint fails closed.
