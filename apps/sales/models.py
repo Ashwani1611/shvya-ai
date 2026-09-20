@@ -48,6 +48,7 @@ class SalesTemplate(models.Model):
     )
     header_text = models.CharField(max_length=255, blank=True)
     body_template = models.TextField()
+    item_table_config = models.JSONField(default=dict, blank=True)
     footer_text = models.TextField(blank=True)
 
     email_subject_template = models.CharField(max_length=255, blank=True)
