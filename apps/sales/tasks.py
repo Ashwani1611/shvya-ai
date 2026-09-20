@@ -267,7 +267,7 @@ def _maintain_document(document, today, base_url):
         days_left = (document.valid_until - today).days
         if (
             settings_row.automatic_email_reminders
-            and days_left == settings_row.quotation_expiry_reminder_days
+            and 0 <= days_left <= settings_row.quotation_expiry_reminder_days
         ):
             reminder = _ensure_reminder(
                 document,
@@ -309,7 +309,7 @@ def _maintain_document(document, today, base_url):
         days_left = (document.valid_until - today).days
         if (
             settings_row.automatic_email_reminders
-            and days_left == settings_row.agreement_expiry_reminder_days
+            and 0 <= days_left <= settings_row.agreement_expiry_reminder_days
         ):
             reminder = _ensure_reminder(
                 document,
@@ -341,7 +341,7 @@ def _maintain_document(document, today, base_url):
         days_left = (invoice.due_date - today).days
         if (
             settings_row.automatic_email_reminders
-            and days_left == settings_row.invoice_due_reminder_days
+            and 0 <= days_left <= settings_row.invoice_due_reminder_days
         ):
             reminder = _ensure_reminder(
                 invoice,
