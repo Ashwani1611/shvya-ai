@@ -145,6 +145,11 @@ def superadmin_login_view(request):
                 #     shvya_superadmin_sessionid
                 # -------------------------------------------------
 
+                # Rotate the browser-controlled session identifier at the
+                # privilege boundary so a pre-authentication session cannot
+                # be fixed and reused after Superadmin login.
+                superadmin_session.cycle_key()
+
                 set_authenticated_user(
                     superadmin_session,
                     user,
