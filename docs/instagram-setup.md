@@ -1,5 +1,8 @@
 # Instagram connection setup
 
+> **Implementation baseline:** verified 2026-09-20 against production `main` at `7fb74946b35f189a66f92d6ffd0677909dca4c9f`. Runtime code, migrations and tests remain authoritative when later commits change behavior.
+
+
 SHVYA's Instagram inbox uses Meta's Instagram API with Instagram Login for professional Business and Creator accounts.
 
 ## Meta app setup
@@ -43,3 +46,17 @@ Production intentionally refuses to fall back to the generic WhatsApp/Facebook M
 - Replies are queued locally before SHVYA calls Meta's Send API.
 - Meta requires the Instagram user to have initiated the conversation before the professional account can reply through the Send API.
 - The same Instagram professional account cannot be connected to multiple SHVYA organizations.
+
+
+## Current inbox and CRM behavior
+
+The current Instagram inbox follows the same customer-context principles as the WhatsApp inbox while preserving Meta-specific policy:
+
+- one local `InstagramConversation` is scoped to organization + Instagram account + participant;
+- the conversation may link to one CRM `Lead` through the optional `lead_id` relationship;
+- “View in CRM” must route to that exact linked lead;
+- images, audio, video and supported story/shared-media reply payloads are normalized into persisted message attachments/content rather than discarded;
+- outbound messaging rechecks the current Meta reply-window eligibility instead of assuming that a previously open thread is still sendable;
+- OAuth uses the dedicated Instagram App ID/Secret and signed webhook handling; WhatsApp Embedded Signup credentials are not substitutes.
+
+The inbox must not create cross-organization lead links. Any automatic/new lead association must validate the organization and current account context before persisting the link.
