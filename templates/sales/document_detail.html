@@ -323,8 +323,8 @@
                 <span><strong>Email</strong><small>{% if email_configuration %}From {{ email_configuration.email_address }}{% else %}No tested email account connected{% endif %}</small></span>
                 <i class="ti ti-circle-check sy-channel-check"></i>
             </label>
-            <label class="sy-channel-option {% if whatsapp_account %}is-ready{% else %}is-disabled{% endif %}">
-                <input type="checkbox" name="channels" value="whatsapp" data-channel-toggle="whatsapp" {% if not whatsapp_account %}disabled{% endif %}>
+            <label class="sy-channel-option {% if whatsapp_send_ready %}is-ready{% else %}is-disabled{% endif %}">
+                <input type="checkbox" name="channels" value="whatsapp" data-channel-toggle="whatsapp" {% if not whatsapp_send_ready %}disabled{% endif %}>
                 <span class="sy-channel-icon"><i class="ti ti-brand-whatsapp"></i></span>
                 <span><strong>WhatsApp</strong><small>{% if whatsapp_account %}From {{ whatsapp_account.display_phone_number|default:whatsapp_account.phone_number_id }}{% else %}{{ whatsapp_error|default:"No pipeline-linked WhatsApp sender" }}{% endif %}</small></span>
                 <i class="ti ti-circle-check sy-channel-check"></i>
@@ -345,7 +345,19 @@
         </section>
 
         <section class="sy-channel-editor" data-channel-editor="whatsapp" hidden>
-            <div class="sy-editor-head"><span class="sy-channel-icon"><i class="ti ti-brand-whatsapp"></i></span><div><strong>WhatsApp draft</strong><small>Sent from the lead's pipeline-linked number</small></div></div>
+            <div class="sy-editor-head"><span class="sy-channel-icon"><i class="ti ti-brand-whatsapp"></i></span><div><strong>WhatsApp draft</strong><small>Sent only from the lead's pipeline-linked number</small></div></div>
+            {% if whatsapp_account and whatsapp_account.connection_type == 'api' %}
+            <label class="sy-field">
+                <span>Approved document template · fallback / scheduled send</span>
+                <select name="whatsapp_template_id">
+                    <option value="">Choose approved template</option>
+                    {% for template in whatsapp_templates %}
+                    <option value="{{ template.id }}">{{ template.name }}</option>
+                    {% endfor %}
+                </select>
+                <small class="sy-field-note">{% if has_whatsapp_templates %}Required outside Meta's 24-hour window and for scheduled Cloud API/Coexistence sends. The PDF is supplied as the approved document header.{% else %}No approved document-header template is available for this number yet.{% endif %}</small>
+            </label>
+            {% endif %}
             <label class="sy-field"><span>Message</span><textarea name="whatsapp_body" rows="7">{{ drafts.whatsapp_body }}</textarea></label>
         </section>
 
