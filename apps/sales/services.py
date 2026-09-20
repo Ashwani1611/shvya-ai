@@ -104,7 +104,26 @@ def validate_brand_asset(uploaded_file, *, label):
     if not content_type.startswith("image/"):
         raise ValidationError(f"{label} must be a valid image file.")
 
-    uploaded_file.name = get_valid_filename(original_name) or f"{label.lower().replace(' ', '-')}{extension}"
+    position = uploaded_file.tell() if hasattr(uploaded_file, "tell") else 0
+    header = uploaded_file.read(16)
+    if hasattr(uploaded_file, "seek"):
+        uploaded_file.seek(position)
+
+    is_png = extension == ".png" and header.startswith(b"\x89PNG\r\n\x1a\n")
+    is_jpeg = extension in {".jpg", ".jpeg"} and header.startswith(b"\xff\xd8\xff")
+    is_webp = (
+        extension == ".webp"
+        and len(header) >= 12
+        and header[:4] == b"RIFF"
+        and header[8:12] == b"WEBP"
+    )
+    if not (is_png or is_jpeg or is_webp):
+        raise ValidationError(f"{label} content does not match its image file type.")
+
+    uploaded_file.name = (
+        get_valid_filename(original_name)
+        or f"{label.lower().replace(' ', '-')}{extension}"
+    )
     return uploaded_file
 
 
