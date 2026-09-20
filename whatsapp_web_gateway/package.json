@@ -9,7 +9,7 @@
     "check": "node --check scripts/cleanup-chromium-profile-locks.js && node --check src/index.js"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=22.12.0"
   },
   "dependencies": {
     "express": "5.1.0",
