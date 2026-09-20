@@ -1,6 +1,6 @@
 # 07. Architecture Source-Code Map
 
-> Snapshot: `staging` traced from `88a71f8a02c911c5c963c9f0d8235ff60684ab17`.
+> **Implementation snapshot:** verified against production `main` at `7fb74946b35f189a66f92d6ffd0677909dca4c9f` on 2026-09-20. Source code, Django models/migrations and tests remain the executable source of truth.
 
 This file maps architecture responsibilities to implementation locations. Use it as the starting point when you know **what behavior you want to change** but not **which file owns it**.
 
@@ -391,3 +391,20 @@ Realtime publication                -> realtime.py
 ```
 
 Duplicating one of these rules in a view or new task creates drift. Prefer one canonical owner and call it from each transport.
+
+## Current source additions
+
+| Responsibility | Main file(s) | Notes |
+| --- | --- | --- |
+| AI Playbook parsing/runtime | `apps/ai_engagement/services/playbook.py`, `organization_runtime_profile.py` | Canonical organization-authored rules/questions/criteria/mappings. |
+| Conversation priority | `apps/ai_engagement/services/conversation_priority_runtime.py`, intent services | Direct questions before qualification continuation. |
+| AI observability | `apps/ai_engagement/models/trace.py`, trace services | Bounded internal per-turn evidence. |
+| AI CRM action idempotency | `apps/ai_engagement/models/action_receipt.py`, `crm_executor.py` | Source-bound durable receipts + locked execution. |
+| Lead signals | `apps/ai_engagement/models/lead_signal.py` | Source-backed scoring observations. |
+| Bulk Campaign studio/audience | `services/channels/campaign_audience.py`, campaign services | Import/review/frozen audience. |
+| Campaign delivery/reporting | `services/channels/campaign_delivery.py`, `campaign_reporting.py` | Attempts, provider evidence, recipient actions/exports. |
+| CRM lead → chat resolution | `services/crm/lead_chat.py` | Current pipeline-linked WhatsApp account and exact lead conversation. |
+| Instagram inbox/content/lead link | `services/channels/instagram_inbox.py`, `instagram_content.py`, `instagram_leads.py` | Media normalization and CRM linkage. |
+| Help & Support | `apps/support/` | Customer portal, Shvya-Ops, policy, storage, mail, attention. |
+| Diagnostic MCP/OAuth | `apps/integrations/diagnostic_auth.py`, `diagnostic_models.py`, `diagnostic_tools.py`, `views/mcp.py` | Read-only tenant-scoped diagnostics. |
+| Marketing booking request | `apps/core/booking.py`, `apps/core/models.py` | Public booking request → CRM-linked record. |
