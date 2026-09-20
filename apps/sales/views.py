@@ -3,19 +3,29 @@ import json
 from django.contrib import messages
 from django.core.exceptions import ValidationError
 from django.db import transaction
-from django.db.models import Count, Q
+from django.db.models import Count, F, Q
 from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
-from django.utils.dateparse import parse_date
+from django.utils.dateparse import parse_date, parse_datetime
 from django.views.decorators.http import require_POST
 
 from apps.channels.models import WhatsAppAccount
 from apps.crm.decorators import crm_login_required
 from apps.crm.models import Lead
 from apps.integrations.models import EmailConfiguration
+from apps.sales.activity import record_activity
+from apps.sales.lifecycle import (
+    create_scheduled_delivery,
+    invoice_ledger,
+    invalidate_draft_artifacts,
+)
 from apps.sales.models import DocumentType, SalesDocument, SalesDocumentDelivery, SalesTemplate
+from apps.sales.models_lifecycle import (
+    SalesPaymentCheckout,
+    SalesPaymentGateway,
+)
 from apps.sales.services import (
     SalesDeliveryError,
     calculate_line_items,
@@ -198,6 +208,7 @@ def sales_document_create_view(request, document_type):
         "due_date": "",
         "content": source_document.content if source_document else "",
         "terms": source_document.terms if source_document else "",
+        "layout_override": source_document.layout_override if source_document else "",
         "discount_total": str(source_document.discount_total) if source_document else "0",
     }
 
@@ -215,6 +226,9 @@ def sales_document_create_view(request, document_type):
                 "due_date": request.POST.get("due_date", "").strip(),
                 "content": request.POST.get("content", "").strip(),
                 "terms": request.POST.get("terms", "").strip(),
+                "layout_override": sanitize_layout_html(
+                    request.POST.get("layout_override", "")
+                ),
                 "discount_total": request.POST.get("discount_total", "0").strip() or "0",
             }
         )
@@ -306,6 +320,7 @@ def sales_document_create_view(request, document_type):
                     total=financials["total"],
                     content=initial_values["content"],
                     terms=initial_values["terms"],
+                    layout_override=initial_values["layout_override"],
                 )
                 snapshot_document_presentation(
                     document,
@@ -323,6 +338,18 @@ def sales_document_create_view(request, document_type):
                         "whatsapp_body_snapshot",
                         "updated_at",
                     ]
+                )
+                record_activity(
+                    document,
+                    event_type="document_created",
+                    message=f"{document.get_document_type_display()} {document.document_number} created.",
+                    actor=request.crm_user,
+                    metadata={
+                        "document_type": document.document_type,
+                        "source_document_id": (
+                            str(source_document.id) if source_document else ""
+                        ),
+                    },
                 )
                 messages.success(
                     request,
@@ -382,6 +409,7 @@ def sales_document_edit_view(request, document_id):
         "due_date": document.due_date.isoformat() if document.due_date else "",
         "content": document.content,
         "terms": document.terms,
+        "layout_override": document.layout_override,
         "discount_total": str(document.discount_total),
     }
     selected_template_id = str(document.template_id) if document.template_id else ""
@@ -400,6 +428,9 @@ def sales_document_edit_view(request, document_id):
                 "due_date": request.POST.get("due_date", "").strip(),
                 "content": request.POST.get("content", "").strip(),
                 "terms": request.POST.get("terms", "").strip(),
+                "layout_override": sanitize_layout_html(
+                    request.POST.get("layout_override", "")
+                ),
                 "discount_total": request.POST.get("discount_total", "0").strip() or "0",
             }
         )
@@ -479,6 +510,8 @@ def sales_document_edit_view(request, document_id):
                 document.total = financials["total"]
                 document.content = initial_values["content"]
                 document.terms = initial_values["terms"]
+                document.layout_override = initial_values["layout_override"]
+                invalidate_draft_artifacts(document)
                 snapshot_document_presentation(
                     document,
                     public_url=reverse(
@@ -487,6 +520,12 @@ def sales_document_edit_view(request, document_id):
                     ),
                 )
                 document.save()
+                record_activity(
+                    document,
+                    event_type="document_edited",
+                    message=f"Draft {document.document_number} updated.",
+                    actor=request.crm_user,
+                )
                 messages.success(
                     request,
                     f"Draft {document.document_number} updated.",
@@ -553,18 +592,48 @@ def sales_document_detail_view(request, document_id):
         except ValidationError as exc:
             whatsapp_error = "; ".join(getattr(exc, "messages", None) or [str(exc)])
 
+    ledger = invoice_ledger(document) if document.document_type == DocumentType.INVOICE else None
+    gateways = (
+        SalesPaymentGateway.objects.filter(
+            organization=organization,
+            is_enabled=True,
+        ).order_by("provider")
+        if document.document_type == DocumentType.INVOICE
+        else SalesPaymentGateway.objects.none()
+    )
+    active_checkout = (
+        document.payment_checkouts.filter(
+            status=SalesPaymentCheckout.Status.CREATED,
+        ).first()
+        if document.document_type == DocumentType.INVOICE
+        else None
+    )
+    recurring_rule = None
+    if document.document_type == DocumentType.INVOICE:
+        try:
+            recurring_rule = document.recurring_rule
+        except Exception:
+            recurring_rule = None
+
     return render(
         request,
         "sales/document_detail.html",
         {
             "document": document,
-            "deliveries": document.deliveries.all()[:20],
+            "deliveries": document.deliveries.all()[:30],
             "public_url": public_url,
             "drafts": drafts,
             "email_configuration": email_configuration,
             "whatsapp_account": whatsapp_account,
             "whatsapp_error": whatsapp_error,
             "whatsapp_window_open": whatsapp_window_open,
+            "attachments": document.attachments.all()[:30],
+            "activities": document.activities.all()[:50],
+            "scheduled_deliveries": document.scheduled_deliveries.all()[:20],
+            "invoice_ledger": ledger,
+            "payment_gateways": gateways,
+            "active_checkout": active_checkout,
+            "recurring_rule": recurring_rule,
         },
     )
 
@@ -588,16 +657,59 @@ def sales_document_send_view(request, document_id):
         messages.error(request, "Select Email, WhatsApp, or both.")
         return redirect("shvya-sales-document-detail", document_id=document.id)
 
+    base_url = request.build_absolute_uri("/")
+    email_subject = request.POST.get("email_subject", "")
+    email_body = request.POST.get("email_body", "")
+    whatsapp_body = request.POST.get("whatsapp_body", "")
+    send_mode = str(request.POST.get("send_mode") or "now")
+
+    if send_mode == "schedule":
+        raw = str(request.POST.get("scheduled_at") or "").strip()
+        scheduled_at = parse_datetime(raw)
+        if scheduled_at is None:
+            try:
+                scheduled_at = timezone.datetime.fromisoformat(raw)
+            except (TypeError, ValueError):
+                scheduled_at = None
+        if scheduled_at is not None and timezone.is_naive(scheduled_at):
+            scheduled_at = timezone.make_aware(
+                scheduled_at,
+                timezone.get_current_timezone(),
+            )
+        if scheduled_at is None:
+            messages.error(request, "Choose a valid future schedule time.")
+            return redirect("shvya-sales-document-detail", document_id=document.id)
+        try:
+            schedule = create_scheduled_delivery(
+                document=document,
+                channels=list(channels),
+                scheduled_at=scheduled_at,
+                email_subject=email_subject,
+                email_body=email_body,
+                whatsapp_body=whatsapp_body,
+                base_url=base_url,
+                actor=request.crm_user,
+            )
+        except ValidationError as exc:
+            messages.error(request, "; ".join(exc.messages))
+        else:
+            messages.success(
+                request,
+                f"Scheduled for {schedule.scheduled_at:%d %b %Y, %I:%M %p}.",
+            )
+        return redirect("shvya-sales-document-detail", document_id=document.id)
+
     successes = []
     failures = []
-
     if SalesDocumentDelivery.Channel.EMAIL in channels:
         try:
             deliver_email(
                 document=document,
                 user=request.crm_user,
-                subject=request.POST.get("email_subject", ""),
-                body=request.POST.get("email_body", ""),
+                subject=email_subject,
+                body=email_body,
+                base_url=base_url,
+                attach_pdf=True,
             )
             successes.append("Email")
         except SalesDeliveryError as exc:
@@ -608,7 +720,9 @@ def sales_document_send_view(request, document_id):
             deliver_whatsapp(
                 document=document,
                 user=request.crm_user,
-                body=request.POST.get("whatsapp_body", ""),
+                body=whatsapp_body,
+                base_url=base_url,
+                attach_pdf=True,
             )
             successes.append("WhatsApp")
         except SalesDeliveryError as exc:
@@ -618,7 +732,6 @@ def sales_document_send_view(request, document_id):
         messages.success(request, f"Queued/sent successfully via {', '.join(successes)}.")
     for failure in failures:
         messages.error(request, failure)
-
     return redirect("shvya-sales-document-detail", document_id=document.id)
 
 
@@ -752,12 +865,45 @@ def public_document_view(request, token):
     if document.status == SalesDocument.Status.DRAFT:
         raise Http404
 
+    now = timezone.now()
+    first_view = document.first_viewed_at is None
+    updates = {
+        "view_count": F("view_count") + 1,
+        "last_viewed_at": now,
+    }
+    if first_view:
+        updates["first_viewed_at"] = now
+    SalesDocument.objects.filter(pk=document.pk).update(**updates)
+    document.refresh_from_db(
+        fields=["view_count", "first_viewed_at", "last_viewed_at"]
+    )
+    if first_view:
+        record_activity(
+            document,
+            event_type="document_viewed",
+            message=f"{document.document_number} was viewed by the customer.",
+            metadata={"view_count": document.view_count},
+        )
+
+    ledger = invoice_ledger(document) if document.document_type == DocumentType.INVOICE else None
+    active_checkout = (
+        document.payment_checkouts.filter(
+            status=SalesPaymentCheckout.Status.CREATED,
+        ).first()
+        if document.document_type == DocumentType.INVOICE
+        else None
+    )
     return render(
         request,
         "sales/public_document.html",
         {
             "document": document,
             "presentation": document.presentation_snapshot or {},
+            "customer_attachments": document.attachments.filter(
+                visible_to_customer=True
+            ),
+            "invoice_ledger": ledger,
+            "active_checkout": active_checkout,
         },
     )
 
@@ -821,5 +967,26 @@ def public_document_action_view(request, token):
             "accepted_ip",
             "updated_at",
         ]
+    )
+    record_activity(
+        document,
+        event_type=(
+            "agreement_signed"
+            if document.document_type == DocumentType.AGREEMENT
+            else (
+                "quotation_accepted"
+                if document.status == SalesDocument.Status.ACCEPTED
+                else "quotation_declined"
+            )
+        ),
+        message=(
+            f"Agreement {document.document_number} signed."
+            if document.document_type == DocumentType.AGREEMENT
+            else f"Quotation {document.document_number} {document.status}."
+        ),
+        metadata={
+            "signer_name": document.accepted_by_name,
+            "signer_email": document.accepted_by_email,
+        },
     )
     return redirect("shvya-sales-public-document", token=token)
