@@ -697,7 +697,7 @@ def deliver_email(
     if attach_pdf:
         try:
             pdf_bytes = read_document_pdf(document, actor=user)
-        except Exception as exc:
+        except Exception:
             return _record_failure(
                 delivery,
                 SalesDeliveryError("The PDF could not be generated for this send."),
@@ -753,6 +753,102 @@ def deliver_email(
     return delivery
 
 
+def _sales_whatsapp_template_values(*, document, user=None, public_url=""):
+    lead = document.lead
+    values = {
+        "lead_name": lead.name if lead else "",
+        "lead_first_name": (lead.name or "").split(" ")[0] if lead else "",
+        "phone": lead.phone if lead else document.recipient_phone,
+        "email": lead.email if lead else document.recipient_email,
+        "lead_source": getattr(lead, "lead_source", "") if lead else "",
+        "org_name": document.organization.name,
+        "user_name": getattr(user, "name", "") or getattr(user, "email", "") or "",
+        "pipeline_name": lead.pipeline.name if lead and lead.pipeline_id else "",
+        "stage_name": lead.stage.name if lead and lead.stage_id else "",
+        "document_number": document.document_number,
+        "document_title": document.title,
+        "document_type": document.get_document_type_display(),
+        "document_total": _money_text(document.total, document.currency),
+        "document_url": public_url,
+        "document_due_date": document.due_date.isoformat() if document.due_date else "",
+        "document_valid_until": (
+            document.valid_until.isoformat() if document.valid_until else ""
+        ),
+    }
+    if lead:
+        values.update(getattr(lead, "attributes", None) or {})
+    return values
+
+
+def _sales_template_message(
+    *,
+    template,
+    document,
+    user,
+    pdf_url,
+    public_url,
+):
+    from services.channels.template_service import state_for
+
+    state = state_for(template)
+    mapping = (
+        state.placeholder_mapping
+        if isinstance(state.placeholder_mapping, dict)
+        else {}
+    )
+    values = _sales_whatsapp_template_values(
+        document=document,
+        user=user,
+        public_url=public_url,
+    )
+    components = [
+        {
+            "type": "header",
+            "parameters": [
+                {
+                    "type": "document",
+                    "document": {
+                        "link": pdf_url,
+                        "filename": f"{document.document_number}.pdf",
+                    },
+                }
+            ],
+        }
+    ]
+    rendered_body = str(template.body or "")
+    if mapping:
+        try:
+            ordered_numbers = sorted(mapping, key=lambda value: int(value))
+        except (TypeError, ValueError) as exc:
+            raise SalesDeliveryError(
+                "The selected WhatsApp template has invalid placeholder metadata."
+            ) from exc
+        parameters = []
+        for number in ordered_numbers:
+            key = mapping[number]
+            value = str(values.get(key, "") or "")
+            parameters.append({"type": "text", "text": value})
+            rendered_body = rendered_body.replace(
+                "{{" + str(key) + "}}",
+                value,
+            ).replace(
+                "{{" + str(number) + "}}",
+                value,
+            )
+        components.append({"type": "body", "parameters": parameters})
+
+    return (
+        rendered_body,
+        {
+            "transport": "template",
+            "template_id": str(template.id),
+            "template_name": template.name,
+            "language_code": state.language or "en_US",
+            "components": components,
+        },
+    )
+
+
 def deliver_whatsapp(
     *,
     document,
@@ -760,12 +856,13 @@ def deliver_whatsapp(
     body,
     base_url="",
     attach_pdf=True,
+    whatsapp_template_id=None,
     scheduled_delivery=None,
     reminder=None,
 ):
     from urllib.parse import urljoin
 
-    from apps.channels.models import WhatsAppAccount, WhatsAppMessage
+    from apps.channels.models import WhatsAppAccount, WhatsAppMessage, WhatsAppTemplate
     from apps.channels.tasks import send_whatsapp_message_task
     from services.crm.lead_chat import pipeline_chat_account
 
@@ -783,10 +880,15 @@ def deliver_whatsapp(
     if not document.lead_id:
         return _record_failure(
             delivery,
-            SalesDeliveryError("Link this document to a CRM lead before sending it on WhatsApp."),
+            SalesDeliveryError(
+                "Link this document to a CRM lead before sending it on WhatsApp."
+            ),
         )
-    if not delivery.body:
-        return _record_failure(delivery, SalesDeliveryError("WhatsApp message cannot be empty."))
+    if not delivery.body and not whatsapp_template_id:
+        return _record_failure(
+            delivery,
+            SalesDeliveryError("WhatsApp message cannot be empty."),
+        )
 
     try:
         account = pipeline_chat_account(document.lead)
@@ -801,15 +903,15 @@ def deliver_whatsapp(
     try:
         from services.channels.whatsapp_service import queue_outbound_message
 
-        if account.connection_type == WhatsAppAccount.ConnectionType.API:
-            from services.channels.whatsapp_api_chat_service import is_within_api_24h_window
-
-            if not is_within_api_24h_window(lead=document.lead, account=account):
-                raise SalesDeliveryError(
-                    "Meta requires an approved WhatsApp template outside the active 24-hour service window. "
-                    "Send an approved template from Chats first; once the customer replies, this document can be sent."
-                )
-
+        public_path = reverse(
+            "shvya-sales-public-document",
+            args=[document.public_token],
+        )
+        public_url = urljoin(
+            str(base_url or "").rstrip("/") + "/",
+            public_path.lstrip("/"),
+        )
+        pdf_url = ""
         if attach_pdf:
             from apps.sales.pdf_service import ensure_document_pdf
 
@@ -824,8 +926,66 @@ def deliver_whatsapp(
             )
             if not pdf_url.startswith(("http://", "https://")):
                 raise SalesDeliveryError(
-                    "A public HTTPS base URL is required to attach PDFs on WhatsApp."
+                    "A public HTTP(S) base URL is required to attach PDFs on WhatsApp."
                 )
+
+        requires_template = False
+        if account.connection_type == WhatsAppAccount.ConnectionType.API:
+            from services.channels.whatsapp_api_chat_service import (
+                is_within_api_24h_window,
+            )
+
+            requires_template = not is_within_api_24h_window(
+                lead=document.lead,
+                account=account,
+            )
+
+        if requires_template:
+            if not whatsapp_template_id:
+                raise SalesDeliveryError(
+                    "Meta requires an approved document-header WhatsApp template "
+                    "outside the active 24-hour service window."
+                )
+            template = (
+                WhatsAppTemplate.objects.select_related("account", "meta_state")
+                .filter(
+                    id=whatsapp_template_id,
+                    organization=document.organization,
+                    account=account,
+                    status=WhatsAppTemplate.Status.APPROVED,
+                    attachment_type=WhatsAppTemplate.AttachmentType.DOCUMENT,
+                )
+                .exclude(meta_template_id="")
+                .first()
+            )
+            if template is None:
+                raise SalesDeliveryError(
+                    "Choose an approved document-header template for this "
+                    "pipeline's linked WhatsApp number."
+                )
+            if not attach_pdf or not pdf_url:
+                raise SalesDeliveryError(
+                    "This approved WhatsApp template requires the document PDF."
+                )
+            rendered_body, template_payload = _sales_template_message(
+                template=template,
+                document=document,
+                user=user,
+                pdf_url=pdf_url,
+                public_url=public_url,
+            )
+            delivery.body = rendered_body
+            delivery.save(update_fields=["body"])
+            message = queue_outbound_message(
+                organization=document.organization,
+                account=account,
+                to_number=document.lead.phone,
+                body=rendered_body or f"Document {document.document_number}",
+                lead=document.lead,
+                message_type=WhatsAppMessage.MessageType.TEXT,
+                media_payload=template_payload,
+            )
+        elif attach_pdf:
             message = queue_outbound_message(
                 organization=document.organization,
                 account=account,
@@ -849,7 +1009,11 @@ def deliver_whatsapp(
                 lead=document.lead,
             )
 
-        raw_payload = message.raw_payload if isinstance(message.raw_payload, dict) else {}
+        raw_payload = (
+            message.raw_payload
+            if isinstance(message.raw_payload, dict)
+            else {}
+        )
         raw_payload = dict(raw_payload)
         raw_payload["shvya_sales"] = {
             "document_id": str(document.id),
@@ -863,16 +1027,19 @@ def deliver_whatsapp(
             )
         message.raw_payload = raw_payload
         message.save(update_fields=["raw_payload", "updated_at"])
-        # Make the tokenized PDF URL customer-accessible before a fast worker
-        # asks Meta/Hosted to fetch the attachment.
+        # Make tokenized document URLs public before the asynchronous provider
+        # asks SHVYA to serve the PDF.
         _mark_document_sent(document, actor=user)
         send_whatsapp_message_task.delay(str(message.id))
     except SalesDeliveryError as exc:
         return _record_failure(delivery, exc)
-    except Exception as exc:
+    except Exception:
         return _record_failure(
             delivery,
-            SalesDeliveryError("WhatsApp delivery could not be queued. Review the linked number and try again."),
+            SalesDeliveryError(
+                "WhatsApp delivery could not be queued. Review the linked "
+                "number/template and try again."
+            ),
         )
 
     delivery.provider_message_id = str(message.id)
@@ -890,6 +1057,7 @@ def deliver_whatsapp(
             "delivery_id": str(delivery.id),
             "whatsapp_message_id": str(message.id),
             "pdf_attached": bool(attach_pdf),
+            "template_used": bool(requires_template),
         },
     )
     return delivery
