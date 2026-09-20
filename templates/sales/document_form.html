@@ -94,7 +94,7 @@
                 <div class="sy-form-grid">
                     <label class="sy-field">
                         <span>Issue date</span>
-                        <input type="date" name="issue_date" value="{{ initial.issue_date|default:today|date:'Y-m-d' }}">
+                        <input type="date" name="issue_date" value="{{ initial.issue_date }}">
                     </label>
                     {% if document_type == 'quotation' %}
                     <label class="sy-field"><span>Valid until</span><input type="date" name="valid_until" value="{{ initial.valid_until }}"></label>
