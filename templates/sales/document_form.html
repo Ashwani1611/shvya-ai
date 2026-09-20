@@ -24,8 +24,20 @@
     <form method="post" class="sy-builder" data-sales-document-form>
         {% csrf_token %}
         <input type="hidden" name="line_items_json" value="[]" data-line-items-json>
+        {% if source_document %}<input type="hidden" name="source_document_id" value="{{ source_document.id }}">{% endif %}
+        {{ initial_line_items|json_script:"shvya-sales-initial-items" }}
 
         <section class="sy-builder-main">
+            {% if source_document %}
+            <div class="sy-source-banner">
+                <span class="sy-source-icon"><i class="ti ti-git-branch"></i></span>
+                <div>
+                    <strong>Creating from {{ source_document.document_number }}</strong>
+                    <small>Customer, CRM context, pricing, scope and terms are prefilled. Review anything before creating the new {{ document_type_label|lower }}.</small>
+                </div>
+                <a href="{% url 'shvya-sales-document-detail' source_document.id %}" target="_blank" rel="noopener">Open source <i class="ti ti-arrow-up-right"></i></a>
+            </div>
+            {% endif %}
             <article class="sy-panel sy-form-card">
                 <div class="sy-card-title">
                     <span>1</span>
@@ -37,7 +49,7 @@
                         <select name="lead_id" data-lead-select>
                             <option value="">Select a lead (optional)</option>
                             {% for lead in leads %}
-                            <option value="{{ lead.id }}" data-name="{{ lead.name }}" data-email="{{ lead.email }}" data-phone="{{ lead.phone }}">{{ lead.name }} · {{ lead.phone }}</option>
+                            <option value="{{ lead.id }}" data-name="{{ lead.name }}" data-email="{{ lead.email }}" data-phone="{{ lead.phone }}" {% if initial.lead_id == lead.id|stringformat:"s" %}selected{% endif %}>{{ lead.name }} · {{ lead.phone }}</option>
                             {% endfor %}
                         </select>
                     </label>
@@ -45,7 +57,7 @@
                         <span>Template</span>
                         <select name="template_id">
                             {% for template in templates %}
-                            <option value="{{ template.id }}">{{ template.name }}{% if template.is_default %} · Default{% endif %}</option>
+                            <option value="{{ template.id }}" {% if selected_template_id == template.id|stringformat:"s" %}selected{% endif %}>{{ template.name }}{% if template.is_default %} · Default{% endif %}</option>
                             {% empty %}
                             <option value="">Standard</option>
                             {% endfor %}
@@ -53,23 +65,23 @@
                     </label>
                     <label class="sy-field">
                         <span>Document title</span>
-                        <input name="title" placeholder="{{ document_type_label }} for customer">
+                        <input name="title" value="{{ initial.title }}" placeholder="{{ document_type_label }} for customer">
                     </label>
                     <label class="sy-field">
                         <span>Recipient name</span>
-                        <input name="recipient_name" data-recipient-name placeholder="Customer or company">
+                        <input name="recipient_name" value="{{ initial.recipient_name }}" data-recipient-name placeholder="Customer or company">
                     </label>
                     <label class="sy-field">
                         <span>Recipient email</span>
-                        <input type="email" name="recipient_email" data-recipient-email placeholder="name@company.com">
+                        <input type="email" name="recipient_email" value="{{ initial.recipient_email }}" data-recipient-email placeholder="name@company.com">
                     </label>
                     <label class="sy-field">
                         <span>Recipient phone</span>
-                        <input name="recipient_phone" data-recipient-phone placeholder="+91...">
+                        <input name="recipient_phone" value="{{ initial.recipient_phone }}" data-recipient-phone placeholder="+91...">
                     </label>
                     <label class="sy-field">
                         <span>Currency</span>
-                        <input name="currency" value="INR" maxlength="8">
+                        <input name="currency" value="{{ initial.currency|default:'INR' }}" maxlength="8">
                     </label>
                 </div>
             </article>
@@ -82,18 +94,18 @@
                 <div class="sy-form-grid">
                     <label class="sy-field">
                         <span>Issue date</span>
-                        <input type="date" name="issue_date" value="{{ today|date:'Y-m-d' }}">
+                        <input type="date" name="issue_date" value="{{ initial.issue_date|default:today|date:'Y-m-d' }}">
                     </label>
                     {% if document_type == 'quotation' %}
-                    <label class="sy-field"><span>Valid until</span><input type="date" name="valid_until"></label>
+                    <label class="sy-field"><span>Valid until</span><input type="date" name="valid_until" value="{{ initial.valid_until }}"></label>
                     {% elif document_type == 'invoice' %}
-                    <label class="sy-field"><span>Due date</span><input type="date" name="due_date"></label>
+                    <label class="sy-field"><span>Due date</span><input type="date" name="due_date" value="{{ initial.due_date }}"></label>
                     {% else %}
-                    <label class="sy-field"><span>End / review date</span><input type="date" name="valid_until"></label>
+                    <label class="sy-field"><span>End / review date</span><input type="date" name="valid_until" value="{{ initial.valid_until }}"></label>
                     {% endif %}
                     <label class="sy-field sy-field-wide">
                         <span>{% if document_type == 'agreement' %}Agreement content{% else %}Scope / description{% endif %}</span>
-                        <textarea name="content" rows="7" placeholder="{% if document_type == 'agreement' %}Write the agreement scope, obligations and commercial terms...{% else %}Add scope, deliverables or a personalised note...{% endif %}"></textarea>
+                        <textarea name="content" rows="7" placeholder="{% if document_type == 'agreement' %}Write the agreement scope, obligations and commercial terms...{% else %}Add scope, deliverables or a personalised note...{% endif %}">{{ initial.content }}</textarea>
                     </label>
                 </div>
             </article>
@@ -112,7 +124,7 @@
                 <div class="sy-line-summary">
                     <label class="sy-field">
                         <span>Document discount</span>
-                        <input type="number" step="0.01" min="0" name="discount_total" value="0" data-discount-total>
+                        <input type="number" step="0.01" min="0" name="discount_total" value="{{ initial.discount_total|default:'0' }}" data-discount-total>
                     </label>
                     <div class="sy-live-total">
                         <span>Estimated total</span>
@@ -128,7 +140,7 @@
                 </div>
                 <label class="sy-field">
                     <span>Terms / notes</span>
-                    <textarea name="terms" rows="5" placeholder="Payment terms, validity, cancellation policy, legal note or any organisation-specific text..."></textarea>
+                    <textarea name="terms" rows="5" placeholder="Payment terms, validity, cancellation policy, legal note or any organisation-specific text...">{{ initial.terms }}</textarea>
                 </label>
             </article>
         </section>
