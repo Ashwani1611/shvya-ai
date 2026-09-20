@@ -12,6 +12,11 @@ urlpatterns = [
         name="shvya-sales-document-create",
     ),
     path(
+        "documents/<uuid:document_id>/edit/",
+        views.sales_document_edit_view,
+        name="shvya-sales-document-edit",
+    ),
+    path(
         "documents/<uuid:document_id>/",
         views.sales_document_detail_view,
         name="shvya-sales-document-detail",
