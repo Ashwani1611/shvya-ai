@@ -12,6 +12,13 @@ class SalesUrlTests(SimpleTestCase):
             "/dashboard/sales/documents/",
         )
 
+    def test_document_edit_route_is_scoped_under_sales_workspace(self):
+        document_id = uuid.UUID("aaf6d7e7-0c40-4a1f-b33e-61a99d07dd38")
+        self.assertEqual(
+            reverse("shvya-sales-document-edit", args=[document_id]),
+            f"/dashboard/sales/documents/{document_id}/edit/",
+        )
+
     def test_public_document_route_is_outside_authenticated_dashboard(self):
         token = uuid.UUID("4bc6a9fe-3dd8-4ccc-91ba-f3134f10d15a")
         self.assertEqual(
