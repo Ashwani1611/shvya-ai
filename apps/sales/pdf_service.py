@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+from datetime import datetime
 from io import BytesIO
 from pathlib import Path
 
@@ -53,6 +54,19 @@ def _pdf_asset_url(snapshot, key):
     return value if _local_asset_path(value) else ""
 
 
+def _acceptance_recorded_display(document):
+    value = document.signed_at or document.accepted_at
+    if not value:
+        return ""
+    if isinstance(value, datetime):
+        if timezone.is_aware(value):
+            value = timezone.localtime(value)
+        zone = value.strftime("%Z")
+        rendered = value.strftime("%d %b %Y, %H:%M")
+        return f"{rendered} {zone}".strip()
+    return value.strftime("%d %b %Y")
+
+
 def build_pdf_bytes(document):
     snapshot = document.presentation_snapshot or {}
     html = render_to_string(
@@ -62,6 +76,7 @@ def build_pdf_bytes(document):
             "presentation": snapshot,
             "pdf_logo_src": _pdf_asset_url(snapshot, "logo_url"),
             "pdf_signature_src": _pdf_asset_url(snapshot, "signature_url"),
+            "acceptance_recorded_display": _acceptance_recorded_display(document),
         },
     )
     output = BytesIO()
