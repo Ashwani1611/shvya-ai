@@ -252,7 +252,7 @@
 }
 .sy-status-sent, .sy-status-queued { background: #eaf4ff; color: #0066cc; }
 .sy-status-accepted, .sy-status-signed, .sy-status-paid { background: #e9f8ee; color: #137333; }
-.sy-status-declined, .sy-status-failed, .sy-status-overdue { background: #fff0ef; color: #b3261e; }
+.sy-status-declined, .sy-status-failed, .sy-status-overdue, .sy-status-expired { background: #fff0ef; color: #b3261e; }
 .sy-status-unpaid, .sy-status-partial { background: #fff7e6; color: #8a5a00; }
 .sy-status-draft { background: #f1f1f3; color: #6e6e73; }
 
@@ -932,6 +932,13 @@
 .sy-public-files a { min-height: 48px; display: grid; grid-template-columns: auto 1fr auto; gap: 9px; align-items: center; color: #1d1d1f; text-decoration: none; border-bottom: 1px solid #ededf0; }
 .sy-public-files a span { display: flex; flex-direction: column; gap: 2px; }
 .sy-public-files small { color: #86868b; font-size: 9px; }
+
+
+.sy-ledger-entry { position: relative; }
+.sy-ledger-refund { width: 100%; padding: 0 0 7px; }
+.sy-ledger-refund summary { cursor: pointer; color: #0071e3; font-size: 8px; text-align: right; }
+.sy-ledger-refund form { display: flex; justify-content: flex-end; gap: 7px; margin-top: 6px; }
+.sy-ledger-refund input { width: 110px; min-height: 30px; border: 1px solid var(--sy-border); border-radius: 9px; padding: 4px 7px; font-size: 9px; }
 
 @media (max-width: 1100px) {
     .sy-kpi-grid { grid-template-columns: repeat(2, 1fr); }
