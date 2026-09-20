@@ -352,6 +352,166 @@ def sales_document_create_view(request, document_type):
 
 
 @crm_login_required
+def sales_document_edit_view(request, document_id):
+    organization = _organization(request)
+    document = get_object_or_404(
+        SalesDocument.objects.select_related("lead", "template", "source_document"),
+        id=document_id,
+        organization=organization,
+        status=SalesDocument.Status.DRAFT,
+    )
+    document_type = document.document_type
+    ensure_default_templates(organization=organization, user=request.crm_user)
+
+    leads = Lead.objects.filter(
+        organization=organization,
+    ).select_related("pipeline", "stage").order_by("name")
+    templates = _templates_for(organization, document_type)
+    today = timezone.localdate()
+
+    initial_items = list(document.line_items or [])
+    initial_values = {
+        "lead_id": str(document.lead_id) if document.lead_id else "",
+        "title": document.title,
+        "recipient_name": document.recipient_name,
+        "recipient_email": document.recipient_email,
+        "recipient_phone": document.recipient_phone,
+        "currency": document.currency,
+        "issue_date": document.issue_date.isoformat(),
+        "valid_until": document.valid_until.isoformat() if document.valid_until else "",
+        "due_date": document.due_date.isoformat() if document.due_date else "",
+        "content": document.content,
+        "terms": document.terms,
+        "discount_total": str(document.discount_total),
+    }
+    selected_template_id = str(document.template_id) if document.template_id else ""
+
+    if request.method == "POST":
+        initial_values.update(
+            {
+                "lead_id": request.POST.get("lead_id", "").strip(),
+                "title": request.POST.get("title", "").strip(),
+                "recipient_name": request.POST.get("recipient_name", "").strip(),
+                "recipient_email": request.POST.get("recipient_email", "").strip(),
+                "recipient_phone": request.POST.get("recipient_phone", "").strip(),
+                "currency": (request.POST.get("currency") or "INR").strip().upper()[:8],
+                "issue_date": request.POST.get("issue_date", "").strip() or today.isoformat(),
+                "valid_until": request.POST.get("valid_until", "").strip(),
+                "due_date": request.POST.get("due_date", "").strip(),
+                "content": request.POST.get("content", "").strip(),
+                "terms": request.POST.get("terms", "").strip(),
+                "discount_total": request.POST.get("discount_total", "0").strip() or "0",
+            }
+        )
+        selected_template_id = request.POST.get("template_id", "").strip()
+
+        lead = None
+        if initial_values["lead_id"]:
+            lead = get_object_or_404(
+                Lead.objects.select_related("pipeline", "stage"),
+                id=initial_values["lead_id"],
+                organization=organization,
+            )
+
+        template = None
+        if selected_template_id:
+            template = get_object_or_404(
+                SalesTemplate,
+                id=selected_template_id,
+                organization=organization,
+                document_type=document_type,
+                is_active=True,
+            )
+        if template is None:
+            template = templates.first()
+
+        try:
+            raw_items = json.loads(request.POST.get("line_items_json") or "[]")
+        except json.JSONDecodeError:
+            raw_items = []
+        initial_items = raw_items if isinstance(raw_items, list) else []
+
+        try:
+            financials = calculate_line_items(
+                initial_items,
+                discount_total=initial_values["discount_total"],
+            )
+        except ValidationError as exc:
+            messages.error(request, "; ".join(exc.messages))
+        else:
+            issue_date = parse_date(initial_values["issue_date"]) or today
+            valid_until = parse_date(initial_values["valid_until"]) or None
+            due_date = parse_date(initial_values["due_date"]) or None
+
+            date_error = ""
+            if valid_until and valid_until < issue_date:
+                date_error = "Valid/end date cannot be before the issue date."
+            elif due_date and due_date < issue_date:
+                date_error = "Invoice due date cannot be before the issue date."
+
+            if date_error:
+                messages.error(request, date_error)
+            else:
+                recipient_name = initial_values["recipient_name"]
+                recipient_email = initial_values["recipient_email"]
+                recipient_phone = initial_values["recipient_phone"]
+                if lead:
+                    recipient_name = recipient_name or lead.name
+                    recipient_email = recipient_email or lead.email
+                    recipient_phone = recipient_phone or lead.phone
+
+                document.template = template
+                document.lead = lead
+                document.title = initial_values["title"] or (
+                    f"{document.get_document_type_display()} {document.document_number}"
+                )
+                document.recipient_name = recipient_name
+                document.recipient_email = recipient_email
+                document.recipient_phone = recipient_phone
+                document.currency = initial_values["currency"]
+                document.issue_date = issue_date
+                document.valid_until = valid_until
+                document.due_date = due_date
+                document.line_items = financials["items"]
+                document.subtotal = financials["subtotal"]
+                document.tax_total = financials["tax_total"]
+                document.discount_total = financials["discount_total"]
+                document.total = financials["total"]
+                document.content = initial_values["content"]
+                document.terms = initial_values["terms"]
+                snapshot_document_presentation(
+                    document,
+                    public_url=reverse(
+                        "shvya-sales-public-document",
+                        args=[document.public_token],
+                    ),
+                )
+                document.save()
+                messages.success(
+                    request,
+                    f"Draft {document.document_number} updated.",
+                )
+                return redirect("shvya-sales-document-detail", document_id=document.id)
+
+    return render(
+        request,
+        "sales/document_form.html",
+        {
+            "document": document,
+            "document_type": document_type,
+            "document_type_label": document.get_document_type_display(),
+            "leads": leads[:1000],
+            "templates": templates,
+            "today": today,
+            "source_document": document.source_document,
+            "initial_line_items": initial_items,
+            "initial": initial_values,
+            "selected_template_id": selected_template_id,
+        },
+    )
+
+
+@crm_login_required
 def sales_document_detail_view(request, document_id):
     organization = _organization(request)
     document = get_object_or_404(
