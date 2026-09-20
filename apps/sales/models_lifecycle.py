@@ -127,6 +127,7 @@ class SalesScheduledDelivery(models.Model):
     email_subject = models.CharField(max_length=255, blank=True)
     email_body = models.TextField(blank=True)
     whatsapp_body = models.TextField(blank=True)
+    base_url = models.URLField(max_length=2048, blank=True)
     scheduled_at = models.DateTimeField()
     status = models.CharField(
         max_length=16,
