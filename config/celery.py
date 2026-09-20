@@ -86,4 +86,12 @@ app.conf.beat_schedule = {
         "task": "support.poll_mailbox",
         "schedule": 60.0,
     },
+    "sales-scheduled-delivery": {
+        "task": "sales.dispatch_scheduled",
+        "schedule": 30.0,
+    },
+    "sales-document-maintenance": {
+        "task": "sales.maintain_documents",
+        "schedule": 60.0,
+    },
 }
