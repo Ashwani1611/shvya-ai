@@ -7,10 +7,13 @@ from django.test import TestCase
 from apps.integrations.models import EmailConfiguration
 from apps.integrations.services.email import (
     EmailConfigurationError,
+    PinnedEmailBackend,
+    build_email_backend,
     send_organization_email,
     test_email_configuration as verify_email_configuration,
     validate_smtp_host,
 )
+from apps.integrations.services.public_network import ResolvedPublicTarget
 from apps.organizations.models import Organization
 
 
@@ -102,12 +105,18 @@ class EmailConfigurationServiceTests(TestCase):
                     validate_smtp_host(value)
 
     @patch("apps.integrations.services.email.assert_public_smtp_target")
-    @patch("apps.integrations.services.email.EmailBackend")
-    def test_connection_test_uses_saved_smtp_credentials(
+    @patch("apps.integrations.services.email.PinnedEmailBackend")
+    def test_connection_test_uses_dns_pinned_smtp_backend(
         self,
         email_backend_class,
         public_target,
     ):
+        public_target.return_value = ResolvedPublicTarget(
+            hostname="smtp.gmail.com",
+            port=587,
+            connect_ip="93.184.216.34",
+            addresses=("93.184.216.34",),
+        )
         backend = Mock()
         backend.open.return_value = True
         email_backend_class.return_value = backend
@@ -116,6 +125,7 @@ class EmailConfigurationServiceTests(TestCase):
 
         public_target.assert_called_once_with("smtp.gmail.com", 587)
         email_backend_class.assert_called_once_with(
+            connect_ip="93.184.216.34",
             host="smtp.gmail.com",
             port=587,
             username="sales@example.com",
@@ -128,14 +138,12 @@ class EmailConfigurationServiceTests(TestCase):
         backend.open.assert_called_once_with()
         backend.close.assert_called_once_with()
 
-    @patch("apps.integrations.services.email.assert_public_smtp_target")
     @patch("apps.integrations.services.email.EmailMultiAlternatives")
     @patch("apps.integrations.services.email.build_email_backend")
     def test_send_organization_email_uses_connected_account(
         self,
         build_backend,
         message_class,
-        public_target,
     ):
         backend = Mock()
         build_backend.return_value = backend
@@ -152,7 +160,7 @@ class EmailConfigurationServiceTests(TestCase):
         )
 
         self.assertEqual(result, 1)
-        public_target.assert_called_once_with("smtp.gmail.com", 587)
+        build_backend.assert_called_once_with(self.configuration)
         message_class.assert_called_once()
         kwargs = message_class.call_args.kwargs
         self.assertEqual(kwargs["to"], ["lead@example.com"])
@@ -164,6 +172,47 @@ class EmailConfigurationServiceTests(TestCase):
             "text/html",
         )
         message.send.assert_called_once_with(fail_silently=False)
+
+    @patch("apps.integrations.services.email.smtplib.SMTP")
+    def test_starttls_backend_connects_to_pinned_ip_and_verifies_hostname(
+        self,
+        smtp_class,
+    ):
+        connection = Mock()
+        smtp_class.return_value = connection
+        backend = PinnedEmailBackend(
+            connect_ip="93.184.216.34",
+            host="smtp.example.com",
+            port=587,
+            username="user@example.com",
+            password="secret",
+            use_tls=True,
+            use_ssl=False,
+            timeout=15,
+            fail_silently=False,
+        )
+
+        self.assertTrue(backend.open())
+
+        connection.connect.assert_called_once_with("93.184.216.34", 587)
+        self.assertEqual(connection._host, "smtp.example.com")
+        connection.starttls.assert_called_once_with(context=backend.ssl_context)
+        connection.login.assert_called_once_with("user@example.com", "secret")
+
+    @patch("apps.integrations.services.email.assert_public_smtp_target")
+    def test_build_backend_keeps_hostname_but_pins_resolved_ip(self, public_target):
+        public_target.return_value = ResolvedPublicTarget(
+            hostname="smtp.gmail.com",
+            port=587,
+            connect_ip="93.184.216.34",
+            addresses=("93.184.216.34",),
+        )
+
+        backend = build_email_backend(self.configuration)
+
+        self.assertIsInstance(backend, PinnedEmailBackend)
+        self.assertEqual(backend.connect_ip, "93.184.216.34")
+        self.assertEqual(backend.host, "smtp.gmail.com")
 
     def test_send_requires_connected_account(self):
         self.configuration.is_enabled = False

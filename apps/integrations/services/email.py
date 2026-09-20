@@ -12,6 +12,11 @@ from django.core.mail import EmailMultiAlternatives
 from django.core.mail.backends.smtp import EmailBackend
 
 from apps.integrations.models import EmailConfiguration
+from apps.integrations.services.public_network import (
+    PublicNetworkTargetError,
+    ResolvedPublicTarget,
+    resolve_public_target,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -20,24 +25,101 @@ class EmailConfigurationError(RuntimeError):
     """Raised when an organization email configuration cannot be used."""
 
 
-def _validate_public_ip(ip_value):
-    ip_obj = ipaddress.ip_address(ip_value)
-    if (
-        ip_obj.is_private
-        or ip_obj.is_loopback
-        or ip_obj.is_link_local
-        or ip_obj.is_multicast
-        or ip_obj.is_reserved
-        or ip_obj.is_unspecified
+class _PinnedSMTPSSL(smtplib.SMTP_SSL):
+    """SMTPS socket pinned to an IP while TLS verifies the configured hostname."""
+
+    def __init__(
+        self,
+        *,
+        hostname: str,
+        connect_ip: str,
+        port: int,
+        timeout: float | None,
+        context: ssl.SSLContext,
     ):
+        self._shvya_hostname = hostname
+        self._shvya_connect_ip = connect_ip
+        super().__init__(
+            host="",
+            port=0,
+            timeout=timeout,
+            context=context,
+        )
+        self.connect(connect_ip, port)
+        self._host = hostname
+
+    def _get_socket(self, host, port, timeout):
+        if self.debuglevel > 0:
+            self._print_debug("connect:", (self._shvya_connect_ip, port))
+        raw_socket = socket.create_connection(
+            (self._shvya_connect_ip, port),
+            timeout,
+            self.source_address,
+        )
+        try:
+            return self.context.wrap_socket(
+                raw_socket,
+                server_hostname=self._shvya_hostname,
+            )
+        except Exception:
+            raw_socket.close()
+            raise
+
+
+class PinnedEmailBackend(EmailBackend):
+    """Django SMTP backend that never re-resolves the validated remote host."""
+
+    def __init__(self, *, connect_ip: str, **kwargs):
+        self.connect_ip = connect_ip
+        super().__init__(**kwargs)
+
+    def open(self):
+        if self.connection:
+            return False
+
+        try:
+            if self.use_ssl:
+                self.connection = _PinnedSMTPSSL(
+                    hostname=self.host,
+                    connect_ip=self.connect_ip,
+                    port=self.port,
+                    timeout=self.timeout,
+                    context=self.ssl_context,
+                )
+            else:
+                self.connection = smtplib.SMTP(timeout=self.timeout)
+                self.connection.connect(self.connect_ip, self.port)
+                # smtplib STARTTLS uses _host for SNI and certificate hostname
+                # verification. Restore the configured name after connecting to
+                # the pinned IP so DNS cannot change the destination.
+                self.connection._host = self.host
+                if self.use_tls:
+                    self.connection.starttls(context=self.ssl_context)
+
+            if self.username and self.password:
+                self.connection.login(self.username, self.password)
+            return True
+        except OSError:
+            self.connection = None
+            if not self.fail_silently:
+                raise
+            return None
+
+
+def _validate_literal_public_ip(hostname: str) -> None:
+    try:
+        address = ipaddress.ip_address(hostname)
+    except ValueError:
+        return
+    if not address.is_global:
         raise ValidationError(
-            "SMTP host must resolve to a public internet address."
+            "SMTP host must target a public internet address."
         )
 
 
 def validate_smtp_host(value):
     """Validate stored SMTP host text without requiring DNS to be live yet."""
-    host = str(value or "").strip().lower()
+    host = str(value or "").strip().rstrip(".").lower()
     if not host:
         raise ValidationError("SMTP host is required.")
 
@@ -49,42 +131,21 @@ def validate_smtp_host(value):
     if host == "localhost" or host.endswith(".localhost"):
         raise ValidationError("SMTP host cannot target localhost.")
 
-    try:
-        _validate_public_ip(host)
-    except ValueError:
-        pass
-
+    _validate_literal_public_ip(host)
     return host
 
 
-def assert_public_smtp_target(host, port):
-    """Resolve SMTP immediately before use to reduce SSRF/DNS-rebinding risk."""
+def assert_public_smtp_target(host, port) -> ResolvedPublicTarget:
+    """Resolve once and return the exact public IP the SMTP socket must use."""
     host = validate_smtp_host(host)
     try:
-        addresses = socket.getaddrinfo(
-            host,
-            port,
-            type=socket.SOCK_STREAM,
-        )
-    except socket.gaierror as exc:
-        raise EmailConfigurationError(
-            "SMTP hostname could not be resolved."
-        ) from exc
-
-    if not addresses:
-        raise EmailConfigurationError("SMTP hostname could not be resolved.")
-
-    try:
-        for address in addresses:
-            _validate_public_ip(address[4][0])
-    except ValidationError as exc:
-        raise EmailConfigurationError("; ".join(exc.messages)) from exc
-
-    return host
+        return resolve_public_target(host, port)
+    except PublicNetworkTargetError as exc:
+        raise EmailConfigurationError(str(exc)) from exc
 
 
 def build_email_backend(configuration: EmailConfiguration) -> EmailBackend:
-    """Create a Django SMTP backend from one organization configuration."""
+    """Create a DNS-pinned Django SMTP backend from one organization config."""
     password = configuration.get_password()
     if not password:
         raise EmailConfigurationError(
@@ -96,14 +157,20 @@ def build_email_backend(configuration: EmailConfiguration) -> EmailBackend:
             "SMTP host and username are required before testing the connection."
         )
 
+    target = assert_public_smtp_target(
+        configuration.smtp_host,
+        configuration.smtp_port,
+    )
+
     use_tls = (
         configuration.smtp_security == EmailConfiguration.Security.STARTTLS
     )
     use_ssl = configuration.smtp_security == EmailConfiguration.Security.SSL
 
-    return EmailBackend(
-        host=configuration.smtp_host,
-        port=configuration.smtp_port,
+    return PinnedEmailBackend(
+        connect_ip=target.connect_ip,
+        host=target.hostname,
+        port=target.port,
         username=configuration.smtp_username,
         password=password,
         use_tls=use_tls,
@@ -115,10 +182,6 @@ def build_email_backend(configuration: EmailConfiguration) -> EmailBackend:
 
 def test_email_configuration(configuration: EmailConfiguration) -> None:
     """Authenticate to the configured SMTP server without sending a message."""
-    assert_public_smtp_target(
-        configuration.smtp_host,
-        configuration.smtp_port,
-    )
     backend = build_email_backend(configuration)
 
     try:
@@ -160,11 +223,7 @@ def send_organization_email(
     reply_to=None,
     headers=None,
 ) -> int:
-    """Send through the organization's connected mailbox.
-
-    Email automations and future email-event handlers should call this function
-    instead of reading credentials directly.
-    """
+    """Send through the organization's connected DNS-pinned mailbox."""
     try:
         configuration = EmailConfiguration.objects.get(
             organization=organization,
@@ -182,10 +241,6 @@ def send_organization_email(
             "At least one recipient email address is required."
         )
 
-    assert_public_smtp_target(
-        configuration.smtp_host,
-        configuration.smtp_port,
-    )
     backend = build_email_backend(configuration)
     from_email = (
         formataddr((configuration.sender_name, configuration.email_address))

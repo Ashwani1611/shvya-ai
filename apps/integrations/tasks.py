@@ -1,6 +1,5 @@
 import logging
 
-import requests
 from celery import shared_task
 from django.core.exceptions import ValidationError
 from django.utils import timezone
@@ -11,7 +10,9 @@ from apps.integrations.services.webhook import (
     WEBHOOK_DELIVERY_HEADER,
     WEBHOOK_SECRET_HEADER,
     WEBHOOK_USER_AGENT,
+    WebhookRequestError,
     assert_public_webhook_target,
+    send_webhook_request,
 )
 
 logger = logging.getLogger(__name__)
@@ -115,7 +116,7 @@ def deliver_webhook_task(self, delivery_id):
     delivery.error_message = ""
 
     try:
-        target_url = assert_public_webhook_target(webhook.endpoint_url)
+        target = assert_public_webhook_target(webhook.endpoint_url)
     except ValidationError as exc:
         reason = "; ".join(exc.messages)
         return _retry_or_fail(self, delivery, reason)
@@ -128,14 +129,13 @@ def deliver_webhook_task(self, delivery_id):
     }
 
     try:
-        response = requests.post(
-            target_url,
-            json=delivery.payload,
+        response = send_webhook_request(
+            target,
+            payload=delivery.payload,
             headers=headers,
             timeout=WEBHOOK_TIMEOUT_SECONDS,
-            allow_redirects=False,
         )
-    except requests.RequestException as exc:
+    except WebhookRequestError as exc:
         logger.warning(
             "Webhook delivery %s request failed: %s",
             delivery.id,
