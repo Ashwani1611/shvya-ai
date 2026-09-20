@@ -1,0 +1,153 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}New {{ document_type_label }} · SHVYA Sales{% endblock %}
+{% block header %}New {{ document_type_label }}{% endblock %}
+
+{% block extra_head %}
+{{ block.super }}
+<link rel="stylesheet" href="{% static 'css/shvya_sales.css' %}?v=20260921-1">
+<script src="{% static 'js/shvya_sales.js' %}?v=20260921-1" defer></script>
+{% endblock %}
+
+{% block content %}
+<main class="sy-sales">
+    <section class="sy-page-head sy-page-head-compact">
+        <div>
+            <a class="sy-back" href="{% url 'shvya-sales-dashboard' %}"><i class="ti ti-arrow-left"></i> SHVYA Sales</a>
+            <p class="sy-eyebrow">NEW {{ document_type_label|upper }}</p>
+            <h1>Build it around the customer.</h1>
+            <p>The template controls presentation. SHVYA keeps calculations and document history reliable.</p>
+        </div>
+    </section>
+
+    <form method="post" class="sy-builder" data-sales-document-form>
+        {% csrf_token %}
+        <input type="hidden" name="line_items_json" value="[]" data-line-items-json>
+
+        <section class="sy-builder-main">
+            <article class="sy-panel sy-form-card">
+                <div class="sy-card-title">
+                    <span>1</span>
+                    <div><h2>Customer & template</h2><p>Start from CRM context, then choose the design.</p></div>
+                </div>
+                <div class="sy-form-grid">
+                    <label class="sy-field sy-field-wide">
+                        <span>CRM lead / customer</span>
+                        <select name="lead_id" data-lead-select>
+                            <option value="">Select a lead (optional)</option>
+                            {% for lead in leads %}
+                            <option value="{{ lead.id }}" data-name="{{ lead.name }}" data-email="{{ lead.email }}" data-phone="{{ lead.phone }}">{{ lead.name }} · {{ lead.phone }}</option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                    <label class="sy-field">
+                        <span>Template</span>
+                        <select name="template_id">
+                            {% for template in templates %}
+                            <option value="{{ template.id }}">{{ template.name }}{% if template.is_default %} · Default{% endif %}</option>
+                            {% empty %}
+                            <option value="">Standard</option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                    <label class="sy-field">
+                        <span>Document title</span>
+                        <input name="title" placeholder="{{ document_type_label }} for customer">
+                    </label>
+                    <label class="sy-field">
+                        <span>Recipient name</span>
+                        <input name="recipient_name" data-recipient-name placeholder="Customer or company">
+                    </label>
+                    <label class="sy-field">
+                        <span>Recipient email</span>
+                        <input type="email" name="recipient_email" data-recipient-email placeholder="name@company.com">
+                    </label>
+                    <label class="sy-field">
+                        <span>Recipient phone</span>
+                        <input name="recipient_phone" data-recipient-phone placeholder="+91...">
+                    </label>
+                    <label class="sy-field">
+                        <span>Currency</span>
+                        <input name="currency" value="INR" maxlength="8">
+                    </label>
+                </div>
+            </article>
+
+            <article class="sy-panel sy-form-card">
+                <div class="sy-card-title">
+                    <span>2</span>
+                    <div><h2>Dates & content</h2><p>Use your own wording. Nothing here is a fixed SHVYA format.</p></div>
+                </div>
+                <div class="sy-form-grid">
+                    <label class="sy-field">
+                        <span>Issue date</span>
+                        <input type="date" name="issue_date" value="{{ today|date:'Y-m-d' }}">
+                    </label>
+                    {% if document_type == 'quotation' %}
+                    <label class="sy-field"><span>Valid until</span><input type="date" name="valid_until"></label>
+                    {% elif document_type == 'invoice' %}
+                    <label class="sy-field"><span>Due date</span><input type="date" name="due_date"></label>
+                    {% else %}
+                    <label class="sy-field"><span>End / review date</span><input type="date" name="valid_until"></label>
+                    {% endif %}
+                    <label class="sy-field sy-field-wide">
+                        <span>{% if document_type == 'agreement' %}Agreement content{% else %}Scope / description{% endif %}</span>
+                        <textarea name="content" rows="7" placeholder="{% if document_type == 'agreement' %}Write the agreement scope, obligations and commercial terms...{% else %}Add scope, deliverables or a personalised note...{% endif %}"></textarea>
+                    </label>
+                </div>
+            </article>
+
+            <article class="sy-panel sy-form-card {% if document_type == 'agreement' %}sy-optional-block{% endif %}">
+                <div class="sy-card-title">
+                    <span>3</span>
+                    <div><h2>Line items</h2><p>{% if document_type == 'agreement' %}Optional for agreements. Add commercial value when useful.{% else %}SHVYA recalculates these totals on the server before saving.{% endif %}</p></div>
+                    <button type="button" class="sy-btn sy-btn-small sy-btn-secondary" data-add-line><i class="ti ti-plus"></i> Add item</button>
+                </div>
+                <div class="sy-line-items" data-line-items>
+                    <div class="sy-line-row sy-line-head" aria-hidden="true">
+                        <span>Item</span><span>Qty</span><span>Rate</span><span>Tax %</span><span>Amount</span><span></span>
+                    </div>
+                </div>
+                <div class="sy-line-summary">
+                    <label class="sy-field">
+                        <span>Document discount</span>
+                        <input type="number" step="0.01" min="0" name="discount_total" value="0" data-discount-total>
+                    </label>
+                    <div class="sy-live-total">
+                        <span>Estimated total</span>
+                        <strong data-live-total>INR 0.00</strong>
+                    </div>
+                </div>
+            </article>
+
+            <article class="sy-panel sy-form-card">
+                <div class="sy-card-title">
+                    <span>4</span>
+                    <div><h2>Terms & final note</h2><p>This text becomes part of the frozen document snapshot.</p></div>
+                </div>
+                <label class="sy-field">
+                    <span>Terms / notes</span>
+                    <textarea name="terms" rows="5" placeholder="Payment terms, validity, cancellation policy, legal note or any organisation-specific text..."></textarea>
+                </label>
+            </article>
+        </section>
+
+        <aside class="sy-builder-side">
+            <div class="sy-sticky-card">
+                <p class="sy-eyebrow">DOCUMENT FLOW</p>
+                <h3>{{ document_type_label }}</h3>
+                <ol class="sy-flow-list">
+                    <li class="is-current"><span>1</span><div><strong>Create</strong><small>Customer + content</small></div></li>
+                    <li><span>2</span><div><strong>Preview</strong><small>Frozen layout</small></div></li>
+                    <li><span>3</span><div><strong>Send</strong><small>Email / WhatsApp / both</small></div></li>
+                    {% if document_type == 'quotation' %}<li><span>4</span><div><strong>Accept</strong><small>Customer action</small></div></li>{% endif %}
+                    {% if document_type == 'agreement' %}<li><span>4</span><div><strong>Sign</strong><small>Customer action</small></div></li>{% endif %}
+                </ol>
+                <button class="sy-btn sy-btn-primary sy-btn-block" type="submit">Create {{ document_type_label|lower }} <i class="ti ti-arrow-right"></i></button>
+                <p class="sy-form-hint"><i class="ti ti-shield-check"></i> Totals, numbering and organisation ownership are validated again on the backend.</p>
+            </div>
+        </aside>
+    </form>
+</main>
+{% endblock %}
