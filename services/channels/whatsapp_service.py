@@ -56,6 +56,20 @@ def resolve_account_for_lead(*, organization, lead):
 
     Returns None if the organization has no connected account at all.
     """
+    # Manual inbox lead creation pins the exact customer-started conversation
+    # until that AI turn completes. Do not let another account/message steal the
+    # sender context while the durable turn is queued or processing.
+    from apps.ai_engagement.services.execution_tracker import active_pinned_source
+
+    pinned = active_pinned_source(lead=lead)
+    if (
+        pinned is not None
+        and pinned.account.organization_id == organization.id
+        and pinned.account.is_active
+        and pinned.account.status == WhatsAppAccount.Status.CONNECTED
+    ):
+        return pinned.account
+
     last_message = (
         WhatsAppMessage.objects.filter(
             lead=lead,

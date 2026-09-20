@@ -341,10 +341,10 @@ class ContactPanelTests(TestCase):
         self.assertEqual(self.client.post(url, {"channel": "hosted", "account": self.account.pk, "sequence": selected.pk}).status_code, 200)
         self.assertEqual(self.client.post(url, {"channel": "hosted", "account": self.account.pk, "sequence": other.pk}).status_code, 404)
 
-    def message(self, phone="+919123456789", **kwargs):
+    def message(self, phone="+919123456789", body="Hello", **kwargs):
         from apps.channels.models import WhatsAppMessage
         return WhatsAppMessage.objects.create(organization=self.org, account=self.account, direction="inbound", from_number=phone,
-                                              to_number="+919000000000", body="Hello", **kwargs)
+                                              to_number="+919000000000", body=body, **kwargs)
 
     def test_api_existing_crm_phone_is_not_offered_as_create_lead(self):
         # Historical provider rows can remain unlinked even though CRM already
@@ -364,18 +364,63 @@ class ContactPanelTests(TestCase):
         data = {"chat": str(message.pk), "name": "New customer", "pipeline": str(self.pipeline.pk), "phone": "+919999999999"}
         with (
             patch("services.crm.lead_service._schedule_new_lead_welcome") as welcome,
-            patch("services.channels.chat_lead_service._queue_created_lead_engagement") as engagement,
+            patch(
+                "apps.ai_engagement.services.execution_tracker.queue_api_engagement"
+            ) as engagement,
             self.captureOnCommitCallbacks(execute=True),
         ):
             response = self.client.post(url, data)
             self.assertEqual(response.status_code, 200, response.content)
             self.assertEqual(self.client.post(url, data).status_code, 200)
             welcome.assert_not_called()
-        engagement.assert_called_once()
-        self.assertEqual(engagement.call_args.kwargs["source_message_id"], message.pk)
         message.refresh_from_db()
+        engagement.assert_called_once_with(
+            lead_id=str(message.lead_id),
+            source_message_id=message.pk,
+            account_id=self.account.pk,
+        )
+        self.assertTrue(message.raw_payload["leadCreationMessage"])
         self.assertEqual(message.lead.phone, "+919123456789")
         self.assertEqual(Lead.objects.filter(organization=self.org, phone="+919123456789").count(), 1)
+
+    def test_manual_create_does_not_wake_ai_for_historical_coexistence_row(self):
+        message = self.message(
+            media_payload={"coexistence_sync": True, "historical": True},
+        )
+        url = reverse("chat-unlinked-contact", args=[self.account.pk])
+        data = {
+            "chat": str(message.pk),
+            "name": "Imported customer",
+            "pipeline": str(self.pipeline.pk),
+        }
+        with (
+            patch(
+                "apps.ai_engagement.services.execution_tracker.queue_api_engagement"
+            ) as engagement,
+            self.captureOnCommitCallbacks(execute=True),
+        ):
+            self.assertEqual(self.client.post(url, data).status_code, 200)
+        engagement.assert_not_called()
+        message.refresh_from_db()
+        self.assertNotIn("leadCreationMessage", message.raw_payload)
+
+    def test_manual_create_applies_opt_out_before_ai_handoff(self):
+        message = self.message(body="STOP")
+        url = reverse("chat-unlinked-contact", args=[self.account.pk])
+        data = {
+            "chat": str(message.pk),
+            "name": "Opted out customer",
+            "pipeline": str(self.pipeline.pk),
+        }
+        with (
+            patch(
+                "apps.ai_engagement.services.execution_tracker.queue_api_engagement"
+            ),
+            self.captureOnCommitCallbacks(execute=True),
+        ):
+            self.assertEqual(self.client.post(url, data).status_code, 200)
+        message.refresh_from_db()
+        self.assertFalse(message.lead.ai_enabled)
 
     def test_create_lead_rejects_wrong_pipeline_and_foreign_account(self):
         message = self.message()

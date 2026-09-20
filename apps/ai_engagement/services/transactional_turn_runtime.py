@@ -22,6 +22,11 @@ _PRE_RESOLVED_ACTIONS_KEY = "pre_resolved_actions"
 
 def _latest_inbound(lead, *, account_id=None):
     from apps.channels.models import WhatsAppMessage
+    from apps.ai_engagement.services.execution_tracker import active_pinned_source
+
+    pinned = active_pinned_source(lead=lead, account_id=account_id)
+    if pinned is not None:
+        return pinned
 
     messages = lead.whatsapp_messages.filter(organization=lead.organization)
     if account_id is not None:
