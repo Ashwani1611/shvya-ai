@@ -1013,7 +1013,15 @@ def sales_template_form_view(request, template_id=None):
                     template.signature_url = ""
                 template.full_clean()
             except ValidationError as exc:
-                for errors in exc.message_dict.values():
+                # Field/model validation usually exposes message_dict, while
+                # upload validators raise a plain ValidationError with messages.
+                # Never let the error-rendering path turn a user validation
+                # problem into a Server Error (500).
+                if hasattr(exc, "message_dict"):
+                    error_groups = exc.message_dict.values()
+                else:
+                    error_groups = [getattr(exc, "messages", [str(exc)])]
+                for errors in error_groups:
                     for error in errors:
                         messages.error(request, error)
             else:
