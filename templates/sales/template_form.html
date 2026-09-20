@@ -21,7 +21,7 @@
         </div>
     </section>
 
-    <form method="post" class="sy-template-builder" data-template-builder>
+    <form method="post" enctype="multipart/form-data" class="sy-template-builder" data-template-builder>
         {% csrf_token %}
         <section class="sy-template-controls">
             <article class="sy-panel sy-form-card">
@@ -48,8 +48,29 @@
                 <div class="sy-card-title"><span>2</span><div><h2>Branding</h2><p>Use organisation-specific identity and signatures.</p></div></div>
                 <div class="sy-form-grid">
                     <label class="sy-field sy-field-wide"><span>Header text</span><input name="header_text" value="{{ template.header_text|default:'' }}" placeholder="Legal company name or document header" data-preview-header></label>
-                    <label class="sy-field"><span>Logo URL</span><input type="url" name="logo_url" value="{{ template.logo_url|default:'' }}" placeholder="https://..." data-preview-logo></label>
-                    <label class="sy-field"><span>Signature URL</span><input type="url" name="signature_url" value="{{ template.signature_url|default:'' }}" placeholder="https://..."></label>
+                    <label class="sy-field">
+                        <span>Logo image</span>
+                        <input type="file" name="logo_file" accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp" data-preview-logo-upload>
+                        {% if template.logo_file or template.logo_url %}
+                        <small class="sy-field-note">Current logo is saved. Upload a new image to replace it.</small>
+                        <label class="sy-inline-check"><input type="checkbox" name="remove_logo"> Remove current logo</label>
+                        {% endif %}
+                    </label>
+                    <label class="sy-field">
+                        <span>Authorised signature image</span>
+                        <input type="file" name="signature_file" accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp">
+                        {% if template.signature_file or template.signature_url %}
+                        <small class="sy-field-note">Current signature is saved. Upload a new image to replace it.</small>
+                        <label class="sy-inline-check"><input type="checkbox" name="remove_signature"> Remove current signature</label>
+                        {% endif %}
+                    </label>
+                    <details class="sy-field-wide sy-advanced-fields">
+                        <summary>Advanced: use hosted image URLs instead</summary>
+                        <div class="sy-form-grid">
+                            <label class="sy-field"><span>Logo URL</span><input type="url" name="logo_url" value="{{ template.logo_url|default:'' }}" placeholder="https://..." data-preview-logo></label>
+                            <label class="sy-field"><span>Signature URL</span><input type="url" name="signature_url" value="{{ template.signature_url|default:'' }}" placeholder="https://..."></label>
+                        </div>
+                    </details>
                     <label class="sy-field sy-field-wide"><span>Footer text</span><textarea name="footer_text" rows="3" data-preview-footer>{{ template.footer_text|default:'' }}</textarea></label>
                 </div>
             </article>
@@ -66,7 +87,26 @@
                     <button type="button" data-insert-merge="{{document.terms}}">{{document.terms}}</button>
                 </div>
                 {% endverbatim %}
-                <label class="sy-field"><span>Layout HTML / content template</span><textarea name="body_template" rows="16" data-layout-editor>{% if template %}{{ template.body_template }}{% else %}{{ default_body }}{% endif %}</textarea></label>
+                <label class="sy-field"><span>Document content & layout</span></label>
+                <div class="sy-rich-shell">
+                    <div class="sy-rich-toolbar" role="toolbar" aria-label="Document formatting">
+                        <button type="button" data-rich-command="bold" title="Bold"><i class="ti ti-bold"></i></button>
+                        <button type="button" data-rich-command="italic" title="Italic"><i class="ti ti-italic"></i></button>
+                        <span></span>
+                        <button type="button" data-rich-command="formatBlock" data-rich-value="h2" title="Heading"><i class="ti ti-h-2"></i></button>
+                        <button type="button" data-rich-command="formatBlock" data-rich-value="p" title="Paragraph"><i class="ti ti-letter-p"></i></button>
+                        <span></span>
+                        <button type="button" data-rich-command="justifyLeft" title="Align left"><i class="ti ti-align-left"></i></button>
+                        <button type="button" data-rich-command="justifyCenter" title="Align center"><i class="ti ti-align-center"></i></button>
+                        <button type="button" data-rich-command="justifyRight" title="Align right"><i class="ti ti-align-right"></i></button>
+                        <span></span>
+                        <button type="button" data-rich-command="insertUnorderedList" title="Bullet list"><i class="ti ti-list"></i></button>
+                        <button type="button" data-rich-command="insertHorizontalRule" title="Divider"><i class="ti ti-minus"></i></button>
+                    </div>
+                    <div class="sy-rich-editor" contenteditable="true" role="textbox" aria-multiline="true" data-rich-editor>{% if template %}{{ template.body_template|safe }}{% else %}{{ default_body|safe }}{% endif %}</div>
+                    <textarea name="body_template" hidden data-layout-editor>{% if template %}{{ template.body_template }}{% else %}{{ default_body }}{% endif %}</textarea>
+                </div>
+                <p class="sy-field-note">Use the merge-field chips above anywhere in the document. SHVYA sanitizes the saved layout before it can be shown to a customer.</p>
                 <details class="sy-merge-help">
                     <summary>Available merge fields</summary>
                     {% verbatim %}
@@ -111,7 +151,7 @@
                 <div class="sy-builder-preview" data-builder-preview style="--preview-accent: {{ template.accent_color|default:'#0071e3' }}">
                     <div class="sy-builder-preview-head">
                         <div class="sy-preview-brand">
-                            <span data-preview-logo-box>{% if template.logo_url %}<img src="{{ template.logo_url }}" alt="">{% else %}<i class="ti ti-building"></i>{% endif %}</span>
+                            <span data-preview-logo-box>{% if template.logo_file %}<img src="{{ template.logo_file.url }}" alt="">{% elif template.logo_url %}<img src="{{ template.logo_url }}" alt="">{% else %}<i class="ti ti-building"></i>{% endif %}</span>
                             <strong data-preview-header-text>{{ template.header_text|default:"Your company" }}</strong>
                         </div>
                         <span>QT-00001</span>
