@@ -11,7 +11,7 @@ RUN apt-get update \
 WORKDIR /app
 
 COPY package*.json ./
-RUN npm install --omit=dev
+RUN npm ci --omit=dev
 
 # whatsapp-web.js 1.34.7 is currently incompatible with WhatsApp Web's
 # 2.3000.104xxx LID/message-key changes. Apply the reviewed upstream fix
