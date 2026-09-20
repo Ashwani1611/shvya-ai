@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Sales Documents · SHVYA{% endblock %}
+{% block header %}SHVYA Sales{% endblock %}
+
+{% block extra_head %}
+{{ block.super }}
+<link rel="stylesheet" href="{% static 'css/shvya_sales.css' %}?v=20260921-1">
+{% endblock %}
+
+{% block content %}
+<main class="sy-sales">
+    <section class="sy-page-head">
+        <div>
+            <a class="sy-back" href="{% url 'shvya-sales-dashboard' %}"><i class="ti ti-arrow-left"></i> SHVYA Sales</a>
+            <p class="sy-eyebrow">DOCUMENTS</p>
+            <h1>{% if selected_type %}{{ selected_type|title }}s{% else %}Every sales document{% endif %}</h1>
+            <p>Search, open and track the exact version your customer received.</p>
+        </div>
+        <div class="sy-head-actions">
+            <a class="sy-btn sy-btn-secondary" href="{% url 'shvya-sales-template-list' %}">Templates</a>
+            <div class="sy-create-menu">
+                <a class="sy-btn sy-btn-primary" href="{% url 'shvya-sales-document-create' 'quotation' %}"><i class="ti ti-plus"></i> New quotation</a>
+            </div>
+        </div>
+    </section>
+
+    <section class="sy-toolbar">
+        <div class="sy-tabs" role="navigation" aria-label="Document type">
+            <a class="{% if not selected_type %}is-active{% endif %}" href="{% url 'shvya-sales-document-list' %}">All</a>
+            <a class="{% if selected_type == 'quotation' %}is-active{% endif %}" href="?type=quotation">Quotations</a>
+            <a class="{% if selected_type == 'agreement' %}is-active{% endif %}" href="?type=agreement">Agreements</a>
+            <a class="{% if selected_type == 'invoice' %}is-active{% endif %}" href="?type=invoice">Invoices</a>
+        </div>
+        <form class="sy-search" method="get">
+            {% if selected_type %}<input type="hidden" name="type" value="{{ selected_type }}">{% endif %}
+            <i class="ti ti-search"></i>
+            <input type="search" name="q" value="{{ search_query }}" placeholder="Search number, customer or title">
+        </form>
+    </section>
+
+    <section class="sy-panel sy-documents-panel">
+        <div class="sy-table-wrap">
+            <table class="sy-table">
+                <thead>
+                    <tr>
+                        <th>Document</th>
+                        <th>Customer</th>
+                        <th>Issued</th>
+                        <th>Status</th>
+                        <th class="sy-align-right">Value</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for document in documents %}
+                    <tr>
+                        <td>
+                            <a class="sy-table-doc" href="{% url 'shvya-sales-document-detail' document.id %}">
+                                <span class="sy-doc-avatar sy-doc-{{ document.document_type }}">
+                                    {% if document.document_type == 'quotation' %}<i class="ti ti-file-description"></i>
+                                    {% elif document.document_type == 'agreement' %}<i class="ti ti-signature"></i>
+                                    {% else %}<i class="ti ti-receipt-2"></i>{% endif %}
+                                </span>
+                                <span><strong>{{ document.document_number }}</strong><small>{{ document.title }}</small></span>
+                            </a>
+                        </td>
+                        <td><strong>{{ document.recipient_name|default:"—" }}</strong><small>{{ document.recipient_email|default:document.recipient_phone }}</small></td>
+                        <td>{{ document.issue_date|date:"d M Y" }}</td>
+                        <td><span class="sy-status sy-status-{{ document.status }}">{{ document.get_status_display }}</span></td>
+                        <td class="sy-align-right"><strong>{{ document.currency }} {{ document.total|floatformat:2 }}</strong></td>
+                        <td class="sy-align-right"><a class="sy-icon-btn" href="{% url 'shvya-sales-document-detail' document.id %}" aria-label="Open {{ document.document_number }}"><i class="ti ti-arrow-up-right"></i></a></td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="6"><div class="sy-empty"><i class="ti ti-files"></i><h3>No documents found.</h3><p>Create one from the SHVYA Sales dashboard.</p></div></td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+</main>
+{% endblock %}
