@@ -8,6 +8,7 @@ standardize on a dedicated library later, this can be swapped
 out without changing call sites much.
 """
 
+import hashlib
 import ipaddress
 from functools import wraps
 
@@ -62,6 +63,84 @@ def _client_ip(request):
                 return candidate
 
     return remote_addr
+
+
+def _failure_cache_key(scope, request, *, identifier="", include_ip=True):
+    """Build a privacy-preserving cache key for authentication failures."""
+    parts = [str(scope or "auth").strip().casefold() or "auth"]
+
+    if include_ip:
+        parts.append(_client_ip(request))
+
+    normalized_identifier = str(identifier or "").strip().casefold()
+    if normalized_identifier:
+        parts.append(normalized_identifier)
+
+    if len(parts) == 1:
+        raise ValueError("A failure-rate-limit bucket needs an IP or identifier.")
+
+    digest = hashlib.sha256("|".join(parts).encode("utf-8")).hexdigest()
+    return f"authfail:{parts[0]}:{digest}"
+
+
+def authentication_failure_is_limited(
+    scope,
+    request,
+    *,
+    identifier="",
+    limit=10,
+    include_ip=True,
+):
+    """Return True once the selected authentication-failure bucket is full."""
+    key = _failure_cache_key(
+        scope,
+        request,
+        identifier=identifier,
+        include_ip=include_ip,
+    )
+    return int(cache.get(key, 0) or 0) >= int(limit)
+
+
+def record_authentication_failure(
+    scope,
+    request,
+    *,
+    identifier="",
+    window=300,
+    include_ip=True,
+):
+    """Atomically count one failed authentication attempt in the cache."""
+    key = _failure_cache_key(
+        scope,
+        request,
+        identifier=identifier,
+        include_ip=include_ip,
+    )
+    if cache.add(key, 1, timeout=window):
+        return 1
+    try:
+        return cache.incr(key)
+    except ValueError:
+        cache.set(key, 1, timeout=window)
+        return 1
+
+
+def clear_authentication_failures(
+    scope,
+    request,
+    *,
+    identifier="",
+    include_ip=True,
+):
+    """Clear one failure bucket after a successful authentication."""
+    key = _failure_cache_key(
+        scope,
+        request,
+        identifier=identifier,
+        include_ip=include_ip,
+    )
+    cache.delete(key)
+
 
 
 def ratelimit(key_func=None, limit=5, window=300):
