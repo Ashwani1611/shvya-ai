@@ -1,0 +1,152 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}{{ document.document_number }} · SHVYA Sales{% endblock %}
+{% block header %}{{ document.document_number }}{% endblock %}
+
+{% block extra_head %}
+{{ block.super }}
+<link rel="stylesheet" href="{% static 'css/shvya_sales.css' %}?v=20260921-1">
+<script src="{% static 'js/shvya_sales.js' %}?v=20260921-1" defer></script>
+{% endblock %}
+
+{% block content %}
+<main class="sy-sales">
+    <section class="sy-page-head sy-page-head-compact">
+        <div>
+            <a class="sy-back" href="{% url 'shvya-sales-document-list' %}?type={{ document.document_type }}"><i class="ti ti-arrow-left"></i> {{ document.get_document_type_display }}s</a>
+            <p class="sy-eyebrow">{{ document.get_document_type_display|upper }} · {{ document.document_number }}</p>
+            <h1>{{ document.title }}</h1>
+            <div class="sy-title-meta">
+                <span class="sy-status sy-status-{{ document.status }}">{{ document.get_status_display }}</span>
+                <span>{{ document.recipient_name|default:"No recipient" }}</span>
+                <span>{{ document.issue_date|date:"d M Y" }}</span>
+            </div>
+        </div>
+        <div class="sy-head-actions">
+            <a class="sy-btn sy-btn-secondary" href="{{ public_url }}" target="_blank" rel="noopener"><i class="ti ti-eye"></i> Open customer view</a>
+            <button class="sy-btn sy-btn-primary" type="button" data-open-send><i class="ti ti-send"></i> Send</button>
+        </div>
+    </section>
+
+    <section class="sy-detail-grid">
+        <article class="sy-panel sy-document-preview">
+            <div class="sy-preview-toolbar">
+                <div><span class="sy-preview-dot"></span><strong>Frozen document preview</strong></div>
+                <button type="button" class="sy-icon-btn" onclick="window.print()" aria-label="Print document"><i class="ti ti-printer"></i></button>
+            </div>
+            <div class="sy-paper" style="--sales-accent: {{ document.presentation_snapshot.accent_color|default:'#0071e3' }}">
+                <header class="sy-paper-head">
+                    <div>
+                        {% if document.presentation_snapshot.logo_url %}
+                        <img class="sy-paper-logo" src="{{ document.presentation_snapshot.logo_url }}" alt="">
+                        {% endif %}
+                        <strong>{{ document.presentation_snapshot.header_text|default:document.organization.name }}</strong>
+                    </div>
+                    <div class="sy-paper-id">
+                        <small>{{ document.get_document_type_display }}</small>
+                        <strong>{{ document.document_number }}</strong>
+                    </div>
+                </header>
+                <div class="sy-paper-body">{{ document.rendered_html|safe }}</div>
+                {% if document.presentation_snapshot.signature_url %}
+                <div class="sy-paper-signature"><img src="{{ document.presentation_snapshot.signature_url }}" alt="Authorised signature"><small>Authorised signature</small></div>
+                {% endif %}
+                {% if document.presentation_snapshot.footer_text %}
+                <footer class="sy-paper-footer">{{ document.presentation_snapshot.footer_text }}</footer>
+                {% endif %}
+            </div>
+        </article>
+
+        <aside class="sy-detail-side">
+            <article class="sy-panel sy-summary-card">
+                <p class="sy-eyebrow">SUMMARY</p>
+                <div class="sy-summary-total"><span>Total</span><strong>{{ document.currency }} {{ document.total|floatformat:2 }}</strong></div>
+                <dl class="sy-summary-list">
+                    <div><dt>Recipient</dt><dd>{{ document.recipient_name|default:"—" }}</dd></div>
+                    <div><dt>Email</dt><dd>{{ document.recipient_email|default:"—" }}</dd></div>
+                    <div><dt>Phone</dt><dd>{{ document.recipient_phone|default:"—" }}</dd></div>
+                    <div><dt>Template</dt><dd>{{ document.presentation_snapshot.template_name|default:"Standard" }}</dd></div>
+                    {% if document.valid_until %}<div><dt>Valid until</dt><dd>{{ document.valid_until|date:"d M Y" }}</dd></div>{% endif %}
+                    {% if document.due_date %}<div><dt>Due date</dt><dd>{{ document.due_date|date:"d M Y" }}</dd></div>{% endif %}
+                </dl>
+            </article>
+
+            <article class="sy-panel sy-delivery-card">
+                <div class="sy-panel-head sy-panel-head-small">
+                    <div><p class="sy-eyebrow">DELIVERY</p><h3>History</h3></div>
+                </div>
+                <div class="sy-delivery-list">
+                    {% for delivery in deliveries %}
+                    <div class="sy-delivery-row">
+                        <span class="sy-channel-icon">
+                            {% if delivery.channel == 'email' %}<i class="ti ti-mail"></i>{% else %}<i class="ti ti-brand-whatsapp"></i>{% endif %}
+                        </span>
+                        <div>
+                            <strong>{{ delivery.get_channel_display }}</strong>
+                            <small>{{ delivery.created_at|date:"d M, g:i A" }} · {{ delivery.to_identity }}</small>
+                            {% if delivery.error_message %}<em>{{ delivery.error_message }}</em>{% endif %}
+                        </div>
+                        <span class="sy-status sy-status-{{ delivery.status }}">{{ delivery.get_status_display }}</span>
+                    </div>
+                    {% empty %}
+                    <div class="sy-mini-empty">Not sent yet.</div>
+                    {% endfor %}
+                </div>
+            </article>
+        </aside>
+    </section>
+</main>
+
+<div class="sy-sheet-backdrop" data-send-sheet hidden>
+    <form class="sy-send-sheet" method="post" action="{% url 'shvya-sales-document-send' document.id %}">
+        {% csrf_token %}
+        <header class="sy-sheet-head">
+            <div>
+                <p class="sy-eyebrow">SEND {{ document.document_number }}</p>
+                <h2>Choose how it goes out.</h2>
+                <p>Email, WhatsApp, or both. Each channel is tracked independently.</p>
+            </div>
+            <button type="button" class="sy-icon-btn" data-close-send aria-label="Close"><i class="ti ti-x"></i></button>
+        </header>
+
+        <div class="sy-channel-picker">
+            <label class="sy-channel-option {% if email_configuration %}is-ready{% else %}is-disabled{% endif %}">
+                <input type="checkbox" name="channels" value="email" data-channel-toggle="email" {% if not email_configuration %}disabled{% endif %}>
+                <span class="sy-channel-icon"><i class="ti ti-mail"></i></span>
+                <span><strong>Email</strong><small>{% if email_configuration %}From {{ email_configuration.email_address }}{% else %}No tested email account connected{% endif %}</small></span>
+                <i class="ti ti-circle-check sy-channel-check"></i>
+            </label>
+            <label class="sy-channel-option {% if whatsapp_account %}is-ready{% else %}is-disabled{% endif %}">
+                <input type="checkbox" name="channels" value="whatsapp" data-channel-toggle="whatsapp" {% if not whatsapp_account %}disabled{% endif %}>
+                <span class="sy-channel-icon"><i class="ti ti-brand-whatsapp"></i></span>
+                <span><strong>WhatsApp</strong><small>{% if whatsapp_account %}From {{ whatsapp_account.display_phone_number|default:whatsapp_account.phone_number_id }}{% else %}{{ whatsapp_error|default:"No pipeline-linked WhatsApp sender" }}{% endif %}</small></span>
+                <i class="ti ti-circle-check sy-channel-check"></i>
+            </label>
+        </div>
+
+        {% if whatsapp_account and not whatsapp_window_open %}
+        <div class="sy-policy-note">
+            <i class="ti ti-info-circle"></i>
+            <div><strong>Meta service window is closed.</strong><p>An approved WhatsApp template is required before free-form document text can be sent. SHVYA will block the WhatsApp leg instead of violating Meta policy; Email can still send normally.</p></div>
+        </div>
+        {% endif %}
+
+        <section class="sy-channel-editor" data-channel-editor="email" hidden>
+            <div class="sy-editor-head"><span class="sy-channel-icon"><i class="ti ti-mail"></i></span><div><strong>Email draft</strong><small>Editable for this send only</small></div></div>
+            <label class="sy-field"><span>Subject</span><input name="email_subject" value="{{ drafts.email_subject }}"></label>
+            <label class="sy-field"><span>Body</span><textarea name="email_body" rows="8">{{ drafts.email_body }}</textarea></label>
+        </section>
+
+        <section class="sy-channel-editor" data-channel-editor="whatsapp" hidden>
+            <div class="sy-editor-head"><span class="sy-channel-icon"><i class="ti ti-brand-whatsapp"></i></span><div><strong>WhatsApp draft</strong><small>Sent from the lead's pipeline-linked number</small></div></div>
+            <label class="sy-field"><span>Message</span><textarea name="whatsapp_body" rows="7">{{ drafts.whatsapp_body }}</textarea></label>
+        </section>
+
+        <footer class="sy-sheet-footer">
+            <button type="button" class="sy-btn sy-btn-secondary" data-close-send>Cancel</button>
+            <button type="submit" class="sy-btn sy-btn-primary"><i class="ti ti-send"></i> Send selected channels</button>
+        </footer>
+    </form>
+</div>
+{% endblock %}
