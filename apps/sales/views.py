@@ -5,7 +5,7 @@ from django.contrib import messages
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.db.models import Count, F, Q
-from django.http import Http404
+from django.http import Http404, HttpResponseForbidden
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
@@ -16,6 +16,7 @@ from apps.channels.models import WhatsAppAccount, WhatsAppTemplate
 from apps.crm.decorators import crm_login_required
 from apps.crm.models import Lead
 from apps.integrations.models import EmailConfiguration
+from apps.sales.access import is_sales_admin
 from apps.sales.activity import record_activity
 from apps.sales.lifecycle import (
     create_scheduled_delivery,
@@ -823,6 +824,10 @@ def sales_document_send_view(request, document_id):
 
 @crm_login_required
 def sales_template_list_view(request):
+    if not is_sales_admin(request.crm_user):
+        return HttpResponseForbidden(
+            "Only organization admins can manage Sales templates."
+        )
     organization = _organization(request)
     ensure_default_templates(organization=organization, user=request.crm_user)
     templates = SalesTemplate.objects.filter(
@@ -840,6 +845,10 @@ def sales_template_list_view(request):
 
 @crm_login_required
 def sales_template_form_view(request, template_id=None):
+    if not is_sales_admin(request.crm_user):
+        return HttpResponseForbidden(
+            "Only organization admins can manage Sales templates."
+        )
     organization = _organization(request)
     template = None
     if template_id:
