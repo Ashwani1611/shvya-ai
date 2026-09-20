@@ -49,21 +49,13 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
-      - name: Generate deterministic gateway lockfile
+      - name: Install exact gateway dependency graph
         working-directory: whatsapp_web_gateway
-        run: npm install --package-lock-only --ignore-scripts
+        run: npm ci --ignore-scripts
 
       - name: Audit gateway production dependencies
         working-directory: whatsapp_web_gateway
         run: npm audit --omit=dev --audit-level=high
-
-      - name: Upload generated gateway lockfile
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: whatsapp-gateway-package-lock
-          path: whatsapp_web_gateway/package-lock.json
-          if-no-files-found: error
 
   secret-scan:
     name: Secret scan
