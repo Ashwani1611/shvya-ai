@@ -1062,22 +1062,32 @@ def deliver_whatsapp(
             public_path.lstrip("/"),
         )
         pdf_url = ""
+        hosted_pdf_bytes = None
         if attach_pdf:
-            from apps.sales.pdf_service import ensure_document_pdf
+            if account.connection_type == WhatsAppAccount.ConnectionType.coexisted:
+                # Hosted linked-device sends must stream the immutable PDF through
+                # SHVYA's private uploaded-media endpoint. Passing a public URL to
+                # whatsapp-web.js makes the gateway reconstruct remote media and
+                # can fail inside WhatsApp Web's memoized media getters.
+                from apps.sales.pdf_service import read_document_pdf
 
-            ensure_document_pdf(document, actor=user)
-            pdf_path = reverse(
-                "shvya-sales-public-pdf",
-                args=[document.public_token],
-            )
-            pdf_url = urljoin(
-                str(base_url or "").rstrip("/") + "/",
-                pdf_path.lstrip("/"),
-            )
-            if not pdf_url.startswith(("http://", "https://")):
-                raise SalesDeliveryError(
-                    "A public HTTP(S) base URL is required to attach PDFs on WhatsApp."
+                hosted_pdf_bytes = read_document_pdf(document, actor=user)
+            else:
+                from apps.sales.pdf_service import ensure_document_pdf
+
+                ensure_document_pdf(document, actor=user)
+                pdf_path = reverse(
+                    "shvya-sales-public-pdf",
+                    args=[document.public_token],
                 )
+                pdf_url = urljoin(
+                    str(base_url or "").rstrip("/") + "/",
+                    pdf_path.lstrip("/"),
+                )
+                if not pdf_url.startswith(("http://", "https://")):
+                    raise SalesDeliveryError(
+                        "A public HTTP(S) base URL is required to attach PDFs on WhatsApp."
+                    )
 
         requires_template = False
         if account.connection_type == WhatsAppAccount.ConnectionType.API:
@@ -1090,7 +1100,54 @@ def deliver_whatsapp(
                 account=account,
             )
 
-        if requires_template:
+        dispatch_task = send_whatsapp_message_task
+
+        if account.connection_type == WhatsAppAccount.ConnectionType.coexisted:
+            from apps.channels.hosted_send_tasks import (
+                send_hosted_whatsapp_message_task,
+            )
+
+            dispatch_task = send_hosted_whatsapp_message_task
+            if attach_pdf:
+                from django.core.files.uploadedfile import SimpleUploadedFile
+
+                from services.channels.hosted_send_service import (
+                    queue_hosted_uploaded_media,
+                )
+
+                if not hosted_pdf_bytes:
+                    raise SalesDeliveryError(
+                        "The document PDF could not be prepared for Hosted WhatsApp."
+                    )
+                upload = SimpleUploadedFile(
+                    f"{document.document_number}.pdf",
+                    hosted_pdf_bytes,
+                    content_type="application/pdf",
+                )
+                message = queue_hosted_uploaded_media(
+                    account=account,
+                    to_number=document.lead.phone,
+                    uploaded_file=upload,
+                    message_type=WhatsAppMessage.MessageType.DOCUMENT,
+                    caption=delivery.body,
+                    lead=document.lead,
+                )
+            else:
+                from services.channels.hosted_whatsapp_service import (
+                    queue_hosted_text_message,
+                )
+
+                message = queue_hosted_text_message(
+                    account=account,
+                    to_number=document.lead.phone,
+                    body=delivery.body,
+                    lead=document.lead,
+                    metadata={
+                        "origin": "agent",
+                        "chat_id": document.lead.phone,
+                    },
+                )
+        elif requires_template:
             if not whatsapp_template_id:
                 raise SalesDeliveryError(
                     "Meta requires an approved document-header WhatsApp template "
@@ -1180,7 +1237,7 @@ def deliver_whatsapp(
         # Make tokenized document URLs public before the asynchronous provider
         # asks SHVYA to serve the PDF.
         _mark_document_sent(document, actor=user)
-        send_whatsapp_message_task.delay(str(message.id))
+        dispatch_task.delay(str(message.id))
     except SalesDeliveryError as exc:
         return _record_failure(delivery, exc)
     except Exception:
