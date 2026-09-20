@@ -414,6 +414,7 @@ def create_scheduled_delivery(
     email_subject="",
     email_body="",
     whatsapp_body="",
+    base_url="",
     actor=None,
 ):
     clean_channels = [
@@ -434,6 +435,7 @@ def create_scheduled_delivery(
         email_subject=str(email_subject or "")[:255],
         email_body=str(email_body or ""),
         whatsapp_body=str(whatsapp_body or ""),
+        base_url=str(base_url or "")[:2048],
         scheduled_at=scheduled_at,
         created_by=actor,
     )
