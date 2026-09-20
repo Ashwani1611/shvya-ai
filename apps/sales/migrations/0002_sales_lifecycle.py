@@ -236,6 +236,7 @@ class Migration(migrations.Migration):
                 ("created_by", models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name="sales_schedules_created", to=settings.AUTH_USER_MODEL)),
                 ("document", models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name="scheduled_deliveries", to="sales.salesdocument")),
                 ("organization", models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name="sales_scheduled_deliveries", to="organizations.organization")),
+                ("whatsapp_template", models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name="sales_scheduled_deliveries", to="channels.whatsapptemplate")),
             ],
             options={"ordering": ["scheduled_at", "created_at"]},
         ),
