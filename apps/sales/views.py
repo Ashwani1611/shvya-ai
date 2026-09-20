@@ -509,6 +509,13 @@ def public_document_action_view(request, token):
     client_ip = forwarded_for.split(",", 1)[0].strip() if forwarded_for else request.META.get("REMOTE_ADDR")
 
     if document.document_type == DocumentType.QUOTATION:
+        if document.status in {
+            SalesDocument.Status.ACCEPTED,
+            SalesDocument.Status.DECLINED,
+        }:
+            return redirect("shvya-sales-public-document", token=token)
+        if document.status != SalesDocument.Status.SENT:
+            raise Http404
         if action == "accept":
             document.status = SalesDocument.Status.ACCEPTED
             document.accepted_at = now
@@ -517,6 +524,10 @@ def public_document_action_view(request, token):
         else:
             raise Http404
     elif document.document_type == DocumentType.AGREEMENT and action == "sign":
+        if document.status == SalesDocument.Status.SIGNED:
+            return redirect("shvya-sales-public-document", token=token)
+        if document.status != SalesDocument.Status.SENT:
+            raise Http404
         if not name:
             messages.error(request, "Enter your full name to sign the agreement.")
             return redirect("shvya-sales-public-document", token=token)
