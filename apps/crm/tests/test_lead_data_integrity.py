@@ -181,7 +181,10 @@ class LeadDataIntegrityTests(TestCase):
         account-owned throttling state; deleting a Lead intentionally clears
         only its last_lead pointer. CampaignDelivery is campaign-owned delivery
         evidence; deleting a Lead clears its pointer but preserves the frozen
-        recipient and attempt history. Every Lead-owned relation must CASCADE.
+        recipient and attempt history. SalesDocument is legal/commercial
+        evidence with a frozen recipient snapshot, so deleting the CRM Lead
+        clears only its optional CRM pointer. Every other Lead-owned relation
+        must CASCADE.
         """
         exceptions = []
 
@@ -204,6 +207,8 @@ class LeadDataIntegrityTests(TestCase):
                 # Account-owned provider history survives, with its CRM link cleared.
                 ("channels.instagramconversation", "lead"),
                 ("followups.followupsenderstate", "last_lead"),
+                # Commercial/legal documents survive CRM lead deletion.
+                ("sales.salesdocument", "lead"),
             },
         )
         self.assertTrue(

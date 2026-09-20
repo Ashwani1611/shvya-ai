@@ -1,0 +1,384 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}{{ document.document_number }} · SHVYA Sales{% endblock %}
+{% block header %}{{ document.document_number }}{% endblock %}
+
+{% block extra_head %}
+{{ block.super }}
+<link rel="stylesheet" href="{% static 'css/shvya_sales.css' %}?v=20260921-1">
+<script src="{% static 'js/shvya_sales.js' %}?v=20260921-1" defer></script>
+{% endblock %}
+
+{% block content %}
+<main class="sy-sales">
+    <section class="sy-page-head sy-page-head-compact">
+        <div>
+            <a class="sy-back" href="{% url 'shvya-sales-document-list' %}?type={{ document.document_type }}"><i class="ti ti-arrow-left"></i> {{ document.get_document_type_display }}s</a>
+            <p class="sy-eyebrow">{{ document.get_document_type_display|upper }} · {{ document.document_number }}</p>
+            <h1>{{ document.title }}</h1>
+            <div class="sy-title-meta">
+                <span class="sy-status sy-status-{{ document.status }}">{{ document.get_status_display }}</span>
+                <span>{{ document.recipient_name|default:"No recipient" }}</span>
+                <span>{{ document.issue_date|date:"d M Y" }}</span>
+            </div>
+        </div>
+        <div class="sy-head-actions">
+            {% if document.status == 'draft' %}
+            <a class="sy-btn sy-btn-secondary" href="{% url 'shvya-sales-document-edit' document.id %}"><i class="ti ti-pencil"></i> Edit draft</a>
+            {% else %}
+            <a class="sy-btn sy-btn-secondary" href="{{ public_url }}" target="_blank" rel="noopener"><i class="ti ti-eye"></i> Customer view</a>
+            {% endif %}
+            <a class="sy-btn sy-btn-secondary" href="{% url 'shvya-sales-document-pdf' document.id %}"><i class="ti ti-file-type-pdf"></i> Download PDF</a>
+            <button class="sy-btn sy-btn-primary" type="button" data-open-send><i class="ti ti-send"></i> Send</button>
+        </div>
+    </section>
+
+    <section class="sy-detail-grid">
+        <article class="sy-panel sy-document-preview">
+            <div class="sy-preview-toolbar">
+                <div><span class="sy-preview-dot"></span><strong>Frozen document preview</strong></div>
+                <button type="button" class="sy-icon-btn" onclick="window.print()" aria-label="Print document"><i class="ti ti-printer"></i></button>
+            </div>
+            <div class="sy-paper" style="--sales-accent: {{ document.presentation_snapshot.accent_color|default:'#0071e3' }}">
+                <header class="sy-paper-head">
+                    <div>
+                        {% if document.presentation_snapshot.logo_url %}
+                        <img class="sy-paper-logo" src="{{ document.presentation_snapshot.logo_url }}" alt="">
+                        {% endif %}
+                        <strong>{{ document.presentation_snapshot.header_text|default:document.organization.name }}</strong>
+                    </div>
+                    <div class="sy-paper-id">
+                        <small>{{ document.get_document_type_display }}</small>
+                        <strong>{{ document.document_number }}</strong>
+                    </div>
+                </header>
+                <div class="sy-paper-body">{{ document.rendered_html|safe }}</div>
+                {% if document.presentation_snapshot.signature_url %}
+                <div class="sy-paper-signature"><img src="{{ document.presentation_snapshot.signature_url }}" alt="Authorised signature"><small>Authorised signature</small></div>
+                {% endif %}
+                {% if document.presentation_snapshot.footer_text %}
+                <footer class="sy-paper-footer">{{ document.presentation_snapshot.footer_text }}</footer>
+                {% endif %}
+            </div>
+        </article>
+
+        <aside class="sy-detail-side">
+            {% with derived=document.derived_documents.all %}
+            {% if document.source_document or document.document_type != 'invoice' or derived %}
+            <article class="sy-panel sy-next-card">
+                <p class="sy-eyebrow">SALES FLOW</p>
+                {% if document.source_document %}
+                <a class="sy-lineage-source" href="{% url 'shvya-sales-document-detail' document.source_document.id %}">
+                    <span><small>Created from</small><strong>{{ document.source_document.document_number }}</strong></span>
+                    <i class="ti ti-arrow-up-right"></i>
+                </a>
+                {% endif %}
+
+                {% if document.document_type == 'quotation' %}
+                <h3>Move the deal forward.</h3>
+                <div class="sy-next-actions">
+                    <a href="{% url 'shvya-sales-document-create' 'agreement' %}?from={{ document.id }}"><span class="sy-doc-avatar sy-doc-agreement"><i class="ti ti-signature"></i></span><span><strong>Create agreement</strong><small>Carry customer, scope and pricing forward</small></span><i class="ti ti-chevron-right"></i></a>
+                    <a href="{% url 'shvya-sales-document-create' 'invoice' %}?from={{ document.id }}"><span class="sy-doc-avatar sy-doc-invoice"><i class="ti ti-receipt-2"></i></span><span><strong>Create invoice</strong><small>Convert pricing into a billable draft</small></span><i class="ti ti-chevron-right"></i></a>
+                </div>
+                {% elif document.document_type == 'agreement' %}
+                <h3>Ready to bill?</h3>
+                <div class="sy-next-actions">
+                    <a href="{% url 'shvya-sales-document-create' 'invoice' %}?from={{ document.id }}"><span class="sy-doc-avatar sy-doc-invoice"><i class="ti ti-receipt-2"></i></span><span><strong>Create invoice</strong><small>Carry agreed customer and commercial data forward</small></span><i class="ti ti-chevron-right"></i></a>
+                </div>
+                {% endif %}
+
+                {% if derived %}
+                <div class="sy-derived-list">
+                    <small>Created from this document</small>
+                    {% for item in derived %}
+                    <a href="{% url 'shvya-sales-document-detail' item.id %}"><span>{{ item.document_number }}</span><span class="sy-status sy-status-{{ item.status }}">{{ item.get_status_display }}</span></a>
+                    {% endfor %}
+                </div>
+                {% endif %}
+            </article>
+            {% endif %}
+            {% endwith %}
+
+            <article class="sy-panel sy-summary-card">
+                <p class="sy-eyebrow">SUMMARY</p>
+                <div class="sy-summary-total"><span>Total</span><strong>{{ document.currency }} {{ document.total|floatformat:2 }}</strong></div>
+                <dl class="sy-summary-list">
+                    <div><dt>Recipient</dt><dd>{{ document.recipient_name|default:"—" }}</dd></div>
+                    <div><dt>Email</dt><dd>{{ document.recipient_email|default:"—" }}</dd></div>
+                    <div><dt>Phone</dt><dd>{{ document.recipient_phone|default:"—" }}</dd></div>
+                    <div><dt>Template</dt><dd>{{ document.presentation_snapshot.template_name|default:"Standard" }}{% if document.presentation_snapshot.custom_layout %} + custom layout{% endif %}</dd></div>
+                    <div><dt>Revision</dt><dd>v{{ document.revision_number }} · {{ document.get_revision_kind_display }}</dd></div>
+                    <div><dt>Views</dt><dd>{{ document.view_count }}{% if document.last_viewed_at %} · last {{ document.last_viewed_at|date:"d M, g:i A" }}{% endif %}</dd></div>
+                    {% if document.pdf_sha256 %}<div><dt>PDF</dt><dd>Frozen · {{ document.pdf_sha256|slice:":10" }}…</dd></div>{% endif %}
+                    {% if document.valid_until %}<div><dt>Valid until</dt><dd>{{ document.valid_until|date:"d M Y" }}</dd></div>{% endif %}
+                    {% if document.due_date %}<div><dt>Due date</dt><dd>{{ document.due_date|date:"d M Y" }}</dd></div>{% endif %}
+                </dl>
+            </article>
+
+            {% if document.document_type == 'agreement' and document.status != 'draft' %}
+            <article class="sy-panel sy-lifecycle-card">
+                <p class="sy-eyebrow">AGREEMENT VERSIONING</p>
+                <h3>Keep signed versions immutable.</h3>
+                <p>Create a new draft instead of rewriting the existing agreement.</p>
+                <div class="sy-inline-actions">
+                    <form method="post" action="{% url 'shvya-sales-agreement-revision' document.id %}">
+                        {% csrf_token %}<input type="hidden" name="kind" value="amendment">
+                        <button class="sy-btn sy-btn-secondary sy-btn-small" type="submit"><i class="ti ti-edit"></i> Amend</button>
+                    </form>
+                    <form method="post" action="{% url 'shvya-sales-agreement-revision' document.id %}">
+                        {% csrf_token %}<input type="hidden" name="kind" value="renewal">
+                        <button class="sy-btn sy-btn-secondary sy-btn-small" type="submit"><i class="ti ti-refresh"></i> Renew</button>
+                    </form>
+                </div>
+            </article>
+            {% endif %}
+
+            {% if document.document_type == 'invoice' %}
+            <article class="sy-panel sy-finance-card">
+                <div class="sy-panel-head sy-panel-head-small">
+                    <div><p class="sy-eyebrow">INVOICE LEDGER</p><h3>Balance & payments</h3></div>
+                    <strong class="sy-balance">{{ document.currency }} {{ invoice_ledger.balance|floatformat:2 }}</strong>
+                </div>
+                <div class="sy-finance-stats">
+                    <span><small>Paid</small><strong>{{ document.currency }} {{ invoice_ledger.paid|floatformat:2 }}</strong></span>
+                    <span><small>Refunded</small><strong>{{ document.currency }} {{ invoice_ledger.refunded|floatformat:2 }}</strong></span>
+                    <span><small>Credits</small><strong>{{ document.currency }} {{ invoice_ledger.credits|floatformat:2 }}</strong></span>
+                </div>
+
+                {% if sales_admin and invoice_ledger.balance > 0 and payment_gateways %}
+                <div class="sy-finance-section">
+                    <strong>Create payment link</strong>
+                    <div class="sy-gateway-actions">
+                        {% for gateway in payment_gateways %}
+                        <form method="post" action="{% url 'shvya-sales-payment-link' document.id %}">
+                            {% csrf_token %}<input type="hidden" name="gateway_id" value="{{ gateway.id }}">
+                            <button class="sy-btn sy-btn-secondary sy-btn-small" type="submit"><i class="ti ti-link"></i> {{ gateway.get_provider_display }}</button>
+                        </form>
+                        {% endfor %}
+                    </div>
+                    {% if active_checkout %}<a class="sy-payment-link" href="{{ active_checkout.checkout_url }}" target="_blank" rel="noopener">Open current checkout <i class="ti ti-arrow-up-right"></i></a>{% endif %}
+                </div>
+                {% endif %}
+
+                {% if sales_admin %}
+                <details class="sy-compact-details">
+                    <summary>Record payment / refund</summary>
+                    <div class="sy-finance-forms">
+                        <form method="post" action="{% url 'shvya-sales-manual-payment' document.id %}">
+                            {% csrf_token %}
+                            <label class="sy-field"><span>Payment amount</span><input type="number" name="amount" min="0.01" step="0.01" required></label>
+                            <label class="sy-field"><span>Method</span>
+                                <select name="method">
+                                    <option value="bank_transfer">Bank transfer</option><option value="upi">UPI</option><option value="cash">Cash</option><option value="card">Card</option><option value="other">Other</option>
+                                </select>
+                            </label>
+                            <label class="sy-field"><span>Reference</span><input name="reference_number"></label>
+                            <button class="sy-btn sy-btn-primary sy-btn-small" type="submit">Record payment</button>
+                        </form>
+                        <form method="post" action="{% url 'shvya-sales-manual-refund' document.id %}">
+                            {% csrf_token %}
+                            <label class="sy-field"><span>Refund amount</span><input type="number" name="amount" min="0.01" step="0.01" required></label>
+                            <label class="sy-field"><span>Reference</span><input name="reference_number"></label>
+                            <button class="sy-btn sy-btn-secondary sy-btn-small" type="submit">Record refund</button>
+                        </form>
+                    </div>
+                </details>
+
+                <details class="sy-compact-details">
+                    <summary>Create credit note</summary>
+                    <form class="sy-stack-form" method="post" action="{% url 'shvya-sales-credit-create' document.id %}">
+                        {% csrf_token %}
+                        <label class="sy-field"><span>Credit amount</span><input type="number" name="amount" min="0.01" step="0.01" required></label>
+                        <label class="sy-field"><span>Reason</span><textarea name="reason" rows="2"></textarea></label>
+                        <label class="sy-inline-check"><input type="checkbox" name="save_as_draft"> Save as draft only</label>
+                        <button class="sy-btn sy-btn-secondary sy-btn-small" type="submit">Create credit note</button>
+                    </form>
+                </details>
+                {% endif %}
+
+                {% if document.payments.all %}
+                <div class="sy-ledger-list">
+                    {% for payment in document.payments.all|slice:":10" %}
+                    <div class="sy-ledger-entry"><span><strong>{{ payment.get_kind_display }}</strong><small>{{ payment.payment_date|date:"d M Y" }} · {{ payment.get_method_display }}{% if payment.provider %} · {{ payment.provider|title }}{% endif %}</small></span><strong>{% if payment.kind == 'refund' %}-{% endif %}{{ document.currency }} {{ payment.amount|floatformat:2 }}</strong>
+                    {% if sales_admin and payment.kind == 'payment' and payment.provider and payment.external_payment_id %}
+                    <details class="sy-ledger-refund"><summary>Refund</summary><form method="post" action="{% url 'shvya-sales-gateway-refund' payment.id %}">{% csrf_token %}<input type="number" name="amount" min="0.01" step="0.01" max="{{ payment.amount }}" required placeholder="Amount"><button class="sy-text-action" type="submit">Refund via {{ payment.provider|title }}</button></form></details>
+                    {% endif %}
+                    </div>
+                    {% endfor %}
+                </div>
+                {% endif %}
+                {% if document.credit_notes.all %}
+                <div class="sy-ledger-list sy-credit-list">
+                    {% for credit in document.credit_notes.all|slice:":10" %}
+                    <div><span><strong>{{ credit.credit_number }}</strong><small>{{ credit.get_status_display }} · {{ credit.reason|truncatechars:50 }}</small></span><strong>-{{ document.currency }} {{ credit.amount|floatformat:2 }}</strong>
+                    {% if sales_admin and credit.status == 'draft' %}<form method="post" action="{% url 'shvya-sales-credit-apply' credit.id %}">{% csrf_token %}<button class="sy-text-action" type="submit">Apply</button></form>{% endif %}</div>
+                    {% endfor %}
+                </div>
+                {% endif %}
+            </article>
+
+            {% if sales_admin %}
+            <article class="sy-panel sy-lifecycle-card">
+                <p class="sy-eyebrow">RECURRING INVOICE</p>
+                {% if recurring_rule and recurring_rule.is_active %}
+                    <h3>Next: {{ recurring_rule.next_run_at|date:"d M Y, g:i A" }}</h3>
+                    <p>Every {{ recurring_rule.interval_count }} {{ recurring_rule.get_interval_unit_display|lower }}{{ recurring_rule.interval_count|pluralize }} · {{ recurring_rule.cycles_created }} created.</p>
+                    <form method="post" action="{% url 'shvya-sales-recurring' document.id %}">{% csrf_token %}<input type="hidden" name="action" value="disable"><button class="sy-btn sy-btn-secondary sy-btn-small" type="submit">Disable recurring</button></form>
+                {% else %}
+                    <h3>Make this invoice recurring.</h3>
+                    <form class="sy-stack-form" method="post" action="{% url 'shvya-sales-recurring' document.id %}">
+                        {% csrf_token %}
+                        <div class="sy-form-grid">
+                            <label class="sy-field"><span>Every</span><input type="number" name="interval_count" min="1" max="365" value="1"></label>
+                            <label class="sy-field"><span>Period</span><select name="interval_unit"><option value="month">Month</option><option value="week">Week</option><option value="year">Year</option><option value="day">Day</option></select></label>
+                            <label class="sy-field sy-field-wide"><span>Next invoice</span><input type="datetime-local" name="next_run_at" required></label>
+                            <label class="sy-field"><span>Max cycles</span><input type="number" name="max_cycles" min="1" placeholder="Unlimited"></label>
+                        </div>
+                        <label class="sy-inline-check"><input type="checkbox" name="auto_send_email"> Automatically email each generated invoice</label>
+                        <button class="sy-btn sy-btn-secondary sy-btn-small" type="submit">Save recurring rule</button>
+                    </form>
+                {% endif %}
+            </article>
+            {% endif %}
+            {% endif %}
+
+            <article class="sy-panel sy-attachments-card">
+                <div class="sy-panel-head sy-panel-head-small"><div><p class="sy-eyebrow">ATTACHMENTS</p><h3>Supporting files</h3></div></div>
+                <form class="sy-attachment-upload" method="post" enctype="multipart/form-data" action="{% url 'shvya-sales-attachment-add' document.id %}">
+                    {% csrf_token %}
+                    <input type="file" name="file" required>
+                    <label class="sy-inline-check"><input type="checkbox" name="visible_to_customer"> Customer can download</label>
+                    <button class="sy-btn sy-btn-secondary sy-btn-small" type="submit"><i class="ti ti-paperclip"></i> Add</button>
+                </form>
+                <div class="sy-attachment-list">
+                    {% for attachment in attachments %}
+                    <div><a href="{% url 'shvya-sales-attachment-download' attachment.id %}"><i class="ti ti-file"></i><span><strong>{{ attachment.original_name }}</strong><small>{{ attachment.size|filesizeformat }}{% if attachment.visible_to_customer %} · Customer visible{% endif %}</small></span></a>
+                    <form method="post" action="{% url 'shvya-sales-attachment-delete' attachment.id %}">{% csrf_token %}<button class="sy-icon-btn" type="submit" aria-label="Delete"><i class="ti ti-trash"></i></button></form></div>
+                    {% empty %}<div class="sy-mini-empty">No supporting files.</div>{% endfor %}
+                </div>
+            </article>
+
+            {% if scheduled_deliveries %}
+            <article class="sy-panel sy-delivery-card">
+                <div class="sy-panel-head sy-panel-head-small"><div><p class="sy-eyebrow">SCHEDULED</p><h3>Upcoming / history</h3></div></div>
+                <div class="sy-delivery-list">
+                    {% for schedule in scheduled_deliveries %}
+                    <div class="sy-delivery-row"><span class="sy-channel-icon"><i class="ti ti-clock"></i></span><div><strong>{{ schedule.scheduled_at|date:"d M Y, g:i A" }}</strong><small>{{ schedule.channels|join:", " }}</small></div><span class="sy-status sy-status-{{ schedule.status }}">{{ schedule.get_status_display }}</span>{% if schedule.status == 'pending' %}<form method="post" action="{% url 'shvya-sales-schedule-cancel' schedule.id %}">{% csrf_token %}<button class="sy-text-action" type="submit">Cancel</button></form>{% endif %}</div>
+                    {% endfor %}
+                </div>
+            </article>
+            {% endif %}
+
+            <article class="sy-panel sy-delivery-card">
+                <div class="sy-panel-head sy-panel-head-small">
+                    <div><p class="sy-eyebrow">DELIVERY</p><h3>History</h3></div>
+                </div>
+                <div class="sy-delivery-list">
+                    {% for delivery in deliveries %}
+                    <div class="sy-delivery-row">
+                        <span class="sy-channel-icon">
+                            {% if delivery.channel == 'email' %}<i class="ti ti-mail"></i>{% else %}<i class="ti ti-brand-whatsapp"></i>{% endif %}
+                        </span>
+                        <div>
+                            <strong>{{ delivery.get_channel_display }}</strong>
+                            <small>{{ delivery.created_at|date:"d M, g:i A" }} · {{ delivery.to_identity }}</small>
+                            {% if delivery.channel == 'email' %}
+                            <small class="sy-tracking-meta">{% if delivery.delivered_at %}Delivered · {% endif %}{{ delivery.open_count }} open{{ delivery.open_count|pluralize }} · {{ delivery.click_count }} click{{ delivery.click_count|pluralize }}{% if delivery.bounced_at %} · Bounced{% endif %}</small>
+                            {% endif %}
+                            {% if delivery.error_message %}<em>{{ delivery.error_message }}</em>{% endif %}
+                        </div>
+                        <span class="sy-status sy-status-{{ delivery.status }}">{{ delivery.get_status_display }}</span>
+                    </div>
+                    {% empty %}
+                    <div class="sy-mini-empty">Not sent yet.</div>
+                    {% endfor %}
+                </div>
+            </article>
+
+            <article class="sy-panel sy-activity-card">
+                <div class="sy-panel-head sy-panel-head-small"><div><p class="sy-eyebrow">AUDIT TIMELINE</p><h3>Document activity</h3></div></div>
+                <div class="sy-activity-list">
+                    {% for activity in activities %}
+                    <div><span class="sy-activity-dot"></span><div><strong>{{ activity.message }}</strong><small>{{ activity.created_at|date:"d M Y, g:i A" }}{% if activity.actor %} · {{ activity.actor.name|default:activity.actor.email }}{% endif %}</small></div></div>
+                    {% empty %}<div class="sy-mini-empty">Activity appears here as the document moves.</div>{% endfor %}
+                </div>
+            </article>
+        </aside>
+    </section>
+</main>
+
+<div class="sy-sheet-backdrop" data-send-sheet hidden>
+    <form class="sy-send-sheet" method="post" action="{% url 'shvya-sales-document-send' document.id %}">
+        {% csrf_token %}
+        <header class="sy-sheet-head">
+            <div>
+                <p class="sy-eyebrow">SEND {{ document.document_number }}</p>
+                <h2>Choose how it goes out.</h2>
+                <p>Email, WhatsApp, or both. Each channel is tracked independently.</p>
+            </div>
+            <button type="button" class="sy-icon-btn" data-close-send aria-label="Close"><i class="ti ti-x"></i></button>
+        </header>
+
+        <div class="sy-channel-picker">
+            <label class="sy-channel-option {% if email_configuration %}is-ready{% else %}is-disabled{% endif %}">
+                <input type="checkbox" name="channels" value="email" data-channel-toggle="email" {% if not email_configuration %}disabled{% endif %}>
+                <span class="sy-channel-icon"><i class="ti ti-mail"></i></span>
+                <span><strong>Email</strong><small>{% if email_configuration %}From {{ email_configuration.email_address }}{% else %}No tested email account connected{% endif %}</small></span>
+                <i class="ti ti-circle-check sy-channel-check"></i>
+            </label>
+            <label class="sy-channel-option {% if whatsapp_send_ready %}is-ready{% else %}is-disabled{% endif %}">
+                <input type="checkbox" name="channels" value="whatsapp" data-channel-toggle="whatsapp" {% if not whatsapp_send_ready %}disabled{% endif %}>
+                <span class="sy-channel-icon"><i class="ti ti-brand-whatsapp"></i></span>
+                <span><strong>WhatsApp</strong><small>{% if whatsapp_account %}From {{ whatsapp_account.display_phone_number|default:whatsapp_account.phone_number_id }}{% else %}{{ whatsapp_error|default:"No pipeline-linked WhatsApp sender" }}{% endif %}</small></span>
+                <i class="ti ti-circle-check sy-channel-check"></i>
+            </label>
+        </div>
+
+        {% if whatsapp_account and not whatsapp_window_open %}
+        <div class="sy-policy-note">
+            <i class="ti ti-info-circle"></i>
+            <div><strong>Meta service window is closed.</strong><p>{% if has_whatsapp_templates %}SHVYA will use the approved document-header template selected below and attach this PDF compliantly.{% else %}No approved document-header template exists for this pipeline-linked number. Create or sync one under WhatsApp Templates before sending.{% endif %}</p></div>
+        </div>
+        {% endif %}
+
+        <section class="sy-channel-editor" data-channel-editor="email" hidden>
+            <div class="sy-editor-head"><span class="sy-channel-icon"><i class="ti ti-mail"></i></span><div><strong>Email draft</strong><small>Editable for this send only</small></div></div>
+            <label class="sy-field"><span>Subject</span><input name="email_subject" value="{{ drafts.email_subject }}"></label>
+            <label class="sy-field"><span>Body</span><textarea name="email_body" rows="8">{{ drafts.email_body }}</textarea></label>
+        </section>
+
+        <section class="sy-channel-editor" data-channel-editor="whatsapp" hidden>
+            <div class="sy-editor-head"><span class="sy-channel-icon"><i class="ti ti-brand-whatsapp"></i></span><div><strong>WhatsApp draft</strong><small>Sent only from the lead's pipeline-linked number</small></div></div>
+            {% if whatsapp_account and whatsapp_account.connection_type == 'api' %}
+            <label class="sy-field">
+                <span>Approved document template · fallback / scheduled send</span>
+                <select name="whatsapp_template_id">
+                    <option value="">Choose approved template</option>
+                    {% for template in whatsapp_templates %}
+                    <option value="{{ template.id }}">{{ template.name }}</option>
+                    {% endfor %}
+                </select>
+                <small class="sy-field-note">{% if has_whatsapp_templates %}Required outside Meta's 24-hour window and for scheduled Cloud API/Coexistence sends. The PDF is supplied as the approved document header.{% else %}No approved document-header template is available for this number yet.{% endif %}</small>
+            </label>
+            {% endif %}
+            <label class="sy-field"><span>Message</span><textarea name="whatsapp_body" rows="7">{{ drafts.whatsapp_body }}</textarea></label>
+        </section>
+
+        <div class="sy-send-pdf-note"><i class="ti ti-file-type-pdf"></i><span><strong>PDF attached automatically</strong><small>Email receives the immutable PDF; WhatsApp receives it as a document attachment.</small></span></div>
+        <div class="sy-send-mode">
+            <label><input type="radio" name="send_mode" value="now" checked><span><i class="ti ti-bolt"></i> Send now</span></label>
+            <label><input type="radio" name="send_mode" value="schedule"><span><i class="ti ti-calendar-time"></i> Schedule</span></label>
+        </div>
+        <div class="sy-schedule-panel" data-schedule-panel hidden>
+            <label class="sy-field"><span>Send on</span><input type="datetime-local" name="scheduled_at"></label>
+            <p>Scheduled sends use the exact message drafts above and are recovered by SHVYA Beat if a worker restarts.</p>
+        </div>
+
+        <footer class="sy-sheet-footer">
+            <button type="button" class="sy-btn sy-btn-secondary" data-close-send>Cancel</button>
+            <button type="submit" class="sy-btn sy-btn-primary"><i class="ti ti-send"></i> Send / schedule selected</button>
+        </footer>
+    </form>
+</div>
+{% endblock %}

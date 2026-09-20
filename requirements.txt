@@ -40,3 +40,5 @@ pypdf==6.16.2
 python-docx==1.2.0
 gunicorn==23.0.0
 langgraph==1.2.11
+
+xhtml2pdf==0.2.20
