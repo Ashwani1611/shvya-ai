@@ -240,15 +240,6 @@ def _apply(run, lead):
         lead.attributes = {**(lead.attributes or {}), a["key"]: value}
         lead.save(update_fields=["attributes", "updated_at"])
     elif kind == "reminder":
-        existing = LeadReminder.objects.filter(lead=lead, status="pending")
-        if existing.exists() and not a["overwrite"]:
-            run.status, run.detail = (
-                "skipped",
-                "The lead already has a pending reminder.",
-            )
-            return
-        if a["overwrite"]:
-            existing.update(status="cancelled")
         LeadReminder.objects.create(
             lead=lead,
             assigned_to=actor,
