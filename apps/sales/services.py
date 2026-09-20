@@ -576,6 +576,63 @@ def _attachment_payloads(document):
     return payloads
 
 
+def _delivery_row(
+    *,
+    document,
+    channel,
+    user,
+    to_identity="",
+    subject="",
+    body="",
+    scheduled_delivery=None,
+    reminder=None,
+):
+    """Create one delivery, or recover the durable row for unattended work."""
+    defaults = {
+        "organization": document.organization,
+        "document": document,
+        "to_identity": str(to_identity or ""),
+        "subject": str(subject or "").strip(),
+        "body": str(body or "").strip(),
+        "sent_by": user,
+    }
+    if scheduled_delivery is not None:
+        delivery, created = SalesDocumentDelivery.objects.get_or_create(
+            scheduled_delivery=scheduled_delivery,
+            channel=channel,
+            defaults=defaults,
+        )
+    elif reminder is not None:
+        delivery, created = SalesDocumentDelivery.objects.get_or_create(
+            reminder=reminder,
+            channel=channel,
+            defaults=defaults,
+        )
+    else:
+        delivery = SalesDocumentDelivery.objects.create(
+            channel=channel,
+            **defaults,
+        )
+        created = True
+
+    if created:
+        return delivery, True
+
+    if delivery.status == SalesDocumentDelivery.Status.SENT:
+        return delivery, False
+    if (
+        channel == SalesDocumentDelivery.Channel.WHATSAPP
+        and delivery.status == SalesDocumentDelivery.Status.QUEUED
+        and delivery.provider_message_id
+    ):
+        return delivery, False
+
+    raise SalesDeliveryError(
+        "A previous automated delivery attempt already exists and was not "
+        "resent automatically to avoid duplicates. Review its delivery history."
+    )
+
+
 def deliver_email(
     *,
     document,
@@ -584,6 +641,8 @@ def deliver_email(
     body,
     base_url="",
     attach_pdf=True,
+    scheduled_delivery=None,
+    reminder=None,
 ):
     from apps.integrations.models import EmailConfiguration
     from apps.integrations.services.email import (
@@ -593,15 +652,18 @@ def deliver_email(
     from apps.sales.pdf_service import read_document_pdf
     from apps.sales.tracking import build_tracked_email_html
 
-    delivery = SalesDocumentDelivery.objects.create(
-        organization=document.organization,
+    delivery, created = _delivery_row(
         document=document,
         channel=SalesDocumentDelivery.Channel.EMAIL,
+        user=user,
         to_identity=document.recipient_email,
-        subject=str(subject or "").strip(),
-        body=str(body or "").strip(),
-        sent_by=user,
+        subject=subject,
+        body=body,
+        scheduled_delivery=scheduled_delivery,
+        reminder=reminder,
     )
+    if not created and delivery.status == SalesDocumentDelivery.Status.SENT:
+        return delivery
     if not document.recipient_email:
         return _record_failure(
             delivery,
@@ -698,6 +760,8 @@ def deliver_whatsapp(
     body,
     base_url="",
     attach_pdf=True,
+    scheduled_delivery=None,
+    reminder=None,
 ):
     from urllib.parse import urljoin
 
@@ -705,14 +769,17 @@ def deliver_whatsapp(
     from apps.channels.tasks import send_whatsapp_message_task
     from services.crm.lead_chat import pipeline_chat_account
 
-    delivery = SalesDocumentDelivery.objects.create(
-        organization=document.organization,
+    delivery, created = _delivery_row(
         document=document,
         channel=SalesDocumentDelivery.Channel.WHATSAPP,
+        user=user,
         to_identity=document.recipient_phone,
-        body=str(body or "").strip(),
-        sent_by=user,
+        body=body,
+        scheduled_delivery=scheduled_delivery,
+        reminder=reminder,
     )
+    if not created:
+        return delivery
     if not document.lead_id:
         return _record_failure(
             delivery,
