@@ -8,6 +8,7 @@ from pathlib import Path
 
 from bs4 import BeautifulSoup
 from django.core.exceptions import ValidationError
+from django.core.validators import validate_email
 from django.db import transaction
 from django.urls import reverse
 from django.utils import timezone
@@ -23,6 +24,10 @@ from apps.sales.models import (
 
 
 MONEY = Decimal("0.01")
+MAX_LINE_ITEMS = 250
+MAX_QUANTITY = Decimal("1000000000")
+MAX_DOCUMENT_AMOUNT = Decimal("999999999999.99")
+MAX_TAX_RATE = Decimal("10000")
 DEFAULT_PREFIXES = {
     DocumentType.QUOTATION: "QT",
     DocumentType.AGREEMENT: "AGR",
@@ -130,9 +135,13 @@ def validate_brand_asset(uploaded_file, *, label):
 def _decimal(value, *, default="0"):
     try:
         result = Decimal(str(value if value not in (None, "") else default))
+        if not result.is_finite():
+            raise InvalidOperation
+        return result.quantize(MONEY, rounding=ROUND_HALF_UP)
     except (InvalidOperation, TypeError, ValueError) as exc:
-        raise ValidationError("Enter valid numeric values for quantity, rate, tax and discount.") from exc
-    return result.quantize(MONEY, rounding=ROUND_HALF_UP)
+        raise ValidationError(
+            "Enter valid finite numeric values for quantity, rate, tax and discount."
+        ) from exc
 
 
 def calculate_line_items(items, *, discount_total=0):
@@ -143,6 +152,8 @@ def calculate_line_items(items, *, discount_total=0):
 
     if not isinstance(items, list):
         raise ValidationError("Line items must be a list.")
+    if len(items) > MAX_LINE_ITEMS:
+        raise ValidationError(f"A document can contain at most {MAX_LINE_ITEMS} line items.")
 
     for position, raw in enumerate(items, start=1):
         if not isinstance(raw, dict):
@@ -150,26 +161,41 @@ def calculate_line_items(items, *, discount_total=0):
         name = str(raw.get("name") or "").strip()
         if not name:
             continue
+        description = str(raw.get("description") or "").strip()
+        if len(name) > 300:
+            raise ValidationError("Line item names must be 300 characters or fewer.")
+        if len(description) > 2000:
+            raise ValidationError("Line item descriptions must be 2,000 characters or fewer.")
 
         qty = _decimal(raw.get("qty"), default="1")
         rate = _decimal(raw.get("rate"))
         tax_rate = _decimal(raw.get("tax_rate"))
         if qty < 0 or rate < 0 or tax_rate < 0:
             raise ValidationError("Quantity, rate and tax cannot be negative.")
+        if qty > MAX_QUANTITY:
+            raise ValidationError("Line item quantity is too large.")
+        if rate > MAX_DOCUMENT_AMOUNT:
+            raise ValidationError("Line item rate is too large.")
+        if tax_rate > MAX_TAX_RATE:
+            raise ValidationError("Line item tax percentage is too large.")
 
         amount = (qty * rate).quantize(MONEY, rounding=ROUND_HALF_UP)
+        if amount > MAX_DOCUMENT_AMOUNT:
+            raise ValidationError("A line item amount exceeds the supported document limit.")
         tax_amount = (amount * tax_rate / Decimal("100")).quantize(
             MONEY,
             rounding=ROUND_HALF_UP,
         )
         subtotal += amount
         tax_total += tax_amount
+        if subtotal + tax_total > MAX_DOCUMENT_AMOUNT:
+            raise ValidationError("Document total exceeds the supported amount limit.")
 
         normalized.append(
             {
                 "position": position,
                 "name": name,
-                "description": str(raw.get("description") or "").strip(),
+                "description": description,
                 "qty": str(qty),
                 "rate": str(rate),
                 "tax_rate": str(tax_rate),
@@ -509,7 +535,17 @@ def deliver_email(*, document, user, subject, body):
         sent_by=user,
     )
     if not document.recipient_email:
-        return _record_failure(delivery, SalesDeliveryError("This document has no recipient email address."))
+        return _record_failure(
+            delivery,
+            SalesDeliveryError("This document has no recipient email address."),
+        )
+    try:
+        validate_email(document.recipient_email)
+    except ValidationError as exc:
+        return _record_failure(
+            delivery,
+            SalesDeliveryError("The recipient email address is invalid."),
+        )
 
     configuration = EmailConfiguration.objects.filter(
         organization=document.organization,
