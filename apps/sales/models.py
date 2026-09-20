@@ -74,18 +74,6 @@ class SalesTemplate(models.Model):
                 name="sales_template_org_type_name_uniq",
             )
         ]
-        constraints = [
-            models.UniqueConstraint(
-                fields=["scheduled_delivery", "channel"],
-                condition=models.Q(scheduled_delivery__isnull=False),
-                name="sales_delivery_schedule_channel_uniq",
-            ),
-            models.UniqueConstraint(
-                fields=["reminder", "channel"],
-                condition=models.Q(reminder__isnull=False),
-                name="sales_delivery_reminder_channel_uniq",
-            ),
-        ]
         indexes = [
             models.Index(
                 fields=["organization", "document_type", "is_active"],
@@ -341,6 +329,18 @@ class SalesDocumentDelivery(models.Model):
 
     class Meta:
         ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["scheduled_delivery", "channel"],
+                condition=models.Q(scheduled_delivery__isnull=False),
+                name="sales_delivery_schedule_channel_uniq",
+            ),
+            models.UniqueConstraint(
+                fields=["reminder", "channel"],
+                condition=models.Q(reminder__isnull=False),
+                name="sales_delivery_reminder_channel_uniq",
+            ),
+        ]
         indexes = [
             models.Index(
                 fields=["organization", "channel", "status", "created_at"],
