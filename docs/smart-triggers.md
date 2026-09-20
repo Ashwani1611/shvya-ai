@@ -1,6 +1,6 @@
 # Workflows
 
-Workflows is available at `/dashboard/smart-triggers/` through the existing dashboard sidebar. It uses Django templates and JavaScript, with Django services and Celery background processing.
+The customer-facing **Workflows** module is available at `/dashboard/workflows/` through the existing dashboard sidebar. Historical/internal URL names, model names and task identifiers may still contain `smart-trigger` / `SmartTrigger`. It uses Django templates and JavaScript, with Django services and Celery background processing.
 
 ## Supported behavior
 
