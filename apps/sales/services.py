@@ -541,7 +541,7 @@ def deliver_email(*, document, user, subject, body):
         )
     try:
         validate_email(document.recipient_email)
-    except ValidationError as exc:
+    except ValidationError:
         return _record_failure(
             delivery,
             SalesDeliveryError("The recipient email address is invalid."),
