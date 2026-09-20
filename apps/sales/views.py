@@ -3,6 +3,7 @@ from datetime import datetime
 
 from django.contrib import messages
 from django.core.exceptions import ValidationError
+from django.core.validators import validate_email
 from django.db import transaction
 from django.db.models import Count, F, Q
 from django.http import Http404, HttpResponseForbidden
@@ -59,6 +60,32 @@ def _document_type(value):
     if value not in DocumentType.values:
         raise Http404
     return value
+
+
+def _clean_optional_email(value, *, label="Recipient email"):
+    value = str(value or "").strip()
+    if not value:
+        return ""
+    try:
+        validate_email(value)
+    except ValidationError as exc:
+        raise ValidationError(f"{label} is invalid.") from exc
+    return value
+
+
+def _clean_date(value, *, label, required=False):
+    raw = str(value or "").strip()
+    if not raw:
+        if required:
+            raise ValidationError(f"{label} is required.")
+        return None
+    try:
+        parsed = parse_date(raw)
+    except ValueError as exc:
+        raise ValidationError(f"{label} is invalid.") from exc
+    if parsed is None:
+        raise ValidationError(f"{label} is invalid.")
+    return parsed
 
 
 def _templates_for(organization, document_type=None):
@@ -272,18 +299,34 @@ def sales_document_create_view(request, document_type):
         except ValidationError as exc:
             messages.error(request, "; ".join(exc.messages))
         else:
-            issue_date = parse_date(initial_values["issue_date"]) or today
-            valid_until = parse_date(initial_values["valid_until"]) or None
-            due_date = parse_date(initial_values["due_date"]) or None
+            validation_error = ""
+            try:
+                issue_date = _clean_date(
+                    initial_values["issue_date"],
+                    label="Issue date",
+                    required=True,
+                )
+                valid_until = _clean_date(
+                    initial_values["valid_until"],
+                    label="Valid/end date",
+                )
+                due_date = _clean_date(
+                    initial_values["due_date"],
+                    label="Due date",
+                )
+                initial_values["recipient_email"] = _clean_optional_email(
+                    initial_values["recipient_email"]
+                )
+            except ValidationError as exc:
+                validation_error = "; ".join(exc.messages)
 
-            date_error = ""
-            if valid_until and valid_until < issue_date:
-                date_error = "Valid/end date cannot be before the issue date."
-            elif due_date and due_date < issue_date:
-                date_error = "Invoice due date cannot be before the issue date."
+            if not validation_error and valid_until and valid_until < issue_date:
+                validation_error = "Valid/end date cannot be before the issue date."
+            elif not validation_error and due_date and due_date < issue_date:
+                validation_error = "Invoice due date cannot be before the issue date."
 
-            if date_error:
-                messages.error(request, date_error)
+            if validation_error:
+                messages.error(request, validation_error)
             else:
                 recipient_name = initial_values["recipient_name"]
                 recipient_email = initial_values["recipient_email"]
@@ -480,18 +523,34 @@ def sales_document_edit_view(request, document_id):
         except ValidationError as exc:
             messages.error(request, "; ".join(exc.messages))
         else:
-            issue_date = parse_date(initial_values["issue_date"]) or today
-            valid_until = parse_date(initial_values["valid_until"]) or None
-            due_date = parse_date(initial_values["due_date"]) or None
+            validation_error = ""
+            try:
+                issue_date = _clean_date(
+                    initial_values["issue_date"],
+                    label="Issue date",
+                    required=True,
+                )
+                valid_until = _clean_date(
+                    initial_values["valid_until"],
+                    label="Valid/end date",
+                )
+                due_date = _clean_date(
+                    initial_values["due_date"],
+                    label="Due date",
+                )
+                initial_values["recipient_email"] = _clean_optional_email(
+                    initial_values["recipient_email"]
+                )
+            except ValidationError as exc:
+                validation_error = "; ".join(exc.messages)
 
-            date_error = ""
-            if valid_until and valid_until < issue_date:
-                date_error = "Valid/end date cannot be before the issue date."
-            elif due_date and due_date < issue_date:
-                date_error = "Invoice due date cannot be before the issue date."
+            if not validation_error and valid_until and valid_until < issue_date:
+                validation_error = "Valid/end date cannot be before the issue date."
+            elif not validation_error and due_date and due_date < issue_date:
+                validation_error = "Invoice due date cannot be before the issue date."
 
-            if date_error:
-                messages.error(request, date_error)
+            if validation_error:
+                messages.error(request, validation_error)
             else:
                 recipient_name = initial_values["recipient_name"]
                 recipient_email = initial_values["recipient_email"]
@@ -1019,6 +1078,11 @@ def public_document_action_view(request, token):
     now = timezone.now()
     name = (request.POST.get("name") or "").strip()
     email = (request.POST.get("email") or "").strip()
+    try:
+        email = _clean_optional_email(email, label="Acceptance email")
+    except ValidationError as exc:
+        messages.error(request, "; ".join(exc.messages))
+        return redirect("shvya-sales-public-document", token=token)
     forwarded_for = request.META.get("HTTP_X_FORWARDED_FOR", "")
     client_ip = forwarded_for.split(",", 1)[0].strip() if forwarded_for else request.META.get("REMOTE_ADDR")
 
