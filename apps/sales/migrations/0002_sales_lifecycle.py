@@ -331,6 +331,24 @@ class Migration(migrations.Migration):
                 ("source_invoice", models.OneToOneField(on_delete=django.db.models.deletion.CASCADE, related_name="recurring_rule", to="sales.salesdocument")),
             ],
         ),
+        migrations.AddField(
+            model_name="salesdocumentdelivery",
+            name="scheduled_delivery",
+            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name="deliveries", to="sales.salesscheduleddelivery"),
+        ),
+        migrations.AddField(
+            model_name="salesdocumentdelivery",
+            name="reminder",
+            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name="deliveries", to="sales.salesreminder"),
+        ),
+        migrations.AddConstraint(
+            model_name="salesdocumentdelivery",
+            constraint=models.UniqueConstraint(condition=models.Q(scheduled_delivery__isnull=False), fields=("scheduled_delivery", "channel"), name="sales_delivery_schedule_channel_uniq"),
+        ),
+        migrations.AddConstraint(
+            model_name="salesdocumentdelivery",
+            constraint=models.UniqueConstraint(condition=models.Q(reminder__isnull=False), fields=("reminder", "channel"), name="sales_delivery_reminder_channel_uniq"),
+        ),
         migrations.AddConstraint(
             model_name="salespaymentgateway",
             constraint=models.UniqueConstraint(fields=("organization", "provider"), name="sales_gateway_org_provider_uniq"),
