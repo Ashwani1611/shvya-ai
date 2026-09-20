@@ -74,6 +74,11 @@ class AIPermissionService:
         )
 
     def _latest_inbound_message(self, *, organization, lead):
+        from apps.ai_engagement.services.execution_tracker import active_pinned_source
+
+        pinned = active_pinned_source(lead=lead)
+        if pinned is not None and pinned.organization_id == organization.id:
+            return pinned
         return (
             lead.whatsapp_messages.filter(
                 organization=organization,
