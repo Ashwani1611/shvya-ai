@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from .models import CallDevice, CallEvent, CallRecord
+from .models import CallEvent, CallRecord
 
 
 class DeviceRegistrationSerializer(serializers.Serializer):
