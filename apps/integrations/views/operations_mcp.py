@@ -1355,8 +1355,88 @@ def _record_audit(
                 last_seen_at=timezone.now()
             )
 
+    raw_audit_summary = (
+        (execution.audit_summary if execution else {})
+        or {}
+    )
+    previous_support_session_id = str(
+        raw_audit_summary.get(
+            "_previous_support_session_id"
+        )
+        or ""
+    ).strip()
+    previous_organization_id = str(
+        raw_audit_summary.get(
+            "_previous_organization_id"
+        )
+        or ""
+    ).strip()
+
+    if (
+        identity.role == ROLE_SUPERADMIN
+        and tool_name == "select_organization_context"
+        and previous_support_session_id
+        and previous_organization_id
+    ):
+        previous_session = (
+            OperationsSupportSession.objects.select_related(
+                "organization"
+            )
+            .filter(
+                pk=previous_support_session_id,
+                token=identity.token,
+                organization_id=previous_organization_id,
+            )
+            .first()
+        )
+        if previous_session is not None:
+            OperationsAuditEvent.objects.create(
+                actor=identity.actor,
+                role=identity.role,
+                organization=previous_session.organization,
+                support_session=previous_session,
+                tool_name="support_context_end_on_switch",
+                capability=CAP_ORGANIZATION_READ,
+                target_type="organization",
+                target_id=str(
+                    previous_session.organization_id
+                ),
+                reason=(
+                    "SHVYA Support left this organization context "
+                    "to continue work elsewhere."
+                ),
+                outcome=OperationsAuditEvent.Outcome.SUCCESS,
+                request_fingerprint=approval_fingerprint(
+                    {
+                        "event": "support_context_end_on_switch",
+                        "support_session_id": str(
+                            previous_session.id
+                        ),
+                    }
+                ),
+                change_summary={
+                    "support_context": "ended",
+                    "cause": "organization_switch",
+                },
+                duration_ms=0,
+                error_code="",
+            )
+
+    public_audit_summary = (
+        dict(raw_audit_summary)
+        if isinstance(raw_audit_summary, dict)
+        else {}
+    )
+    public_audit_summary.pop(
+        "_previous_support_session_id",
+        None,
+    )
+    public_audit_summary.pop(
+        "_previous_organization_id",
+        None,
+    )
     safe_summary = sanitize_data(
-        (execution.audit_summary if execution else {}) or {}
+        public_audit_summary
     )
     approval_event_id = str(
         (arguments or {}).get("approval_event_id") or ""
