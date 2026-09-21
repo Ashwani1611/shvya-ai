@@ -108,6 +108,10 @@ def fetch_cimd_metadata(client_id: str) -> dict:
     """Fetch and validate a trusted-provider Client ID Metadata Document."""
 
     client_id = str(client_id or "").strip()
+    if len(client_id) > 255:
+        raise MCPClientMetadataError(
+            "Client ID Metadata Document URL is too long for this SHVYA OAuth client."
+        )
     if not is_allowed_cimd_url(client_id):
         raise MCPClientMetadataError(
             "Client ID Metadata Document URL is not an approved External AI HTTPS URL."
