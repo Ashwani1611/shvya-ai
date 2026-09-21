@@ -160,7 +160,7 @@ def find_leads(*, organization, arguments):
 def _safe_lead_attributes(*, organization, attributes):
     values = attributes if isinstance(attributes, dict) else {}
     if not values:
-        return {}, 0
+        return {}, 0, 0
 
     definitions = {
         item.key: item
@@ -170,22 +170,29 @@ def _safe_lead_attributes(*, organization, attributes):
         ).only("key", "name")
     }
     safe = {}
-    redacted_count = 0
+    sensitive_redacted = 0
+    undefined_omitted = 0
     for key, value in values.items():
         definition = definitions.get(str(key))
-        if (
-            definition is not None
-            and is_sensitive_attribute_definition(
-                {
-                    "key": definition.key,
-                    "name": definition.name,
-                }
-            )
+        if definition is None:
+            # Orphan/legacy JSON has no current metadata proving what the value
+            # represents. External diagnostics fail closed instead of exposing it.
+            undefined_omitted += 1
+            continue
+        if is_sensitive_attribute_definition(
+            {
+                "key": definition.key,
+                "name": definition.name,
+            }
         ):
-            redacted_count += 1
+            sensitive_redacted += 1
             continue
         safe[str(key)] = value
-    return sanitize_data(safe), redacted_count
+    return (
+        sanitize_data(safe),
+        sensitive_redacted,
+        undefined_omitted,
+    )
 
 
 def get_lead_snapshot(*, organization, arguments):
@@ -211,11 +218,13 @@ def get_lead_snapshot(*, organization, arguments):
         "-id",
     ).first()
 
-    safe_attributes, sensitive_attributes_redacted = (
-        _safe_lead_attributes(
-            organization=organization,
-            attributes=lead.attributes or {},
-        )
+    (
+        safe_attributes,
+        sensitive_attributes_redacted,
+        undefined_attributes_omitted,
+    ) = _safe_lead_attributes(
+        organization=organization,
+        attributes=lead.attributes or {},
     )
     result = _safe_lead(lead)
     result.update(
@@ -223,6 +232,9 @@ def get_lead_snapshot(*, organization, arguments):
             "attributes": safe_attributes,
             "sensitive_attributes_redacted": (
                 sensitive_attributes_redacted
+            ),
+            "undefined_attributes_omitted": (
+                undefined_attributes_omitted
             ),
             "notes_count": LeadNote.objects.filter(
                 lead=lead
