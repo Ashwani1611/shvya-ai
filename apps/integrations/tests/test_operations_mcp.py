@@ -1476,6 +1476,61 @@ class OperationsMCPTests(TestCase):
         self.assertEqual(token.organization_id, self.organization.id)
         self.assertEqual(token.role, ROLE_ORGANIZATION_ADMIN)
 
+        oauth_events = list(
+            OperationsAuditEvent.objects.filter(
+                actor=self.admin,
+                organization=self.organization,
+                tool_name__in=[
+                    "oauth_authorize",
+                    "oauth_token_issue",
+                ],
+            ).order_by("created_at")
+        )
+        self.assertEqual(
+            [event.tool_name for event in oauth_events],
+            ["oauth_authorize", "oauth_token_issue"],
+        )
+        audit_blob = json.dumps(
+            [
+                {
+                    "summary": event.change_summary,
+                    "fingerprint": event.request_fingerprint,
+                }
+                for event in oauth_events
+            ]
+        )
+        self.assertNotIn(body["access_token"], audit_blob)
+        self.assertNotIn(body["refresh_token"], audit_blob)
+
+        refresh = self.client.post(
+            "/operations/oauth/token",
+            data={
+                "grant_type": "refresh_token",
+                "client_id": self.oauth_client.client_id,
+                "refresh_token": body["refresh_token"],
+                "resource": resource,
+            },
+        )
+        self.assertEqual(refresh.status_code, 200)
+        refreshed = refresh.json()
+        self.assertNotEqual(
+            refreshed["access_token"],
+            body["access_token"],
+        )
+        refresh_event = OperationsAuditEvent.objects.get(
+            actor=self.admin,
+            organization=self.organization,
+            tool_name="oauth_token_refresh",
+        )
+        refresh_blob = json.dumps(
+            {
+                "summary": refresh_event.change_summary,
+                "fingerprint": refresh_event.request_fingerprint,
+            }
+        )
+        self.assertNotIn(refreshed["access_token"], refresh_blob)
+        self.assertNotIn(refreshed["refresh_token"], refresh_blob)
+
     def test_superadmin_policy_ignores_approval_flags_on_read_capabilities(self):
         superadmin_session = SessionStore()
         set_authenticated_user(superadmin_session, self.superadmin)
