@@ -578,6 +578,77 @@ class OperationsMCPTests(TestCase):
         self.assertTrue(old_token_result["isError"])
         self.assertIn("mcp/www_authenticate", old_token_result["_meta"])
 
+    def test_oauth_revocation_invalidates_access_and_closes_support_session(self):
+        bearer = self._token(
+            actor=self.superadmin,
+            role=ROLE_SUPERADMIN,
+        )
+        selected = self._result(
+            self._call(
+                bearer,
+                "select_organization_context",
+                {
+                    "organization_id": str(self.organization.id),
+                    "reason": "Validate OAuth revocation behavior",
+                },
+            )
+        )
+        self.assertFalse(selected["isError"])
+        session = OperationsSupportSession.objects.get(ended_at__isnull=True)
+
+        revoke = self.client.post(
+            reverse("shvya-operations-oauth-revoke"),
+            {"token": bearer, "token_type_hint": "access_token"},
+        )
+        self.assertEqual(revoke.status_code, 200)
+
+        token = OperationsOAuthToken.objects.get(actor=self.superadmin)
+        token.refresh_from_db()
+        session.refresh_from_db()
+        self.assertIsNotNone(token.revoked_at)
+        self.assertIsNotNone(session.ended_at)
+
+        result = self._result(
+            self._call(bearer, "get_operations_context")
+        )
+        self.assertTrue(result["isError"])
+        self.assertIn("mcp/www_authenticate", result["_meta"])
+
+    def test_oauth_revocation_by_refresh_token_invalidates_access_grant(self):
+        OperationsPolicy.objects.create(
+            organization=self.organization,
+            organization_admin_enabled=True,
+            allowed_capabilities=[CAP_ORGANIZATION_READ],
+        )
+        bearer = self._token(
+            actor=self.admin,
+            role=ROLE_ORGANIZATION_ADMIN,
+            organization=self.organization,
+            scopes=[OPERATIONS_READ_SCOPE],
+        )
+
+        revoke = self.client.post(
+            reverse("shvya-operations-oauth-revoke"),
+            {"token": "test-refresh", "token_type_hint": "refresh_token"},
+        )
+        self.assertEqual(revoke.status_code, 200)
+
+        token = OperationsOAuthToken.objects.get(actor=self.admin)
+        self.assertIsNotNone(token.revoked_at)
+
+        result = self._result(
+            self._call(bearer, "get_operations_context")
+        )
+        self.assertTrue(result["isError"])
+        self.assertIn("mcp/www_authenticate", result["_meta"])
+
+    def test_oauth_revocation_does_not_disclose_unknown_token_state(self):
+        response = self.client.post(
+            reverse("shvya-operations-oauth-revoke"),
+            {"token": "unknown-token-value"},
+        )
+        self.assertEqual(response.status_code, 200)
+
     def test_org_admin_token_is_rejected_while_policy_disabled(self):
         bearer = self._token(
             actor=self.admin,
