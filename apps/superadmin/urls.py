@@ -17,6 +17,8 @@ from .views import (
     organization_hosted_ignore_sync_view,
     organization_notes_update_view,
     organization_operations_policy_update_view,
+    organization_operations_session_revoke_view,
+    organization_operations_support_end_view,
     organization_payment_create_view,
     organization_payment_delete_view,
     organization_payment_update_view,
@@ -177,6 +179,17 @@ urlpatterns = [
         "organization/<uuid:organization_id>/operations-mcp-policy/",
         organization_operations_policy_update_view,
         name="superadmin-organization-operations-mcp-policy",
+    ),
+
+    path(
+        "organization/<uuid:organization_id>/operations-sessions/<uuid:token_id>/revoke/",
+        organization_operations_session_revoke_view,
+        name="superadmin-organization-operations-session-revoke",
+    ),
+    path(
+        "organization/<uuid:organization_id>/operations-support/<uuid:session_id>/end/",
+        organization_operations_support_end_view,
+        name="superadmin-organization-operations-support-end",
     ),
 
     # =========================================================
