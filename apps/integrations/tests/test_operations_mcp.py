@@ -10,6 +10,7 @@ from apps.accounts.models import User
 from apps.accounts.session_utils import get_session_cookie_name, set_authenticated_user
 from apps.ai_engagement.models import OrgInfo
 from apps.crm.models import AttributeDefinition, Lead, LeadActivity, Pipeline
+from apps.integrations.operations_agent_prompt import OPERATIONS_AGENT_INSTRUCTIONS
 from apps.integrations.models import (
     OperationsAuditEvent,
     OperationsOAuthClient,
@@ -122,6 +123,40 @@ class OperationsMCPTests(TestCase):
     def _result(self, response):
         self.assertEqual(response.status_code, 200)
         return response.json()["result"]
+
+    def test_operations_agent_contract_is_exposed_by_mcp_discovery(self):
+        response = self.client.post(
+            "/operations/mcp/",
+            data=json.dumps(
+                {
+                    "jsonrpc": "2.0",
+                    "id": "discover-contract",
+                    "method": "server/discover",
+                    "params": {
+                        "_meta": {
+                            "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+                        }
+                    },
+                }
+            ),
+            content_type="application/json",
+            HTTP_MCP_PROTOCOL_VERSION="2026-07-28",
+            HTTP_MCP_METHOD="server/discover",
+        )
+        self.assertEqual(response.status_code, 200)
+        instructions = response.json()["result"]["instructions"]
+        self.assertEqual(instructions, OPERATIONS_AGENT_INSTRUCTIONS)
+        for required_text in (
+            "SHVYA backend permissions",
+            "Your authority <= authenticated user's authority",
+            "ROOT_CAUSE_CONFIRMED",
+            "approved=true",
+            "Never mix tenant data",
+            "Never say \"fixed\" before verification",
+            "DO NOT STORE PRIVATE REASONING",
+            "NO RAW SYSTEM ACCESS",
+        ):
+            self.assertIn(required_text, instructions)
 
     def test_operations_tools_advertise_configuration_surfaces(self):
         response = self.client.post(
