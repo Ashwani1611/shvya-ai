@@ -4076,6 +4076,101 @@ class OperationsMCPTests(TestCase):
         self.assertTrue(switch["isError"])
         self.assertEqual(switch["structuredContent"]["status"], "NOT_ALLOWED")
 
+    def test_superadmin_context_switch_audits_exit_without_cross_tenant_metadata(self):
+        bearer = self._token(
+            actor=self.superadmin,
+            role=ROLE_SUPERADMIN,
+            scopes=[
+                OPERATIONS_READ_SCOPE,
+                OPERATIONS_WRITE_SCOPE,
+            ],
+        )
+        first = self._result(
+            self._call(
+                bearer,
+                "select_organization_context",
+                {
+                    "organization_id": str(self.organization.id),
+                    "reason": "Investigate first organization",
+                },
+            )
+        )
+        self.assertFalse(first["isError"])
+        first_session = OperationsSupportSession.objects.get(
+            pk=first["structuredContent"][
+                "support_session_id"
+            ]
+        )
+
+        second = self._result(
+            self._call(
+                bearer,
+                "select_organization_context",
+                {
+                    "organization_id": str(self.other_organization.id),
+                    "reason": "Investigate second organization",
+                },
+            )
+        )
+        self.assertFalse(second["isError"])
+        first_session.refresh_from_db()
+        self.assertIsNotNone(first_session.ended_at)
+
+        exit_event = OperationsAuditEvent.objects.get(
+            organization=self.organization,
+            tool_name="support_context_end_on_switch",
+            support_session=first_session,
+        )
+        self.assertEqual(
+            exit_event.change_summary,
+            {
+                "support_context": "ended",
+                "cause": "organization_switch",
+            },
+        )
+        exit_blob = json.dumps(
+            {
+                "reason": exit_event.reason,
+                "summary": exit_event.change_summary,
+            }
+        )
+        self.assertNotIn(
+            str(self.other_organization.id),
+            exit_blob,
+        )
+        self.assertNotIn(
+            self.other_organization.name,
+            exit_blob,
+        )
+
+        second_audit = (
+            OperationsAuditEvent.objects.filter(
+                organization=self.other_organization,
+                tool_name="select_organization_context",
+            )
+            .order_by("-created_at")
+            .first()
+        )
+        self.assertIsNotNone(second_audit)
+        second_blob = json.dumps(
+            {
+                "reason": second_audit.reason,
+                "summary": second_audit.change_summary,
+            }
+        )
+        self.assertNotIn(
+            str(self.organization.id),
+            second_blob,
+        )
+        self.assertNotIn(
+            str(first_session.id),
+            second_blob,
+        )
+        self.assertNotIn(
+            self.organization.name,
+            second_blob,
+        )
+
     def test_superadmin_org_discovery_distinguishes_open_from_recent_support(self):
         bearer = self._token(
             actor=self.superadmin,
