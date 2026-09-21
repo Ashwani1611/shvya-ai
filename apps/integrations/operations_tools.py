@@ -264,6 +264,45 @@ def _write_gate(
     return dry_run, reason
 
 
+def _proposal_digest(payload) -> str:
+    """Short safe digest of backend-resolved mutation state."""
+
+    return approval_fingerprint(
+        payload if isinstance(payload, dict) else {"value": payload}
+    )[:32]
+
+
+def _ensure_approved_proposal_unchanged(*, arguments, proposal):
+    """Reject an approved execution when backend-resolved proposal drifted."""
+
+    raw_event_id = str(
+        (arguments or {}).get("approval_event_id") or ""
+    ).strip()
+    if not raw_event_id:
+        return
+    try:
+        event_id = uuid.UUID(raw_event_id)
+    except (TypeError, ValueError, AttributeError):
+        return
+
+    event = OperationsAuditEvent.objects.filter(
+        pk=event_id,
+        outcome=OperationsAuditEvent.Outcome.DRY_RUN,
+    ).only("change_summary").first()
+    summary = (
+        event.change_summary
+        if event and isinstance(event.change_summary, dict)
+        else {}
+    )
+    expected = str(summary.get("proposal_digest") or "")
+    if expected and expected != _proposal_digest(proposal):
+        raise OperationsApprovalRequired(
+            "The backend-resolved state changed after the approved dry-run. "
+            "Run a fresh dry-run and obtain new approval."
+        )
+
+
+
 def _lead(organization, lead_id):
     lead = (
         Lead.objects.select_related("organization", "pipeline", "stage")
@@ -1130,6 +1169,12 @@ def move_lead_stage(*, identity, arguments, enforce_gate=True):
         "stage_id": str(stage.id),
         "stage": stage.name,
     }
+    proposal = {"before": before, "after": after}
+    if not dry_run:
+        _ensure_approved_proposal_unchanged(
+            arguments=arguments,
+            proposal=proposal,
+        )
     if dry_run:
         return ToolExecution(
             data={
@@ -1154,6 +1199,7 @@ def move_lead_stage(*, identity, arguments, enforce_gate=True):
                 "from_stage_id": str(lead.stage_id),
                 "to_pipeline_id": str(stage.pipeline_id),
                 "to_stage_id": str(stage.id),
+                "proposal_digest": _proposal_digest(proposal),
             },
         )
 
@@ -1293,6 +1339,16 @@ def update_lead_attributes(*, identity, arguments):
         key: (lead.attributes or {}).get(key)
         for key in values
     }
+    proposal = {
+        "lead_id": str(lead.id),
+        "before": before,
+        "after": values,
+    }
+    if not dry_run:
+        _ensure_approved_proposal_unchanged(
+            arguments=arguments,
+            proposal=proposal,
+        )
     if dry_run:
         return ToolExecution(
             data={
@@ -1317,7 +1373,11 @@ def update_lead_attributes(*, identity, arguments):
             target_id=str(lead.id),
             reason=reason,
             outcome=OperationsAuditEvent.Outcome.DRY_RUN,
-            audit_summary={"attribute_keys": sorted(values), "operation": "update_lead_attributes"},
+            audit_summary={
+                "attribute_keys": sorted(values),
+                "operation": "update_lead_attributes",
+                "proposal_digest": _proposal_digest(proposal),
+            },
         )
 
     try:
@@ -1433,6 +1493,20 @@ def update_ai_configuration(*, identity, arguments):
         for key, value in normalized.items()
         if getattr(info_for_compare, key) != value
     ]
+    ai_before = {
+        key: getattr(info_for_compare, key)
+        for key in normalized
+    }
+    proposal = {
+        "organization_id": str(organization.id),
+        "before": ai_before,
+        "after": normalized,
+    }
+    if not dry_run:
+        _ensure_approved_proposal_unchanged(
+            arguments=arguments,
+            proposal=proposal,
+        )
 
     if dry_run:
         return ToolExecution(
@@ -1453,7 +1527,11 @@ def update_ai_configuration(*, identity, arguments):
             target_id=str(organization.id),
             reason=reason,
             outcome=OperationsAuditEvent.Outcome.DRY_RUN,
-            audit_summary={"changed_fields": changed_fields, "operation": "update_ai_configuration"},
+            audit_summary={
+                "changed_fields": changed_fields,
+                "operation": "update_ai_configuration",
+                "proposal_digest": _proposal_digest(proposal),
+            },
         )
 
     info = existing_info or OrgInfo(organization=organization)
