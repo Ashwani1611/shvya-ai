@@ -1,8 +1,6 @@
 import logging
 
 from celery import shared_task
-from django.conf import settings
-from django.core.mail import send_mail
 from django.db import models, transaction
 from django.utils import timezone
 
@@ -96,13 +94,18 @@ def dispatch_calendar_reminder(self, delivery_id):
                     error="Lead has no email address.",
                 )
                 return {"status": "skipped"}
-            send_mail(
+            from apps.integrations.services.email import send_organization_email
+
+            sent = send_organization_email(
+                organization=booking.organization,
+                to=booking.lead.email,
                 subject=delivery.rendered_subject or booking.page.session_title,
-                message=delivery.rendered_body,
-                from_email=settings.DEFAULT_FROM_EMAIL,
-                recipient_list=[booking.lead.email],
-                fail_silently=False,
+                text_body=delivery.rendered_body,
             )
+            if not sent:
+                raise RuntimeError(
+                    "The connected organization mailbox did not send the reminder."
+                )
 
         elif step.channel == step.Channel.WHATSAPP:
             account = _strict_whatsapp_account(booking)
