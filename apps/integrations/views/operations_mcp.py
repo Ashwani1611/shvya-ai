@@ -7,6 +7,7 @@ import time
 from copy import deepcopy
 from urllib.parse import urlencode, urlparse
 
+from django.db import transaction
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import redirect, render
 from django.urls import reverse
@@ -1412,143 +1413,144 @@ def operations_mcp(request):
             description=sanitize_text(exc, limit=160),
         )
 
-    started = time.perf_counter()
-    execution = None
-    error_code = ""
-    audit_outcome = None
-    error_reason = ""
-    try:
-        execution = execute_operations_tool(
-            name=tool_name,
-            identity=identity,
-            arguments=arguments,
-        )
-        safe_data = sanitize_data(execution.data)
-        result = {
-            "content": [
-                {
-                    "type": "text",
-                    "text": json.dumps(
-                        safe_data,
-                        ensure_ascii=False,
-                        default=str,
-                    ),
-                }
-            ],
-            "structuredContent": safe_data,
-            "isError": False,
-        }
-    except OperationsApprovalRequired as exc:
-        error_code = exc.code
-        audit_outcome = exc.outcome
-        error_reason = str(exc)
-        result = {
-            "content": [{"type": "text", "text": sanitize_text(exc, limit=400)}],
-            "structuredContent": {
-                "status": "APPROVAL_REQUIRED",
-                "error": sanitize_text(exc, limit=400),
-            },
-            "isError": True,
-        }
-    except OperationsSuperadminRequired as exc:
-        error_code = exc.code
-        audit_outcome = exc.outcome
-        error_reason = str(exc)
-        result = {
-            "content": [{"type": "text", "text": sanitize_text(exc, limit=400)}],
-            "structuredContent": {
-                "status": "SUPERADMIN_REQUIRED",
-                "error": sanitize_text(exc, limit=400),
-            },
-            "isError": True,
-        }
-    except OperationsManualFixRequired as exc:
-        error_code = exc.code
-        audit_outcome = exc.outcome
-        error_reason = str(exc)
-        result = {
-            "content": [{"type": "text", "text": sanitize_text(exc, limit=400)}],
-            "structuredContent": {
-                "status": "MANUAL_FIX_REQUIRED",
-                "error": sanitize_text(exc, limit=400),
-            },
-            "isError": True,
-        }
-    except OperationsPermissionError as exc:
-        error_code = exc.code
-        audit_outcome = exc.outcome
-        error_reason = str(exc)
-        result = {
-            "content": [{"type": "text", "text": sanitize_text(exc, limit=400)}],
-            "structuredContent": {
-                "status": "NOT_ALLOWED",
-                "error": sanitize_text(exc, limit=400),
-            },
-            "isError": True,
-        }
-    except OperationsToolError as exc:
-        error_code = exc.code
-        audit_outcome = exc.outcome
-        error_reason = str(exc)
-        result = {
-            "content": [{"type": "text", "text": sanitize_text(exc, limit=400)}],
-            "structuredContent": {
-                "status": "FAILED",
-                "error": sanitize_text(exc, limit=400),
-            },
-            "isError": True,
-        }
-    except Exception:
-        error_code = "operations_internal_error"
-        audit_outcome = OperationsAuditEvent.Outcome.ERROR
-        error_reason = "Operations tool failed safely."
-        result = {
-            "content": [
-                {
-                    "type": "text",
-                    "text": (
-                        "The Operations request failed safely. No provider secret, "
-                        "raw internal error, or cross-tenant data was exposed."
-                    ),
-                }
-            ],
-            "structuredContent": {"status": "FAILED", "error": "operations_request_failed"},
-            "isError": True,
-        }
-
-    duration_ms = max(
-        0,
-        int((time.perf_counter() - started) * 1000),
-    )
-    audit = _record_audit(
-        identity=identity,
-        tool_name=tool_name,
-        arguments=arguments,
-        execution=execution,
-        outcome=audit_outcome,
-        duration_ms=duration_ms,
-        error_code=error_code,
-        error_reason=error_reason,
-    )
-    result.setdefault("_meta", {})
-    result["_meta"]["shvya/audit_event_id"] = str(audit.id)
-    if (
-        execution is not None
-        and execution.outcome == OperationsAuditEvent.Outcome.DRY_RUN
-        and isinstance(result.get("structuredContent"), dict)
-        and result["structuredContent"].get("approval_required") is True
-    ):
-        result["structuredContent"]["approval_event_id"] = str(audit.id)
-        result["structuredContent"]["approval_expires_in_seconds"] = 1800
-        # Keep MCP text and structured payloads semantically identical so
-        # clients that primarily consume text still receive the approval
-        # receipt required for the execution turn.
-        if result.get("content") and isinstance(result["content"][0], dict):
-            result["content"][0]["text"] = json.dumps(
-                result["structuredContent"],
-                ensure_ascii=False,
-                default=str,
+    with transaction.atomic():
+        started = time.perf_counter()
+        execution = None
+        error_code = ""
+        audit_outcome = None
+        error_reason = ""
+        try:
+            execution = execute_operations_tool(
+                name=tool_name,
+                identity=identity,
+                arguments=arguments,
             )
+            safe_data = sanitize_data(execution.data)
+            result = {
+                "content": [
+                    {
+                        "type": "text",
+                        "text": json.dumps(
+                            safe_data,
+                            ensure_ascii=False,
+                            default=str,
+                        ),
+                    }
+                ],
+                "structuredContent": safe_data,
+                "isError": False,
+            }
+        except OperationsApprovalRequired as exc:
+            error_code = exc.code
+            audit_outcome = exc.outcome
+            error_reason = str(exc)
+            result = {
+                "content": [{"type": "text", "text": sanitize_text(exc, limit=400)}],
+                "structuredContent": {
+                    "status": "APPROVAL_REQUIRED",
+                    "error": sanitize_text(exc, limit=400),
+                },
+                "isError": True,
+            }
+        except OperationsSuperadminRequired as exc:
+            error_code = exc.code
+            audit_outcome = exc.outcome
+            error_reason = str(exc)
+            result = {
+                "content": [{"type": "text", "text": sanitize_text(exc, limit=400)}],
+                "structuredContent": {
+                    "status": "SUPERADMIN_REQUIRED",
+                    "error": sanitize_text(exc, limit=400),
+                },
+                "isError": True,
+            }
+        except OperationsManualFixRequired as exc:
+            error_code = exc.code
+            audit_outcome = exc.outcome
+            error_reason = str(exc)
+            result = {
+                "content": [{"type": "text", "text": sanitize_text(exc, limit=400)}],
+                "structuredContent": {
+                    "status": "MANUAL_FIX_REQUIRED",
+                    "error": sanitize_text(exc, limit=400),
+                },
+                "isError": True,
+            }
+        except OperationsPermissionError as exc:
+            error_code = exc.code
+            audit_outcome = exc.outcome
+            error_reason = str(exc)
+            result = {
+                "content": [{"type": "text", "text": sanitize_text(exc, limit=400)}],
+                "structuredContent": {
+                    "status": "NOT_ALLOWED",
+                    "error": sanitize_text(exc, limit=400),
+                },
+                "isError": True,
+            }
+        except OperationsToolError as exc:
+            error_code = exc.code
+            audit_outcome = exc.outcome
+            error_reason = str(exc)
+            result = {
+                "content": [{"type": "text", "text": sanitize_text(exc, limit=400)}],
+                "structuredContent": {
+                    "status": "FAILED",
+                    "error": sanitize_text(exc, limit=400),
+                },
+                "isError": True,
+            }
+        except Exception:
+            error_code = "operations_internal_error"
+            audit_outcome = OperationsAuditEvent.Outcome.ERROR
+            error_reason = "Operations tool failed safely."
+            result = {
+                "content": [
+                    {
+                        "type": "text",
+                        "text": (
+                            "The Operations request failed safely. No provider secret, "
+                            "raw internal error, or cross-tenant data was exposed."
+                        ),
+                    }
+                ],
+                "structuredContent": {"status": "FAILED", "error": "operations_request_failed"},
+                "isError": True,
+            }
+
+        duration_ms = max(
+            0,
+            int((time.perf_counter() - started) * 1000),
+        )
+        audit = _record_audit(
+            identity=identity,
+            tool_name=tool_name,
+            arguments=arguments,
+            execution=execution,
+            outcome=audit_outcome,
+            duration_ms=duration_ms,
+            error_code=error_code,
+            error_reason=error_reason,
+        )
+        result.setdefault("_meta", {})
+        result["_meta"]["shvya/audit_event_id"] = str(audit.id)
+        if (
+            execution is not None
+            and execution.outcome == OperationsAuditEvent.Outcome.DRY_RUN
+            and isinstance(result.get("structuredContent"), dict)
+            and result["structuredContent"].get("approval_required") is True
+        ):
+            result["structuredContent"]["approval_event_id"] = str(audit.id)
+            result["structuredContent"]["approval_expires_in_seconds"] = 1800
+            # Keep MCP text and structured payloads semantically identical so
+            # clients that primarily consume text still receive the approval
+            # receipt required for the execution turn.
+            if result.get("content") and isinstance(result["content"][0], dict):
+                result["content"][0]["text"] = json.dumps(
+                    result["structuredContent"],
+                    ensure_ascii=False,
+                    default=str,
+                )
 
     response = JsonResponse(
         _jsonrpc_result(request_id, result, modern=modern)
