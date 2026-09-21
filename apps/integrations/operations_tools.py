@@ -927,6 +927,121 @@ def _knowledge_health(*, organization, limit=50):
     }
 
 
+def _safe_full_config_text(value):
+    raw = str(value or "")
+    safe = sanitize_text(
+        raw,
+        limit=max(len(raw) + 32, 800),
+        redact_long=False,
+    )
+    return safe, safe != raw
+
+
+def get_ai_configuration(*, identity, arguments):
+    organization = _organization_for(identity)
+    _require_operations_capability(
+        identity=identity,
+        organization=organization,
+        capability=CAP_ORGANIZATION_READ,
+    )
+    info = OrgInfo.objects.filter(
+        organization=organization
+    ).first()
+    if info is None:
+        return ToolExecution(
+            data={
+                "configured": False,
+                "organization_id": str(organization.id),
+                "about": "",
+                "bot_languages": "",
+                "ai_playbook": "",
+                "redactions": {
+                    "about": False,
+                    "bot_languages": False,
+                    "ai_playbook": False,
+                },
+            },
+            capability=CAP_ORGANIZATION_READ,
+            target_type="organization",
+            target_id=str(organization.id),
+            audit_summary={"configured": False},
+        )
+
+    about, about_redacted = _safe_full_config_text(
+        info.about
+    )
+    languages, languages_redacted = (
+        _safe_full_config_text(info.bot_languages)
+    )
+    playbook, playbook_redacted = _safe_full_config_text(
+        info.ai_playbook
+    )
+    compiled = compile_qualification_requirements(
+        qualification_questions(
+            str(info.ai_playbook or "")
+        )
+    )
+    return ToolExecution(
+        data={
+            "configured": True,
+            "organization_id": str(organization.id),
+            "about": about,
+            "about_length": len(str(info.about or "")),
+            "bot_languages": languages,
+            "bot_languages_length": len(
+                str(info.bot_languages or "")
+            ),
+            "ai_playbook": playbook,
+            "ai_playbook_length": len(
+                str(info.ai_playbook or "")
+            ),
+            "ai_enabled": bool(info.ai_enabled),
+            "bump_up_enabled": bool(
+                info.bump_up_enabled
+            ),
+            "bump_up_count": int(
+                info.bump_up_count
+            ),
+            "redactions": {
+                "about": about_redacted,
+                "bot_languages": languages_redacted,
+                "ai_playbook": playbook_redacted,
+            },
+            "qualification": {
+                "mode": compiled.get("mode"),
+                "flow_version": compiled.get(
+                    "flow_version"
+                ),
+                "requirements": sanitize_data(
+                    compiled.get(
+                        "requirements",
+                        [],
+                    )
+                ),
+            },
+        },
+        capability=CAP_ORGANIZATION_READ,
+        target_type="organization",
+        target_id=str(organization.id),
+        audit_summary={
+            "configured": True,
+            "about_length": len(
+                str(info.about or "")
+            ),
+            "playbook_length": len(
+                str(info.ai_playbook or "")
+            ),
+            "secret_like_text_redacted": any(
+                (
+                    about_redacted,
+                    languages_redacted,
+                    playbook_redacted,
+                )
+            ),
+        },
+    )
+
+
 def get_knowledge_health(*, identity, arguments):
     organization = _organization_for(identity)
     _require_operations_capability(
@@ -4956,6 +5071,7 @@ def execute_operations_tool(*, name, identity, arguments):
         "select_organization_context": select_organization_context,
         "clear_organization_context": clear_organization_context,
         "get_organization_configuration": get_organization_configuration,
+        "get_ai_configuration": get_ai_configuration,
         "get_knowledge_health": get_knowledge_health,
         "get_automation_configuration": get_automation_configuration,
         "get_messaging_automation_settings": get_messaging_automation_settings,
