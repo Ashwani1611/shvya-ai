@@ -428,6 +428,7 @@ def shvya_api_view(request):
         OperationsOAuthToken,
     )
     from apps.integrations.operations_auth import operations_grant_status
+    from apps.integrations.operations_audit import organization_visible_audit_reason
     from apps.integrations.operations_presence import (
         open_support_sessions,
         support_session_recently_active,
@@ -490,6 +491,8 @@ def shvya_api_view(request):
         if operations_audit_visible
         else []
     )
+    for event in operations_audit_events:
+        event.organization_visible_reason = organization_visible_audit_reason(event)
 
     from django.utils import timezone
 
