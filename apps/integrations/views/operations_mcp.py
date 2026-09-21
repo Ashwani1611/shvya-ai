@@ -484,9 +484,18 @@ OWN_TOOL_DEFINITIONS = [
                 "changes": {
                     "type": "object",
                     "properties": {
-                        "about": {"type": "string"},
-                        "bot_languages": {"type": "string"},
-                        "ai_playbook": {"type": "string"},
+                        "about": {
+                            "type": "string",
+                            "maxLength": 12000,
+                        },
+                        "bot_languages": {
+                            "type": "string",
+                            "maxLength": 500,
+                        },
+                        "ai_playbook": {
+                            "type": "string",
+                            "maxLength": 100000,
+                        },
                         "ai_enabled": {"type": "boolean"},
                         "bump_up_enabled": {"type": "boolean"},
                         "bump_up_count": {"type": "integer", "minimum": 0, "maximum": 20},
