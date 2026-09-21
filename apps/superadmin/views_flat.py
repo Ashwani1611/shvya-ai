@@ -405,6 +405,7 @@ def organization_detail_view(
         organization=organization,
     )
 
+    from apps.integrations.diagnostic_auth import sanitize_text
     from apps.integrations.operations_models import (
         OperationsAuditEvent,
         OperationsOAuthToken,
@@ -433,9 +434,17 @@ def organization_detail_view(
         }
         for key in ALL_CAPABILITIES
     ]
-    active_operations_support = visible_support_sessions(
-        organization=organization,
+    active_operations_support = list(
+        visible_support_sessions(
+            organization=organization,
+        )
     )
+    for support_session in active_operations_support:
+        support_session.safe_reason = sanitize_text(
+            support_session.reason,
+            limit=500,
+            redact_long=False,
+        )
     active_operations_tokens = (
         OperationsOAuthToken.objects.filter(
             organization=organization,
@@ -446,7 +455,7 @@ def organization_detail_view(
         .select_related("actor", "client")
         .order_by("-last_used_at", "-created_at")
     )
-    open_operations_support_sessions = (
+    open_operations_support_sessions = list(
         OperationsSupportSession.objects.filter(
             organization=organization,
             ended_at__isnull=True,
@@ -458,6 +467,12 @@ def organization_detail_view(
         )
         .order_by("-last_seen_at", "-started_at")
     )
+    for support_session in open_operations_support_sessions:
+        support_session.safe_reason = sanitize_text(
+            support_session.reason,
+            limit=500,
+            redact_long=False,
+        )
     operations_audit_events = (
         OperationsAuditEvent.objects.filter(
             organization=organization,
