@@ -5,6 +5,7 @@ from unittest.mock import patch
 
 from django.contrib.sessions.backends.db import SessionStore
 from django.core.exceptions import ValidationError
+from django.db.models.deletion import ProtectedError
 from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
@@ -2637,6 +2638,32 @@ class OperationsMCPTests(TestCase):
         )
         self.lead.refresh_from_db()
         self.assertEqual(self.lead.stage_id, self.new_stage.id)
+
+    def test_operations_audit_relationships_are_protected_from_deletion(self):
+        protected_actor = User.objects.create_superuser(
+            email="protected-audit-actor@example.test",
+            password=None,
+            name="Protected Audit Actor",
+        )
+        event = OperationsAuditEvent.objects.create(
+            actor=protected_actor,
+            role=ROLE_SUPERADMIN,
+            organization=self.organization,
+            tool_name="protected_event",
+            capability=CAP_ORGANIZATION_READ,
+            target_type="organization",
+            target_id=str(self.organization.id),
+            reason="Preserve immutable audit identity",
+            outcome=OperationsAuditEvent.Outcome.SUCCESS,
+            request_fingerprint="c" * 64,
+            change_summary={"status": "preserved"},
+        )
+
+        with self.assertRaises(ProtectedError):
+            protected_actor.delete()
+
+        event.refresh_from_db()
+        self.assertEqual(event.actor_id, protected_actor.id)
 
     def test_operations_audit_events_are_append_only_even_through_queryset(self):
         event = OperationsAuditEvent.objects.create(
