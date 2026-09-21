@@ -420,10 +420,81 @@ class OperationsMCPTests(TestCase):
         }
         self.assertIn("list_organizations", super_names)
         self.assertIn("get_operations_context", super_names)
-        self.assertNotIn("select_organization_context", super_names)
-        self.assertNotIn("clear_organization_context", super_names)
+        self.assertIn("select_organization_context", super_names)
+        self.assertIn("clear_organization_context", super_names)
         self.assertNotIn("move_lead_stage", super_names)
         self.assertNotIn("upsert_workflow_configuration", super_names)
+
+    def test_read_only_superadmin_can_select_context_but_cannot_mutate_customer_state(self):
+        bearer = self._token(
+            actor=self.superadmin,
+            role=ROLE_SUPERADMIN,
+            scopes=[OPERATIONS_READ_SCOPE],
+        )
+
+        selected = self._result(
+            self._call(
+                bearer,
+                "select_organization_context",
+                {
+                    "organization_id": str(self.organization.id),
+                    "reason": "Read-only customer diagnostic review",
+                },
+            )
+        )
+        self.assertFalse(selected["isError"])
+        self.assertEqual(
+            selected["structuredContent"]["organization"]["id"],
+            str(self.organization.id),
+        )
+
+        config = self._result(
+            self._call(
+                bearer,
+                "get_organization_configuration",
+                {},
+            )
+        )
+        self.assertFalse(config["isError"])
+
+        blocked = self._result(
+            self._call(
+                bearer,
+                "move_lead_stage",
+                {
+                    "lead_id": str(self.lead.id),
+                    "target_stage_id": str(self.review_stage.id),
+                    "reason": "Attempt mutation from read-only grant",
+                    "dry_run": True,
+                },
+            )
+        )
+        self.assertTrue(blocked["isError"])
+        self.assertEqual(
+            blocked["structuredContent"]["status"],
+            "NOT_ALLOWED",
+        )
+        self.assertIn(
+            "operations.write",
+            blocked["structuredContent"]["error"],
+        )
+        self.lead.refresh_from_db()
+        self.assertEqual(self.lead.stage_id, self.new_stage.id)
+
+        cleared = self._result(
+            self._call(
+                bearer,
+                "clear_organization_context",
+                {
+                    "reason": "Finish read-only diagnostic review",
+                },
+            )
+        )
+        self.assertFalse(cleared["isError"])
+        self.assertEqual(
+            cleared["structuredContent"]["status"],
+            "cleared",
+        )
 
     def test_authenticated_superadmin_tool_discovery_keeps_full_operations_surface(self):
         bearer = self._token(
