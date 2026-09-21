@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.shvya.callintelligence.calls.CallLogReader
+import com.shvya.callintelligence.calls.PostCallNotifier
 import com.shvya.callintelligence.calls.TrackingScheduler
 import com.shvya.callintelligence.calls.TrackingState
 import com.shvya.callintelligence.data.AppDatabase
@@ -53,7 +54,7 @@ class ReconcileWorker(
                 ((endedAt - row.startedAt).coerceAtLeast(0L) / 1000L).toInt(),
             )
 
-            dao.insertCallAndQueue(
+            val localId = dao.insertCallAndQueue(
                 LocalCall(
                     eventUuid = UUID.randomUUID().toString(),
                     callLogId = row.callLogId,
@@ -71,6 +72,15 @@ class ReconcileWorker(
                     totalDurationSeconds = totalSeconds,
                 )
             )
+            if (localId > 0) {
+                PostCallNotifier.notifyCaptured(
+                    context = applicationContext,
+                    callLogId = row.callLogId,
+                    contactName = row.contactName,
+                    phoneNumber = row.phoneNumber,
+                    status = row.status,
+                )
+            }
         }
         TrackingScheduler.enqueueSync(applicationContext)
         return Result.success()
