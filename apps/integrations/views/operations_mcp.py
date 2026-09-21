@@ -361,6 +361,145 @@ OWN_TOOL_DEFINITIONS = [
         read_only=False,
     ),
     _tool(
+        "upsert_pipeline_configuration",
+        "Configure CRM pipeline",
+        "Dry-run or create/update one tenant-owned CRM pipeline. New pipelines receive SHVYA's standard stages.",
+        _write_properties(
+            {
+                "pipeline_id": {"type": "string", "format": "uuid"},
+                "data": {
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": "string"},
+                        "description": {"type": "string"},
+                        "is_active": {"type": "boolean"},
+                        "ai_enabled": {"type": "boolean"},
+                    },
+                    "additionalProperties": False,
+                },
+            }
+        ),
+        ["data", "reason"],
+        read_only=False,
+    ),
+    _tool(
+        "upsert_stage_configuration",
+        "Configure CRM stage",
+        "Dry-run or create/update one active-pipeline stage. SHVYA protected stages cannot be renamed or deactivated.",
+        _write_properties(
+            {
+                "pipeline_id": {"type": "string", "format": "uuid"},
+                "stage_id": {"type": "string", "format": "uuid"},
+                "data": {
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": "string"},
+                        "description": {"type": "string"},
+                        "display_order": {"type": "integer", "minimum": 0},
+                        "is_active": {"type": "boolean"},
+                        "ai_on": {"type": "boolean"},
+                    },
+                    "additionalProperties": False,
+                },
+            }
+        ),
+        ["pipeline_id", "data", "reason"],
+        read_only=False,
+    ),
+    _tool(
+        "upsert_attribute_configuration",
+        "Configure CRM attribute",
+        "Dry-run or create/update an organization custom attribute through SHVYA's attribute service. Secret/credential-like definitions are blocked.",
+        _write_properties(
+            {
+                "attribute_id": {"type": "string", "format": "uuid"},
+                "data": {
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": "string"},
+                        "field_type": {
+                            "type": "string",
+                            "enum": ["text", "numeric", "date", "datetime", "option"],
+                        },
+                        "description": {"type": "string"},
+                        "options": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                        },
+                    },
+                    "additionalProperties": False,
+                },
+            }
+        ),
+        ["data", "reason"],
+        read_only=False,
+    ),
+    _tool(
+        "upsert_workflow_configuration",
+        "Configure Workflow",
+        "Dry-run or create/update one organization Workflow using SHVYA's canonical Workflow validator. Pipeline, stage, source, attribute, account and action references remain tenant validated.",
+        _write_properties(
+            {
+                "workflow_id": {"type": "string", "format": "uuid"},
+                "data": {"type": "object"},
+            }
+        ),
+        ["data", "reason"],
+        read_only=False,
+    ),
+    _tool(
+        "upsert_cadence_configuration",
+        "Configure Cadence",
+        "Dry-run or create/update a tenant-owned Cadence using SHVYA's canonical follow-up service.",
+        _write_properties(
+            {
+                "cadence_id": {"type": "string", "format": "uuid"},
+                "data": {
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": "string"},
+                        "description": {"type": "string"},
+                        "provider": {"type": "string", "enum": ["api", "hosted"]},
+                        "whatsapp_account_id": {"type": "string", "format": "uuid"},
+                    },
+                    "additionalProperties": False,
+                },
+            }
+        ),
+        ["data", "reason"],
+        read_only=False,
+    ),
+    _tool(
+        "add_cadence_step",
+        "Add Cadence step",
+        "Dry-run or append one WhatsApp-template, email or reminder step to an active Cadence. Existing schedule and template validation is reused.",
+        _write_properties(
+            {
+                "cadence_id": {"type": "string", "format": "uuid"},
+                "data": {
+                    "type": "object",
+                    "properties": {
+                        "type": {
+                            "type": "string",
+                            "enum": ["whatsapp", "email", "reminder"],
+                        },
+                        "template_id": {"type": "string", "format": "uuid"},
+                        "title": {"type": "string"},
+                        "subject": {"type": "string"},
+                        "body": {"type": "string"},
+                        "text": {"type": "string"},
+                        "retry_count": {"type": "integer", "minimum": 0, "maximum": 5},
+                        "schedule": {"type": "object"},
+                    },
+                    "required": ["type"],
+                    "additionalProperties": False,
+                },
+            }
+        ),
+        ["cadence_id", "data", "reason"],
+        read_only=False,
+    ),
+    _tool(
         "get_operations_audit",
         "Review SHVYA Operations audit",
         "Return safe tenant-scoped audit events for external-AI and Superadmin Operations actions.",
