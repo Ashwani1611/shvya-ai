@@ -11,6 +11,7 @@ from django.core.validators import validate_email
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 
+from apps.core.ratelimit import _client_ip
 from apps.crm.models import AttributeDefinition, Lead
 from apps.crm.models.lead import normalize_phone
 from apps.integrations.services.email import (
@@ -401,7 +402,7 @@ def create_submission_and_lead(
             consent_version=version.version,
             referrer=str(request.META.get("HTTP_REFERER") or "")[:200],
             user_agent=str(request.META.get("HTTP_USER_AGENT") or "")[:500],
-            ip_hash=hash_ip(request.META.get("REMOTE_ADDR")),
+            ip_hash=hash_ip(_client_ip(request)),
         )
         return submission, existing, False
 
@@ -468,7 +469,7 @@ def create_submission_and_lead(
         consent_version=version.version,
         referrer=str(request.META.get("HTTP_REFERER") or "")[:200],
         user_agent=str(request.META.get("HTTP_USER_AGENT") or "")[:500],
-        ip_hash=hash_ip(request.META.get("REMOTE_ADDR")),
+        ip_hash=hash_ip(_client_ip(request)),
     )
 
     for field in _field_schema(version):
