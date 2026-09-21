@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import time as dt_time, timedelta
 
 from django.core.exceptions import ValidationError
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import Max, Q
 from django.utils import timezone
 
 from apps.ai_engagement.models import OrgInfo
@@ -19,8 +19,9 @@ from apps.ai_engagement.services.qualification_state import (
     requirements_for_lead,
     state_for_lead,
 )
+from apps.channels.models import WhatsAppAccount, WhatsAppTemplate
 from apps.crm.models import AttributeDefinition, Lead, LeadActivity, Pipeline, Stage
-from apps.followups.models import FollowupSequence
+from apps.followups.models import FollowupSequence, FollowupStep
 from apps.integrations.diagnostic_tools import (
     DiagnosticToolError,
     execute_tool as execute_diagnostic_tool,
@@ -32,6 +33,8 @@ from apps.integrations.operations_models import (
 from apps.integrations.operations_policy import (
     CAP_AI_CONFIG_WRITE,
     CAP_AUDIT_READ,
+    CAP_AUTOMATION_CONFIG_WRITE,
+    CAP_CRM_CONFIG_WRITE,
     CAP_DIAGNOSTICS_READ,
     CAP_LEAD_ATTRIBUTES_WRITE,
     CAP_LEAD_STAGE_WRITE,
@@ -46,11 +49,25 @@ from apps.integrations.operations_policy import (
 )
 from apps.organizations.models import Organization
 from apps.triggers.models import SmartTrigger, TriggerRun
-from services.crm.attribute_service import update_lead_attribute_values
+from services.crm.attribute_service import (
+    create_attribute_definition,
+    update_attribute_definition,
+    update_lead_attribute_values,
+)
 from services.crm.lead_transition import (
     LeadTransitionError,
     move_lead_to_pipeline_stage,
 )
+from services.followup_service import (
+    FollowupError,
+    _validate_schedule,
+    add_email_step,
+    add_reminder_step,
+    add_whatsapp_step,
+    create_sequence,
+    update_sequence,
+)
+from services.triggers.rules import validate as validate_workflow_rule
 
 
 DIAGNOSTIC_TOOL_NAMES = {
@@ -1083,6 +1100,884 @@ def get_operations_audit(*, identity, arguments):
     )
 
 
+
+def upsert_pipeline_configuration(*, identity, arguments):
+    organization = _organization_for(identity)
+    dry_run, reason = _write_gate(
+        identity=identity,
+        organization=organization,
+        capability=CAP_CRM_CONFIG_WRITE,
+        arguments=arguments,
+    )
+    data = (arguments or {}).get("data")
+    if not isinstance(data, dict):
+        raise OperationsToolError("data must be a pipeline configuration object.")
+
+    pipeline_id = (arguments or {}).get("pipeline_id")
+    pipeline = None
+    if pipeline_id:
+        pipeline = Pipeline.objects.filter(
+            pk=_uuid(pipeline_id, field="pipeline_id"),
+            organization=organization,
+        ).first()
+        if pipeline is None:
+            raise OperationsToolError("Pipeline not found in the active organization.")
+
+    name = str(data.get("name", pipeline.name if pipeline else "") or "").strip()
+    description = str(
+        data.get("description", pipeline.description if pipeline else "") or ""
+    ).strip()
+    if not name or len(name) > 150:
+        raise OperationsToolError("Pipeline name is required and must be at most 150 characters.")
+    if len(description) > 10000:
+        raise OperationsToolError("Pipeline description is too large.")
+    is_active = data.get("is_active", pipeline.is_active if pipeline else True)
+    ai_enabled = data.get("ai_enabled", pipeline.ai_enabled if pipeline else True)
+    if not isinstance(is_active, bool) or not isinstance(ai_enabled, bool):
+        raise OperationsToolError("is_active and ai_enabled must be true or false.")
+    duplicate = Pipeline.objects.filter(
+        organization=organization,
+        name__iexact=name,
+    )
+    if pipeline is not None:
+        duplicate = duplicate.exclude(pk=pipeline.pk)
+    if duplicate.exists():
+        raise OperationsToolError("A pipeline with this name already exists.")
+
+    before = (
+        {
+            "id": str(pipeline.id),
+            "name": pipeline.name,
+            "description": pipeline.description,
+            "is_active": pipeline.is_active,
+            "ai_enabled": pipeline.ai_enabled,
+        }
+        if pipeline
+        else None
+    )
+    after = {
+        "name": name,
+        "description": description,
+        "is_active": is_active,
+        "ai_enabled": ai_enabled,
+    }
+    if dry_run:
+        return ToolExecution(
+            data={
+                "status": "DRY_RUN",
+                "operation": "update" if pipeline else "create",
+                "before": before,
+                "after": after,
+                "note": (
+                    "A new pipeline automatically receives SHVYA's standard stages."
+                    if pipeline is None
+                    else None
+                ),
+                "approval_required": approval_required(
+                    role=identity.role,
+                    organization=organization,
+                    capability=CAP_CRM_CONFIG_WRITE,
+                ),
+                "reversible": pipeline is not None,
+            },
+            capability=CAP_CRM_CONFIG_WRITE,
+            target_type="pipeline" if pipeline else "organization",
+            target_id=str(pipeline.id) if pipeline else str(organization.id),
+            reason=reason,
+            outcome=OperationsAuditEvent.Outcome.DRY_RUN,
+            audit_summary={
+                "operation": "upsert_pipeline",
+                "mode": "update" if pipeline else "create",
+                "changed_fields": sorted(after),
+            },
+        )
+
+    with transaction.atomic():
+        if pipeline is None:
+            pipeline = Pipeline(
+                organization=organization,
+                name=name,
+                description=description,
+                is_active=is_active,
+                ai_enabled=ai_enabled,
+            )
+        else:
+            pipeline.name = name
+            pipeline.description = description
+            pipeline.is_active = is_active
+            pipeline.ai_enabled = ai_enabled
+        pipeline.full_clean()
+        pipeline.save()
+
+    pipeline.refresh_from_db()
+    if (
+        pipeline.name != name
+        or pipeline.description != description
+        or pipeline.is_active != is_active
+        or pipeline.ai_enabled != ai_enabled
+    ):
+        raise OperationsToolError("Pipeline configuration verification failed.")
+    return ToolExecution(
+        data={
+            "status": "FIXED",
+            "pipeline": {
+                "id": str(pipeline.id),
+                "name": pipeline.name,
+                "is_active": pipeline.is_active,
+                "ai_enabled": pipeline.ai_enabled,
+                "stage_count": pipeline.stages.count(),
+            },
+            "verification": "passed",
+        },
+        capability=CAP_CRM_CONFIG_WRITE,
+        target_type="pipeline",
+        target_id=str(pipeline.id),
+        reason=reason,
+        audit_summary={
+            "operation": "upsert_pipeline",
+            "mode": "update" if before else "create",
+            "changed_fields": sorted(after),
+            "verification": "passed",
+        },
+    )
+
+
+def upsert_stage_configuration(*, identity, arguments):
+    organization = _organization_for(identity)
+    dry_run, reason = _write_gate(
+        identity=identity,
+        organization=organization,
+        capability=CAP_CRM_CONFIG_WRITE,
+        arguments=arguments,
+    )
+    pipeline = Pipeline.objects.filter(
+        pk=_uuid((arguments or {}).get("pipeline_id"), field="pipeline_id"),
+        organization=organization,
+        is_active=True,
+    ).first()
+    if pipeline is None:
+        raise OperationsToolError("Active pipeline not found in this organization.")
+
+    data = (arguments or {}).get("data")
+    if not isinstance(data, dict):
+        raise OperationsToolError("data must be a stage configuration object.")
+    stage_id = (arguments or {}).get("stage_id")
+    stage = None
+    if stage_id:
+        stage = Stage.objects.filter(
+            pk=_uuid(stage_id, field="stage_id"),
+            pipeline=pipeline,
+        ).first()
+        if stage is None:
+            raise OperationsToolError("Stage not found in the selected pipeline.")
+
+    name = str(data.get("name", stage.name if stage else "") or "").strip()
+    description = str(
+        data.get("description", stage.description if stage else "") or ""
+    ).strip()
+    if not name or len(name) > 100:
+        raise OperationsToolError("Stage name is required and must be at most 100 characters.")
+    if len(description) > 10000:
+        raise OperationsToolError("Stage description is too large.")
+    if stage is not None and stage.is_name_locked and name.casefold() != stage.name.casefold():
+        raise OperationsPermissionError("SHVYA protected stages cannot be renamed.")
+    is_active = data.get("is_active", stage.is_active if stage else True)
+    ai_on = data.get("ai_on", stage.ai_on if stage else True)
+    if stage is not None and stage.is_system_locked and is_active is False:
+        raise OperationsPermissionError("SHVYA protected stages cannot be deactivated.")
+    if not isinstance(is_active, bool) or not isinstance(ai_on, bool):
+        raise OperationsToolError("is_active and ai_on must be true or false.")
+
+    if "display_order" in data:
+        try:
+            display_order = int(data["display_order"])
+        except (TypeError, ValueError) as exc:
+            raise OperationsToolError("display_order must be a non-negative integer.") from exc
+        if display_order < 0:
+            raise OperationsToolError("display_order must be a non-negative integer.")
+    elif stage is not None:
+        display_order = stage.display_order
+    else:
+        display_order = (
+            Stage.objects.filter(pipeline=pipeline).aggregate(value=Max("display_order"))["value"]
+            or 0
+        ) + 1
+
+    duplicate_name = Stage.objects.filter(
+        pipeline=pipeline,
+        name__iexact=name,
+        is_active=True,
+    )
+    duplicate_order = Stage.objects.filter(
+        pipeline=pipeline,
+        display_order=display_order,
+    )
+    if stage is not None:
+        duplicate_name = duplicate_name.exclude(pk=stage.pk)
+        duplicate_order = duplicate_order.exclude(pk=stage.pk)
+    if is_active and duplicate_name.exists():
+        raise OperationsToolError("An active stage with this name already exists.")
+    if duplicate_order.exists():
+        raise OperationsToolError("Another stage already uses this display order.")
+
+    before = (
+        {
+            "id": str(stage.id),
+            "name": stage.name,
+            "description": stage.description,
+            "display_order": stage.display_order,
+            "is_active": stage.is_active,
+            "ai_on": stage.ai_on,
+        }
+        if stage
+        else None
+    )
+    after = {
+        "name": name,
+        "description": description,
+        "display_order": display_order,
+        "is_active": is_active,
+        "ai_on": ai_on,
+    }
+    if dry_run:
+        return ToolExecution(
+            data={
+                "status": "DRY_RUN",
+                "operation": "update" if stage else "create",
+                "before": before,
+                "after": after,
+                "approval_required": approval_required(
+                    role=identity.role,
+                    organization=organization,
+                    capability=CAP_CRM_CONFIG_WRITE,
+                ),
+                "reversible": stage is not None,
+            },
+            capability=CAP_CRM_CONFIG_WRITE,
+            target_type="stage" if stage else "pipeline",
+            target_id=str(stage.id) if stage else str(pipeline.id),
+            reason=reason,
+            outcome=OperationsAuditEvent.Outcome.DRY_RUN,
+            audit_summary={
+                "operation": "upsert_stage",
+                "mode": "update" if stage else "create",
+                "pipeline_id": str(pipeline.id),
+                "changed_fields": sorted(after),
+            },
+        )
+
+    with transaction.atomic():
+        if stage is None:
+            stage = Stage(pipeline=pipeline)
+        stage.name = name
+        stage.description = description
+        stage.display_order = display_order
+        stage.is_active = is_active
+        stage.ai_on = ai_on
+        stage.full_clean()
+        stage.save()
+    stage.refresh_from_db()
+    if (
+        stage.name != name
+        or stage.description != description
+        or stage.display_order != display_order
+        or stage.is_active != is_active
+        or stage.ai_on != ai_on
+    ):
+        raise OperationsToolError("Stage configuration verification failed.")
+    return ToolExecution(
+        data={
+            "status": "FIXED",
+            "stage": {
+                "id": str(stage.id),
+                "pipeline_id": str(pipeline.id),
+                "name": stage.name,
+                "display_order": stage.display_order,
+                "is_active": stage.is_active,
+                "ai_on": stage.ai_on,
+            },
+            "verification": "passed",
+        },
+        capability=CAP_CRM_CONFIG_WRITE,
+        target_type="stage",
+        target_id=str(stage.id),
+        reason=reason,
+        audit_summary={
+            "operation": "upsert_stage",
+            "mode": "update" if before else "create",
+            "pipeline_id": str(pipeline.id),
+            "changed_fields": sorted(after),
+            "verification": "passed",
+        },
+    )
+
+
+def upsert_attribute_configuration(*, identity, arguments):
+    organization = _organization_for(identity)
+    dry_run, reason = _write_gate(
+        identity=identity,
+        organization=organization,
+        capability=CAP_CRM_CONFIG_WRITE,
+        arguments=arguments,
+    )
+    data = (arguments or {}).get("data")
+    if not isinstance(data, dict):
+        raise OperationsToolError("data must be an attribute configuration object.")
+    attribute_id = (arguments or {}).get("attribute_id")
+    attribute = None
+    if attribute_id:
+        attribute = AttributeDefinition.objects.filter(
+            pk=_uuid(attribute_id, field="attribute_id"),
+            organization=organization,
+        ).first()
+        if attribute is None:
+            raise OperationsToolError("Attribute definition not found in this organization.")
+
+    name = str(data.get("name", attribute.name if attribute else "") or "").strip()
+    field_type = str(
+        data.get(
+            "field_type",
+            attribute.field_type if attribute else AttributeDefinition.FieldType.TEXT,
+        )
+        or ""
+    ).strip()
+    description = str(
+        data.get("description", attribute.description if attribute else "") or ""
+    ).strip()
+    options = data.get("options", list(attribute.options or []) if attribute else [])
+    if not isinstance(options, list):
+        raise OperationsToolError("Attribute options must be a list.")
+    if is_sensitive_attribute_definition({"key": name, "name": name}):
+        raise OperationsPermissionError(
+            "Credential-like or secret attribute definitions cannot be created through Operations MCP."
+        )
+
+    before = (
+        {
+            "id": str(attribute.id),
+            "key": attribute.key,
+            "name": attribute.name,
+            "field_type": attribute.field_type,
+            "description": attribute.description,
+            "options": attribute.options,
+        }
+        if attribute
+        else None
+    )
+    after = {
+        "name": name,
+        "field_type": field_type,
+        "description": description,
+        "options": options,
+    }
+    if dry_run:
+        # Use a non-persisted instance for field-level validation while the
+        # canonical service remains the write authority on execution.
+        probe = AttributeDefinition(
+            organization=organization,
+            name=name,
+            key=attribute.key if attribute else "operations_probe",
+            field_type=field_type,
+            description=description,
+            options=options,
+            display_order=attribute.display_order if attribute else 0,
+        )
+        try:
+            probe.full_clean(validate_unique=False, validate_constraints=False)
+        except ValidationError as exc:
+            raise OperationsToolError("Attribute configuration validation failed.") from exc
+        return ToolExecution(
+            data={
+                "status": "DRY_RUN",
+                "operation": "update" if attribute else "create",
+                "before": before,
+                "after": after,
+                "approval_required": approval_required(
+                    role=identity.role,
+                    organization=organization,
+                    capability=CAP_CRM_CONFIG_WRITE,
+                ),
+                "reversible": attribute is not None,
+            },
+            capability=CAP_CRM_CONFIG_WRITE,
+            target_type="attribute" if attribute else "organization",
+            target_id=str(attribute.id) if attribute else str(organization.id),
+            reason=reason,
+            outcome=OperationsAuditEvent.Outcome.DRY_RUN,
+            audit_summary={
+                "operation": "upsert_attribute",
+                "mode": "update" if attribute else "create",
+                "changed_fields": sorted(after),
+            },
+        )
+
+    try:
+        if attribute is None:
+            attribute = create_attribute_definition(
+                organization=organization,
+                name=name,
+                field_type=field_type,
+                description=description,
+                options=options,
+            )
+        else:
+            attribute = update_attribute_definition(
+                organization=organization,
+                attribute=attribute,
+                name=name,
+                field_type=field_type,
+                description=description,
+                options=options,
+            )
+    except ValidationError as exc:
+        raise OperationsToolError("Attribute configuration validation failed.") from exc
+    attribute.refresh_from_db()
+    if (
+        attribute.name != name
+        or attribute.field_type != field_type
+        or attribute.description != description
+        or list(attribute.options or []) != list(options if field_type == "option" else [])
+    ):
+        raise OperationsToolError("Attribute configuration verification failed.")
+    return ToolExecution(
+        data={
+            "status": "FIXED",
+            "attribute": {
+                "id": str(attribute.id),
+                "key": attribute.key,
+                "name": attribute.name,
+                "field_type": attribute.field_type,
+                "options": attribute.options,
+            },
+            "verification": "passed",
+        },
+        capability=CAP_CRM_CONFIG_WRITE,
+        target_type="attribute",
+        target_id=str(attribute.id),
+        reason=reason,
+        audit_summary={
+            "operation": "upsert_attribute",
+            "mode": "update" if before else "create",
+            "changed_fields": sorted(after),
+            "verification": "passed",
+        },
+    )
+
+
+def upsert_workflow_configuration(*, identity, arguments):
+    organization = _organization_for(identity)
+    dry_run, reason = _write_gate(
+        identity=identity,
+        organization=organization,
+        capability=CAP_AUTOMATION_CONFIG_WRITE,
+        arguments=arguments,
+    )
+    data = (arguments or {}).get("data")
+    if not isinstance(data, dict):
+        raise OperationsToolError("data must be a Workflow configuration object.")
+    try:
+        clean = validate_workflow_rule(organization, data)
+    except ValidationError as exc:
+        raise OperationsToolError("Workflow validation failed.") from exc
+
+    workflow_id = (arguments or {}).get("workflow_id")
+    workflow = None
+    if workflow_id:
+        workflow = SmartTrigger.objects.filter(
+            pk=_uuid(workflow_id, field="workflow_id"),
+            organization=organization,
+        ).first()
+        if workflow is None:
+            raise OperationsToolError("Workflow not found in this organization.")
+
+    duplicate = SmartTrigger.objects.filter(
+        organization=organization,
+        fingerprint=clean["fingerprint"],
+    )
+    if workflow is not None:
+        duplicate = duplicate.exclude(pk=workflow.pk)
+    if duplicate.exists():
+        raise OperationsToolError("An identical Workflow already exists.")
+
+    if dry_run:
+        return ToolExecution(
+            data={
+                "status": "DRY_RUN",
+                "operation": "update" if workflow else "create",
+                "workflow": {
+                    "name": clean["name"],
+                    "trigger_type": clean["trigger_type"],
+                    "action_type": clean["action_type"],
+                    "enabled": clean["enabled"],
+                    "scope_count": len((clean.get("conditions") or {}).get("scopes") or []),
+                },
+                "approval_required": approval_required(
+                    role=identity.role,
+                    organization=organization,
+                    capability=CAP_AUTOMATION_CONFIG_WRITE,
+                ),
+                "reversible": workflow is not None,
+            },
+            capability=CAP_AUTOMATION_CONFIG_WRITE,
+            target_type="workflow" if workflow else "organization",
+            target_id=str(workflow.id) if workflow else str(organization.id),
+            reason=reason,
+            outcome=OperationsAuditEvent.Outcome.DRY_RUN,
+            audit_summary={
+                "operation": "upsert_workflow",
+                "mode": "update" if workflow else "create",
+                "trigger_type": clean["trigger_type"],
+                "action_type": clean["action_type"],
+            },
+        )
+
+    with transaction.atomic():
+        Organization.objects.select_for_update().get(pk=organization.pk)
+        if workflow is None:
+            position = (
+                SmartTrigger.objects.filter(organization=organization)
+                .aggregate(value=Max("position"))["value"]
+                or 0
+            ) + 1
+            workflow = SmartTrigger(
+                organization=organization,
+                created_by=identity.actor,
+                position=position,
+            )
+        for key, value in clean.items():
+            setattr(workflow, key, value)
+        workflow.save()
+    workflow.refresh_from_db()
+    if (
+        workflow.fingerprint != clean["fingerprint"]
+        or workflow.trigger_type != clean["trigger_type"]
+        or workflow.action_type != clean["action_type"]
+        or workflow.enabled != clean["enabled"]
+    ):
+        raise OperationsToolError("Workflow configuration verification failed.")
+    return ToolExecution(
+        data={
+            "status": "FIXED",
+            "workflow": {
+                "id": str(workflow.id),
+                "name": workflow.name,
+                "trigger_type": workflow.trigger_type,
+                "action_type": workflow.action_type,
+                "enabled": workflow.enabled,
+            },
+            "verification": "passed",
+        },
+        capability=CAP_AUTOMATION_CONFIG_WRITE,
+        target_type="workflow",
+        target_id=str(workflow.id),
+        reason=reason,
+        audit_summary={
+            "operation": "upsert_workflow",
+            "mode": "update" if workflow_id else "create",
+            "trigger_type": workflow.trigger_type,
+            "action_type": workflow.action_type,
+            "verification": "passed",
+        },
+    )
+
+
+def _cadence_schedule(step_data):
+    schedule = step_data.get("schedule") or {}
+    if not isinstance(schedule, dict):
+        raise OperationsToolError("Cadence step schedule must be an object.")
+    schedule_type = str(
+        schedule.get("type") or FollowupStep.ScheduleType.IMMEDIATE
+    ).strip()
+    specific_time = schedule.get("time")
+    if specific_time:
+        try:
+            specific_time = dt_time.fromisoformat(str(specific_time))
+        except ValueError as exc:
+            raise OperationsToolError("Cadence time must use HH:MM or HH:MM:SS.") from exc
+    try:
+        delay_value = (
+            int(schedule["delay_value"])
+            if schedule.get("delay_value") is not None
+            else None
+        )
+        recurring_every = (
+            int(schedule["recurring_every"])
+            if schedule.get("recurring_every") is not None
+            else None
+        )
+        specific_weekday = (
+            int(schedule["weekday"])
+            if schedule.get("weekday") is not None
+            else None
+        )
+        recurring_weekdays = [
+            int(item) for item in (schedule.get("weekdays") or [])
+        ]
+    except (TypeError, ValueError) as exc:
+        raise OperationsToolError("Cadence numeric schedule values are invalid.") from exc
+    payload = {
+        "schedule_type": schedule_type,
+        "delay_value": delay_value,
+        "delay_unit": str(schedule.get("delay_unit") or ""),
+        "specific_time": specific_time,
+        "specific_weekday": specific_weekday,
+        "recurring_every": recurring_every,
+        "recurring_unit": str(schedule.get("recurring_unit") or ""),
+        "recurring_weekdays": recurring_weekdays,
+    }
+    try:
+        _validate_schedule(**payload)
+    except FollowupError as exc:
+        raise OperationsToolError(str(exc)) from exc
+    return payload
+
+
+def upsert_cadence_configuration(*, identity, arguments):
+    organization = _organization_for(identity)
+    dry_run, reason = _write_gate(
+        identity=identity,
+        organization=organization,
+        capability=CAP_AUTOMATION_CONFIG_WRITE,
+        arguments=arguments,
+    )
+    data = (arguments or {}).get("data")
+    if not isinstance(data, dict):
+        raise OperationsToolError("data must be a Cadence configuration object.")
+    sequence_id = (arguments or {}).get("cadence_id")
+    sequence = None
+    if sequence_id:
+        sequence = FollowupSequence.objects.filter(
+            pk=_uuid(sequence_id, field="cadence_id"),
+            organization=organization,
+        ).select_related("whatsapp_account").first()
+        if sequence is None:
+            raise OperationsToolError("Cadence not found in this organization.")
+
+    name = str(data.get("name", sequence.name if sequence else "") or "").strip()
+    description = str(
+        data.get("description", sequence.description if sequence else "") or ""
+    ).strip()
+    if not name or len(name) > 255 or len(description) > 300:
+        raise OperationsToolError("Cadence name/description is invalid.")
+    duplicate = FollowupSequence.objects.filter(
+        organization=organization,
+        name__iexact=name,
+    )
+    if sequence is not None:
+        duplicate = duplicate.exclude(pk=sequence.pk)
+    if duplicate.exists():
+        raise OperationsToolError("A Cadence with this name already exists.")
+
+    account = sequence.whatsapp_account if sequence else None
+    provider = str(data.get("provider") or "api").strip()
+    if sequence is None:
+        account_id = data.get("whatsapp_account_id")
+        if account_id:
+            account = WhatsAppAccount.objects.filter(
+                pk=_uuid(account_id, field="whatsapp_account_id"),
+                organization=organization,
+                is_active=True,
+                status=WhatsAppAccount.Status.CONNECTED,
+            ).first()
+        if provider == "api" and account is None:
+            raise OperationsToolError("An active connected WhatsApp API account is required.")
+        if account is not None and provider == "api" and account.connection_type != WhatsAppAccount.ConnectionType.API:
+            raise OperationsToolError("The selected account is not a WhatsApp API account.")
+
+    if dry_run:
+        return ToolExecution(
+            data={
+                "status": "DRY_RUN",
+                "operation": "update" if sequence else "create",
+                "cadence": {
+                    "name": name,
+                    "description": description,
+                    "provider": provider if sequence is None else "existing",
+                    "whatsapp_account_id": str(account.id) if account else None,
+                },
+                "approval_required": approval_required(
+                    role=identity.role,
+                    organization=organization,
+                    capability=CAP_AUTOMATION_CONFIG_WRITE,
+                ),
+                "reversible": sequence is not None,
+            },
+            capability=CAP_AUTOMATION_CONFIG_WRITE,
+            target_type="cadence" if sequence else "organization",
+            target_id=str(sequence.id) if sequence else str(organization.id),
+            reason=reason,
+            outcome=OperationsAuditEvent.Outcome.DRY_RUN,
+            audit_summary={
+                "operation": "upsert_cadence",
+                "mode": "update" if sequence else "create",
+            },
+        )
+
+    try:
+        if sequence is None:
+            sequence = create_sequence(
+                organization=organization,
+                created_by=identity.actor,
+                name=name,
+                description=description,
+                whatsapp_account=account,
+                provider=provider,
+            )
+        else:
+            sequence = update_sequence(
+                sequence=sequence,
+                name=name,
+                description=description,
+            )
+    except FollowupError as exc:
+        raise OperationsToolError(str(exc)) from exc
+    sequence.refresh_from_db()
+    if sequence.name != name or sequence.description != description:
+        raise OperationsToolError("Cadence configuration verification failed.")
+    return ToolExecution(
+        data={
+            "status": "FIXED",
+            "cadence": {
+                "id": str(sequence.id),
+                "name": sequence.name,
+                "step_count": sequence.steps.count(),
+                "is_active": sequence.is_active,
+            },
+            "verification": "passed",
+        },
+        capability=CAP_AUTOMATION_CONFIG_WRITE,
+        target_type="cadence",
+        target_id=str(sequence.id),
+        reason=reason,
+        audit_summary={
+            "operation": "upsert_cadence",
+            "mode": "update" if sequence_id else "create",
+            "verification": "passed",
+        },
+    )
+
+
+def add_cadence_step(*, identity, arguments):
+    organization = _organization_for(identity)
+    dry_run, reason = _write_gate(
+        identity=identity,
+        organization=organization,
+        capability=CAP_AUTOMATION_CONFIG_WRITE,
+        arguments=arguments,
+    )
+    sequence = FollowupSequence.objects.filter(
+        pk=_uuid((arguments or {}).get("cadence_id"), field="cadence_id"),
+        organization=organization,
+        is_active=True,
+    ).select_related("whatsapp_account").first()
+    if sequence is None:
+        raise OperationsToolError("Active Cadence not found in this organization.")
+    data = (arguments or {}).get("data")
+    if not isinstance(data, dict):
+        raise OperationsToolError("data must be a Cadence step object.")
+    step_type = str(data.get("type") or "").strip().lower()
+    if step_type not in {"whatsapp", "email", "reminder"}:
+        raise OperationsToolError("Cadence step type must be whatsapp, email, or reminder.")
+    schedule = _cadence_schedule(data)
+
+    template = None
+    if step_type == "whatsapp":
+        template_id = data.get("template_id")
+        template = WhatsAppTemplate.objects.filter(
+            pk=_uuid(template_id, field="template_id"),
+            organization=organization,
+            account=sequence.whatsapp_account,
+            status=WhatsAppTemplate.Status.APPROVED,
+        ).first()
+        if template is None:
+            raise OperationsToolError("Approved WhatsApp template not found for this Cadence account.")
+    elif step_type == "email":
+        if not str(data.get("subject") or "").strip() or not str(data.get("body") or "").strip():
+            raise OperationsToolError("Email Cadence steps require subject and body.")
+    else:
+        if not str(data.get("text") or "").strip():
+            raise OperationsToolError("Reminder Cadence steps require reminder text.")
+
+    if dry_run:
+        return ToolExecution(
+            data={
+                "status": "DRY_RUN",
+                "cadence_id": str(sequence.id),
+                "step_type": step_type,
+                "next_position": sequence.steps.count() + 1,
+                "schedule_type": schedule["schedule_type"],
+                "approval_required": approval_required(
+                    role=identity.role,
+                    organization=organization,
+                    capability=CAP_AUTOMATION_CONFIG_WRITE,
+                ),
+                "reversible": True,
+            },
+            capability=CAP_AUTOMATION_CONFIG_WRITE,
+            target_type="cadence",
+            target_id=str(sequence.id),
+            reason=reason,
+            outcome=OperationsAuditEvent.Outcome.DRY_RUN,
+            audit_summary={
+                "operation": "add_cadence_step",
+                "step_type": step_type,
+                "schedule_type": schedule["schedule_type"],
+            },
+        )
+
+    try:
+        if step_type == "whatsapp":
+            step = add_whatsapp_step(
+                sequence=sequence,
+                template=template,
+                retry_count=data.get("retry_count", 0),
+                **schedule,
+            )
+        elif step_type == "email":
+            step = add_email_step(
+                sequence=sequence,
+                title=str(data.get("title") or ""),
+                subject=str(data.get("subject") or ""),
+                body=str(data.get("body") or ""),
+                **schedule,
+            )
+        else:
+            step = add_reminder_step(
+                sequence=sequence,
+                text=str(data.get("text") or ""),
+                **schedule,
+            )
+    except FollowupError as exc:
+        raise OperationsToolError(str(exc)) from exc
+    step.refresh_from_db()
+    if step.sequence_id != sequence.id or step.step_type != step_type:
+        raise OperationsToolError("Cadence step verification failed.")
+    return ToolExecution(
+        data={
+            "status": "FIXED",
+            "cadence_id": str(sequence.id),
+            "step": {
+                "id": str(step.id),
+                "type": step.step_type,
+                "position": step.position,
+                "schedule_type": step.schedule_type,
+            },
+            "verification": "passed",
+        },
+        capability=CAP_AUTOMATION_CONFIG_WRITE,
+        target_type="cadence_step",
+        target_id=str(step.id),
+        reason=reason,
+        audit_summary={
+            "operation": "add_cadence_step",
+            "cadence_id": str(sequence.id),
+            "step_type": step_type,
+            "schedule_type": step.schedule_type,
+            "verification": "passed",
+        },
+    )
+
+
 def execute_operations_tool(*, name, identity, arguments):
     if name in DIAGNOSTIC_TOOL_NAMES:
         organization = _organization_for(identity)
@@ -1124,6 +2019,12 @@ def execute_operations_tool(*, name, identity, arguments):
         "update_ai_configuration": update_ai_configuration,
         "get_conversion_analysis": get_conversion_analysis,
         "get_operations_audit": get_operations_audit,
+        "upsert_pipeline_configuration": upsert_pipeline_configuration,
+        "upsert_stage_configuration": upsert_stage_configuration,
+        "upsert_attribute_configuration": upsert_attribute_configuration,
+        "upsert_workflow_configuration": upsert_workflow_configuration,
+        "upsert_cadence_configuration": upsert_cadence_configuration,
+        "add_cadence_step": add_cadence_step,
     }
     handler = handlers.get(str(name or ""))
     if handler is None:
