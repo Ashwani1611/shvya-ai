@@ -117,6 +117,7 @@ class Lead(models.Model):
             ("csv_import", "CSV Import"),
             ("meta_ads", "Meta Ads"),
             ("instagram", "Instagram"),
+            ("call_intelligence", "Call Intelligence"),
         ],
         default="system",
     )

@@ -696,3 +696,22 @@ SUPPORT_IMAP_PASSWORD = config("SUPPORT_IMAP_PASSWORD", default="")
 SUPPORT_IMAP_FOLDER = config("SUPPORT_IMAP_FOLDER", default="INBOX")
 SUPPORT_IMAP_AUTHSERV_ID = config("SUPPORT_IMAP_AUTHSERV_ID", default="")
 SUPPORT_IMAP_TRUST_RECEIVER = config("SUPPORT_IMAP_TRUST_RECEIVER", default=False, cast=bool)
+
+
+# ---------------------------------------------------------------------------
+# Call Intelligence — internal Android companion distribution.
+# The binary may live on the web container/static volume or at a private URL.
+# No Google Play publishing is required for this internal employee deployment.
+# ---------------------------------------------------------------------------
+CALL_INTELLIGENCE_APK_PATH = config(
+    "CALL_INTELLIGENCE_APK_PATH",
+    default=str(BASE_DIR / "static" / "downloads" / "shvya-call-intelligence.apk"),
+)
+CALL_INTELLIGENCE_APK_URL = config(
+    "CALL_INTELLIGENCE_APK_URL",
+    default="",
+)
+CALL_INTELLIGENCE_ANDROID_VERSION = config(
+    "CALL_INTELLIGENCE_ANDROID_VERSION",
+    default="1.0.0",
+)
