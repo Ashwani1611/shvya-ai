@@ -505,6 +505,10 @@ def _safe_instagram_message(message):
         ),
         "attachment_count": len(attachments),
         "attachment_types": attachment_types,
+        "attachment_types_returned": len(attachment_types),
+        "attachment_types_truncated": (
+            len(attachments) > len(attachment_types)
+        ),
         "has_error": bool(message.error),
         "created_at": _iso(message.created_at),
         "updated_at": _iso(message.updated_at),
