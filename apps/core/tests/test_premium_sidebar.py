@@ -131,12 +131,14 @@ def test_sidebar_context_exposes_active_superadmin_operations_support():
     context = sidebar_nav(request)
 
     assert context["operations_support_active"] is True
+    assert context["operations_support_recently_active"] is True
     assert context["operations_support_actor"] == "SHVYA Support"
     assert context["operations_support_started_at"] is not None
+    assert context["operations_support_last_seen_at"] is not None
 
 
 @pytest.mark.django_db
-def test_sidebar_context_hides_idle_operations_support_without_closing_session():
+def test_sidebar_context_keeps_idle_open_operations_support_visible():
     organization = Organization.objects.create(name="Idle Support Org")
     admin = User.objects.create_user(
         email="idle-admin@example.test",
@@ -183,8 +185,10 @@ def test_sidebar_context_hides_idle_operations_support_without_closing_session()
     request.crm_user = admin
     context = sidebar_nav(request)
 
-    assert context["operations_support_active"] is False
-    assert context["operations_support_actor"] == ""
+    assert context["operations_support_active"] is True
+    assert context["operations_support_recently_active"] is False
+    assert context["operations_support_actor"] == "SHVYA Support"
+    assert context["operations_support_last_seen_at"] is not None
 
     session.refresh_from_db()
     assert session.ended_at is None
@@ -236,4 +240,5 @@ def test_sidebar_context_hides_expired_operations_support():
     context = sidebar_nav(request)
 
     assert context["operations_support_active"] is False
+    assert context["operations_support_recently_active"] is False
     assert context["operations_support_actor"] == ""
