@@ -233,7 +233,11 @@ OAuth authorization-code issuance and successful token issue/refresh also commit
 
 ### Knowledge / RAG health
 
-`get_knowledge_health` provides organization-scoped metadata only: knowledge source type/name, URL hostname, document version/status/publication state, chunk counts, embedding coverage and timestamps. It deliberately does not return document/chunk text, file bytes, source keys, signed URL query strings or embedding vectors. The organization configuration summary includes the same bounded knowledge-health view so “understand my business” can distinguish complete grounded context from missing/failed knowledge without broad source retrieval.
+`get_knowledge_health` provides organization-scoped metadata only: knowledge source type/name, URL hostname, document version/status/publication state, chunk counts, embedding coverage and timestamps. It deliberately does not return document/chunk text, file bytes, source keys, signed URL query strings or embedding vectors. Raw ingestion-error text, stored source-key/file values and share instructions are deferred from the MCP presentation query; only bounded status booleans are projected. The organization configuration summary includes the same bounded knowledge-health view so “understand my business” can distinguish complete grounded context from missing/failed knowledge without broad source retrieval.
+
+### Messaging automation exposure
+
+Messaging Operations returns only the canonical automation controls used by SHVYA. Legacy/internal session JSON keys are not surfaced, and WhatsApp provider access-token fields are deferred from MCP read and locked-write query paths. The backend pipeline mapping and canonical messaging service remain authoritative for validation, persistence and verification.
 
 
 ## Consent-bound capability snapshot

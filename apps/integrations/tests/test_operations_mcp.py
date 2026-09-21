@@ -1133,6 +1133,37 @@ class OperationsMCPTests(TestCase):
             status=WhatsAppAccount.Status.CONNECTED,
             is_active=True,
         )
+        self.organization.refresh_from_db()
+        organization_settings = dict(
+            self.organization.settings or {}
+        )
+        hosted_settings = dict(
+            organization_settings.get(
+                "hosted_whatsapp"
+            )
+            or {}
+        )
+        sessions = dict(
+            hosted_settings.get("sessions")
+            or {}
+        )
+        account_settings = dict(
+            sessions.get(str(account.id))
+            or {}
+        )
+        account_settings[
+            "legacy_internal_marker"
+        ] = "internal-messaging-setting"
+        sessions[str(account.id)] = account_settings
+        hosted_settings["sessions"] = sessions
+        organization_settings[
+            "hosted_whatsapp"
+        ] = hosted_settings
+        self.organization.settings = organization_settings
+        self.organization.save(
+            update_fields=["settings", "updated_at"]
+        )
+
         bearer = self._token(
             actor=self.admin,
             role=ROLE_ORGANIZATION_ADMIN,
@@ -1155,10 +1186,21 @@ class OperationsMCPTests(TestCase):
             ]["id"],
             str(pipeline.id),
         )
-        self.assertTrue(
+        initial_settings = (
             initial["structuredContent"]["accounts"][0][
                 "settings"
-            ]["ai_auto_reply"]
+            ]
+        )
+        self.assertTrue(
+            initial_settings["ai_auto_reply"]
+        )
+        self.assertNotIn(
+            "legacy_internal_marker",
+            initial_settings,
+        )
+        self.assertNotIn(
+            "internal-messaging-setting",
+            json.dumps(initial),
         )
 
         arguments = {
@@ -1195,6 +1237,14 @@ class OperationsMCPTests(TestCase):
             "approval_event_id",
             dry["structuredContent"],
         )
+        self.assertNotIn(
+            "legacy_internal_marker",
+            dry["structuredContent"]["before"],
+        )
+        self.assertNotIn(
+            "legacy_internal_marker",
+            dry["structuredContent"]["after"],
+        )
 
         pipeline.refresh_from_db()
         self.assertTrue(pipeline.ai_enabled)
@@ -1229,6 +1279,10 @@ class OperationsMCPTests(TestCase):
         self.assertEqual(
             applied["structuredContent"]["verification"],
             "passed",
+        )
+        self.assertNotIn(
+            "legacy_internal_marker",
+            applied["structuredContent"]["settings"],
         )
 
         pipeline.refresh_from_db()
@@ -3134,6 +3188,8 @@ class OperationsMCPTests(TestCase):
             source_key="https://example.com/pricing?token=internal-source-key",
             version=2,
             source_url="https://example.com/pricing?token=document-secret",
+            file="ai_knowledge/private-pricing-secret.pdf",
+            share_instruction="private share instruction",
             processing_status=Document.ProcessingStatus.COMPLETED,
             processing_error="",
             is_active=True,
@@ -3226,6 +3282,10 @@ class OperationsMCPTests(TestCase):
             active_doc["source_url_host"],
             "example.com",
         )
+        self.assertTrue(active_doc["has_file"])
+        self.assertTrue(
+            active_doc["share_instruction_present"]
+        )
         failed_doc = next(
             item
             for item in health["documents"]
@@ -3238,6 +3298,8 @@ class OperationsMCPTests(TestCase):
         self.assertNotIn("document-secret", payload)
         self.assertNotIn("internal-source-key", payload)
         self.assertNotIn("private knowledge body", payload)
+        self.assertNotIn("private-pricing-secret", payload)
+        self.assertNotIn("private share instruction", payload)
         self.assertNotIn("ingestion-secret", payload)
         self.assertNotIn("foreign tenant knowledge body", payload)
         self.assertNotIn(str(foreign.id), payload)

@@ -399,7 +399,7 @@ OWN_TOOL_DEFINITIONS = [
     _tool(
         "get_messaging_automation_settings",
         "Inspect messaging automation settings",
-        "Return pipeline-linked WhatsApp automation controls for one or all active organization accounts, including AI auto-reply, lead creation, bump-up, follow-up, business hours, and active-conversation delay. Credentials are never returned.",
+        "Return only canonical pipeline-linked WhatsApp automation controls for one or all active organization accounts, including AI auto-reply, lead creation, bump-up, follow-up, business hours, and active-conversation delay. Provider credentials and legacy/internal settings keys are never returned.",
         {
             "whatsapp_account_id": {
                 "type": "string",
@@ -435,7 +435,7 @@ OWN_TOOL_DEFINITIONS = [
                         },
                         "business_hours_end": {
                             "type": "string",
-                            "pattern": "^[0-2][0-9]:[0-5][0-9]$",
+                            "pattern": "^(?:[01][0-9]|2[0-3]):[0-5][0-9]$",
                         },
                         "active_conversation_delay_value": {
                             "type": "integer",

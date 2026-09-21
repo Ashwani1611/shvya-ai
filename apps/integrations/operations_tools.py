@@ -9,7 +9,7 @@ from datetime import date, datetime, time as dt_time, timedelta
 
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
-from django.db.models import Count, Max, Q
+from django.db.models import BooleanField, Case, Count, Max, Q, Value, When
 from django.utils import timezone
 
 from apps.ai_engagement.models import (
@@ -105,7 +105,7 @@ from services.followup_service import (
 from services.triggers.rules import validate as validate_workflow_rule
 
 
-MESSAGING_AUTOMATION_SETTING_KEYS = {
+MESSAGING_AUTOMATION_SETTING_FIELDS = (
     "ai_auto_reply",
     "auto_lead_creation",
     "bump_up_messages",
@@ -115,7 +115,10 @@ MESSAGING_AUTOMATION_SETTING_KEYS = {
     "business_hours_end",
     "active_conversation_delay_value",
     "active_conversation_delay_unit",
-}
+)
+MESSAGING_AUTOMATION_SETTING_KEYS = frozenset(
+    MESSAGING_AUTOMATION_SETTING_FIELDS
+)
 
 
 DIAGNOSTIC_TOOL_NAMES = {
@@ -857,6 +860,21 @@ def _knowledge_health(*, organization, limit=50):
     documents = list(
         document_qs
         .annotate(
+            has_processing_error=Case(
+                When(processing_error="", then=Value(False)),
+                default=Value(True),
+                output_field=BooleanField(),
+            ),
+            has_file=Case(
+                When(file="", then=Value(False)),
+                default=Value(True),
+                output_field=BooleanField(),
+            ),
+            share_instruction_present=Case(
+                When(share_instruction="", then=Value(False)),
+                default=Value(True),
+                output_field=BooleanField(),
+            ),
             chunk_count=Count("chunks", distinct=True),
             embedded_chunk_count=Count(
                 "chunks",
@@ -871,6 +889,12 @@ def _knowledge_health(*, organization, limit=50):
                 filter=Q(chunks__is_active=True),
                 distinct=True,
             ),
+        )
+        .defer(
+            "source_key",
+            "file",
+            "processing_error",
+            "share_instruction",
         )
         .order_by("-updated_at", "-version")[:limit]
     )
@@ -946,14 +970,24 @@ def _knowledge_health(*, organization, limit=50):
                 "active": document.is_active,
                 "processing_status": document.processing_status,
                 "has_processing_error": bool(
-                    document.processing_error
+                    getattr(
+                        document,
+                        "has_processing_error",
+                        False,
+                    )
                 ),
                 "source_url_host": _safe_url_host(
                     document.source_url
                 ),
-                "has_file": bool(document.file),
+                "has_file": bool(
+                    getattr(document, "has_file", False)
+                ),
                 "share_instruction_present": bool(
-                    str(document.share_instruction or "").strip()
+                    getattr(
+                        document,
+                        "share_instruction_present",
+                        False,
+                    )
                 ),
                 "chunk_count": int(
                     getattr(document, "chunk_count", 0) or 0
@@ -1464,6 +1498,7 @@ def _qualification_contract_snapshot(lead):
 def _messaging_account(*, organization, account_id):
     account = (
         WhatsAppAccount.objects.select_related("organization")
+        .defer("access_token")
         .filter(
             pk=_uuid(
                 account_id,
@@ -1479,6 +1514,15 @@ def _messaging_account(*, organization, account_id):
             "Active WhatsApp account not found in this organization."
         )
     return account
+
+
+def _public_messaging_settings(settings):
+    settings = settings if isinstance(settings, dict) else {}
+    return {
+        key: settings.get(key)
+        for key in MESSAGING_AUTOMATION_SETTING_FIELDS
+        if key in settings
+    }
 
 
 def _safe_messaging_settings_row(account):
@@ -1499,8 +1543,10 @@ def _safe_messaging_settings_row(account):
             if pipeline is not None
             else None
         ),
-        "settings": get_session_settings(
-            account=account
+        "settings": _public_messaging_settings(
+            get_session_settings(
+                account=account
+            )
         ),
     }
 
@@ -1631,8 +1677,12 @@ def update_messaging_automation_settings(*, identity, arguments):
                     "name": pipeline.name,
                 },
                 "changed_fields": changed_fields,
-                "before": before,
-                "after": after,
+                "before": _public_messaging_settings(
+                    before
+                ),
+                "after": _public_messaging_settings(
+                    after
+                ),
                 "approval_required": approval_required(
                     role=identity.role,
                     organization=organization,
@@ -1665,6 +1715,7 @@ def update_messaging_automation_settings(*, identity, arguments):
             account = (
                 WhatsAppAccount.objects.select_for_update()
                 .select_related("organization")
+                .defer("access_token")
                 .filter(
                     pk=account.pk,
                     organization=organization,
@@ -1784,7 +1835,9 @@ def update_messaging_automation_settings(*, identity, arguments):
                 "name": pipeline.name,
             },
             "changed_fields": changed_fields,
-            "settings": after,
+            "settings": _public_messaging_settings(
+                after
+            ),
             "verification": "passed",
         },
         capability=CAP_MESSAGING_CONFIG_WRITE,
