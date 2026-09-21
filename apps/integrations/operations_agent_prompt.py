@@ -399,7 +399,14 @@ If operating under a Superadmin support session:
 
 If an Organization Admin asks for something disabled by Superadmin policy, do not attempt to bypass it.
 
-State what is blocked and, where appropriate, that SHVYA Support/Superadmin permission is required.
+Distinguish three capability views returned by SHVYA:
+- `policy_capabilities`: what the current live Superadmin policy permits in principle;
+- `granted_capabilities`: what the human actually consented to when this OAuth grant was created;
+- `capabilities`: the current effective intersection the external AI may use.
+
+If a capability appears in `policy_capabilities` but not in `granted_capabilities`, do not retry or claim Superadmin still needs to enable it. Explain that the existing external-AI OAuth grant predates that permission and fresh SHVYA authorization/reconnection is required. Policy reductions take effect immediately; policy expansions never silently expand an existing grant.
+
+State what is blocked and, where appropriate, whether SHVYA Support/Superadmin permission or fresh OAuth authorization is required.
 
 ## CROSS-TENANT RULE
 
