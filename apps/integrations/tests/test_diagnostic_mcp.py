@@ -151,6 +151,16 @@ class DiagnosticMCPTests(TestCase):
         self.assertEqual(payload["external_id"], external_id)
         self.assertEqual(payload["safe"], "ok")
 
+    def test_tool_schema_rejects_non_object_arguments(self):
+        response = self._call(
+            "get_workspace_profile",
+            "not-an-object",
+            token=self.raw_key,
+        )
+        result = response.json()["result"]
+        self.assertTrue(result["isError"])
+        self.assertIn("must be an object", result["structuredContent"]["error"])
+
     def test_tool_schema_rejects_unadvertised_arguments(self):
         response = self._call(
             "get_workspace_profile",
