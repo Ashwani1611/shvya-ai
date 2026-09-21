@@ -125,6 +125,25 @@ def effective_capabilities(*, role, organization=None):
     )
 
 
+def capabilities_for_grant(
+    *,
+    role,
+    organization=None,
+    allow_writes=False,
+):
+    capabilities = set(
+        effective_capabilities(
+            role=role,
+            organization=organization,
+        )
+    )
+    if not allow_writes:
+        capabilities.difference_update(
+            WRITE_CAPABILITIES
+        )
+    return capabilities
+
+
 def approval_required(*, role, organization, capability):
     # Superadmin is powerful, but customer-state mutations still require the
     # agent to present an explicit approved=True flag after its dry-run.
