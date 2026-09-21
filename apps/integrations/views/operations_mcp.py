@@ -464,7 +464,7 @@ OWN_TOOL_DEFINITIONS = [
     _tool(
         "get_conversion_analysis",
         "Analyze conversion change",
-        "Compare equivalent current/previous periods using persisted lead volume, Qualified transition activity and workflow failures without claiming unsupported causality.",
+        "Compare equivalent current/previous periods using persisted lead/source/stage mix, first-response timing, follow-up and campaign outcomes, Qualified/lost transitions, captured lost reasons, messaging/AI/Workflow failures, plus a current lead-ageing snapshot without claiming unsupported causality.",
         {
             "days": {
                 "type": "integer",
