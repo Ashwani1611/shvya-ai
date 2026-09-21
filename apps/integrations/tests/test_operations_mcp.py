@@ -4323,6 +4323,15 @@ class OperationsMCPTests(TestCase):
             )
         )
         self.assertFalse(result["isError"])
+        hosted_counts = result["structuredContent"][
+            "result_counts"
+        ]["hosted"]
+        self.assertGreaterEqual(hosted_counts["total"], 1)
+        self.assertEqual(
+            hosted_counts["returned"],
+            len(result["structuredContent"]["hosted"]),
+        )
+        self.assertFalse(hosted_counts["truncated"])
         hosted_rows = result["structuredContent"]["hosted"]
         row = next(
             item
