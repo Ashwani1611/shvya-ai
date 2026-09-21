@@ -1397,6 +1397,110 @@ class OperationsMCPTests(TestCase):
         pipeline.refresh_from_db()
         self.assertTrue(pipeline.ai_enabled)
 
+    def test_organization_configuration_reports_explicit_truncation(self):
+        OperationsPolicy.objects.create(
+            organization=self.organization,
+            organization_admin_enabled=True,
+            allowed_capabilities=[CAP_ORGANIZATION_READ],
+        )
+        Pipeline.objects.bulk_create(
+            [
+                Pipeline(
+                    organization=self.organization,
+                    name=f"Bounded Pipeline {index:03d}",
+                )
+                for index in range(101)
+            ]
+        )
+        AttributeDefinition.objects.bulk_create(
+            [
+                AttributeDefinition(
+                    organization=self.organization,
+                    name=f"Bounded Attribute {index:03d}",
+                    key=f"bounded_attribute_{index:03d}",
+                    field_type=AttributeDefinition.FieldType.TEXT,
+                    display_order=index,
+                )
+                for index in range(101)
+            ]
+        )
+        option_attribute = AttributeDefinition.objects.create(
+            organization=self.organization,
+            name="Bounded Option Attribute",
+            key="bounded_option_attribute",
+            field_type=AttributeDefinition.FieldType.OPTION,
+            options=[
+                f"Option {index:03d}"
+                for index in range(101)
+            ],
+            display_order=0,
+        )
+
+        bearer = self._token(
+            actor=self.admin,
+            role=ROLE_ORGANIZATION_ADMIN,
+            organization=self.organization,
+            scopes=[OPERATIONS_READ_SCOPE],
+        )
+        result = self._result(
+            self._call(
+                bearer,
+                "get_organization_configuration",
+                {},
+            )
+        )
+        self.assertFalse(result["isError"])
+        config = result["structuredContent"]
+        counts = config["counts"]
+        self.assertGreater(
+            counts["pipeline_count"],
+            counts["pipelines_returned"],
+        )
+        self.assertEqual(
+            counts["pipelines_returned"],
+            100,
+        )
+        self.assertTrue(
+            counts["pipelines_truncated"]
+        )
+        self.assertGreater(
+            counts["attribute_count"],
+            counts["attributes_returned"],
+        )
+        self.assertEqual(
+            counts["attributes_returned"],
+            100,
+        )
+        self.assertTrue(
+            counts["attributes_truncated"]
+        )
+        option_row = next(
+            item
+            for item in config["attributes"]
+            if item["id"] == str(option_attribute.id)
+        )
+        self.assertEqual(
+            option_row["option_count"],
+            101,
+        )
+        self.assertEqual(
+            len(option_row["options"]),
+            100,
+        )
+        self.assertTrue(
+            option_row["options_truncated"]
+        )
+        for pipeline in config["pipelines"]:
+            self.assertIn("stage_count", pipeline)
+            self.assertIn(
+                "stages_returned",
+                pipeline,
+            )
+            self.assertIn(
+                "stages_truncated",
+                pipeline,
+            )
+
     def test_operations_reads_report_bounded_automation_truncation(self):
         OperationsPolicy.objects.create(
             organization=self.organization,
@@ -7949,10 +8053,6 @@ class OperationsMCPTests(TestCase):
         self.assertNotIn("foreign_completed", payload)
         self.assertNotIn("foreign_reconciled", payload)
         self.assertNotIn(str(foreign_account.id), payload)
-        self.assertIn(str(own_message.id), {
-            str(own_message.id),
-        })
-
     def test_qualification_diagnosis_completed_but_not_qualified_is_not_failure(self):
         OperationsPolicy.objects.create(
             organization=self.organization,

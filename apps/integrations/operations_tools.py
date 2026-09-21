@@ -1434,22 +1434,127 @@ def get_organization_configuration(*, identity, arguments):
     )
 
     info = OrgInfo.objects.filter(organization=organization).first()
-    pipelines = list(
-        Pipeline.objects.filter(organization=organization)
-        .prefetch_related("stages")
-        .order_by("name")
+
+    pipeline_qs = Pipeline.objects.filter(
+        organization=organization
+    ).order_by("name")
+    pipeline_total = pipeline_qs.count()
+    pipelines = list(pipeline_qs[:100])
+    pipeline_ids = [pipeline.id for pipeline in pipelines]
+
+    stage_qs = Stage.objects.filter(
+        pipeline__organization=organization
     )
-    attributes = list(
-        AttributeDefinition.objects.filter(organization=organization)
+    stage_total = stage_qs.count()
+    selected_stage_qs = stage_qs.filter(
+        pipeline_id__in=pipeline_ids
+    )
+    stage_counts = {
+        row["pipeline_id"]: row["count"]
+        for row in selected_stage_qs.values(
+            "pipeline_id"
+        ).annotate(count=Count("id"))
+    }
+    stages = list(
+        selected_stage_qs.order_by(
+            "pipeline_id",
+            "display_order",
+            "name",
+        )[:500]
+    )
+    stages_by_pipeline = {}
+    for stage in stages:
+        stages_by_pipeline.setdefault(
+            stage.pipeline_id,
+            [],
+        ).append(stage)
+
+    pipeline_rows = []
+    for pipeline in pipelines:
+        returned_stages = stages_by_pipeline.get(
+            pipeline.id,
+            [],
+        )
+        stage_count = stage_counts.get(
+            pipeline.id,
+            0,
+        )
+        pipeline_rows.append(
+            {
+                "id": str(pipeline.id),
+                "name": pipeline.name,
+                "active": pipeline.is_active,
+                "ai_enabled": pipeline.ai_enabled,
+                "stages": [
+                    {
+                        "id": str(stage.id),
+                        "name": stage.name,
+                        "active": stage.is_active,
+                        "ai_on": stage.ai_on,
+                        "display_order": stage.display_order,
+                        "description": stage.description[:1000],
+                        "description_length": len(
+                            stage.description or ""
+                        ),
+                        "description_truncated": len(
+                            stage.description or ""
+                        )
+                        > 1000,
+                    }
+                    for stage in returned_stages
+                ],
+                "stage_count": stage_count,
+                "stages_returned": len(returned_stages),
+                "stages_truncated": (
+                    stage_count > len(returned_stages)
+                ),
+            }
+        )
+
+    sensitive_attribute_keys = _sensitive_attribute_keys(
+        organization
+    )
+    attribute_qs = (
+        AttributeDefinition.objects.filter(
+            organization=organization
+        )
+        .exclude(key__in=sensitive_attribute_keys)
         .order_by("display_order", "name")
     )
-    sensitive_attribute_keys = _sensitive_attribute_keys(organization)
-    visible_attributes = [
-        item for item in attributes
-        if item.key not in sensitive_attribute_keys
-    ]
-    playbook = str(getattr(info, "ai_playbook", "") or "")
-    compiled = compile_qualification_requirements(qualification_questions(playbook))
+    attribute_total = attribute_qs.count()
+    visible_attributes = list(attribute_qs[:100])
+    attribute_rows = []
+    for item in visible_attributes:
+        options = list(item.options or [])
+        attribute_rows.append(
+            {
+                "id": str(item.id),
+                "key": item.key,
+                "name": item.name,
+                "field_type": item.field_type,
+                "description": item.description[:500],
+                "description_length": len(
+                    item.description or ""
+                ),
+                "description_truncated": len(
+                    item.description or ""
+                )
+                > 500,
+                "options": options[:100],
+                "option_count": len(options),
+                "options_truncated": len(options) > 100,
+            }
+        )
+
+    playbook = str(
+        getattr(info, "ai_playbook", "") or ""
+    )
+    compiled = compile_qualification_requirements(
+        qualification_questions(playbook)
+    )
+    requirements = list(
+        compiled.get("requirements", []) or []
+    )
     return ToolExecution(
         data={
             "organization": {
@@ -1476,44 +1581,33 @@ def get_organization_configuration(*, identity, arguments):
                 "qualification": {
                     "mode": compiled.get("mode"),
                     "flow_version": compiled.get("flow_version"),
-                    "requirements": compiled.get("requirements", []),
+                    "requirements": requirements[:100],
+                    "requirement_count": len(requirements),
+                    "requirements_truncated": len(requirements) > 100,
                 },
             },
-            "pipelines": [
-                {
-                    "id": str(pipeline.id),
-                    "name": pipeline.name,
-                    "active": pipeline.is_active,
-                    "ai_enabled": pipeline.ai_enabled,
-                    "stages": [
-                        {
-                            "id": str(stage.id),
-                            "name": stage.name,
-                            "active": stage.is_active,
-                            "ai_on": stage.ai_on,
-                            "display_order": stage.display_order,
-                            "description": stage.description[:1000],
-                            "description_length": len(stage.description or ""),
-                            "description_truncated": len(stage.description or "") > 1000,
-                        }
-                        for stage in pipeline.stages.all()
-                    ],
-                }
-                for pipeline in pipelines
-            ],
-            "attributes": [
-                {
-                    "id": str(item.id),
-                    "key": item.key,
-                    "name": item.name,
-                    "field_type": item.field_type,
-                    "description": item.description[:500],
-                    "description_length": len(item.description or ""),
-                    "description_truncated": len(item.description or "") > 500,
-                    "options": item.options,
-                }
-                for item in visible_attributes
-            ],
+            "pipelines": pipeline_rows,
+            "attributes": attribute_rows,
+            "counts": {
+                "pipeline_count": pipeline_total,
+                "pipelines_returned": len(pipeline_rows),
+                "pipelines_truncated": (
+                    pipeline_total > len(pipeline_rows)
+                ),
+                "stage_count": stage_total,
+                "stages_returned": len(stages),
+                "stages_truncated": (
+                    stage_total > len(stages)
+                ),
+                "attribute_count": attribute_total,
+                "attributes_returned": len(attribute_rows),
+                "attributes_truncated": (
+                    attribute_total > len(attribute_rows)
+                ),
+                "sensitive_attributes_redacted": len(
+                    sensitive_attribute_keys
+                ),
+            },
             "knowledge": _knowledge_health(
                 organization=organization,
                 limit=20,
@@ -1533,10 +1627,18 @@ def get_organization_configuration(*, identity, arguments):
         target_type="organization",
         target_id=str(organization.id),
         audit_summary={
-            "pipelines": len(pipelines),
-            "attributes": len(visible_attributes),
-            "sensitive_attributes_redacted": len(sensitive_attribute_keys),
-            "qualification_requirements": len(compiled.get("requirements", [])),
+            "pipelines_returned": len(pipeline_rows),
+            "pipelines_total": pipeline_total,
+            "stages_returned": len(stages),
+            "stages_total": stage_total,
+            "attributes_returned": len(attribute_rows),
+            "attributes_total": attribute_total,
+            "sensitive_attributes_redacted": len(
+                sensitive_attribute_keys
+            ),
+            "qualification_requirements": len(
+                requirements
+            ),
         },
     )
 
