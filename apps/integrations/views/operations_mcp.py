@@ -691,7 +691,7 @@ OWN_TOOL_DEFINITIONS = [
                 "type": "string",
                 "maxLength": 100,
             },
-            "support_session_id": {
+            "support_context_id": {
                 "type": "string",
                 "format": "uuid",
             },
