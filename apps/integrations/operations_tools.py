@@ -2174,28 +2174,98 @@ def get_operations_audit(*, identity, arguments):
         organization=organization,
         capability=CAP_AUDIT_READ,
     )
+    arguments = arguments or {}
     try:
-        limit = int((arguments or {}).get("limit") or 30)
+        limit = int(arguments.get("limit") or 30)
     except (TypeError, ValueError):
         limit = 30
     limit = max(1, min(limit, 100))
-    rows = OperationsAuditEvent.objects.filter(organization=organization).select_related("actor")
-    if identity.role != ROLE_SUPERADMIN:
-        # Organization admins can see Operations AI activity in their tenant,
-        # including visible SHVYA Support actions, but never another tenant.
-        rows = rows.filter(organization=organization)
-    rows = rows.order_by("-created_at")[:limit]
+
+    rows = OperationsAuditEvent.objects.filter(
+        organization=organization
+    ).select_related("actor", "support_session")
+
+    audit_event_id = str(
+        arguments.get("audit_event_id") or ""
+    ).strip()
+    if audit_event_id:
+        rows = rows.filter(
+            pk=_uuid(
+                audit_event_id,
+                field="audit_event_id",
+            )
+        )
+
+    tool_name = str(
+        arguments.get("tool_name") or ""
+    ).strip()
+    if tool_name:
+        rows = rows.filter(tool_name=tool_name[:100])
+
+    target_type = str(
+        arguments.get("target_type") or ""
+    ).strip()
+    if target_type:
+        rows = rows.filter(
+            target_type=target_type[:80]
+        )
+
+    target_id = str(
+        arguments.get("target_id") or ""
+    ).strip()
+    if target_id:
+        rows = rows.filter(target_id=target_id[:100])
+
+    support_session_id = str(
+        arguments.get("support_session_id") or ""
+    ).strip()
+    if support_session_id:
+        rows = rows.filter(
+            support_session_id=_uuid(
+                support_session_id,
+                field="support_session_id",
+            )
+        )
+
+    outcome = str(
+        arguments.get("outcome") or ""
+    ).strip()
+    valid_outcomes = {
+        choice
+        for choice, _label
+        in OperationsAuditEvent.Outcome.choices
+    }
+    if outcome:
+        if outcome not in valid_outcomes:
+            raise OperationsToolError(
+                "outcome must be one of: "
+                + ", ".join(sorted(valid_outcomes))
+            )
+        rows = rows.filter(outcome=outcome)
+
+    rows = list(
+        rows.order_by("-created_at")[:limit]
+    )
     return ToolExecution(
         data={
             "events": [
                 {
                     "id": str(item.id),
-                    "actor": item.actor.name if item.actor else "Former user",
+                    "actor": (
+                        item.actor.name
+                        if item.actor
+                        else "Former user"
+                    ),
                     "role": item.role,
                     "tool": item.tool_name,
                     "capability": item.capability,
                     "target_type": item.target_type,
                     "target_id": item.target_id,
+                    "support_session_id": (
+                        str(item.support_session_id)
+                        if item.support_session_id
+                        else None
+                    ),
                     "reason": item.reason,
                     "outcome": item.outcome,
                     "change_summary": item.change_summary,
@@ -2203,12 +2273,35 @@ def get_operations_audit(*, identity, arguments):
                     "created_at": item.created_at.isoformat(),
                 }
                 for item in rows
-            ]
+            ],
+            "count": len(rows),
+            "filters": {
+                "audit_event_id": audit_event_id or None,
+                "tool_name": tool_name or None,
+                "target_type": target_type or None,
+                "target_id": target_id or None,
+                "support_session_id": (
+                    support_session_id or None
+                ),
+                "outcome": outcome or None,
+            },
         },
         capability=CAP_AUDIT_READ,
         target_type="organization",
         target_id=str(organization.id),
-        audit_summary={"result_count": len(rows)},
+        audit_summary={
+            "result_count": len(rows),
+            "filtered": any(
+                (
+                    audit_event_id,
+                    tool_name,
+                    target_type,
+                    target_id,
+                    support_session_id,
+                    outcome,
+                )
+            ),
+        },
     )
 
 
