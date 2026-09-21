@@ -2751,7 +2751,7 @@ document.addEventListener("DOMContentLoaded", function () {
         <div>
             <h2 class="text-base font-semibold">External AI Operations</h2>
             <p class="text-xs text-gray-400 mt-1">
-                Superadmin-owned policy for ChatGPT / Claude Operations MCP access.
+                Superadmin-owned policy for ChatGPT / Claude / VS Code Operations MCP access.
             </p>
         </div>
         {% if operations_policy.organization_admin_enabled %}
@@ -2784,7 +2784,7 @@ document.addEventListener("DOMContentLoaded", function () {
             <div class="text-xs font-semibold uppercase tracking-wide text-gray-500">Superadmin Operations MCP endpoint</div>
             <code class="mt-2 block break-all rounded-md bg-white px-3 py-2 text-xs text-gray-700 border border-gray-200">{{ operations_mcp_url }}</code>
             <p class="mt-2 text-xs leading-5 text-gray-500">
-                Connect this endpoint from ChatGPT or Claude and authorize with your SHVYA Superadmin session.
+                Connect this endpoint from ChatGPT, Claude, or VS Code and authorize with your SHVYA Superadmin session.
                 Customer data remains inaccessible until the Operations agent explicitly selects an organization support context.
             </p>
         </div>
