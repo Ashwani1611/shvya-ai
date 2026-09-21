@@ -356,34 +356,42 @@ def exchange_authorization_code(
     return token, raw_access, raw_refresh
 
 
-def _deny_and_revoke_live_grant(token, message):
-    """Permanently revoke a grant whose live SHVYA authority is gone."""
+def _deny_and_revoke_live_grant(
+    token,
+    message,
+    *,
+    revoke=True,
+):
+    """Reject a grant whose live SHVYA authority is gone."""
 
-    now = timezone.now()
-    if token.revoked_at is None:
-        token.revoked_at = now
-        token.save(update_fields=["revoked_at", "updated_at"])
-    OperationsSupportSession.objects.filter(
-        token=token,
-        ended_at__isnull=True,
-    ).update(
-        ended_at=now,
-        last_seen_at=now,
-    )
+    if revoke:
+        now = timezone.now()
+        if token.revoked_at is None:
+            token.revoked_at = now
+            token.save(update_fields=["revoked_at", "updated_at"])
+        OperationsSupportSession.objects.filter(
+            token=token,
+            ended_at__isnull=True,
+        ).update(
+            ended_at=now,
+            last_seen_at=now,
+        )
     raise OperationsAuthError(message)
 
 
-def _validate_live_token(token):
+def _validate_live_token(token, *, revoke_on_failure=True):
     if not token.client.is_active:
         _deny_and_revoke_live_grant(
             token,
             "OAuth client has been deactivated.",
+            revoke=revoke_on_failure,
         )
     actor = token.actor
     if not actor.is_active:
         _deny_and_revoke_live_grant(
             token,
             "SHVYA user is inactive.",
+            revoke=revoke_on_failure,
         )
 
     if token.role == ROLE_SUPERADMIN:
@@ -391,6 +399,7 @@ def _validate_live_token(token):
             _deny_and_revoke_live_grant(
                 token,
                 "Superadmin permission has been revoked.",
+                revoke=revoke_on_failure,
             )
         return
 
@@ -406,12 +415,14 @@ def _validate_live_token(token):
             _deny_and_revoke_live_grant(
                 token,
                 "Organization Operations permission has been revoked.",
+                revoke=revoke_on_failure,
             )
         return
 
     _deny_and_revoke_live_grant(
         token,
         "Unsupported SHVYA Operations role.",
+        revoke=revoke_on_failure,
     )
 
 
@@ -435,26 +446,42 @@ def refresh_access_token(*, refresh_token, client_id, resource=""):
             raise OperationsAuthError("OAuth resource mismatch.")
         if token.refresh_expires_at <= now:
             raise OperationsAuthError("Refresh token has expired.")
-        _validate_live_token(token)
 
-        raw_access = secrets.token_urlsafe(48)
-        raw_refresh = secrets.token_urlsafe(56)
-        token.access_token_hash = token_hash(raw_access)
-        token.refresh_token_hash = token_hash(raw_refresh)
-        token.expires_at = now + ACCESS_TOKEN_TTL
-        # Keep the original grant's refresh expiry fixed. Rotation prevents
-        # token replay; it must not silently turn a 14-day external-AI grant
-        # into an indefinitely renewable credential.
-        token.last_used_at = now
-        token.save(
-            update_fields=[
-                "access_token_hash",
-                "refresh_token_hash",
-                "expires_at",
-                "last_used_at",
-                "updated_at",
-            ]
-        )
+        validation_error = None
+        try:
+            _validate_live_token(
+                token,
+                revoke_on_failure=False,
+            )
+        except OperationsAuthError as exc:
+            validation_error = exc
+            _revoke_locked_token(
+                token,
+                now=now,
+            )
+
+        if validation_error is None:
+            raw_access = secrets.token_urlsafe(48)
+            raw_refresh = secrets.token_urlsafe(56)
+            token.access_token_hash = token_hash(raw_access)
+            token.refresh_token_hash = token_hash(raw_refresh)
+            token.expires_at = now + ACCESS_TOKEN_TTL
+            # Keep the original grant's refresh expiry fixed. Rotation prevents
+            # token replay; it must not silently turn a 14-day external-AI grant
+            # into an indefinitely renewable credential.
+            token.last_used_at = now
+            token.save(
+                update_fields=[
+                    "access_token_hash",
+                    "refresh_token_hash",
+                    "expires_at",
+                    "last_used_at",
+                    "updated_at",
+                ]
+            )
+
+    if validation_error is not None:
+        raise validation_error
     return token, raw_access, raw_refresh
 
 
