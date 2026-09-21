@@ -216,7 +216,7 @@ class CalendarPage(models.Model):
         super().clean()
         try:
             ZoneInfo(self.timezone)
-        except ZoneInfoNotFoundError as exc:
+        except (ZoneInfoNotFoundError, ValueError) as exc:
             raise ValidationError(
                 {"timezone": "Choose a valid IANA timezone, for example Asia/Kolkata."}
             ) from exc
