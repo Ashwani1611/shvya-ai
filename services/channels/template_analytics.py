@@ -6,7 +6,6 @@ template screen cannot accidentally mix a partial local event history with
 Meta's canonical aggregate.
 """
 
-import json
 from collections import defaultdict
 from datetime import date, datetime, time, timedelta, timezone as dt_timezone
 
@@ -95,42 +94,30 @@ def _meta_error(response):
     )
 
 
-def _analytics_field(*, start_date, end_date, template_ids):
+def _request_batch(*, account, template_ids, start_date, end_date):
     start_ts = int(
         datetime.combine(start_date, time.min, tzinfo=dt_timezone.utc).timestamp()
     )
-    # The UI treats both selected dates as inclusive. Meta's daily analytics
-    # end boundary is exclusive, so request midnight after the selected end.
+    # Use the final second of the selected end day so the UI's displayed range
+    # is inclusive without asking Meta for the next calendar day's bucket.
     end_ts = int(
         datetime.combine(
             end_date + timedelta(days=1),
             time.min,
             tzinfo=dt_timezone.utc,
         ).timestamp()
-    )
-    ids = json.dumps([str(value) for value in template_ids], separators=(",", ":"))
-    metrics = json.dumps(list(METRIC_TYPES), separators=(",", ":"))
-    return (
-        "template_analytics"
-        f".start({start_ts})"
-        f".end({end_ts})"
-        ".granularity(DAILY)"
-        f".template_ids({ids})"
-        f".metric_types({metrics})"
-    )
-
-
-def _request_batch(*, account, template_ids, start_date, end_date):
-    field = _analytics_field(
-        start_date=start_date,
-        end_date=end_date,
-        template_ids=template_ids,
-    )
+    ) - 1
     try:
         response = meta.requests.get(
-            f"{meta.GRAPH_API_BASE}/{account.waba_id}",
+            f"{meta.GRAPH_API_BASE}/{account.waba_id}/template_analytics",
             headers={"Authorization": f"Bearer {account.access_token}"},
-            params={"fields": field},
+            params={
+                "start": start_ts,
+                "end": end_ts,
+                "granularity": "DAILY",
+                "template_ids": [str(value) for value in template_ids],
+                "metric_types": list(METRIC_TYPES),
+            },
             timeout=meta.REQUEST_TIMEOUT_SECONDS,
         )
     except meta.requests.RequestException as exc:
