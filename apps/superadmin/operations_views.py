@@ -13,6 +13,7 @@ from apps.integrations.operations_policy import (
     DEFAULT_APPROVAL_REQUIRED,
     DEFAULT_ORG_CAPABILITIES,
     ROLE_ORGANIZATION_ADMIN,
+    WRITE_CAPABILITIES,
 )
 from apps.organizations.models import Organization
 from apps.superadmin.models import AuditLog
@@ -40,7 +41,7 @@ def organization_operations_policy_update_view(request, organization_id):
     approval = [
         item
         for item in request.POST.getlist("approval_required_capabilities")
-        if item in allowed and item in ALL_CAPABILITIES
+        if item in allowed and item in WRITE_CAPABILITIES
     ]
 
     revoked_token_count = 0
