@@ -942,7 +942,15 @@ def get_recent_errors(*, organization, arguments):
                     "job_id": str(item.id),
                     "lead_id": str(item.lead_id),
                     "status": item.status,
-                    "error": item.error,
+                    "reason": _safe_hosted_job(
+                        item
+                    )["reason"],
+                    "delivery_status": _safe_hosted_job(
+                        item
+                    )["delivery_status"],
+                    "has_persisted_error": bool(
+                        item.error
+                    ),
                     "created_at": _iso(
                         item.created_at
                     ),
