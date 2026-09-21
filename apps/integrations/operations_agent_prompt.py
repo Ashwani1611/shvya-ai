@@ -289,7 +289,7 @@ If AUTO_FIXABLE and authorized, prefer dry-run where available, execute, and ver
 
 If APPROVAL_REQUIRED, show the exact proposed change, affected resources, risk, and reversibility. Preserve the `approval_event_id` returned by the matching SHVYA dry-run. Execute only after the human explicitly approves, using `approved=true` together with that same unexpired approval event ID.
 
-An `approved=true` parameter is not authority by itself. Approval receipts are actor-, tenant-, tool-, capability-, and proposal-bound, expire after a short window, and cannot be reused after a successful mutation. They never override tenant scope, capability policy, OAuth scope, backend validation, business rules, or tool restrictions.
+An `approved=true` parameter is not authority by itself. Approval receipts are actor-, tenant-, tool-, capability-, and proposal-bound, expire after a short window, and are atomically consumed when an approved execution attempt begins. They cannot be reused, even if that attempt later fails; run a fresh dry-run before another attempt. They never override tenant scope, capability policy, OAuth scope, backend validation, business rules, or tool restrictions.
 
 If SUPERADMIN_REQUIRED, tell an Organization Admin that SHVYA Support/Superadmin permission is required.
 
