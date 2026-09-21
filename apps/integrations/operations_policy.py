@@ -14,8 +14,17 @@ CAP_AUDIT_READ = "audit.read"
 CAP_LEAD_STAGE_WRITE = "lead.stage.write"
 CAP_LEAD_ATTRIBUTES_WRITE = "lead.attributes.write"
 CAP_AI_CONFIG_WRITE = "ai.config.write"
+# Legacy umbrella values remain recognized for backward-compatible stored
+# policies, but the Superadmin UI and live tool policy use granular controls.
 CAP_CRM_CONFIG_WRITE = "crm.config.write"
 CAP_AUTOMATION_CONFIG_WRITE = "automation.config.write"
+
+CAP_PIPELINE_CONFIG_WRITE = "crm.pipeline.config.write"
+CAP_STAGE_CONFIG_WRITE = "crm.stage.config.write"
+CAP_ATTRIBUTE_CONFIG_WRITE = "crm.attribute.config.write"
+CAP_WORKFLOW_CONFIG_WRITE = "automation.workflow.config.write"
+CAP_CADENCE_CONFIG_WRITE = "automation.cadence.config.write"
+CAP_MESSAGING_CONFIG_WRITE = "automation.messaging.config.write"
 
 READ_CAPABILITIES = (
     CAP_ORGANIZATION_READ,
@@ -26,10 +35,27 @@ WRITE_CAPABILITIES = (
     CAP_LEAD_STAGE_WRITE,
     CAP_LEAD_ATTRIBUTES_WRITE,
     CAP_AI_CONFIG_WRITE,
-    CAP_CRM_CONFIG_WRITE,
-    CAP_AUTOMATION_CONFIG_WRITE,
+    CAP_PIPELINE_CONFIG_WRITE,
+    CAP_STAGE_CONFIG_WRITE,
+    CAP_ATTRIBUTE_CONFIG_WRITE,
+    CAP_WORKFLOW_CONFIG_WRITE,
+    CAP_CADENCE_CONFIG_WRITE,
+    CAP_MESSAGING_CONFIG_WRITE,
 )
 ALL_CAPABILITIES = READ_CAPABILITIES + WRITE_CAPABILITIES
+
+LEGACY_CAPABILITY_EXPANSIONS = {
+    CAP_CRM_CONFIG_WRITE: (
+        CAP_PIPELINE_CONFIG_WRITE,
+        CAP_STAGE_CONFIG_WRITE,
+        CAP_ATTRIBUTE_CONFIG_WRITE,
+    ),
+    CAP_AUTOMATION_CONFIG_WRITE: (
+        CAP_WORKFLOW_CONFIG_WRITE,
+        CAP_CADENCE_CONFIG_WRITE,
+        CAP_MESSAGING_CONFIG_WRITE,
+    ),
+}
 
 DEFAULT_ORG_CAPABILITIES = list(READ_CAPABILITIES)
 DEFAULT_APPROVAL_REQUIRED = list(WRITE_CAPABILITIES)
@@ -41,8 +67,12 @@ CAPABILITY_LABELS = {
     CAP_LEAD_STAGE_WRITE: "Move leads between active stages/pipelines",
     CAP_LEAD_ATTRIBUTES_WRITE: "Update non-sensitive lead attributes",
     CAP_AI_CONFIG_WRITE: "Update organization AI profile / Playbook",
-    CAP_CRM_CONFIG_WRITE: "Configure CRM pipelines, stages and attributes",
-    CAP_AUTOMATION_CONFIG_WRITE: "Configure Workflows, Cadence & messaging automation",
+    CAP_PIPELINE_CONFIG_WRITE: "Configure CRM pipelines",
+    CAP_STAGE_CONFIG_WRITE: "Configure CRM stages",
+    CAP_ATTRIBUTE_CONFIG_WRITE: "Configure CRM attributes",
+    CAP_WORKFLOW_CONFIG_WRITE: "Configure Workflows",
+    CAP_CADENCE_CONFIG_WRITE: "Configure Cadence",
+    CAP_MESSAGING_CONFIG_WRITE: "Configure messaging automation settings",
 }
 
 
@@ -74,11 +104,18 @@ def effective_capabilities(*, role, organization=None):
     if not policy.organization_admin_enabled:
         return set()
 
-    allowed = {
+    raw_allowed = {
         str(item)
         for item in (policy.allowed_capabilities or [])
-        if str(item) in ALL_CAPABILITIES
     }
+    allowed = {
+        item
+        for item in raw_allowed
+        if item in ALL_CAPABILITIES
+    }
+    for legacy_capability, expanded in LEGACY_CAPABILITY_EXPANSIONS.items():
+        if legacy_capability in raw_allowed:
+            allowed.update(expanded)
     return allowed
 
 
@@ -90,8 +127,21 @@ def approval_required(*, role, organization, capability):
     if role != ROLE_ORGANIZATION_ADMIN or organization is None:
         return False
     policy = policy_for(organization)
-    values = {str(item) for item in (policy.approval_required_capabilities or [])}
-    return capability in values
+    values = {
+        str(item)
+        for item in (
+            policy.approval_required_capabilities
+            or []
+        )
+    }
+    if capability in values:
+        return True
+    return any(
+        legacy_capability in values
+        and capability in expanded
+        for legacy_capability, expanded
+        in LEGACY_CAPABILITY_EXPANSIONS.items()
+    )
 
 
 def require_capability(*, role, organization, capability):
