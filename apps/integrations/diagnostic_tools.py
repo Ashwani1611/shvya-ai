@@ -875,7 +875,6 @@ def get_recent_errors(*, organization, arguments):
     webhooks = list(
         WebhookDelivery.objects.filter(
             organization=organization,
-            lead__organization=organization,
             status=WebhookDelivery.Status.FAILED,
             created_at__gte=since,
         ).order_by("-created_at")[:limit]
