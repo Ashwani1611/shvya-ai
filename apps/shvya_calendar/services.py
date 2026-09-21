@@ -19,7 +19,12 @@ from apps.integrations.services.email import (
 )
 from services.crm.lead_service import create_lead
 
-from .google import GoogleCalendarError, create_booking_event, free_busy
+from .google import (
+    GoogleCalendarError,
+    create_booking_event,
+    free_busy,
+    update_booking_event,
+)
 from .models import (
     CalendarBlock,
     CalendarBooking,
@@ -773,6 +778,94 @@ def book_slot(*, page, submission, slot_start_iso):
     return booking
 
 
+def reschedule_booking(*, booking, slot_start_iso):
+    page = booking.page
+    try:
+        requested = datetime.fromisoformat(
+            str(slot_start_iso).replace("Z", "+00:00")
+        )
+    except ValueError as exc:
+        raise ValidationError("Choose a valid booking time.") from exc
+    if timezone.is_naive(requested):
+        requested = requested.replace(tzinfo=_page_zone(page))
+    requested = requested.astimezone(UTC)
+
+    local_date = requested.astimezone(_page_zone(page)).date()
+    valid_starts = {
+        item["start"]
+        for item in available_slots(page=page, local_date=local_date)
+    }
+    if requested not in valid_starts:
+        raise ValidationError("That slot is no longer available.")
+
+    with transaction.atomic():
+        locked_page = CalendarPage.objects.select_for_update().get(pk=page.pk)
+        locked = (
+            CalendarBooking.objects
+            .select_for_update()
+            .select_related("page", "lead", "submission", "host")
+            .get(pk=booking.pk)
+        )
+        if locked.status == CalendarBooking.Status.CANCELLED:
+            raise ValidationError("Cancelled bookings cannot be rescheduled.")
+        duration = timedelta(minutes=locked_page.slot_duration_minutes)
+        active_statuses = [
+            CalendarBooking.Status.SCHEDULED,
+            CalendarBooking.Status.RESCHEDULED,
+        ]
+        capacity = (
+            CalendarBooking.objects
+            .filter(
+                page=locked_page,
+                status__in=active_statuses,
+                start_at=requested,
+            )
+            .exclude(pk=locked.pk)
+            .count()
+        )
+        if capacity >= locked_page.bookings_per_slot:
+            raise ValidationError(
+                "That slot was just booked. Please choose another time."
+            )
+        locked.previous_start_at = locked.start_at
+        locked.previous_end_at = locked.end_at
+        locked.start_at = requested
+        locked.end_at = requested + duration
+        locked.status = CalendarBooking.Status.RESCHEDULED
+        locked.calendar_sync_status = (
+            CalendarBooking.SyncStatus.PENDING
+            if locked.host_id
+            else CalendarBooking.SyncStatus.NOT_CONNECTED
+        )
+        locked.full_clean()
+        locked.save(
+            update_fields=[
+                "previous_start_at",
+                "previous_end_at",
+                "start_at",
+                "end_at",
+                "status",
+                "calendar_sync_status",
+                "updated_at",
+            ]
+        )
+
+    try:
+        update_booking_event(locked)
+    except GoogleCalendarError as exc:
+        locked.calendar_sync_status = CalendarBooking.SyncStatus.FAILED
+        locked.calendar_sync_error = str(exc)
+        locked.save(
+            update_fields=[
+                "calendar_sync_status",
+                "calendar_sync_error",
+                "updated_at",
+            ]
+        )
+    schedule_booking_reminders(locked)
+    return locked
+
+
 TOKEN_RE = re.compile(r"{{\s*([a-zA-Z0-9_.]+)\s*}}")
 
 
@@ -831,13 +924,17 @@ def schedule_booking_reminders(booking):
             due_at = booking.start_at + timedelta(
                 minutes=step.offset_minutes
             )
-        delivery, _created = CalendarReminderDelivery.objects.get_or_create(
+        delivery, _created = CalendarReminderDelivery.objects.update_or_create(
             booking=booking,
             step=step,
             defaults={
                 "due_at": due_at,
+                "status": CalendarReminderDelivery.Status.PENDING,
                 "rendered_subject": render_booking_text(step.subject, booking),
                 "rendered_body": render_booking_text(step.body, booking),
+                "error": "",
+                "sent_at": None,
+                "completed_at": None,
             },
         )
         deliveries.append(delivery)
