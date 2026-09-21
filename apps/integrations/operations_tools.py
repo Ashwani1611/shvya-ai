@@ -1455,23 +1455,81 @@ def update_lead_attributes(*, identity, arguments):
         )
 
     try:
-        update_lead_attribute_values(
-            organization=organization,
-            lead=lead,
-            values=values,
-        )
+        with transaction.atomic():
+            lead = (
+                Lead.objects.select_for_update()
+                .select_related("organization", "pipeline", "stage")
+                .get(
+                    pk=lead.pk,
+                    organization=organization,
+                )
+            )
+            current_definitions = {
+                item.key: item
+                for item in AttributeDefinition.objects.filter(
+                    organization=organization
+                )
+            }
+            current_unknown = sorted(
+                set(values) - set(current_definitions)
+            )
+            if current_unknown:
+                raise OperationsApprovalRequired(
+                    "CRM attribute definitions changed after review. "
+                    "Run a fresh dry-run before applying this update."
+                )
+            current_sensitive = [
+                key
+                for key in values
+                if is_sensitive_attribute_definition(
+                    {
+                        "key": current_definitions[key].key,
+                        "name": current_definitions[key].name,
+                    }
+                )
+            ]
+            if current_sensitive:
+                raise OperationsPermissionError(
+                    "A target CRM attribute is now sensitive/credential-like. "
+                    "Operations MCP will not write it."
+                )
+
+            locked_before = {
+                key: (lead.attributes or {}).get(key)
+                for key in values
+            }
+            locked_proposal = {
+                "lead_id": str(lead.id),
+                "before": locked_before,
+                "after": values,
+            }
+            _ensure_approved_proposal_unchanged(
+                arguments=arguments,
+                proposal=locked_proposal,
+            )
+
+            update_lead_attribute_values(
+                organization=organization,
+                lead=lead,
+                values=values,
+            )
+            lead.refresh_from_db(
+                fields=["attributes", "updated_at"]
+            )
+            failed = [
+                key
+                for key, value in values.items()
+                if str((lead.attributes or {}).get(key) or "")
+                != str(value or "").strip()
+            ]
+            if failed:
+                raise OperationsToolError(
+                    "Attribute write verification failed for: "
+                    + ", ".join(failed[:10])
+                )
+            before = locked_before
     except ValidationError as exc:
         raise OperationsToolError("Lead attribute validation failed.") from exc
-    lead.refresh_from_db(fields=["attributes", "updated_at"])
-    failed = [
-        key
-        for key, value in values.items()
-        if str((lead.attributes or {}).get(key) or "") != str(value or "").strip()
-    ]
-    if failed:
-        raise OperationsToolError(
-            "Attribute write verification failed for: " + ", ".join(failed[:10])
-        )
     return ToolExecution(
         data={
             "status": "FIXED",
@@ -1608,23 +1666,69 @@ def update_ai_configuration(*, identity, arguments):
             },
         )
 
-    info = existing_info or OrgInfo(organization=organization)
-    for key, value in normalized.items():
-        setattr(info, key, value)
-    if normalized:
-        if existing_info is None:
-            info.save()
-        else:
-            info.save(update_fields=[*normalized.keys(), "updated_at"])
-    info.refresh_from_db()
-    verification_failed = [
-        key for key, value in normalized.items() if getattr(info, key) != value
-    ]
-    if verification_failed:
-        raise OperationsToolError(
-            "AI configuration verification failed for: "
-            + ", ".join(verification_failed)
-        )
+    try:
+        with transaction.atomic():
+            Organization.objects.select_for_update().get(
+                pk=organization.pk
+            )
+            locked_info = (
+                OrgInfo.objects.select_for_update()
+                .filter(organization=organization)
+                .first()
+            )
+            info_for_locked_compare = (
+                locked_info or OrgInfo(organization=organization)
+            )
+            locked_before = {
+                key: getattr(info_for_locked_compare, key)
+                for key in normalized
+            }
+            locked_proposal = {
+                "organization_id": str(organization.id),
+                "before": locked_before,
+                "after": normalized,
+            }
+            _ensure_approved_proposal_unchanged(
+                arguments=arguments,
+                proposal=locked_proposal,
+            )
+
+            info = locked_info or OrgInfo(
+                organization=organization
+            )
+            for key, value in normalized.items():
+                setattr(info, key, value)
+            if normalized:
+                if locked_info is None:
+                    info.save()
+                else:
+                    info.save(
+                        update_fields=[
+                            *normalized.keys(),
+                            "updated_at",
+                        ]
+                    )
+            info.refresh_from_db()
+            verification_failed = [
+                key
+                for key, value in normalized.items()
+                if getattr(info, key) != value
+            ]
+            if verification_failed:
+                raise OperationsToolError(
+                    "AI configuration verification failed for: "
+                    + ", ".join(verification_failed)
+                )
+            changed_fields = [
+                key
+                for key, value in normalized.items()
+                if locked_before.get(key) != value
+            ]
+    except IntegrityError as exc:
+        raise OperationsApprovalRequired(
+            "Organization AI configuration changed concurrently. "
+            "Run a fresh dry-run before applying this update."
+        ) from exc
     return ToolExecution(
         data={
             "status": "FIXED",
