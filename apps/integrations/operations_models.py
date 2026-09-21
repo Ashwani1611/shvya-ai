@@ -292,8 +292,29 @@ class OperationsAuditEvent(models.Model):
 
 
 
+class ImmutableOperationsApprovalUseQuerySet(models.QuerySet):
+    """Prevent a consumed approval receipt from becoming reusable."""
+
+    def update(self, **kwargs):
+        raise ValidationError("Operations approval uses are immutable.")
+
+    def bulk_update(self, objs, fields, batch_size=None):
+        raise ValidationError("Operations approval uses are immutable.")
+
+    def delete(self):
+        raise ValidationError("Operations approval uses are immutable.")
+
+
+class OperationsApprovalUseManager(
+    models.Manager.from_queryset(ImmutableOperationsApprovalUseQuerySet)
+):
+    pass
+
+
 class OperationsApprovalUse(models.Model):
     """Single-use claim on one approval-required Operations dry-run audit event."""
+
+    objects = OperationsApprovalUseManager()
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     approval_event = models.OneToOneField(
@@ -308,3 +329,11 @@ class OperationsApprovalUse(models.Model):
 
     def __str__(self):
         return f"Approval use — {self.approval_event_id}"
+
+    def save(self, *args, **kwargs):
+        if not self._state.adding:
+            raise ValidationError("Operations approval uses are immutable.")
+        return super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise ValidationError("Operations approval uses are immutable.")
