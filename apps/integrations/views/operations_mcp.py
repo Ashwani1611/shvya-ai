@@ -868,7 +868,7 @@ def operations_oauth_revoke(request):
         return response
 
     try:
-        revoke_token(raw_token=raw_token)
+        revoked_token = revoke_token(raw_token=raw_token)
     except OperationsAuthError as exc:
         response = JsonResponse(
             {
@@ -879,6 +879,47 @@ def operations_oauth_revoke(request):
         )
         response["Cache-Control"] = "no-store"
         return response
+
+    if revoked_token is not None:
+        organization = (
+            revoked_token.active_organization
+            if revoked_token.role == ROLE_SUPERADMIN
+            else revoked_token.organization
+        )
+        support_session = None
+        if organization is not None:
+            support_session = (
+                OperationsSupportSession.objects.filter(
+                    token=revoked_token,
+                    organization=organization,
+                )
+                .order_by("-started_at")
+                .first()
+            )
+        OperationsAuditEvent.objects.create(
+            actor=revoked_token.actor,
+            role=revoked_token.role,
+            organization=organization,
+            support_session=support_session,
+            tool_name="oauth_revoke",
+            capability="",
+            target_type="oauth_grant",
+            target_id=str(revoked_token.id),
+            reason="Operations OAuth grant revoked.",
+            outcome=OperationsAuditEvent.Outcome.SUCCESS,
+            request_fingerprint=request_fingerprint(
+                {
+                    "event": "oauth_revoke",
+                    "token_id": str(revoked_token.id),
+                }
+            ),
+            change_summary={
+                "access": "revoked",
+                "support_session_closed": support_session is not None,
+            },
+            duration_ms=0,
+            error_code="",
+        )
 
     # Unknown/already-revoked values intentionally return success so the
     # endpoint cannot be used to probe whether a bearer/refresh token exists.
