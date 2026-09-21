@@ -16,6 +16,7 @@ from apps.followups.models import (
 from apps.organizations.models import Organization
 from services.channels.hosted_whatsapp_service import (
     get_session_settings,
+    preview_session_settings_update,
     update_session_settings,
 )
 from services.followup_service import (
@@ -85,6 +86,70 @@ class PipelineAutomationSettingsTests(TestCase):
             enabled=False,
             business_hours_start=time(0, 1),
             business_hours_end=time(23, 59),
+        )
+
+    def test_session_settings_preview_is_side_effect_free_and_matches_update(self):
+        payload = {
+            "ai_auto_reply": False,
+            "auto_lead_creation": False,
+            "bump_up_messages": True,
+            "bump_up_count": 4,
+            "auto_follow_up": False,
+            "business_hours_start": "09:00",
+            "business_hours_end": "18:15",
+            "active_conversation_delay_value": 30,
+            "active_conversation_delay_unit": "minutes",
+        }
+        preview = preview_session_settings_update(
+            account=self.account_a,
+            payload=payload,
+        )
+
+        self.assertEqual(
+            preview["pipeline"].id,
+            self.pipeline_a.id,
+        )
+        self.assertTrue(
+            preview["before"]["ai_auto_reply"]
+        )
+        self.assertFalse(
+            preview["after"]["ai_auto_reply"]
+        )
+        self.assertEqual(
+            preview["after"]["bump_up_count"],
+            4,
+        )
+        self.assertEqual(
+            preview["after"]["business_hours_start"],
+            "09:00",
+        )
+
+        self.pipeline_a.refresh_from_db()
+        self.assertTrue(self.pipeline_a.ai_enabled)
+        persisted_before = get_session_settings(
+            account=self.account_a
+        )
+        self.assertNotEqual(
+            persisted_before["business_hours_start"],
+            "09:00",
+        )
+        self.assertTrue(
+            persisted_before["auto_follow_up"]
+        )
+
+        updated = update_session_settings(
+            account=self.account_a,
+            payload=payload,
+        )
+        self.assertEqual(
+            updated,
+            preview["after"],
+        )
+        self.pipeline_a.refresh_from_db()
+        self.assertFalse(self.pipeline_a.ai_enabled)
+        self.assertEqual(
+            get_session_settings(account=self.account_a),
+            preview["after"],
         )
 
     def test_ai_and_followup_settings_are_isolated_by_linked_pipeline(self):
