@@ -289,3 +289,22 @@ class OperationsAuditEvent(models.Model):
 
     def delete(self, *args, **kwargs):
         raise ValidationError("Operations audit events are immutable.")
+
+
+
+class OperationsApprovalUse(models.Model):
+    """Single-use claim on one approval-required Operations dry-run audit event."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    approval_event = models.OneToOneField(
+        OperationsAuditEvent,
+        on_delete=models.PROTECT,
+        related_name="approval_use",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"Approval use — {self.approval_event_id}"
