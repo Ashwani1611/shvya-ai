@@ -157,7 +157,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
   const timing = document.getElementById("sc-reminder-timing");
   const before = document.querySelector(".sc-timing-before");
-  const syncTiming = () => { if (before) before.hidden = timing?.value !== "before"; };
+  const specific = document.querySelector(".sc-timing-specific");
+  const syncTiming = () => {
+    if (before) before.hidden = timing?.value !== "before";
+    if (specific) specific.hidden = timing?.value !== "specific_time";
+  };
   timing?.addEventListener("change", syncTiming);
   syncTiming();
 
