@@ -2043,6 +2043,106 @@ class OperationsMCPTests(TestCase):
             2,
         )
 
+    def test_conversion_analysis_keeps_source_shift_causal_language_bounded(self):
+        OperationsPolicy.objects.create(
+            organization=self.organization,
+            organization_admin_enabled=True,
+            allowed_capabilities=[
+                CAP_ORGANIZATION_READ,
+                CAP_DIAGNOSTICS_READ,
+            ],
+        )
+        previous_created_at = (
+            timezone.now() - timedelta(days=45)
+        )
+        for index in range(5):
+            lead = Lead.objects.create(
+                organization=self.organization,
+                pipeline=self.pipeline,
+                stage=self.new_stage,
+                name=f"Previous Meta {index}",
+                phone=f"+9198100000{index:02d}",
+                lead_source="meta_ads",
+            )
+            Lead.objects.filter(pk=lead.pk).update(
+                created_at=previous_created_at,
+            )
+
+        for index in range(5):
+            Lead.objects.create(
+                organization=self.organization,
+                pipeline=self.pipeline,
+                stage=self.new_stage,
+                name=f"Current WhatsApp {index}",
+                phone=f"+9198200000{index:02d}",
+                lead_source="whatsapp",
+            )
+
+        bearer = self._token(
+            actor=self.admin,
+            role=ROLE_ORGANIZATION_ADMIN,
+            organization=self.organization,
+            scopes=[OPERATIONS_READ_SCOPE],
+        )
+        result = self._result(
+            self._call(
+                bearer,
+                "get_conversion_analysis",
+                {"days": 30},
+            )
+        )
+        self.assertFalse(result["isError"])
+        analysis = result["structuredContent"]
+        observations = analysis["observations"]
+
+        self.assertTrue(
+            any(
+                item["classification"] == "Measured"
+                and item["metric"] == "source_mix_share"
+                for item in observations
+            )
+        )
+        self.assertTrue(
+            any(
+                item["classification"] == "Hypothesis"
+                and item["metric"] == "source_mix"
+                for item in observations
+            )
+        )
+        self.assertFalse(
+            any(
+                item["classification"] == "Confirmed cause"
+                for item in observations
+            )
+        )
+
+        current_sources = {
+            row["source"]: row
+            for row in analysis["comparison"][
+                "current_period"
+            ]["source_mix"]
+        }
+        previous_sources = {
+            row["source"]: row
+            for row in analysis["comparison"][
+                "previous_period"
+            ]["source_mix"]
+        }
+        self.assertGreater(
+            current_sources["whatsapp"]["lead_share"],
+            previous_sources.get(
+                "whatsapp",
+                {"lead_share": 0},
+            )["lead_share"],
+        )
+        self.assertGreater(
+            previous_sources["meta_ads"]["lead_share"],
+            current_sources.get(
+                "meta_ads",
+                {"lead_share": 0},
+            )["lead_share"],
+        )
+
     def test_conversion_analysis_uses_same_created_lead_cohort_for_rate(self):
         OperationsPolicy.objects.create(
             organization=self.organization,
