@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% load static %}
+{% load tz %}
 
 {% block title %}SHVYA Calendar{% endblock %}
 {% block header %}SHVYA Calendar{% endblock %}
@@ -88,7 +89,7 @@
             <div class="sc-avatar">{{ booking.lead.name|slice:":1"|upper }}</div>
             <div class="sc-list-copy">
               <strong>{{ booking.lead.name }}</strong>
-              <span>{{ booking.page.name }} · {{ booking.start_at|date:"d M, g:i A" }}</span>
+              <span>{{ booking.page.name }} · {{ booking.start_at|timezone:booking.timezone|date:"d M, g:i A" }}</span>
             </div>
             <span class="sc-status sc-status-published">Scheduled</span>
           </div>
@@ -106,7 +107,7 @@
             <div class="sc-avatar"><i class="ti ti-phone"></i></div>
             <div class="sc-list-copy">
               <strong>{{ delivery.booking.lead.name }}</strong>
-              <span>{{ delivery.step.name }} · due {{ delivery.due_at|date:"d M, g:i A" }}</span>
+              <span>{{ delivery.step.name }} · due {{ delivery.due_at|timezone:delivery.booking.timezone|date:"d M, g:i A" }}</span>
             </div>
             <form method="post" action="{% url 'shvya_calendar:call_reminder_complete' delivery_id=delivery.id %}">
               {% csrf_token %}
