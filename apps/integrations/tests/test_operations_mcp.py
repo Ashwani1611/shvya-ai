@@ -1892,6 +1892,11 @@ class OperationsMCPTests(TestCase):
             ],
             1,
         )
+        self.assertFalse(
+            runtime["structuredContent"]["counts"][
+                "instagram_ai_auto_reply_runtime"
+            ]
+        )
 
     def test_integration_health_never_decrypts_provider_credentials(self):
         OperationsPolicy.objects.create(
@@ -1954,6 +1959,11 @@ class OperationsMCPTests(TestCase):
         self.assertTrue(wa["credential_present"])
         self.assertTrue(health["instagram"]["credential_present"])
         self.assertTrue(health["instagram"]["credential_expired"])
+        self.assertFalse(
+            health["instagram"]["automation_capabilities"][
+                "ai_auto_reply_runtime"
+            ]
+        )
         self.assertEqual(
             health["instagram"]["last_error"],
             "access_token=[REDACTED] expired",
