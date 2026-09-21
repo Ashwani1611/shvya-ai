@@ -210,6 +210,26 @@ class OperationsMCPTests(TestCase):
             self.assertIn(name, tools)
             self.assertFalse(tools[name]["annotations"]["readOnlyHint"])
 
+    def test_support_context_tools_do_not_advertise_fake_dry_run_fields(self):
+        tools = {
+            item["name"]: item
+            for item in self._list_tools()["tools"]
+        }
+        for name in (
+            "select_organization_context",
+            "clear_organization_context",
+        ):
+            properties = tools[name]["inputSchema"]["properties"]
+            self.assertIn("reason", properties)
+            self.assertNotIn("dry_run", properties)
+            self.assertNotIn("approved", properties)
+
+        mutation_properties = tools["move_lead_stage"]["inputSchema"][
+            "properties"
+        ]
+        self.assertIn("dry_run", mutation_properties)
+        self.assertIn("approved", mutation_properties)
+
     def test_authenticated_org_admin_tool_discovery_matches_superadmin_policy(self):
         OperationsPolicy.objects.create(
             organization=self.organization,
