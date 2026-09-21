@@ -1,12 +1,11 @@
 from datetime import datetime
-import json
 import secrets
 
 from django.contrib import messages
 from django.core.cache import cache
 from django.core.exceptions import ValidationError
 from django.db.models import Count, Q
-from django.http import Http404, HttpResponse, JsonResponse
+from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
@@ -15,7 +14,7 @@ from django.views.decorators.http import require_GET, require_http_methods, requ
 
 from apps.accounts.models import User
 from apps.crm.authentication import crm_login_required, get_crm_session
-from apps.crm.models import AttributeDefinition, Pipeline, Stage
+from apps.crm.models import AttributeDefinition, Stage
 from apps.crm.views.api import get_user_pipelines
 
 from .google import (
@@ -38,7 +37,6 @@ from .models import (
 )
 from .services import (
     attribution_from_request,
-    available_slots,
     book_slot,
     create_submission_and_lead,
     hash_ip,
@@ -534,16 +532,32 @@ def calendar_reminder_add(request, page_id):
             f"{reverse('shvya_calendar:editor', kwargs={'page_id': page.id})}?tab=reminders"
         )
 
-    timing = request.POST.get("timing") or "immediate"
-    if timing == "immediate":
+    timing = request.POST.get("timing") or CalendarReminderStep.TimingMode.IMMEDIATE
+    specific_time = None
+    if timing == CalendarReminderStep.TimingMode.IMMEDIATE:
         offset = 0
-    elif timing == "before":
+    elif timing == CalendarReminderStep.TimingMode.BEFORE:
         amount = _int(request.POST.get("timing_amount"), 1, 1, 9999)
         unit = request.POST.get("timing_unit") or "hours"
         multiplier = {"minutes": 1, "hours": 60, "days": 1440}.get(unit, 60)
         offset = -(amount * multiplier)
+    elif timing == CalendarReminderStep.TimingMode.SPECIFIC_TIME:
+        raw_time = (request.POST.get("specific_time") or "").strip()
+        try:
+            specific_time = datetime.strptime(raw_time, "%H:%M").time()
+        except ValueError:
+            messages.error(request, "Choose a valid reminder time.")
+            return redirect(
+                f"{reverse('shvya_calendar:editor', kwargs={'page_id': page.id})}"
+                "?tab=reminders"
+            )
+        offset = 0
     else:
-        offset = _int(request.POST.get("offset_minutes"), 0, -525600, 525600)
+        messages.error(request, "Unsupported reminder timing.")
+        return redirect(
+            f"{reverse('shvya_calendar:editor', kwargs={'page_id': page.id})}"
+            "?tab=reminders"
+        )
 
     next_order = (
         sequence.steps.order_by("-display_order")
@@ -562,7 +576,9 @@ def calendar_reminder_add(request, page_id):
         name=(request.POST.get("name") or default_names[channel]).strip()[:255],
         subject=(request.POST.get("subject") or "").strip()[:180],
         body=(request.POST.get("body") or "").strip(),
+        timing_mode=timing,
         offset_minutes=offset,
+        specific_time=specific_time,
         display_order=next_order,
     )
     messages.success(request, "Reminder added.")
