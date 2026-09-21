@@ -4248,7 +4248,17 @@ class OperationsMCPTests(TestCase):
                 {
                     "type": opaque_secret,
                     "url": "https://example.test/private-media",
-                }
+                },
+                *[
+                    {
+                        "type": f"media-{index:02d}",
+                        "url": (
+                            "https://example.test/private-media/"
+                            f"{index:02d}"
+                        ),
+                    }
+                    for index in range(10)
+                ],
             ],
         )
         bearer = self._token(
@@ -4276,6 +4286,24 @@ class OperationsMCPTests(TestCase):
                 )
             )
             self.assertFalse(conversation["isError"])
+            instagram_row = next(
+                item
+                for item in conversation["structuredContent"][
+                    "messages"
+                ]
+                if item["channel"] == "instagram"
+            )
+            self.assertEqual(
+                instagram_row["attachment_count"],
+                11,
+            )
+            self.assertEqual(
+                instagram_row["attachment_types_returned"],
+                10,
+            )
+            self.assertTrue(
+                instagram_row["attachment_types_truncated"]
+            )
 
             wa_trace = self._result(
                 self._call(
