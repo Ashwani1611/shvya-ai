@@ -160,7 +160,7 @@ def find_leads(*, organization, arguments):
 def _safe_lead_attributes(*, organization, attributes):
     values = attributes if isinstance(attributes, dict) else {}
     if not values:
-        return {}
+        return {}, 0
 
     definitions = {
         item.key: item
@@ -185,10 +185,7 @@ def _safe_lead_attributes(*, organization, attributes):
             redacted_count += 1
             continue
         safe[str(key)] = value
-    return {
-        "values": sanitize_data(safe),
-        "sensitive_attributes_redacted": redacted_count,
-    }
+    return sanitize_data(safe), redacted_count
 
 
 def get_lead_snapshot(*, organization, arguments):
@@ -214,12 +211,18 @@ def get_lead_snapshot(*, organization, arguments):
         "-id",
     ).first()
 
+    safe_attributes, sensitive_attributes_redacted = (
+        _safe_lead_attributes(
+            organization=organization,
+            attributes=lead.attributes or {},
+        )
+    )
     result = _safe_lead(lead)
     result.update(
         {
-            "attributes": _safe_lead_attributes(
-                organization=organization,
-                attributes=lead.attributes or {},
+            "attributes": safe_attributes,
+            "sensitive_attributes_redacted": (
+                sensitive_attributes_redacted
             ),
             "notes_count": LeadNote.objects.filter(
                 lead=lead
