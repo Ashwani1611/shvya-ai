@@ -3831,6 +3831,24 @@ class OperationsMCPTests(TestCase):
             organization=self.organization,
             scopes=[OPERATIONS_READ_SCOPE],
         )
+        tool_list = self._list_tools(bearer)
+        definitions = {
+            item["name"]: item
+            for item in tool_list["tools"]
+        }
+        self.assertEqual(
+            definitions["find_leads"]["inputSchema"][
+                "properties"
+            ]["query"]["maxLength"],
+            255,
+        )
+        self.assertEqual(
+            definitions["trace_message"]["inputSchema"][
+                "properties"
+            ]["message_id"]["maxLength"],
+            255,
+        )
+
         oversized = "x" * 256
 
         lead_search = self._result(
