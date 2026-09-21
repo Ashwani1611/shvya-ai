@@ -476,8 +476,10 @@ def shvya_api_view(request):
             )
         )
     operations_audit_visible = bool(
-        operations_policy.organization_admin_enabled
-        and CAP_AUDIT_READ in (operations_policy.allowed_capabilities or [])
+        CAP_AUDIT_READ
+        in expand_capabilities(
+            operations_policy.allowed_capabilities
+        )
     )
     operations_audit_events = (
         OperationsAuditEvent.objects.filter(
