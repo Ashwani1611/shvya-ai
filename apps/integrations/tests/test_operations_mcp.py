@@ -607,6 +607,15 @@ class OperationsMCPTests(TestCase):
         session.refresh_from_db()
         self.assertIsNotNone(token.revoked_at)
         self.assertIsNotNone(session.ended_at)
+        audit = OperationsAuditEvent.objects.get(
+            actor=self.superadmin,
+            tool_name="oauth_revoke",
+        )
+        self.assertEqual(audit.organization_id, self.organization.id)
+        self.assertEqual(audit.support_session_id, session.id)
+        self.assertEqual(audit.target_type, "oauth_grant")
+        self.assertNotIn(bearer, json.dumps(audit.change_summary))
+        self.assertNotIn(bearer, audit.request_fingerprint)
 
         result = self._result(
             self._call(bearer, "get_operations_context")
