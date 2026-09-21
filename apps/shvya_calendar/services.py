@@ -13,6 +13,10 @@ from django.utils import timezone
 
 from apps.crm.models import AttributeDefinition, Lead
 from apps.crm.models.lead import normalize_phone
+from apps.integrations.services.email import (
+    EmailConfigurationError,
+    send_organization_email,
+)
 from services.crm.lead_service import create_lead
 
 from .google import GoogleCalendarError, create_booking_event, free_busy
@@ -548,13 +552,18 @@ def notify_submission(submission_id):
         for token, value in variables.items():
             subject = subject.replace(token, str(value))
             body = body.replace(token, str(value))
-        send_mail(
-            subject=subject,
-            message=body,
-            from_email=settings.DEFAULT_FROM_EMAIL,
-            recipient_list=[submission.lead.email],
-            fail_silently=True,
-        )
+        try:
+            send_organization_email(
+                organization=page.organization,
+                to=submission.lead.email,
+                subject=subject,
+                text_body=body,
+            )
+        except EmailConfigurationError:
+            # Lead intake must remain durable even when a customer's mailbox
+            # is disconnected; internal staff notification above still records
+            # that the submission exists.
+            pass
 
 
 def _page_zone(page):
