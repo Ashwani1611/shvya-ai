@@ -378,6 +378,52 @@ class OperationsMCPTests(TestCase):
         self.assertIn("move_lead_stage", after)
         self.assertIn("repair_qualification_stage", after)
 
+    def test_read_only_oauth_tokens_do_not_discover_write_tools(self):
+        OperationsPolicy.objects.create(
+            organization=self.organization,
+            organization_admin_enabled=True,
+            allowed_capabilities=[
+                CAP_ORGANIZATION_READ,
+                CAP_LEAD_STAGE_WRITE,
+                CAP_AI_CONFIG_WRITE,
+                CAP_CRM_CONFIG_WRITE,
+                CAP_AUTOMATION_CONFIG_WRITE,
+            ],
+        )
+
+        org_bearer = self._token(
+            actor=self.admin,
+            role=ROLE_ORGANIZATION_ADMIN,
+            organization=self.organization,
+            scopes=[OPERATIONS_READ_SCOPE],
+        )
+        org_names = {
+            item["name"]
+            for item in self._list_tools(org_bearer)["tools"]
+        }
+        self.assertIn("get_operations_context", org_names)
+        self.assertIn("get_organization_configuration", org_names)
+        self.assertNotIn("move_lead_stage", org_names)
+        self.assertNotIn("update_ai_configuration", org_names)
+        self.assertNotIn("upsert_pipeline_configuration", org_names)
+
+        OperationsOAuthToken.objects.all().delete()
+        super_bearer = self._token(
+            actor=self.superadmin,
+            role=ROLE_SUPERADMIN,
+            scopes=[OPERATIONS_READ_SCOPE],
+        )
+        super_names = {
+            item["name"]
+            for item in self._list_tools(super_bearer)["tools"]
+        }
+        self.assertIn("list_organizations", super_names)
+        self.assertIn("get_operations_context", super_names)
+        self.assertNotIn("select_organization_context", super_names)
+        self.assertNotIn("clear_organization_context", super_names)
+        self.assertNotIn("move_lead_stage", super_names)
+        self.assertNotIn("upsert_workflow_configuration", super_names)
+
     def test_authenticated_superadmin_tool_discovery_keeps_full_operations_surface(self):
         bearer = self._token(
             actor=self.superadmin,
