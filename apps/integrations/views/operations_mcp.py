@@ -82,6 +82,13 @@ SERVER_INFO = {"name": "shvya-operations", "version": "1.0.0"}
 OAUTH_MAX_BODY_BYTES = 32 * 1024
 OAUTH_MAX_STATE_LENGTH = 1024
 
+TOOL_RESPONSE_TEXT_LIMITS = {
+    # These tools deliberately expose bounded configuration text after secret
+    # redaction. Keep ordinary diagnostics on the sanitizer's 800-char default.
+    "get_ai_configuration": 60000,
+    "get_organization_configuration": 30000,
+}
+
 OAUTH_READ_SCHEMES = [
     {
         "type": "oauth2",
@@ -1695,7 +1702,13 @@ def operations_mcp(request):
                 identity=identity,
                 arguments=arguments,
             )
-            safe_data = sanitize_data(execution.data)
+            safe_data = sanitize_data(
+                execution.data,
+                text_limit=TOOL_RESPONSE_TEXT_LIMITS.get(
+                    tool_name,
+                    800,
+                ),
+            )
             result = {
                 "content": [
                     {
