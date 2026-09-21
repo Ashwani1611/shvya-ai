@@ -19,9 +19,16 @@ from apps.ai_engagement.services.qualification_state import (
     requirements_for_lead,
     state_for_lead,
 )
-from apps.channels.models import WhatsAppAccount, WhatsAppTemplate
+from apps.channels.campaign_models import CampaignDelivery
+from apps.channels.models import WhatsAppAccount, WhatsAppMessage, WhatsAppTemplate
 from apps.crm.models import AttributeDefinition, Lead, LeadActivity, Pipeline, Stage
-from apps.followups.models import FollowupSequence, FollowupStep
+from apps.followups.models import (
+    FollowupExecution,
+    FollowupSequence,
+    FollowupStep,
+    LeadSequenceState,
+)
+from apps.hosted_automation.models import HostedAutomationJob
 from apps.integrations.diagnostic_tools import (
     DiagnosticToolError,
     execute_tool as execute_diagnostic_tool,
@@ -1059,6 +1066,7 @@ def get_conversion_analysis(*, identity, arguments):
         )
     except OperationsPolicyError as exc:
         raise OperationsPermissionError(str(exc)) from exc
+
     try:
         days = int((arguments or {}).get("days") or 30)
     except (TypeError, ValueError):
@@ -1068,80 +1076,307 @@ def get_conversion_analysis(*, identity, arguments):
     current_start = now - timedelta(days=days)
     previous_start = current_start - timedelta(days=days)
 
-    def window(start, end):
+    def window(start_at, end_at):
         created = Lead.objects.filter(
             organization=organization,
-            created_at__gte=start,
-            created_at__lt=end,
-        )
-        qualified_ids = (
-            LeadActivity.objects.filter(
-                organization=organization,
-                topic__in=[
-                    LeadActivity.Topic.STAGE_CHANGED,
-                    LeadActivity.Topic.PIPELINE_CHANGED,
-                ],
-                created_at__gte=start,
-                created_at__lt=end,
-                new_stage_name__iexact="Qualified",
-            )
-            .values_list("lead_id", flat=True)
-            .distinct()
+            created_at__gte=start_at,
+            created_at__lt=end_at,
         )
         lead_count = created.count()
+
+        source_rows = list(
+            created.values("lead_source")
+            .annotate(count=Count("id"))
+            .order_by("-count", "lead_source")
+        )
+        pipeline_rows = list(
+            created.values("pipeline_id", "pipeline__name")
+            .annotate(count=Count("id"))
+            .order_by("-count", "pipeline__name")
+        )
+        stage_rows = list(
+            created.values(
+                "pipeline__name",
+                "stage_id",
+                "stage__name",
+            )
+            .annotate(count=Count("id"))
+            .order_by("-count", "pipeline__name", "stage__name")
+        )
+
+        qualified_activity = LeadActivity.objects.filter(
+            organization=organization,
+            topic__in=[
+                LeadActivity.Topic.STAGE_CHANGED,
+                LeadActivity.Topic.PIPELINE_CHANGED,
+            ],
+            created_at__gte=start_at,
+            created_at__lt=end_at,
+            new_stage_name__iexact="Qualified",
+        )
+        qualified_ids = qualified_activity.values_list(
+            "lead_id",
+            flat=True,
+        ).distinct()
         qualified_count = qualified_ids.count()
+        qualified_by_source = {
+            row["lead__lead_source"]: row["count"]
+            for row in (
+                qualified_activity.filter(
+                    lead__created_at__gte=start_at,
+                    lead__created_at__lt=end_at,
+                )
+                .values("lead__lead_source")
+                .annotate(count=Count("lead_id", distinct=True))
+            )
+        }
+        sources = [
+            {
+                "source": row["lead_source"],
+                "lead_count": row["count"],
+                "qualified_transitions": qualified_by_source.get(
+                    row["lead_source"],
+                    0,
+                ),
+                "qualified_transition_rate": (
+                    round(
+                        qualified_by_source.get(row["lead_source"], 0)
+                        / row["count"],
+                        4,
+                    )
+                    if row["count"]
+                    else None
+                ),
+            }
+            for row in source_rows
+        ]
+
+        messages = WhatsAppMessage.objects.filter(
+            organization=organization,
+            created_at__gte=start_at,
+            created_at__lt=end_at,
+        )
+        outbound = messages.filter(
+            direction=WhatsAppMessage.Direction.OUTBOUND,
+        )
+        outbound_status = {
+            row["status"]: row["count"]
+            for row in outbound.values("status").annotate(count=Count("id"))
+        }
+        successful_outbound = sum(
+            outbound_status.get(status, 0)
+            for status in (
+                WhatsAppMessage.Status.SENT,
+                WhatsAppMessage.Status.DELIVERED,
+                WhatsAppMessage.Status.READ,
+            )
+        )
+        failed_outbound = outbound_status.get(
+            WhatsAppMessage.Status.FAILED,
+            0,
+        )
+        outbound_total = outbound.count()
+
+        followups = FollowupExecution.objects.filter(
+            organization=organization,
+            scheduled_for__gte=start_at,
+            scheduled_for__lt=end_at,
+        )
+        followup_status = {
+            row["status"]: row["count"]
+            for row in followups.values("status").annotate(count=Count("id"))
+        }
+        cadence_completed = LeadSequenceState.objects.filter(
+            organization=organization,
+            completed_at__gte=start_at,
+            completed_at__lt=end_at,
+        ).count()
+
+        workflow_failures = TriggerRun.objects.filter(
+            rule__organization=organization,
+            status__in=["failed", "error"],
+            created_at__gte=start_at,
+            created_at__lt=end_at,
+        ).count()
+        ai_failures = HostedAutomationJob.objects.filter(
+            organization=organization,
+            status=HostedAutomationJob.Status.FAILED,
+            created_at__gte=start_at,
+            created_at__lt=end_at,
+        ).count()
+
+        campaign_deliveries = CampaignDelivery.objects.filter(
+            campaign__organization=organization,
+            created_at__gte=start_at,
+            created_at__lt=end_at,
+        )
+        campaign_states = {
+            row["state"]: row["count"]
+            for row in campaign_deliveries.values("state").annotate(
+                count=Count("id")
+            )
+        }
+        campaign_total = campaign_deliveries.count()
+        campaign_delivered = campaign_deliveries.filter(
+            delivered_at__isnull=False,
+        ).count()
+        campaign_replied = campaign_deliveries.filter(
+            replied_at__isnull=False,
+        ).count()
+
         return {
             "lead_volume": lead_count,
             "qualified_transitions": qualified_count,
             "qualified_transition_rate": (
-                round(qualified_count / lead_count, 4) if lead_count else None
+                round(qualified_count / lead_count, 4)
+                if lead_count
+                else None
             ),
+            "source_mix": sources,
+            "pipeline_mix": [
+                {
+                    "pipeline_id": str(row["pipeline_id"]),
+                    "pipeline": row["pipeline__name"],
+                    "lead_count": row["count"],
+                }
+                for row in pipeline_rows
+            ],
+            "stage_mix": [
+                {
+                    "pipeline": row["pipeline__name"],
+                    "stage_id": str(row["stage_id"]),
+                    "stage": row["stage__name"],
+                    "lead_count": row["count"],
+                }
+                for row in stage_rows
+            ],
+            "messaging": {
+                "outbound_total": outbound_total,
+                "successful_outbound": successful_outbound,
+                "failed_outbound": failed_outbound,
+                "success_rate": (
+                    round(successful_outbound / outbound_total, 4)
+                    if outbound_total
+                    else None
+                ),
+                "status_counts": outbound_status,
+            },
+            "followups": {
+                "scheduled_executions": followups.count(),
+                "status_counts": followup_status,
+                "cadences_completed": cadence_completed,
+            },
+            "failures": {
+                "workflow_failures": workflow_failures,
+                "hosted_ai_failures": ai_failures,
+            },
+            "campaigns": {
+                "deliveries": campaign_total,
+                "delivered": campaign_delivered,
+                "replied": campaign_replied,
+                "delivery_rate": (
+                    round(campaign_delivered / campaign_total, 4)
+                    if campaign_total
+                    else None
+                ),
+                "reply_rate": (
+                    round(campaign_replied / campaign_total, 4)
+                    if campaign_total
+                    else None
+                ),
+                "state_counts": campaign_states,
+            },
         }
 
     current = window(current_start, now)
     previous = window(previous_start, current_start)
-    failures_current = TriggerRun.objects.filter(
-        rule__organization=organization,
-        status__in=["failed", "error"],
-        created_at__gte=current_start,
-        created_at__lt=now,
-    ).count()
-    failures_previous = TriggerRun.objects.filter(
-        rule__organization=organization,
-        status__in=["failed", "error"],
-        created_at__gte=previous_start,
-        created_at__lt=current_start,
-    ).count()
 
     observations = []
-    if current["lead_volume"] != previous["lead_volume"]:
-        observations.append(
-            {
-                "classification": "Measured",
-                "metric": "lead_volume",
-                "current": current["lead_volume"],
-                "previous": previous["lead_volume"],
-            }
-        )
-    if current["qualified_transition_rate"] != previous["qualified_transition_rate"]:
-        observations.append(
-            {
-                "classification": "Measured",
-                "metric": "qualified_transition_rate",
-                "current": current["qualified_transition_rate"],
-                "previous": previous["qualified_transition_rate"],
-            }
-        )
-    if failures_current > failures_previous:
+    comparable_metrics = (
+        ("lead_volume", current["lead_volume"], previous["lead_volume"]),
+        (
+            "qualified_transition_rate",
+            current["qualified_transition_rate"],
+            previous["qualified_transition_rate"],
+        ),
+        (
+            "message_success_rate",
+            current["messaging"]["success_rate"],
+            previous["messaging"]["success_rate"],
+        ),
+        (
+            "workflow_failures",
+            current["failures"]["workflow_failures"],
+            previous["failures"]["workflow_failures"],
+        ),
+        (
+            "hosted_ai_failures",
+            current["failures"]["hosted_ai_failures"],
+            previous["failures"]["hosted_ai_failures"],
+        ),
+        (
+            "campaign_delivery_rate",
+            current["campaigns"]["delivery_rate"],
+            previous["campaigns"]["delivery_rate"],
+        ),
+        (
+            "campaign_reply_rate",
+            current["campaigns"]["reply_rate"],
+            previous["campaigns"]["reply_rate"],
+        ),
+    )
+    for metric, current_value, previous_value in comparable_metrics:
+        if current_value != previous_value:
+            observations.append(
+                {
+                    "classification": "Measured",
+                    "metric": metric,
+                    "current": current_value,
+                    "previous": previous_value,
+                }
+            )
+
+    if (
+        current["failures"]["workflow_failures"]
+        > previous["failures"]["workflow_failures"]
+    ):
         observations.append(
             {
                 "classification": "Likely contributor",
                 "metric": "workflow_failures",
-                "current": failures_current,
-                "previous": failures_previous,
-                "note": "Workflow failures increased during the comparison window; this is correlation, not proof of conversion causality.",
+                "current": current["failures"]["workflow_failures"],
+                "previous": previous["failures"]["workflow_failures"],
+                "note": (
+                    "Workflow failures increased during the same comparison "
+                    "window. This is correlation, not proof of conversion causality."
+                ),
             }
         )
+    if (
+        current["messaging"]["success_rate"] is not None
+        and previous["messaging"]["success_rate"] is not None
+        and current["messaging"]["success_rate"]
+        < previous["messaging"]["success_rate"]
+    ):
+        observations.append(
+            {
+                "classification": "Likely contributor",
+                "metric": "message_delivery",
+                "current": current["messaging"]["success_rate"],
+                "previous": previous["messaging"]["success_rate"],
+                "note": (
+                    "Outbound WhatsApp success rate decreased while the compared "
+                    "conversion proxy was measured. Causality requires lead-level "
+                    "evidence."
+                ),
+            }
+        )
+
+    stale_cutoff = now - timedelta(days=7)
+    stale_leads = Lead.objects.filter(
+        organization=organization,
+        stage_entered_at__lt=stale_cutoff,
+    ).count()
 
     return ToolExecution(
         data={
@@ -1151,25 +1386,44 @@ def get_conversion_analysis(*, identity, arguments):
                     "start": current_start.isoformat(),
                     "end": now.isoformat(),
                     **current,
-                    "workflow_failures": failures_current,
                 },
                 "previous_period": {
                     "start": previous_start.isoformat(),
                     "end": current_start.isoformat(),
                     **previous,
-                    "workflow_failures": failures_previous,
                 },
+            },
+            "current_snapshot": {
+                "leads_in_current_stage_for_7_plus_days": stale_leads,
             },
             "observations": observations,
             "limitations": [
-                "Qualified transition rate uses persisted CRM stage activity and leads created in each period.",
-                "This tool does not claim causality from correlation alone.",
+                (
+                    "Qualified transition rate is a CRM transition proxy: it uses "
+                    "persisted activity and lead volume, not a claim that every "
+                    "Qualified lead converted to revenue."
+                ),
+                (
+                    "Pipeline/stage mix describes the current CRM location of leads "
+                    "created in each comparison period; it is not a historical "
+                    "stage snapshot."
+                ),
+                (
+                    "First-response-time and lost-reason aggregates are not included "
+                    "because this tool does not have a canonical historical aggregate "
+                    "for them; inspect specific conversations or add a dedicated "
+                    "metric rather than guessing."
+                ),
+                "Likely-contributor labels are correlation, not proven causality.",
             ],
         },
         capability=CAP_DIAGNOSTICS_READ,
         target_type="organization",
         target_id=str(organization.id),
-        audit_summary={"period_days": days, "observation_count": len(observations)},
+        audit_summary={
+            "period_days": days,
+            "observation_count": len(observations),
+        },
     )
 
 
