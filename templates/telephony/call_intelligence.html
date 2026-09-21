@@ -262,7 +262,7 @@
                 </div>
                 <div class="ci-post-call-controls">
                   <label>Disposition<select name="disposition"><option value="">Choose outcome</option>{% for disposition in dispositions %}<option value="{{ disposition.code }}" {% if call.disposition == disposition.code %}selected{% endif %}>{{ disposition.name }}</option>{% endfor %}</select></label>
-                  <label>Follow-up<input type="datetime-local" name="follow_up_at" {% if call.follow_up_at %}value="{{ call.follow_up_at|date:'Y-m-d\\TH:i' }}"{% endif %}></label>
+                  <label>Follow-up<input type="datetime-local" name="follow_up_at" {% if call.follow_up_at %}value="{{ call.follow_up_at|date:'Y-m-d\TH:i' }}"{% endif %}></label>
                   <button type="submit" class="ci-primary-btn"><i class="ti ti-sparkles"></i> Save & analyze</button>
                 </div>
                 <span class="ci-call-action-result" aria-live="polite"></span>
