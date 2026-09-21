@@ -423,7 +423,6 @@ def _deny_and_revoke_live_grant(
     """Reject a grant whose live SHVYA authority is gone."""
 
     if revoke:
-        now = timezone.now()
         organization = (
             token.active_organization
             if token.role == ROLE_SUPERADMIN
@@ -439,26 +438,15 @@ def _deny_and_revoke_live_grant(
             if organization is not None
             else None
         )
-        if token.revoked_at is None:
-            token.revoked_at = now
-            token.save(
-                update_fields=[
-                    "revoked_at",
-                    "updated_at",
-                ]
+        revoked = revoke_token_record(
+            token=token
+        )
+        if revoked is not None:
+            _record_automatic_grant_revocation(
+                token=token,
+                message=message,
+                support_session=support_session,
             )
-        OperationsSupportSession.objects.filter(
-            token=token,
-            ended_at__isnull=True,
-        ).update(
-            ended_at=now,
-            last_seen_at=now,
-        )
-        _record_automatic_grant_revocation(
-            token=token,
-            message=message,
-            support_session=support_session,
-        )
     raise OperationsAuthError(message)
 
 
