@@ -1,3 +1,4 @@
+from datetime import timedelta
 from pathlib import Path
 
 from django.conf import settings
@@ -11,7 +12,7 @@ from django.views.decorators.http import require_POST
 
 from apps.accounts.models import User
 from apps.crm.authentication import crm_login_required
-from apps.crm.models import Pipeline, Stage
+from apps.crm.models import Stage
 
 from ..models import CallDevice, CallRecord
 from ..services import get_call_settings, visible_calls, visible_pipelines
