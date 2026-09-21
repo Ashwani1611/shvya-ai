@@ -685,8 +685,17 @@ OWN_TOOL_DEFINITIONS = [
     _tool(
         "get_operations_audit",
         "Review SHVYA Operations audit",
-        "Return safe tenant-scoped audit events. Filter by an exact audit event, tool, resource, support session, or outcome when reviewing one action.",
+        "Return safe organization-scoped audit events, or Superadmin-only platform audit events that have no customer tenant. Never mixes customer organizations.",
         {
+            "scope": {
+                "type": "string",
+                "enum": ["organization", "platform"],
+                "default": "organization",
+                "description": (
+                    "organization = active tenant only; platform = Superadmin-only "
+                    "events with no organization."
+                ),
+            },
             "audit_event_id": {
                 "type": "string",
                 "format": "uuid",
