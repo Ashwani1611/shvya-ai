@@ -1,7 +1,7 @@
 import hashlib
 import json
 import re
-from datetime import datetime, time, timedelta
+from datetime import UTC, datetime, time, timedelta
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from django.conf import settings
@@ -560,8 +560,8 @@ def available_slots(*, page, local_date):
     if start_local >= end_local:
         return []
 
-    range_start = start_local.astimezone(timezone.utc)
-    range_end = end_local.astimezone(timezone.utc)
+    range_start = start_local.astimezone(UTC)
+    range_end = end_local.astimezone(UTC)
     active_statuses = [
         CalendarBooking.Status.SCHEDULED,
         CalendarBooking.Status.RESCHEDULED,
@@ -597,8 +597,8 @@ def available_slots(*, page, local_date):
     results = []
     cursor = start_local
     while cursor + duration <= end_local and len(results) < page.max_slots_per_day:
-        slot_start = cursor.astimezone(timezone.utc)
-        slot_end = (cursor + duration).astimezone(timezone.utc)
+        slot_start = cursor.astimezone(UTC)
+        slot_end = (cursor + duration).astimezone(UTC)
         if slot_start >= minimum_start:
             buffered_start = slot_start - before
             buffered_end = slot_end + after
@@ -690,7 +690,7 @@ def book_slot(*, page, submission, slot_start_iso):
         raise ValidationError("Choose a valid booking time.") from exc
     if timezone.is_naive(requested):
         requested = requested.replace(tzinfo=_page_zone(page))
-    requested = requested.astimezone(timezone.utc)
+    requested = requested.astimezone(UTC)
 
     local_date = requested.astimezone(_page_zone(page)).date()
     valid_starts = {
@@ -763,7 +763,24 @@ def schedule_booking_reminders(booking):
 
     deliveries = []
     for step in sequence.steps.filter(enabled=True):
-        due_at = booking.start_at + timedelta(minutes=step.offset_minutes)
+        if step.timing_mode == step.TimingMode.IMMEDIATE:
+            due_at = timezone.now()
+        elif (
+            step.timing_mode == step.TimingMode.SPECIFIC_TIME
+            and step.specific_time is not None
+        ):
+            zone = _page_zone(booking.page)
+            local_date = booking.start_at.astimezone(zone).date()
+            local_due = datetime.combine(
+                local_date,
+                step.specific_time,
+                tzinfo=zone,
+            )
+            due_at = local_due.astimezone(UTC)
+        else:
+            due_at = booking.start_at + timedelta(
+                minutes=step.offset_minutes
+            )
         delivery, _created = CalendarReminderDelivery.objects.get_or_create(
             booking=booking,
             step=step,
