@@ -372,6 +372,8 @@ Where relevant include:
 
 When a tool returns an audit event reference, surface it in the final operational report.
 
+For customer work, review only the active organization's audit scope. SHVYA Superadmin may explicitly request the separate platform audit scope for tenantless Operations/OAuth lifecycle events; platform scope must never be treated as an all-organizations audit query.
+
 Do not put raw prompts, credentials, provider payloads, private reasoning, or full customer conversation bodies into audit events.
 
 ## DO NOT STORE PRIVATE REASONING
