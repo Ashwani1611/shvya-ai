@@ -24,6 +24,20 @@ class GoogleCalendarError(RuntimeError):
     pass
 
 
+def _google_request(method, url, *, failure_message, **kwargs):
+    try:
+        return requests.request(method, url, **kwargs)
+    except requests.RequestException as exc:
+        raise GoogleCalendarError(failure_message) from exc
+
+
+def _response_json(response, *, failure_message):
+    try:
+        return response.json()
+    except ValueError as exc:
+        raise GoogleCalendarError(failure_message) from exc
+
+
 def google_is_configured():
     return bool(
         str(getattr(settings, "GOOGLE_CALENDAR_CLIENT_ID", "") or "").strip()
@@ -50,8 +64,10 @@ def build_authorize_url(*, redirect_uri, state):
 
 
 def exchange_code(*, code, redirect_uri):
-    response = requests.post(
+    response = _google_request(
+        "POST",
         GOOGLE_TOKEN_URL,
+        failure_message="Google Calendar connection is temporarily unavailable.",
         data={
             "code": code,
             "client_id": settings.GOOGLE_CALENDAR_CLIENT_ID,
@@ -65,18 +81,26 @@ def exchange_code(*, code, redirect_uri):
         raise GoogleCalendarError(
             f"Google token exchange failed ({response.status_code})."
         )
-    return response.json()
+    return _response_json(
+        response,
+        failure_message="Google returned an invalid token response.",
+    )
 
 
 def fetch_userinfo(access_token):
-    response = requests.get(
+    response = _google_request(
+        "GET",
         GOOGLE_USERINFO_URL,
+        failure_message="Unable to read the connected Google account right now.",
         headers={"Authorization": f"Bearer {access_token}"},
         timeout=20,
     )
     if not response.ok:
         raise GoogleCalendarError("Unable to read the connected Google account.")
-    return response.json()
+    return _response_json(
+        response,
+        failure_message="Google returned an invalid account response.",
+    )
 
 
 def save_connection(*, organization, user, token_payload, userinfo):
@@ -116,8 +140,10 @@ def _refresh_access_token(connection):
     if not refresh_token:
         raise GoogleCalendarError("Reconnect Google Calendar to renew access.")
 
-    response = requests.post(
+    response = _google_request(
+        "POST",
         GOOGLE_TOKEN_URL,
+        failure_message="Google Calendar token refresh is temporarily unavailable.",
         data={
             "client_id": settings.GOOGLE_CALENDAR_CLIENT_ID,
             "client_secret": settings.GOOGLE_CALENDAR_CLIENT_SECRET,
@@ -131,7 +157,10 @@ def _refresh_access_token(connection):
         connection.save(update_fields=["last_error", "updated_at"])
         raise GoogleCalendarError(connection.last_error)
 
-    payload = response.json()
+    payload = _response_json(
+        response,
+        failure_message="Google returned an invalid token refresh response.",
+    )
     connection.access_token = payload.get("access_token") or ""
     expires_in = int(payload.get("expires_in") or 3600)
     connection.token_expires_at = timezone.now() + timedelta(
@@ -176,8 +205,10 @@ def free_busy(*, page, time_min, time_max):
     if connection is None:
         return []
 
-    response = requests.post(
+    response = _google_request(
+        "POST",
         f"{GOOGLE_CALENDAR_API}/freeBusy",
+        failure_message="Live Google Calendar availability is temporarily unavailable.",
         headers=_headers(connection),
         json={
             "timeMin": time_min.isoformat(),
@@ -193,7 +224,10 @@ def free_busy(*, page, time_min, time_max):
         connection.save(update_fields=["last_error", "updated_at"])
         raise GoogleCalendarError(connection.last_error)
 
-    payload = response.json()
+    payload = _response_json(
+        response,
+        failure_message="Google returned an invalid free/busy response.",
+    )
     calendar = payload.get("calendars", {}).get(
         connection.calendar_id or "primary",
         {},
@@ -268,8 +302,10 @@ def create_booking_event(booking):
         params["conferenceDataVersion"] = "1"
 
     calendar_id = connection.calendar_id or "primary"
-    response = requests.post(
+    response = _google_request(
+        "POST",
         f"{GOOGLE_CALENDAR_API}/calendars/{quote(calendar_id, safe='')}/events",
+        failure_message="Google Calendar event creation is temporarily unavailable.",
         headers=_headers(connection),
         params=params,
         json=event,
@@ -288,7 +324,10 @@ def create_booking_event(booking):
         )
         return booking
 
-    payload = response.json()
+    payload = _response_json(
+        response,
+        failure_message="Google returned an invalid Calendar event response.",
+    )
     meeting_link, conference_id = _conference_details(payload)
     if page.meeting_location == page.MeetingLocation.CUSTOM:
         meeting_link = page.custom_meeting_link
@@ -345,12 +384,14 @@ def refresh_booking_event_details(booking):
         raise GoogleCalendarError("Reconnect Google Calendar to finish meeting sync.")
 
     calendar_id = booking.google_calendar_id or connection.calendar_id or "primary"
-    response = requests.get(
+    response = _google_request(
+        "GET",
         (
             f"{GOOGLE_CALENDAR_API}/calendars/"
             f"{quote(calendar_id, safe='')}/events/"
             f"{quote(booking.google_event_id, safe='')}"
         ),
+        failure_message="Google Calendar event refresh is temporarily unavailable.",
         headers=_headers(connection),
         timeout=20,
     )
@@ -359,7 +400,10 @@ def refresh_booking_event_details(booking):
             f"Google Calendar event refresh failed ({response.status_code})."
         )
 
-    event = response.json()
+    event = _response_json(
+        response,
+        failure_message="Google returned an invalid Calendar event response.",
+    )
     meeting_link, conference_id = _conference_details(event)
     if booking.page.meeting_location == booking.page.MeetingLocation.CUSTOM:
         meeting_link = booking.page.custom_meeting_link
@@ -428,12 +472,14 @@ def update_booking_event(booking):
             {"email": booking.lead.email, "displayName": booking.lead.name}
         ]
 
-    response = requests.patch(
+    response = _google_request(
+        "PATCH",
         (
             f"{GOOGLE_CALENDAR_API}/calendars/"
             f"{quote(calendar_id, safe='')}/events/"
             f"{quote(booking.google_event_id, safe='')}"
         ),
+        failure_message="Google Calendar event update is temporarily unavailable.",
         headers=_headers(connection),
         params={"sendUpdates": "all"},
         json=payload,
@@ -454,7 +500,10 @@ def update_booking_event(booking):
         )
         return booking
 
-    event = response.json()
+    event = _response_json(
+        response,
+        failure_message="Google returned an invalid Calendar update response.",
+    )
     meeting_link, conference_id = _conference_details(event)
     booking.google_event_url = str(event.get("htmlLink") or booking.google_event_url)
     booking.meeting_link = meeting_link or booking.meeting_link
@@ -481,13 +530,19 @@ def cancel_booking_event(booking):
     if connection is None:
         return
     calendar_id = booking.google_calendar_id or connection.calendar_id or "primary"
-    requests.delete(
+    response = _google_request(
+        "DELETE",
         (
             f"{GOOGLE_CALENDAR_API}/calendars/"
             f"{quote(calendar_id, safe='')}/events/"
             f"{quote(booking.google_event_id, safe='')}"
         ),
+        failure_message="Google Calendar cancellation is temporarily unavailable.",
         headers=_headers(connection),
         params={"sendUpdates": "all"},
         timeout=20,
     )
+    if response.status_code not in {200, 204, 404, 410}:
+        raise GoogleCalendarError(
+            f"Google Calendar event cancellation failed ({response.status_code})."
+        )
