@@ -101,7 +101,7 @@ Operations-specific inspection also includes:
 
 - authenticated role / organization / effective capabilities
 - organization business + CRM + AI configuration
-- full bounded AI/Playbook configuration view when the summary is truncated
+- full bounded AI/Playbook configuration view up to SHVYA's canonical 100,000-character Playbook limit when the summary is truncated
 - organization knowledge/RAG health metadata
 - Workflow and Cadence definitions
 - pipeline-linked messaging automation settings

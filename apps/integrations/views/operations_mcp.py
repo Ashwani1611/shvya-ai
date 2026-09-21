@@ -86,7 +86,7 @@ OAUTH_MAX_STATE_LENGTH = 1024
 TOOL_RESPONSE_TEXT_LIMITS = {
     # These tools deliberately expose bounded configuration text after secret
     # redaction. Keep ordinary diagnostics on the sanitizer's 800-char default.
-    "get_ai_configuration": 60000,
+    "get_ai_configuration": 110000,
     "get_organization_configuration": 30000,
 }
 

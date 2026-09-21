@@ -2121,6 +2121,72 @@ class OperationsMCPTests(TestCase):
             sequence.steps.filter(pk=manual_step.pk).exists()
         )
 
+    def test_operations_configuration_rejects_bare_opaque_secret_values(self):
+        OperationsPolicy.objects.create(
+            organization=self.organization,
+            organization_admin_enabled=True,
+            allowed_capabilities=[
+                CAP_ORGANIZATION_READ,
+                CAP_AI_CONFIG_WRITE,
+                CAP_AUTOMATION_CONFIG_WRITE,
+            ],
+            approval_required_capabilities=[],
+        )
+        bearer = self._token(
+            actor=self.admin,
+            role=ROLE_ORGANIZATION_ADMIN,
+            organization=self.organization,
+        )
+        opaque = "A" * 64
+
+        ai_result = self._result(
+            self._call(
+                bearer,
+                "update_ai_configuration",
+                {
+                    "changes": {
+                        "ai_playbook": (
+                            "Use normal qualification guidance. "
+                            + opaque
+                        ),
+                    },
+                    "reason": "Review proposed AI configuration",
+                    "dry_run": True,
+                },
+            )
+        )
+        self.assertTrue(ai_result["isError"])
+        self.assertEqual(
+            ai_result["structuredContent"]["status"],
+            "NOT_ALLOWED",
+        )
+
+        workflow_result = self._result(
+            self._call(
+                bearer,
+                "upsert_workflow_configuration",
+                {
+                    "data": {
+                        "name": "Unsafe opaque value " + opaque,
+                    },
+                    "reason": "Review proposed workflow configuration",
+                    "dry_run": True,
+                },
+            )
+        )
+        self.assertTrue(workflow_result["isError"])
+        self.assertEqual(
+            workflow_result["structuredContent"]["status"],
+            "NOT_ALLOWED",
+        )
+        payload = json.dumps(
+            {
+                "ai": ai_result,
+                "workflow": workflow_result,
+            }
+        )
+        self.assertNotIn(opaque, payload)
+
     def test_pipeline_configuration_create_verifies_standard_stages(self):
         OperationsPolicy.objects.create(
             organization=self.organization,
@@ -2978,8 +3044,8 @@ class OperationsMCPTests(TestCase):
             organization_admin_enabled=True,
             allowed_capabilities=[CAP_ORGANIZATION_READ],
         )
-        legacy_playbook = ("Legacy guidance. " * 4000)
-        self.assertGreater(len(legacy_playbook), 50000)
+        legacy_playbook = ("Legacy guidance. " * 7000)
+        self.assertGreater(len(legacy_playbook), 100000)
         OrgInfo.objects.create(
             organization=self.organization,
             ai_playbook=legacy_playbook,
@@ -3005,7 +3071,7 @@ class OperationsMCPTests(TestCase):
             len(legacy_playbook),
         )
         self.assertTrue(data["ai_playbook_truncated"])
-        self.assertEqual(len(data["ai_playbook"]), 50000)
+        self.assertEqual(len(data["ai_playbook"]), 100000)
 
     def test_knowledge_health_is_bounded_metadata_only_and_tenant_scoped(self):
         OperationsPolicy.objects.create(

@@ -655,7 +655,7 @@ def _reject_secret_like_content(value, *, field="configuration"):
     redacted = sanitize_text(
         value,
         limit=max(len(value) + 32, 800),
-        redact_long=False,
+        redact_long=True,
     )
     if redacted != value:
         raise OperationsPermissionError(
@@ -977,7 +977,7 @@ def _safe_full_config_text(value, *, max_chars):
     safe_full = sanitize_text(
         raw,
         limit=max(len(raw) + 32, 800),
-        redact_long=False,
+        redact_long=True,
     )
     return (
         safe_full[:max_chars],
@@ -1038,7 +1038,7 @@ def get_ai_configuration(*, identity, arguments):
         playbook_truncated,
     ) = _safe_full_config_text(
         info.ai_playbook,
-        max_chars=50000,
+        max_chars=100000,
     )
     compiled = compile_qualification_requirements(
         qualification_questions(
@@ -2497,7 +2497,7 @@ def update_ai_configuration(*, identity, arguments):
             redacted = sanitize_text(
                 text,
                 limit=max(len(text) + 32, 800),
-                redact_long=False,
+                redact_long=True,
             )
             if redacted != text:
                 raise OperationsPermissionError(
