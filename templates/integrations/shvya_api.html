@@ -109,6 +109,79 @@
         </div>
     </section>
 
+    <section class="rounded-2xl border border-violet-100 bg-gradient-to-br from-violet-50 via-white to-blue-50 p-6 shadow-sm">
+        <div class="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+            <div class="max-w-2xl">
+                <div class="flex flex-wrap items-center gap-2">
+                    <span class="rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide {% if operations_policy.organization_admin_enabled %}bg-emerald-600 text-white{% else %}bg-gray-200 text-gray-600{% endif %}">
+                        {% if operations_policy.organization_admin_enabled %}Enabled{% else %}Disabled by SHVYA Superadmin{% endif %}
+                    </span>
+                    <span class="text-xs font-medium text-violet-700">ChatGPT / Claude Operations</span>
+                </div>
+                <h3 class="mt-3 text-lg font-semibold text-gray-950">External AI Operations MCP</h3>
+                <p class="mt-1 text-sm leading-6 text-gray-600">
+                    Connect an external AI using your authenticated Organization Admin account. The AI can operate only inside
+                    this organization and only with the capabilities SHVYA Superadmin has enabled. Backend tenant, CRM,
+                    qualification and messaging rules remain authoritative.
+                </p>
+
+                {% if operations_capabilities %}
+                <div class="mt-4 flex flex-wrap gap-2">
+                    {% for capability in operations_capabilities %}
+                    <span class="rounded-lg border border-violet-100 bg-white px-2.5 py-1.5 text-xs text-gray-700">
+                        {{ capability.label }}
+                        {% if capability.approval_required %}
+                        <span class="ml-1 text-amber-600">· approval</span>
+                        {% endif %}
+                    </span>
+                    {% endfor %}
+                </div>
+                {% elif operations_policy.organization_admin_enabled %}
+                <p class="mt-4 text-xs text-amber-700">
+                    External AI Operations is enabled, but no capabilities are currently granted.
+                </p>
+                {% endif %}
+            </div>
+
+            <div class="w-full max-w-xl">
+                <div class="flex gap-2">
+                    <input id="operations-mcp-url" readonly value="{{ operations_mcp_url }}" class="h-10 min-w-0 flex-1 rounded-lg border border-violet-100 bg-white px-3 font-mono text-xs text-gray-700">
+                    <button type="button" data-copy-target="operations-mcp-url" class="inline-flex h-10 items-center justify-center rounded-lg border border-violet-200 bg-white px-3 text-violet-700 hover:bg-violet-50" title="Copy Operations MCP endpoint">
+                        <i class="ti ti-copy text-lg"></i>
+                    </button>
+                </div>
+                <p class="mt-2 text-xs text-gray-500">
+                    {% if operations_policy.organization_admin_enabled %}
+                    Use this endpoint in ChatGPT or Claude. Authorization uses your SHVYA Organization Admin login — no Operations API key is created.
+                    {% else %}
+                    Ask SHVYA Superadmin to enable Organization Admin access before connecting this endpoint.
+                    {% endif %}
+                </p>
+            </div>
+        </div>
+
+        {% if active_operations_support %}
+        <div class="mt-5 rounded-xl border border-blue-200 bg-blue-50 p-4">
+            <div class="flex items-center gap-2 text-sm font-semibold text-blue-800">
+                <span class="inline-block h-2.5 w-2.5 rounded-full bg-blue-500 animate-pulse"></span>
+                SHVYA Support is active in your organization
+            </div>
+            <p class="mt-1 text-xs leading-5 text-blue-700">
+                A SHVYA Superadmin Operations session currently has this organization selected for support.
+                All Operations actions are audited.
+            </p>
+            <div class="mt-2 space-y-1 text-xs text-blue-700">
+                {% for support_session in active_operations_support %}
+                <div>
+                    {{ support_session.actor.name|default:"SHVYA Support" }}
+                    · Since {{ support_session.started_at|date:"d M Y, h:i A" }}
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+    </section>
+
     <section class="grid gap-6 lg:grid-cols-2">
         <div class="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
             <div class="flex items-center justify-between gap-3">
