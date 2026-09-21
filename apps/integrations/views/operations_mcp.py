@@ -64,7 +64,6 @@ from apps.integrations.operations_policy import (
     WRITE_CAPABILITIES,
     approval_required,
     effective_capabilities,
-    policy_for,
 )
 from apps.integrations.operations_tools import (
     DIAGNOSTIC_TOOL_NAMES,
