@@ -124,7 +124,7 @@
         <div class="ci-feature-copy">
           <span>WORKFLOWS</span>
           <h3>Calls can trigger<br>real automation.</h3>
-          <p>The existing SHVYA call_logged workflow event continues to power reminders, messages and CRM actions.</p>
+          <p>Use <strong>Call logged</strong> for call-status automation, or <strong>Call intelligence is ready</strong> for intent and AI-score driven actions after grounded analysis completes.</p>
         </div>
       </article>
     </div>
@@ -148,7 +148,20 @@
       <article><small>Follow-ups</small><strong>{{ stats.followups }}</strong><span>Due within 24 hours</span></article>
     </div>
 
-    <div class="ci-data-grid">
+    <form class="ci-filter-bar" method="get" action="{% url 'call-intelligence-dashboard' %}">
+      <label class="ci-filter-search"><i class="ti ti-search"></i><input type="search" name="q" value="{{ filters.q }}" placeholder="Search lead, contact or phone"></label>
+      <select name="status"><option value="">All statuses</option>{% for value,label in call_statuses %}<option value="{{ value }}" {% if filters.status == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>
+      <select name="direction"><option value="">All directions</option>{% for value,label in call_directions %}<option value="{{ value }}" {% if filters.direction == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>
+      <select name="intent"><option value="">All intent</option>{% for value,label in call_intents %}<option value="{{ value }}" {% if filters.intent == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>
+      <select name="pipeline"><option value="">All pipelines</option>{% for pipeline in pipelines %}<option value="{{ pipeline.id }}" {% if filters.pipeline == pipeline.id|stringformat:"s" %}selected{% endif %}>{{ pipeline.name }}</option>{% endfor %}</select>
+      {% if is_admin %}<select name="agent"><option value="">All agents</option>{% for owner in owners %}<option value="{{ owner.id }}" {% if filters.agent == owner.id|stringformat:"s" %}selected{% endif %}>{{ owner.name|default:owner.email }}</option>{% endfor %}</select>{% endif %}
+      <input type="date" name="date_from" value="{{ filters.date_from }}" aria-label="From date">
+      <input type="date" name="date_to" value="{{ filters.date_to }}" aria-label="To date">
+      <button type="submit" class="ci-primary-btn ci-filter-apply"><i class="ti ti-adjustments-horizontal"></i> Apply</button>
+      <a href="{% url 'call-intelligence-dashboard' %}#calls" class="ci-filter-clear">Clear</a>
+    </form>
+
+    <div id="calls" class="ci-data-grid">
       <section class="ci-panel">
         <div class="ci-panel-head">
           <div><small>RECENT ACTIVITY</small><h3>Latest calls</h3></div>
@@ -156,43 +169,106 @@
         </div>
         <div class="ci-call-list">
           {% for call in recent_calls %}
-          <article class="ci-call-row">
-            <div class="ci-call-direction {{ call.direction }} {{ call.status }}">
-              {% if call.status == "missed" %}
-                <i class="ti ti-phone-x"></i>
-              {% elif call.direction == "incoming" %}
-                <i class="ti ti-phone-incoming"></i>
-              {% else %}
-                <i class="ti ti-phone-outgoing"></i>
+          <details class="ci-call-item">
+            <summary class="ci-call-row">
+              <div class="ci-call-direction {{ call.direction }} {{ call.status }}">
+                {% if call.status == "missed" %}
+                  <i class="ti ti-phone-x"></i>
+                {% elif call.direction == "incoming" %}
+                  <i class="ti ti-phone-incoming"></i>
+                {% else %}
+                  <i class="ti ti-phone-outgoing"></i>
+                {% endif %}
+              </div>
+              <div class="ci-call-person">
+                <strong>{% if call.contact_name %}{{ call.contact_name }}{% elif call.lead %}{{ call.lead.name }}{% else %}{{ call.phone_number }}{% endif %}</strong>
+                <span>{{ call.phone_number }} · {{ call.get_status_display }} · {{ call.get_source_display }}</span>
+              </div>
+              <div class="ci-call-crm">
+                {% if call.lead %}
+                  <span class="ci-badge">{{ call.lead.stage.name }}</span>
+                  <small>{{ call.lead.pipeline.name }}</small>
+                {% else %}
+                  <span class="ci-badge muted">Not in CRM</span>
+                {% endif %}
+              </div>
+              <div class="ci-call-intel">
+                {% if call.intelligence %}
+                  <span class="ci-intent {{ call.intelligence.intent }}">{{ call.intelligence.get_intent_display }} · {{ call.intelligence.ai_score|default:"0" }}/10</span>
+                  <small>{{ call.intelligence.outcome|default:"Analyzed" }}</small>
+                {% elif call.notes or call.transcript %}
+                  <span class="ci-intent pending">AI queued</span>
+                {% else %}
+                  <span class="ci-intent neutral">Add notes</span>
+                {% endif %}
+              </div>
+              <div class="ci-call-time">
+                <strong>{{ call.talk_duration_seconds }}s</strong>
+                <small>{{ call.ended_at|date:"d M, H:i"|default:"Syncing…" }}</small>
+              </div>
+            </summary>
+            <div class="ci-call-detail">
+              <div class="ci-call-detail-grid">
+                <section>
+                  <div class="ci-detail-label">CRM & call</div>
+                  <dl class="ci-detail-list">
+                    <div><dt>Agent</dt><dd>{{ call.user.name|default:call.user.email|default:"System" }}</dd></div>
+                    <div><dt>Direction</dt><dd>{{ call.get_direction_display }}</dd></div>
+                    <div><dt>Status</dt><dd>{{ call.get_status_display }}</dd></div>
+                    <div><dt>Ring</dt><dd>{{ call.ring_duration_seconds }}s</dd></div>
+                    <div><dt>Talk</dt><dd>{{ call.talk_duration_seconds }}s</dd></div>
+                    {% if call.provider %}<div><dt>Provider</dt><dd>{{ call.provider }}</dd></div>{% endif %}
+                  </dl>
+                </section>
+                <section>
+                  <div class="ci-detail-label">Intelligence</div>
+                  {% if call.intelligence %}
+                    <p class="ci-ai-summary">{{ call.intelligence.summary|default:"Analysis completed." }}</p>
+                    <div class="ci-intel-pills">
+                      <span>Intent · {{ call.intelligence.get_intent_display }}</span>
+                      <span>Sentiment · {{ call.intelligence.get_sentiment_display }}</span>
+                      <span>AI score · {{ call.intelligence.ai_score|default:"0" }}/10</span>
+                      <span>Qualification · {{ call.intelligence.qualification_score|default:"0" }}/10</span>
+                    </div>
+                    {% if call.intelligence.next_action %}<p class="ci-next-action"><strong>Next action</strong>{{ call.intelligence.next_action }}</p>{% endif %}
+                    {% if call.intelligence.objections %}<p class="ci-evidence"><strong>Objections</strong>{{ call.intelligence.objections|join:", " }}</p>{% endif %}
+                    {% if call.intelligence.buying_signals %}<p class="ci-evidence"><strong>Buying signals</strong>{{ call.intelligence.buying_signals|join:", " }}</p>{% endif %}
+                  {% else %}
+                    <p class="ci-ai-summary muted">Add grounded notes or a provider transcript to run Call Intelligence.</p>
+                  {% endif %}
+                </section>
+              </div>
+
+              {% if call.recording_url or call.transcript %}
+              <div class="ci-media-card">
+                <div>
+                  <div class="ci-detail-label">Conversation evidence</div>
+                  {% if call.recording_url %}<a href="{{ call.recording_url }}" target="_blank" rel="noopener" class="ci-media-link"><i class="ti ti-player-play"></i> Open recording</a>{% endif %}
+                </div>
+                {% if call.transcript %}
+                <details class="ci-transcript">
+                  <summary><i class="ti ti-file-text"></i> View transcript</summary>
+                  <pre>{{ call.transcript }}</pre>
+                </details>
+                {% endif %}
+              </div>
               {% endif %}
+
+              <form class="ci-post-call-form" method="post" action="{% url 'call-intelligence-call-action' call.id %}">
+                {% csrf_token %}
+                <div>
+                  <label>Post-call notes</label>
+                  <textarea name="notes" maxlength="20000" placeholder="What happened? What should happen next?">{{ call.notes }}</textarea>
+                </div>
+                <div class="ci-post-call-controls">
+                  <label>Disposition<select name="disposition"><option value="">Choose outcome</option>{% for disposition in dispositions %}<option value="{{ disposition.code }}" {% if call.disposition == disposition.code %}selected{% endif %}>{{ disposition.name }}</option>{% endfor %}</select></label>
+                  <label>Follow-up<input type="datetime-local" name="follow_up_at" {% if call.follow_up_at %}value="{{ call.follow_up_at|date:'Y-m-d\\TH:i' }}"{% endif %}></label>
+                  <button type="submit" class="ci-primary-btn"><i class="ti ti-sparkles"></i> Save & analyze</button>
+                </div>
+                <span class="ci-call-action-result" aria-live="polite"></span>
+              </form>
             </div>
-            <div class="ci-call-person">
-              <strong>{{ call.contact_name|default:call.lead.name|default:call.phone_number }}</strong>
-              <span>{{ call.phone_number }} · {{ call.get_status_display }}</span>
-            </div>
-            <div class="ci-call-crm">
-              {% if call.lead %}
-                <span class="ci-badge">{{ call.lead.stage.name }}</span>
-                <small>{{ call.lead.pipeline.name }}</small>
-              {% else %}
-                <span class="ci-badge muted">Not in CRM</span>
-              {% endif %}
-            </div>
-            <div class="ci-call-intel">
-              {% if call.intelligence %}
-                <span class="ci-intent {{ call.intelligence.intent }}">{{ call.intelligence.get_intent_display }} intent</span>
-                <small>{{ call.intelligence.outcome|default:"Analyzed" }}</small>
-              {% elif call.notes %}
-                <span class="ci-intent pending">AI queued</span>
-              {% else %}
-                <span class="ci-intent neutral">Add notes</span>
-              {% endif %}
-            </div>
-            <div class="ci-call-time">
-              <strong>{{ call.talk_duration_seconds }}s</strong>
-              <small>{{ call.ended_at|date:"d M, H:i"|default:"Syncing…" }}</small>
-            </div>
-          </article>
+          </details>
           {% empty %}
           <div class="ci-empty">
             <i class="ti ti-phone"></i>
@@ -227,6 +303,43 @@
             <strong>No devices yet.</strong>
             <span>Download the APK below to connect the first employee phone.</span>
           </div>
+          {% endfor %}
+        </div>
+      </section>
+    </div>
+
+    <div class="ci-intelligence-grid">
+      <section class="ci-panel">
+        <div class="ci-panel-head">
+          <div><small>MISSED-CALL RECOVERY</small><h3>Call back queue</h3></div>
+          <span>{{ missed_calls|length }} recent</span>
+        </div>
+        <div class="ci-missed-list">
+          {% for call in missed_calls %}
+          <article>
+            <div class="ci-missed-icon"><i class="ti ti-phone-x"></i></div>
+            <div><strong>{% if call.lead %}{{ call.lead.name }}{% elif call.contact_name %}{{ call.contact_name }}{% else %}{{ call.phone_number }}{% endif %}</strong><span>{{ call.phone_number }} · {{ call.ended_at|timesince }} ago</span></div>
+            <div><small>{% if call.user %}{{ call.user.name|default:call.user.email }}{% else %}Unassigned{% endif %}</small>{% if call.lead %}<a href="{% url 'call-intelligence-dashboard' %}?q={{ call.phone_number|urlencode }}#calls">Open call</a>{% endif %}</div>
+          </article>
+          {% empty %}
+          <div class="ci-empty small"><i class="ti ti-circle-check"></i><strong>No missed calls waiting.</strong><span>Your recent missed-call queue is clear.</span></div>
+          {% endfor %}
+        </div>
+      </section>
+
+      <section class="ci-panel">
+        <div class="ci-panel-head">
+          <div><small>AGENT INTELLIGENCE</small><h3>Today’s team</h3></div>
+          <span>Grounded call metrics</span>
+        </div>
+        <div class="ci-agent-list">
+          {% for agent in agent_stats %}
+          <article>
+            <div><strong>{{ agent.user__name|default:agent.user__email }}</strong><span>{{ agent.calls }} calls · {{ agent.answered }} answered · {{ agent.missed }} missed</span></div>
+            <div class="ci-agent-metrics"><span>{{ agent.average_talk|floatformat:0 }}s avg</span><span>{{ agent.high_intent }} high intent</span></div>
+          </article>
+          {% empty %}
+          <div class="ci-empty small"><i class="ti ti-users"></i><strong>No agent activity yet.</strong><span>Today’s call performance will appear here.</span></div>
           {% endfor %}
         </div>
       </section>
@@ -268,6 +381,7 @@
         <label><input type="checkbox" name="auto_create_answered_outgoing" {% if call_settings.auto_create_answered_outgoing %}checked{% endif %}><span></span><div><strong>Answered outgoing</strong><small>Create a lead for successful outbound calls.</small></div></label>
         <label><input type="checkbox" name="auto_create_missed" {% if call_settings.auto_create_missed %}checked{% endif %}><span></span><div><strong>Missed calls</strong><small>Capture missed opportunities as leads.</small></div></label>
         <label><input type="checkbox" name="auto_create_rejected" {% if call_settings.auto_create_rejected %}checked{% endif %}><span></span><div><strong>Rejected calls</strong><small>Optional lead creation for rejected calls.</small></div></label>
+        <label><input type="checkbox" name="auto_create_unknown" {% if call_settings.auto_create_unknown %}checked{% endif %}><span></span><div><strong>Unknown calls</strong><small>Optional lead creation when Android/provider status cannot be classified.</small></div></label>
       </div>
 
       <div class="ci-select-grid">
@@ -281,6 +395,23 @@
         <button type="submit" class="ci-primary-btn"><i class="ti ti-check"></i> Save settings</button>
       </div>
     </form>
+
+    <div class="ci-disposition-admin">
+      <div class="ci-panel-head">
+        <div><small>CALL OUTCOMES</small><h3>Custom dispositions</h3></div>
+        <span>Organization-specific</span>
+      </div>
+      <div class="ci-disposition-chips">{% for disposition in dispositions %}<span>{{ disposition.name }} <small>{{ disposition.get_category_display }}</small></span>{% endfor %}</div>
+      <form id="ci-disposition-form" action="{% url 'call-intelligence-disposition-save' %}" method="post">
+        {% csrf_token %}
+        <input name="name" maxlength="120" placeholder="e.g. Demo booked" required>
+        <select name="category"><option value="connected">Connected</option><option value="not_connected">Not connected</option></select>
+        <input name="position" type="number" min="0" value="0" aria-label="Position">
+        <label class="ci-inline-check"><input type="checkbox" name="is_active" checked> Active</label>
+        <button type="submit" class="ci-secondary-btn">Add disposition</button>
+        <span id="ci-disposition-result"></span>
+      </form>
+    </div>
   </section>
   {% endif %}
 </div>
@@ -303,6 +434,46 @@
     });
   }
   if(pipeline){pipeline.addEventListener('change',filterStages);filterStages();}
+
+  document.querySelectorAll('.ci-post-call-form').forEach((callForm)=>{
+    callForm.addEventListener('submit',async(event)=>{
+      event.preventDefault();
+      const button=callForm.querySelector('button[type="submit"]');
+      const result=callForm.querySelector('.ci-call-action-result');
+      button.disabled=true;
+      try{
+        const response=await fetch(callForm.action,{method:'POST',body:new FormData(callForm),headers:{'X-Requested-With':'XMLHttpRequest'}});
+        const data=await response.json();
+        if(!response.ok||!data.ok)throw new Error(data.error||'Could not save this call.');
+        result.textContent='Saved. Intelligence refresh queued.';
+        result.className='ci-call-action-result success';
+      }catch(error){
+        result.textContent=error.message;
+        result.className='ci-call-action-result error';
+      }finally{
+        button.disabled=false;
+      }
+    });
+  });
+
+  const dispositionForm=document.getElementById('ci-disposition-form');
+  if(dispositionForm){
+    dispositionForm.addEventListener('submit',async(event)=>{
+      event.preventDefault();
+      const result=document.getElementById('ci-disposition-result');
+      try{
+        const response=await fetch(dispositionForm.action,{method:'POST',body:new FormData(dispositionForm),headers:{'X-Requested-With':'XMLHttpRequest'}});
+        const data=await response.json();
+        if(!response.ok||!data.ok)throw new Error(data.error||'Could not save disposition.');
+        result.textContent='Saved — refresh to use it.';
+        result.className='success';
+        dispositionForm.reset();
+      }catch(error){
+        result.textContent=error.message;
+        result.className='error';
+      }
+    });
+  }
 
   if(form){
     form.addEventListener('submit',async(event)=>{
