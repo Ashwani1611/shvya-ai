@@ -50,6 +50,17 @@ ALLOWED_UPLOAD_TYPES = {
     "application/vnd.ms-excel",
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 }
+ALLOWED_UPLOAD_EXTENSIONS = {
+    ".pdf",
+    ".jpg",
+    ".jpeg",
+    ".png",
+    ".webp",
+    ".doc",
+    ".docx",
+    ".xls",
+    ".xlsx",
+}
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 
 
@@ -187,6 +198,15 @@ def _field_value(post, key):
     return str(post.get(f"f_{key}") or "").strip()
 
 
+def _consent_accepted(post):
+    return str(post.get("consent") or "").strip().casefold() in {
+        "1",
+        "true",
+        "on",
+        "yes",
+    }
+
+
 def validate_public_submission(*, page, version, post, files):
     errors = {}
     submitted = {}
@@ -223,11 +243,19 @@ def validate_public_submission(*, page, version, post, files):
             if required and upload is None:
                 errors[key] = "This file is required."
             if upload is not None:
+                filename = str(upload.name or "")
+                extension = (
+                    "." + filename.rsplit(".", 1)[1].casefold()
+                    if "." in filename
+                    else ""
+                )
                 if upload.size > MAX_UPLOAD_BYTES:
                     errors[key] = "File must be 10 MB or smaller."
+                elif extension not in ALLOWED_UPLOAD_EXTENSIONS:
+                    errors[key] = "This file extension is not allowed."
                 elif upload.content_type not in ALLOWED_UPLOAD_TYPES:
                     errors[key] = "This file type is not allowed."
-                submitted[key] = upload.name
+                submitted[key] = filename
             continue
 
         value = _field_value(post, key)
@@ -261,7 +289,7 @@ def validate_public_submission(*, page, version, post, files):
             errors[key[2:]] = "This field is not part of the published form."
 
     if version.snapshot.get("consent_enabled"):
-        accepted = str(post.get("consent") or "").lower() in {"1", "true", "on", "yes"}
+        accepted = _consent_accepted(post)
         if not accepted:
             errors["consent"] = "Please accept the consent statement to continue."
 
@@ -406,7 +434,7 @@ def create_submission_and_lead(
             submitted_data=submitted,
             normalized_data=normalized,
             attribution=attribution_from_request(request),
-            consent_accepted=bool(request.POST.get("consent")),
+            consent_accepted=_consent_accepted(request.POST),
             consent_text=str(version.snapshot.get("consent_text") or ""),
             consent_version=version.version,
             referrer=str(request.META.get("HTTP_REFERER") or "")[:200],
@@ -476,7 +504,7 @@ def create_submission_and_lead(
         submitted_data=submitted,
         normalized_data=normalized,
         attribution=attribution_from_request(request),
-        consent_accepted=bool(request.POST.get("consent")),
+        consent_accepted=_consent_accepted(request.POST),
         consent_text=str(version.snapshot.get("consent_text") or ""),
         consent_version=version.version,
         referrer=str(request.META.get("HTTP_REFERER") or "")[:200],
