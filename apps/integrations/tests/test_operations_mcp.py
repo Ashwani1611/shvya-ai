@@ -9,7 +9,7 @@ from django.utils import timezone
 from apps.accounts.models import User
 from apps.accounts.session_utils import get_session_cookie_name, set_authenticated_user
 from apps.ai_engagement.models import OrgInfo
-from apps.crm.models import AttributeDefinition, Lead, LeadActivity, Pipeline, Stage
+from apps.crm.models import AttributeDefinition, Lead, LeadActivity, Pipeline
 from apps.integrations.models import (
     OperationsAuditEvent,
     OperationsOAuthClient,
@@ -24,7 +24,6 @@ from apps.integrations.operations_auth import (
     token_hash,
 )
 from apps.integrations.operations_policy import (
-    CAP_AI_CONFIG_WRITE,
     CAP_CRM_CONFIG_WRITE,
     CAP_DIAGNOSTICS_READ,
     CAP_LEAD_STAGE_WRITE,
