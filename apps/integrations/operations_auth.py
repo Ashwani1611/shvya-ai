@@ -24,7 +24,9 @@ from apps.integrations.operations_models import (
 from apps.integrations.operations_policy import (
     ROLE_ORGANIZATION_ADMIN,
     ROLE_SUPERADMIN,
+    capabilities_for_grant,
     effective_capabilities,
+    expand_capabilities,
     policy_for,
 )
 
@@ -58,6 +60,7 @@ class OperationsIdentity:
     organization: object | None
     active_organization: object | None
     scopes: frozenset[str]
+    granted_capabilities: frozenset[str]
 
 
 def token_hash(value: str) -> str:
@@ -279,6 +282,15 @@ def issue_authorization_code(
         if role != ROLE_SUPERADMIN and not any(item.endswith(".write") for item in capabilities):
             requested.discard(OPERATIONS_WRITE_SCOPE)
     normalized_scope = " ".join(sorted(requested))
+    granted_capabilities = sorted(
+        capabilities_for_grant(
+            role=role,
+            organization=organization,
+            allow_writes=(
+                OPERATIONS_WRITE_SCOPE in requested
+            ),
+        )
+    )
 
     raw_code = secrets.token_urlsafe(48)
     OperationsOAuthAuthorizationCode.objects.create(
@@ -289,6 +301,7 @@ def issue_authorization_code(
         code_hash=token_hash(raw_code),
         redirect_uri=redirect_uri,
         scope=normalized_scope,
+        granted_capabilities=granted_capabilities,
         code_challenge=code_challenge,
         resource=str(resource or "")[:2048],
         expires_at=timezone.now() + AUTH_CODE_TTL,
@@ -359,6 +372,9 @@ def exchange_authorization_code(
             access_token_hash=token_hash(raw_access),
             refresh_token_hash=token_hash(raw_refresh),
             scope=auth_code.scope,
+            granted_capabilities=list(
+                auth_code.granted_capabilities or []
+            ),
             resource=auth_code.resource,
             expires_at=now + ACCESS_TOKEN_TTL,
             refresh_expires_at=now + REFRESH_TOKEN_TTL,
