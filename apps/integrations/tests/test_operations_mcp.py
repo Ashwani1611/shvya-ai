@@ -566,7 +566,7 @@ class OperationsMCPTests(TestCase):
         self.assertNotIn("upsert_pipeline_configuration", names)
         self.assertNotIn("upsert_workflow_configuration", names)
 
-    def test_authenticated_org_admin_tool_discovery_updates_when_policy_changes(self):
+    def test_policy_expansion_requires_fresh_oauth_but_reduction_is_immediate(self):
         policy = OperationsPolicy.objects.create(
             organization=self.organization,
             organization_admin_enabled=True,
@@ -579,18 +579,135 @@ class OperationsMCPTests(TestCase):
             organization=self.organization,
         )
 
-        before = {item["name"] for item in self._list_tools(bearer)["tools"]}
+        before = {
+            item["name"]
+            for item in self._list_tools(bearer)["tools"]
+        }
         self.assertNotIn("move_lead_stage", before)
 
         policy.allowed_capabilities = [
             CAP_ORGANIZATION_READ,
             CAP_LEAD_STAGE_WRITE,
         ]
-        policy.save(update_fields=["allowed_capabilities", "updated_at"])
+        policy.save(
+            update_fields=[
+                "allowed_capabilities",
+                "updated_at",
+            ]
+        )
 
-        after = {item["name"] for item in self._list_tools(bearer)["tools"]}
-        self.assertIn("move_lead_stage", after)
-        self.assertIn("repair_qualification_stage", after)
+        expanded_without_reauth = {
+            item["name"]
+            for item in self._list_tools(bearer)["tools"]
+        }
+        self.assertNotIn(
+            "move_lead_stage",
+            expanded_without_reauth,
+        )
+        context = self._result(
+            self._call(
+                bearer,
+                "get_operations_context",
+                {},
+            )
+        )
+        self.assertIn(
+            CAP_LEAD_STAGE_WRITE,
+            context["structuredContent"][
+                "policy_capabilities"
+            ],
+        )
+        self.assertNotIn(
+            CAP_LEAD_STAGE_WRITE,
+            context["structuredContent"][
+                "granted_capabilities"
+            ],
+        )
+        self.assertNotIn(
+            CAP_LEAD_STAGE_WRITE,
+            context["structuredContent"]["capabilities"],
+        )
+
+        denied = self._result(
+            self._call(
+                bearer,
+                "move_lead_stage",
+                {
+                    "lead_id": str(self.lead.id),
+                    "target_stage_id": str(
+                        self.review_stage.id
+                    ),
+                    "reason": "Try newly enabled capability",
+                    "dry_run": True,
+                },
+            )
+        )
+        self.assertTrue(denied["isError"])
+        self.assertEqual(
+            denied["structuredContent"]["status"],
+            "NOT_ALLOWED",
+        )
+        self.assertIn(
+            "Fresh SHVYA authorization",
+            denied["structuredContent"]["error"],
+        )
+
+        OperationsOAuthToken.objects.all().delete()
+        fresh_bearer = self._token(
+            actor=self.admin,
+            role=ROLE_ORGANIZATION_ADMIN,
+            organization=self.organization,
+        )
+        after_reauth = {
+            item["name"]
+            for item in self._list_tools(
+                fresh_bearer
+            )["tools"]
+        }
+        self.assertIn(
+            "move_lead_stage",
+            after_reauth,
+        )
+        self.assertIn(
+            "repair_qualification_stage",
+            after_reauth,
+        )
+
+        policy.allowed_capabilities = [
+            CAP_ORGANIZATION_READ,
+        ]
+        policy.save(
+            update_fields=[
+                "allowed_capabilities",
+                "updated_at",
+            ]
+        )
+        reduced = {
+            item["name"]
+            for item in self._list_tools(
+                fresh_bearer
+            )["tools"]
+        }
+        self.assertNotIn("move_lead_stage", reduced)
+        reduced_call = self._result(
+            self._call(
+                fresh_bearer,
+                "move_lead_stage",
+                {
+                    "lead_id": str(self.lead.id),
+                    "target_stage_id": str(
+                        self.review_stage.id
+                    ),
+                    "reason": "Try capability after policy reduction",
+                    "dry_run": True,
+                },
+            )
+        )
+        self.assertTrue(reduced_call["isError"])
+        self.assertEqual(
+            reduced_call["structuredContent"]["status"],
+            "SUPERADMIN_REQUIRED",
+        )
 
     def test_read_only_oauth_tokens_do_not_discover_write_tools(self):
         OperationsPolicy.objects.create(
