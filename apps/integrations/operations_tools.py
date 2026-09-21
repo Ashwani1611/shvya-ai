@@ -201,7 +201,7 @@ def _reason(arguments, *, required=False):
     safe = sanitize_text(
         value,
         limit=max(len(value) + 32, 800),
-        redact_long=False,
+        redact_long=True,
     )
     if safe != value:
         raise OperationsPermissionError(
@@ -469,7 +469,6 @@ def get_operations_context(*, identity, arguments):
                     "reason": sanitize_text(
                         session.reason,
                         limit=500,
-                        redact_long=False,
                     ),
                 }
                 if session is not None
