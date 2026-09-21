@@ -2076,6 +2076,51 @@ class OperationsMCPTests(TestCase):
             "Human edited business profile",
         )
 
+    def test_successful_mutation_rolls_back_if_operations_audit_cannot_persist(self):
+        OperationsPolicy.objects.create(
+            organization=self.organization,
+            organization_admin_enabled=True,
+            allowed_capabilities=[
+                CAP_ORGANIZATION_READ,
+                CAP_AI_CONFIG_WRITE,
+            ],
+            approval_required_capabilities=[],
+        )
+        bearer = self._token(
+            actor=self.admin,
+            role=ROLE_ORGANIZATION_ADMIN,
+            organization=self.organization,
+        )
+        self.assertFalse(
+            OrgInfo.objects.filter(
+                organization=self.organization
+            ).exists()
+        )
+
+        with patch(
+            "apps.integrations.views.operations_mcp._record_audit",
+            side_effect=RuntimeError("audit storage unavailable"),
+        ):
+            with self.assertRaises(RuntimeError):
+                self._call(
+                    bearer,
+                    "update_ai_configuration",
+                    {
+                        "changes": {
+                            "about": "This must not commit without audit",
+                        },
+                        "reason": "Test atomic audit requirement",
+                        "dry_run": False,
+                    },
+                )
+
+        self.assertFalse(
+            OrgInfo.objects.filter(
+                organization=self.organization
+            ).exists(),
+            "Customer state must roll back if the required audit row cannot persist.",
+        )
+
     def test_operations_ai_configuration_can_create_first_org_info_and_verify(self):
         OperationsPolicy.objects.create(
             organization=self.organization,
