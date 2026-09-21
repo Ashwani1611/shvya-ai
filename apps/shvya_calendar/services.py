@@ -635,7 +635,7 @@ def notify_submission(submission_id):
 def _page_zone(page):
     try:
         return ZoneInfo(page.timezone)
-    except ZoneInfoNotFoundError as exc:
+    except (ZoneInfoNotFoundError, ValueError) as exc:
         raise ValidationError({"timezone": "Choose a valid IANA timezone."}) from exc
 
 
