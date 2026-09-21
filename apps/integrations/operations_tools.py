@@ -66,7 +66,6 @@ from apps.integrations.operations_policy import (
     CAP_LEAD_STAGE_WRITE,
     CAP_ORGANIZATION_READ,
     ROLE_SUPERADMIN,
-    WRITE_CAPABILITIES,
     approval_required,
     effective_capabilities,
     policy_for,
@@ -3908,16 +3907,6 @@ def upsert_stage_configuration(*, identity, arguments):
                 raise OperationsToolError(
                     "Stage configuration verification failed."
                 )
-            attribute.refresh_from_db()
-            if (
-                attribute.name != name
-                or attribute.field_type != field_type
-                or attribute.description != description
-                or list(attribute.options or []) != list(options)
-            ):
-                raise OperationsToolError(
-                    "Attribute configuration verification failed."
-                )
             before = locked_before
             after = locked_after
     except IntegrityError as exc:
@@ -4206,6 +4195,16 @@ def upsert_attribute_configuration(*, identity, arguments):
                     field_type=field_type,
                     description=description,
                     options=options,
+                )
+            attribute.refresh_from_db()
+            if (
+                attribute.name != name
+                or attribute.field_type != field_type
+                or attribute.description != description
+                or list(attribute.options or []) != list(options)
+            ):
+                raise OperationsToolError(
+                    "Attribute configuration verification failed."
                 )
             before = locked_before
             after = locked_after
