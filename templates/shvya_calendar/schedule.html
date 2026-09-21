@@ -36,6 +36,7 @@
               {% for slot in day.slots %}
                 <form method="post">
                   {% csrf_token %}
+                  <input type="hidden" name="flow_token" value="{{ flow_token }}">
                   <input type="hidden" name="slot_start" value="{{ slot.start|date:'c' }}">
                   <button class="sc-slot-button" type="submit">{{ slot.label }}</button>
                 </form>
