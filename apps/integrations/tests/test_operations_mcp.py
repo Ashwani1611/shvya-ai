@@ -2506,6 +2506,30 @@ class OperationsMCPTests(TestCase):
             from_number="+919100000000",
             to_number="+919000000011",
             body="hello",
+            raw_payload={
+                "shvya_ai_execution": {
+                    "status": "failed",
+                    "reason": "delivery_blocked",
+                    "attempts": 2,
+                    "updated_at": "2026-09-21T10:00:00+00:00",
+                    "provider_prompt": "private execution prompt",
+                    "provider_response": "private provider response",
+                },
+                "shvya_ai_processing": {
+                    "processed": False,
+                    "message_id": "safe-processing-link",
+                    "internal_prompt": "private processing prompt",
+                    "qualification_response_plan": {
+                        "prompt": "private qualification plan",
+                    },
+                },
+                "shvya_ai": {
+                    "source_inbound_message_id": "safe-source-link",
+                    "origin": "ai",
+                    "model": "private-model-name",
+                    "prompt": "private outbound prompt",
+                },
+            },
         )
         HostedAutomationJob.objects.create(
             organization=self.organization,
@@ -2537,6 +2561,24 @@ class OperationsMCPTests(TestCase):
             )
         )
         self.assertFalse(result["isError"])
+        markers = result["structuredContent"]["ai_markers"]
+        self.assertEqual(
+            markers["execution"]["status"],
+            "failed",
+        )
+        self.assertEqual(
+            markers["execution"]["reason"],
+            "delivery_blocked",
+        )
+        self.assertEqual(
+            markers["processing"]["processed"],
+            False,
+        )
+        self.assertEqual(
+            markers["outbound_linkage"]["origin"],
+            "ai",
+        )
+
         hosted = result["structuredContent"]["hosted_job"]
         self.assertEqual(hosted["status"], HostedAutomationJob.Status.FAILED)
         self.assertEqual(hosted["reason"], "lead_ai_disabled")
