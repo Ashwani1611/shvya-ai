@@ -2182,6 +2182,7 @@ def diagnose_lead_qualification(*, identity, arguments):
     latest_inbound = (
         lead.whatsapp_messages.filter(
             organization=organization,
+            account__organization=organization,
             direction="inbound",
         )
         .order_by("-created_at", "-id")

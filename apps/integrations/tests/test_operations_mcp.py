@@ -7825,6 +7825,134 @@ class OperationsMCPTests(TestCase):
         self.lead.refresh_from_db()
         self.assertEqual(self.lead.stage_id, self.new_stage.id)
 
+    def test_qualification_diagnosis_ignores_foreign_account_processing_markers(self):
+        OperationsPolicy.objects.create(
+            organization=self.organization,
+            organization_admin_enabled=True,
+            allowed_capabilities=[
+                CAP_ORGANIZATION_READ,
+                CAP_DIAGNOSTICS_READ,
+            ],
+        )
+        own_account = WhatsAppAccount.objects.create(
+            organization=self.organization,
+            connection_type=WhatsAppAccount.ConnectionType.API,
+            business_name="Qualification Evidence Sender",
+            display_phone_number="+919000000080",
+            status=WhatsAppAccount.Status.CONNECTED,
+            is_active=True,
+        )
+        foreign_account = WhatsAppAccount.objects.create(
+            organization=self.other_organization,
+            connection_type=WhatsAppAccount.ConnectionType.API,
+            business_name="Foreign Qualification Evidence Sender",
+            display_phone_number="+919000000081",
+            status=WhatsAppAccount.Status.CONNECTED,
+            is_active=True,
+        )
+        own_message = WhatsAppMessage.objects.create(
+            organization=self.organization,
+            account=own_account,
+            lead=self.lead,
+            external_id="qualification-evidence-own",
+            direction=WhatsAppMessage.Direction.INBOUND,
+            status=WhatsAppMessage.Status.RECEIVED,
+            message_type=WhatsAppMessage.MessageType.TEXT,
+            from_number=self.lead.phone,
+            to_number="+919000000080",
+            body="own qualification evidence",
+            raw_payload={
+                "shvya_ai_processing": {
+                    "processed": True,
+                    "qualification_execution_status": "own_completed",
+                    "qualification_reconciliation_status": "own_reconciled",
+                }
+            },
+        )
+        foreign_message = WhatsAppMessage.objects.create(
+            organization=self.organization,
+            account=foreign_account,
+            lead=self.lead,
+            external_id="qualification-evidence-foreign",
+            direction=WhatsAppMessage.Direction.INBOUND,
+            status=WhatsAppMessage.Status.RECEIVED,
+            message_type=WhatsAppMessage.MessageType.TEXT,
+            from_number=self.lead.phone,
+            to_number="+919000000081",
+            body="foreign qualification evidence",
+            raw_payload={
+                "shvya_ai_processing": {
+                    "processed": True,
+                    "qualification_execution_status": "foreign_completed",
+                    "qualification_reconciliation_status": "foreign_reconciled",
+                }
+            },
+        )
+        WhatsAppMessage.objects.filter(
+            pk=foreign_message.pk
+        ).update(
+            created_at=timezone.now()
+            + timedelta(seconds=1)
+        )
+
+        snapshot = (
+            {"mode": "guided", "flow_version": "evidence-flow"},
+            [],
+            {
+                "qualification_status": "in_progress",
+                "qualification_result": "",
+                "all_requirements_answered": False,
+                "answered_requirement_ids": [],
+                "missing_requirement_ids": [],
+                "flow_version": "evidence-flow",
+            },
+            {"errors": []},
+            {
+                "qualified": False,
+                "reason": "criteria_evaluated",
+                "rules": [],
+            },
+            None,
+        )
+        bearer = self._token(
+            actor=self.admin,
+            role=ROLE_ORGANIZATION_ADMIN,
+            organization=self.organization,
+            scopes=[OPERATIONS_READ_SCOPE],
+        )
+
+        with patch(
+            "apps.integrations.operations_tools._qualification_contract_snapshot",
+            return_value=snapshot,
+        ):
+            result = self._result(
+                self._call(
+                    bearer,
+                    "diagnose_lead_qualification",
+                    {"lead_id": str(self.lead.id)},
+                )
+            )
+
+        self.assertFalse(result["isError"])
+        markers = result["structuredContent"][
+            "latest_processing_markers"
+        ]
+        self.assertEqual(
+            markers["qualification_execution_status"],
+            "own_completed",
+        )
+        self.assertEqual(
+            markers["qualification_reconciliation_status"],
+            "own_reconciled",
+        )
+        payload = json.dumps(result["structuredContent"])
+        self.assertNotIn("foreign_completed", payload)
+        self.assertNotIn("foreign_reconciled", payload)
+        self.assertNotIn(str(foreign_account.id), payload)
+        self.assertIn(str(own_message.id), {
+            str(own_message.id),
+        })
+
     def test_qualification_diagnosis_completed_but_not_qualified_is_not_failure(self):
         OperationsPolicy.objects.create(
             organization=self.organization,
