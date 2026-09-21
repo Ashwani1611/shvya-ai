@@ -75,9 +75,17 @@ def sanitize_text(value, *, limit: int = 800, redact_long: bool = True) -> str:
     return text
 
 
-def sanitize_data(value, *, depth: int = 0):
+def sanitize_data(
+    value,
+    *,
+    depth: int = 0,
+    text_limit: int = 800,
+    list_limit: int = 100,
+):
     if depth > 6:
         return "[TRUNCATED]"
+    text_limit = max(1, min(int(text_limit or 800), 100000))
+    list_limit = max(1, min(int(list_limit or 100), 500))
     if isinstance(value, dict):
         cleaned = {}
         for key, item in value.items():
@@ -95,14 +103,34 @@ def sanitize_data(value, *, depth: int = 0):
                 "stage_id",
                 "event_id",
             } and isinstance(item, str):
-                cleaned[key_text] = sanitize_text(item, redact_long=False)
+                cleaned[key_text] = sanitize_text(
+                    item,
+                    limit=text_limit,
+                    redact_long=False,
+                )
             else:
-                cleaned[key_text] = sanitize_data(item, depth=depth + 1)
+                cleaned[key_text] = sanitize_data(
+                    item,
+                    depth=depth + 1,
+                    text_limit=text_limit,
+                    list_limit=list_limit,
+                )
         return cleaned
     if isinstance(value, (list, tuple)):
-        return [sanitize_data(item, depth=depth + 1) for item in list(value)[:100]]
+        return [
+            sanitize_data(
+                item,
+                depth=depth + 1,
+                text_limit=text_limit,
+                list_limit=list_limit,
+            )
+            for item in list(value)[:list_limit]
+        ]
     if isinstance(value, str):
-        return sanitize_text(value)
+        return sanitize_text(
+            value,
+            limit=text_limit,
+        )
     return value
 
 
