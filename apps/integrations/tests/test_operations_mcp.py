@@ -13,6 +13,7 @@ from django.utils import timezone
 from apps.accounts.models import User
 from apps.accounts.session_utils import get_session_cookie_name, set_authenticated_user
 from apps.ai_engagement.models import OrgInfo
+from apps.channels.instagram_models import InstagramAccount
 from apps.channels.models import WhatsAppAccount
 from apps.crm.models import AttributeDefinition, Lead, LeadActivity, Pipeline, Stage
 from apps.followups.models import FollowupSequence, FollowupStep
@@ -1068,6 +1069,67 @@ class OperationsMCPTests(TestCase):
         )
         self.assertEqual(definition.key, "company_size")
         self.assertEqual(definition.field_type, "numeric")
+
+    def test_integration_health_never_decrypts_provider_credentials(self):
+        OperationsPolicy.objects.create(
+            organization=self.organization,
+            organization_admin_enabled=True,
+            allowed_capabilities=[
+                CAP_ORGANIZATION_READ,
+                CAP_DIAGNOSTICS_READ,
+            ],
+        )
+        WhatsAppAccount.objects.create(
+            organization=self.organization,
+            connection_type=WhatsAppAccount.ConnectionType.API,
+            business_name="Health WA",
+            phone_number_id="phone-health",
+            display_phone_number="+919000000010",
+            access_token="wa-health-secret",
+            status=WhatsAppAccount.Status.CONNECTED,
+            is_active=True,
+        )
+        InstagramAccount.objects.create(
+            organization=self.organization,
+            ig_user_id="ig-health-user",
+            username="health_account",
+            access_token="ig-health-secret",
+            status=InstagramAccount.Status.CONNECTED,
+            webhook_subscribed=True,
+        )
+        bearer = self._token(
+            actor=self.admin,
+            role=ROLE_ORGANIZATION_ADMIN,
+            organization=self.organization,
+            scopes=[OPERATIONS_READ_SCOPE],
+        )
+
+        with patch(
+            "apps.channels.models.EncryptedTextField.from_db_value",
+            side_effect=AssertionError(
+                "diagnostic health must not decrypt provider credentials"
+            ),
+        ):
+            result = self._result(
+                self._call(
+                    bearer,
+                    "get_integration_health",
+                    {},
+                )
+            )
+
+        self.assertFalse(result["isError"])
+        health = result["structuredContent"]
+        wa = next(
+            item
+            for item in health["whatsapp"]
+            if item["business_name"] == "Health WA"
+        )
+        self.assertTrue(wa["credential_present"])
+        self.assertTrue(health["instagram"]["credential_present"])
+        payload = json.dumps(health)
+        self.assertNotIn("wa-health-secret", payload)
+        self.assertNotIn("ig-health-secret", payload)
 
     def test_operations_reads_redact_sensitive_attributes_workflows_and_playbook_secrets(self):
         OperationsPolicy.objects.create(
