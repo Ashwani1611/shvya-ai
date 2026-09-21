@@ -453,7 +453,6 @@ def organization_detail_view(
         support_session.safe_reason = sanitize_text(
             support_session.reason,
             limit=500,
-            redact_long=False,
         )
     active_operations_tokens = list(
         OperationsOAuthToken.objects.filter(
