@@ -364,7 +364,9 @@ SHVYA exposes an organization-scoped diagnostic connector for read-only troubles
 
 - Access requires an organization API key with `can_read_diagnostics=True` or an OAuth token bound to such a key.
 - Diagnostic OAuth authorization/access/refresh secrets are stored only as hashes where the original is not required.
-- Tools must stay read-only and tenant scoped. Do not add mutation capability through the diagnostic connector.
+- Diagnostic OAuth uses strict PKCE S256 validation, a fixed refresh-grant lifetime, per-grant revocation, CIMD support with DCR fallback, and bounded OAuth request/state handling.
+- Diagnostic access-log rows are immutable audit evidence and use protected tenant/API-key references.
+- Tools must stay read-only and tenant scoped. Enforce the advertised MCP input schema at the server boundary; do not add mutation capability through the diagnostic connector.
 - Audit rows store metadata and request fingerprints, not raw conversation text, lead attributes, credentials, tokens, provider payloads, or tool arguments.
 - Revocation/expiry and organization/API-key scope must be rechecked at access time.
 
@@ -374,7 +376,7 @@ See `docs/support-portal.md` for support operations and the integration code und
 
 The Operations connector is a separate authorization and mutation boundary. Do not add its write capabilities to the Diagnostic MCP.
 
-- Operations OAuth must bind to an authenticated SHVYA human and re-check the live SHVYA role.
+- Operations OAuth must bind to an authenticated SHVYA human and re-check the live SHVYA role. Prefer CIMD for MCP 2026-07-28 clients while retaining bounded DCR compatibility.
 - Organization Admin access is disabled by default and is restricted to the authenticated user's organization plus the capabilities persisted by Superadmin.
 - Organization Admin OAuth grants snapshot the capabilities consented to at authorization time. Live policy reductions apply immediately; later policy expansions require fresh authorization and never silently expand an old grant.
 - Customer-state write controls are granular (lead stage/attributes, AI/Playbook, pipeline, stage, CRM attribute, Workflow, Cadence and messaging automation) rather than one umbrella mutation permission.
