@@ -41,6 +41,8 @@ While a Superadmin support context is active:
 - the Superadmin organization page also shows the live support session;
 - tool calls are linked to the support session in the Operations audit ledger.
 
+From the Superadmin organization page, SHVYA can individually revoke Organization Admin external-AI grants, force-end open Superadmin support contexts, and review recent tenant Operations audit events. These controls do not expose raw OAuth token values.
+
 ### Organization Admin
 
 An Organization Admin OAuth token is bound to:
@@ -56,6 +58,8 @@ If Superadmin disables External AI Operations for the organization, all active O
 
 Organization users/agents are not offered an Operations OAuth identity.
 
+Organization Admins can review and revoke active tenant-bound external-AI grants from the SHVYA Connect Hub without seeing access or refresh-token material. When `audit.read` is granted, the same panel also shows the latest tenant-scoped safe Operations audit metadata.
+
 ## Capability policy
 
 Superadmin can independently grant:
@@ -66,8 +70,14 @@ Superadmin can independently grant:
 - `lead.stage.write`
 - `lead.attributes.write`
 - `ai.config.write`
-- `crm.config.write`
-- `automation.config.write`
+- `crm.pipeline.config.write`
+- `crm.stage.config.write`
+- `crm.attribute.config.write`
+- `automation.workflow.config.write`
+- `automation.cadence.config.write`
+- `automation.messaging.config.write`
+
+Legacy stored `crm.config.write` and `automation.config.write` values are recognized only for backward compatibility and are expanded into these granular controls.
 
 Write capabilities may require explicit human approval. Superadmin customer-state writes always use the approval gate.
 
@@ -91,7 +101,10 @@ Operations-specific inspection also includes:
 
 - authenticated role / organization / effective capabilities
 - organization business + CRM + AI configuration
+- full bounded AI/Playbook configuration view when the summary is truncated
+- organization knowledge/RAG health metadata
 - Workflow and Cadence definitions
+- pipeline-linked messaging automation settings
 - qualification diagnosis
 - equal-period conversion analysis
 - Operations audit history
@@ -113,6 +126,7 @@ Bounded mutation surfaces include:
 - Workflow create/update
 - Cadence create/update
 - Cadence step creation
+- pipeline-linked WhatsApp messaging automation settings
 
 The tools reuse existing SHVYA service/validation contracts wherever available.
 
@@ -139,7 +153,7 @@ Significant writes use this sequence:
 8. re-read / verify the resulting state;
 9. report `FIXED` only after verification.
 
-Approval receipts expire after 30 minutes and are atomically single-use at execution-attempt time. Once an approved attempt claims a receipt, a fresh dry-run is required for any later attempt even if the first attempt does not complete successfully. A dry-run does not create CRM, AI-profile or policy state.
+Approval receipts expire after 30 minutes and are atomically single-use at execution-attempt time. Once an approved attempt claims a receipt, a fresh dry-run is required for any later attempt even if the first attempt does not complete successfully. Approved writes re-lock authoritative rows and compare the backend-resolved proposal again under the lock; if a human or another process changed the relevant lead/configuration after the dry-run, execution stops and requires a fresh dry-run instead of overwriting newer state. A dry-run does not create CRM, AI-profile or policy state.
 
 ## Audit
 
