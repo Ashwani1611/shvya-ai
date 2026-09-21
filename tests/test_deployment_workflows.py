@@ -108,6 +108,40 @@ def test_deploy_keeps_the_trigger_commit_pinned_before_any_schema_work(filename,
     assert f"git reset --hard origin/{branch}" not in script
 
 
+@pytest.mark.parametrize(
+    ("filename", "branch", "manual_allowed"),
+    [
+        ("deploy.yml", "main", False),
+        ("deploy-staging.yml", "staging", True),
+        ("repair-staging-tls.yml", "staging", True),
+    ],
+)
+def test_privileged_workflow_run_requires_trusted_push_source(
+    filename,
+    branch,
+    manual_allowed,
+):
+    workflow = (
+        ROOT / ".github/workflows" / filename
+    ).read_text(encoding="utf-8")
+
+    assert "github.event.workflow_run.conclusion == 'success'" in workflow
+    assert "github.event.workflow_run.event == 'push'" in workflow
+    assert (
+        "github.event.workflow_run.head_repository.full_name == github.repository"
+        in workflow
+    )
+    assert (
+        f"github.event.workflow_run.head_branch == '{branch}'"
+        in workflow
+    )
+
+    if manual_allowed:
+        assert "github.event_name == 'workflow_dispatch' ||" in workflow
+    else:
+        assert "workflow_dispatch:" not in workflow.split("jobs:", 1)[0]
+
+
 def test_production_success_marker_advances_only_after_public_verification():
     script = _script("deploy.yml")
     marker = script.index('STATE_FILE="/opt/shvya-ai/.last-successful-production-deploy"')
