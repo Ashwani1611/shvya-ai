@@ -1297,7 +1297,10 @@ def update_ai_configuration(*, identity, arguments):
     for key, value in normalized.items():
         setattr(info, key, value)
     if normalized:
-        info.save(update_fields=[*normalized.keys(), "updated_at"])
+        if existing_info is None:
+            info.save()
+        else:
+            info.save(update_fields=[*normalized.keys(), "updated_at"])
     info.refresh_from_db()
     verification_failed = [
         key for key, value in normalized.items() if getattr(info, key) != value
