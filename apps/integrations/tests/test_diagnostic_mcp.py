@@ -1,10 +1,8 @@
 import json
-from datetime import timedelta
 from urllib.parse import parse_qs, urlparse
 
 from django.core.exceptions import ValidationError
 from django.test import TestCase
-from django.utils import timezone
 
 from apps.integrations.diagnostic_auth import (
     DIAGNOSTICS_SCOPE,
