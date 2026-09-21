@@ -445,7 +445,7 @@ def get_operations_context(*, identity, arguments):
             "organization_admin_external_ai_enabled": (
                 policy.organization_admin_enabled if policy else None
             ),
-            "superadmin_support_session": (
+            "superadmin_support_context": (
                 {
                     "id": str(session.id),
                     "started_at": session.started_at.isoformat(),
@@ -572,7 +572,7 @@ def select_organization_context(*, identity, arguments):
         data={
             "status": "selected",
             "organization": {"id": str(organization.id), "name": organization.name},
-            "support_session_id": str(session.id),
+            "support_context_id": str(session.id),
             "organization_visibility": "SHVYA Support / Superadmin access is visible to organization admins while this context is active.",
         },
         capability=CAP_ORGANIZATION_READ,
@@ -3171,14 +3171,14 @@ def get_operations_audit(*, identity, arguments):
     if target_id:
         rows = rows.filter(target_id=target_id[:100])
 
-    support_session_id = str(
-        arguments.get("support_session_id") or ""
+    support_context_id = str(
+        arguments.get("support_context_id") or ""
     ).strip()
-    if support_session_id:
+    if support_context_id:
         rows = rows.filter(
             support_session_id=_uuid(
-                support_session_id,
-                field="support_session_id",
+                support_context_id,
+                field="support_context_id",
             )
         )
 
@@ -3216,7 +3216,7 @@ def get_operations_audit(*, identity, arguments):
                     "capability": item.capability,
                     "target_type": item.target_type,
                     "target_id": item.target_id,
-                    "support_session_id": (
+                    "support_context_id": (
                         str(item.support_session_id)
                         if item.support_session_id
                         else None
@@ -3235,8 +3235,8 @@ def get_operations_audit(*, identity, arguments):
                 "tool_name": tool_name or None,
                 "target_type": target_type or None,
                 "target_id": target_id or None,
-                "support_session_id": (
-                    support_session_id or None
+                "support_context_id": (
+                    support_context_id or None
                 ),
                 "outcome": outcome or None,
             },
@@ -3252,7 +3252,7 @@ def get_operations_audit(*, identity, arguments):
                     tool_name,
                     target_type,
                     target_id,
-                    support_session_id,
+                    support_context_id,
                     outcome,
                 )
             ),
