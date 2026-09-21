@@ -352,8 +352,7 @@ def shvya_api_view(request):
     api_url = request.build_absolute_uri(reverse("lead-upsert"))
     list_api_url = request.build_absolute_uri(reverse("lead-list"))
 
-    from django.utils import timezone
-    from apps.integrations.operations_models import OperationsSupportSession
+    from apps.integrations.operations_presence import visible_support_sessions
     from apps.integrations.operations_policy import CAPABILITY_LABELS, policy_for
 
     operations_policy = policy_for(organization)
@@ -367,15 +366,8 @@ def shvya_api_view(request):
         for key in (operations_policy.allowed_capabilities or [])
         if key in CAPABILITY_LABELS
     ]
-    active_operations_support = (
-        OperationsSupportSession.objects.filter(
-            organization=organization,
-            ended_at__isnull=True,
-            token__revoked_at__isnull=True,
-            token__expires_at__gt=timezone.now(),
-        )
-        .select_related("actor")
-        .order_by("-last_seen_at")
+    active_operations_support = visible_support_sessions(
+        organization=organization,
     )
 
     return render(
