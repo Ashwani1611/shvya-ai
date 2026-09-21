@@ -15,6 +15,7 @@ from django.utils import timezone
 from apps.accounts.session_utils import get_session_store
 from apps.organizations.access import crm_user_is_authorized, organization_is_active
 from apps.integrations.operations_models import (
+    OperationsAuditEvent,
     OperationsOAuthAuthorizationCode,
     OperationsOAuthClient,
     OperationsOAuthToken,
@@ -367,6 +368,52 @@ def exchange_authorization_code(
     return token, raw_access, raw_refresh
 
 
+def _record_automatic_grant_revocation(
+    *,
+    token,
+    message,
+    support_session,
+):
+    organization = (
+        token.active_organization
+        if token.role == ROLE_SUPERADMIN
+        else token.organization
+    )
+    try:
+        OperationsAuditEvent.objects.create(
+            actor=token.actor,
+            role=token.role,
+            organization=organization,
+            support_session=support_session,
+            tool_name="oauth_auto_revoke",
+            capability="",
+            target_type="oauth_grant",
+            target_id=str(token.id),
+            reason=str(message or "")[:500],
+            outcome=OperationsAuditEvent.Outcome.SUCCESS,
+            request_fingerprint=token_hash(
+                "oauth_auto_revoke:"
+                + str(token.id)
+                + ":"
+                + str(message or "")
+            ),
+            change_summary={
+                "access": "revoked",
+                "reason_code": "live_authority_invalid",
+                "support_session_closed": (
+                    support_session is not None
+                ),
+            },
+            duration_ms=0,
+            error_code="",
+        )
+    except Exception:
+        # Revocation is a security boundary and must not be undone merely
+        # because secondary audit persistence is unavailable.
+        return None
+    return True
+
+
 def _deny_and_revoke_live_grant(
     token,
     message,
@@ -377,15 +424,40 @@ def _deny_and_revoke_live_grant(
 
     if revoke:
         now = timezone.now()
+        organization = (
+            token.active_organization
+            if token.role == ROLE_SUPERADMIN
+            else token.organization
+        )
+        support_session = (
+            OperationsSupportSession.objects.filter(
+                token=token,
+                organization=organization,
+            )
+            .order_by("-started_at")
+            .first()
+            if organization is not None
+            else None
+        )
         if token.revoked_at is None:
             token.revoked_at = now
-            token.save(update_fields=["revoked_at", "updated_at"])
+            token.save(
+                update_fields=[
+                    "revoked_at",
+                    "updated_at",
+                ]
+            )
         OperationsSupportSession.objects.filter(
             token=token,
             ended_at__isnull=True,
         ).update(
             ended_at=now,
             last_seen_at=now,
+        )
+        _record_automatic_grant_revocation(
+            token=token,
+            message=message,
+            support_session=support_session,
         )
     raise OperationsAuthError(message)
 
