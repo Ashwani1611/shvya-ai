@@ -9,7 +9,11 @@ from django.db.models import BooleanField, Case, Q, Value, When
 from django.utils import timezone
 
 from apps.ai_engagement.services.diagnostics import diagnose_engagement
-from apps.channels.instagram_models import InstagramAccount, InstagramMessage
+from apps.channels.instagram_models import (
+    InstagramAccount,
+    InstagramMessage,
+    InstagramWebhookDelivery,
+)
 from apps.channels.models import WhatsAppAccount, WhatsAppMessage
 from apps.crm.models import Lead, LeadCall, LeadNote, LeadReminder
 from apps.hosted_automation.models import HostedAutomationJob
@@ -710,6 +714,13 @@ def get_recent_errors(*, organization, arguments):
             created_at__gte=since,
         ).order_by("-created_at")[:limit]
     )
+    instagram_webhooks = list(
+        InstagramWebhookDelivery.objects.filter(
+            organization_ids__contains=[str(organization.id)],
+            status=InstagramWebhookDelivery.Status.FAILED,
+            received_at__gte=since,
+        ).order_by("-received_at")[:limit]
+    )
     hosted = list(
         HostedAutomationJob.objects.filter(
             organization=organization,
@@ -763,6 +774,22 @@ def get_recent_errors(*, organization, arguments):
                     ),
                 }
                 for item in instagram
+            ],
+            "instagram_webhooks": [
+                {
+                    "delivery_id": str(item.id),
+                    "error": sanitize_text(
+                        item.error_message,
+                        limit=500,
+                    ),
+                    "received_at": _iso(
+                        item.received_at
+                    ),
+                    "processed_at": _iso(
+                        item.processed_at
+                    ),
+                }
+                for item in instagram_webhooks
             ],
             "hosted": [
                 {
@@ -896,6 +923,13 @@ def get_runtime_health(*, organization, arguments):
                     organization=organization,
                     status=InstagramMessage.Status.FAILED,
                     created_at__gte=since,
+                ).count()
+            ),
+            "instagram_webhook_failed_24h": (
+                InstagramWebhookDelivery.objects.filter(
+                    organization_ids__contains=[str(organization.id)],
+                    status=InstagramWebhookDelivery.Status.FAILED,
+                    received_at__gte=since,
                 ).count()
             ),
             "hosted_failed_24h": (
