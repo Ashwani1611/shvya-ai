@@ -234,21 +234,21 @@ class OperationsAuditEvent(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     actor = models.ForeignKey(
         settings.AUTH_USER_MODEL,
-        on_delete=models.SET_NULL,
+        on_delete=models.PROTECT,
         null=True,
         related_name="operations_mcp_audit_events",
     )
     role = models.CharField(max_length=32)
     organization = models.ForeignKey(
         "organizations.Organization",
-        on_delete=models.SET_NULL,
+        on_delete=models.PROTECT,
         null=True,
         blank=True,
         related_name="operations_mcp_audit_events",
     )
     support_session = models.ForeignKey(
         OperationsSupportSession,
-        on_delete=models.SET_NULL,
+        on_delete=models.PROTECT,
         null=True,
         blank=True,
         related_name="audit_events",
