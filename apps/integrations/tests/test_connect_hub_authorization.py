@@ -16,12 +16,12 @@ from apps.integrations.models import (
     DiagnosticOAuthClient,
     DiagnosticOAuthToken,
     EmailConfiguration,
+    GoogleSheetIntegration,
+    MetaLeadPage,
     OperationsAuditEvent,
     OperationsOAuthClient,
     OperationsOAuthToken,
     OperationsPolicy,
-    GoogleSheetIntegration,
-    MetaLeadPage,
     WebhookConfiguration,
 )
 from apps.integrations.operations_auth import token_hash
