@@ -35,8 +35,9 @@ _BEARER_PATTERN = re.compile(r"(?i)\bBearer\s+[A-Za-z0-9._~+/=-]{12,}")
 _SHVYA_KEY_PATTERN = re.compile(r"\bshvya_[A-Za-z0-9_-]{12,}")
 _LONG_SECRET_PATTERN = re.compile(r"\b[A-Za-z0-9_-]{40,}\b")
 _INLINE_SECRET_PATTERN = re.compile(
-    r"(?i)\b(api[_-]?key|access[_-]?token|refresh[_-]?token|password|"
-    r"client[_-]?secret|smtp[_-]?password|database[_-]?password)\s*[:=]\s*[^\s,;]+"
+    r"(?i)\b(api[_-]?key|access[_-]?token|refresh[_-]?token|token|secret|"
+    r"credential|authorization|cookie|session|password|client[_-]?secret|"
+    r"smtp[_-]?password|database[_-]?password)\s*[:=]\s*[^\s,;]+"
 )
 _DATABASE_URL_PATTERN = re.compile(
     r"(?i)\b(?:postgres(?:ql)?|mysql|mongodb(?:\+srv)?|redis)://[^\s]+"
