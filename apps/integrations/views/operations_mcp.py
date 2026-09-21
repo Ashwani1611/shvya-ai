@@ -1662,11 +1662,9 @@ def operations_mcp(request):
         )
 
     tool_name = str(params.get("name") or "")
-    arguments = (
-        params.get("arguments")
-        if isinstance(params.get("arguments"), dict)
-        else {}
-    )
+    raw_arguments = params.get("arguments", {})
+    arguments_are_object = isinstance(raw_arguments, dict)
+    arguments = raw_arguments if arguments_are_object else {}
     if tool_name not in KNOWN_TOOLS:
         return JsonResponse(
             _jsonrpc_error(
@@ -1709,6 +1707,10 @@ def operations_mcp(request):
         error_reason = ""
         try:
             try:
+                if not arguments_are_object:
+                    raise MCPInputValidationError(
+                        "arguments: must be an object"
+                    )
                 validate_mcp_arguments(
                     arguments,
                     TOOL_INPUT_SCHEMAS[tool_name],
