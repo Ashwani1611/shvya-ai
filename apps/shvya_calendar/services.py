@@ -754,6 +754,12 @@ def upcoming_slot_days(page, *, days=7):
 @transaction.atomic
 def _create_booking_row(*, page, submission, slot_start):
     locked_page = CalendarPage.objects.select_for_update().get(pk=page.pk)
+    locked_submission = (
+        CalendarSubmission.objects
+        .select_for_update()
+        .select_related("lead")
+        .get(pk=submission.pk, page=locked_page)
+    )
     if locked_page.status != CalendarPage.Status.PUBLISHED:
         raise ValidationError("This booking page is not currently available.")
 
@@ -763,6 +769,21 @@ def _create_booking_row(*, page, submission, slot_start):
         CalendarBooking.Status.SCHEDULED,
         CalendarBooking.Status.RESCHEDULED,
     ]
+
+    # A browser retry/back-button must never create two active appointments
+    # for the same lead-form submission.
+    existing_for_submission = (
+        CalendarBooking.objects
+        .filter(
+            submission=locked_submission,
+            status__in=active_statuses,
+        )
+        .order_by("-created_at")
+        .first()
+    )
+    if existing_for_submission is not None:
+        return existing_for_submission, False
+
     existing = CalendarBooking.objects.filter(
         page=locked_page,
         status__in=active_statuses,
@@ -774,8 +795,8 @@ def _create_booking_row(*, page, submission, slot_start):
     booking = CalendarBooking(
         organization=locked_page.organization,
         page=locked_page,
-        submission=submission,
-        lead=submission.lead,
+        submission=locked_submission,
+        lead=locked_submission.lead,
         host=locked_page.host,
         start_at=slot_start,
         end_at=slot_end,
@@ -790,7 +811,7 @@ def _create_booking_row(*, page, submission, slot_start):
         booking.meeting_link = locked_page.custom_meeting_link
     booking.full_clean()
     booking.save()
-    return booking
+    return booking, True
 
 
 def book_slot(*, page, submission, slot_start_iso):
@@ -815,11 +836,14 @@ def book_slot(*, page, submission, slot_start_iso):
     if requested not in valid_starts:
         raise ValidationError("That slot is no longer available.")
 
-    booking = _create_booking_row(
+    booking, created = _create_booking_row(
         page=page,
         submission=submission,
         slot_start=requested,
     )
+    if not created:
+        return booking
+
     if page.host_id:
         try:
             create_booking_event(booking)
