@@ -38,8 +38,17 @@ from apps.integrations.operations_auth import (
 )
 from apps.integrations.operations_policy import (
     CAPABILITY_LABELS,
+    CAP_AI_CONFIG_WRITE,
+    CAP_AUDIT_READ,
+    CAP_AUTOMATION_CONFIG_WRITE,
+    CAP_CRM_CONFIG_WRITE,
+    CAP_DIAGNOSTICS_READ,
+    CAP_LEAD_ATTRIBUTES_WRITE,
+    CAP_LEAD_STAGE_WRITE,
+    CAP_ORGANIZATION_READ,
     ROLE_ORGANIZATION_ADMIN,
     ROLE_SUPERADMIN,
+    effective_capabilities,
 )
 from apps.integrations.operations_tools import (
     DIAGNOSTIC_TOOL_NAMES,
@@ -524,6 +533,60 @@ for definition in DIAGNOSTIC_TOOL_DEFINITIONS:
 TOOL_DEFINITIONS = OWN_TOOL_DEFINITIONS + DIAGNOSTIC_DEFINITIONS
 KNOWN_TOOLS = {item["name"] for item in TOOL_DEFINITIONS}
 
+TOOL_CAPABILITIES = {
+    "get_operations_context": None,
+    "list_organizations": None,
+    "select_organization_context": None,
+    "clear_organization_context": None,
+    "get_organization_configuration": CAP_ORGANIZATION_READ,
+    "get_automation_configuration": CAP_ORGANIZATION_READ,
+    "diagnose_lead_qualification": CAP_DIAGNOSTICS_READ,
+    "get_conversion_analysis": CAP_DIAGNOSTICS_READ,
+    "move_lead_stage": CAP_LEAD_STAGE_WRITE,
+    "repair_qualification_stage": CAP_LEAD_STAGE_WRITE,
+    "update_lead_attributes": CAP_LEAD_ATTRIBUTES_WRITE,
+    "update_ai_configuration": CAP_AI_CONFIG_WRITE,
+    "upsert_pipeline_configuration": CAP_CRM_CONFIG_WRITE,
+    "upsert_stage_configuration": CAP_CRM_CONFIG_WRITE,
+    "upsert_attribute_configuration": CAP_CRM_CONFIG_WRITE,
+    "upsert_workflow_configuration": CAP_AUTOMATION_CONFIG_WRITE,
+    "upsert_cadence_configuration": CAP_AUTOMATION_CONFIG_WRITE,
+    "add_cadence_step": CAP_AUTOMATION_CONFIG_WRITE,
+    "get_operations_audit": CAP_AUDIT_READ,
+}
+for _diagnostic_name in DIAGNOSTIC_TOOL_NAMES:
+    TOOL_CAPABILITIES[_diagnostic_name] = CAP_DIAGNOSTICS_READ
+
+
+def _tools_for_identity(identity):
+    """Return only tools discoverable to the authenticated SHVYA identity."""
+
+    if identity.role == ROLE_SUPERADMIN:
+        return TOOL_DEFINITIONS
+
+    organization = identity.organization
+    capabilities = effective_capabilities(
+        role=identity.role,
+        organization=organization,
+    )
+    visible = []
+    for item in TOOL_DEFINITIONS:
+        name = item["name"]
+        if name == "get_operations_context":
+            visible.append(item)
+            continue
+        # Tenant-switch/platform-discovery tools are Superadmin-only.
+        if name in {
+            "list_organizations",
+            "select_organization_context",
+            "clear_organization_context",
+        }:
+            continue
+        capability = TOOL_CAPABILITIES.get(name)
+        if capability is None or capability in capabilities:
+            visible.append(item)
+    return visible
+
 
 @require_GET
 def operations_oauth_resource_metadata(request):
@@ -929,9 +992,38 @@ def operations_mcp(request):
             _jsonrpc_result(request_id, {}, modern=modern)
         )
     if method == "tools/list":
-        result = {"tools": TOOL_DEFINITIONS}
+        auth_header = request.headers.get("Authorization", "")
+        raw_bearer = (
+            auth_header[7:].strip()
+            if auth_header.lower().startswith("bearer ")
+            else ""
+        )
+        identity = None
+        if raw_bearer:
+            try:
+                identity = authenticate_bearer(raw_bearer)
+            except OperationsAuthError as exc:
+                return _auth_result(
+                    request,
+                    request_id,
+                    modern=modern,
+                    description=sanitize_text(exc, limit=160),
+                )
+
+        tools = _tools_for_identity(identity) if identity is not None else TOOL_DEFINITIONS
+        result = {"tools": tools}
+        if identity is not None:
+            result["_meta"] = {
+                "shvya/role": identity.role,
+                "shvya/effective_tool_count": len(tools),
+            }
         if modern:
-            result.update({"ttlMs": 300000, "cacheScope": "public"})
+            result.update(
+                {
+                    "ttlMs": 300000,
+                    "cacheScope": "private" if identity is not None else "public",
+                }
+            )
         return JsonResponse(
             _jsonrpc_result(request_id, result, modern=modern)
         )
