@@ -21,7 +21,11 @@ from apps.integrations.diagnostic_auth import (
     sanitize_data,
     sanitize_text,
 )
-from apps.integrations.models import OperationsAuditEvent, OperationsSupportSession
+from apps.integrations.models import (
+    OperationsAuditEvent,
+    OperationsOAuthAuthorizationCode,
+    OperationsSupportSession,
+)
 from apps.integrations.operations_agent_prompt import OPERATIONS_AGENT_INSTRUCTIONS
 from apps.integrations.operations_approval import approval_fingerprint
 from apps.integrations.operations_auth import (
@@ -37,6 +41,7 @@ from apps.integrations.operations_auth import (
     refresh_access_token,
     register_client,
     revoke_refresh_grant_if_live_authority_invalid,
+    token_hash,
     revoke_token,
     validate_authorization_request,
 )
@@ -52,6 +57,7 @@ from apps.integrations.operations_policy import (
     CAP_ORGANIZATION_READ,
     ROLE_ORGANIZATION_ADMIN,
     ROLE_SUPERADMIN,
+    WRITE_CAPABILITIES,
     effective_capabilities,
     policy_for,
 )
@@ -985,16 +991,30 @@ def operations_oauth_authorize(request):
             status=400,
         )
 
+    requested_scopes = sorted(
+        set(str(fields.get("scope") or "").split())
+    )
+    requested_scope_set = set(requested_scopes)
+
     identities = available_browser_identities(request)
     identity_options = []
     for role, actor in identities.items():
         organization = (
             None if role == ROLE_SUPERADMIN else actor.organization
         )
-        capabilities = sorted(
+        policy_capabilities = set(
             effective_capabilities(
                 role=role,
                 organization=organization,
+            )
+        )
+        capabilities = sorted(
+            capability
+            for capability in policy_capabilities
+            if (
+                capability not in WRITE_CAPABILITIES
+                or OPERATIONS_WRITE_SCOPE
+                in requested_scope_set
             )
         )
         policy = (
@@ -1029,9 +1049,6 @@ def operations_oauth_authorize(request):
             }
         )
 
-    requested_scopes = sorted(
-        set(str(fields.get("scope") or "").split())
-    )
     current_url = request.get_full_path()
     context = {
         "fields": fields,
@@ -1082,13 +1099,18 @@ def operations_oauth_authorize(request):
                 if role == ROLE_ORGANIZATION_ADMIN
                 else None
             )
+            issued_code = OperationsOAuthAuthorizationCode.objects.get(
+                code_hash=token_hash(raw_code)
+            )
             _record_oauth_security_event(
                 actor=actor,
                 role=role,
                 organization=authorization_organization,
                 client=client,
                 event="oauth_authorize",
-                scopes=set(str(fields["scope"] or "").split()),
+                scopes=set(
+                    str(issued_code.scope or "").split()
+                ),
                 reason="External AI Operations OAuth authorization granted.",
             )
     except OperationsAuthError as exc:
