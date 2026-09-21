@@ -982,6 +982,9 @@ def _verify_booking_flow_token(token, page, submission):
 
 
 def _public_page(public_id, slug, *, require_published=True):
+    # public_id is the stable, unguessable page identifier. The human slug is
+    # cosmetic, so previously shared links keep working after an admin renames
+    # a page or changes its slug.
     page = get_object_or_404(
         CalendarPage.objects.select_related(
             "organization",
@@ -990,7 +993,6 @@ def _public_page(public_id, slug, *, require_published=True):
             "host",
         ),
         public_id=public_id,
-        slug=slug,
     )
     if require_published and page.status != CalendarPage.Status.PUBLISHED:
         raise Http404
