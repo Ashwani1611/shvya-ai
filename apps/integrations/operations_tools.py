@@ -162,6 +162,16 @@ def _reason(arguments, *, required=False):
         raise OperationsToolError(
             "A specific reason of at least 8 characters is required for this mutation."
         )
+    safe = sanitize_text(
+        value,
+        limit=max(len(value) + 32, 800),
+        redact_long=False,
+    )
+    if safe != value:
+        raise OperationsPermissionError(
+            "Action reason contains credential-like or secret material. "
+            "Use a non-secret operational reason."
+        )
     return value[:500]
 
 
@@ -390,7 +400,11 @@ def get_operations_context(*, identity, arguments):
                 {
                     "id": str(session.id),
                     "started_at": session.started_at.isoformat(),
-                    "reason": session.reason,
+                    "reason": sanitize_text(
+                        session.reason,
+                        limit=500,
+                        redact_long=False,
+                    ),
                 }
                 if session is not None
                 else None
