@@ -2233,6 +2233,11 @@ def get_conversion_analysis(*, identity, arguments):
             {
                 "source": row["lead_source"],
                 "lead_count": row["count"],
+                "lead_share": (
+                    round(row["count"] / lead_count, 4)
+                    if lead_count
+                    else None
+                ),
                 "qualified_transitions": qualified_by_source.get(
                     row["lead_source"],
                     0,
@@ -2363,6 +2368,32 @@ def get_conversion_analysis(*, identity, arguments):
             "followups": {
                 "scheduled_executions": followups.count(),
                 "status_counts": followup_status,
+                "failed": followup_status.get(
+                    FollowupExecution.Status.FAILED,
+                    0,
+                ),
+                "blocked": followup_status.get(
+                    FollowupExecution.Status.BLOCKED,
+                    0,
+                ),
+                "failure_or_block_rate": (
+                    round(
+                        (
+                            followup_status.get(
+                                FollowupExecution.Status.FAILED,
+                                0,
+                            )
+                            + followup_status.get(
+                                FollowupExecution.Status.BLOCKED,
+                                0,
+                            )
+                        )
+                        / followups.count(),
+                        4,
+                    )
+                    if followups.count()
+                    else None
+                ),
                 "cadences_completed": cadence_completed,
             },
             "failures": {
@@ -2402,6 +2433,11 @@ def get_conversion_analysis(*, identity, arguments):
             "message_success_rate",
             current["messaging"]["success_rate"],
             previous["messaging"]["success_rate"],
+        ),
+        (
+            "followup_failure_or_block_rate",
+            current["followups"]["failure_or_block_rate"],
+            previous["followups"]["failure_or_block_rate"],
         ),
         (
             "workflow_failures",
@@ -2470,6 +2506,145 @@ def get_conversion_analysis(*, identity, arguments):
                 ),
             }
         )
+
+    current_sources = {
+        row["source"]: row
+        for row in current["source_mix"]
+    }
+    previous_sources = {
+        row["source"]: row
+        for row in previous["source_mix"]
+    }
+    material_source_shift = False
+    for source in sorted(
+        set(current_sources) | set(previous_sources)
+    ):
+        current_row = current_sources.get(source) or {}
+        previous_row = previous_sources.get(source) or {}
+        current_share = current_row.get("lead_share") or 0
+        previous_share = previous_row.get("lead_share") or 0
+        if abs(current_share - previous_share) >= 0.05:
+            material_source_shift = True
+            observations.append(
+                {
+                    "classification": "Measured",
+                    "metric": "source_mix_share",
+                    "source": source,
+                    "current": current_share,
+                    "previous": previous_share,
+                    "note": "Lead-source share changed by at least 5 percentage points.",
+                }
+            )
+
+        current_rate = current_row.get(
+            "qualified_transition_rate"
+        )
+        previous_rate = previous_row.get(
+            "qualified_transition_rate"
+        )
+        if (
+            current_rate is not None
+            and previous_rate is not None
+            and current_row.get("lead_count", 0) >= 5
+            and previous_row.get("lead_count", 0) >= 5
+            and current_rate != previous_rate
+        ):
+            observations.append(
+                {
+                    "classification": "Measured",
+                    "metric": "source_qualified_transition_rate",
+                    "source": source,
+                    "current": current_rate,
+                    "previous": previous_rate,
+                }
+            )
+
+    if material_source_shift:
+        observations.append(
+            {
+                "classification": "Hypothesis",
+                "metric": "source_mix",
+                "note": (
+                    "Lead-source mix changed materially. Compare source-specific "
+                    "qualification rates before attributing any overall conversion "
+                    "change to lead quality or marketing source."
+                ),
+            }
+        )
+
+    current_followup_rate = current["followups"][
+        "failure_or_block_rate"
+    ]
+    previous_followup_rate = previous["followups"][
+        "failure_or_block_rate"
+    ]
+    if (
+        current_followup_rate is not None
+        and previous_followup_rate is not None
+        and current_followup_rate > previous_followup_rate
+    ):
+        observations.append(
+            {
+                "classification": "Likely contributor",
+                "metric": "followup_failure_or_block_rate",
+                "current": current_followup_rate,
+                "previous": previous_followup_rate,
+                "note": (
+                    "Failed/blocked follow-up execution increased in the same "
+                    "comparison window. Confirm impact on affected leads before "
+                    "claiming conversion causality."
+                ),
+            }
+        )
+
+    if (
+        current["failures"]["hosted_ai_failures"]
+        > previous["failures"]["hosted_ai_failures"]
+    ):
+        observations.append(
+            {
+                "classification": "Likely contributor",
+                "metric": "hosted_ai_failures",
+                "current": current["failures"]["hosted_ai_failures"],
+                "previous": previous["failures"]["hosted_ai_failures"],
+                "note": (
+                    "Hosted AI execution failures increased. Inspect affected "
+                    "lead/message traces to establish whether they interrupted "
+                    "engagement."
+                ),
+            }
+        )
+
+    for metric, current_rate, previous_rate in (
+        (
+            "campaign_delivery_rate",
+            current["campaigns"]["delivery_rate"],
+            previous["campaigns"]["delivery_rate"],
+        ),
+        (
+            "campaign_reply_rate",
+            current["campaigns"]["reply_rate"],
+            previous["campaigns"]["reply_rate"],
+        ),
+    ):
+        if (
+            current_rate is not None
+            and previous_rate is not None
+            and current_rate < previous_rate
+        ):
+            observations.append(
+                {
+                    "classification": "Likely contributor",
+                    "metric": metric,
+                    "current": current_rate,
+                    "previous": previous_rate,
+                    "note": (
+                        "Campaign performance deteriorated in the same period. "
+                        "This is correlation until matched to affected leads and "
+                        "downstream stage outcomes."
+                    ),
+                }
+            )
 
     stale_cutoff = now - timedelta(days=7)
     stale_leads = Lead.objects.filter(
