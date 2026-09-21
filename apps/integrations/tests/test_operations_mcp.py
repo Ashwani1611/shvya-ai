@@ -2037,6 +2037,175 @@ class OperationsMCPTests(TestCase):
             {CAP_LEAD_STAGE_WRITE},
         )
 
+    def test_superadmin_dashboard_controls_revoke_org_session_and_end_support_context(self):
+        org_token = OperationsOAuthToken.objects.create(
+            client=self.oauth_client,
+            actor=self.admin,
+            organization=self.organization,
+            role=ROLE_ORGANIZATION_ADMIN,
+            access_token_hash=token_hash("super-control-org-access"),
+            refresh_token_hash=token_hash("super-control-org-refresh"),
+            scope=f"{OPERATIONS_READ_SCOPE} {OPERATIONS_WRITE_SCOPE}",
+            resource="http://testserver/operations/mcp/",
+            expires_at=timezone.now() + timedelta(hours=1),
+            refresh_expires_at=timezone.now() + timedelta(days=14),
+        )
+        support_token = OperationsOAuthToken.objects.create(
+            client=self.oauth_client,
+            actor=self.superadmin,
+            role=ROLE_SUPERADMIN,
+            active_organization=self.organization,
+            access_token_hash=token_hash("super-control-support-access"),
+            refresh_token_hash=token_hash("super-control-support-refresh"),
+            scope=f"{OPERATIONS_READ_SCOPE} {OPERATIONS_WRITE_SCOPE}",
+            resource="http://testserver/operations/mcp/",
+            expires_at=timezone.now() + timedelta(hours=1),
+            refresh_expires_at=timezone.now() + timedelta(days=14),
+        )
+        support_session = OperationsSupportSession.objects.create(
+            token=support_token,
+            actor=self.superadmin,
+            organization=self.organization,
+            reason="Superadmin control test",
+        )
+
+        superadmin_session = SessionStore()
+        set_authenticated_user(superadmin_session, self.superadmin)
+        superadmin_session.create()
+        self.client.cookies[get_session_cookie_name("superadmin")] = (
+            superadmin_session.session_key
+        )
+
+        page = self.client.get(
+            reverse(
+                "superadmin-organization-detail",
+                kwargs={"organization_id": self.organization.id},
+            )
+        )
+        self.assertEqual(page.status_code, 200)
+        body = page.content.decode("utf-8")
+        self.assertIn("Organization Admin AI Sessions", body)
+        self.assertIn("Open SHVYA Support Contexts", body)
+        self.assertIn("Recent Operations Audit", body)
+        self.assertIn(self.admin.name, body)
+        self.assertIn("Superadmin control test", body)
+        self.assertNotIn("super-control-org-access", body)
+        self.assertNotIn("super-control-org-refresh", body)
+        self.assertNotIn("super-control-support-access", body)
+        self.assertNotIn("super-control-support-refresh", body)
+
+        revoke = self.client.post(
+            reverse(
+                "superadmin-organization-operations-session-revoke",
+                kwargs={
+                    "organization_id": self.organization.id,
+                    "token_id": org_token.id,
+                },
+            )
+        )
+        self.assertEqual(revoke.status_code, 302)
+        org_token.refresh_from_db()
+        self.assertIsNotNone(org_token.revoked_at)
+        revoke_audit = OperationsAuditEvent.objects.get(
+            organization=self.organization,
+            tool_name="oauth_revoke_superadmin_dashboard",
+            target_id=str(org_token.id),
+        )
+        self.assertEqual(revoke_audit.actor_id, self.superadmin.id)
+        self.assertEqual(revoke_audit.role, ROLE_SUPERADMIN)
+
+        ended = self.client.post(
+            reverse(
+                "superadmin-organization-operations-support-end",
+                kwargs={
+                    "organization_id": self.organization.id,
+                    "session_id": support_session.id,
+                },
+            )
+        )
+        self.assertEqual(ended.status_code, 302)
+        support_session.refresh_from_db()
+        support_token.refresh_from_db()
+        self.assertIsNotNone(support_session.ended_at)
+        self.assertIsNone(support_token.active_organization_id)
+        end_audit = OperationsAuditEvent.objects.get(
+            organization=self.organization,
+            tool_name="support_context_force_end",
+            target_id=str(support_session.id),
+        )
+        self.assertEqual(end_audit.support_session_id, support_session.id)
+        self.assertEqual(end_audit.actor_id, self.superadmin.id)
+
+    def test_superadmin_operations_session_controls_are_tenant_scoped(self):
+        foreign_token = OperationsOAuthToken.objects.create(
+            client=self.oauth_client,
+            actor=self.admin,
+            organization=self.other_organization,
+            role=ROLE_ORGANIZATION_ADMIN,
+            access_token_hash=token_hash("foreign-control-access"),
+            refresh_token_hash=token_hash("foreign-control-refresh"),
+            scope=OPERATIONS_READ_SCOPE,
+            resource="http://testserver/operations/mcp/",
+            expires_at=timezone.now() + timedelta(hours=1),
+            refresh_expires_at=timezone.now() + timedelta(days=14),
+        )
+        foreign_support_token = OperationsOAuthToken.objects.create(
+            client=self.oauth_client,
+            actor=self.superadmin,
+            role=ROLE_SUPERADMIN,
+            active_organization=self.other_organization,
+            access_token_hash=token_hash("foreign-support-access"),
+            refresh_token_hash=token_hash("foreign-support-refresh"),
+            scope=OPERATIONS_READ_SCOPE,
+            resource="http://testserver/operations/mcp/",
+            expires_at=timezone.now() + timedelta(hours=1),
+            refresh_expires_at=timezone.now() + timedelta(days=14),
+        )
+        foreign_support = OperationsSupportSession.objects.create(
+            token=foreign_support_token,
+            actor=self.superadmin,
+            organization=self.other_organization,
+            reason="Foreign tenant support",
+        )
+
+        superadmin_session = SessionStore()
+        set_authenticated_user(superadmin_session, self.superadmin)
+        superadmin_session.create()
+        self.client.cookies[get_session_cookie_name("superadmin")] = (
+            superadmin_session.session_key
+        )
+
+        token_response = self.client.post(
+            reverse(
+                "superadmin-organization-operations-session-revoke",
+                kwargs={
+                    "organization_id": self.organization.id,
+                    "token_id": foreign_token.id,
+                },
+            )
+        )
+        self.assertEqual(token_response.status_code, 404)
+        foreign_token.refresh_from_db()
+        self.assertIsNone(foreign_token.revoked_at)
+
+        support_response = self.client.post(
+            reverse(
+                "superadmin-organization-operations-support-end",
+                kwargs={
+                    "organization_id": self.organization.id,
+                    "session_id": foreign_support.id,
+                },
+            )
+        )
+        self.assertEqual(support_response.status_code, 404)
+        foreign_support.refresh_from_db()
+        foreign_support_token.refresh_from_db()
+        self.assertIsNone(foreign_support.ended_at)
+        self.assertEqual(
+            foreign_support_token.active_organization_id,
+            self.other_organization.id,
+        )
+
     def test_superadmin_disable_revokes_existing_org_admin_tokens_permanently(self):
         policy = OperationsPolicy.objects.create(
             organization=self.organization,
