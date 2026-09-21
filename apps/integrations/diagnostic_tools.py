@@ -38,6 +38,59 @@ def _safe_diagnostic_code(value):
     return value if _SAFE_DIAGNOSTIC_CODE.fullmatch(value) else ""
 
 
+def _safe_ai_markers(payload):
+    """Return only bounded AI execution linkage needed for support diagnosis."""
+
+    payload = payload if isinstance(payload, dict) else {}
+    execution = payload.get("shvya_ai_execution")
+    execution = execution if isinstance(execution, dict) else {}
+    processing = payload.get("shvya_ai_processing")
+    processing = processing if isinstance(processing, dict) else {}
+    ai_meta = payload.get("shvya_ai")
+    ai_meta = ai_meta if isinstance(ai_meta, dict) else {}
+
+    result = {}
+    safe_execution = {
+        key: execution.get(key)
+        for key in (
+            "status",
+            "reason",
+            "attempts",
+            "updated_at",
+        )
+        if execution.get(key) is not None
+    }
+    if safe_execution:
+        result["execution"] = safe_execution
+
+    safe_processing = {
+        key: processing.get(key)
+        for key in (
+            "processed",
+            "message_id",
+            "state_reconciled",
+            "reconciled_at",
+            "file_share_status",
+        )
+        if processing.get(key) is not None
+    }
+    if safe_processing:
+        result["processing"] = safe_processing
+
+    safe_ai_meta = {
+        key: ai_meta.get(key)
+        for key in (
+            "source_inbound_message_id",
+            "origin",
+        )
+        if ai_meta.get(key) is not None
+    }
+    if safe_ai_meta:
+        result["outbound_linkage"] = safe_ai_meta
+
+    return sanitize_data(result)
+
+
 def _safe_hosted_job(job):
     if job is None:
         return None
@@ -453,15 +506,7 @@ def trace_message(*, organization, arguments):
             if isinstance(wa.raw_payload, dict)
             else {}
         )
-        ai_markers = {
-            key: payload.get(key)
-            for key in (
-                "shvya_ai_execution",
-                "shvya_ai_processing",
-                "shvya_ai",
-            )
-            if key in payload
-        }
+        ai_markers = _safe_ai_markers(payload)
 
         hosted_job = (
             HostedAutomationJob.objects.filter(
