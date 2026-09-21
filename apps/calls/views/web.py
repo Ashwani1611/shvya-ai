@@ -87,7 +87,7 @@ def call_intelligence_dashboard(request):
     if user.role == User.Role.AGENT:
         device_qs = device_qs.filter(user=user)
 
-    active_after = now - timezone.timedelta(minutes=ACTIVE_DEVICE_WINDOW_MINUTES)
+    active_after = now - timedelta(minutes=ACTIVE_DEVICE_WINDOW_MINUTES)
     devices = list(device_qs.order_by("-last_seen_at")[:12])
     active_devices = sum(
         1
