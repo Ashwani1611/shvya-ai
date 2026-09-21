@@ -3816,6 +3816,57 @@ class OperationsMCPTests(TestCase):
             0,
         )
 
+    def test_diagnostic_lookup_inputs_are_length_bounded(self):
+        OperationsPolicy.objects.create(
+            organization=self.organization,
+            organization_admin_enabled=True,
+            allowed_capabilities=[
+                CAP_ORGANIZATION_READ,
+                CAP_DIAGNOSTICS_READ,
+            ],
+        )
+        bearer = self._token(
+            actor=self.admin,
+            role=ROLE_ORGANIZATION_ADMIN,
+            organization=self.organization,
+            scopes=[OPERATIONS_READ_SCOPE],
+        )
+        oversized = "x" * 256
+
+        lead_search = self._result(
+            self._call(
+                bearer,
+                "find_leads",
+                {"query": oversized},
+            )
+        )
+        self.assertTrue(lead_search["isError"])
+        self.assertEqual(
+            lead_search["structuredContent"]["status"],
+            "FAILED",
+        )
+        self.assertNotIn(
+            oversized,
+            json.dumps(lead_search),
+        )
+
+        message_trace = self._result(
+            self._call(
+                bearer,
+                "trace_message",
+                {"message_id": oversized},
+            )
+        )
+        self.assertTrue(message_trace["isError"])
+        self.assertEqual(
+            message_trace["structuredContent"]["status"],
+            "FAILED",
+        )
+        self.assertNotIn(
+            oversized,
+            json.dumps(message_trace),
+        )
+
     def test_bounded_diagnostic_reads_report_truncation(self):
         OperationsPolicy.objects.create(
             organization=self.organization,
