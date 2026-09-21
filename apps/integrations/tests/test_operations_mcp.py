@@ -5492,6 +5492,110 @@ class OperationsMCPTests(TestCase):
         payload = json.dumps(blocked_write)
         self.assertNotIn("mutation-secret", payload)
 
+    def test_superadmin_customer_writes_still_require_bound_approval_receipt(self):
+        bearer = self._token(
+            actor=self.superadmin,
+            role=ROLE_SUPERADMIN,
+            scopes=[
+                OPERATIONS_READ_SCOPE,
+                OPERATIONS_WRITE_SCOPE,
+            ],
+        )
+        selected = self._result(
+            self._call(
+                bearer,
+                "select_organization_context",
+                {
+                    "organization_id": str(self.organization.id),
+                    "reason": "Review one customer stage transition",
+                },
+            )
+        )
+        self.assertFalse(selected["isError"])
+
+        arguments = {
+            "lead_id": str(self.lead.id),
+            "target_stage_id": str(self.review_stage.id),
+            "reason": "Move reviewed lead to review stage",
+        }
+        dry = self._result(
+            self._call(
+                bearer,
+                "move_lead_stage",
+                {
+                    **arguments,
+                    "dry_run": True,
+                },
+            )
+        )
+        self.assertFalse(dry["isError"])
+        self.assertTrue(
+            dry["structuredContent"]["approval_required"]
+        )
+        approval_event_id = dry["structuredContent"][
+            "approval_event_id"
+        ]
+
+        no_approval = self._result(
+            self._call(
+                bearer,
+                "move_lead_stage",
+                {
+                    **arguments,
+                    "dry_run": False,
+                },
+            )
+        )
+        self.assertTrue(no_approval["isError"])
+        self.assertEqual(
+            no_approval["structuredContent"]["status"],
+            "APPROVAL_REQUIRED",
+        )
+
+        no_receipt = self._result(
+            self._call(
+                bearer,
+                "move_lead_stage",
+                {
+                    **arguments,
+                    "dry_run": False,
+                    "approved": True,
+                },
+            )
+        )
+        self.assertTrue(no_receipt["isError"])
+        self.assertEqual(
+            no_receipt["structuredContent"]["status"],
+            "APPROVAL_REQUIRED",
+        )
+
+        applied = self._result(
+            self._call(
+                bearer,
+                "move_lead_stage",
+                {
+                    **arguments,
+                    "dry_run": False,
+                    "approved": True,
+                    "approval_event_id": approval_event_id,
+                },
+            )
+        )
+        self.assertFalse(applied["isError"])
+        self.assertEqual(
+            applied["structuredContent"]["status"],
+            "FIXED",
+        )
+        self.assertEqual(
+            applied["structuredContent"]["verification"],
+            "passed",
+        )
+        self.lead.refresh_from_db()
+        self.assertEqual(
+            self.lead.stage_id,
+            self.review_stage.id,
+        )
+
     def test_superadmin_requires_explicit_context_and_creates_support_session(self):
         bearer = self._token(
             actor=self.superadmin,
