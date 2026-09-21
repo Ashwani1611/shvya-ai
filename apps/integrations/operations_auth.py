@@ -430,6 +430,57 @@ def _record_automatic_grant_revocation(
     return True
 
 
+def operations_grant_status(token, *, now=None):
+    """Return pure live-authority status for one persisted Operations grant."""
+
+    now = now or timezone.now()
+    if token is None:
+        return False, "missing_grant", "Operations OAuth grant is missing."
+    if token.revoked_at is not None:
+        return False, "revoked", "Operations OAuth grant has been revoked."
+    if token.refresh_expires_at <= now:
+        return False, "grant_expired", "Operations OAuth grant has expired."
+    if not token.client.is_active:
+        return False, "client_deactivated", "OAuth client has been deactivated."
+
+    actor = token.actor
+    if not actor.is_active:
+        return False, "user_inactive", "SHVYA user is inactive."
+
+    if token.role == ROLE_SUPERADMIN:
+        if not actor.is_superuser:
+            return (
+                False,
+                "superadmin_revoked",
+                "Superadmin permission has been revoked.",
+            )
+        return True, "active", ""
+
+    if token.role == ROLE_ORGANIZATION_ADMIN:
+        if (
+            actor.is_superuser
+            or actor.role != User.Role.ADMIN
+            or actor.organization_id != token.organization_id
+            or token.organization is None
+            or not organization_is_active(token.organization)
+            or not policy_for(
+                token.organization
+            ).organization_admin_enabled
+        ):
+            return (
+                False,
+                "organization_authority_revoked",
+                "Organization Operations permission has been revoked.",
+            )
+        return True, "active", ""
+
+    return (
+        False,
+        "unsupported_role",
+        "Unsupported SHVYA Operations role.",
+    )
+
+
 def _deny_and_revoke_live_grant(
     token,
     message,
@@ -467,48 +518,14 @@ def _deny_and_revoke_live_grant(
 
 
 def _validate_live_token(token, *, revoke_on_failure=True):
-    if not token.client.is_active:
-        _deny_and_revoke_live_grant(
-            token,
-            "OAuth client has been deactivated.",
-            revoke=revoke_on_failure,
-        )
-    actor = token.actor
-    if not actor.is_active:
-        _deny_and_revoke_live_grant(
-            token,
-            "SHVYA user is inactive.",
-            revoke=revoke_on_failure,
-        )
-
-    if token.role == ROLE_SUPERADMIN:
-        if not actor.is_superuser:
-            _deny_and_revoke_live_grant(
-                token,
-                "Superadmin permission has been revoked.",
-                revoke=revoke_on_failure,
-            )
+    valid, _reason_code, message = operations_grant_status(
+        token
+    )
+    if valid:
         return
-
-    if token.role == ROLE_ORGANIZATION_ADMIN:
-        if (
-            actor.is_superuser
-            or actor.role != User.Role.ADMIN
-            or actor.organization_id != token.organization_id
-            or token.organization is None
-            or not organization_is_active(token.organization)
-            or not policy_for(token.organization).organization_admin_enabled
-        ):
-            _deny_and_revoke_live_grant(
-                token,
-                "Organization Operations permission has been revoked.",
-                revoke=revoke_on_failure,
-            )
-        return
-
     _deny_and_revoke_live_grant(
         token,
-        "Unsupported SHVYA Operations role.",
+        message,
         revoke=revoke_on_failure,
     )
 
