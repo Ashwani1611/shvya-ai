@@ -290,6 +290,11 @@ def _save_lead_section(request, page):
     )
     page.intro_title = (request.POST.get("intro_title") or "").strip()[:120]
     page.intro_description = (request.POST.get("intro_description") or "").strip()
+    page.intro_highlights = [
+        line.strip()[:160]
+        for line in (request.POST.get("intro_highlights") or "").splitlines()
+        if line.strip()
+    ][:8]
     page.logo_url = (request.POST.get("logo_url") or "").strip()
     accent = (request.POST.get("accent_color") or "#0060A2").strip()
     page.accent_color = accent if accent.startswith("#") else "#0060A2"
