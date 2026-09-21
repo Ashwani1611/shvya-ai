@@ -5,7 +5,7 @@ import uuid
 from datetime import timedelta
 
 from django.conf import settings
-from django.db.models import BooleanField, Case, F, Max, Q, Value, When
+from django.db.models import BooleanField, Case, Count, F, Max, Q, Value, When
 from django.utils import timezone
 
 from apps.ai_engagement.services.confidentiality import (
@@ -1094,6 +1094,40 @@ def get_integration_health(*, organization, arguments):
             lead__isnull=False
         ).count()
     )
+    instagram_sourced_linked_leads = (
+        instagram_conversations.filter(
+            lead__isnull=False,
+            lead__lead_source="instagram",
+        )
+        .values("lead_id")
+        .distinct()
+        .count()
+    )
+    linked_pipeline_qs = (
+        instagram_conversations.filter(
+            lead__isnull=False
+        )
+        .values(
+            "lead__pipeline_id",
+            "lead__pipeline__name",
+        )
+        .annotate(
+            lead_count=Count(
+                "lead_id",
+                distinct=True,
+            )
+        )
+        .order_by(
+            "-lead_count",
+            "lead__pipeline__name",
+        )
+    )
+    linked_pipeline_group_count = (
+        linked_pipeline_qs.count()
+    )
+    linked_pipeline_rows = list(
+        linked_pipeline_qs[:20]
+    )
     recent_instagram = instagram_messages.filter(
         created_at__gte=since
     )
@@ -1254,6 +1288,18 @@ def get_integration_health(*, organization, arguments):
                     ),
                     "expired": credential_expired,
                 },
+                "permissions": {
+                    "grant_scope_list_persisted": False,
+                    "verification_status": (
+                        "unavailable_from_persisted_state"
+                    ),
+                    "note": (
+                        "SHVYA does not persist Meta's granted-scope list, so "
+                        "Operations does not claim permission verification from "
+                        "connection state alone. Provider/OAuth errors and webhook "
+                        "subscription evidence remain available for diagnosis."
+                    ),
+                },
                 "webhook": {
                     "subscribed": bool(
                         instagram.webhook_subscribed
@@ -1289,6 +1335,9 @@ def get_integration_health(*, organization, arguments):
                     "linked_to_lead": (
                         linked_conversation_count
                     ),
+                    "instagram_sourced_linked_leads": (
+                        instagram_sourced_linked_leads
+                    ),
                     "unlinked": (
                         conversation_count
                         - linked_conversation_count
@@ -1298,6 +1347,28 @@ def get_integration_health(*, organization, arguments):
                     "linked_leads_tenant_validated": True,
                     "linked_conversations": (
                         linked_conversation_count
+                    ),
+                    "pipelines": [
+                        {
+                            "pipeline_id": str(
+                                row["lead__pipeline_id"]
+                            ),
+                            "pipeline": (
+                                row["lead__pipeline__name"]
+                            ),
+                            "lead_count": row["lead_count"],
+                        }
+                        for row in linked_pipeline_rows
+                    ],
+                    "pipeline_group_count": (
+                        linked_pipeline_group_count
+                    ),
+                    "pipelines_returned": len(
+                        linked_pipeline_rows
+                    ),
+                    "pipelines_truncated": (
+                        linked_pipeline_group_count
+                        > len(linked_pipeline_rows)
                     ),
                 },
                 "ai_processing": {
