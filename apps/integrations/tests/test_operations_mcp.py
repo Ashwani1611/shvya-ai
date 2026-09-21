@@ -2403,6 +2403,97 @@ class OperationsMCPTests(TestCase):
         )
         self.assertEqual(response.status_code, 200)
 
+    def test_live_org_admin_authority_loss_permanently_revokes_operations_grant(self):
+        OperationsPolicy.objects.create(
+            organization=self.organization,
+            organization_admin_enabled=True,
+            allowed_capabilities=[CAP_ORGANIZATION_READ],
+        )
+        bearer = self._token(
+            actor=self.admin,
+            role=ROLE_ORGANIZATION_ADMIN,
+            organization=self.organization,
+            scopes=[OPERATIONS_READ_SCOPE],
+        )
+        token = OperationsOAuthToken.objects.get(actor=self.admin)
+
+        self.admin.role = User.Role.AGENT
+        self.admin.save(update_fields=["role", "updated_at"])
+
+        blocked = self._result(
+            self._call(
+                bearer,
+                "get_operations_context",
+            )
+        )
+        self.assertTrue(blocked["isError"])
+        self.assertIn("mcp/www_authenticate", blocked["_meta"])
+
+        token.refresh_from_db()
+        self.assertIsNotNone(token.revoked_at)
+
+        self.admin.role = User.Role.ADMIN
+        self.admin.save(update_fields=["role", "updated_at"])
+        still_blocked = self._result(
+            self._call(
+                bearer,
+                "get_operations_context",
+            )
+        )
+        self.assertTrue(still_blocked["isError"])
+        self.assertIn("mcp/www_authenticate", still_blocked["_meta"])
+
+    def test_live_superadmin_authority_loss_revokes_grant_and_closes_support_context(self):
+        bearer = self._token(
+            actor=self.superadmin,
+            role=ROLE_SUPERADMIN,
+        )
+        selected = self._result(
+            self._call(
+                bearer,
+                "select_organization_context",
+                {
+                    "organization_id": str(self.organization.id),
+                    "reason": "Test Superadmin authority revocation",
+                },
+            )
+        )
+        self.assertFalse(selected["isError"])
+        token = OperationsOAuthToken.objects.get(actor=self.superadmin)
+        support = OperationsSupportSession.objects.get(
+            token=token,
+            organization=self.organization,
+            ended_at__isnull=True,
+        )
+
+        self.superadmin.is_superuser = False
+        self.superadmin.save(update_fields=["is_superuser", "updated_at"])
+
+        blocked = self._result(
+            self._call(
+                bearer,
+                "get_operations_context",
+            )
+        )
+        self.assertTrue(blocked["isError"])
+        self.assertIn("mcp/www_authenticate", blocked["_meta"])
+
+        token.refresh_from_db()
+        support.refresh_from_db()
+        self.assertIsNotNone(token.revoked_at)
+        self.assertIsNotNone(support.ended_at)
+
+        self.superadmin.is_superuser = True
+        self.superadmin.save(update_fields=["is_superuser", "updated_at"])
+        still_blocked = self._result(
+            self._call(
+                bearer,
+                "get_operations_context",
+            )
+        )
+        self.assertTrue(still_blocked["isError"])
+        self.assertIn("mcp/www_authenticate", still_blocked["_meta"])
+
     def test_org_admin_token_is_rejected_while_policy_disabled(self):
         bearer = self._token(
             actor=self.admin,
