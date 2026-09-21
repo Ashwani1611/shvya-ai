@@ -1179,6 +1179,175 @@ class OperationsMCPTests(TestCase):
         self.lead.refresh_from_db()
         self.assertEqual(self.lead.stage_id, self.new_stage.id)
 
+    def test_qualification_diagnosis_completed_but_not_qualified_is_not_failure(self):
+        OperationsPolicy.objects.create(
+            organization=self.organization,
+            organization_admin_enabled=True,
+            allowed_capabilities=[
+                CAP_ORGANIZATION_READ,
+                CAP_DIAGNOSTICS_READ,
+            ],
+        )
+        bearer = self._token(
+            actor=self.admin,
+            role=ROLE_ORGANIZATION_ADMIN,
+            organization=self.organization,
+            scopes=[OPERATIONS_READ_SCOPE],
+        )
+        snapshot = (
+            {"mode": "guided", "flow_version": "test-flow"},
+            [{"id": "budget", "question": "What is your budget?", "required": True}],
+            {
+                "qualification_status": "completed",
+                "qualification_result": "",
+                "all_requirements_answered": True,
+                "answered_requirement_ids": ["budget"],
+                "missing_requirement_ids": [],
+                "flow_version": "test-flow",
+            },
+            {"errors": []},
+            {
+                "qualified": False,
+                "reason": "criteria_evaluated",
+                "rules": [{"verdict": "fail"}],
+            },
+            None,
+        )
+
+        with patch(
+            "apps.integrations.operations_tools._qualification_contract_snapshot",
+            return_value=snapshot,
+        ):
+            result = self._result(
+                self._call(
+                    bearer,
+                    "diagnose_lead_qualification",
+                    {"lead_id": str(self.lead.id)},
+                )
+            )
+
+        self.assertFalse(result["isError"])
+        diagnosis = result["structuredContent"]
+        self.assertEqual(
+            diagnosis["classification"],
+            "NO_PROBLEM_FOUND",
+        )
+        self.assertFalse(diagnosis["repair_available"])
+        self.assertFalse(
+            diagnosis["qualification"]["criteria_qualified"]
+        )
+        self.assertIn(
+            "transition is not expected",
+            diagnosis["root_cause"],
+        )
+
+    def test_qualification_repair_supports_authoritative_cross_pipeline_target(self):
+        OperationsPolicy.objects.create(
+            organization=self.organization,
+            organization_admin_enabled=True,
+            allowed_capabilities=[
+                CAP_ORGANIZATION_READ,
+                CAP_LEAD_STAGE_WRITE,
+            ],
+            approval_required_capabilities=[],
+        )
+        target_pipeline = Pipeline.objects.create(
+            organization=self.organization,
+            name="Qualified Pipeline",
+        )
+        target_stage = target_pipeline.stages.get(name="Qualified")
+        target = {
+            "id": str(target_stage.id),
+            "name": target_stage.name,
+            "pipeline_id": str(target_pipeline.id),
+            "pipeline__name": target_pipeline.name,
+        }
+        snapshot = (
+            {"mode": "guided", "flow_version": "repair-flow"},
+            [],
+            {
+                "qualification_status": "completed",
+                "qualification_result": "qualified",
+                "all_requirements_answered": True,
+                "answered_requirement_ids": [],
+                "missing_requirement_ids": [],
+                "flow_version": "repair-flow",
+            },
+            {"errors": [], "completion_stage": target},
+            {
+                "qualified": True,
+                "reason": "criteria_evaluated",
+                "rules": [],
+            },
+            target,
+        )
+        bearer = self._token(
+            actor=self.admin,
+            role=ROLE_ORGANIZATION_ADMIN,
+            organization=self.organization,
+        )
+
+        with patch(
+            "apps.integrations.operations_tools._qualification_contract_snapshot",
+            return_value=snapshot,
+        ):
+            dry = self._result(
+                self._call(
+                    bearer,
+                    "repair_qualification_stage",
+                    {
+                        "lead_id": str(self.lead.id),
+                        "reason": "Repair verified qualification completion",
+                        "dry_run": True,
+                    },
+                )
+            )
+            self.assertFalse(dry["isError"])
+            self.assertEqual(
+                dry["structuredContent"]["status"],
+                "DRY_RUN",
+            )
+            proposed = dry["structuredContent"]["proposed_change"]
+            self.assertEqual(
+                proposed["after"]["pipeline_id"],
+                str(target_pipeline.id),
+            )
+            self.assertEqual(
+                proposed["after"]["stage_id"],
+                str(target_stage.id),
+            )
+
+            applied = self._result(
+                self._call(
+                    bearer,
+                    "repair_qualification_stage",
+                    {
+                        "lead_id": str(self.lead.id),
+                        "reason": "Repair verified qualification completion",
+                        "dry_run": False,
+                    },
+                )
+            )
+
+        self.assertFalse(applied["isError"])
+        self.assertEqual(
+            applied["structuredContent"]["status"],
+            "FIXED",
+        )
+        self.assertEqual(
+            applied["structuredContent"]["verification"],
+            "passed",
+        )
+        self.lead.refresh_from_db()
+        self.assertEqual(
+            self.lead.pipeline_id,
+            target_pipeline.id,
+        )
+        self.assertEqual(
+            self.lead.stage_id,
+            target_stage.id,
+        )
+
     def test_operations_stage_move_cannot_bypass_backend_qualification(self):
         OperationsPolicy.objects.create(
             organization=self.organization,
