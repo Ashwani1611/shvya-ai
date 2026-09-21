@@ -25,7 +25,11 @@ from apps.channels.instagram_models import (
     InstagramMessage,
     InstagramWebhookDelivery,
 )
-from apps.channels.models import WhatsAppAccount, WhatsAppMessage
+from apps.channels.models import (
+    WhatsAppAccount,
+    WhatsAppMessage,
+    WhatsAppTemplate,
+)
 from apps.crm.models import AttributeDefinition, Lead, LeadActivity, Pipeline, Stage
 from apps.followups.models import FollowupSequence, FollowupStep
 from apps.hosted_automation.models import HostedAutomationJob
@@ -1424,6 +1428,20 @@ class OperationsMCPTests(TestCase):
                 for index in range(101)
             ]
         )
+        bounded_stage_pipeline = Pipeline.objects.get(
+            organization=self.organization,
+            name="Bounded Pipeline 000",
+        )
+        Stage.objects.bulk_create(
+            [
+                Stage(
+                    pipeline=bounded_stage_pipeline,
+                    name=f"Bounded Stage {index:03d}",
+                    display_order=index,
+                )
+                for index in range(101)
+            ]
+        )
         option_attribute = AttributeDefinition.objects.create(
             organization=self.organization,
             name="Bounded Option Attribute",
@@ -1473,6 +1491,28 @@ class OperationsMCPTests(TestCase):
         )
         self.assertTrue(
             counts["attributes_truncated"]
+        )
+        bounded_pipeline_row = next(
+            item
+            for item in config["pipelines"]
+            if item["id"] == str(
+                bounded_stage_pipeline.id
+            )
+        )
+        self.assertEqual(
+            bounded_pipeline_row["stage_count"],
+            101,
+        )
+        self.assertEqual(
+            bounded_pipeline_row["stages_returned"],
+            100,
+        )
+        self.assertEqual(
+            len(bounded_pipeline_row["stages"]),
+            100,
+        )
+        self.assertTrue(
+            bounded_pipeline_row["stages_truncated"]
         )
         option_row = next(
             item
@@ -1792,6 +1832,76 @@ class OperationsMCPTests(TestCase):
             stale_stage_id,
             json.dumps(stale_stage),
         )
+
+    def test_automation_read_fails_closed_on_cadence_template_sender_mismatch(self):
+        OperationsPolicy.objects.create(
+            organization=self.organization,
+            organization_admin_enabled=True,
+            allowed_capabilities=[CAP_ORGANIZATION_READ],
+        )
+        cadence_account = WhatsAppAccount.objects.create(
+            organization=self.organization,
+            connection_type=WhatsAppAccount.ConnectionType.API,
+            business_name="Cadence Primary Sender",
+            display_phone_number="+919000000004",
+            status=WhatsAppAccount.Status.CONNECTED,
+            is_active=True,
+        )
+        other_account = WhatsAppAccount.objects.create(
+            organization=self.organization,
+            connection_type=WhatsAppAccount.ConnectionType.API,
+            business_name="Cadence Other Sender",
+            display_phone_number="+919000000005",
+            status=WhatsAppAccount.Status.CONNECTED,
+            is_active=True,
+        )
+        sequence = FollowupSequence.objects.create(
+            organization=self.organization,
+            created_by=self.admin,
+            name="Corrupt Template Sender Cadence",
+            description="Stored mismatch fixture",
+            whatsapp_account=cadence_account,
+        )
+        template = WhatsAppTemplate.objects.create(
+            organization=self.organization,
+            account=other_account,
+            name="Wrong Sender Template",
+            category=WhatsAppTemplate.Category.UTILITY,
+            status=WhatsAppTemplate.Status.APPROVED,
+            body="Hello from the wrong sender",
+            created_by=self.admin,
+        )
+        FollowupStep.objects.create(
+            sequence=sequence,
+            position=1,
+            step_type=FollowupStep.StepType.WHATSAPP,
+            title=template.name,
+            whatsapp_template=template,
+            schedule_type=FollowupStep.ScheduleType.IMMEDIATE,
+        )
+        bearer = self._token(
+            actor=self.admin,
+            role=ROLE_ORGANIZATION_ADMIN,
+            organization=self.organization,
+            scopes=[OPERATIONS_READ_SCOPE],
+        )
+
+        result = self._result(
+            self._call(
+                bearer,
+                "get_automation_configuration",
+                {},
+            )
+        )
+        self.assertTrue(result["isError"])
+        self.assertEqual(
+            result["structuredContent"]["status"],
+            "NOT_ALLOWED",
+        )
+        payload = json.dumps(result)
+        self.assertNotIn(str(template.id), payload)
+        self.assertNotIn(str(other_account.id), payload)
+        self.assertNotIn(template.name, payload)
 
     def test_existing_cadence_sender_change_is_explicitly_rejected(self):
         OperationsPolicy.objects.create(

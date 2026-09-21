@@ -1471,10 +1471,11 @@ def get_organization_configuration(*, identity, arguments):
 
     pipeline_rows = []
     for pipeline in pipelines:
-        returned_stages = stages_by_pipeline.get(
+        available_stages = stages_by_pipeline.get(
             pipeline.id,
             [],
         )
+        returned_stages = available_stages[:100]
         stage_count = stage_counts.get(
             pipeline.id,
             0,
@@ -1546,6 +1547,11 @@ def get_organization_configuration(*, identity, arguments):
             }
         )
 
+    stages_returned = sum(
+        row["stages_returned"]
+        for row in pipeline_rows
+    )
+
     playbook = str(
         getattr(info, "ai_playbook", "") or ""
     )
@@ -1595,9 +1601,9 @@ def get_organization_configuration(*, identity, arguments):
                     pipeline_total > len(pipeline_rows)
                 ),
                 "stage_count": stage_total,
-                "stages_returned": len(stages),
+                "stages_returned": stages_returned,
                 "stages_truncated": (
-                    stage_total > len(stages)
+                    stage_total > stages_returned
                 ),
                 "attribute_count": attribute_total,
                 "attributes_returned": len(attribute_rows),
@@ -1629,7 +1635,7 @@ def get_organization_configuration(*, identity, arguments):
         audit_summary={
             "pipelines_returned": len(pipeline_rows),
             "pipelines_total": pipeline_total,
-            "stages_returned": len(stages),
+            "stages_returned": stages_returned,
             "stages_total": stage_total,
             "attributes_returned": len(attribute_rows),
             "attributes_total": attribute_total,
@@ -1720,10 +1726,22 @@ def get_automation_configuration(*, identity, arguments):
         for step in sequence.steps.all():
             if (
                 step.whatsapp_template_id
-                and step.whatsapp_template.organization_id != organization.id
+                and step.whatsapp_template.organization_id
+                != organization.id
             ):
                 raise OperationsPermissionError(
-                    "Cross-tenant Cadence template reference detected; no foreign data was returned."
+                    "Cross-tenant Cadence template reference detected; "
+                    "no foreign data was returned."
+                )
+            if (
+                step.whatsapp_template_id
+                and step.whatsapp_template.account_id
+                != sequence.whatsapp_account_id
+            ):
+                raise OperationsPermissionError(
+                    "Cadence WhatsApp template does not belong to its "
+                    "configured sender account; no mismatched identifier "
+                    "was returned."
                 )
 
     return ToolExecution(
