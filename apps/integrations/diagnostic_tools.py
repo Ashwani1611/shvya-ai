@@ -590,7 +590,7 @@ def get_integration_health(*, organization, arguments):
                     account.phone_number_id
                 ),
                 "waba_id_present": bool(account.waba_id),
-                "credential_present": bool(
+                "provider_auth_configured": bool(
                     account.diagnostic_credential_present
                 ),
                 "status": account.status,
@@ -613,16 +613,16 @@ def get_integration_health(*, organization, arguments):
                 "webhook_subscribed": (
                     instagram.webhook_subscribed
                 ),
-                "credential_present": bool(
+                "provider_auth_configured": bool(
                     instagram.diagnostic_credential_present
                 ),
-                "token_expires_at": _iso(
+                "provider_auth_expires_at": _iso(
                     instagram.token_expires_at
                 ),
-                "token_refreshed_at": _iso(
+                "provider_auth_refreshed_at": _iso(
                     instagram.token_refreshed_at
                 ),
-                "credential_expired": bool(
+                "provider_auth_expired": bool(
                     instagram.token_expires_at
                     and instagram.token_expires_at <= timezone.now()
                 ),
