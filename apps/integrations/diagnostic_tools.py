@@ -890,6 +890,8 @@ def get_runtime_health(*, organization, arguments):
                 "",
             )
         ),
+        "capabilities": {
+        },
         "counts": {
             "leads": Lead.objects.filter(
                 organization=organization
