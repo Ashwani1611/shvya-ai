@@ -219,6 +219,8 @@ def authenticate_bearer(raw_bearer: str):
     if oauth_token is not None:
         if oauth_token.expires_at <= now:
             raise DiagnosticAuthError("OAuth access token has expired.")
+        if oauth_token.refresh_expires_at <= now:
+            raise DiagnosticAuthError("Diagnostic OAuth grant has expired.")
         if not oauth_token.client.is_active:
             raise DiagnosticAuthError("OAuth client has been deactivated.")
         if not organization_is_active(oauth_token.organization):
