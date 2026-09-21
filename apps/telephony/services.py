@@ -390,7 +390,6 @@ def ingest_call_event(*, user, payload):
             name=_clean_text(payload.get("contact_name")) or f"Phone Lead {phone[-4:]}",
             phone=phone,
             lead_source="phone_call",
-            owner=settings_obj.default_owner or user,
             send_welcome=False,
         )
         lead_created = True
