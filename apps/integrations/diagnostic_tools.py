@@ -996,49 +996,36 @@ def get_recent_errors(*, organization, arguments):
         hours=hours
     )
 
-    whatsapp = list(
-        _tenant_safe_whatsapp_messages(
-            organization
-        ).filter(
-            status=WhatsAppMessage.Status.FAILED,
-            created_at__gte=since,
-        )
-        .order_by("-created_at")[:limit]
+    whatsapp_qs = _tenant_safe_whatsapp_messages(
+        organization
+    ).filter(
+        status=WhatsAppMessage.Status.FAILED,
+        created_at__gte=since,
     )
-    instagram = list(
-        _tenant_safe_instagram_messages(
-            organization
-        ).filter(
-            status=InstagramMessage.Status.FAILED,
-            created_at__gte=since,
-        )
-        .order_by("-created_at")[:limit]
+    instagram_qs = _tenant_safe_instagram_messages(
+        organization
+    ).filter(
+        status=InstagramMessage.Status.FAILED,
+        created_at__gte=since,
     )
-    instagram_webhooks = list(
-        InstagramWebhookDelivery.objects.filter(
-            organization_ids__contains=[str(organization.id)],
-            status=InstagramWebhookDelivery.Status.FAILED,
-            received_at__gte=since,
-        ).order_by("-received_at")[:limit]
+    instagram_webhook_qs = InstagramWebhookDelivery.objects.filter(
+        organization_ids__contains=[str(organization.id)],
+        status=InstagramWebhookDelivery.Status.FAILED,
+        received_at__gte=since,
     )
-    hosted = list(
-        _tenant_safe_hosted_jobs(
-            organization
-        ).filter(
-            status=HostedAutomationJob.Status.FAILED,
-            created_at__gte=since,
-        )
-        .order_by("-created_at")[:limit]
+    hosted_qs = _tenant_safe_hosted_jobs(
+        organization
+    ).filter(
+        status=HostedAutomationJob.Status.FAILED,
+        created_at__gte=since,
     )
-    webhooks = list(
-        _tenant_safe_webhook_deliveries(
-            organization
-        ).filter(
-            status=WebhookDelivery.Status.FAILED,
-            created_at__gte=since,
-        ).order_by("-created_at")[:limit]
+    webhook_qs = _tenant_safe_webhook_deliveries(
+        organization
+    ).filter(
+        status=WebhookDelivery.Status.FAILED,
+        created_at__gte=since,
     )
-    workflows = list(
+    workflow_qs = (
         _tenant_safe_trigger_runs(
             organization
         ).filter(
@@ -1046,12 +1033,53 @@ def get_recent_errors(*, organization, arguments):
             created_at__gte=since,
         )
         .select_related("rule")
-        .order_by("-created_at")[:limit]
+    )
+
+    error_counts = {
+        "whatsapp": whatsapp_qs.count(),
+        "instagram": instagram_qs.count(),
+        "instagram_webhooks": instagram_webhook_qs.count(),
+        "hosted": hosted_qs.count(),
+        "webhooks": webhook_qs.count(),
+        "workflows": workflow_qs.count(),
+    }
+    whatsapp = list(
+        whatsapp_qs.order_by("-created_at")[:limit]
+    )
+    instagram = list(
+        instagram_qs.order_by("-created_at")[:limit]
+    )
+    instagram_webhooks = list(
+        instagram_webhook_qs.order_by("-received_at")[:limit]
+    )
+    hosted = list(
+        hosted_qs.order_by("-created_at")[:limit]
+    )
+    webhooks = list(
+        webhook_qs.order_by("-created_at")[:limit]
+    )
+    workflows = list(
+        workflow_qs.order_by("-created_at")[:limit]
     )
 
     return sanitize_data(
         {
             "window_hours": hours,
+            "result_counts": {
+                key: {
+                    "total": error_counts[key],
+                    "returned": len(rows),
+                    "truncated": error_counts[key] > len(rows),
+                }
+                for key, rows in {
+                    "whatsapp": whatsapp,
+                    "instagram": instagram,
+                    "instagram_webhooks": instagram_webhooks,
+                    "hosted": hosted,
+                    "webhooks": webhooks,
+                    "workflows": workflows,
+                }.items()
+            },
             "whatsapp": [
                 {
                     "message_id": str(item.id),
