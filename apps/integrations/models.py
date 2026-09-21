@@ -538,3 +538,12 @@ from .diagnostic_models import (  # noqa: E402,F401
     DiagnosticOAuthClient,
     DiagnosticOAuthToken,
 )
+
+from .operations_models import (  # noqa: E402,F401
+    OperationsAuditEvent,
+    OperationsOAuthAuthorizationCode,
+    OperationsOAuthClient,
+    OperationsOAuthToken,
+    OperationsPolicy,
+    OperationsSupportSession,
+)
