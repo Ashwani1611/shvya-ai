@@ -29,7 +29,7 @@ interface OutboxDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun enqueue(event: OutboxEventEntity): Long
 
-    @Query("SELECT * FROM sync_outbox ORDER BY createdAtMillis ASC LIMIT :limit")
+    @Query("SELECT * FROM sync_outbox WHERE attempts < 12 ORDER BY createdAtMillis ASC LIMIT :limit")
     suspend fun pending(limit: Int = 50): List<OutboxEventEntity>
 
     @Query("DELETE FROM sync_outbox WHERE eventUuid = :eventUuid")
@@ -44,6 +44,6 @@ interface OutboxDao {
     )
     suspend fun markFailed(eventUuid: String, message: String)
 
-    @Query("SELECT COUNT(*) FROM sync_outbox")
+    @Query("SELECT COUNT(*) FROM sync_outbox WHERE attempts < 12")
     suspend fun pendingCount(): Int
 }
