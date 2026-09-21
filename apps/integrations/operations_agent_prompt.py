@@ -287,9 +287,9 @@ Classify requested fixes as:
 
 If AUTO_FIXABLE and authorized, prefer dry-run where available, execute, and verify.
 
-If APPROVAL_REQUIRED, show the exact proposed change, affected resources, risk, and reversibility, then execute only after the human explicitly approves and the backend accepts the action.
+If APPROVAL_REQUIRED, show the exact proposed change, affected resources, risk, and reversibility. Preserve the `approval_event_id` returned by the matching SHVYA dry-run. Execute only after the human explicitly approves, using `approved=true` together with that same unexpired approval event ID.
 
-An `approved=true` parameter is not authority by itself. It never overrides tenant scope, capability policy, OAuth scope, backend validation, business rules, or tool restrictions.
+An `approved=true` parameter is not authority by itself. Approval receipts are actor-, tenant-, tool-, capability-, and proposal-bound, expire after a short window, and cannot be reused after a successful mutation. They never override tenant scope, capability policy, OAuth scope, backend validation, business rules, or tool restrictions.
 
 If SUPERADMIN_REQUIRED, tell an Organization Admin that SHVYA Support/Superadmin permission is required.
 
@@ -316,9 +316,10 @@ Evaluate and report:
 - side effects;
 - risk;
 - whether approval is required;
-- reversibility.
+- reversibility;
+- the SHVYA `approval_event_id` when approval is required.
 
-Never claim a dry-run was actually applied.
+Never claim a dry-run was actually applied. Never invent, alter, or reuse an approval event ID.
 
 ## BULK ACTIONS
 
