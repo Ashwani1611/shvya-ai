@@ -1823,6 +1823,104 @@ class OperationsMCPTests(TestCase):
         self.assertEqual(definition.key, "company_size")
         self.assertEqual(definition.field_type, "numeric")
 
+    def test_diagnostics_fail_closed_on_corrupted_cross_tenant_message_links(self):
+        OperationsPolicy.objects.create(
+            organization=self.organization,
+            organization_admin_enabled=True,
+            allowed_capabilities=[
+                CAP_ORGANIZATION_READ,
+                CAP_DIAGNOSTICS_READ,
+            ],
+        )
+        account = WhatsAppAccount.objects.create(
+            organization=self.organization,
+            connection_type=WhatsAppAccount.ConnectionType.API,
+            business_name="Corruption Guard Sender",
+            display_phone_number="+919000000050",
+            status=WhatsAppAccount.Status.CONNECTED,
+            is_active=True,
+        )
+        corrupted = WhatsAppMessage.objects.create(
+            organization=self.organization,
+            account=account,
+            lead=self.other_lead,
+            external_id="cross-tenant-corrupt-message",
+            direction=WhatsAppMessage.Direction.INBOUND,
+            status=WhatsAppMessage.Status.FAILED,
+            message_type=WhatsAppMessage.MessageType.TEXT,
+            from_number="+919111111111",
+            to_number="+919000000050",
+            body="foreign-linked message",
+            error="foreign-linked failure",
+        )
+        leadless = WhatsAppMessage.objects.create(
+            organization=self.organization,
+            account=account,
+            lead=None,
+            external_id="leadless-own-failure",
+            direction=WhatsAppMessage.Direction.INBOUND,
+            status=WhatsAppMessage.Status.FAILED,
+            message_type=WhatsAppMessage.MessageType.TEXT,
+            from_number="+919122222222",
+            to_number="+919000000050",
+            body="leadless own message",
+            error="leadless own failure",
+        )
+        bearer = self._token(
+            actor=self.admin,
+            role=ROLE_ORGANIZATION_ADMIN,
+            organization=self.organization,
+            scopes=[OPERATIONS_READ_SCOPE],
+        )
+
+        traced = self._result(
+            self._call(
+                bearer,
+                "trace_message",
+                {
+                    "message_id": str(corrupted.id),
+                },
+            )
+        )
+        self.assertTrue(traced["isError"])
+        self.assertEqual(
+            traced["structuredContent"]["status"],
+            "FAILED",
+        )
+        trace_blob = json.dumps(traced)
+        self.assertNotIn(
+            str(self.other_lead.id),
+            trace_blob,
+        )
+        self.assertNotIn(
+            self.other_lead.name,
+            trace_blob,
+        )
+
+        recent = self._result(
+            self._call(
+                bearer,
+                "get_recent_errors",
+                {
+                    "hours": 24,
+                    "limit": 20,
+                },
+            )
+        )
+        self.assertFalse(recent["isError"])
+        message_ids = {
+            row["message_id"]
+            for row in recent["structuredContent"][
+                "whatsapp"
+            ]
+        }
+        self.assertIn(str(leadless.id), message_ids)
+        self.assertNotIn(str(corrupted.id), message_ids)
+        self.assertNotIn(
+            str(self.other_lead.id),
+            json.dumps(recent["structuredContent"]),
+        )
+
     def test_trace_message_bounds_hosted_job_internal_details(self):
         OperationsPolicy.objects.create(
             organization=self.organization,
