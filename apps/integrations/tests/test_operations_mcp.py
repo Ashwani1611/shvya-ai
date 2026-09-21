@@ -1,6 +1,7 @@
 import json
 from datetime import timedelta
 from urllib.parse import parse_qs, urlparse
+from unittest.mock import patch
 
 from django.contrib.sessions.backends.db import SessionStore
 from django.core.exceptions import ValidationError
@@ -1053,6 +1054,63 @@ class OperationsMCPTests(TestCase):
             outcomes,
         )
         self.assertIn(OperationsAuditEvent.Outcome.SUCCESS, outcomes)
+
+    def test_operations_approval_receipt_expires(self):
+        OperationsPolicy.objects.create(
+            organization=self.organization,
+            organization_admin_enabled=True,
+            allowed_capabilities=[
+                CAP_ORGANIZATION_READ,
+                CAP_LEAD_STAGE_WRITE,
+            ],
+            approval_required_capabilities=[CAP_LEAD_STAGE_WRITE],
+        )
+        bearer = self._token(
+            actor=self.admin,
+            role=ROLE_ORGANIZATION_ADMIN,
+            organization=self.organization,
+        )
+        arguments = {
+            "lead_id": str(self.lead.id),
+            "target_stage_id": str(self.qualified.id),
+            "reason": "Review time-bounded stage change",
+        }
+        dry = self._result(
+            self._call(
+                bearer,
+                "move_lead_stage",
+                {**arguments, "dry_run": True},
+            )
+        )
+        self.assertFalse(dry["isError"])
+        event = OperationsAuditEvent.objects.get(
+            pk=dry["structuredContent"]["approval_event_id"]
+        )
+
+        future = event.created_at + timedelta(minutes=31)
+        with patch(
+            "apps.integrations.operations_tools.timezone.now",
+            return_value=future,
+        ):
+            expired = self._result(
+                self._call(
+                    bearer,
+                    "move_lead_stage",
+                    {
+                        **arguments,
+                        "dry_run": False,
+                        "approved": True,
+                        "approval_event_id": str(event.id),
+                    },
+                )
+            )
+        self.assertTrue(expired["isError"])
+        self.assertEqual(
+            expired["structuredContent"]["status"],
+            "APPROVAL_REQUIRED",
+        )
+        self.lead.refresh_from_db()
+        self.assertEqual(self.lead.stage_id, self.new_stage.id)
 
     def test_approved_true_cannot_bypass_disabled_write_capability(self):
         OperationsPolicy.objects.create(
