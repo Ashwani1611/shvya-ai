@@ -24,6 +24,7 @@ def test_sidebar_navigation_is_grouped_for_premium_shell():
     assert [item["label"] for item in workspace["items"]] == [
         "Sales Desk",
         "SHVYA Calendar",
+        "CALL INTELLIGENCE",
         "SHVYA Sales",
     ]
     assert [item["label"] for item in customers["items"]] == ["CRM", "Insights"]

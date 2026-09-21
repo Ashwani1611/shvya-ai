@@ -120,6 +120,7 @@ class Lead(models.Model):
             ("meta_ads", "Meta Ads"),
             ("instagram", "Instagram"),
             ("shvya_calendar", "SHVYA Calendar"),
+            ("phone_call", "Phone Call"),
         ],
         default="system",
     )

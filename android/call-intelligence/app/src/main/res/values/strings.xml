@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">SHVYA Call Intelligence</string>
+    <string name="tracking_channel">Call Intelligence</string>
+    <string name="tracking_channel_description">Keeps SHVYA call synchronization active.</string>
+</resources>

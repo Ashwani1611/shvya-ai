@@ -39,6 +39,21 @@ NAV_ITEMS = [
         ],
     },
     {
+        "label": "CALL INTELLIGENCE",
+        "icon": "ti-phone-call",
+        "url_name": "call-intelligence-dashboard",
+        "path_prefix": "/dashboard/call-intelligence/",
+        "section": "workspace",
+        "search_keywords": [
+            "calls",
+            "phone",
+            "android",
+            "sim calls",
+            "missed calls",
+            "call intelligence",
+        ],
+    },
+    {
         "label": "SHVYA Sales",
         "icon": "ti-file-invoice",
         "url_name": "shvya-sales-dashboard",
