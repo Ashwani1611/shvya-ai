@@ -406,6 +406,7 @@ def organization_detail_view(
     )
 
     from apps.integrations.diagnostic_auth import sanitize_text
+    from apps.integrations.operations_auth import operations_grant_status
     from apps.integrations.operations_models import (
         OperationsAuditEvent,
         OperationsOAuthToken,
@@ -461,10 +462,15 @@ def organization_detail_view(
             revoked_at__isnull=True,
             refresh_expires_at__gt=timezone.now(),
         )
-        .select_related("actor", "client")
+        .select_related("actor", "client", "organization")
         .order_by("-last_used_at", "-created_at")
     )
     for token in active_operations_tokens:
+        (
+            token.live_authority_valid,
+            token.live_authority_reason_code,
+            _live_authority_message,
+        ) = operations_grant_status(token)
         token.granted_capability_labels = [
             CAPABILITY_LABELS.get(
                 capability,
