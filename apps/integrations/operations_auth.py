@@ -456,6 +456,37 @@ def revoke_token_record(*, token) -> bool:
     return True
 
 
+def _revoke_locked_token(token, *, now=None):
+    now = now or timezone.now()
+    if token.revoked_at is not None:
+        return None
+
+    token.revoked_at = now
+    token.save(update_fields=["revoked_at", "updated_at"])
+    OperationsSupportSession.objects.filter(
+        token=token,
+        ended_at__isnull=True,
+    ).update(
+        ended_at=now,
+        last_seen_at=now,
+    )
+    return token
+
+
+def revoke_token_record(*, token):
+    """Revoke a known Operations OAuth row without requiring raw token material."""
+
+    with transaction.atomic():
+        locked = (
+            OperationsOAuthToken.objects.select_for_update()
+            .filter(pk=token.pk)
+            .first()
+        )
+        if locked is None:
+            return None
+        return _revoke_locked_token(locked)
+
+
 def revoke_token(*, raw_token: str):
     """Revoke an Operations OAuth grant by either access or refresh token.
 
