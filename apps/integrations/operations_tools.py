@@ -2052,6 +2052,17 @@ def upsert_pipeline_configuration(*, identity, arguments):
         "is_active": is_active,
         "ai_enabled": ai_enabled,
     }
+    proposal = {
+        "organization_id": str(organization.id),
+        "pipeline_id": str(pipeline.id) if pipeline else None,
+        "before": before,
+        "after": after,
+    }
+    if not dry_run:
+        _ensure_approved_proposal_unchanged(
+            arguments=arguments,
+            proposal=proposal,
+        )
     if dry_run:
         return ToolExecution(
             data={
@@ -2080,6 +2091,7 @@ def upsert_pipeline_configuration(*, identity, arguments):
                 "operation": "upsert_pipeline",
                 "mode": "update" if pipeline else "create",
                 "changed_fields": sorted(after),
+                "proposal_digest": _proposal_digest(proposal),
             },
         )
 
@@ -2265,6 +2277,17 @@ def upsert_stage_configuration(*, identity, arguments):
         "is_active": is_active,
         "ai_on": ai_on,
     }
+    proposal = {
+        "pipeline_id": str(pipeline.id),
+        "stage_id": str(stage.id) if stage else None,
+        "before": before,
+        "after": after,
+    }
+    if not dry_run:
+        _ensure_approved_proposal_unchanged(
+            arguments=arguments,
+            proposal=proposal,
+        )
     if dry_run:
         return ToolExecution(
             data={
@@ -2289,6 +2312,7 @@ def upsert_stage_configuration(*, identity, arguments):
                 "mode": "update" if stage else "create",
                 "pipeline_id": str(pipeline.id),
                 "changed_fields": sorted(after),
+                "proposal_digest": _proposal_digest(proposal),
             },
         )
 
@@ -2407,6 +2431,17 @@ def upsert_attribute_configuration(*, identity, arguments):
         "description": description,
         "options": options,
     }
+    proposal = {
+        "organization_id": str(organization.id),
+        "attribute_id": str(attribute.id) if attribute else None,
+        "before": before,
+        "after": after,
+    }
+    if not dry_run:
+        _ensure_approved_proposal_unchanged(
+            arguments=arguments,
+            proposal=proposal,
+        )
     if dry_run:
         # Use a non-persisted instance for field-level validation while the
         # canonical service remains the write authority on execution.
@@ -2445,6 +2480,7 @@ def upsert_attribute_configuration(*, identity, arguments):
                 "operation": "upsert_attribute",
                 "mode": "update" if attribute else "create",
                 "changed_fields": sorted(after),
+                "proposal_digest": _proposal_digest(proposal),
             },
         )
 
@@ -2538,6 +2574,47 @@ def upsert_workflow_configuration(*, identity, arguments):
     if duplicate.exists():
         raise OperationsToolError("An identical Workflow already exists.")
 
+    workflow_before = (
+        {
+            "id": str(workflow.id),
+            "name": workflow.name,
+            "enabled": workflow.enabled,
+            "position": workflow.position,
+            "trigger_type": workflow.trigger_type,
+            "conditions": workflow.conditions,
+            "action_type": workflow.action_type,
+            "action": workflow.action,
+            "fingerprint": workflow.fingerprint,
+        }
+        if workflow is not None
+        else None
+    )
+    proposed_position = (
+        workflow.position
+        if workflow is not None
+        else (
+            SmartTrigger.objects.filter(
+                organization=organization
+            ).aggregate(value=Max("position"))["value"]
+            or 0
+        ) + 1
+    )
+    workflow_after = {
+        **clean,
+        "position": proposed_position,
+    }
+    proposal = {
+        "organization_id": str(organization.id),
+        "workflow_id": str(workflow.id) if workflow else None,
+        "before": workflow_before,
+        "after": workflow_after,
+    }
+    if not dry_run:
+        _ensure_approved_proposal_unchanged(
+            arguments=arguments,
+            proposal=proposal,
+        )
+
     if dry_run:
         return ToolExecution(
             data={
@@ -2567,21 +2644,17 @@ def upsert_workflow_configuration(*, identity, arguments):
                 "mode": "update" if workflow else "create",
                 "trigger_type": clean["trigger_type"],
                 "action_type": clean["action_type"],
+                "proposal_digest": _proposal_digest(proposal),
             },
         )
 
     with transaction.atomic():
         Organization.objects.select_for_update().get(pk=organization.pk)
         if workflow is None:
-            position = (
-                SmartTrigger.objects.filter(organization=organization)
-                .aggregate(value=Max("position"))["value"]
-                or 0
-            ) + 1
             workflow = SmartTrigger(
                 organization=organization,
                 created_by=identity.actor,
-                position=position,
+                position=proposed_position,
             )
         for key, value in clean.items():
             setattr(workflow, key, value)
@@ -2767,6 +2840,35 @@ def upsert_cadence_configuration(*, identity, arguments):
                     "Connect at least one Hosted/Coexistence WhatsApp number before creating this Cadence."
                 )
 
+    cadence_before = (
+        {
+            "id": str(sequence.id),
+            "name": sequence.name,
+            "description": sequence.description,
+            "provider": provider,
+            "whatsapp_account_id": str(sequence.whatsapp_account_id),
+        }
+        if sequence is not None
+        else None
+    )
+    cadence_after = {
+        "name": name,
+        "description": description,
+        "provider": provider,
+        "whatsapp_account_id": str(account.id) if account else None,
+    }
+    proposal = {
+        "organization_id": str(organization.id),
+        "cadence_id": str(sequence.id) if sequence else None,
+        "before": cadence_before,
+        "after": cadence_after,
+    }
+    if not dry_run:
+        _ensure_approved_proposal_unchanged(
+            arguments=arguments,
+            proposal=proposal,
+        )
+
     if dry_run:
         return ToolExecution(
             data={
@@ -2793,6 +2895,7 @@ def upsert_cadence_configuration(*, identity, arguments):
             audit_summary={
                 "operation": "upsert_cadence",
                 "mode": "update" if sequence else "create",
+                "proposal_digest": _proposal_digest(proposal),
             },
         )
 
@@ -2883,6 +2986,25 @@ def add_cadence_step(*, identity, arguments):
         if not str(data.get("text") or "").strip():
             raise OperationsToolError("Reminder Cadence steps require reminder text.")
 
+    step_proposal = {
+        "cadence_id": str(sequence.id),
+        "existing_step_count": sequence.steps.count(),
+        "next_position": sequence.steps.count() + 1,
+        "step_type": step_type,
+        "schedule": schedule,
+        "template_id": str(template.id) if template else None,
+        "title": str(data.get("title") or ""),
+        "subject": str(data.get("subject") or ""),
+        "body": str(data.get("body") or ""),
+        "text": str(data.get("text") or ""),
+        "retry_count": data.get("retry_count", 0),
+    }
+    if not dry_run:
+        _ensure_approved_proposal_unchanged(
+            arguments=arguments,
+            proposal=step_proposal,
+        )
+
     if dry_run:
         return ToolExecution(
             data={
@@ -2907,6 +3029,7 @@ def add_cadence_step(*, identity, arguments):
                 "operation": "add_cadence_step",
                 "step_type": step_type,
                 "schedule_type": schedule["schedule_type"],
+                "proposal_digest": _proposal_digest(step_proposal),
             },
         )
 
