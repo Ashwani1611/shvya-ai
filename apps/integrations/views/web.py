@@ -336,6 +336,77 @@ def shvya_api_view(request):
             messages.success(request, f"API key '{api_key.name}' revoked.")
             return redirect("crm-connect-hub-shvya-api")
 
+        if action == "revoke_operations_session":
+            from apps.integrations.diagnostic_auth import (
+                request_fingerprint,
+                sanitize_text,
+            )
+            from apps.integrations.operations_auth import revoke_token_record
+            from apps.integrations.operations_models import (
+                OperationsAuditEvent,
+                OperationsOAuthToken,
+            )
+            from apps.integrations.operations_policy import (
+                ROLE_ORGANIZATION_ADMIN,
+            )
+
+            token = get_object_or_404(
+                OperationsOAuthToken.objects.select_related(
+                    "actor",
+                    "client",
+                ),
+                id=request.POST.get("operations_token_id"),
+                organization=organization,
+                role=ROLE_ORGANIZATION_ADMIN,
+                revoked_at__isnull=True,
+            )
+            revoked = revoke_token_record(token=token)
+            if revoked is not None:
+                OperationsAuditEvent.objects.create(
+                    actor=user,
+                    role=ROLE_ORGANIZATION_ADMIN,
+                    organization=organization,
+                    support_session=None,
+                    tool_name="oauth_revoke_dashboard",
+                    capability="",
+                    target_type="oauth_grant",
+                    target_id=str(token.id),
+                    reason=(
+                        "Organization Admin revoked an external AI "
+                        "Operations session from the SHVYA dashboard."
+                    ),
+                    outcome=OperationsAuditEvent.Outcome.SUCCESS,
+                    request_fingerprint=request_fingerprint(
+                        {
+                            "event": "oauth_revoke_dashboard",
+                            "token_id": str(token.id),
+                            "actor_id": str(user.id),
+                        }
+                    ),
+                    change_summary={
+                        "client_name": sanitize_text(
+                            token.client.client_name or "External AI",
+                            limit=120,
+                        ),
+                        "session_owner": sanitize_text(
+                            token.actor.name or "Organization Admin",
+                            limit=120,
+                        ),
+                        "scopes": sorted(
+                            set(str(token.scope or "").split())
+                        ),
+                        "access": "revoked",
+                    },
+                    duration_ms=0,
+                    error_code="",
+                )
+                messages.success(
+                    request,
+                    "External AI Operations session revoked. "
+                    "That client must authorize again to reconnect.",
+                )
+            return redirect("crm-connect-hub-shvya-api")
+
         messages.error(request, "Unknown API key action.")
         return redirect("crm-connect-hub-shvya-api")
 
@@ -352,11 +423,15 @@ def shvya_api_view(request):
     api_url = request.build_absolute_uri(reverse("lead-upsert"))
     list_api_url = request.build_absolute_uri(reverse("lead-list"))
 
-    from apps.integrations.operations_models import OperationsAuditEvent
+    from apps.integrations.operations_models import (
+        OperationsAuditEvent,
+        OperationsOAuthToken,
+    )
     from apps.integrations.operations_presence import visible_support_sessions
     from apps.integrations.operations_policy import (
         CAPABILITY_LABELS,
         CAP_AUDIT_READ,
+        ROLE_ORGANIZATION_ADMIN,
         WRITE_CAPABILITIES,
         policy_for,
     )
@@ -391,6 +466,19 @@ def shvya_api_view(request):
         else []
     )
 
+    from django.utils import timezone
+
+    active_operations_tokens = (
+        OperationsOAuthToken.objects.filter(
+            organization=organization,
+            role=ROLE_ORGANIZATION_ADMIN,
+            revoked_at__isnull=True,
+            refresh_expires_at__gt=timezone.now(),
+        )
+        .select_related("actor", "client")
+        .order_by("-last_used_at", "-created_at")
+    )
+
     return render(
         request,
         "integrations/shvya_api.html",
@@ -411,6 +499,7 @@ def shvya_api_view(request):
             "active_operations_support": active_operations_support,
             "operations_audit_visible": operations_audit_visible,
             "operations_audit_events": operations_audit_events,
+            "active_operations_tokens": active_operations_tokens,
         },
     )
 
