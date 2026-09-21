@@ -15,7 +15,7 @@
       <h1>Choose a new time.</h1>
       <p>Your CRM lead stays the same. SHVYA updates this booking and its connected Google Calendar event instead of creating another lead.</p>
       <div class="sc-session-facts">
-        <span><i class="ti ti-calendar"></i>Current: {{ booking.start_at|date:"d M Y, g:i A" }}</span>
+        <span><i class="ti ti-calendar"></i>Current: {{ booking_local_start|date:"d M Y, g:i A" }}</span>
         <span><i class="ti ti-clock"></i>{{ page.slot_duration_minutes }} minutes</span>
         <span><i class="ti ti-world"></i>{{ page.timezone }}</span>
       </div>
