@@ -1,6 +1,9 @@
+from datetime import timedelta
+
 from django.contrib.sessions.backends.db import SessionStore
 from django.test import TestCase
 from django.urls import reverse
+from django.utils import timezone
 
 from apps.accounts.models import User
 from apps.accounts.session_utils import (
@@ -11,11 +14,14 @@ from apps.crm.models import Pipeline, PipelinePermission
 from apps.integrations.models import (
     EmailConfiguration,
     OperationsAuditEvent,
+    OperationsOAuthClient,
+    OperationsOAuthToken,
     OperationsPolicy,
     GoogleSheetIntegration,
     MetaLeadPage,
     WebhookConfiguration,
 )
+from apps.integrations.operations_auth import token_hash
 from apps.integrations.operations_policy import (
     CAP_AUDIT_READ,
     CAP_ORGANIZATION_READ,
@@ -212,6 +218,143 @@ class ConnectHubAuthorizationTests(TestCase):
             with self.subTest(route_name=route_name):
                 response = self.client.get(reverse(route_name))
                 self.assertEqual(response.status_code, 403)
+
+    def test_admin_can_review_and_revoke_tenant_operations_sessions_without_tokens_leaking(self):
+        OperationsPolicy.objects.create(
+            organization=self.organization,
+            organization_admin_enabled=True,
+            allowed_capabilities=[CAP_ORGANIZATION_READ],
+            approval_required_capabilities=[],
+        )
+        client = OperationsOAuthClient.objects.create(
+            client_id="connect-hub-session-client",
+            client_name="ChatGPT Operations",
+            redirect_uris=["https://chatgpt.com/aip/callback"],
+            grant_types=["authorization_code", "refresh_token"],
+            response_types=["code"],
+        )
+        raw_access = "panel-access-token-secret"
+        raw_refresh = "panel-refresh-token-secret"
+        token = OperationsOAuthToken.objects.create(
+            client=client,
+            actor=self.admin,
+            organization=self.organization,
+            role=ROLE_ORGANIZATION_ADMIN,
+            access_token_hash=token_hash(raw_access),
+            refresh_token_hash=token_hash(raw_refresh),
+            scope="operations.read operations.write",
+            resource="http://testserver/operations/mcp/",
+            expires_at=timezone.now() + timedelta(hours=1),
+            refresh_expires_at=timezone.now() + timedelta(days=14),
+        )
+
+        other_org = Organization.objects.create(name="Foreign Session Org")
+        other_admin = User.objects.create_user(
+            email="foreign-session-admin@example.com",
+            password="test-password",
+            name="Foreign Session Admin",
+            organization=other_org,
+            role=User.Role.ADMIN,
+        )
+        other_client = OperationsOAuthClient.objects.create(
+            client_id="foreign-session-client",
+            client_name="Foreign Claude Operations",
+            redirect_uris=["https://claude.ai/api/mcp/auth_callback"],
+            grant_types=["authorization_code", "refresh_token"],
+            response_types=["code"],
+        )
+        foreign_token = OperationsOAuthToken.objects.create(
+            client=other_client,
+            actor=other_admin,
+            organization=other_org,
+            role=ROLE_ORGANIZATION_ADMIN,
+            access_token_hash=token_hash("foreign-access-token"),
+            refresh_token_hash=token_hash("foreign-refresh-token"),
+            scope="operations.read",
+            resource="http://testserver/operations/mcp/",
+            expires_at=timezone.now() + timedelta(hours=1),
+            refresh_expires_at=timezone.now() + timedelta(days=14),
+        )
+
+        self.authenticate(self.admin)
+        response = self.client.get(
+            reverse("crm-connect-hub-shvya-api")
+        )
+        self.assertEqual(response.status_code, 200)
+        body = response.content.decode("utf-8")
+        self.assertIn("Connected External AI Sessions", body)
+        self.assertIn("ChatGPT Operations", body)
+        self.assertIn(self.admin.name, body)
+        self.assertNotIn("Foreign Claude Operations", body)
+        self.assertNotIn(raw_access, body)
+        self.assertNotIn(raw_refresh, body)
+        self.assertNotIn(token.access_token_hash, body)
+        self.assertNotIn(token.refresh_token_hash, body)
+
+        revoke = self.client.post(
+            reverse("crm-connect-hub-shvya-api"),
+            {
+                "action": "revoke_operations_session",
+                "operations_token_id": str(token.id),
+            },
+        )
+        self.assertEqual(revoke.status_code, 302)
+        token.refresh_from_db()
+        self.assertIsNotNone(token.revoked_at)
+
+        audit = OperationsAuditEvent.objects.get(
+            organization=self.organization,
+            tool_name="oauth_revoke_dashboard",
+            target_id=str(token.id),
+        )
+        self.assertEqual(audit.actor_id, self.admin.id)
+        self.assertEqual(audit.outcome, OperationsAuditEvent.Outcome.SUCCESS)
+        self.assertNotIn(raw_access, str(audit.change_summary))
+        self.assertNotIn(raw_refresh, str(audit.change_summary))
+
+        foreign_revoke = self.client.post(
+            reverse("crm-connect-hub-shvya-api"),
+            {
+                "action": "revoke_operations_session",
+                "operations_token_id": str(foreign_token.id),
+            },
+        )
+        self.assertEqual(foreign_revoke.status_code, 404)
+        foreign_token.refresh_from_db()
+        self.assertIsNone(foreign_token.revoked_at)
+
+    def test_agent_cannot_revoke_operations_oauth_session(self):
+        client = OperationsOAuthClient.objects.create(
+            client_id="agent-revoke-client",
+            client_name="Agent Revoke Test",
+            redirect_uris=["https://chatgpt.com/aip/callback"],
+            grant_types=["authorization_code", "refresh_token"],
+            response_types=["code"],
+        )
+        token = OperationsOAuthToken.objects.create(
+            client=client,
+            actor=self.admin,
+            organization=self.organization,
+            role=ROLE_ORGANIZATION_ADMIN,
+            access_token_hash=token_hash("agent-revoke-access"),
+            refresh_token_hash=token_hash("agent-revoke-refresh"),
+            scope="operations.read",
+            resource="http://testserver/operations/mcp/",
+            expires_at=timezone.now() + timedelta(hours=1),
+            refresh_expires_at=timezone.now() + timedelta(days=14),
+        )
+        self.authenticate(self.agent)
+
+        response = self.client.post(
+            reverse("crm-connect-hub-shvya-api"),
+            {
+                "action": "revoke_operations_session",
+                "operations_token_id": str(token.id),
+            },
+        )
+        self.assertEqual(response.status_code, 403)
+        token.refresh_from_db()
+        self.assertIsNone(token.revoked_at)
 
     def test_admin_operations_panel_shows_only_tenant_audit_when_enabled(self):
         OperationsPolicy.objects.create(
