@@ -3820,6 +3820,79 @@ class OperationsMCPTests(TestCase):
         self.assertTrue(switch["isError"])
         self.assertEqual(switch["structuredContent"]["status"], "NOT_ALLOWED")
 
+    def test_superadmin_org_discovery_distinguishes_open_from_recent_support(self):
+        bearer = self._token(
+            actor=self.superadmin,
+            role=ROLE_SUPERADMIN,
+            scopes=[OPERATIONS_READ_SCOPE],
+        )
+        selected = self._result(
+            self._call(
+                bearer,
+                "select_organization_context",
+                {
+                    "organization_id": str(self.organization.id),
+                    "reason": "Review support presence semantics",
+                },
+            )
+        )
+        self.assertFalse(selected["isError"])
+
+        support = OperationsSupportSession.objects.get(
+            token__actor=self.superadmin,
+            organization=self.organization,
+            ended_at__isnull=True,
+        )
+        OperationsSupportSession.objects.filter(
+            pk=support.pk
+        ).update(
+            last_seen_at=timezone.now() - timedelta(minutes=16),
+        )
+
+        listed = self._result(
+            self._call(
+                bearer,
+                "list_organizations",
+                {
+                    "query": self.organization.name,
+                    "limit": 10,
+                },
+            )
+        )
+        self.assertFalse(listed["isError"])
+        row = next(
+            item
+            for item in listed["structuredContent"]["organizations"]
+            if item["id"] == str(self.organization.id)
+        )
+        self.assertTrue(
+            row["superadmin_support_context_open"]
+        )
+        self.assertFalse(
+            row["superadmin_support_recently_active"]
+        )
+        self.assertFalse(
+            row["superadmin_support_active"]
+        )
+
+        context = self._result(
+            self._call(
+                bearer,
+                "get_operations_context",
+            )
+        )
+        self.assertFalse(context["isError"])
+        support_context = context["structuredContent"][
+            "superadmin_support_session"
+        ]
+        self.assertIsNotNone(support_context)
+        self.assertFalse(
+            support_context["recently_active"]
+        )
+        self.assertIsNotNone(
+            support_context["last_seen_at"]
+        )
+
     def test_superadmin_customer_tools_fail_closed_if_selected_org_is_disabled(self):
         bearer = self._token(
             actor=self.superadmin,
