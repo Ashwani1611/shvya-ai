@@ -577,7 +577,7 @@ class ShvyaCalendarServiceTests(TestCase):
         mocked_available_slots,
         mocked_create_event,
     ):
-        lead = Lead.objects.create(
+        Lead.objects.create(
             organization=self.organization,
             pipeline=self.pipeline,
             stage=self.stage,
