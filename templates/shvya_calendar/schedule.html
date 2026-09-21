@@ -1,0 +1,52 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Choose a time · {{ page.name }}</title>
+  <link rel="stylesheet" href="{% static 'shvya_calendar/calendar.css' %}?v=20260922-1">
+</head>
+<body class="sc-public-body" style="--sc-accent: {{ page.accent_color }}">
+  <main class="sc-public-shell sc-public-shell-schedule">
+    <section class="sc-public-intro">
+      <span class="sc-kicker">{{ page.organization.name|upper }}</span>
+      <h1>{{ page.session_title }}</h1>
+      {% if page.session_description %}<p>{{ page.session_description }}</p>{% endif %}
+      <div class="sc-session-facts">
+        <span><i class="ti ti-clock"></i>{{ page.slot_duration_minutes }} minutes</span>
+        <span><i class="ti ti-world"></i>{{ page.timezone }}</span>
+        <span><i class="ti ti-user"></i>{{ submission.lead.name }}</span>
+      </div>
+      {% if page.discussion_points %}
+        <ul class="sc-benefit-list">
+          {% for point in page.discussion_points %}<li><i class="ti ti-check"></i>{{ point }}</li>{% endfor %}
+        </ul>
+      {% endif %}
+    </section>
+    <section class="sc-public-card sc-schedule-card">
+      <div class="sc-progress"><span class="is-done"><i class="ti ti-check"></i></span><b class="is-done"></b><span class="is-active">2</span></div>
+      <div class="sc-public-card-head"><span class="sc-kicker">SCHEDULE</span><h2>Choose a time that works.</h2><p>Availability already accounts for SHVYA bookings and connected Google Calendar conflicts.</p></div>
+      {% if booking_error %}<div class="sc-alert sc-alert-error">{{ booking_error }}</div>{% endif %}
+      <div class="sc-slot-days">
+        {% for day in slot_days %}
+          <section class="sc-slot-day">
+            <header><strong>{{ day.date|date:"D" }}</strong><span>{{ day.date|date:"d M" }}</span></header>
+            <div class="sc-slot-grid">
+              {% for slot in day.slots %}
+                <form method="post">
+                  {% csrf_token %}
+                  <input type="hidden" name="slot_start" value="{{ slot.start|date:'c' }}">
+                  <button class="sc-slot-button" type="submit">{{ slot.label }}</button>
+                </form>
+              {% endfor %}
+            </div>
+          </section>
+        {% empty %}
+          <div class="sc-empty-state"><i class="ti ti-calendar-off"></i><h3>No times available right now.</h3><p>Please check again later or contact the team directly.</p></div>
+        {% endfor %}
+      </div>
+    </section>
+  </main>
+</body>
+</html>
