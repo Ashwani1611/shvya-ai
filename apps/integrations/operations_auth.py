@@ -726,6 +726,23 @@ def authenticate_bearer(raw_bearer: str) -> OperationsIdentity:
     if OPERATIONS_READ_SCOPE not in scopes:
         raise OperationsAuthError("OAuth token is missing operations.read scope.")
 
+    stored_grant = expand_capabilities(
+        token.granted_capabilities
+    )
+    if not stored_grant:
+        # Compatibility fallback for direct test fixtures / pre-migration
+        # grants. Persisted staging grants are backfilled by migration 0009.
+        stored_grant = capabilities_for_grant(
+            role=token.role,
+            organization=token.organization,
+            allow_writes=(
+                OPERATIONS_WRITE_SCOPE in scopes
+            ),
+        )
+    granted_capabilities = frozenset(
+        stored_grant
+    )
+
     OperationsOAuthToken.objects.filter(pk=token.pk).update(last_used_at=now)
     return OperationsIdentity(
         token=token,
@@ -734,4 +751,5 @@ def authenticate_bearer(raw_bearer: str) -> OperationsIdentity:
         organization=token.organization,
         active_organization=token.active_organization,
         scopes=scopes,
+        granted_capabilities=granted_capabilities,
     )
