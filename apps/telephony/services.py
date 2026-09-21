@@ -13,7 +13,30 @@ from apps.organizations.access import crm_user_is_authorized
 from services.crm.lead_service import create_lead
 from services.crm_activity_service import record_call_logged
 
-from .models import CallDevice, CallEvent, CallIntelligenceSettings, CallRecord
+from .models import (
+    CallDevice,
+    CallDisposition,
+    CallEvent,
+    CallIntelligenceSettings,
+    CallRecord,
+)
+
+
+DEFAULT_DISPOSITIONS = (
+    ("interested", "Interested", CallDisposition.Category.CONNECTED),
+    ("not_interested", "Not Interested", CallDisposition.Category.CONNECTED),
+    ("follow_up", "Follow-up", CallDisposition.Category.CONNECTED),
+    ("demo_scheduled", "Demo Scheduled", CallDisposition.Category.CONNECTED),
+    ("negotiation", "Negotiation", CallDisposition.Category.CONNECTED),
+    ("converted", "Converted", CallDisposition.Category.CONNECTED),
+    ("wrong_person", "Wrong Person", CallDisposition.Category.CONNECTED),
+    ("no_answer", "No Answer", CallDisposition.Category.NOT_CONNECTED),
+    ("busy", "Busy", CallDisposition.Category.NOT_CONNECTED),
+    ("switched_off", "Switched Off", CallDisposition.Category.NOT_CONNECTED),
+    ("rejected", "Rejected", CallDisposition.Category.NOT_CONNECTED),
+    ("invalid_number", "Invalid Number", CallDisposition.Category.NOT_CONNECTED),
+    ("call_back_later", "Call Back Later", CallDisposition.Category.NOT_CONNECTED),
+)
 
 
 TERMINAL_EVENTS = {
@@ -38,6 +61,29 @@ def get_call_settings(organization):
         organization=organization
     )
     return settings_obj
+
+
+def get_call_dispositions(organization):
+    if not CallDisposition.objects.filter(organization=organization).exists():
+        CallDisposition.objects.bulk_create(
+            [
+                CallDisposition(
+                    organization=organization,
+                    code=code,
+                    name=name,
+                    category=category,
+                    position=position,
+                )
+                for position, (code, name, category) in enumerate(
+                    DEFAULT_DISPOSITIONS, start=1
+                )
+            ],
+            ignore_conflicts=True,
+        )
+    return CallDisposition.objects.filter(
+        organization=organization,
+        is_active=True,
+    ).order_by("category", "position", "name")
 
 
 def _clean_text(value, *, limit=255):
@@ -123,6 +169,8 @@ def should_auto_create(settings_obj, direction, status):
         return settings_obj.auto_create_missed
     if status == CallRecord.Status.REJECTED:
         return settings_obj.auto_create_rejected
+    if status == CallRecord.Status.UNKNOWN:
+        return settings_obj.auto_create_unknown
     return False
 
 
@@ -191,25 +239,42 @@ def ingest_call_event(*, user, payload):
             raise ValidationError("Event identity belongs to another organization.")
         return {"call": existing_event.call, "event": existing_event, "event_created": False, "lead_created": False}
 
+    source = _clean_text(payload.get("source"), limit=24) or CallRecord.Source.ANDROID_SIM
+    if source not in CallRecord.Source.values:
+        raise ValidationError("Unsupported call source.")
+
     device_id = _clean_text(payload.get("device_id"), limit=128)
-    if not device_id:
-        raise ValidationError("device_id is required.")
-    device = (
-        CallDevice.objects.select_for_update()
-        .filter(organization=user.organization, device_id=device_id, is_active=True)
-        .first()
-    )
-    if device is None:
-        device = register_device(
-            user=user,
-            payload={
-                "device_id": device_id,
-                "name": payload.get("device_name", ""),
-                "app_version": payload.get("app_version", ""),
-            },
+    device = None
+    if source == CallRecord.Source.ANDROID_SIM:
+        if not device_id:
+            raise ValidationError("device_id is required for Android SIM calls.")
+        device = (
+            CallDevice.objects.select_for_update()
+            .filter(organization=user.organization, device_id=device_id, is_active=True)
+            .first()
         )
-    elif device.user_id != user.id:
-        raise ValidationError("This Android device is already registered to another user.")
+        if device is None:
+            device = register_device(
+                user=user,
+                payload={
+                    "device_id": device_id,
+                    "name": payload.get("device_name", ""),
+                    "app_version": payload.get("app_version", ""),
+                },
+            )
+        elif device.user_id != user.id:
+            raise ValidationError("This Android device is already registered to another user.")
+    elif device_id:
+        device = (
+            CallDevice.objects.select_for_update()
+            .filter(
+                organization=user.organization,
+                user=user,
+                device_id=device_id,
+                is_active=True,
+            )
+            .first()
+        )
 
     settings_obj = get_call_settings(user.organization)
     phone = normalize_call_phone(
@@ -240,11 +305,13 @@ def ingest_call_event(*, user, payload):
 
     record, record_created = CallRecord.objects.select_for_update().get_or_create(
         organization=user.organization,
-        device=device,
-        source=CallRecord.Source.ANDROID_SIM,
+        source=source,
         source_call_id=source_call_id,
         defaults={
+            "device": device,
             "user": user,
+            "provider": _clean_text(payload.get("provider"), limit=80),
+            "provider_call_id": _clean_text(payload.get("provider_call_id")),
             "phone_number": phone,
             "raw_phone_number": _clean_text(payload.get("raw_phone_number") or payload.get("phone_number"), limit=64),
             "contact_name": _clean_text(payload.get("contact_name")),
@@ -259,11 +326,27 @@ def ingest_call_event(*, user, payload):
             "ring_duration_seconds": _positive_int(payload.get("ring_duration_seconds")),
             "talk_duration_seconds": _positive_int(payload.get("talk_duration_seconds")),
             "total_duration_seconds": _positive_int(payload.get("total_duration_seconds")),
+            "recording_url": _clean_text(payload.get("recording_url"), limit=1000),
+            "recording_status": _clean_text(payload.get("recording_status"), limit=32),
+            "transcript_status": _clean_text(payload.get("transcript_status"), limit=32),
+            "transcript": _clean_text(payload.get("transcript"), limit=100000),
+            "transcript_speakers": payload.get("transcript_speakers")
+            if isinstance(payload.get("transcript_speakers"), list) else [],
             "notes": _clean_text(payload.get("notes"), limit=20000),
         },
     )
     if not record_created:
+        if (
+            source == CallRecord.Source.ANDROID_SIM
+            and record.device_id
+            and device
+            and record.device_id != device.id
+        ):
+            raise ValidationError("source_call_id already belongs to another Android device.")
+        record.device = record.device or device
         record.user = user
+        record.provider = _clean_text(payload.get("provider"), limit=80) or record.provider
+        record.provider_call_id = _clean_text(payload.get("provider_call_id")) or record.provider_call_id
         record.phone_number = phone
         record.raw_phone_number = _clean_text(payload.get("raw_phone_number") or record.raw_phone_number, limit=64)
         record.contact_name = _clean_text(payload.get("contact_name")) or record.contact_name
@@ -277,6 +360,14 @@ def ingest_call_event(*, user, payload):
         record.ring_duration_seconds = max(record.ring_duration_seconds, _positive_int(payload.get("ring_duration_seconds")))
         record.talk_duration_seconds = max(record.talk_duration_seconds, _positive_int(payload.get("talk_duration_seconds")))
         record.total_duration_seconds = max(record.total_duration_seconds, _positive_int(payload.get("total_duration_seconds")))
+        record.recording_url = _clean_text(payload.get("recording_url"), limit=1000) or record.recording_url
+        record.recording_status = _clean_text(payload.get("recording_status"), limit=32) or record.recording_status
+        record.transcript_status = _clean_text(payload.get("transcript_status"), limit=32) or record.transcript_status
+        incoming_transcript = _clean_text(payload.get("transcript"), limit=100000)
+        if incoming_transcript:
+            record.transcript = incoming_transcript
+        if isinstance(payload.get("transcript_speakers"), list):
+            record.transcript_speakers = payload["transcript_speakers"][:1000]
         incoming_notes = _clean_text(payload.get("notes"), limit=20000)
         if incoming_notes:
             record.notes = incoming_notes
@@ -339,9 +430,16 @@ def ingest_call_event(*, user, payload):
         user=user,
         event_type=event_type,
         occurred_at=occurred_at,
-        payload=payload,
+        payload={
+            key: ("[stored on call]" if key in {"transcript", "transcript_speakers"} else value)
+            for key, value in payload.items()
+        },
     )
-    device.last_seen_at = timezone.now()
-    device.app_version = _clean_text(payload.get("app_version") or device.app_version, limit=50)
-    device.save(update_fields=["last_seen_at", "app_version", "updated_at"])
+    if device is not None:
+        device.last_seen_at = timezone.now()
+        device.app_version = _clean_text(
+            payload.get("app_version") or device.app_version,
+            limit=50,
+        )
+        device.save(update_fields=["last_seen_at", "app_version", "updated_at"])
     return {"call": record, "event": event, "event_created": True, "lead_created": lead_created}
