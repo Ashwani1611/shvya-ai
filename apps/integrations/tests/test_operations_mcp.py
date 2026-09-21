@@ -2858,6 +2858,57 @@ class OperationsMCPTests(TestCase):
         self.assertIn("approval", body)
         self.assertIn("does not disclose your password", body)
 
+    def test_read_only_oauth_consent_hides_write_capabilities(self):
+        OperationsPolicy.objects.create(
+            organization=self.organization,
+            organization_admin_enabled=True,
+            allowed_capabilities=[
+                CAP_ORGANIZATION_READ,
+                CAP_LEAD_STAGE_WRITE,
+                CAP_AI_CONFIG_WRITE,
+            ],
+            approval_required_capabilities=[
+                CAP_LEAD_STAGE_WRITE,
+                CAP_AI_CONFIG_WRITE,
+            ],
+        )
+        session = SessionStore()
+        set_authenticated_user(session, self.admin)
+        session.create()
+        self.client.cookies[get_session_cookie_name("dashboard")] = (
+            session.session_key
+        )
+        verifier = "d" * 64
+
+        response = self.client.get(
+            "/operations/oauth/authorize",
+            {
+                "client_id": self.oauth_client.client_id,
+                "redirect_uri": "https://chatgpt.com/aip/callback",
+                "response_type": "code",
+                "code_challenge": pkce_s256(verifier),
+                "code_challenge_method": "S256",
+                "scope": OPERATIONS_READ_SCOPE,
+                "resource": "http://testserver/operations/mcp/",
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        body = response.content.decode("utf-8")
+        self.assertIn("Read SHVYA Operations", body)
+        self.assertNotIn("Request write capability", body)
+        self.assertIn(
+            "Read business &amp; CRM configuration",
+            body,
+        )
+        self.assertNotIn(
+            "Move leads between active stages/pipelines",
+            body,
+        )
+        self.assertNotIn(
+            "Update organization AI profile / Playbook",
+            body,
+        )
+
     def test_oauth_metadata_advertises_revocation_endpoint(self):
         metadata = self.client.get(
             "/operations/.well-known/oauth-authorization-server"
@@ -3344,6 +3395,15 @@ class OperationsMCPTests(TestCase):
             [event.tool_name for event in oauth_events],
             ["oauth_authorize", "oauth_token_issue"],
         )
+        for event in oauth_events:
+            self.assertIn(
+                OPERATIONS_READ_SCOPE,
+                event.change_summary["scopes"],
+            )
+            self.assertNotIn(
+                OPERATIONS_WRITE_SCOPE,
+                event.change_summary["scopes"],
+            )
         audit_blob = json.dumps(
             [
                 {
