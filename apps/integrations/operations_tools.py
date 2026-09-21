@@ -796,7 +796,7 @@ def _incompatible_existing_attribute_value_count(
 ):
     count = 0
     for attributes in (
-        Lead.objects.filter(organization=organization)
+        _tenant_safe_leads(organization)
         .values_list("attributes", flat=True)
         .iterator(chunk_size=500)
     ):
@@ -3001,10 +3001,14 @@ def get_conversion_analysis(*, identity, arguments):
     now = timezone.now()
     current_start = now - timedelta(days=days)
     previous_start = current_start - timedelta(days=days)
+    tenant_lead_ids = _tenant_safe_leads(
+        organization
+    ).values("id")
 
     def window(start_at, end_at):
-        created = Lead.objects.filter(
-            organization=organization,
+        created = _tenant_safe_leads(
+            organization
+        ).filter(
             created_at__gte=start_at,
             created_at__lt=end_at,
         )
@@ -3032,14 +3036,13 @@ def get_conversion_analysis(*, identity, arguments):
 
         qualified_activity = LeadActivity.objects.filter(
             organization=organization,
+            lead_id__in=created.values("id"),
             topic__in=[
                 LeadActivity.Topic.STAGE_CHANGED,
                 LeadActivity.Topic.PIPELINE_CHANGED,
             ],
             created_at__gte=start_at,
             created_at__lt=end_at,
-            lead__created_at__gte=start_at,
-            lead__created_at__lt=end_at,
             new_stage_name__iexact="Qualified",
         )
         qualified_ids = qualified_activity.values_list(
@@ -3080,10 +3083,17 @@ def get_conversion_analysis(*, identity, arguments):
             for row in source_rows
         ]
 
-        messages = WhatsAppMessage.objects.filter(
-            organization=organization,
-            created_at__gte=start_at,
-            created_at__lt=end_at,
+        messages = (
+            WhatsAppMessage.objects.filter(
+                organization=organization,
+                account__organization=organization,
+                created_at__gte=start_at,
+                created_at__lt=end_at,
+            )
+            .filter(
+                Q(lead__isnull=True)
+                | Q(lead_id__in=tenant_lead_ids)
+            )
         )
         outbound = messages.filter(
             direction=WhatsAppMessage.Direction.OUTBOUND,
@@ -3108,6 +3118,14 @@ def get_conversion_analysis(*, identity, arguments):
 
         followups = FollowupExecution.objects.filter(
             organization=organization,
+            lead_id__in=tenant_lead_ids,
+            state__organization=organization,
+            state__lead_id=F("lead_id"),
+            state__sequence__organization=organization,
+            sequence__organization=organization,
+            state__sequence_id=F("sequence_id"),
+            sequence__whatsapp_account__organization=organization,
+            step__sequence_id=F("sequence_id"),
             scheduled_for__gte=start_at,
             scheduled_for__lt=end_at,
         )
@@ -3117,27 +3135,79 @@ def get_conversion_analysis(*, identity, arguments):
         }
         cadence_completed = LeadSequenceState.objects.filter(
             organization=organization,
+            lead_id__in=tenant_lead_ids,
+            sequence__organization=organization,
+            sequence__whatsapp_account__organization=organization,
             completed_at__gte=start_at,
             completed_at__lt=end_at,
         ).count()
 
-        workflow_failures = TriggerRun.objects.filter(
-            rule__organization=organization,
-            status__in=["failed", "error"],
-            created_at__gte=start_at,
-            created_at__lt=end_at,
-        ).count()
-        ai_failures = HostedAutomationJob.objects.filter(
-            organization=organization,
-            status=HostedAutomationJob.Status.FAILED,
-            created_at__gte=start_at,
-            created_at__lt=end_at,
-        ).count()
+        workflow_failures = (
+            TriggerRun.objects.filter(
+                rule__organization=organization,
+                lead_id__in=tenant_lead_ids,
+                event__organization=organization,
+                event__lead_id=F("lead_id"),
+                status__in=["failed", "error"],
+                created_at__gte=start_at,
+                created_at__lt=end_at,
+            )
+            .filter(
+                Q(message__isnull=True)
+                | (
+                    Q(
+                        message__organization=organization,
+                        message__account__organization=organization,
+                    )
+                    & (
+                        Q(message__lead__isnull=True)
+                        | Q(message__lead_id=F("lead_id"))
+                    )
+                )
+            )
+            .count()
+        )
+        ai_failures = (
+            HostedAutomationJob.objects.filter(
+                organization=organization,
+                account__organization=organization,
+                lead_id__in=tenant_lead_ids,
+                source_message__organization=organization,
+                source_message__account__organization=organization,
+                status=HostedAutomationJob.Status.FAILED,
+                created_at__gte=start_at,
+                created_at__lt=end_at,
+            )
+            .filter(
+                account_id=F("source_message__account_id"),
+            )
+            .filter(
+                Q(source_message__lead__isnull=True)
+                | Q(source_message__lead_id=F("lead_id"))
+            )
+            .count()
+        )
 
-        campaign_deliveries = CampaignDelivery.objects.filter(
-            campaign__organization=organization,
-            created_at__gte=start_at,
-            created_at__lt=end_at,
+        campaign_deliveries = (
+            CampaignDelivery.objects.filter(
+                campaign__organization=organization,
+                campaign__account__organization=organization,
+                campaign__pipeline__organization=organization,
+                created_at__gte=start_at,
+                created_at__lt=end_at,
+            )
+            .filter(
+                Q(campaign__stage__isnull=True)
+                | Q(
+                    campaign__stage__pipeline_id=F(
+                        "campaign__pipeline_id"
+                    )
+                )
+            )
+            .filter(
+                Q(lead__isnull=True)
+                | Q(lead_id__in=tenant_lead_ids)
+            )
         )
         campaign_states = {
             row["state"]: row["count"]
@@ -3472,8 +3542,9 @@ def get_conversion_analysis(*, identity, arguments):
             )
 
     stale_cutoff = now - timedelta(days=7)
-    stale_leads = Lead.objects.filter(
-        organization=organization,
+    stale_leads = _tenant_safe_leads(
+        organization
+    ).filter(
         stage_entered_at__lt=stale_cutoff,
     ).count()
 

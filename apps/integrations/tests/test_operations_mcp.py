@@ -4493,6 +4493,180 @@ class OperationsMCPTests(TestCase):
             )["lead_share"],
         )
 
+    def test_conversion_analysis_ignores_corrupt_tenant_relations(self):
+        OperationsPolicy.objects.create(
+            organization=self.organization,
+            organization_admin_enabled=True,
+            allowed_capabilities=[
+                CAP_ORGANIZATION_READ,
+                CAP_DIAGNOSTICS_READ,
+            ],
+        )
+        corrupt_lead = Lead.objects.create(
+            organization=self.organization,
+            pipeline=self.other_lead.pipeline,
+            stage=self.other_lead.stage,
+            name="Corrupt Conversion Lead",
+            phone="+919999999994",
+            lead_source="meta_ads",
+        )
+        own_account = WhatsAppAccount.objects.create(
+            organization=self.organization,
+            connection_type=WhatsAppAccount.ConnectionType.API,
+            business_name="Conversion Safe Sender",
+            display_phone_number="+919000000070",
+            status=WhatsAppAccount.Status.CONNECTED,
+            is_active=True,
+        )
+        foreign_account = WhatsAppAccount.objects.create(
+            organization=self.other_organization,
+            connection_type=WhatsAppAccount.ConnectionType.API,
+            business_name="Foreign Conversion Sender",
+            display_phone_number="+919000000071",
+            status=WhatsAppAccount.Status.CONNECTED,
+            is_active=True,
+        )
+        WhatsAppMessage.objects.create(
+            organization=self.organization,
+            account=own_account,
+            lead=self.lead,
+            external_id="conversion-valid-outbound",
+            direction=WhatsAppMessage.Direction.OUTBOUND,
+            status=WhatsAppMessage.Status.SENT,
+            message_type=WhatsAppMessage.MessageType.TEXT,
+            from_number="+919000000070",
+            to_number=self.lead.phone,
+            body="valid outbound",
+        )
+        WhatsAppMessage.objects.create(
+            organization=self.organization,
+            account=foreign_account,
+            lead=self.lead,
+            external_id="conversion-corrupt-outbound",
+            direction=WhatsAppMessage.Direction.OUTBOUND,
+            status=WhatsAppMessage.Status.FAILED,
+            message_type=WhatsAppMessage.MessageType.TEXT,
+            from_number="+919000000071",
+            to_number=self.lead.phone,
+            body="corrupt outbound",
+        )
+        source = WhatsAppMessage.objects.create(
+            organization=self.organization,
+            account=own_account,
+            lead=self.lead,
+            external_id="conversion-hosted-source",
+            direction=WhatsAppMessage.Direction.INBOUND,
+            status=WhatsAppMessage.Status.RECEIVED,
+            message_type=WhatsAppMessage.MessageType.TEXT,
+            from_number=self.lead.phone,
+            to_number="+919000000070",
+            body="source",
+        )
+        HostedAutomationJob.objects.create(
+            organization=self.organization,
+            account=foreign_account,
+            lead=self.lead,
+            source_message=source,
+            available_at=timezone.now(),
+            status=HostedAutomationJob.Status.FAILED,
+            result={"reason": "foreign_account_relation"},
+            error="corrupt hosted failure",
+        )
+
+        workflow = SmartTrigger.objects.create(
+            organization=self.organization,
+            name="Conversion Relation Guard Workflow",
+            enabled=True,
+            position=1,
+            trigger_type="keyword",
+            conditions={
+                "scopes": [
+                    {
+                        "pipeline": str(self.pipeline.id),
+                        "stages": [str(self.new_stage.id)],
+                    }
+                ],
+                "attributes": [],
+                "keywords": ["hello"],
+            },
+            action_type="ai",
+            action={"enabled": True},
+            fingerprint="c" * 64,
+            created_by=self.admin,
+        )
+        foreign_event = TriggerEvent.objects.create(
+            organization=self.other_organization,
+            lead=self.other_lead,
+            kind="lead_updated",
+            key="foreign-conversion-event",
+            payload={},
+        )
+        TriggerRun.objects.create(
+            rule=workflow,
+            event=foreign_event,
+            lead=self.lead,
+            action_type="ai",
+            action={"enabled": True},
+            status="failed",
+            detail="corrupt conversion workflow failure",
+            due_at=timezone.now(),
+            finished_at=timezone.now(),
+        )
+
+        bearer = self._token(
+            actor=self.admin,
+            role=ROLE_ORGANIZATION_ADMIN,
+            organization=self.organization,
+            scopes=[OPERATIONS_READ_SCOPE],
+        )
+        result = self._result(
+            self._call(
+                bearer,
+                "get_conversion_analysis",
+                {"days": 30},
+            )
+        )
+        self.assertFalse(result["isError"])
+        current = result["structuredContent"]["comparison"][
+            "current_period"
+        ]
+        self.assertEqual(current["lead_volume"], 1)
+        self.assertEqual(
+            current["messaging"]["outbound_total"],
+            1,
+        )
+        self.assertEqual(
+            current["messaging"]["successful_outbound"],
+            1,
+        )
+        self.assertEqual(
+            current["messaging"]["failed_outbound"],
+            0,
+        )
+        self.assertEqual(
+            current["failures"]["workflow_failures"],
+            0,
+        )
+        self.assertEqual(
+            current["failures"]["hosted_ai_failures"],
+            0,
+        )
+        source_names = {
+            row["source"]
+            for row in current["source_mix"]
+        }
+        self.assertNotIn("meta_ads", source_names)
+        payload = json.dumps(result["structuredContent"])
+        self.assertNotIn(str(corrupt_lead.id), payload)
+        self.assertNotIn(
+            self.other_organization.name,
+            payload,
+        )
+        self.assertNotIn(
+            self.other_lead.pipeline.name,
+            payload,
+        )
+
     def test_conversion_analysis_uses_same_created_lead_cohort_for_rate(self):
         OperationsPolicy.objects.create(
             organization=self.organization,
