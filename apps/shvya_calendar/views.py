@@ -194,35 +194,54 @@ def calendar_index(request):
 
     if request.method == "POST":
         name = (request.POST.get("name") or "New Booking Page").strip()[:120]
-        page = CalendarPage(
-            organization=user.organization,
-            created_by=user,
-            updated_by=user,
-            host=user,
-            name=name,
-            slug=_unique_slug(user.organization, name),
-            timezone=user.organization.timezone or "Asia/Kolkata",
-            intro_title=name,
-        )
-        pipeline = (
-            get_user_pipelines(user)
-            .filter(organization=user.organization, is_active=True)
-            .order_by("name")
-            .first()
-        )
-        if pipeline:
-            page.pipeline = pipeline
-            page.stage = (
-                Stage.objects
-                .filter(pipeline=pipeline, is_active=True)
-                .order_by("display_order")
-                .first()
+        org_timezone = user.organization.timezone or "Asia/Kolkata"
+        try:
+            ZoneInfo(org_timezone)
+        except ZoneInfoNotFoundError:
+            org_timezone = "Asia/Kolkata"
+
+        try:
+            with transaction.atomic():
+                page = CalendarPage(
+                    organization=user.organization,
+                    created_by=user,
+                    updated_by=user,
+                    host=user,
+                    name=name,
+                    slug=_unique_slug(user.organization, name),
+                    timezone=org_timezone,
+                    intro_title=name,
+                )
+                pipeline = (
+                    get_user_pipelines(user)
+                    .filter(organization=user.organization, is_active=True)
+                    .order_by("name")
+                    .first()
+                )
+                if pipeline:
+                    page.pipeline = pipeline
+                    page.stage = (
+                        Stage.objects
+                        .filter(pipeline=pipeline, is_active=True)
+                        .order_by("display_order")
+                        .first()
+                    )
+                page.full_clean()
+                page.save()
+                CalendarReminderSequence.objects.get_or_create(page=page)
+            messages.success(request, "SHVYA Calendar page created.")
+            return redirect("shvya_calendar:editor", page_id=page.id)
+        except ValidationError as exc:
+            messages.error(request, _validation_text(exc))
+        except Exception:
+            logger.exception(
+                "Unable to create SHVYA Calendar page",
+                extra={"organization_id": str(user.organization_id)},
             )
-        page.full_clean()
-        page.save()
-        CalendarReminderSequence.objects.get_or_create(page=page)
-        messages.success(request, "SHVYA Calendar page created.")
-        return redirect("shvya_calendar:editor", page_id=page.id)
+            messages.error(
+                request,
+                "The Calendar page could not be created. Please try again.",
+            )
 
     pages = (
         CalendarPage.objects
@@ -852,7 +871,20 @@ def google_callback(request):
     expected = crm_session.pop("shvya_calendar_google_state", "")
     page_id = crm_session.pop("shvya_calendar_google_page", "")
     crm_session.save()
-    page = _page_for_user(user, page_id)
+    if not page_id:
+        messages.error(
+            request,
+            "Google Calendar connection session expired. Start the connection again.",
+        )
+        return redirect("shvya_calendar:index")
+    try:
+        page = _page_for_user(user, page_id)
+    except (Http404, ValidationError):
+        messages.error(
+            request,
+            "The Calendar page for this Google connection is no longer available.",
+        )
+        return redirect("shvya_calendar:index")
     if not expected or request.GET.get("state") != expected:
         messages.error(request, "Google Calendar connection state expired. Try again.")
         return redirect("shvya_calendar:editor", page_id=page.id)
@@ -874,8 +906,20 @@ def google_callback(request):
             userinfo=userinfo,
         )
         messages.success(request, "Google Calendar connected.")
-    except (GoogleCalendarError, ValidationError) as exc:
+    except (GoogleCalendarError, ValidationError, ValueError, TypeError) as exc:
         messages.error(request, _validation_text(exc))
+    except Exception:
+        logger.exception(
+            "Unexpected Google Calendar OAuth callback failure",
+            extra={
+                "calendar_page_id": str(page.id),
+                "organization_id": str(user.organization_id),
+            },
+        )
+        messages.error(
+            request,
+            "Google Calendar could not be connected right now. Please try again.",
+        )
     return redirect(
         f"{reverse('shvya_calendar:editor', kwargs={'page_id': page.id})}?tab=scheduling"
     )
@@ -1114,6 +1158,31 @@ def public_submit(request, public_id, slug):
             },
             status=400,
         )
+    except Exception:
+        logger.exception(
+            "Unexpected SHVYA Calendar public submission failure",
+            extra={
+                "calendar_page_id": str(page.id),
+                "organization_id": str(page.organization_id),
+            },
+        )
+        return render(
+            request,
+            "shvya_calendar/public.html",
+            {
+                "page": page,
+                "config": version.snapshot,
+                "version": version,
+                "preview": False,
+                "form_error": (
+                    "We couldn't process your request right now. "
+                    "Please try again in a moment."
+                ),
+                "posted": request.POST,
+                "form_token": _public_form_token(page, version),
+            },
+            status=503,
+        )
 
     if submission.status == CalendarSubmission.Status.DUPLICATE_BLOCKED:
         return render(
@@ -1176,12 +1245,25 @@ def public_schedule(request, public_id, slug, submission_id):
             )
         except (ValidationError, GoogleCalendarError) as exc:
             error = _validation_text(exc)
+        except Exception:
+            logger.exception(
+                "Unexpected SHVYA Calendar booking failure",
+                extra={
+                    "calendar_page_id": str(page.id),
+                    "submission_id": str(submission.id),
+                    "organization_id": str(page.organization_id),
+                },
+            )
+            error = (
+                "We couldn't confirm that slot right now. "
+                "Your lead details are safe; please choose a time again."
+            )
 
     try:
         slot_days = upcoming_slot_days(page)
-    except GoogleCalendarError as exc:
+    except (GoogleCalendarError, ValidationError) as exc:
         slot_days = []
-        error = str(exc)
+        error = _validation_text(exc)
 
     return render(
         request,
@@ -1262,6 +1344,19 @@ def public_reschedule(request, booking_id, reschedule_token):
             )
         except (ValidationError, GoogleCalendarError) as exc:
             error = _validation_text(exc)
+        except Exception:
+            logger.exception(
+                "Unexpected SHVYA Calendar reschedule failure",
+                extra={
+                    "booking_id": str(booking.id),
+                    "calendar_page_id": str(page.id),
+                    "organization_id": str(page.organization_id),
+                },
+            )
+            error = (
+                "We couldn't reschedule this booking right now. "
+                "Your current booking is unchanged."
+            )
 
     try:
         slot_days = upcoming_slot_days(page)
@@ -1318,7 +1413,16 @@ def public_cancel(request, booking_id, cancel_token):
         try:
             cancel_booking_event(booking)
         except GoogleCalendarError:
-            pass
+            logger.warning(
+                "Google Calendar cancellation sync failed for booking %s",
+                booking.id,
+                exc_info=True,
+            )
+        except Exception:
+            logger.exception(
+                "Unexpected Google cancellation failure for booking %s",
+                booking.id,
+            )
     return render(
         request,
         "shvya_calendar/confirmation.html",
