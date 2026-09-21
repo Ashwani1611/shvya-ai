@@ -770,22 +770,29 @@ def _tool_requires_write_scope(item):
 
 
 def _tools_for_identity(identity):
-    """Return only tools the authenticated SHVYA identity can actually invoke."""
+    """Return only tools this live policy + consent-bound OAuth grant can invoke."""
 
     has_write_scope = OPERATIONS_WRITE_SCOPE in identity.scopes
+    granted = set(identity.granted_capabilities)
 
     if identity.role == ROLE_SUPERADMIN:
-        return [
-            item
-            for item in TOOL_DEFINITIONS
-            if not _tool_requires_write_scope(item) or has_write_scope
-        ]
+        visible = []
+        for item in TOOL_DEFINITIONS:
+            if _tool_requires_write_scope(item) and not has_write_scope:
+                continue
+            capability = TOOL_CAPABILITIES.get(item["name"])
+            if capability is None or capability in granted:
+                visible.append(item)
+        return visible
 
     organization = identity.organization
-    capabilities = effective_capabilities(
-        role=identity.role,
-        organization=organization,
+    live_capabilities = set(
+        effective_capabilities(
+            role=identity.role,
+            organization=organization,
+        )
     )
+    effective = live_capabilities & granted
     visible = []
     for item in TOOL_DEFINITIONS:
         name = item["name"]
@@ -802,7 +809,7 @@ def _tools_for_identity(identity):
         if _tool_requires_write_scope(item) and not has_write_scope:
             continue
         capability = TOOL_CAPABILITIES.get(name)
-        if capability is None or capability in capabilities:
+        if capability is None or capability in effective:
             visible.append(item)
     return visible
 
