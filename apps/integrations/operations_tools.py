@@ -939,14 +939,18 @@ def _knowledge_health(*, organization, limit=50):
     }
 
 
-def _safe_full_config_text(value):
+def _safe_full_config_text(value, *, max_chars):
     raw = str(value or "")
-    safe = sanitize_text(
+    safe_full = sanitize_text(
         raw,
         limit=max(len(raw) + 32, 800),
         redact_long=False,
     )
-    return safe, safe != raw
+    return (
+        safe_full[:max_chars],
+        safe_full != raw,
+        len(raw) > max_chars,
+    )
 
 
 def get_ai_configuration(*, identity, arguments):
@@ -979,14 +983,29 @@ def get_ai_configuration(*, identity, arguments):
             audit_summary={"configured": False},
         )
 
-    about, about_redacted = _safe_full_config_text(
-        info.about
+    (
+        about,
+        about_redacted,
+        about_truncated,
+    ) = _safe_full_config_text(
+        info.about,
+        max_chars=12000,
     )
-    languages, languages_redacted = (
-        _safe_full_config_text(info.bot_languages)
+    (
+        languages,
+        languages_redacted,
+        languages_truncated,
+    ) = _safe_full_config_text(
+        info.bot_languages,
+        max_chars=500,
     )
-    playbook, playbook_redacted = _safe_full_config_text(
-        info.ai_playbook
+    (
+        playbook,
+        playbook_redacted,
+        playbook_truncated,
+    ) = _safe_full_config_text(
+        info.ai_playbook,
+        max_chars=50000,
     )
     compiled = compile_qualification_requirements(
         qualification_questions(
@@ -999,14 +1018,17 @@ def get_ai_configuration(*, identity, arguments):
             "organization_id": str(organization.id),
             "about": about,
             "about_length": len(str(info.about or "")),
+            "about_truncated": about_truncated,
             "bot_languages": languages,
             "bot_languages_length": len(
                 str(info.bot_languages or "")
             ),
+            "bot_languages_truncated": languages_truncated,
             "ai_playbook": playbook,
             "ai_playbook_length": len(
                 str(info.ai_playbook or "")
             ),
+            "ai_playbook_truncated": playbook_truncated,
             "ai_enabled": bool(info.ai_enabled),
             "bump_up_enabled": bool(
                 info.bump_up_enabled
