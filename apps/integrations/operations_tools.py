@@ -531,14 +531,36 @@ def select_organization_context(*, identity, arguments):
         raise OperationsToolError("Active organization not found.")
 
     now = timezone.now()
+    previous_session = None
     with transaction.atomic():
-        token = identity.token.__class__.objects.select_for_update().get(pk=identity.token.pk)
+        token = (
+            identity.token.__class__.objects.select_for_update()
+            .get(pk=identity.token.pk)
+        )
+        previous_session = (
+            OperationsSupportSession.objects.select_for_update()
+            .select_related("organization")
+            .filter(
+                token=token,
+                ended_at__isnull=True,
+            )
+            .order_by("-started_at")
+            .first()
+        )
         OperationsSupportSession.objects.filter(
             token=token,
             ended_at__isnull=True,
-        ).update(ended_at=now, last_seen_at=now)
+        ).update(
+            ended_at=now,
+            last_seen_at=now,
+        )
         token.active_organization = organization
-        token.save(update_fields=["active_organization", "updated_at"])
+        token.save(
+            update_fields=[
+                "active_organization",
+                "updated_at",
+            ]
+        )
         session = OperationsSupportSession.objects.create(
             token=token,
             actor=identity.actor,
@@ -557,7 +579,19 @@ def select_organization_context(*, identity, arguments):
         target_type="organization",
         target_id=str(organization.id),
         reason=reason,
-        audit_summary={"support_context": "started"},
+        audit_summary={
+            "support_context": "started",
+            "previous_support_session_id": (
+                str(previous_session.id)
+                if previous_session is not None
+                else None
+            ),
+            "previous_organization_id": (
+                str(previous_session.organization_id)
+                if previous_session is not None
+                else None
+            ),
+        },
     )
 
 
