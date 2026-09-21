@@ -22,6 +22,7 @@ from apps.integrations.operations_approval import approval_fingerprint
 from apps.integrations.models import (
     OperationsApprovalUse,
     OperationsAuditEvent,
+    OperationsOAuthAuthorizationCode,
     OperationsOAuthClient,
     OperationsOAuthToken,
     OperationsPolicy,
@@ -2411,6 +2412,178 @@ class OperationsMCPTests(TestCase):
             huge_token_request["Cache-Control"],
             "no-store",
         )
+
+    def test_oauth_authorization_code_rolls_back_if_security_audit_fails(self):
+        OperationsPolicy.objects.create(
+            organization=self.organization,
+            organization_admin_enabled=True,
+            allowed_capabilities=[CAP_ORGANIZATION_READ],
+        )
+        session = SessionStore()
+        set_authenticated_user(session, self.admin)
+        session.create()
+        self.client.cookies[get_session_cookie_name("dashboard")] = (
+            session.session_key
+        )
+        verifier = "q" * 64
+
+        with patch(
+            "apps.integrations.views.operations_mcp._record_oauth_security_event",
+            side_effect=RuntimeError("oauth audit unavailable"),
+        ):
+            with self.assertRaises(RuntimeError):
+                self.client.post(
+                    "/operations/oauth/authorize",
+                    data={
+                        "client_id": self.oauth_client.client_id,
+                        "redirect_uri": "https://chatgpt.com/aip/callback",
+                        "response_type": "code",
+                        "code_challenge": pkce_s256(verifier),
+                        "code_challenge_method": "S256",
+                        "scope": OPERATIONS_READ_SCOPE,
+                        "resource": "http://testserver/operations/mcp/",
+                        "actor_mode": ROLE_ORGANIZATION_ADMIN,
+                    },
+                )
+
+        self.assertFalse(
+            OperationsOAuthAuthorizationCode.objects.filter(
+                actor=self.admin,
+                client=self.oauth_client,
+            ).exists()
+        )
+
+    def test_oauth_token_issue_rolls_back_if_security_audit_fails(self):
+        OperationsPolicy.objects.create(
+            organization=self.organization,
+            organization_admin_enabled=True,
+            allowed_capabilities=[CAP_ORGANIZATION_READ],
+        )
+        session = SessionStore()
+        set_authenticated_user(session, self.admin)
+        session.create()
+        self.client.cookies[get_session_cookie_name("dashboard")] = (
+            session.session_key
+        )
+        verifier = "r" * 64
+        authorize = self.client.post(
+            "/operations/oauth/authorize",
+            data={
+                "client_id": self.oauth_client.client_id,
+                "redirect_uri": "https://chatgpt.com/aip/callback",
+                "response_type": "code",
+                "code_challenge": pkce_s256(verifier),
+                "code_challenge_method": "S256",
+                "scope": OPERATIONS_READ_SCOPE,
+                "resource": "http://testserver/operations/mcp/",
+                "actor_mode": ROLE_ORGANIZATION_ADMIN,
+            },
+        )
+        self.assertEqual(authorize.status_code, 302)
+        code = parse_qs(
+            urlparse(authorize["Location"]).query
+        )["code"][0]
+        code_row = OperationsOAuthAuthorizationCode.objects.get(
+            actor=self.admin,
+            client=self.oauth_client,
+        )
+
+        with patch(
+            "apps.integrations.views.operations_mcp._record_oauth_security_event",
+            side_effect=RuntimeError("oauth token audit unavailable"),
+        ):
+            with self.assertRaises(RuntimeError):
+                self.client.post(
+                    "/operations/oauth/token",
+                    data={
+                        "grant_type": "authorization_code",
+                        "client_id": self.oauth_client.client_id,
+                        "code": code,
+                        "redirect_uri": "https://chatgpt.com/aip/callback",
+                        "code_verifier": verifier,
+                        "resource": "http://testserver/operations/mcp/",
+                    },
+                )
+
+        self.assertFalse(
+            OperationsOAuthToken.objects.filter(
+                actor=self.admin,
+                client=self.oauth_client,
+            ).exists()
+        )
+        code_row.refresh_from_db()
+        self.assertIsNone(code_row.used_at)
+
+        success = self.client.post(
+            "/operations/oauth/token",
+            data={
+                "grant_type": "authorization_code",
+                "client_id": self.oauth_client.client_id,
+                "code": code,
+                "redirect_uri": "https://chatgpt.com/aip/callback",
+                "code_verifier": verifier,
+                "resource": "http://testserver/operations/mcp/",
+            },
+        )
+        self.assertEqual(success.status_code, 200)
+
+    def test_oauth_refresh_rotation_rolls_back_if_security_audit_fails(self):
+        OperationsPolicy.objects.create(
+            organization=self.organization,
+            organization_admin_enabled=True,
+            allowed_capabilities=[CAP_ORGANIZATION_READ],
+        )
+        bearer = self._token(
+            actor=self.admin,
+            role=ROLE_ORGANIZATION_ADMIN,
+            organization=self.organization,
+            scopes=[OPERATIONS_READ_SCOPE],
+        )
+        token = OperationsOAuthToken.objects.get(actor=self.admin)
+        before_access_hash = token.access_token_hash
+        before_refresh_hash = token.refresh_token_hash
+        before_access_expiry = token.expires_at
+        before_refresh_expiry = token.refresh_expires_at
+
+        with patch(
+            "apps.integrations.views.operations_mcp._record_oauth_security_event",
+            side_effect=RuntimeError("oauth refresh audit unavailable"),
+        ):
+            with self.assertRaises(RuntimeError):
+                self.client.post(
+                    "/operations/oauth/token",
+                    data={
+                        "grant_type": "refresh_token",
+                        "client_id": self.oauth_client.client_id,
+                        "refresh_token": "test-refresh",
+                        "resource": "http://testserver/operations/mcp/",
+                    },
+                )
+
+        token.refresh_from_db()
+        self.assertEqual(token.access_token_hash, before_access_hash)
+        self.assertEqual(token.refresh_token_hash, before_refresh_hash)
+        self.assertEqual(token.expires_at, before_access_expiry)
+        self.assertEqual(
+            token.refresh_expires_at,
+            before_refresh_expiry,
+        )
+
+        old_access = self._result(
+            self._call(bearer, "get_operations_context")
+        )
+        self.assertFalse(old_access["isError"])
+
+        success = self.client.post(
+            "/operations/oauth/token",
+            data={
+                "grant_type": "refresh_token",
+                "client_id": self.oauth_client.client_id,
+                "refresh_token": "test-refresh",
+                "resource": "http://testserver/operations/mcp/",
+            },
+        )
+        self.assertEqual(success.status_code, 200)
 
     def test_operations_oauth_enforces_strong_pkce_and_no_cache(self):
         OperationsPolicy.objects.create(
