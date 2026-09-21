@@ -352,6 +352,32 @@ def shvya_api_view(request):
     api_url = request.build_absolute_uri(reverse("lead-upsert"))
     list_api_url = request.build_absolute_uri(reverse("lead-list"))
 
+    from django.utils import timezone
+    from apps.integrations.operations_models import OperationsSupportSession
+    from apps.integrations.operations_policy import CAPABILITY_LABELS, policy_for
+
+    operations_policy = policy_for(organization)
+    operations_capabilities = [
+        {
+            "key": key,
+            "label": CAPABILITY_LABELS.get(key, key),
+            "approval_required": key
+            in (operations_policy.approval_required_capabilities or []),
+        }
+        for key in (operations_policy.allowed_capabilities or [])
+        if key in CAPABILITY_LABELS
+    ]
+    active_operations_support = (
+        OperationsSupportSession.objects.filter(
+            organization=organization,
+            ended_at__isnull=True,
+            token__revoked_at__isnull=True,
+            token__expires_at__gt=timezone.now(),
+        )
+        .select_related("actor")
+        .order_by("-last_seen_at")
+    )
+
     return render(
         request,
         "integrations/shvya_api.html",
@@ -364,6 +390,12 @@ def shvya_api_view(request):
             "diagnostic_mcp_url": request.build_absolute_uri(
                 reverse("shvya-diagnostic-mcp")
             ),
+            "operations_mcp_url": request.build_absolute_uri(
+                reverse("shvya-operations-mcp")
+            ),
+            "operations_policy": operations_policy,
+            "operations_capabilities": operations_capabilities,
+            "active_operations_support": active_operations_support,
         },
     )
 
