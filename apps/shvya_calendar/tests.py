@@ -15,6 +15,7 @@ from .models import (
     CalendarPage,
     CalendarReminderSequence,
     CalendarReminderStep,
+    CalendarSubmission,
 )
 from .services import (
     create_submission_and_lead,
@@ -194,6 +195,87 @@ class ShvyaCalendarServiceTests(TestCase):
         self.assertEqual(lead.email, "new@example.com")
         self.assertEqual(lead.attributes["budget"], "50000")
         self.assertEqual(lead.lead_source, "system")
+
+    def test_conflicting_phone_and_email_matches_are_rejected(self):
+        phone_lead = Lead.objects.create(
+            organization=self.organization,
+            pipeline=self.pipeline,
+            stage=self.stage,
+            name="Phone Lead",
+            phone="+917000000001",
+            email="phone@example.com",
+        )
+        Lead.objects.create(
+            organization=self.organization,
+            pipeline=self.pipeline,
+            stage=self.stage,
+            name="Email Lead",
+            phone="+917000000002",
+            email="shared@example.com",
+        )
+        request = self._request(
+            {
+                "name": "Conflicting Person",
+                "mobile": phone_lead.phone,
+                "consent": "on",
+                "f_email": "shared@example.com",
+            }
+        )
+        submitted, normalized = validate_public_submission(
+            page=self.page,
+            version=self.version,
+            post=request.POST,
+            files=request.FILES,
+        )
+        with self.assertRaises(ValidationError):
+            create_submission_and_lead(
+                page=self.page,
+                version=self.version,
+                submitted=submitted,
+                normalized=normalized,
+                request=request,
+                files=request.FILES,
+            )
+
+    def test_calendar_data_is_removed_when_crm_lead_is_deleted(self):
+        request = self._request(
+            {
+                "name": "Delete Me",
+                "mobile": "+917000000003",
+                "consent": "on",
+            }
+        )
+        submitted, normalized = validate_public_submission(
+            page=self.page,
+            version=self.version,
+            post=request.POST,
+            files=request.FILES,
+        )
+        submission, lead, _created = create_submission_and_lead(
+            page=self.page,
+            version=self.version,
+            submitted=submitted,
+            normalized=normalized,
+            request=request,
+            files=request.FILES,
+        )
+        booking = CalendarBooking.objects.create(
+            organization=self.organization,
+            page=self.page,
+            submission=submission,
+            lead=lead,
+            host=self.user,
+            start_at=timezone.now() + timedelta(days=1),
+            end_at=timezone.now() + timedelta(days=1, minutes=30),
+            timezone="Asia/Kolkata",
+        )
+        submission_id = submission.id
+        booking_id = booking.id
+
+        lead.delete()
+
+        self.assertFalse(CalendarSubmission.objects.filter(pk=submission_id).exists())
+        self.assertFalse(CalendarBooking.objects.filter(pk=booking_id).exists())
 
     def test_cross_organization_pipeline_is_rejected(self):
         other_org = Organization.objects.create(name="Other Org")
