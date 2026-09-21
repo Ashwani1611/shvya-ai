@@ -688,8 +688,9 @@ def revoke_token(*, raw_token: str):
     if token is None:
         return None
 
-    revoke_token_record(token=token)
-    return token
+    return revoke_token_record(
+        token=token
+    )
 
 
 def authenticate_bearer(raw_bearer: str) -> OperationsIdentity:
