@@ -69,6 +69,7 @@
             <label class="sc-field sc-field-wide"><span>Logo URL</span><input type="url" name="logo_url" value="{{ page.logo_url }}" placeholder="https://…"><small>Optional brand mark for the public page.</small></label>
             <label class="sc-field"><span>Heading</span><input name="intro_title" maxlength="120" value="{{ page.intro_title }}" placeholder="Book a product demo"></label>
             <label class="sc-field"><span>Description</span><textarea name="intro_description" rows="3" placeholder="A short reason to book.">{{ page.intro_description }}</textarea></label>
+            <label class="sc-field sc-field-wide"><span>Highlights</span><textarea name="intro_highlights" rows="4" placeholder="AI-powered follow-up&#10;30-minute product walkthrough&#10;Questions answered live">{% for item in page.intro_highlights %}{{ item }}{% if not forloop.last %}&#10;{% endif %}{% endfor %}</textarea><small>One public-page highlight per line.</small></label>
           </div>
         </div>
       </details>
@@ -323,6 +324,7 @@
         <label class="sc-field"><span>Map to CRM attribute *</span><select id="sc-new-field-map"><option value="submission" data-type="text">Submission only</option><option value="email" data-type="email">Email</option>{% for attribute in attributes %}<option value="attr:{{ attribute.key }}" data-type="{{ attribute.field_type }}">{{ attribute.name }}</option>{% endfor %}</select><small>Only this published mapping can write to CRM.</small></label>
         <label class="sc-field"><span>Field type</span><select id="sc-new-field-type"><option value="text">Text</option><option value="textarea">Long text</option><option value="email">Email</option><option value="numeric">Number</option><option value="url">URL</option><option value="date">Date</option><option value="datetime">Date & time</option><option value="option">Option picker</option><option value="file">File upload</option></select></label>
         <label class="sc-field"><span>Placeholder</span><input id="sc-new-field-placeholder" maxlength="100" placeholder="e.g. Enter your budget"></label>
+        <label class="sc-field sc-field-options" hidden><span>Options</span><textarea id="sc-new-field-options" rows="5" placeholder="Starter&#10;Growth&#10;Enterprise"></textarea><small>One option per line. Used for submission-only option fields; CRM option attributes use their existing CRM choices.</small></label>
         <label class="sc-toggle-row"><span><strong>Required field</strong><small>Leads must fill this before continuing.</small></span><input type="checkbox" id="sc-new-field-required"></label>
       </div>
       <footer><button class="sc-button" type="button" data-close-drawer>Cancel</button><button class="sc-button sc-button-primary" type="button" id="sc-add-field-confirm"><i class="ti ti-check"></i> Add field</button></footer>
