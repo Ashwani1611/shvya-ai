@@ -6,7 +6,7 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from apps.accounts.models import User
-from apps.crm.models import Lead, Pipeline, Stage
+from apps.crm.models import Lead, Pipeline
 from apps.organizations.models import Organization
 from apps.telephony.models import (
     CallDevice,
@@ -33,16 +33,13 @@ class CallIntelligenceTests(TestCase):
             organization=self.other_org,
             password="secret123",
         )
-        self.pipeline = Pipeline.objects.create(
+        self.pipeline = Pipeline.objects.get(
             organization=self.org,
             name="Leads",
-            country_code="+91",
         )
-        self.stage = Stage.objects.create(
-            pipeline=self.pipeline,
-            name="New Lead",
-            display_order=1,
-        )
+        self.pipeline.country_code = "+91"
+        self.pipeline.save(update_fields=["country_code", "updated_at"])
+        self.stage = self.pipeline.stages.get(name="New Lead")
         CallIntelligenceSettings.objects.create(
             organization=self.org,
             default_pipeline=self.pipeline,
