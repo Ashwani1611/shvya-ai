@@ -491,6 +491,19 @@ class ConnectHubAuthorizationTests(TestCase):
             request_fingerprint="a" * 64,
             change_summary={"result": "safe"},
         )
+        OperationsAuditEvent.objects.create(
+            actor=self.admin,
+            role="SHVYA_SUPERADMIN",
+            organization=self.organization,
+            tool_name="select_organization_context",
+            capability=CAP_ORGANIZATION_READ,
+            target_type="organization",
+            target_id=str(self.organization.id),
+            reason="Internal support-only reason: security investigation",
+            outcome=OperationsAuditEvent.Outcome.SUCCESS,
+            request_fingerprint="c" * 64,
+            change_summary={"support_context": "started"},
+        )
         other_org = Organization.objects.create(name="Other Audit Org")
         other_admin = User.objects.create_user(
             email="other-audit-admin@example.com",
@@ -523,6 +536,11 @@ class ConnectHubAuthorizationTests(TestCase):
         self.assertIn(own.tool_name, body)
         self.assertIn(str(own.id), body)
         self.assertIn("Review organization setup", body)
+        self.assertIn(
+            "SHVYA Support context started for this organization.",
+            body,
+        )
+        self.assertNotIn("Internal support-only reason", body)
         self.assertNotIn(other.tool_name, body)
         self.assertNotIn(str(other.id), body)
         self.assertNotIn("Foreign tenant activity", body)
