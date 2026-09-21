@@ -31,15 +31,15 @@ _SECRET_KEY_PATTERN = re.compile(
     r"private[_-]?key|client[_-]?secret)",
     re.IGNORECASE,
 )
-_BEARER_PATTERN = re.compile(r"(?i)\\bBearer\\s+[A-Za-z0-9._~+/=-]{12,}")
-_SHVYA_KEY_PATTERN = re.compile(r"\\bshvya_[A-Za-z0-9_-]{12,}")
-_LONG_SECRET_PATTERN = re.compile(r"\\b[A-Za-z0-9_-]{40,}\\b")
+_BEARER_PATTERN = re.compile(r"(?i)\bBearer\s+[A-Za-z0-9._~+/=-]{12,}")
+_SHVYA_KEY_PATTERN = re.compile(r"\bshvya_[A-Za-z0-9_-]{12,}")
+_LONG_SECRET_PATTERN = re.compile(r"\b[A-Za-z0-9_-]{40,}\b")
 _INLINE_SECRET_PATTERN = re.compile(
-    r"(?i)\\b(api[_-]?key|access[_-]?token|refresh[_-]?token|password|"
-    r"client[_-]?secret|smtp[_-]?password|database[_-]?password)\\s*[:=]\\s*[^\\s,;]+"
+    r"(?i)\b(api[_-]?key|access[_-]?token|refresh[_-]?token|password|"
+    r"client[_-]?secret|smtp[_-]?password|database[_-]?password)\s*[:=]\s*[^\s,;]+"
 )
 _DATABASE_URL_PATTERN = re.compile(
-    r"(?i)\\b(?:postgres(?:ql)?|mysql|mongodb(?:\\+srv)?|redis)://[^\\s]+"
+    r"(?i)\b(?:postgres(?:ql)?|mysql|mongodb(?:\+srv)?|redis)://[^\s]+"
 )
 _PRIVATE_KEY_PATTERN = re.compile(
     r"-----BEGIN(?: [A-Z0-9]+)? PRIVATE KEY-----.*?-----END(?: [A-Z0-9]+)? PRIVATE KEY-----",
@@ -64,7 +64,7 @@ def sanitize_text(value, *, limit: int = 800, redact_long: bool = True) -> str:
     text = str(value or "")
     text = _BEARER_PATTERN.sub("Bearer [REDACTED]", text)
     text = _SHVYA_KEY_PATTERN.sub("shvya_[REDACTED]", text)
-    text = _INLINE_SECRET_PATTERN.sub(r"\\1=[REDACTED]", text)
+    text = _INLINE_SECRET_PATTERN.sub(r"\1=[REDACTED]", text)
     text = _DATABASE_URL_PATTERN.sub("[REDACTED_DATABASE_URL]", text)
     text = _PRIVATE_KEY_PATTERN.sub("[REDACTED_PRIVATE_KEY]", text)
     if redact_long:
