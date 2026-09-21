@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% load static %}
+{% load tz %}
 
 {% block title %}{{ page.name }} · SHVYA Calendar{% endblock %}
 {% block header %}SHVYA Calendar{% endblock %}
@@ -196,7 +197,7 @@
       <details class="sc-accordion">
         <summary><span class="sc-summary-icon"><i class="ti ti-calendar-x"></i></span><span><strong>Blocking</strong><small>Temporarily block days or ranges from booking.</small></span><i class="ti ti-chevron-down"></i></summary>
         <div class="sc-accordion-body">
-          <div class="sc-block-list">{% for block in page.blocks.all %}<div class="sc-block-row"><div><strong>{{ block.starts_at|date:"d M Y, g:i A" }} → {{ block.ends_at|date:"d M Y, g:i A" }}</strong><span>{{ block.reason|default:"Blocked" }}</span></div><button class="sc-icon-button sc-danger" type="submit" form="sc-delete-block-{{ block.id }}" aria-label="Delete blocked range"><i class="ti ti-trash"></i></button></div>{% empty %}<p class="sc-muted">No blocked ranges.</p>{% endfor %}</div>
+          <div class="sc-block-list">{% for block in page.blocks.all %}<div class="sc-block-row"><div><strong>{{ block.starts_at|timezone:page.timezone|date:"d M Y, g:i A" }} → {{ block.ends_at|timezone:page.timezone|date:"d M Y, g:i A" }}</strong><span>{{ block.reason|default:"Blocked" }}</span></div><button class="sc-icon-button sc-danger" type="submit" form="sc-delete-block-{{ block.id }}" aria-label="Delete blocked range"><i class="ti ti-trash"></i></button></div>{% empty %}<p class="sc-muted">No blocked ranges.</p>{% endfor %}</div>
         </div>
       </details>
 
@@ -236,7 +237,7 @@
 
     <form method="post" action="{% url 'shvya_calendar:block_add' page_id=page.id %}" class="sc-inline-panel">
       {% csrf_token %}
-      <div><strong>Add blocked range</strong><span>Use the server's configured timezone for this temporary block.</span></div>
+      <div><strong>Add blocked range</strong><span>Times are interpreted in this booking page’s timezone.</span></div>
       <input type="datetime-local" name="starts_at" required><span>to</span><input type="datetime-local" name="ends_at" required><input name="reason" maxlength="160" placeholder="Reason"><button class="sc-button" type="submit">Block</button>
     </form>
   </section>
