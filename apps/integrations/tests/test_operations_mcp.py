@@ -121,6 +121,26 @@ class OperationsMCPTests(TestCase):
             HTTP_AUTHORIZATION="Bearer " + bearer,
         )
 
+    def _list_tools(self, bearer=None):
+        headers = {}
+        if bearer:
+            headers["HTTP_AUTHORIZATION"] = "Bearer " + bearer
+        response = self.client.post(
+            "/operations/mcp/",
+            data=json.dumps(
+                {
+                    "jsonrpc": "2.0",
+                    "id": "tools-list",
+                    "method": "tools/list",
+                    "params": {},
+                }
+            ),
+            content_type="application/json",
+            **headers,
+        )
+        self.assertEqual(response.status_code, 200)
+        return response.json()["result"]
+
     def _result(self, response):
         self.assertEqual(response.status_code, 200)
         return response.json()["result"]
@@ -187,6 +207,80 @@ class OperationsMCPTests(TestCase):
         ):
             self.assertIn(name, tools)
             self.assertFalse(tools[name]["annotations"]["readOnlyHint"])
+
+    def test_authenticated_org_admin_tool_discovery_matches_superadmin_policy(self):
+        OperationsPolicy.objects.create(
+            organization=self.organization,
+            organization_admin_enabled=True,
+            allowed_capabilities=[
+                CAP_ORGANIZATION_READ,
+                CAP_DIAGNOSTICS_READ,
+            ],
+            approval_required_capabilities=[],
+        )
+        bearer = self._token(
+            actor=self.admin,
+            role=ROLE_ORGANIZATION_ADMIN,
+            organization=self.organization,
+            scopes=[OPERATIONS_READ_SCOPE, OPERATIONS_WRITE_SCOPE],
+        )
+
+        result = self._list_tools(bearer)
+        names = {item["name"] for item in result["tools"]}
+
+        self.assertIn("get_operations_context", names)
+        self.assertIn("get_organization_configuration", names)
+        self.assertIn("diagnose_lead_qualification", names)
+        self.assertIn("find_leads", names)
+        self.assertNotIn("list_organizations", names)
+        self.assertNotIn("select_organization_context", names)
+        self.assertNotIn("clear_organization_context", names)
+        self.assertNotIn("move_lead_stage", names)
+        self.assertNotIn("update_lead_attributes", names)
+        self.assertNotIn("update_ai_configuration", names)
+        self.assertNotIn("upsert_pipeline_configuration", names)
+        self.assertNotIn("upsert_workflow_configuration", names)
+
+    def test_authenticated_org_admin_tool_discovery_updates_when_policy_changes(self):
+        policy = OperationsPolicy.objects.create(
+            organization=self.organization,
+            organization_admin_enabled=True,
+            allowed_capabilities=[CAP_ORGANIZATION_READ],
+            approval_required_capabilities=[],
+        )
+        bearer = self._token(
+            actor=self.admin,
+            role=ROLE_ORGANIZATION_ADMIN,
+            organization=self.organization,
+        )
+
+        before = {item["name"] for item in self._list_tools(bearer)["tools"]}
+        self.assertNotIn("move_lead_stage", before)
+
+        policy.allowed_capabilities = [
+            CAP_ORGANIZATION_READ,
+            CAP_LEAD_STAGE_WRITE,
+        ]
+        policy.save(update_fields=["allowed_capabilities", "updated_at"])
+
+        after = {item["name"] for item in self._list_tools(bearer)["tools"]}
+        self.assertIn("move_lead_stage", after)
+        self.assertIn("repair_qualification_stage", after)
+
+    def test_authenticated_superadmin_tool_discovery_keeps_full_operations_surface(self):
+        bearer = self._token(
+            actor=self.superadmin,
+            role=ROLE_SUPERADMIN,
+        )
+        result = self._list_tools(bearer)
+        names = {item["name"] for item in result["tools"]}
+
+        self.assertIn("list_organizations", names)
+        self.assertIn("select_organization_context", names)
+        self.assertIn("move_lead_stage", names)
+        self.assertIn("update_ai_configuration", names)
+        self.assertIn("upsert_workflow_configuration", names)
+        self.assertIn("find_leads", names)
 
     def test_attribute_configuration_uses_policy_dry_run_approval_and_service(self):
         OperationsPolicy.objects.create(
