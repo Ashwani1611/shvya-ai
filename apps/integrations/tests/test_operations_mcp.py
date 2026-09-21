@@ -3707,6 +3707,57 @@ class OperationsMCPTests(TestCase):
             body,
         )
 
+    def test_oauth_consent_expands_legacy_approval_policy(self):
+        OperationsPolicy.objects.create(
+            organization=self.organization,
+            organization_admin_enabled=True,
+            allowed_capabilities=[CAP_CRM_CONFIG_WRITE],
+            approval_required_capabilities=[CAP_CRM_CONFIG_WRITE],
+        )
+        session = SessionStore()
+        set_authenticated_user(session, self.admin)
+        session.create()
+        self.client.cookies[get_session_cookie_name("dashboard")] = (
+            session.session_key
+        )
+
+        verifier = "l" * 64
+        response = self.client.get(
+            "/operations/oauth/authorize",
+            {
+                "client_id": self.oauth_client.client_id,
+                "redirect_uri": "https://chatgpt.com/aip/callback",
+                "response_type": "code",
+                "code_challenge": pkce_s256(verifier),
+                "code_challenge_method": "S256",
+                "scope": (
+                    f"{OPERATIONS_READ_SCOPE} "
+                    f"{OPERATIONS_WRITE_SCOPE}"
+                ),
+                "resource": "http://testserver/operations/mcp/",
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        options = response.context["identity_options"]
+        organization_option = next(
+            item
+            for item in options
+            if item["role"] == ROLE_ORGANIZATION_ADMIN
+        )
+        capabilities = {
+            item["key"]: item
+            for item in organization_option["capabilities"]
+        }
+        for capability in (
+            CAP_PIPELINE_CONFIG_WRITE,
+            CAP_STAGE_CONFIG_WRITE,
+            CAP_ATTRIBUTE_CONFIG_WRITE,
+        ):
+            self.assertIn(capability, capabilities)
+            self.assertTrue(
+                capabilities[capability]["approval_required"]
+            )
+
     def test_oauth_metadata_advertises_revocation_endpoint(self):
         metadata = self.client.get(
             "/operations/.well-known/oauth-authorization-server"
