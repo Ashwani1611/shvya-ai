@@ -1011,32 +1011,44 @@ def _record_audit(
     error_code="",
     error_reason="",
 ):
-    organization = None
-    if execution and execution.target_type == "organization" and execution.target_id:
-        # Use the authenticated context rather than trusting target IDs.
-        organization = (
-            identity.token.active_organization
-            if identity.role == ROLE_SUPERADMIN
-            else identity.organization
-        )
-    else:
-        organization = (
-            identity.token.active_organization
-            if identity.role == ROLE_SUPERADMIN
-            else identity.organization
-        )
-
+    organization = (
+        identity.token.active_organization
+        if identity.role == ROLE_SUPERADMIN
+        else identity.organization
+    )
     support_session = None
-    if identity.role == ROLE_SUPERADMIN and organization is not None:
-        support_session = (
-            OperationsSupportSession.objects.filter(
-                token=identity.token,
-                organization=organization,
-                ended_at__isnull=True,
+
+    if identity.role == ROLE_SUPERADMIN:
+        if organization is not None:
+            support_session = (
+                OperationsSupportSession.objects.filter(
+                    token=identity.token,
+                    organization=organization,
+                )
+                .order_by("-started_at")
+                .first()
             )
-            .order_by("-started_at")
-            .first()
-        )
+        elif (
+            execution is not None
+            and execution.target_type == "organization"
+            and execution.target_id
+        ):
+            # clear_organization_context intentionally removes token context
+            # before audit persistence. Resolve only through this token's own
+            # support-session history, never through an arbitrary user-supplied
+            # organization ID.
+            support_session = (
+                OperationsSupportSession.objects.select_related("organization")
+                .filter(
+                    token=identity.token,
+                    organization_id=execution.target_id,
+                )
+                .order_by("-started_at")
+                .first()
+            )
+            if support_session is not None:
+                organization = support_session.organization
+
         if support_session is not None:
             OperationsSupportSession.objects.filter(pk=support_session.pk).update(
                 last_seen_at=timezone.now()
