@@ -34,6 +34,7 @@ from apps.integrations.operations_auth import (
     issue_authorization_code,
     refresh_access_token,
     register_client,
+    revoke_token,
     validate_authorization_request,
 )
 from apps.integrations.operations_policy import (
@@ -620,6 +621,10 @@ def operations_oauth_server_metadata(request):
             "registration_endpoint": request.build_absolute_uri(
                 reverse("shvya-operations-oauth-register")
             ),
+            "revocation_endpoint": request.build_absolute_uri(
+                reverse("shvya-operations-oauth-revoke")
+            ),
+            "revocation_endpoint_auth_methods_supported": ["none"],
             "response_types_supported": ["code"],
             "grant_types_supported": ["authorization_code", "refresh_token"],
             "code_challenge_methods_supported": ["S256"],
@@ -839,6 +844,45 @@ def operations_oauth_token(request):
             "resource": token.resource,
         }
     )
+    response["Cache-Control"] = "no-store"
+    response["Pragma"] = "no-cache"
+    return response
+
+
+@csrf_exempt
+@ratelimit(limit=60, window=60)
+@require_POST
+def operations_oauth_revoke(request):
+    """RFC 7009-style revocation for actor-bound Operations OAuth grants."""
+
+    raw_token = str(request.POST.get("token") or "").strip()
+    if not raw_token:
+        response = JsonResponse(
+            {
+                "error": "invalid_request",
+                "error_description": "token is required.",
+            },
+            status=400,
+        )
+        response["Cache-Control"] = "no-store"
+        return response
+
+    try:
+        revoke_token(raw_token=raw_token)
+    except OperationsAuthError as exc:
+        response = JsonResponse(
+            {
+                "error": "invalid_request",
+                "error_description": sanitize_text(exc, limit=200),
+            },
+            status=400,
+        )
+        response["Cache-Control"] = "no-store"
+        return response
+
+    # Unknown/already-revoked values intentionally return success so the
+    # endpoint cannot be used to probe whether a bearer/refresh token exists.
+    response = HttpResponse(status=200)
     response["Cache-Control"] = "no-store"
     response["Pragma"] = "no-cache"
     return response
