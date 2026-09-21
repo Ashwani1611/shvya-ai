@@ -196,7 +196,7 @@
       <details class="sc-accordion">
         <summary><span class="sc-summary-icon"><i class="ti ti-calendar-x"></i></span><span><strong>Blocking</strong><small>Temporarily block days or ranges from booking.</small></span><i class="ti ti-chevron-down"></i></summary>
         <div class="sc-accordion-body">
-          <div class="sc-block-list">{% for block in page.blocks.all %}<div class="sc-block-row"><div><strong>{{ block.starts_at|date:"d M Y, g:i A" }} → {{ block.ends_at|date:"d M Y, g:i A" }}</strong><span>{{ block.reason|default:"Blocked" }}</span></div><form method="post" action="{% url 'shvya_calendar:block_delete' page_id=page.id block_id=block.id %}">{% csrf_token %}<button class="sc-icon-button sc-danger" type="submit"><i class="ti ti-trash"></i></button></form></div>{% empty %}<p class="sc-muted">No blocked ranges.</p>{% endfor %}</div>
+          <div class="sc-block-list">{% for block in page.blocks.all %}<div class="sc-block-row"><div><strong>{{ block.starts_at|date:"d M Y, g:i A" }} → {{ block.ends_at|date:"d M Y, g:i A" }}</strong><span>{{ block.reason|default:"Blocked" }}</span></div><button class="sc-icon-button sc-danger" type="submit" formaction="{% url 'shvya_calendar:block_delete' page_id=page.id block_id=block.id %}" formmethod="post" formnovalidate aria-label="Delete blocked range"><i class="ti ti-trash"></i></button></div>{% empty %}<p class="sc-muted">No blocked ranges.</p>{% endfor %}</div>
         </div>
       </details>
 
@@ -204,7 +204,7 @@
         <summary><span class="sc-summary-icon"><i class="ti ti-brand-google"></i></span><span><strong>Calendar & Meeting</strong><small>Read Google busy time, create the event and generate a unique Meet link.</small></span><i class="ti ti-chevron-down"></i></summary>
         <div class="sc-accordion-body">
           {% if google_connection %}
-            <div class="sc-connected-card"><div class="sc-google-mark">G</div><div><strong>{{ google_connection.email }}</strong><span>Connected · calendar {{ google_connection.calendar_id }}</span></div><form method="post" action="{% url 'shvya_calendar:google_disconnect' page_id=page.id %}">{% csrf_token %}<button class="sc-button sc-button-small" type="submit">Disconnect</button></form></div>
+            <div class="sc-connected-card"><div class="sc-google-mark">G</div><div><strong>{{ google_connection.email }}</strong><span>Connected · calendar {{ google_connection.calendar_id }}</span></div><button class="sc-button sc-button-small" type="submit" formaction="{% url 'shvya_calendar:google_disconnect' page_id=page.id %}" formmethod="post" formnovalidate>Disconnect</button></div>
           {% elif page.host_id == request.crm_user.id and google_configured %}
             <div class="sc-connected-card"><div class="sc-google-mark">G</div><div><strong>Connect Google Calendar</strong><span>Required for conflict checking and automatic Google Meet creation.</span></div><a class="sc-button" href="{% url 'shvya_calendar:google_connect' page_id=page.id %}">Connect Google Calendar</a></div>
           {% elif not google_configured %}
@@ -298,17 +298,28 @@
       <header><div><span class="sc-kicker">PUBLISH & SHARE</span><h2>Share this calendar</h2></div><button class="sc-icon-button" type="button" data-close-share><i class="ti ti-x"></i></button></header>
       <div class="sc-drawer-content">
         <div class="sc-share-card">
-          <span class="sc-kicker">PUBLIC LINK</span>
-          <strong>Lead capture + booking in one link</strong>
-          <div class="sc-copy-row"><input readonly value="{{ public_link }}" data-copy-source="public"><button class="sc-button" type="button" data-copy-target="public"><i class="ti ti-copy"></i> Copy</button></div>
-          {% if page.status != 'published' %}<small>Publish the page before sharing this URL publicly.</small>{% endif %}
+          {% if page.status == 'published' %}
+            <span class="sc-kicker">PUBLIC LINK · LIVE</span>
+            <strong>Lead capture + booking in one link</strong>
+            <div class="sc-copy-row"><input readonly value="{{ public_link }}" data-copy-source="public"><button class="sc-button" type="button" data-copy-target="public"><i class="ti ti-copy"></i> Copy</button></div>
+            <small>This link is live and can be shared with leads.</small>
+          {% else %}
+            <span class="sc-kicker">PREVIEW LINK · NOT PUBLIC</span>
+            <strong>Review the page before publishing</strong>
+            <div class="sc-copy-row"><input readonly value="{{ preview_link }}" data-copy-source="preview"><button class="sc-button" type="button" data-copy-target="preview"><i class="ti ti-copy"></i> Copy preview</button></div>
+            <small>The public URL will become live when Booking Page Status is published.</small>
+          {% endif %}
         </div>
         <div class="sc-share-card">
           <span class="sc-kicker">WEBSITE EMBED</span>
           <strong>Place the complete flow inside your website</strong>
-          <textarea readonly rows="6" data-copy-source="embed">{{ embed_code }}</textarea>
-          <button class="sc-button" type="button" data-copy-target="embed"><i class="ti ti-code"></i> Copy embed</button>
-          <small>The public flow is signed and does not depend on third-party CSRF cookies.</small>
+          {% if page.status == 'published' %}
+            <textarea readonly rows="6" data-copy-source="embed">{{ embed_code }}</textarea>
+            <button class="sc-button" type="button" data-copy-target="embed"><i class="ti ti-code"></i> Copy embed</button>
+            <small>The public flow is signed and does not depend on third-party CSRF cookies.</small>
+          {% else %}
+            <div class="sc-alert">Publish this page first. SHVYA will then enable the live embed code.</div>
+          {% endif %}
         </div>
         <div class="sc-info-strip sc-info-blue"><i class="ti ti-shield-check"></i><span>Every submission still goes through the published field allowlist, tenant-scoped CRM mapping, duplicate handling and rate limits.</span></div>
       </div>
