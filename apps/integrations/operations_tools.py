@@ -255,9 +255,10 @@ def _validated_approval_event(
         )
 
     try:
-        OperationsApprovalUse.objects.create(
-            approval_event=event,
-        )
+        with transaction.atomic():
+            OperationsApprovalUse.objects.create(
+                approval_event=event,
+            )
     except IntegrityError as exc:
         raise OperationsApprovalRequired(
             "This approval receipt has already been claimed by an execution "
