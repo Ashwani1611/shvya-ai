@@ -197,7 +197,7 @@ def calendar_index(request):
         org_timezone = user.organization.timezone or "Asia/Kolkata"
         try:
             ZoneInfo(org_timezone)
-        except ZoneInfoNotFoundError:
+        except (ZoneInfoNotFoundError, ValueError):
             org_timezone = "Asia/Kolkata"
 
         try:
