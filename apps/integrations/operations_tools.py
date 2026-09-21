@@ -3157,22 +3157,45 @@ def get_conversion_analysis(*, identity, arguments):
 
 
 def get_operations_audit(*, identity, arguments):
-    organization = _organization_for(identity)
-    _require_operations_capability(
-        identity=identity,
-        organization=organization,
-        capability=CAP_AUDIT_READ,
-    )
     arguments = arguments or {}
+    scope = str(
+        arguments.get("scope") or "organization"
+    ).strip().casefold()
+    if scope not in {"organization", "platform"}:
+        raise OperationsToolError(
+            "scope must be organization or platform."
+        )
+
+    if scope == "platform":
+        if identity.role != ROLE_SUPERADMIN:
+            raise OperationsPermissionError(
+                "Platform Operations audit is available only to SHVYA Superadmin."
+            )
+        organization = None
+        _require_operations_capability(
+            identity=identity,
+            organization=None,
+            capability=CAP_AUDIT_READ,
+        )
+        rows = OperationsAuditEvent.objects.filter(
+            organization__isnull=True
+        ).select_related("actor", "support_session")
+    else:
+        organization = _organization_for(identity)
+        _require_operations_capability(
+            identity=identity,
+            organization=organization,
+            capability=CAP_AUDIT_READ,
+        )
+        rows = OperationsAuditEvent.objects.filter(
+            organization=organization
+        ).select_related("actor", "support_session")
+
     try:
         limit = int(arguments.get("limit") or 30)
     except (TypeError, ValueError):
         limit = 30
     limit = max(1, min(limit, 100))
-
-    rows = OperationsAuditEvent.objects.filter(
-        organization=organization
-    ).select_related("actor", "support_session")
 
     audit_event_id = str(
         arguments.get("audit_event_id") or ""
@@ -3237,6 +3260,15 @@ def get_operations_audit(*, identity, arguments):
     )
     return ToolExecution(
         data={
+            "scope": scope,
+            "organization": (
+                {
+                    "id": str(organization.id),
+                    "name": organization.name,
+                }
+                if organization is not None
+                else None
+            ),
             "events": [
                 {
                     "id": str(item.id),
@@ -3276,9 +3308,18 @@ def get_operations_audit(*, identity, arguments):
             },
         },
         capability=CAP_AUDIT_READ,
-        target_type="organization",
-        target_id=str(organization.id),
+        target_type=(
+            "platform"
+            if scope == "platform"
+            else "organization"
+        ),
+        target_id=(
+            ""
+            if scope == "platform"
+            else str(organization.id)
+        ),
         audit_summary={
+            "scope": scope,
             "result_count": len(rows),
             "filtered": any(
                 (
@@ -3292,8 +3333,6 @@ def get_operations_audit(*, identity, arguments):
             ),
         },
     )
-
-
 
 def upsert_pipeline_configuration(*, identity, arguments):
     organization = _organization_for(identity)
