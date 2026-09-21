@@ -5,7 +5,7 @@ from django.test import TestCase
 from django.utils import timezone
 
 from apps.accounts.models import User
-from apps.crm.models import Lead, LeadActivity, Pipeline, Stage
+from apps.crm.models import AttributeDefinition, Lead, LeadActivity, Pipeline, Stage
 from apps.integrations.models import (
     OperationsAuditEvent,
     OperationsOAuthClient,
@@ -19,6 +19,7 @@ from apps.integrations.operations_auth import (
     token_hash,
 )
 from apps.integrations.operations_policy import (
+    CAP_CRM_CONFIG_WRITE,
     CAP_DIAGNOSTICS_READ,
     CAP_LEAD_STAGE_WRITE,
     CAP_ORGANIZATION_READ,
@@ -128,6 +129,108 @@ class OperationsMCPTests(TestCase):
     def _result(self, response):
         self.assertEqual(response.status_code, 200)
         return response.json()["result"]
+
+    def test_operations_tools_advertise_configuration_surfaces(self):
+        response = self.client.post(
+            "/operations/mcp/",
+            data=json.dumps(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "tools/list",
+                    "params": {},
+                }
+            ),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200)
+        tools = {
+            item["name"]: item
+            for item in response.json()["result"]["tools"]
+        }
+        for name in (
+            "upsert_pipeline_configuration",
+            "upsert_stage_configuration",
+            "upsert_attribute_configuration",
+            "upsert_workflow_configuration",
+            "upsert_cadence_configuration",
+            "add_cadence_step",
+        ):
+            self.assertIn(name, tools)
+            self.assertFalse(tools[name]["annotations"]["readOnlyHint"])
+
+    def test_attribute_configuration_uses_policy_dry_run_approval_and_service(self):
+        OperationsPolicy.objects.create(
+            organization=self.organization,
+            organization_admin_enabled=True,
+            allowed_capabilities=[
+                CAP_ORGANIZATION_READ,
+                CAP_CRM_CONFIG_WRITE,
+            ],
+            approval_required_capabilities=[CAP_CRM_CONFIG_WRITE],
+        )
+        bearer = self._token(
+            actor=self.admin,
+            role=ROLE_ORGANIZATION_ADMIN,
+            organization=self.organization,
+        )
+        arguments = {
+            "data": {
+                "name": "Company Size",
+                "field_type": "numeric",
+                "description": "Approximate employee count",
+            },
+            "reason": "Add qualification CRM attribute",
+        }
+
+        dry = self._result(
+            self._call(
+                bearer,
+                "upsert_attribute_configuration",
+                {**arguments, "dry_run": True},
+            )
+        )
+        self.assertFalse(dry["isError"])
+        self.assertEqual(dry["structuredContent"]["status"], "DRY_RUN")
+        self.assertFalse(
+            AttributeDefinition.objects.filter(
+                organization=self.organization,
+                name="Company Size",
+            ).exists()
+        )
+
+        blocked = self._result(
+            self._call(
+                bearer,
+                "upsert_attribute_configuration",
+                {**arguments, "dry_run": False},
+            )
+        )
+        self.assertTrue(blocked["isError"])
+        self.assertEqual(
+            blocked["structuredContent"]["status"],
+            "APPROVAL_REQUIRED",
+        )
+
+        applied = self._result(
+            self._call(
+                bearer,
+                "upsert_attribute_configuration",
+                {
+                    **arguments,
+                    "dry_run": False,
+                    "approved": True,
+                },
+            )
+        )
+        self.assertFalse(applied["isError"])
+        self.assertEqual(applied["structuredContent"]["status"], "FIXED")
+        definition = AttributeDefinition.objects.get(
+            organization=self.organization,
+            name="Company Size",
+        )
+        self.assertEqual(definition.key, "company_size")
+        self.assertEqual(definition.field_type, "numeric")
 
     def test_registration_accepts_chatgpt_and_claude_callbacks(self):
         for callback in (
