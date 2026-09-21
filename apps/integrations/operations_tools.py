@@ -2420,6 +2420,16 @@ def upsert_pipeline_configuration(*, identity, arguments):
                         "Pipeline creation did not produce SHVYA's required "
                         "standard stages; the transaction was rolled back."
                     )
+            pipeline.refresh_from_db()
+            if (
+                pipeline.name != name
+                or pipeline.description != description
+                or pipeline.is_active != is_active
+                or pipeline.ai_enabled != ai_enabled
+            ):
+                raise OperationsToolError(
+                    "Pipeline configuration verification failed."
+                )
             before = locked_before
     except IntegrityError as exc:
         raise OperationsToolError(
@@ -2431,14 +2441,6 @@ def upsert_pipeline_configuration(*, identity, arguments):
             "Pipeline configuration validation failed."
         ) from exc
 
-    pipeline.refresh_from_db()
-    if (
-        pipeline.name != name
-        or pipeline.description != description
-        or pipeline.is_active != is_active
-        or pipeline.ai_enabled != ai_enabled
-    ):
-        raise OperationsToolError("Pipeline configuration verification failed.")
     return ToolExecution(
         data={
             "status": "FIXED",
@@ -2718,6 +2720,27 @@ def upsert_stage_configuration(*, identity, arguments):
             stage.ai_on = ai_on
             stage.full_clean()
             stage.save()
+            stage.refresh_from_db()
+            if (
+                stage.name != name
+                or stage.description != description
+                or stage.display_order != display_order
+                or stage.is_active != is_active
+                or stage.ai_on != ai_on
+            ):
+                raise OperationsToolError(
+                    "Stage configuration verification failed."
+                )
+            attribute.refresh_from_db()
+            if (
+                attribute.name != name
+                or attribute.field_type != field_type
+                or attribute.description != description
+                or list(attribute.options or []) != list(options)
+            ):
+                raise OperationsToolError(
+                    "Attribute configuration verification failed."
+                )
             before = locked_before
             after = locked_after
     except IntegrityError as exc:
@@ -2729,15 +2752,6 @@ def upsert_stage_configuration(*, identity, arguments):
         raise OperationsToolError(
             "Stage configuration validation failed."
         ) from exc
-    stage.refresh_from_db()
-    if (
-        stage.name != name
-        or stage.description != description
-        or stage.display_order != display_order
-        or stage.is_active != is_active
-        or stage.ai_on != ai_on
-    ):
-        raise OperationsToolError("Stage configuration verification failed.")
     return ToolExecution(
         data={
             "status": "FIXED",
@@ -3027,14 +3041,6 @@ def upsert_attribute_configuration(*, identity, arguments):
         raise OperationsToolError(
             "Attribute configuration validation failed."
         ) from exc
-    attribute.refresh_from_db()
-    if (
-        attribute.name != name
-        or attribute.field_type != field_type
-        or attribute.description != description
-        or list(attribute.options or []) != list(options)
-    ):
-        raise OperationsToolError("Attribute configuration verification failed.")
     return ToolExecution(
         data={
             "status": "FIXED",
