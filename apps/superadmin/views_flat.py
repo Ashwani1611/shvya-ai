@@ -409,6 +409,7 @@ def organization_detail_view(
     from apps.integrations.operations_policy import (
         ALL_CAPABILITIES,
         CAPABILITY_LABELS,
+        WRITE_CAPABILITIES,
         policy_for,
     )
 
@@ -418,8 +419,11 @@ def organization_detail_view(
             "key": key,
             "label": CAPABILITY_LABELS[key],
             "allowed": key in (operations_policy.allowed_capabilities or []),
-            "approval_required": key
-            in (operations_policy.approval_required_capabilities or []),
+            "is_write": key in WRITE_CAPABILITIES,
+            "approval_required": (
+                key in WRITE_CAPABILITIES
+                and key in (operations_policy.approval_required_capabilities or [])
+            ),
         }
         for key in ALL_CAPABILITIES
     ]
