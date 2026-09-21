@@ -26,6 +26,11 @@ urlpatterns = [
         name="confirmation",
     ),
     path(
+        "booking/<uuid:booking_id>/reschedule/<str:reschedule_token>/",
+        views.public_reschedule,
+        name="reschedule",
+    ),
+    path(
         "booking/<uuid:booking_id>/<str:cancel_token>/cancel/",
         views.public_cancel,
         name="cancel",
