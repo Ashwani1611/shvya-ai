@@ -16,7 +16,7 @@ from apps.core.views import BookCallView, DocumentationView, FeaturesView, HomeV
 
 
 urlpatterns = [
-    # Remote read-only SHVYA diagnostic MCP + OAuth discovery.
+    # Remote SHVYA MCP/OAuth discovery: read-only Diagnostics + actor-bound Operations.
     path("", include("apps.integrations.urls.diagnostics")),
     path("health/live/", health_live, name="health-live"),
     path("health/ready/", health_ready, name="health-ready"),
