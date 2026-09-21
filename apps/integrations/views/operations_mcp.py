@@ -953,29 +953,30 @@ def operations_oauth_authorize(request):
             status=403,
         )
     try:
-        raw_code = issue_authorization_code(
-            client=client,
-            actor=actor,
-            role=role,
-            redirect_uri=fields["redirect_uri"],
-            scope=fields["scope"],
-            code_challenge=fields["code_challenge"],
-            resource=fields["resource"],
-        )
-        authorization_organization = (
-            actor.organization
-            if role == ROLE_ORGANIZATION_ADMIN
-            else None
-        )
-        _record_oauth_security_event(
-            actor=actor,
-            role=role,
-            organization=authorization_organization,
-            client=client,
-            event="oauth_authorize",
-            scopes=set(str(fields["scope"] or "").split()),
-            reason="External AI Operations OAuth authorization granted.",
-        )
+        with transaction.atomic():
+            raw_code = issue_authorization_code(
+                client=client,
+                actor=actor,
+                role=role,
+                redirect_uri=fields["redirect_uri"],
+                scope=fields["scope"],
+                code_challenge=fields["code_challenge"],
+                resource=fields["resource"],
+            )
+            authorization_organization = (
+                actor.organization
+                if role == ROLE_ORGANIZATION_ADMIN
+                else None
+            )
+            _record_oauth_security_event(
+                actor=actor,
+                role=role,
+                organization=authorization_organization,
+                client=client,
+                event="oauth_authorize",
+                scopes=set(str(fields["scope"] or "").split()),
+                reason="External AI Operations OAuth authorization granted.",
+            )
     except OperationsAuthError as exc:
         context["authorization_error"] = sanitize_text(exc, limit=240)
         return render(
@@ -1004,31 +1005,51 @@ def operations_oauth_token(request):
     client_id = request.POST.get("client_id", "")
     requested_resource = request.POST.get("resource", "") or _resource(request)
     try:
-        if grant_type == "authorization_code":
-            token, raw_access, raw_refresh = exchange_authorization_code(
-                code=request.POST.get("code", ""),
-                client_id=client_id,
-                redirect_uri=request.POST.get("redirect_uri", ""),
-                code_verifier=request.POST.get("code_verifier", ""),
-                resource=requested_resource,
+        with transaction.atomic():
+            if grant_type == "authorization_code":
+                token, raw_access, raw_refresh = exchange_authorization_code(
+                    code=request.POST.get("code", ""),
+                    client_id=client_id,
+                    redirect_uri=request.POST.get("redirect_uri", ""),
+                    code_verifier=request.POST.get("code_verifier", ""),
+                    resource=requested_resource,
+                )
+            elif grant_type == "refresh_token":
+                token, raw_access, raw_refresh = refresh_access_token(
+                    refresh_token=request.POST.get("refresh_token", ""),
+                    client_id=client_id,
+                    resource=requested_resource,
+                )
+            else:
+                response = JsonResponse(
+                    {
+                        "error": "unsupported_grant_type",
+                        "error_description": "Use authorization_code or refresh_token.",
+                    },
+                    status=400,
+                )
+                response["Cache-Control"] = "no-store"
+                response["Pragma"] = "no-cache"
+                return response
+
+            token_event = (
+                "oauth_token_refresh"
+                if grant_type == "refresh_token"
+                else "oauth_token_issue"
             )
-        elif grant_type == "refresh_token":
-            token, raw_access, raw_refresh = refresh_access_token(
-                refresh_token=request.POST.get("refresh_token", ""),
-                client_id=client_id,
-                resource=requested_resource,
+            _record_oauth_security_event(
+                actor=token.actor,
+                role=token.role,
+                organization=token.organization,
+                client=token.client,
+                event=token_event,
+                scopes=set(str(token.scope or "").split()),
+                reason=(
+                    "External AI Operations OAuth token rotated."
+                    if grant_type == "refresh_token"
+                    else "External AI Operations OAuth token issued."
+                ),
             )
-        else:
-            response = JsonResponse(
-                {
-                    "error": "unsupported_grant_type",
-                    "error_description": "Use authorization_code or refresh_token.",
-                },
-                status=400,
-            )
-            response["Cache-Control"] = "no-store"
-            response["Pragma"] = "no-cache"
-            return response
     except OperationsAuthError as exc:
         response = JsonResponse(
             {
@@ -1040,25 +1061,6 @@ def operations_oauth_token(request):
         response["Cache-Control"] = "no-store"
         response["Pragma"] = "no-cache"
         return response
-
-    token_event = (
-        "oauth_token_refresh"
-        if grant_type == "refresh_token"
-        else "oauth_token_issue"
-    )
-    _record_oauth_security_event(
-        actor=token.actor,
-        role=token.role,
-        organization=token.organization,
-        client=token.client,
-        event=token_event,
-        scopes=set(str(token.scope or "").split()),
-        reason=(
-            "External AI Operations OAuth token rotated."
-            if grant_type == "refresh_token"
-            else "External AI Operations OAuth token issued."
-        ),
-    )
 
     response = JsonResponse(
         {
