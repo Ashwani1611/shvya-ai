@@ -14,7 +14,10 @@ from django.utils import timezone
 from apps.ai_engagement.models import OrgInfo
 from apps.ai_engagement.services.confidentiality import is_sensitive_attribute_definition
 from apps.ai_engagement.services.organization_profile import compile_qualification_requirements
-from apps.ai_engagement.services.playbook import qualification_questions
+from apps.ai_engagement.services.playbook import (
+    qualification_questions,
+    validate_playbook,
+)
 from apps.ai_engagement.services.qualification_state import (
     QUALIFIED_STAGE,
     normalize_stage_name,
@@ -1992,7 +1995,7 @@ def update_ai_configuration(*, identity, arguments):
     for key, value in changes.items():
         if key in {"about", "bot_languages", "ai_playbook"}:
             text = str(value or "").strip()
-            limits = {"about": 12000, "bot_languages": 500, "ai_playbook": 50000}
+            limits = {"about": 12000, "bot_languages": 500, "ai_playbook": 100000}
             if len(text) > limits[key]:
                 raise OperationsToolError(f"{key} is too large.")
             redacted = sanitize_text(
@@ -2005,6 +2008,13 @@ def update_ai_configuration(*, identity, arguments):
                     f"{key} contains credential-like or secret material. "
                     "Do not store secrets in SHVYA AI configuration."
                 )
+            if key == "ai_playbook":
+                try:
+                    text = validate_playbook(text)
+                except ValueError as exc:
+                    raise OperationsToolError(
+                        str(exc)
+                    ) from exc
             normalized[key] = text
         elif key in {"ai_enabled", "bump_up_enabled"}:
             if not isinstance(value, bool):
