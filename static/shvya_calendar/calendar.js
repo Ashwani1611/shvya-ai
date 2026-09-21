@@ -78,6 +78,38 @@ document.addEventListener("DOMContentLoaded", () => {
   };
   renderFields();
 
+  const shareDrawer = document.getElementById("sc-share-drawer");
+  const openShare = () => {
+    shareDrawer?.classList.add("is-open");
+    shareDrawer?.setAttribute("aria-hidden", "false");
+  };
+  const closeShare = () => {
+    shareDrawer?.classList.remove("is-open");
+    shareDrawer?.setAttribute("aria-hidden", "true");
+  };
+  document.querySelector("[data-open-share]")?.addEventListener("click", openShare);
+  document.querySelectorAll("[data-close-share]").forEach((el) => el.addEventListener("click", closeShare));
+
+  document.querySelectorAll("[data-copy-target]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const key = button.dataset.copyTarget;
+      const source = document.querySelector('[data-copy-source="' + key + '"]');
+      const value = source?.value || source?.textContent || "";
+      if (!value) return;
+      try {
+        await navigator.clipboard.writeText(value);
+        const original = button.innerHTML;
+        button.innerHTML = '<i class="ti ti-check"></i> Copied';
+        setTimeout(() => { button.innerHTML = original; }, 1400);
+      } catch (_err) {
+        if (source?.select) {
+          source.select();
+          document.execCommand("copy");
+        }
+      }
+    });
+  });
+
   const fieldDrawer = document.getElementById("sc-field-drawer");
   const openFieldDrawer = () => {
     fieldDrawer?.classList.add("is-open");
