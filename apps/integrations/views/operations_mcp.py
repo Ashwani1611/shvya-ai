@@ -282,6 +282,19 @@ OWN_TOOL_DEFINITIONS = [
         "Inspect business/AI configuration, pipelines, stages, attributes, Playbook qualification, Workflows and Cadence counts for the active organization.",
     ),
     _tool(
+        "get_automation_configuration",
+        "Inspect Workflows and Cadence",
+        "Return tenant-scoped Workflow definitions and Cadence/step configuration needed to diagnose or safely edit automation. Secrets and provider credentials are not returned.",
+        {
+            "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100,
+                "default": 50,
+            }
+        },
+    ),
+    _tool(
         "diagnose_lead_qualification",
         "Diagnose lead qualification",
         "Explain why one organization-scoped lead did or did not reach Qualified using persisted qualification and CRM evidence.",
