@@ -1643,6 +1643,66 @@ class OperationsMCPTests(TestCase):
         self.assertTrue(old_token_result["isError"])
         self.assertIn("mcp/www_authenticate", old_token_result["_meta"])
 
+    def test_oauth_refresh_rotates_tokens_without_extending_grant_lifetime(self):
+        OperationsPolicy.objects.create(
+            organization=self.organization,
+            organization_admin_enabled=True,
+            allowed_capabilities=[CAP_ORGANIZATION_READ],
+        )
+        bearer = self._token(
+            actor=self.admin,
+            role=ROLE_ORGANIZATION_ADMIN,
+            organization=self.organization,
+            scopes=[OPERATIONS_READ_SCOPE],
+        )
+        token = OperationsOAuthToken.objects.get(actor=self.admin)
+        original_refresh_expiry = token.refresh_expires_at
+
+        response = self.client.post(
+            reverse("shvya-operations-oauth-token"),
+            {
+                "grant_type": "refresh_token",
+                "client_id": self.oauth_client.client_id,
+                "refresh_token": "test-refresh",
+                "resource": "http://testserver/operations/mcp/",
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertNotEqual(body["access_token"], bearer)
+        self.assertNotEqual(body["refresh_token"], "test-refresh")
+
+        token.refresh_from_db()
+        self.assertEqual(
+            token.refresh_expires_at,
+            original_refresh_expiry,
+        )
+
+        old_access = self._result(
+            self._call(bearer, "get_operations_context")
+        )
+        self.assertTrue(old_access["isError"])
+        self.assertIn("mcp/www_authenticate", old_access["_meta"])
+
+        old_refresh = self.client.post(
+            reverse("shvya-operations-oauth-token"),
+            {
+                "grant_type": "refresh_token",
+                "client_id": self.oauth_client.client_id,
+                "refresh_token": "test-refresh",
+                "resource": "http://testserver/operations/mcp/",
+            },
+        )
+        self.assertEqual(old_refresh.status_code, 400)
+
+        fresh_access = self._result(
+            self._call(
+                body["access_token"],
+                "get_operations_context",
+            )
+        )
+        self.assertFalse(fresh_access["isError"])
+
     def test_oauth_revocation_invalidates_access_and_closes_support_session(self):
         bearer = self._token(
             actor=self.superadmin,
