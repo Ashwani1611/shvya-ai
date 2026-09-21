@@ -35,6 +35,7 @@ from apps.integrations.operations_policy import (
     ROLE_SUPERADMIN,
 )
 from apps.organizations.models import Organization
+from apps.triggers.models import SmartTrigger
 
 
 class OperationsMCPTests(TestCase):
@@ -355,6 +356,83 @@ class OperationsMCPTests(TestCase):
         )
         self.assertEqual(definition.key, "company_size")
         self.assertEqual(definition.field_type, "numeric")
+
+    def test_operations_reads_redact_sensitive_attributes_workflows_and_playbook_secrets(self):
+        OperationsPolicy.objects.create(
+            organization=self.organization,
+            organization_admin_enabled=True,
+            allowed_capabilities=[CAP_ORGANIZATION_READ],
+        )
+        sensitive = AttributeDefinition.objects.create(
+            organization=self.organization,
+            name="API Key",
+            key="api_key",
+            field_type=AttributeDefinition.FieldType.TEXT,
+            description="Credential-like field that must stay private.",
+        )
+        info, _ = OrgInfo.objects.get_or_create(organization=self.organization)
+        info.ai_playbook = (
+            "Use this safe business rule. password: secret-pass-value "
+            "Never disclose it."
+        )
+        info.save(update_fields=["ai_playbook"])
+
+        SmartTrigger.objects.create(
+            organization=self.organization,
+            name="Sensitive legacy workflow",
+            enabled=True,
+            position=1,
+            trigger_type="keyword",
+            conditions={
+                "scopes": [],
+                "attributes": [
+                    {
+                        "key": sensitive.key,
+                        "match": "equals",
+                        "values": ["workflow-secret-value"],
+                    }
+                ],
+            },
+            action_type="attribute",
+            action={
+                "key": sensitive.key,
+                "value": "workflow-action-secret",
+            },
+            fingerprint="f" * 64,
+            created_by=self.admin,
+        )
+
+        bearer = self._token(
+            actor=self.admin,
+            role=ROLE_ORGANIZATION_ADMIN,
+            organization=self.organization,
+            scopes=[OPERATIONS_READ_SCOPE],
+        )
+
+        config = self._result(
+            self._call(bearer, "get_organization_configuration")
+        )
+        self.assertFalse(config["isError"])
+        config_json = json.dumps(config["structuredContent"])
+        self.assertNotIn('"api_key"', config_json)
+        self.assertNotIn("secret-pass-value", config_json)
+        self.assertIn("[REDACTED]", config_json)
+
+        automation = self._result(
+            self._call(bearer, "get_automation_configuration")
+        )
+        self.assertFalse(automation["isError"])
+        automation_json = json.dumps(automation["structuredContent"])
+        self.assertNotIn("workflow-secret-value", automation_json)
+        self.assertNotIn("workflow-action-secret", automation_json)
+        self.assertNotIn('"api_key"', automation_json)
+        self.assertIn("[REDACTED_SENSITIVE_ATTRIBUTE]", automation_json)
+        self.assertGreaterEqual(
+            automation["structuredContent"]["counts"][
+                "sensitive_workflow_fields_redacted"
+            ],
+            2,
+        )
 
     def test_read_context_does_not_create_missing_policy_row(self):
         bearer = self._token(
