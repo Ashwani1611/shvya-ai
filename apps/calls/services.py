@@ -7,7 +7,7 @@ from django.utils import timezone
 from apps.accounts.models import User
 from apps.crm.models import Lead, LeadCall, LeadReminder, Pipeline, Stage
 from services.crm.lead_service import create_lead
-from services.crm_activity_service import record_call_logged
+from services.crm_activity_service import record_call_logged, record_reminder_created
 
 from .models import (
     CallDevice,
@@ -476,6 +476,11 @@ def set_call_follow_up(*, call, assigned_to, due_at, title="", description=""):
         description=description or f"Follow up after {call.get_direction_display().lower()} call.",
         due_at=due_at,
         status="pending",
+    )
+    record_reminder_created(
+        lead=call.lead,
+        actor=assigned_to,
+        reminder=reminder,
     )
     call.follow_up_required = True
     call.follow_up_at = due_at
