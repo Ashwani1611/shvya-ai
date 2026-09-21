@@ -5503,6 +5503,32 @@ class OperationsMCPTests(TestCase):
             ).exists()
         )
 
+        blocked_opaque = self._result(
+            self._call(
+                bearer,
+                "select_organization_context",
+                {
+                    "organization_id": str(self.organization.id),
+                    "reason": (
+                        "Review credential "
+                        + ("A" * 64)
+                    ),
+                },
+            )
+        )
+        self.assertTrue(blocked_opaque["isError"])
+        self.assertEqual(
+            blocked_opaque["structuredContent"]["status"],
+            "NOT_ALLOWED",
+        )
+        self.assertFalse(
+            OperationsSupportSession.objects.filter(
+                token__actor=self.superadmin,
+                organization=self.organization,
+                ended_at__isnull=True,
+            ).exists()
+        )
+
         selected = self._result(
             self._call(
                 bearer,
