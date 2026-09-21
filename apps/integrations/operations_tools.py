@@ -130,6 +130,7 @@ MESSAGING_AUTOMATION_SETTING_FIELDS = (
 MESSAGING_AUTOMATION_SETTING_KEYS = frozenset(
     MESSAGING_AUTOMATION_SETTING_FIELDS
 )
+ATTRIBUTE_COMPATIBILITY_SCAN_LIMIT = 5000
 
 
 GENERIC_ACTION_REASONS = {
@@ -818,12 +819,26 @@ def _incompatible_existing_attribute_value_count(
     options,
 ):
     count = 0
-    for attributes in (
+    scanned = 0
+    values = (
         _tenant_safe_leads(organization)
-        .values_list("attributes", flat=True)
-        .iterator(chunk_size=500)
-    ):
-        if not isinstance(attributes, dict) or attribute.key not in attributes:
+        .filter(**{"attributes__has_key": attribute.key})
+        .order_by("id")
+        .values_list("attributes", flat=True)[
+            : ATTRIBUTE_COMPATIBILITY_SCAN_LIMIT + 1
+        ]
+    )
+    for attributes in values.iterator(chunk_size=500):
+        scanned += 1
+        if scanned > ATTRIBUTE_COMPATIBILITY_SCAN_LIMIT:
+            raise OperationsManualFixRequired(
+                "This attribute type/options change requires checking more "
+                f"than {ATTRIBUTE_COMPATIBILITY_SCAN_LIMIT} leads. Operations "
+                "MCP will not perform an unbounded compatibility scan; use a "
+                "dedicated CRM cleanup/migration workflow and then run a fresh "
+                "dry-run."
+            )
+        if not isinstance(attributes, dict):
             continue
         if not _attribute_value_compatible(
             field_type=field_type,

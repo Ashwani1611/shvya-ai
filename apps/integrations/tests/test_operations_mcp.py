@@ -2454,6 +2454,83 @@ class OperationsMCPTests(TestCase):
             "DRY_RUN",
         )
 
+    def test_attribute_type_change_bounds_existing_value_scan(self):
+        OperationsPolicy.objects.create(
+            organization=self.organization,
+            organization_admin_enabled=True,
+            allowed_capabilities=[
+                CAP_ORGANIZATION_READ,
+                CAP_CRM_CONFIG_WRITE,
+            ],
+            approval_required_capabilities=[],
+        )
+        definition = AttributeDefinition.objects.create(
+            organization=self.organization,
+            name="Bounded Context",
+            key="bounded_context",
+            field_type=AttributeDefinition.FieldType.TEXT,
+        )
+        self.lead.attributes = {
+            **(self.lead.attributes or {}),
+            definition.key: "42",
+        }
+        self.lead.save(
+            update_fields=["attributes", "updated_at"]
+        )
+        Lead.objects.create(
+            organization=self.organization,
+            pipeline=self.pipeline,
+            stage=self.new_stage,
+            name="Second Bounded Context Lead",
+            phone="+918600000099",
+            attributes={definition.key: "84"},
+        )
+        bearer = self._token(
+            actor=self.admin,
+            role=ROLE_ORGANIZATION_ADMIN,
+            organization=self.organization,
+        )
+
+        with patch(
+            "apps.integrations.operations_tools."
+            "ATTRIBUTE_COMPATIBILITY_SCAN_LIMIT",
+            1,
+        ):
+            result = self._result(
+                self._call(
+                    bearer,
+                    "upsert_attribute_configuration",
+                    {
+                        "attribute_id": str(definition.id),
+                        "data": {
+                            "name": definition.name,
+                            "field_type": "numeric",
+                            "description": "",
+                            "options": [],
+                        },
+                        "reason": (
+                            "Review bounded attribute type migration"
+                        ),
+                        "dry_run": True,
+                    },
+                )
+            )
+
+        self.assertTrue(result["isError"])
+        self.assertEqual(
+            result["structuredContent"]["status"],
+            "MANUAL_FIX_REQUIRED",
+        )
+        self.assertIn(
+            "unbounded compatibility scan",
+            result["structuredContent"]["error"],
+        )
+        definition.refresh_from_db()
+        self.assertEqual(
+            definition.field_type,
+            AttributeDefinition.FieldType.TEXT,
+        )
+
     def test_cadence_step_verification_checks_schedule_and_content(self):
         OperationsPolicy.objects.create(
             organization=self.organization,
