@@ -81,6 +81,19 @@ OPENAI_EMBEDDING_MODEL = config(
     default="text-embedding-3-small",
 )
 
+# ---------------------------------------------------------------------------
+# Google Calendar / Google Meet
+# ---------------------------------------------------------------------------
+
+GOOGLE_CALENDAR_CLIENT_ID = config(
+    "GOOGLE_CALENDAR_CLIENT_ID",
+    default="",
+)
+GOOGLE_CALENDAR_CLIENT_SECRET = config(
+    "GOOGLE_CALENDAR_CLIENT_SECRET",
+    default="",
+)
+
 
 # ---------------------------------------------------------------------------
 # Security hardening
@@ -241,6 +254,7 @@ INSTALLED_APPS = [
     "apps.sales",
     "apps.teams",
     "apps.telephony",
+    "apps.shvya_calendar.apps.ShvyaCalendarConfig",
     "apps.support.apps.SupportConfig",
 ]
 
