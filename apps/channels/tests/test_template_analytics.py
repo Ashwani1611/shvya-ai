@@ -1,3 +1,4 @@
+import json
 from datetime import date, datetime, timezone as dt_timezone
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
@@ -308,7 +309,7 @@ class WhatsAppTemplateAnalyticsViewTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        payload = response.json()
+        payload = json.loads(response.content)
         self.assertTrue(payload["ok"])
         self.assertEqual(payload["template"]["name"], "wome_offer")
         self.assertEqual(payload["template"]["language"], "en_US")
@@ -357,7 +358,7 @@ class WhatsAppTemplateAnalyticsViewTests(TestCase):
         response = template_ui.template_analytics_summary.__wrapped__(request)
 
         self.assertEqual(response.status_code, 200)
-        payload = response.json()
+        payload = json.loads(response.content)
         self.assertTrue(payload["ok"])
         self.assertEqual(payload["templates"], {})
         self.assertEqual(
