@@ -36,6 +36,7 @@ from apps.integrations.operations_auth import (
     issue_authorization_code,
     refresh_access_token,
     register_client,
+    revoke_refresh_grant_if_live_authority_invalid,
     revoke_token,
     validate_authorization_request,
 )
@@ -1051,6 +1052,10 @@ def operations_oauth_token(request):
                 ),
             )
     except OperationsAuthError as exc:
+        if grant_type == "refresh_token":
+            revoke_refresh_grant_if_live_authority_invalid(
+                refresh_token=request.POST.get("refresh_token", ""),
+            )
         response = JsonResponse(
             {
                 "error": "invalid_grant",
