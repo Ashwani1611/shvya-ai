@@ -2,6 +2,7 @@ from datetime import datetime
 import secrets
 
 from django.contrib import messages
+from django.core import signing
 from django.core.cache import cache
 from django.core.exceptions import ValidationError
 from django.db.models import Count, Q
@@ -10,6 +11,8 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.text import slugify
+from django.views.decorators.clickjacking import xframe_options_exempt
+from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
 from apps.accounts.models import User
@@ -134,8 +137,21 @@ def _editor_context(request, page, active_tab=None):
         .select_related("booking", "booking__lead", "step")
         .order_by("due_at")[:20]
     )
+    public_link = request.build_absolute_uri(
+        reverse(
+            "shvya_calendar_public:page",
+            kwargs={"public_id": page.public_id, "slug": page.slug},
+        )
+    )
+    embed_code = (
+        f'<iframe src="{public_link}" title="{page.name}" '
+        'style="width:100%;min-height:760px;border:0;border-radius:20px" '
+        'loading="lazy"></iframe>'
+    )
     return {
         "page": page,
+        "public_link": public_link,
+        "embed_code": embed_code,
         "pipelines": pipelines,
         "stages": stages,
         "organization_users": users,
@@ -808,6 +824,62 @@ def google_disconnect(request, page_id):
     )
 
 
+PUBLIC_FORM_TOKEN_SALT = "shvya-calendar-public-form-v1"
+PUBLIC_FLOW_TOKEN_SALT = "shvya-calendar-booking-flow-v1"
+
+
+def _public_form_token(page, version):
+    return signing.dumps(
+        {"page": str(page.id), "version": str(version.id)},
+        salt=PUBLIC_FORM_TOKEN_SALT,
+        compress=True,
+    )
+
+
+def _verify_public_form_token(token, page, version):
+    try:
+        payload = signing.loads(
+            str(token or ""),
+            salt=PUBLIC_FORM_TOKEN_SALT,
+            max_age=60 * 60 * 24,
+        )
+    except signing.BadSignature as exc:
+        raise ValidationError(
+            "This form session expired. Refresh the page and try again."
+        ) from exc
+    if (
+        payload.get("page") != str(page.id)
+        or payload.get("version") != str(version.id)
+    ):
+        raise ValidationError("This form session is no longer valid.")
+
+
+def _booking_flow_token(page, submission):
+    return signing.dumps(
+        {"page": str(page.id), "submission": str(submission.id)},
+        salt=PUBLIC_FLOW_TOKEN_SALT,
+        compress=True,
+    )
+
+
+def _verify_booking_flow_token(token, page, submission):
+    try:
+        payload = signing.loads(
+            str(token or ""),
+            salt=PUBLIC_FLOW_TOKEN_SALT,
+            max_age=60 * 60 * 24,
+        )
+    except signing.BadSignature as exc:
+        raise ValidationError(
+            "This booking session expired. Reopen the booking page."
+        ) from exc
+    if (
+        payload.get("page") != str(page.id)
+        or payload.get("submission") != str(submission.id)
+    ):
+        raise ValidationError("This booking session is no longer valid.")
+
+
 def _public_page(public_id, slug):
     return get_object_or_404(
         CalendarPage.objects.select_related(
@@ -840,6 +912,7 @@ def _rate_limit_public(request, page):
     return True
 
 
+@xframe_options_exempt
 @require_GET
 def public_page(request, public_id, slug):
     page = _public_page(public_id, slug)
@@ -855,16 +928,40 @@ def public_page(request, public_id, slug):
             "version": version,
             "preview": False,
             "attribution": attribution_from_request(request),
+            "form_token": _public_form_token(page, version),
         },
     )
 
 
+@csrf_exempt
+@xframe_options_exempt
 @require_POST
 def public_submit(request, public_id, slug):
     page = _public_page(public_id, slug)
     version = latest_published_version(page)
     if version is None:
         raise Http404
+    try:
+        _verify_public_form_token(
+            request.POST.get("form_token"),
+            page,
+            version,
+        )
+    except ValidationError as exc:
+        return render(
+            request,
+            "shvya_calendar/public.html",
+            {
+                "page": page,
+                "config": version.snapshot,
+                "version": version,
+                "preview": False,
+                "form_error": _validation_text(exc),
+                "form_token": _public_form_token(page, version),
+            },
+            status=400,
+        )
+
     if not _rate_limit_public(request, page):
         return render(
             request,
@@ -875,6 +972,7 @@ def public_submit(request, public_id, slug):
                 "version": version,
                 "preview": False,
                 "form_error": "Too many submissions. Please try again in a few minutes.",
+                "form_token": _public_form_token(page, version),
             },
             status=429,
         )
@@ -905,6 +1003,7 @@ def public_submit(request, public_id, slug):
                 "preview": False,
                 "form_error": _validation_text(exc),
                 "posted": request.POST,
+                "form_token": _public_form_token(page, version),
             },
             status=400,
         )
@@ -935,6 +1034,8 @@ def public_submit(request, public_id, slug):
     )
 
 
+@csrf_exempt
+@xframe_options_exempt
 @require_http_methods(["GET", "POST"])
 def public_schedule(request, public_id, slug, submission_id):
     page = _public_page(public_id, slug)
@@ -948,8 +1049,14 @@ def public_schedule(request, public_id, slug, submission_id):
         raise Http404
 
     error = ""
+    flow_token = _booking_flow_token(page, submission)
     if request.method == "POST":
         try:
+            _verify_booking_flow_token(
+                request.POST.get("flow_token"),
+                page,
+                submission,
+            )
             booking = book_slot(
                 page=page,
                 submission=submission,
@@ -980,10 +1087,12 @@ def public_schedule(request, public_id, slug, submission_id):
             "submission": submission,
             "slot_days": slot_days,
             "booking_error": error,
+            "flow_token": flow_token,
         },
     )
 
 
+@xframe_options_exempt
 @require_GET
 def public_confirmation(request, booking_id, cancel_token):
     booking = get_object_or_404(
@@ -1003,6 +1112,8 @@ def public_confirmation(request, booking_id, cancel_token):
     )
 
 
+@csrf_exempt
+@xframe_options_exempt
 @require_POST
 def public_cancel(request, booking_id, cancel_token):
     booking = get_object_or_404(
