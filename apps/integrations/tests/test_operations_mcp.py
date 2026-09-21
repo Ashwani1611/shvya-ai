@@ -709,6 +709,198 @@ class OperationsMCPTests(TestCase):
             "SUPERADMIN_REQUIRED",
         )
 
+    def test_real_oauth_reauthorization_is_required_for_policy_expansion(self):
+        policy = OperationsPolicy.objects.create(
+            organization=self.organization,
+            organization_admin_enabled=True,
+            allowed_capabilities=[CAP_ORGANIZATION_READ],
+            approval_required_capabilities=[],
+        )
+        dashboard_session = SessionStore()
+        set_authenticated_user(
+            dashboard_session,
+            self.admin,
+        )
+        dashboard_session.create()
+        self.client.cookies[
+            get_session_cookie_name("dashboard")
+        ] = dashboard_session.session_key
+
+        callback = "https://chatgpt.com/aip/callback"
+        resource = "http://testserver/operations/mcp/"
+
+        first_verifier = "g" * 64
+        first_authorize = self.client.post(
+            "/operations/oauth/authorize",
+            data={
+                "client_id": self.oauth_client.client_id,
+                "redirect_uri": callback,
+                "response_type": "code",
+                "code_challenge": pkce_s256(
+                    first_verifier
+                ),
+                "code_challenge_method": "S256",
+                "scope": (
+                    f"{OPERATIONS_READ_SCOPE} "
+                    f"{OPERATIONS_WRITE_SCOPE}"
+                ),
+                "resource": resource,
+                "actor_mode": ROLE_ORGANIZATION_ADMIN,
+            },
+        )
+        self.assertEqual(first_authorize.status_code, 302)
+        first_code = parse_qs(
+            urlparse(
+                first_authorize["Location"]
+            ).query
+        )["code"][0]
+        first_token_response = self.client.post(
+            "/operations/oauth/token",
+            data={
+                "grant_type": "authorization_code",
+                "client_id": self.oauth_client.client_id,
+                "code": first_code,
+                "redirect_uri": callback,
+                "code_verifier": first_verifier,
+                "resource": resource,
+            },
+        )
+        self.assertEqual(
+            first_token_response.status_code,
+            200,
+        )
+        first_body = first_token_response.json()
+        first_access = first_body["access_token"]
+        self.assertEqual(
+            first_body["scope"],
+            OPERATIONS_READ_SCOPE,
+        )
+        self.assertIn(
+            CAP_ORGANIZATION_READ,
+            first_body["granted_capabilities"],
+        )
+        self.assertNotIn(
+            CAP_LEAD_STAGE_WRITE,
+            first_body["granted_capabilities"],
+        )
+
+        policy.allowed_capabilities = [
+            CAP_ORGANIZATION_READ,
+            CAP_LEAD_STAGE_WRITE,
+        ]
+        policy.save(
+            update_fields=[
+                "allowed_capabilities",
+                "updated_at",
+            ]
+        )
+
+        old_names = {
+            item["name"]
+            for item in self._list_tools(
+                first_access
+            )["tools"]
+        }
+        self.assertNotIn(
+            "move_lead_stage",
+            old_names,
+        )
+
+        second_verifier = "h" * 64
+        second_authorize = self.client.post(
+            "/operations/oauth/authorize",
+            data={
+                "client_id": self.oauth_client.client_id,
+                "redirect_uri": callback,
+                "response_type": "code",
+                "code_challenge": pkce_s256(
+                    second_verifier
+                ),
+                "code_challenge_method": "S256",
+                "scope": (
+                    f"{OPERATIONS_READ_SCOPE} "
+                    f"{OPERATIONS_WRITE_SCOPE}"
+                ),
+                "resource": resource,
+                "actor_mode": ROLE_ORGANIZATION_ADMIN,
+            },
+        )
+        self.assertEqual(
+            second_authorize.status_code,
+            302,
+        )
+        second_code = parse_qs(
+            urlparse(
+                second_authorize["Location"]
+            ).query
+        )["code"][0]
+        second_token_response = self.client.post(
+            "/operations/oauth/token",
+            data={
+                "grant_type": "authorization_code",
+                "client_id": self.oauth_client.client_id,
+                "code": second_code,
+                "redirect_uri": callback,
+                "code_verifier": second_verifier,
+                "resource": resource,
+            },
+        )
+        self.assertEqual(
+            second_token_response.status_code,
+            200,
+        )
+        second_body = second_token_response.json()
+        second_access = second_body["access_token"]
+        self.assertIn(
+            OPERATIONS_WRITE_SCOPE,
+            second_body["scope"].split(),
+        )
+        self.assertIn(
+            CAP_LEAD_STAGE_WRITE,
+            second_body["granted_capabilities"],
+        )
+
+        new_names = {
+            item["name"]
+            for item in self._list_tools(
+                second_access
+            )["tools"]
+        }
+        self.assertIn(
+            "move_lead_stage",
+            new_names,
+        )
+        self.assertIn(
+            "repair_qualification_stage",
+            new_names,
+        )
+
+        old_context = self._result(
+            self._call(
+                first_access,
+                "get_operations_context",
+                {},
+            )
+        )
+        self.assertIn(
+            CAP_LEAD_STAGE_WRITE,
+            old_context["structuredContent"][
+                "policy_capabilities"
+            ],
+        )
+        self.assertNotIn(
+            CAP_LEAD_STAGE_WRITE,
+            old_context["structuredContent"][
+                "granted_capabilities"
+            ],
+        )
+        self.assertNotIn(
+            CAP_LEAD_STAGE_WRITE,
+            old_context["structuredContent"][
+                "capabilities"
+            ],
+        )
+
     def test_read_only_oauth_tokens_do_not_discover_write_tools(self):
         OperationsPolicy.objects.create(
             organization=self.organization,
