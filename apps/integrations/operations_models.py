@@ -10,6 +10,7 @@ conversations, credentials, or provider payloads.
 import uuid
 
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.db import models
 
 
@@ -239,3 +240,11 @@ class OperationsAuditEvent(models.Model):
                 name="ops_audit_tool_created_idx",
             ),
         ]
+
+    def save(self, *args, **kwargs):
+        if not self._state.adding:
+            raise ValidationError("Operations audit events are immutable.")
+        return super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise ValidationError("Operations audit events are immutable.")
