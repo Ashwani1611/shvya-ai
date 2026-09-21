@@ -771,6 +771,31 @@ def _qualification_snapshot(lead):
     return compiled, requirements, state
 
 
+def _qualification_contract_snapshot(lead):
+    compiled, requirements, state = _qualification_snapshot(lead)
+    from apps.ai_engagement.services.playbook import criteria_for_lead
+    from apps.ai_engagement.services.qualification_execution_contract import (
+        _completion_target,
+        _config,
+    )
+
+    config = _config(
+        organization=lead.organization,
+        requirements=requirements,
+    )
+    criteria = criteria_for_lead(
+        lead=lead,
+        state=state,
+        requirements=requirements,
+    )
+    target = _completion_target(
+        lead=lead,
+        state=state,
+        config=config,
+    )
+    return compiled, requirements, state, config, criteria, target
+
+
 def diagnose_lead_qualification(*, identity, arguments):
     organization = _organization_for(identity)
     try:
@@ -782,13 +807,24 @@ def diagnose_lead_qualification(*, identity, arguments):
     except OperationsPolicyError as exc:
         raise OperationsPermissionError(str(exc)) from exc
     lead = _lead(organization, (arguments or {}).get("lead_id"))
-    compiled, requirements, state = _qualification_snapshot(lead)
+    (
+        compiled,
+        requirements,
+        state,
+        contract_config,
+        criteria,
+        completion_target,
+    ) = _qualification_contract_snapshot(lead)
 
     current_is_qualified = normalize_stage_name(lead.stage.name) == QUALIFIED_STAGE
-    target_id = state.get("qualified_stage_id")
-    target = (
-        Stage.objects.filter(pk=target_id, pipeline=lead.pipeline, is_active=True).first()
-        if target_id
+    qualification_status = str(
+        state.get("qualification_status") or ""
+    ).casefold()
+    criteria_qualified = bool(criteria.get("qualified"))
+    target_id = (
+        str(completion_target.get("id"))
+        if isinstance(completion_target, dict)
+        and completion_target.get("id") is not None
         else None
     )
 
@@ -796,25 +832,51 @@ def diagnose_lead_qualification(*, identity, arguments):
         classification = "NO_PROBLEM_FOUND"
         root_cause = "Lead is already in the Qualified stage."
         repair_available = False
-    elif state.get("qualification_status") == "completed" and target is None:
-        classification = "ROOT_CAUSE_CONFIRMED"
-        root_cause = "Qualification is completed, but no active Qualified stage exists in the lead's current pipeline."
+    elif qualification_status == "completed" and not criteria_qualified:
+        classification = "NO_PROBLEM_FOUND"
+        root_cause = (
+            "Qualification is completed, but the configured qualification "
+            "criteria are not satisfied. A Qualified transition is not expected."
+        )
         repair_available = False
     elif (
-        state.get("qualification_status") == "completed"
-        and target is not None
-        and not current_is_qualified
+        qualification_status == "completed"
+        and criteria_qualified
+        and completion_target is None
     ):
         classification = "ROOT_CAUSE_CONFIRMED"
-        root_cause = "Qualification is completed and an active Qualified target exists, but the lead is not in that target stage."
+        root_cause = (
+            "Qualification criteria are satisfied, but SHVYA cannot resolve an "
+            "authoritative active completion-stage target from the current "
+            "Playbook/pipeline configuration."
+        )
+        repair_available = False
+    elif (
+        qualification_status == "completed"
+        and criteria_qualified
+        and completion_target is not None
+        and str(lead.stage_id) != target_id
+    ):
+        classification = "ROOT_CAUSE_CONFIRMED"
+        root_cause = (
+            "Qualification is completed, criteria are satisfied, and an "
+            "authoritative completion target exists, but the lead is not in "
+            "that target stage."
+        )
         repair_available = True
-    elif state.get("all_requirements_answered") and target is not None:
+    elif state.get("all_requirements_answered") and completion_target is not None:
         classification = "LIKELY_CAUSE"
-        root_cause = "All configured requirements are answered but qualification completion/stage reconciliation has not completed."
+        root_cause = (
+            "All configured requirements are answered, but persisted "
+            "qualification completion/reconciliation has not completed."
+        )
         repair_available = False
     else:
         classification = "INSUFFICIENT_EVIDENCE"
-        root_cause = "Qualification is not yet complete, or the persisted evidence does not establish a failed Qualified transition."
+        root_cause = (
+            "Qualification is not yet complete, or persisted backend evidence "
+            "does not establish a failed qualification transition."
+        )
         repair_available = False
 
     latest_inbound = (
@@ -859,8 +921,21 @@ def diagnose_lead_qualification(*, identity, arguments):
                 "all_requirements_answered": state.get("all_requirements_answered"),
                 "answered_requirement_ids": state.get("answered_requirement_ids"),
                 "missing_requirement_ids": state.get("missing_requirement_ids"),
-                "target_stage_id": state.get("qualified_stage_id"),
-                "target_stage_name": state.get("qualified_stage_name"),
+                "state_qualified_stage_id": state.get("qualified_stage_id"),
+                "state_qualified_stage_name": state.get("qualified_stage_name"),
+                "criteria_qualified": criteria_qualified,
+                "criteria_reason": criteria.get("reason"),
+                "authoritative_target": (
+                    {
+                        "id": target_id,
+                        "name": completion_target.get("name"),
+                        "pipeline_id": str(completion_target.get("pipeline_id")),
+                        "pipeline": completion_target.get("pipeline__name"),
+                    }
+                    if isinstance(completion_target, dict)
+                    else None
+                ),
+                "configuration_errors": contract_config.get("errors", []),
                 "requirements": [
                     {
                         "id": item.get("id"),
@@ -917,21 +992,31 @@ def move_lead_stage(*, identity, arguments, enforce_gate=True):
         normalize_stage_name(stage.name) == QUALIFIED_STAGE
         and stage.id != lead.stage_id
     ):
-        _, _, qualification_state = _qualification_snapshot(lead)
-        if qualification_state.get("qualification_status") != "completed":
-            raise OperationsPermissionError(
-                "Operations MCP cannot move a lead to Qualified until SHVYA's "
-                "backend qualification state is completed. Diagnose the lead "
-                "and use qualification repair/reconciliation when eligible."
-            )
-        configured_target_id = qualification_state.get("qualified_stage_id")
+        (
+            _,
+            _,
+            qualification_state,
+            _,
+            qualification_criteria,
+            completion_target,
+        ) = _qualification_contract_snapshot(lead)
         if (
-            configured_target_id
-            and str(configured_target_id) != str(stage.id)
+            str(qualification_state.get("qualification_status") or "").casefold()
+            != "completed"
+            or not qualification_criteria.get("qualified")
         ):
             raise OperationsPermissionError(
-                "The requested Qualified stage is not the backend-configured "
-                "qualification completion target for this lead."
+                "Operations MCP cannot move a lead to Qualified until SHVYA's "
+                "backend qualification is completed and its configured criteria "
+                "are satisfied."
+            )
+        if (
+            not isinstance(completion_target, dict)
+            or str(completion_target.get("id") or "") != str(stage.id)
+        ):
+            raise OperationsPermissionError(
+                "The requested Qualified stage is not the authoritative "
+                "qualification completion target resolved by SHVYA."
             )
 
     if stage.id != lead.stage_id:
@@ -1085,17 +1170,33 @@ def repair_qualification_stage(*, identity, arguments):
         arguments=arguments,
     )
     lead = _lead(organization, (arguments or {}).get("lead_id"))
-    _, _, state = _qualification_snapshot(lead)
-    if state.get("qualification_status") != "completed":
+    (
+        _,
+        _,
+        state,
+        _,
+        criteria,
+        completion_target,
+    ) = _qualification_contract_snapshot(lead)
+    if str(state.get("qualification_status") or "").casefold() != "completed":
         raise OperationsToolError(
-            "Qualification is not completed; SHVYA will not force a Qualified stage transition."
+            "Qualification is not completed; SHVYA will not force a "
+            "qualification-completion transition."
         )
-    target_id = state.get("qualified_stage_id")
+    if not criteria.get("qualified"):
+        raise OperationsPermissionError(
+            "Qualification is completed, but configured criteria are not "
+            "satisfied. SHVYA will not move this lead to Qualified."
+        )
+    target_id = (
+        completion_target.get("id")
+        if isinstance(completion_target, dict)
+        else None
+    )
     target = (
         Stage.objects.select_related("pipeline")
         .filter(
             pk=target_id,
-            pipeline=lead.pipeline,
             pipeline__organization=organization,
             pipeline__is_active=True,
             is_active=True,
@@ -1106,7 +1207,8 @@ def repair_qualification_stage(*, identity, arguments):
     )
     if target is None:
         raise OperationsToolError(
-            "No active Qualified target exists in the lead's current pipeline."
+            "No authoritative active qualification completion target can be "
+            "resolved from the current Playbook/pipeline configuration."
         )
     nested = dict(arguments or {})
     nested["target_stage_id"] = str(target.id)
