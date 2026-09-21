@@ -1916,6 +1916,92 @@ class OperationsMCPTests(TestCase):
         self.assertEqual(len(cadence["steps"]), 100)
         self.assertTrue(cadence["steps_truncated"])
 
+    def test_automation_read_checks_truncated_cadence_steps_for_foreign_templates(self):
+        OperationsPolicy.objects.create(
+            organization=self.organization,
+            organization_admin_enabled=True,
+            allowed_capabilities=[CAP_ORGANIZATION_READ],
+        )
+        account = WhatsAppAccount.objects.create(
+            organization=self.organization,
+            connection_type=WhatsAppAccount.ConnectionType.API,
+            business_name="Bounded Cadence Safety Sender",
+            display_phone_number="+919000000007",
+            status=WhatsAppAccount.Status.CONNECTED,
+            is_active=True,
+        )
+        sequence = FollowupSequence.objects.create(
+            organization=self.organization,
+            created_by=self.admin,
+            name="Bounded Cadence Safety",
+            description="Foreign template after visible window",
+            whatsapp_account=account,
+        )
+        FollowupStep.objects.bulk_create(
+            [
+                FollowupStep(
+                    sequence=sequence,
+                    position=index + 1,
+                    step_type=FollowupStep.StepType.REMINDER,
+                    title=f"Safe reminder {index:03d}",
+                    reminder_text=f"Safe body {index:03d}",
+                    schedule_type=(
+                        FollowupStep.ScheduleType.IMMEDIATE
+                    ),
+                )
+                for index in range(100)
+            ]
+        )
+        foreign_account = WhatsAppAccount.objects.create(
+            organization=self.other_organization,
+            connection_type=WhatsAppAccount.ConnectionType.API,
+            business_name="Foreign Cadence Sender",
+            display_phone_number="+919000000008",
+            status=WhatsAppAccount.Status.CONNECTED,
+            is_active=True,
+        )
+        foreign_template = WhatsAppTemplate.objects.create(
+            organization=self.other_organization,
+            account=foreign_account,
+            name="Foreign Hidden Template",
+            category=WhatsAppTemplate.Category.UTILITY,
+            status=WhatsAppTemplate.Status.APPROVED,
+            body="Foreign hidden body",
+            created_by=self.other_admin,
+        )
+        FollowupStep.objects.create(
+            sequence=sequence,
+            position=101,
+            step_type=FollowupStep.StepType.WHATSAPP,
+            title="Hidden foreign step",
+            whatsapp_template=foreign_template,
+            schedule_type=FollowupStep.ScheduleType.IMMEDIATE,
+        )
+        bearer = self._token(
+            actor=self.admin,
+            role=ROLE_ORGANIZATION_ADMIN,
+            organization=self.organization,
+            scopes=[OPERATIONS_READ_SCOPE],
+        )
+
+        result = self._result(
+            self._call(
+                bearer,
+                "get_automation_configuration",
+                {},
+            )
+        )
+
+        self.assertTrue(result["isError"])
+        self.assertEqual(
+            result["structuredContent"]["status"],
+            "NOT_ALLOWED",
+        )
+        payload = json.dumps(result)
+        self.assertNotIn(str(foreign_template.id), payload)
+        self.assertNotIn(str(foreign_account.id), payload)
+        self.assertNotIn(foreign_template.name, payload)
+
     def test_automation_read_fails_closed_on_cadence_template_sender_mismatch(self):
         OperationsPolicy.objects.create(
             organization=self.organization,
