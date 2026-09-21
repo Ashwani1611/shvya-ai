@@ -42,6 +42,17 @@ _INLINE_SECRET_PATTERN = re.compile(
 _DATABASE_URL_PATTERN = re.compile(
     r"(?i)\b(?:postgres(?:ql)?|mysql|mongodb(?:\+srv)?|redis)://[^\s]+"
 )
+_SAFE_SECRET_METADATA_KEYS = {
+    # Status-only metadata. These fields never contain the credential/token
+    # value itself and are useful for diagnosing expiry/configuration state.
+    "credential_present",
+    "credential_expired",
+    "token_expires_at",
+    "token_refreshed_at",
+    "has_credential",
+    "has_last_error",
+}
+
 _PRIVATE_KEY_PATTERN = re.compile(
     r"-----BEGIN(?: [A-Z0-9]+)? PRIVATE KEY-----.*?-----END(?: [A-Z0-9]+)? PRIVATE KEY-----",
     re.IGNORECASE | re.DOTALL,
@@ -90,7 +101,11 @@ def sanitize_data(
         cleaned = {}
         for key, item in value.items():
             key_text = str(key)
-            if _SECRET_KEY_PATTERN.search(key_text):
+            if (
+                _SECRET_KEY_PATTERN.search(key_text)
+                and key_text.casefold()
+                not in _SAFE_SECRET_METADATA_KEYS
+            ):
                 cleaned[key_text] = "[REDACTED]"
             elif key_text.casefold() in {
                 "id",
