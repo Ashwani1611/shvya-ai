@@ -243,6 +243,142 @@ def _as_bool(value):
     return str(value).lower() in {"1", "true", "yes", "on"}
 
 
+def _normalize_session_settings_payload(
+    *,
+    current,
+    payload,
+    pipeline,
+):
+    """Apply canonical automation-setting validation without persisting."""
+
+    current = deepcopy(current)
+    payload = payload if isinstance(payload, dict) else {}
+
+    for key in (
+        "ai_auto_reply",
+        "auto_lead_creation",
+        "bump_up_messages",
+        "auto_follow_up",
+    ):
+        if key in payload:
+            current[key] = _as_bool(payload.get(key))
+
+    if "ai_auto_reply" not in payload:
+        current["ai_auto_reply"] = bool(pipeline.ai_enabled)
+
+    try:
+        bump_count = int(
+            payload.get(
+                "bump_up_count",
+                current["bump_up_count"],
+            )
+        )
+    except (TypeError, ValueError):
+        raise HostedWhatsAppValidationError(
+            "Number of bump-up messages must be a number."
+        )
+    if bump_count < 1 or bump_count > 10:
+        raise HostedWhatsAppValidationError(
+            "Number of bump-up messages must be between 1 and 10."
+        )
+    current["bump_up_count"] = bump_count
+
+    for key in (
+        "business_hours_start",
+        "business_hours_end",
+    ):
+        value = str(
+            payload.get(key, current[key])
+        ).strip()
+        if len(value) != 5 or value[2] != ":":
+            raise HostedWhatsAppValidationError(
+                "Business hours must use HH:MM format."
+            )
+        try:
+            hour, minute = (
+                int(part)
+                for part in value.split(":")
+            )
+        except ValueError:
+            raise HostedWhatsAppValidationError(
+                "Business hours must use HH:MM format."
+            )
+        if hour not in range(24) or minute not in range(60):
+            raise HostedWhatsAppValidationError(
+                "Invalid business hour value."
+            )
+        current[key] = value
+
+    try:
+        delay_value = int(
+            payload.get(
+                "active_conversation_delay_value",
+                current[
+                    "active_conversation_delay_value"
+                ],
+            )
+        )
+    except (TypeError, ValueError):
+        raise HostedWhatsAppValidationError(
+            "Conversation delay must be a number."
+        )
+    if delay_value < 1 or delay_value > 168:
+        raise HostedWhatsAppValidationError(
+            "Conversation delay must be between 1 and 168."
+        )
+    delay_unit = str(
+        payload.get(
+            "active_conversation_delay_unit",
+            current[
+                "active_conversation_delay_unit"
+            ],
+        )
+    )
+    if delay_unit not in {
+        "minutes",
+        "hours",
+        "days",
+    }:
+        raise HostedWhatsAppValidationError(
+            "Invalid conversation delay unit."
+        )
+    current[
+        "active_conversation_delay_value"
+    ] = delay_value
+    current[
+        "active_conversation_delay_unit"
+    ] = delay_unit
+    return current
+
+
+def preview_session_settings_update(
+    *,
+    account,
+    payload,
+):
+    """Return canonical before/after settings without changing SHVYA state."""
+
+    linked_pipeline = get_pipeline_for_account(
+        account=account
+    )
+    if linked_pipeline is None:
+        raise HostedWhatsAppValidationError(
+            "This WhatsApp number is not linked to an active pipeline. "
+            "Link the number to a pipeline before changing automation settings."
+        )
+    before = get_session_settings(account=account)
+    after = _normalize_session_settings_payload(
+        current=before,
+        payload=payload,
+        pipeline=linked_pipeline,
+    )
+    return {
+        "before": before,
+        "after": after,
+        "pipeline": linked_pipeline,
+    }
+
+
 @transaction.atomic
 def update_session_settings(*, account, payload):
     organization = Organization.objects.select_for_update().get(
@@ -269,79 +405,23 @@ def update_session_settings(*, account, payload):
     }
 
     previous_settings = deepcopy(current)
-
-    for key in (
-        "ai_auto_reply",
-        "auto_lead_creation",
-        "bump_up_messages",
-        "auto_follow_up",
-    ):
-        if key in payload:
-            current[key] = _as_bool(payload.get(key))
+    current = _normalize_session_settings_payload(
+        current=current,
+        payload=payload,
+        pipeline=pipeline,
+    )
 
     # AI Auto-Reply is the pipeline-level organization AI control. Keep the
-    # legacy session value mirrored for compatibility, but persist the actual
-    # permission to Pipeline.ai_enabled so Knowledge Base and both WhatsApp
-    # providers always read the same state.
+    # session mirror for compatibility while Pipeline.ai_enabled remains the
+    # single backend authority used by AI permission checks.
     if "ai_auto_reply" in payload:
         pipeline.ai_enabled = current["ai_auto_reply"]
-        pipeline.save(update_fields=["ai_enabled", "updated_at"])
-    else:
-        current["ai_auto_reply"] = bool(pipeline.ai_enabled)
-
-    try:
-        bump_count = int(payload.get("bump_up_count", current["bump_up_count"]))
-    except (TypeError, ValueError):
-        raise HostedWhatsAppValidationError(
-            "Number of bump-up messages must be a number."
+        pipeline.save(
+            update_fields=[
+                "ai_enabled",
+                "updated_at",
+            ]
         )
-    if bump_count < 1 or bump_count > 10:
-        raise HostedWhatsAppValidationError(
-            "Number of bump-up messages must be between 1 and 10."
-        )
-    current["bump_up_count"] = bump_count
-
-    for key in ("business_hours_start", "business_hours_end"):
-        value = str(payload.get(key, current[key])).strip()
-        if len(value) != 5 or value[2] != ":":
-            raise HostedWhatsAppValidationError(
-                "Business hours must use HH:MM format."
-            )
-        try:
-            hour, minute = (int(part) for part in value.split(":"))
-        except ValueError:
-            raise HostedWhatsAppValidationError(
-                "Business hours must use HH:MM format."
-            )
-        if hour not in range(24) or minute not in range(60):
-            raise HostedWhatsAppValidationError("Invalid business hour value.")
-        current[key] = value
-
-    try:
-        delay_value = int(
-            payload.get(
-                "active_conversation_delay_value",
-                current["active_conversation_delay_value"],
-            )
-        )
-    except (TypeError, ValueError):
-        raise HostedWhatsAppValidationError(
-            "Conversation delay must be a number."
-        )
-    if delay_value < 1 or delay_value > 168:
-        raise HostedWhatsAppValidationError(
-            "Conversation delay must be between 1 and 168."
-        )
-    delay_unit = str(
-        payload.get(
-            "active_conversation_delay_unit",
-            current["active_conversation_delay_unit"],
-        )
-    )
-    if delay_unit not in {"minutes", "hours", "days"}:
-        raise HostedWhatsAppValidationError("Invalid conversation delay unit.")
-    current["active_conversation_delay_value"] = delay_value
-    current["active_conversation_delay_unit"] = delay_unit
 
     sessions[str(account.id)] = current
     organization.settings = org_settings
