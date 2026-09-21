@@ -44,9 +44,9 @@ class MetaTemplateAnalyticsServiceTests(TestCase):
                     "data": [
                         {
                             "granularity": "DAILY",
+                            "template_id": "meta-offer",
                             "data_points": [
                                 {
-                                    "template_id": "meta-offer",
                                     "start": start_ts,
                                     "sent": 22,
                                     "delivered": 20,
@@ -87,18 +87,21 @@ class MetaTemplateAnalyticsServiceTests(TestCase):
         )
         self.assertEqual(data["days"][0]["date"], "2026-09-21")
 
-        _, kwargs = requests_get.call_args
+        args, kwargs = requests_get.call_args
+        self.assertEqual(
+            args[0],
+            "https://graph.facebook.com/v21.0/waba-analytics/template_analytics",
+        )
         self.assertEqual(
             kwargs["headers"]["Authorization"],
             "Bearer analytics-token",
         )
-        field = kwargs["params"]["fields"]
-        self.assertIn("template_analytics", field)
-        self.assertIn("meta-offer", field)
-        self.assertIn("SENT", field)
-        self.assertIn("DELIVERED", field)
-        self.assertIn("READ", field)
-        self.assertIn("CLICKED", field)
+        self.assertEqual(kwargs["params"]["granularity"], "DAILY")
+        self.assertEqual(kwargs["params"]["template_ids"], ["meta-offer"])
+        self.assertEqual(
+            kwargs["params"]["metric_types"],
+            ["SENT", "DELIVERED", "READ", "CLICKED"],
+        )
 
     @patch("services.channels.template_analytics.meta.requests.get")
     def test_missing_click_metric_is_unavailable_not_fabricated(self, requests_get):
@@ -110,9 +113,9 @@ class MetaTemplateAnalyticsServiceTests(TestCase):
                 "template_analytics": {
                     "data": [
                         {
+                            "template_id": "meta-no-click",
                             "data_points": [
                                 {
-                                    "template_id": "meta-no-click",
                                     "start": start_ts,
                                     "sent": 5,
                                     "delivered": 4,
@@ -147,9 +150,9 @@ class MetaTemplateAnalyticsServiceTests(TestCase):
                 "template_analytics": {
                     "data": [
                         {
+                            "template_id": "meta-zero",
                             "data_points": [
                                 {
-                                    "template_id": "meta-zero",
                                     "start": start_ts,
                                     "sent": 0,
                                     "delivered": 0,
