@@ -6399,6 +6399,96 @@ class OperationsMCPTests(TestCase):
             json.dumps(foreign_lookup),
         )
 
+    def test_superadmin_platform_audit_scope_never_mixes_customer_events(self):
+        platform_event = OperationsAuditEvent.objects.create(
+            actor=self.superadmin,
+            role=ROLE_SUPERADMIN,
+            organization=None,
+            tool_name="list_organizations",
+            capability=CAP_ORGANIZATION_READ,
+            target_type="platform",
+            target_id="",
+            reason="Review platform organizations",
+            outcome=OperationsAuditEvent.Outcome.SUCCESS,
+            request_fingerprint="p" * 64,
+            change_summary={"result_count": 2},
+        )
+        tenant_event = OperationsAuditEvent.objects.create(
+            actor=self.admin,
+            role=ROLE_ORGANIZATION_ADMIN,
+            organization=self.organization,
+            tool_name="get_organization_configuration",
+            capability=CAP_ORGANIZATION_READ,
+            target_type="organization",
+            target_id=str(self.organization.id),
+            reason="Tenant-only audit event",
+            outcome=OperationsAuditEvent.Outcome.SUCCESS,
+            request_fingerprint="t" * 64,
+            change_summary={"configured": True},
+        )
+
+        super_bearer = self._token(
+            actor=self.superadmin,
+            role=ROLE_SUPERADMIN,
+            scopes=[OPERATIONS_READ_SCOPE],
+        )
+        result = self._result(
+            self._call(
+                super_bearer,
+                "get_operations_audit",
+                {
+                    "scope": "platform",
+                    "limit": 20,
+                },
+            )
+        )
+        self.assertFalse(result["isError"])
+        data = result["structuredContent"]
+        self.assertEqual(data["scope"], "platform")
+        self.assertIsNone(data["organization"])
+        self.assertIn(
+            str(platform_event.id),
+            [row["id"] for row in data["events"]],
+        )
+        self.assertNotIn(
+            str(tenant_event.id),
+            [row["id"] for row in data["events"]],
+        )
+        payload = json.dumps(data)
+        self.assertNotIn("Tenant-only audit event", payload)
+
+    def test_org_admin_cannot_request_platform_operations_audit(self):
+        OperationsPolicy.objects.create(
+            organization=self.organization,
+            organization_admin_enabled=True,
+            allowed_capabilities=[
+                CAP_ORGANIZATION_READ,
+                CAP_AUDIT_READ,
+            ],
+        )
+        bearer = self._token(
+            actor=self.admin,
+            role=ROLE_ORGANIZATION_ADMIN,
+            organization=self.organization,
+            scopes=[OPERATIONS_READ_SCOPE],
+        )
+        result = self._result(
+            self._call(
+                bearer,
+                "get_operations_audit",
+                {"scope": "platform"},
+            )
+        )
+        self.assertTrue(result["isError"])
+        self.assertEqual(
+            result["structuredContent"]["status"],
+            "NOT_ALLOWED",
+        )
+        self.assertIn(
+            "Superadmin",
+            result["structuredContent"]["error"],
+        )
+
     def test_operations_audit_relationships_are_protected_from_deletion(self):
         protected_actor = User.objects.create_superuser(
             email="protected-audit-actor@example.test",
