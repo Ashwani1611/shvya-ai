@@ -6,6 +6,7 @@ from unittest.mock import patch
 from django.contrib.sessions.backends.db import SessionStore
 from django.core.exceptions import ValidationError
 from django.db.models.deletion import ProtectedError
+from django.db.migrations.loader import MigrationLoader
 from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
@@ -211,6 +212,10 @@ class OperationsMCPTests(TestCase):
     def _result(self, response):
         self.assertEqual(response.status_code, 200)
         return response.json()["result"]
+
+    def test_integrations_migration_graph_has_single_leaf(self):
+        conflicts = MigrationLoader(None, ignore_no_migrations=True).detect_conflicts()
+        self.assertNotIn("integrations", conflicts)
 
     def test_operations_agent_contract_is_exposed_by_mcp_discovery(self):
         response = self.client.post(
