@@ -12,7 +12,12 @@ from django.utils import timezone
 
 from apps.accounts.models import User
 from apps.accounts.session_utils import get_session_cookie_name, set_authenticated_user
-from apps.ai_engagement.models import OrgInfo
+from apps.ai_engagement.models import (
+    Chunk,
+    Document,
+    KnowledgeSource,
+    OrgInfo,
+)
 from apps.channels.instagram_models import InstagramAccount, InstagramWebhookDelivery
 from apps.channels.models import WhatsAppAccount, WhatsAppMessage
 from apps.crm.models import AttributeDefinition, Lead, LeadActivity, Pipeline, Stage
@@ -219,6 +224,7 @@ class OperationsMCPTests(TestCase):
             "get_ai_diagnostics",
             "get_runtime_health",
             "get_organization_configuration",
+            "get_knowledge_health",
             "get_messaging_automation_settings",
         ):
             self.assertIn(name, tools)
@@ -1975,6 +1981,134 @@ class OperationsMCPTests(TestCase):
         payload = json.dumps(health)
         self.assertNotIn("wa-health-secret", payload)
         self.assertNotIn("ig-health-secret", payload)
+
+    def test_knowledge_health_is_bounded_metadata_only_and_tenant_scoped(self):
+        OperationsPolicy.objects.create(
+            organization=self.organization,
+            organization_admin_enabled=True,
+            allowed_capabilities=[CAP_ORGANIZATION_READ],
+        )
+        source = KnowledgeSource.objects.create(
+            organization=self.organization,
+            source_type=KnowledgeSource.SourceType.URL,
+            name="https://example.com/pricing?token=source-secret",
+            url="https://example.com/pricing?token=source-secret",
+            is_active=True,
+        )
+        document = Document.objects.create(
+            organization=self.organization,
+            name="https://example.com/pricing?token=document-secret",
+            source_key="https://example.com/pricing?token=internal-source-key",
+            version=2,
+            source_url="https://example.com/pricing?token=document-secret",
+            processing_status=Document.ProcessingStatus.COMPLETED,
+            processing_error="",
+            is_active=True,
+        )
+        Chunk.objects.create(
+            document=document,
+            organization=self.organization,
+            content="private knowledge body that must never be returned",
+            chunk_index=0,
+            embedding=[0.0] * 1536,
+            is_active=True,
+        )
+        failed = Document.objects.create(
+            organization=self.organization,
+            name="Failed knowledge document",
+            source_key="failed-source",
+            version=1,
+            processing_status=Document.ProcessingStatus.FAILED,
+            processing_error="password: ingestion-secret",
+            is_active=False,
+        )
+
+        foreign = Document.objects.create(
+            organization=self.other_organization,
+            name="Foreign knowledge",
+            source_key="foreign-source",
+            version=1,
+            processing_status=Document.ProcessingStatus.COMPLETED,
+            is_active=True,
+        )
+        Chunk.objects.create(
+            document=foreign,
+            organization=self.other_organization,
+            content="foreign tenant knowledge body",
+            chunk_index=0,
+            is_active=True,
+        )
+
+        bearer = self._token(
+            actor=self.admin,
+            role=ROLE_ORGANIZATION_ADMIN,
+            organization=self.organization,
+            scopes=[OPERATIONS_READ_SCOPE],
+        )
+        result = self._result(
+            self._call(
+                bearer,
+                "get_knowledge_health",
+                {"limit": 50},
+            )
+        )
+        self.assertFalse(result["isError"])
+        health = result["structuredContent"]
+        self.assertEqual(health["summary"]["source_count"], 1)
+        self.assertEqual(health["summary"]["document_count"], 2)
+        self.assertEqual(
+            health["summary"]["active_completed_documents"],
+            1,
+        )
+        self.assertEqual(health["summary"]["failed_documents"], 1)
+        self.assertEqual(health["summary"]["active_chunks"], 1)
+        self.assertEqual(
+            health["summary"]["embedded_active_chunks"],
+            1,
+        )
+        self.assertEqual(
+            health["summary"]["embedding_coverage"],
+            1.0,
+        )
+
+        self.assertEqual(
+            health["sources"][0]["id"],
+            str(source.id),
+        )
+        self.assertEqual(
+            health["sources"][0]["name"],
+            "example.com",
+        )
+        self.assertEqual(
+            health["sources"][0]["url_host"],
+            "example.com",
+        )
+        active_doc = next(
+            item
+            for item in health["documents"]
+            if item["id"] == str(document.id)
+        )
+        self.assertEqual(active_doc["name"], "example.com")
+        self.assertEqual(
+            active_doc["source_url_host"],
+            "example.com",
+        )
+        failed_doc = next(
+            item
+            for item in health["documents"]
+            if item["id"] == str(failed.id)
+        )
+        self.assertTrue(failed_doc["has_processing_error"])
+
+        payload = json.dumps(health)
+        self.assertNotIn("source-secret", payload)
+        self.assertNotIn("document-secret", payload)
+        self.assertNotIn("internal-source-key", payload)
+        self.assertNotIn("private knowledge body", payload)
+        self.assertNotIn("ingestion-secret", payload)
+        self.assertNotIn("foreign tenant knowledge body", payload)
+        self.assertNotIn(str(foreign.id), payload)
+        self.assertNotIn("embedding", payload.lower().replace("embedding_coverage", "").replace("embedded_chunk_count", "").replace("embedded_active_chunks", ""))
 
     def test_lead_snapshot_redacts_sensitive_crm_attribute_values(self):
         OperationsPolicy.objects.create(
