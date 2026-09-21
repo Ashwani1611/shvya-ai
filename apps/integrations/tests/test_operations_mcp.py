@@ -321,10 +321,12 @@ class OperationsMCPTests(TestCase):
             OrgInfo.objects.filter(organization=self.organization).exists()
         )
 
-    def test_registration_accepts_chatgpt_and_claude_callbacks(self):
+    def test_registration_accepts_chatgpt_claude_and_exact_vscode_callbacks(self):
         for callback in (
             "https://chatgpt.com/aip/callback",
             "https://claude.ai/api/mcp/auth_callback",
+            "http://127.0.0.1:33418",
+            "https://vscode.dev/redirect",
         ):
             response = self.client.post(
                 "/operations/oauth/register",
@@ -352,6 +354,23 @@ class OperationsMCPTests(TestCase):
             content_type="application/json",
         )
         self.assertEqual(rejected.status_code, 400)
+
+        for unsafe_callback in (
+            "http://127.0.0.1:33419",
+            "http://localhost:33418",
+            "https://vscode.dev/not-the-mcp-redirect",
+        ):
+            rejected = self.client.post(
+                "/operations/oauth/register",
+                data=json.dumps(
+                    {
+                        "redirect_uris": [unsafe_callback],
+                        "token_endpoint_auth_method": "none",
+                    }
+                ),
+                content_type="application/json",
+            )
+            self.assertEqual(rejected.status_code, 400)
 
     def test_oauth_binds_org_admin_identity_and_strips_ungranted_write_scope(self):
         OperationsPolicy.objects.create(
