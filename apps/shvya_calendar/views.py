@@ -1,10 +1,13 @@
 from datetime import datetime
+import logging
 import secrets
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from django.contrib import messages
 from django.core import signing
 from django.core.cache import cache
 from django.core.exceptions import ValidationError
+from django.db import transaction
 from django.db.models import Count, Q
 from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
@@ -39,6 +42,9 @@ from .models import (
     CalendarSubmission,
     GoogleCalendarConnection,
 )
+logger = logging.getLogger(__name__)
+
+
 from .services import (
     attribution_from_request,
     book_slot,
@@ -494,38 +500,59 @@ def calendar_editor_save(request, page_id):
     section = request.POST.get("section") or "lead"
 
     try:
-        if section == "lead":
-            _save_lead_section(request, page)
-        elif section == "scheduling":
-            _save_scheduling_section(request, page)
-        elif section == "confirmation":
-            _save_confirmation_section(request, page)
-        elif section == "reminders":
-            sequence, _created = CalendarReminderSequence.objects.get_or_create(
-                page=page
-            )
-            sequence.name = (
-                request.POST.get("sequence_name") or "Calendar Reminders"
-            ).strip()[:255]
-            sequence.description = (
-                request.POST.get("sequence_description") or ""
-            ).strip()[:300]
-            sequence.save()
-            messages.success(request, "Reminder sequence saved.")
-            return redirect(
-                f"{reverse('shvya_calendar:editor', kwargs={'page_id': page.id})}?tab=reminders"
-            )
-        else:
-            raise ValidationError("Unsupported calendar settings section.")
+        with transaction.atomic():
+            if section == "lead":
+                _save_lead_section(request, page)
+            elif section == "scheduling":
+                _save_scheduling_section(request, page)
+            elif section == "confirmation":
+                _save_confirmation_section(request, page)
+            elif section == "reminders":
+                sequence, _created = CalendarReminderSequence.objects.get_or_create(
+                    page=page
+                )
+                sequence.name = (
+                    request.POST.get("sequence_name") or "Calendar Reminders"
+                ).strip()[:255]
+                sequence.description = (
+                    request.POST.get("sequence_description") or ""
+                ).strip()[:300]
+                sequence.save()
+                messages.success(request, "Reminder sequence saved.")
+                return redirect(
+                    f"{reverse('shvya_calendar:editor', kwargs={'page_id': page.id})}"
+                    "?tab=reminders"
+                )
+            else:
+                raise ValidationError("Unsupported calendar settings section.")
 
-        page.updated_by = user
-        page.full_clean()
-        page.save()
-        if page.status == CalendarPage.Status.PUBLISHED:
-            publish_page(page=page, actor=user)
+            page.updated_by = user
+            page.full_clean()
+            page.save()
+
+            # Published pages get a fresh immutable snapshot only after the
+            # complete settings save succeeds. If publication fails, this
+            # transaction rolls back instead of leaving a half-saved page.
+            if page.status == CalendarPage.Status.PUBLISHED:
+                publish_page(page=page, actor=user)
+
         messages.success(request, "SHVYA Calendar settings saved.")
     except ValidationError as exc:
         messages.error(request, _validation_text(exc))
+    except Exception:
+        logger.exception(
+            "Unable to save SHVYA Calendar section",
+            extra={
+                "calendar_page_id": str(page.id),
+                "organization_id": str(user.organization_id),
+                "section": section,
+            },
+        )
+        messages.error(
+            request,
+            "We couldn't save these Calendar settings. No partial changes were "
+            "published. Please review the fields and try again.",
+        )
 
     tab_map = {
         "lead": "lead",
@@ -549,7 +576,24 @@ def calendar_status(request, page_id):
     try:
         if action == "publish":
             publish_page(page=page, actor=user)
-            messages.success(request, "Booking page published.")
+            if (
+                page.meeting_location == CalendarPage.MeetingLocation.GOOGLE_MEET
+                and not GoogleCalendarConnection.objects.filter(
+                    organization=user.organization,
+                    user_id=page.host_id,
+                    is_active=True,
+                ).exists()
+            ):
+                messages.warning(
+                    request,
+                    (
+                        "Booking page published. Lead capture is live. "
+                        "Connect the booking host's Google Calendar before "
+                        "Google Meet slots can be booked."
+                    ),
+                )
+            else:
+                messages.success(request, "Booking page published.")
         elif action == "disable":
             page.status = CalendarPage.Status.DISABLED
             page.updated_by = user
@@ -559,6 +603,20 @@ def calendar_status(request, page_id):
             raise ValidationError("Unknown page status action.")
     except ValidationError as exc:
         messages.error(request, _validation_text(exc))
+    except Exception:
+        logger.exception(
+            "Unable to change SHVYA Calendar page status",
+            extra={
+                "calendar_page_id": str(page.id),
+                "organization_id": str(user.organization_id),
+                "action": action,
+            },
+        )
+        messages.error(
+            request,
+            "Booking page status could not be changed. Your existing page state "
+            "was kept safely. Please try again.",
+        )
     return redirect("shvya_calendar:editor", page_id=page.id)
 
 
@@ -663,10 +721,14 @@ def calendar_block_add(request, page_id):
     try:
         starts = datetime.fromisoformat(request.POST.get("starts_at") or "")
         ends = datetime.fromisoformat(request.POST.get("ends_at") or "")
+        try:
+            page_zone = ZoneInfo(page.timezone)
+        except ZoneInfoNotFoundError as exc:
+            raise ValidationError("Choose a valid booking timezone first.") from exc
         if timezone.is_naive(starts):
-            starts = timezone.make_aware(starts)
+            starts = timezone.make_aware(starts, page_zone)
         if timezone.is_naive(ends):
-            ends = timezone.make_aware(ends)
+            ends = timezone.make_aware(ends, page_zone)
         block = CalendarBlock(
             page=page,
             starts_at=starts,
@@ -826,25 +888,21 @@ def google_disconnect(request, page_id):
         user=user,
     ).update(is_active=False)
 
-    # A published Google Meet page must never silently degrade into a booking
-    # with no conference link after its host disconnects Google. Fail closed
-    # until the host reconnects and the organization republishes the page.
-    disabled_count = CalendarPage.objects.filter(
+    # Keep published lead-capture pages reachable. Scheduling for Google Meet
+    # fails closed in the availability service until this host reconnects.
+    affected_pages = CalendarPage.objects.filter(
         organization=user.organization,
         host=user,
         meeting_location=CalendarPage.MeetingLocation.GOOGLE_MEET,
         status=CalendarPage.Status.PUBLISHED,
-    ).update(
-        status=CalendarPage.Status.DISABLED,
-        updated_by=user,
-        updated_at=timezone.now(),
-    )
-    if disabled_count:
+    ).count()
+    if affected_pages:
         messages.warning(
             request,
             (
-                "Google Calendar disconnected. Published Google Meet pages "
-                "for this host were disabled until Calendar is reconnected."
+                "Google Calendar disconnected. Published lead-capture pages "
+                "remain live, but Google Meet scheduling is paused until this "
+                "host reconnects Calendar."
             ),
         )
     else:
@@ -910,8 +968,8 @@ def _verify_booking_flow_token(token, page, submission):
         raise ValidationError("This booking session is no longer valid.")
 
 
-def _public_page(public_id, slug):
-    return get_object_or_404(
+def _public_page(public_id, slug, *, require_published=True):
+    page = get_object_or_404(
         CalendarPage.objects.select_related(
             "organization",
             "pipeline",
@@ -920,8 +978,10 @@ def _public_page(public_id, slug):
         ),
         public_id=public_id,
         slug=slug,
-        status=CalendarPage.Status.PUBLISHED,
     )
+    if require_published and page.status != CalendarPage.Status.PUBLISHED:
+        raise Http404
+    return page
 
 
 def _rate_limit_public(request, page):
@@ -951,10 +1011,18 @@ def _rate_limit_public(request, page):
 @xframe_options_exempt
 @require_GET
 def public_page(request, public_id, slug):
-    page = _public_page(public_id, slug)
+    page = _public_page(public_id, slug, require_published=False)
     version = latest_published_version(page)
-    if version is None:
-        raise Http404
+    if page.status != CalendarPage.Status.PUBLISHED or version is None:
+        return render(
+            request,
+            "shvya_calendar/unavailable.html",
+            {
+                "page": page,
+                "is_draft": page.status == CalendarPage.Status.DRAFT,
+            },
+            status=200,
+        )
     return render(
         request,
         "shvya_calendar/public.html",
@@ -1108,12 +1176,9 @@ def public_schedule(request, public_id, slug, submission_id):
 
     try:
         slot_days = upcoming_slot_days(page)
-    except GoogleCalendarError:
+    except GoogleCalendarError as exc:
         slot_days = []
-        error = (
-            "Live calendar availability is temporarily unavailable. "
-            "Please try again shortly."
-        )
+        error = str(exc)
 
     return render(
         request,
@@ -1141,10 +1206,18 @@ def public_confirmation(request, booking_id, cancel_token):
         id=booking_id,
         cancel_token=cancel_token,
     )
+    try:
+        booking_zone = ZoneInfo(booking.timezone)
+    except ZoneInfoNotFoundError:
+        booking_zone = timezone.get_current_timezone()
     return render(
         request,
         "shvya_calendar/confirmation.html",
-        {"booking": booking, "page": booking.page},
+        {
+            "booking": booking,
+            "page": booking.page,
+            "booking_local_start": booking.start_at.astimezone(booking_zone),
+        },
     )
 
 
@@ -1196,6 +1269,10 @@ def public_reschedule(request, booking_id, reschedule_token):
             "Please try again shortly."
         )
 
+    try:
+        booking_zone = ZoneInfo(booking.timezone)
+    except ZoneInfoNotFoundError:
+        booking_zone = timezone.get_current_timezone()
     return render(
         request,
         "shvya_calendar/reschedule.html",
@@ -1204,6 +1281,7 @@ def public_reschedule(request, booking_id, reschedule_token):
             "page": page,
             "slot_days": slot_days,
             "booking_error": error,
+            "booking_local_start": booking.start_at.astimezone(booking_zone),
         },
     )
 
