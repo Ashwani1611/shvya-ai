@@ -109,6 +109,8 @@ def _allowed_redirect(uri: str) -> bool:
     return (
         parsed.scheme == "https"
         and allowed
+        and parsed.port in {None, 443}
+        and not parsed.fragment
         and parsed.username is None
         and parsed.password is None
     )
@@ -122,13 +124,18 @@ def register_client(
     response_types=None,
     application_type="web",
 ):
-    redirect_uris = [
+    raw_redirects = [
         str(item or "").strip()
         for item in (redirect_uris or [])
         if str(item or "").strip()
     ]
+    redirect_uris = list(dict.fromkeys(raw_redirects))
     if not redirect_uris:
         raise OperationsAuthError("At least one redirect URI is required.")
+    if len(redirect_uris) > 8:
+        raise OperationsAuthError("At most 8 redirect URIs may be registered.")
+    if any(len(uri) > 2048 for uri in redirect_uris):
+        raise OperationsAuthError("OAuth redirect URI is too long.")
     if any(not _allowed_redirect(uri) for uri in redirect_uris):
         raise OperationsAuthError(
             "Operations MCP accepts only approved ChatGPT/OpenAI/Claude/Anthropic or exact VS Code MCP redirect URIs."
