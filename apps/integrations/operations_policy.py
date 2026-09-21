@@ -14,6 +14,8 @@ CAP_AUDIT_READ = "audit.read"
 CAP_LEAD_STAGE_WRITE = "lead.stage.write"
 CAP_LEAD_ATTRIBUTES_WRITE = "lead.attributes.write"
 CAP_AI_CONFIG_WRITE = "ai.config.write"
+CAP_CRM_CONFIG_WRITE = "crm.config.write"
+CAP_AUTOMATION_CONFIG_WRITE = "automation.config.write"
 
 READ_CAPABILITIES = (
     CAP_ORGANIZATION_READ,
@@ -24,6 +26,8 @@ WRITE_CAPABILITIES = (
     CAP_LEAD_STAGE_WRITE,
     CAP_LEAD_ATTRIBUTES_WRITE,
     CAP_AI_CONFIG_WRITE,
+    CAP_CRM_CONFIG_WRITE,
+    CAP_AUTOMATION_CONFIG_WRITE,
 )
 ALL_CAPABILITIES = READ_CAPABILITIES + WRITE_CAPABILITIES
 
@@ -37,6 +41,8 @@ CAPABILITY_LABELS = {
     CAP_LEAD_STAGE_WRITE: "Move leads between active stages/pipelines",
     CAP_LEAD_ATTRIBUTES_WRITE: "Update non-sensitive lead attributes",
     CAP_AI_CONFIG_WRITE: "Update organization AI profile / Playbook",
+    CAP_CRM_CONFIG_WRITE: "Configure CRM pipelines, stages and attributes",
+    CAP_AUTOMATION_CONFIG_WRITE: "Configure Workflows and Cadence",
 }
 
 
