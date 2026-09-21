@@ -509,3 +509,27 @@
   .sc-editor-tile { min-height:70px; }
   .sc-sticky-save { flex-direction:column; align-items:stretch; }
 }
+
+.sc-share-card {
+  display: grid;
+  gap: 10px;
+  padding: 18px;
+  border: 1px solid var(--sc-line);
+  border-radius: 17px;
+  background: #fbfbfc;
+}
+.sc-share-card > strong { font-size: 14px; letter-spacing: -.01em; }
+.sc-share-card > small { color: var(--sc-muted); font-size: 11px; line-height: 1.45; }
+.sc-share-card textarea,
+.sc-copy-row input {
+  width: 100%;
+  border: 1px solid rgba(0,0,0,.15);
+  border-radius: 11px;
+  background: #fff;
+  padding: 11px 12px;
+  color: #424247;
+  font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace;
+  resize: vertical;
+}
+.sc-copy-row { display: flex; gap: 8px; }
+.sc-copy-row input { min-width: 0; flex: 1; }
