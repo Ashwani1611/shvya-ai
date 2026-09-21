@@ -1898,6 +1898,134 @@ class OperationsMCPTests(TestCase):
             target_stage.id,
         )
 
+    def test_lead_attribute_approval_is_invalid_after_values_change(self):
+        OperationsPolicy.objects.create(
+            organization=self.organization,
+            organization_admin_enabled=True,
+            allowed_capabilities=[
+                CAP_ORGANIZATION_READ,
+                CAP_LEAD_ATTRIBUTES_WRITE,
+            ],
+            approval_required_capabilities=[CAP_LEAD_ATTRIBUTES_WRITE],
+        )
+        definition = AttributeDefinition.objects.create(
+            organization=self.organization,
+            name="Company Size",
+            key="company_size",
+            field_type=AttributeDefinition.FieldType.NUMERIC,
+        )
+        bearer = self._token(
+            actor=self.admin,
+            role=ROLE_ORGANIZATION_ADMIN,
+            organization=self.organization,
+        )
+        arguments = {
+            "lead_id": str(self.lead.id),
+            "values": {definition.key: "25"},
+            "reason": "Update reviewed company size",
+        }
+        dry = self._result(
+            self._call(
+                bearer,
+                "update_lead_attributes",
+                {**arguments, "dry_run": True},
+            )
+        )
+        self.assertFalse(dry["isError"])
+
+        self.lead.attributes = {
+            **(self.lead.attributes or {}),
+            definition.key: "40",
+        }
+        self.lead.save(update_fields=["attributes", "updated_at"])
+
+        stale = self._result(
+            self._call(
+                bearer,
+                "update_lead_attributes",
+                {
+                    **arguments,
+                    "dry_run": False,
+                    "approved": True,
+                    "approval_event_id": dry["structuredContent"][
+                        "approval_event_id"
+                    ],
+                },
+            )
+        )
+        self.assertTrue(stale["isError"])
+        self.assertEqual(
+            stale["structuredContent"]["status"],
+            "APPROVAL_REQUIRED",
+        )
+        self.lead.refresh_from_db()
+        self.assertEqual(
+            self.lead.attributes[definition.key],
+            "40",
+        )
+
+    def test_pipeline_config_approval_is_invalid_after_pipeline_changes(self):
+        OperationsPolicy.objects.create(
+            organization=self.organization,
+            organization_admin_enabled=True,
+            allowed_capabilities=[
+                CAP_ORGANIZATION_READ,
+                CAP_CRM_CONFIG_WRITE,
+            ],
+            approval_required_capabilities=[CAP_CRM_CONFIG_WRITE],
+        )
+        bearer = self._token(
+            actor=self.admin,
+            role=ROLE_ORGANIZATION_ADMIN,
+            organization=self.organization,
+        )
+        arguments = {
+            "pipeline_id": str(self.pipeline.id),
+            "data": {
+                "name": self.pipeline.name,
+                "description": "Approved description",
+                "is_active": True,
+                "ai_enabled": True,
+            },
+            "reason": "Update reviewed pipeline description",
+        }
+        dry = self._result(
+            self._call(
+                bearer,
+                "upsert_pipeline_configuration",
+                {**arguments, "dry_run": True},
+            )
+        )
+        self.assertFalse(dry["isError"])
+
+        self.pipeline.description = "Newer manual description"
+        self.pipeline.save(update_fields=["description", "updated_at"])
+
+        stale = self._result(
+            self._call(
+                bearer,
+                "upsert_pipeline_configuration",
+                {
+                    **arguments,
+                    "dry_run": False,
+                    "approved": True,
+                    "approval_event_id": dry["structuredContent"][
+                        "approval_event_id"
+                    ],
+                },
+            )
+        )
+        self.assertTrue(stale["isError"])
+        self.assertEqual(
+            stale["structuredContent"]["status"],
+            "APPROVAL_REQUIRED",
+        )
+        self.pipeline.refresh_from_db()
+        self.assertEqual(
+            self.pipeline.description,
+            "Newer manual description",
+        )
+
     def test_operations_stage_move_cannot_bypass_backend_qualification(self):
         OperationsPolicy.objects.create(
             organization=self.organization,
