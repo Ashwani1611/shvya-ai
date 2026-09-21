@@ -3783,7 +3783,29 @@ class OperationsMCPTests(TestCase):
         )
 
         verifier = "z" * 64
-        state = "state-" + ("s" * 2000)
+        oversized_state = "state-" + ("s" * 2000)
+        rejected_state = self.client.post(
+            "/operations/oauth/authorize",
+            data={
+                "client_id": self.oauth_client.client_id,
+                "redirect_uri": "https://chatgpt.com/aip/callback",
+                "response_type": "code",
+                "code_challenge": pkce_s256(verifier),
+                "code_challenge_method": "S256",
+                "scope": OPERATIONS_READ_SCOPE,
+                "resource": "http://testserver/operations/mcp/",
+                "state": oversized_state,
+                "actor_mode": ROLE_ORGANIZATION_ADMIN,
+            },
+        )
+        self.assertEqual(rejected_state.status_code, 400)
+        self.assertContains(
+            rejected_state,
+            "OAuth state is too long.",
+            status_code=400,
+        )
+
+        state = "normal-state-value"
         authorize = self.client.post(
             "/operations/oauth/authorize",
             data={
@@ -3802,8 +3824,7 @@ class OperationsMCPTests(TestCase):
         returned = parse_qs(
             urlparse(authorize["Location"]).query
         )["state"][0]
-        self.assertEqual(len(returned), 1024)
-        self.assertEqual(returned, state[:1024])
+        self.assertEqual(returned, state)
 
         huge_token_request = self.client.post(
             "/operations/oauth/token",
