@@ -2478,6 +2478,97 @@ class OperationsMCPTests(TestCase):
         self.assertNotIn("customer-password-secret", payload)
         self.assertNotIn(opaque_secret, payload)
 
+    def test_recent_errors_bounds_hosted_provider_details(self):
+        OperationsPolicy.objects.create(
+            organization=self.organization,
+            organization_admin_enabled=True,
+            allowed_capabilities=[
+                CAP_ORGANIZATION_READ,
+                CAP_DIAGNOSTICS_READ,
+            ],
+        )
+        account = WhatsAppAccount.objects.create(
+            organization=self.organization,
+            connection_type=WhatsAppAccount.ConnectionType.coexisted,
+            business_name="Recent Error Hosted",
+            display_phone_number="+919000000061",
+            status=WhatsAppAccount.Status.CONNECTED,
+            is_active=True,
+        )
+        inbound = WhatsAppMessage.objects.create(
+            organization=self.organization,
+            account=account,
+            lead=self.lead,
+            external_id="recent-error-hosted-source",
+            direction=WhatsAppMessage.Direction.INBOUND,
+            status=WhatsAppMessage.Status.RECEIVED,
+            message_type=WhatsAppMessage.MessageType.TEXT,
+            from_number="+919100000061",
+            to_number="+919000000061",
+            body="hello",
+        )
+        job = HostedAutomationJob.objects.create(
+            organization=self.organization,
+            account=account,
+            lead=self.lead,
+            source_message=inbound,
+            available_at=timezone.now(),
+            status=HostedAutomationJob.Status.FAILED,
+            result={
+                "reason": "pipeline_whatsapp_account_mismatch",
+                "delivery": {"status": "blocked"},
+                "internal_detail": "private hosted result",
+            },
+            error=(
+                "access_token=recent-hosted-provider-secret "
+                "customer body should not be returned"
+            ),
+        )
+        bearer = self._token(
+            actor=self.admin,
+            role=ROLE_ORGANIZATION_ADMIN,
+            organization=self.organization,
+            scopes=[OPERATIONS_READ_SCOPE],
+        )
+
+        result = self._result(
+            self._call(
+                bearer,
+                "get_recent_errors",
+                {"hours": 24, "limit": 20},
+            )
+        )
+        self.assertFalse(result["isError"])
+        hosted_rows = result["structuredContent"]["hosted"]
+        row = next(
+            item
+            for item in hosted_rows
+            if item["job_id"] == str(job.id)
+        )
+        self.assertEqual(
+            row["reason"],
+            "pipeline_whatsapp_account_mismatch",
+        )
+        self.assertEqual(
+            row["delivery_status"],
+            "blocked",
+        )
+        self.assertTrue(row["has_persisted_error"])
+        payload = json.dumps(result["structuredContent"])
+        self.assertNotIn(
+            "recent-hosted-provider-secret",
+            payload,
+        )
+        self.assertNotIn(
+            "customer body should not be returned",
+            payload,
+        )
+        self.assertNotIn(
+            "private hosted result",
+            payload,
+        )
+        self.assertNotIn("internal_detail", payload)
+
     def test_trace_message_bounds_hosted_job_internal_details(self):
         OperationsPolicy.objects.create(
             organization=self.organization,
