@@ -447,10 +447,6 @@ def select_organization_context(*, identity, arguments):
         raise OperationsPermissionError(
             "Organization context selection is available only to SHVYA Superadmin."
         )
-    if "operations.write" not in identity.scopes:
-        raise OperationsPermissionError(
-            "This OAuth token does not include operations.write."
-        )
     reason = _reason(arguments, required=True)
     organization = Organization.objects.filter(
         pk=_uuid((arguments or {}).get("organization_id"), field="organization_id"),
@@ -494,10 +490,6 @@ def clear_organization_context(*, identity, arguments):
     if identity.role != ROLE_SUPERADMIN:
         raise OperationsPermissionError(
             "Organization context clearing is available only to SHVYA Superadmin."
-        )
-    if "operations.write" not in identity.scopes:
-        raise OperationsPermissionError(
-            "This OAuth token does not include operations.write."
         )
     reason = _reason(arguments, required=True)
     previous = identity.token.active_organization
