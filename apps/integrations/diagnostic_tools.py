@@ -5,7 +5,7 @@ import uuid
 from datetime import timedelta
 
 from django.conf import settings
-from django.db.models import BooleanField, Case, Q, Value, When
+from django.db.models import BooleanField, Case, F, Q, Value, When
 from django.utils import timezone
 
 from apps.ai_engagement.services.confidentiality import (
@@ -848,6 +848,7 @@ def get_recent_errors(*, organization, arguments):
             status=WhatsAppMessage.Status.FAILED,
             created_at__gte=since,
         )
+        .filter(account__organization=organization)
         .filter(
             Q(lead__isnull=True)
             | Q(lead__organization=organization)
@@ -857,9 +858,20 @@ def get_recent_errors(*, organization, arguments):
     instagram = list(
         InstagramMessage.objects.filter(
             organization=organization,
+            account__organization=organization,
+            conversation__organization=organization,
+            conversation__account__organization=organization,
             status=InstagramMessage.Status.FAILED,
             created_at__gte=since,
-        ).order_by("-created_at")[:limit]
+        )
+        .filter(
+            account_id=F("conversation__account_id"),
+        )
+        .filter(
+            Q(conversation__lead__isnull=True)
+            | Q(conversation__lead__organization=organization)
+        )
+        .order_by("-created_at")[:limit]
     )
     instagram_webhooks = list(
         InstagramWebhookDelivery.objects.filter(
@@ -871,14 +883,27 @@ def get_recent_errors(*, organization, arguments):
     hosted = list(
         HostedAutomationJob.objects.filter(
             organization=organization,
+            account__organization=organization,
             lead__organization=organization,
+            source_message__organization=organization,
+            source_message__account__organization=organization,
+            source_message__lead__organization=organization,
             status=HostedAutomationJob.Status.FAILED,
             created_at__gte=since,
-        ).order_by("-created_at")[:limit]
+        )
+        .filter(
+            account_id=F("source_message__account_id"),
+            lead_id=F("source_message__lead_id"),
+        )
+        .order_by("-created_at")[:limit]
     )
     webhooks = list(
         WebhookDelivery.objects.filter(
             organization=organization,
+            webhook__organization=organization,
+            lead_id__in=Lead.objects.filter(
+                organization=organization
+            ).values("id"),
             status=WebhookDelivery.Status.FAILED,
             created_at__gte=since,
         ).order_by("-created_at")[:limit]
@@ -887,8 +912,13 @@ def get_recent_errors(*, organization, arguments):
         TriggerRun.objects.filter(
             rule__organization=organization,
             lead__organization=organization,
+            event__organization=organization,
+            event__lead__organization=organization,
             status__in=["failed", "error"],
             created_at__gte=since,
+        )
+        .filter(
+            lead_id=F("event__lead_id"),
         )
         .select_related("rule")
         .order_by("-created_at")[:limit]

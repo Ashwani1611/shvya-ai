@@ -2901,6 +2901,72 @@ class OperationsMCPTests(TestCase):
             body="leadless own message",
             error="leadless own failure",
         )
+        foreign_account = WhatsAppAccount.objects.create(
+            organization=self.other_organization,
+            connection_type=WhatsAppAccount.ConnectionType.API,
+            business_name="Foreign Corruption Sender",
+            display_phone_number="+919000000051",
+            status=WhatsAppAccount.Status.CONNECTED,
+            is_active=True,
+        )
+        corrupted_account_message = WhatsAppMessage.objects.create(
+            organization=self.organization,
+            account=foreign_account,
+            lead=self.lead,
+            external_id="cross-tenant-corrupt-account-message",
+            direction=WhatsAppMessage.Direction.INBOUND,
+            status=WhatsAppMessage.Status.FAILED,
+            message_type=WhatsAppMessage.MessageType.TEXT,
+            from_number="+919133333333",
+            to_number="+919000000051",
+            body="foreign account linked message",
+            error="foreign account linked failure",
+        )
+        foreign_instagram = InstagramAccount.objects.create(
+            organization=self.other_organization,
+            ig_user_id="foreign-diagnostic-account",
+            username="foreign_diagnostic_account",
+            status=InstagramAccount.Status.CONNECTED,
+        )
+        foreign_conversation = InstagramConversation.objects.create(
+            organization=self.other_organization,
+            account=foreign_instagram,
+            lead=self.other_lead,
+            participant_id="foreign-diagnostic-participant",
+        )
+        corrupted_instagram = InstagramMessage.objects.create(
+            organization=self.organization,
+            account=foreign_instagram,
+            conversation=foreign_conversation,
+            external_id="cross-tenant-corrupt-instagram-message",
+            direction=InstagramMessage.Direction.INBOUND,
+            status=InstagramMessage.Status.FAILED,
+            message_type=InstagramMessage.MessageType.TEXT,
+            body="foreign instagram linked message",
+            error="foreign instagram linked failure",
+        )
+        hosted_source = WhatsAppMessage.objects.create(
+            organization=self.organization,
+            account=account,
+            lead=self.lead,
+            external_id="cross-tenant-hosted-source",
+            direction=WhatsAppMessage.Direction.INBOUND,
+            status=WhatsAppMessage.Status.RECEIVED,
+            message_type=WhatsAppMessage.MessageType.TEXT,
+            from_number="+919144444444",
+            to_number="+919000000050",
+            body="hosted source",
+        )
+        corrupted_hosted = HostedAutomationJob.objects.create(
+            organization=self.organization,
+            account=foreign_account,
+            lead=self.lead,
+            source_message=hosted_source,
+            available_at=timezone.now(),
+            status=HostedAutomationJob.Status.FAILED,
+            result={"reason": "foreign_account_relation"},
+            error="foreign hosted relation",
+        )
         bearer = self._token(
             actor=self.admin,
             role=ROLE_ORGANIZATION_ADMIN,
@@ -2952,8 +3018,51 @@ class OperationsMCPTests(TestCase):
         self.assertIn(str(leadless.id), message_ids)
         self.assertNotIn(str(corrupted.id), message_ids)
         self.assertNotIn(
+            str(corrupted_account_message.id),
+            message_ids,
+        )
+        instagram_message_ids = {
+            row["message_id"]
+            for row in recent["structuredContent"][
+                "instagram"
+            ]
+        }
+        self.assertNotIn(
+            str(corrupted_instagram.id),
+            instagram_message_ids,
+        )
+        hosted_job_ids = {
+            row["job_id"]
+            for row in recent["structuredContent"][
+                "hosted"
+            ]
+        }
+        self.assertNotIn(
+            str(corrupted_hosted.id),
+            hosted_job_ids,
+        )
+        recent_payload = json.dumps(
+            recent["structuredContent"]
+        )
+        self.assertNotIn(
             str(self.other_lead.id),
-            json.dumps(recent["structuredContent"]),
+            recent_payload,
+        )
+        self.assertNotIn(
+            self.other_organization.name,
+            recent_payload,
+        )
+        self.assertNotIn(
+            "foreign account linked failure",
+            recent_payload,
+        )
+        self.assertNotIn(
+            "foreign instagram linked failure",
+            recent_payload,
+        )
+        self.assertNotIn(
+            "foreign hosted relation",
+            recent_payload,
         )
 
     def test_conversation_diagnostics_redact_customer_secret_patterns(self):
