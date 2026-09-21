@@ -595,6 +595,16 @@ def get_integration_health(*, organization, arguments):
                 "updated_at": _iso(
                     instagram.updated_at
                 ),
+                "automation_capabilities": {
+                    "lead_linking": True,
+                    "manual_outbound": True,
+                    "ai_auto_reply_runtime": False,
+                    "note": (
+                        "This deployment has persisted Instagram webhook/inbox "
+                        "and manual outbound support, but no Instagram AI "
+                        "auto-reply execution runtime is exposed."
+                    ),
+                },
             }
             if instagram
             else None
@@ -925,6 +935,7 @@ def get_runtime_health(*, organization, arguments):
                     created_at__gte=since,
                 ).count()
             ),
+            "instagram_ai_auto_reply_runtime": False,
             "instagram_webhook_failed_24h": (
                 InstagramWebhookDelivery.objects.filter(
                     organization_ids__contains=[str(organization.id)],
