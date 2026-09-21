@@ -70,3 +70,5 @@
 @media(max-width:1250px){.ci-filter-bar{grid-template-columns:repeat(4,minmax(0,1fr))}.ci-filter-search{grid-column:span 2}.ci-filter-apply{grid-column:auto}.ci-disposition-admin form{grid-template-columns:1fr 1fr 90px 100px}.ci-disposition-admin form button{grid-column:1/-1}}
 @media(max-width:900px){.ci-call-detail-grid,.ci-post-call-form,.ci-intelligence-grid{grid-template-columns:1fr}.ci-transcript{max-width:100%}.ci-media-card{flex-direction:column}.ci-filter-bar{grid-template-columns:1fr 1fr}.ci-filter-search{grid-column:1/-1}.ci-disposition-admin form{grid-template-columns:1fr 1fr}}
 @media(max-width:620px){.ci-filter-bar{grid-template-columns:1fr}.ci-filter-search{grid-column:auto}.ci-call-detail{padding:0 12px 16px}.ci-post-call-controls{grid-template-columns:1fr}.ci-disposition-admin form{grid-template-columns:1fr}.ci-agent-list article{grid-template-columns:1fr}.ci-agent-metrics{margin-top:8px}}
+
+.ci-coaching{display:flex;flex-wrap:wrap;gap:6px;margin-top:13px}.ci-coaching>strong{width:100%;font-size:10px}.ci-coaching span{padding:6px 8px;border-radius:999px;background:#f5f5f7;color:#555;font-size:9px;font-weight:700}.ci-compliance{color:#a8442e}
