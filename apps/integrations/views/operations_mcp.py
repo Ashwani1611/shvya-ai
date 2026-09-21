@@ -22,6 +22,7 @@ from apps.integrations.diagnostic_auth import (
 )
 from apps.integrations.models import OperationsAuditEvent, OperationsSupportSession
 from apps.integrations.operations_agent_prompt import OPERATIONS_AGENT_INSTRUCTIONS
+from apps.integrations.operations_approval import approval_fingerprint
 from apps.integrations.operations_auth import (
     ACCESS_TOKEN_TTL,
     OFFLINE_SCOPE,
@@ -196,6 +197,14 @@ def _write_properties(extra=None):
             "type": "boolean",
             "default": False,
             "description": "Set true only after the human approved an approval-required dry-run.",
+        },
+        "approval_event_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": (
+                "Immutable dry-run audit event ID returned by SHVYA. Required "
+                "with approved=true when the dry-run said approval_required=true."
+            ),
         },
         "reason": {
             "type": "string",
@@ -985,6 +994,14 @@ def _record_audit(
     safe_summary = sanitize_data(
         (execution.audit_summary if execution else {}) or {}
     )
+    approval_event_id = str(
+        (arguments or {}).get("approval_event_id") or ""
+    ).strip()
+    if (
+        approval_event_id
+        and isinstance(safe_summary, dict)
+    ):
+        safe_summary["approval_event_id"] = approval_event_id[:64]
     reason = (
         execution.reason
         if execution and execution.reason
@@ -1003,7 +1020,7 @@ def _record_audit(
         outcome=outcome or (
             execution.outcome if execution else OperationsAuditEvent.Outcome.ERROR
         ),
-        request_fingerprint=request_fingerprint(arguments),
+        request_fingerprint=approval_fingerprint(arguments),
         change_summary=safe_summary if isinstance(safe_summary, dict) else {},
         duration_ms=max(0, int(duration_ms)),
         error_code=str(error_code or "")[:100],
@@ -1270,6 +1287,14 @@ def operations_mcp(request):
     )
     result.setdefault("_meta", {})
     result["_meta"]["shvya/audit_event_id"] = str(audit.id)
+    if (
+        execution is not None
+        and execution.outcome == OperationsAuditEvent.Outcome.DRY_RUN
+        and isinstance(result.get("structuredContent"), dict)
+        and result["structuredContent"].get("approval_required") is True
+    ):
+        result["structuredContent"]["approval_event_id"] = str(audit.id)
+        result["structuredContent"]["approval_expires_in_seconds"] = 1800
 
     response = JsonResponse(
         _jsonrpc_result(request_id, result, modern=modern)
