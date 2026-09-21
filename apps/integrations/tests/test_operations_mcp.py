@@ -960,6 +960,11 @@ class OperationsMCPTests(TestCase):
             "schedule_type",
             failed["structuredContent"]["error"],
         )
+        self.assertEqual(
+            sequence.steps.count(),
+            0,
+            "Verification failure must roll back the malformed Cadence step.",
+        )
 
     def test_pipeline_configuration_create_verifies_standard_stages(self):
         OperationsPolicy.objects.create(
