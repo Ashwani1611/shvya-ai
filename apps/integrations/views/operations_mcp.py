@@ -597,10 +597,16 @@ for _diagnostic_name in DIAGNOSTIC_TOOL_NAMES:
 
 
 def _tools_for_identity(identity):
-    """Return only tools discoverable to the authenticated SHVYA identity."""
+    """Return only tools the authenticated SHVYA identity can actually invoke."""
+
+    has_write_scope = OPERATIONS_WRITE_SCOPE in identity.scopes
 
     if identity.role == ROLE_SUPERADMIN:
-        return TOOL_DEFINITIONS
+        return [
+            item
+            for item in TOOL_DEFINITIONS
+            if item["annotations"]["readOnlyHint"] or has_write_scope
+        ]
 
     organization = identity.organization
     capabilities = effective_capabilities(
@@ -619,6 +625,8 @@ def _tools_for_identity(identity):
             "select_organization_context",
             "clear_organization_context",
         }:
+            continue
+        if not item["annotations"]["readOnlyHint"] and not has_write_scope:
             continue
         capability = TOOL_CAPABILITIES.get(name)
         if capability is None or capability in capabilities:
