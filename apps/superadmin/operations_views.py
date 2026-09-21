@@ -14,6 +14,7 @@ from apps.integrations.operations_auth import (
 )
 from apps.integrations.operations_models import (
     OperationsAuditEvent,
+    OperationsOAuthAuthorizationCode,
     OperationsOAuthToken,
     OperationsPolicy,
     OperationsSupportSession,
@@ -93,6 +94,7 @@ def organization_operations_policy_update_view(request, organization_id):
     ]
 
     revoked_token_count = 0
+    expired_code_count = 0
     with transaction.atomic():
         policy.organization_admin_enabled = enabled
         policy.allowed_capabilities = allowed
@@ -109,13 +111,24 @@ def organization_operations_policy_update_view(request, organization_id):
         )
 
         if not enabled:
+            now = timezone.now()
             revoked_token_count = OperationsOAuthToken.objects.filter(
                 organization=organization,
                 role=ROLE_ORGANIZATION_ADMIN,
                 revoked_at__isnull=True,
             ).update(
-                revoked_at=timezone.now(),
-                updated_at=timezone.now(),
+                revoked_at=now,
+                updated_at=now,
+            )
+            expired_code_count = (
+                OperationsOAuthAuthorizationCode.objects.filter(
+                    organization=organization,
+                    role=ROLE_ORGANIZATION_ADMIN,
+                    used_at__isnull=True,
+                    expires_at__gt=now,
+                ).update(
+                    expires_at=now,
+                )
             )
 
     AuditLog.record(
@@ -131,6 +144,7 @@ def organization_operations_policy_update_view(request, organization_id):
         operations_mcp_enabled=enabled,
         operations_mcp_capability_count=len(allowed),
         operations_mcp_revoked_token_count=revoked_token_count,
+        operations_mcp_expired_authorization_code_count=expired_code_count,
     )
     _record_superadmin_operations_event(
         actor=request.user,
@@ -144,14 +158,16 @@ def organization_operations_policy_update_view(request, organization_id):
             "allowed_capabilities": sorted(allowed),
             "approval_required_capabilities": sorted(approval),
             "revoked_token_count": revoked_token_count,
+            "expired_authorization_code_count": expired_code_count,
         },
     )
 
     message = "External AI Operations policy updated for this organization."
-    if revoked_token_count:
+    if revoked_token_count or expired_code_count:
         message += (
             f" Revoked {revoked_token_count} active Organization Admin "
-            "Operations session(s); fresh authorization is required to reconnect."
+            f"Operations session(s) and expired {expired_code_count} pending "
+            "authorization code(s); fresh authorization is required to reconnect."
         )
     messages.success(request, message)
     return redirect(
