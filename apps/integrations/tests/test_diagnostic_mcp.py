@@ -8,6 +8,7 @@ from apps.integrations.diagnostic_auth import (
     OFFLINE_SCOPE,
     pkce_s256,
     sanitize_data,
+    sanitize_text,
 )
 from apps.integrations.models import (
     DiagnosticAccessLog,
@@ -146,6 +147,15 @@ class DiagnosticMCPTests(TestCase):
         self.assertEqual(payload["password"], "[REDACTED]")
         self.assertEqual(payload["external_id"], external_id)
         self.assertEqual(payload["safe"], "ok")
+
+    def test_sanitizer_redacts_inline_secret_assignments(self):
+        safe = sanitize_text(
+            "password=example-value api_key:example-key postgres://user:pass@example.test/db"
+        )
+        self.assertNotIn("example-value", safe)
+        self.assertNotIn("example-key", safe)
+        self.assertNotIn("user:pass", safe)
+        self.assertIn("[REDACTED]", safe)
 
     def test_modern_server_discovery(self):
         response = self.client.post(
