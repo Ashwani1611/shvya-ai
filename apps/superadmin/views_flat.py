@@ -405,10 +405,16 @@ def organization_detail_view(
         organization=organization,
     )
 
+    from apps.integrations.operations_models import (
+        OperationsAuditEvent,
+        OperationsOAuthToken,
+        OperationsSupportSession,
+    )
     from apps.integrations.operations_presence import visible_support_sessions
     from apps.integrations.operations_policy import (
         ALL_CAPABILITIES,
         CAPABILITY_LABELS,
+        ROLE_ORGANIZATION_ADMIN,
         WRITE_CAPABILITIES,
         policy_for,
     )
@@ -430,6 +436,35 @@ def organization_detail_view(
     active_operations_support = visible_support_sessions(
         organization=organization,
     )
+    active_operations_tokens = (
+        OperationsOAuthToken.objects.filter(
+            organization=organization,
+            role=ROLE_ORGANIZATION_ADMIN,
+            revoked_at__isnull=True,
+            refresh_expires_at__gt=timezone.now(),
+        )
+        .select_related("actor", "client")
+        .order_by("-last_used_at", "-created_at")
+    )
+    open_operations_support_sessions = (
+        OperationsSupportSession.objects.filter(
+            organization=organization,
+            ended_at__isnull=True,
+        )
+        .select_related(
+            "actor",
+            "token",
+            "token__client",
+        )
+        .order_by("-last_seen_at", "-started_at")
+    )
+    operations_audit_events = (
+        OperationsAuditEvent.objects.filter(
+            organization=organization,
+        )
+        .select_related("actor", "support_session")
+        .order_by("-created_at")[:20]
+    )
 
     return render(
         request,
@@ -445,6 +480,9 @@ def organization_detail_view(
             "operations_policy": operations_policy,
             "operations_capabilities": operations_capabilities,
             "active_operations_support": active_operations_support,
+            "active_operations_tokens": active_operations_tokens,
+            "open_operations_support_sessions": open_operations_support_sessions,
+            "operations_audit_events": operations_audit_events,
             "operations_mcp_url": request.build_absolute_uri(
                 reverse("shvya-operations-mcp")
             ),
