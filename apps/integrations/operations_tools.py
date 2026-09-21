@@ -10,7 +10,17 @@ from datetime import date, datetime, time as dt_time, timedelta
 
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
-from django.db.models import BooleanField, Case, Count, F, Max, Q, Value, When
+from django.db.models import (
+    BooleanField,
+    Case,
+    Count,
+    F,
+    Max,
+    Prefetch,
+    Q,
+    Value,
+    When,
+)
 from django.utils import timezone
 
 from apps.ai_engagement.models import (
@@ -549,6 +559,7 @@ def list_organizations(*, identity, arguments):
     qs = Organization.objects.all().order_by("name")
     if query:
         qs = qs.filter(Q(name__icontains=query) | Q(users__email__icontains=query)).distinct()
+    organization_count = qs.count()
     rows = []
     for organization in qs[:limit]:
         policy = policy_for(organization)
@@ -575,10 +586,22 @@ def list_organizations(*, identity, arguments):
             }
         )
     return ToolExecution(
-        data={"organizations": rows, "count": len(rows)},
+        data={
+            "organizations": rows,
+            "count": len(rows),
+            "organization_count": organization_count,
+            "organizations_returned": len(rows),
+            "organizations_truncated": (
+                organization_count > len(rows)
+            ),
+        },
         capability=CAP_ORGANIZATION_READ,
         target_type="platform",
-        audit_summary={"result_count": len(rows)},
+        audit_summary={
+            "result_count": len(rows),
+            "organization_count": organization_count,
+            "truncated": organization_count > len(rows),
+        },
     )
 
 
@@ -1708,13 +1731,59 @@ def get_automation_configuration(*, identity, arguments):
             }
         )
 
+    cadence_steps_qs = (
+        FollowupStep.objects.select_related(
+            "whatsapp_template"
+        )
+        .only(
+            "id",
+            "sequence_id",
+            "position",
+            "step_type",
+            "title",
+            "whatsapp_template_id",
+            "email_subject",
+            "email_body",
+            "reminder_text",
+            "schedule_type",
+            "delay_value",
+            "delay_unit",
+            "specific_time",
+            "specific_weekday",
+            "recurring_every",
+            "recurring_unit",
+            "recurring_weekdays",
+            "retry_count",
+            "is_active",
+            "created_at",
+            "whatsapp_template__id",
+            "whatsapp_template__organization_id",
+            "whatsapp_template__account_id",
+            "whatsapp_template__name",
+            "whatsapp_template__status",
+        )
+        .order_by("position", "created_at")[:100]
+    )
     cadences = list(
         cadence_qs
+        .annotate(
+            operations_step_count=Count(
+                "steps",
+                distinct=True,
+            )
+        )
         .select_related("whatsapp_account")
         .defer("whatsapp_account__access_token")
-        .prefetch_related("steps__whatsapp_template")
+        .prefetch_related(
+            Prefetch(
+                "steps",
+                queryset=cadence_steps_qs,
+                to_attr="operations_steps",
+            )
+        )
         .order_by("-updated_at")[:limit]
     )
+    cadence_rows = []
     for sequence in cadences:
         if (
             sequence.whatsapp_account_id
@@ -1744,68 +1813,101 @@ def get_automation_configuration(*, identity, arguments):
                     "was returned."
                 )
 
+        operations_steps = list(
+            getattr(sequence, "operations_steps", [])
+        )
+        step_count = int(
+            getattr(
+                sequence,
+                "operations_step_count",
+                0,
+            )
+            or 0
+        )
+        cadence_rows.append(
+            {
+                "id": str(sequence.id),
+                "name": sequence.name,
+                "description": sequence.description,
+                "is_active": sequence.is_active,
+                "whatsapp_account": (
+                    {
+                        "id": str(sequence.whatsapp_account_id),
+                        "connection_type": (
+                            sequence.whatsapp_account.connection_type
+                        ),
+                        "business_name": (
+                            sequence.whatsapp_account.business_name
+                        ),
+                        "display_phone_number": (
+                            sequence.whatsapp_account.display_phone_number
+                        ),
+                        "status": sequence.whatsapp_account.status,
+                        "is_active": (
+                            sequence.whatsapp_account.is_active
+                        ),
+                    }
+                    if sequence.whatsapp_account_id
+                    else None
+                ),
+                "steps": [
+                    {
+                        "id": str(step.id),
+                        "position": step.position,
+                        "type": step.step_type,
+                        "title": step.title,
+                        "whatsapp_template": (
+                            {
+                                "id": str(
+                                    step.whatsapp_template_id
+                                ),
+                                "name": (
+                                    step.whatsapp_template.name
+                                ),
+                                "status": (
+                                    step.whatsapp_template.status
+                                ),
+                            }
+                            if step.whatsapp_template_id
+                            else None
+                        ),
+                        "email_subject": step.email_subject,
+                        "email_body": step.email_body,
+                        "reminder_text": step.reminder_text,
+                        "schedule": {
+                            "type": step.schedule_type,
+                            "delay_value": step.delay_value,
+                            "delay_unit": step.delay_unit,
+                            "time": (
+                                step.specific_time.isoformat()
+                                if step.specific_time
+                                else None
+                            ),
+                            "weekday": step.specific_weekday,
+                            "recurring_every": step.recurring_every,
+                            "recurring_unit": step.recurring_unit,
+                            "weekdays": list(
+                                step.recurring_weekdays or []
+                            ),
+                        },
+                        "retry_count": step.retry_count,
+                        "is_active": step.is_active,
+                    }
+                    for step in operations_steps
+                ],
+                "step_count": step_count,
+                "steps_returned": len(operations_steps),
+                "steps_truncated": (
+                    step_count > len(operations_steps)
+                ),
+                "updated_at": sequence.updated_at.isoformat(),
+            }
+        )
+
     return ToolExecution(
         data={
             "workflows": workflow_rows,
-            "cadences": [
-                {
-                    "id": str(sequence.id),
-                    "name": sequence.name,
-                    "description": sequence.description,
-                    "is_active": sequence.is_active,
-                    "whatsapp_account": (
-                        {
-                            "id": str(sequence.whatsapp_account_id),
-                            "connection_type": sequence.whatsapp_account.connection_type,
-                            "business_name": sequence.whatsapp_account.business_name,
-                            "display_phone_number": sequence.whatsapp_account.display_phone_number,
-                            "status": sequence.whatsapp_account.status,
-                            "is_active": sequence.whatsapp_account.is_active,
-                        }
-                        if sequence.whatsapp_account_id
-                        else None
-                    ),
-                    "steps": [
-                        {
-                            "id": str(step.id),
-                            "position": step.position,
-                            "type": step.step_type,
-                            "title": step.title,
-                            "whatsapp_template": (
-                                {
-                                    "id": str(step.whatsapp_template_id),
-                                    "name": step.whatsapp_template.name,
-                                    "status": step.whatsapp_template.status,
-                                }
-                                if step.whatsapp_template_id
-                                else None
-                            ),
-                            "email_subject": step.email_subject,
-                            "email_body": step.email_body,
-                            "reminder_text": step.reminder_text,
-                            "schedule": {
-                                "type": step.schedule_type,
-                                "delay_value": step.delay_value,
-                                "delay_unit": step.delay_unit,
-                                "time": (
-                                    step.specific_time.isoformat()
-                                    if step.specific_time
-                                    else None
-                                ),
-                                "weekday": step.specific_weekday,
-                                "recurring_every": step.recurring_every,
-                                "recurring_unit": step.recurring_unit,
-                                "weekdays": list(step.recurring_weekdays or []),
-                            },
-                            "retry_count": step.retry_count,
-                            "is_active": step.is_active,
-                        }
-                        for step in sequence.steps.all()
-                    ],
-                    "updated_at": sequence.updated_at.isoformat(),
-                }
-                for sequence in cadences
-            ],
+            "cadences": cadence_rows,
             "counts": {
                 "workflow_count": workflow_total,
                 "cadence_count": cadence_total,
@@ -3817,6 +3919,7 @@ def get_operations_audit(*, identity, arguments):
             )
         rows = rows.filter(outcome=outcome)
 
+    event_count = rows.count()
     rows = list(
         rows.order_by("-created_at")[:limit]
     )
@@ -3858,6 +3961,9 @@ def get_operations_audit(*, identity, arguments):
                 for item in rows
             ],
             "count": len(rows),
+            "event_count": event_count,
+            "events_returned": len(rows),
+            "events_truncated": event_count > len(rows),
             "filters": {
                 "audit_event_id": audit_event_id or None,
                 "tool_name": tool_name or None,
@@ -3883,6 +3989,8 @@ def get_operations_audit(*, identity, arguments):
         audit_summary={
             "scope": scope,
             "result_count": len(rows),
+            "event_count": event_count,
+            "truncated": event_count > len(rows),
             "filtered": any(
                 (
                     audit_event_id,

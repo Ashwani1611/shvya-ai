@@ -744,7 +744,7 @@ def get_ai_diagnostics(*, organization, arguments):
 
 
 def get_integration_health(*, organization, arguments):
-    whatsapp_accounts = list(
+    whatsapp_qs = (
         WhatsAppAccount.objects.filter(
             organization=organization
         )
@@ -756,7 +756,10 @@ def get_integration_health(*, organization, arguments):
                 output_field=BooleanField(),
             )
         )
-        .order_by("-updated_at")
+    )
+    whatsapp_count = whatsapp_qs.count()
+    whatsapp_accounts = list(
+        whatsapp_qs.order_by("-updated_at")[:100]
     )
     instagram = (
         InstagramAccount.objects.filter(
@@ -800,6 +803,13 @@ def get_integration_health(*, organization, arguments):
             }
             for account in whatsapp_accounts
         ],
+        "whatsapp_count": whatsapp_count,
+        "whatsapp_returned": len(
+            whatsapp_accounts
+        ),
+        "whatsapp_truncated": (
+            whatsapp_count > len(whatsapp_accounts)
+        ),
         "instagram": (
             {
                 "id": str(instagram.id),

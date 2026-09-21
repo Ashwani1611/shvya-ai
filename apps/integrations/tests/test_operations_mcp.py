@@ -1008,6 +1008,26 @@ class OperationsMCPTests(TestCase):
         self.assertNotIn("move_lead_stage", super_names)
         self.assertNotIn("upsert_workflow_configuration", super_names)
 
+    def test_superadmin_organization_discovery_reports_truncation(self):
+        bearer = self._token(
+            actor=self.superadmin,
+            role=ROLE_SUPERADMIN,
+            scopes=[OPERATIONS_READ_SCOPE],
+        )
+        result = self._result(
+            self._call(
+                bearer,
+                "list_organizations",
+                {"limit": 1},
+            )
+        )
+        self.assertFalse(result["isError"])
+        data = result["structuredContent"]
+        self.assertEqual(data["count"], 1)
+        self.assertEqual(data["organizations_returned"], 1)
+        self.assertGreaterEqual(data["organization_count"], 2)
+        self.assertTrue(data["organizations_truncated"])
+
     def test_read_only_superadmin_can_select_context_but_cannot_mutate_customer_state(self):
         bearer = self._token(
             actor=self.superadmin,
@@ -1832,6 +1852,69 @@ class OperationsMCPTests(TestCase):
             stale_stage_id,
             json.dumps(stale_stage),
         )
+
+    def test_automation_read_reports_cadence_step_truncation(self):
+        OperationsPolicy.objects.create(
+            organization=self.organization,
+            organization_admin_enabled=True,
+            allowed_capabilities=[CAP_ORGANIZATION_READ],
+        )
+        account = WhatsAppAccount.objects.create(
+            organization=self.organization,
+            connection_type=WhatsAppAccount.ConnectionType.API,
+            business_name="Bounded Cadence Sender",
+            display_phone_number="+919000000006",
+            status=WhatsAppAccount.Status.CONNECTED,
+            is_active=True,
+        )
+        sequence = FollowupSequence.objects.create(
+            organization=self.organization,
+            created_by=self.admin,
+            name="Bounded Step Cadence",
+            description="Many steps",
+            whatsapp_account=account,
+        )
+        FollowupStep.objects.bulk_create(
+            [
+                FollowupStep(
+                    sequence=sequence,
+                    position=index + 1,
+                    step_type=FollowupStep.StepType.REMINDER,
+                    title=f"Reminder {index:03d}",
+                    reminder_text=f"Reminder body {index:03d}",
+                    schedule_type=(
+                        FollowupStep.ScheduleType.IMMEDIATE
+                    ),
+                )
+                for index in range(101)
+            ]
+        )
+        bearer = self._token(
+            actor=self.admin,
+            role=ROLE_ORGANIZATION_ADMIN,
+            organization=self.organization,
+            scopes=[OPERATIONS_READ_SCOPE],
+        )
+
+        result = self._result(
+            self._call(
+                bearer,
+                "get_automation_configuration",
+                {},
+            )
+        )
+        self.assertFalse(result["isError"])
+        cadence = next(
+            item
+            for item in result["structuredContent"][
+                "cadences"
+            ]
+            if item["id"] == str(sequence.id)
+        )
+        self.assertEqual(cadence["step_count"], 101)
+        self.assertEqual(cadence["steps_returned"], 100)
+        self.assertEqual(len(cadence["steps"]), 100)
+        self.assertTrue(cadence["steps_truncated"])
 
     def test_automation_read_fails_closed_on_cadence_template_sender_mismatch(self):
         OperationsPolicy.objects.create(
@@ -4290,6 +4373,9 @@ class OperationsMCPTests(TestCase):
             if item["business_name"] == "Health WA"
         )
         self.assertTrue(wa["provider_auth_configured"])
+        self.assertEqual(health["whatsapp_count"], 1)
+        self.assertEqual(health["whatsapp_returned"], 1)
+        self.assertFalse(health["whatsapp_truncated"])
         self.assertTrue(health["instagram"]["provider_auth_configured"])
         self.assertTrue(health["instagram"]["provider_auth_expired"])
         self.assertFalse(
@@ -4308,6 +4394,53 @@ class OperationsMCPTests(TestCase):
         payload = json.dumps(health)
         self.assertNotIn("wa-health-secret", payload)
         self.assertNotIn("ig-health-secret", payload)
+
+    def test_integration_health_reports_whatsapp_account_truncation(self):
+        OperationsPolicy.objects.create(
+            organization=self.organization,
+            organization_admin_enabled=True,
+            allowed_capabilities=[
+                CAP_ORGANIZATION_READ,
+                CAP_DIAGNOSTICS_READ,
+            ],
+        )
+        WhatsAppAccount.objects.bulk_create(
+            [
+                WhatsAppAccount(
+                    organization=self.organization,
+                    connection_type=(
+                        WhatsAppAccount.ConnectionType.API
+                    ),
+                    business_name=f"Bounded Health {index:03d}",
+                    display_phone_number=(
+                        f"+9188{index:010d}"
+                    ),
+                    status=WhatsAppAccount.Status.CONNECTED,
+                    is_active=True,
+                )
+                for index in range(101)
+            ]
+        )
+        bearer = self._token(
+            actor=self.admin,
+            role=ROLE_ORGANIZATION_ADMIN,
+            organization=self.organization,
+            scopes=[OPERATIONS_READ_SCOPE],
+        )
+
+        result = self._result(
+            self._call(
+                bearer,
+                "get_integration_health",
+                {},
+            )
+        )
+        self.assertFalse(result["isError"])
+        health = result["structuredContent"]
+        self.assertEqual(health["whatsapp_count"], 101)
+        self.assertEqual(health["whatsapp_returned"], 100)
+        self.assertEqual(len(health["whatsapp"]), 100)
+        self.assertTrue(health["whatsapp_truncated"])
 
     def test_full_ai_configuration_read_avoids_truncated_playbook_rewrite_risk(self):
         OperationsPolicy.objects.create(
@@ -8163,6 +8296,45 @@ class OperationsMCPTests(TestCase):
         self.assertNotIn("foreign_completed", payload)
         self.assertNotIn("foreign_reconciled", payload)
         self.assertNotIn(str(foreign_account.id), payload)
+    def test_operations_audit_reports_explicit_truncation(self):
+        OperationsPolicy.objects.create(
+            organization=self.organization,
+            organization_admin_enabled=True,
+            allowed_capabilities=[
+                CAP_ORGANIZATION_READ,
+                CAP_AUDIT_READ,
+            ],
+        )
+        bearer = self._token(
+            actor=self.admin,
+            role=ROLE_ORGANIZATION_ADMIN,
+            organization=self.organization,
+            scopes=[OPERATIONS_READ_SCOPE],
+        )
+        for _index in range(2):
+            context = self._result(
+                self._call(
+                    bearer,
+                    "get_operations_context",
+                    {},
+                )
+            )
+            self.assertFalse(context["isError"])
+
+        result = self._result(
+            self._call(
+                bearer,
+                "get_operations_audit",
+                {"limit": 1},
+            )
+        )
+        self.assertFalse(result["isError"])
+        data = result["structuredContent"]
+        self.assertEqual(data["count"], 1)
+        self.assertEqual(data["events_returned"], 1)
+        self.assertGreaterEqual(data["event_count"], 2)
+        self.assertTrue(data["events_truncated"])
+
     def test_qualification_diagnosis_completed_but_not_qualified_is_not_failure(self):
         OperationsPolicy.objects.create(
             organization=self.organization,
