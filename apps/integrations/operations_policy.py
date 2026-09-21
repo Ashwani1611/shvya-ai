@@ -94,6 +94,22 @@ def policy_for(organization):
     )
 
 
+def expand_capabilities(values):
+    raw_values = {
+        str(item)
+        for item in (values or [])
+    }
+    expanded_values = {
+        item
+        for item in raw_values
+        if item in ALL_CAPABILITIES
+    }
+    for legacy_capability, expanded in LEGACY_CAPABILITY_EXPANSIONS.items():
+        if legacy_capability in raw_values:
+            expanded_values.update(expanded)
+    return expanded_values
+
+
 def effective_capabilities(*, role, organization=None):
     if role == ROLE_SUPERADMIN:
         return set(ALL_CAPABILITIES)
@@ -104,19 +120,9 @@ def effective_capabilities(*, role, organization=None):
     if not policy.organization_admin_enabled:
         return set()
 
-    raw_allowed = {
-        str(item)
-        for item in (policy.allowed_capabilities or [])
-    }
-    allowed = {
-        item
-        for item in raw_allowed
-        if item in ALL_CAPABILITIES
-    }
-    for legacy_capability, expanded in LEGACY_CAPABILITY_EXPANSIONS.items():
-        if legacy_capability in raw_allowed:
-            allowed.update(expanded)
-    return allowed
+    return expand_capabilities(
+        policy.allowed_capabilities
+    )
 
 
 def approval_required(*, role, organization, capability):
