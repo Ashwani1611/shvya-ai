@@ -93,6 +93,11 @@ class MCPSharedValidationTests(SimpleTestCase):
                 "http://127.0.0.1:9999/"
             )
         )
+        self.assertFalse(
+            is_allowed_external_ai_redirect(
+                "https://vscode.dev/arbitrary"
+            )
+        )
 
     def test_org_visible_support_reason_hides_internal_context_reason(self):
         event = SimpleNamespace(
