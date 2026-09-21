@@ -5,7 +5,7 @@ import uuid
 from datetime import timedelta
 
 from django.conf import settings
-from django.db.models import BooleanField, Case, Count, F, Max, Q, Value, When
+from django.db.models import BooleanField, Case, F, Max, Q, Value, When
 from django.utils import timezone
 
 from apps.ai_engagement.services.confidentiality import (
@@ -677,11 +677,12 @@ def _safe_instagram_message(message):
         else:
             attachment_types.append("attachment")
 
-    derived_media = []
-    for item in display_attachments(
+    displayed_media = display_attachments(
         attachments,
         message.raw_payload,
-    )[:10]:
+    )
+    derived_media = []
+    for item in displayed_media[:10]:
         derived_media.append(
             {
                 "kind": sanitize_text(
@@ -717,12 +718,7 @@ def _safe_instagram_message(message):
         ),
         "derived_media": derived_media,
         "derived_media_truncated": (
-            len(
-                display_attachments(
-                    attachments,
-                    message.raw_payload,
-                )
-            )
+            len(displayed_media)
             > len(derived_media)
         ),
         "has_error": bool(message.error),
