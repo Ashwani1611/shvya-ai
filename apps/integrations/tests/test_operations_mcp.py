@@ -1046,6 +1046,63 @@ class OperationsMCPTests(TestCase):
         self.assertTrue(switch["isError"])
         self.assertEqual(switch["structuredContent"]["status"], "NOT_ALLOWED")
 
+    def test_superadmin_customer_tools_fail_closed_if_selected_org_is_disabled(self):
+        bearer = self._token(
+            actor=self.superadmin,
+            role=ROLE_SUPERADMIN,
+        )
+        selected = self._result(
+            self._call(
+                bearer,
+                "select_organization_context",
+                {
+                    "organization_id": str(self.organization.id),
+                    "reason": "Investigate organization before disable",
+                },
+            )
+        )
+        self.assertFalse(selected["isError"])
+
+        self.organization.is_active = False
+        self.organization.save(update_fields=["is_active", "updated_at"])
+
+        blocked = self._result(
+            self._call(
+                bearer,
+                "get_organization_configuration",
+            )
+        )
+        self.assertTrue(blocked["isError"])
+        self.assertEqual(
+            blocked["structuredContent"]["status"],
+            "NOT_ALLOWED",
+        )
+        self.assertIn(
+            "organization is disabled",
+            blocked["structuredContent"]["error"].lower(),
+        )
+
+        context = self._result(
+            self._call(bearer, "get_operations_context")
+        )
+        self.assertFalse(context["isError"])
+        self.assertFalse(
+            context["structuredContent"]["organization"]["active"]
+        )
+
+        cleared = self._result(
+            self._call(
+                bearer,
+                "clear_organization_context",
+                {"reason": "Leave disabled organization context"},
+            )
+        )
+        self.assertFalse(cleared["isError"])
+        self.assertEqual(
+            cleared["structuredContent"]["status"],
+            "cleared",
+        )
+
     def test_superadmin_requires_explicit_context_and_creates_support_session(self):
         bearer = self._token(
             actor=self.superadmin,
