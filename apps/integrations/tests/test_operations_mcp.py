@@ -67,7 +67,7 @@ from apps.integrations.operations_policy import (
     capabilities_for_grant,
 )
 from apps.organizations.models import Organization
-from apps.triggers.models import SmartTrigger
+from apps.triggers.models import SmartTrigger, TriggerEvent, TriggerRun
 from services.channels.hosted_whatsapp_service import (
     get_session_settings,
     update_session_settings,
@@ -3210,6 +3210,176 @@ class OperationsMCPTests(TestCase):
         self.assertNotIn(
             "foreign hosted relation",
             recent_payload,
+        )
+
+        snapshot = self._result(
+            self._call(
+                bearer,
+                "get_lead_snapshot",
+                {"lead_id": str(self.lead.id)},
+            )
+        )
+        self.assertFalse(snapshot["isError"])
+        self.assertEqual(
+            snapshot["structuredContent"][
+                "whatsapp_message_count"
+            ],
+            1,
+        )
+
+        conversation = self._result(
+            self._call(
+                bearer,
+                "get_conversation",
+                {
+                    "lead_id": str(self.lead.id),
+                    "channel": "whatsapp",
+                    "limit": 20,
+                },
+            )
+        )
+        self.assertFalse(conversation["isError"])
+        conversation_external_ids = {
+            row["external_id"]
+            for row in conversation[
+                "structuredContent"
+            ]["messages"]
+        }
+        self.assertIn(
+            hosted_source.external_id,
+            conversation_external_ids,
+        )
+        self.assertNotIn(
+            corrupted_account_message.external_id,
+            conversation_external_ids,
+        )
+
+        runtime = self._result(
+            self._call(
+                bearer,
+                "get_runtime_health",
+                {},
+            )
+        )
+        self.assertFalse(runtime["isError"])
+        counts = runtime["structuredContent"]["counts"]
+        self.assertEqual(counts["leads"], 1)
+        self.assertEqual(
+            counts["whatsapp_inbound_24h"],
+            2,
+        )
+        self.assertEqual(
+            counts["whatsapp_failed_24h"],
+            1,
+        )
+        self.assertEqual(
+            counts["instagram_failed_24h"],
+            0,
+        )
+        self.assertEqual(
+            counts["hosted_failed_24h"],
+            0,
+        )
+
+    def test_workflow_trace_and_runtime_ignore_corrupt_run_relations(self):
+        OperationsPolicy.objects.create(
+            organization=self.organization,
+            organization_admin_enabled=True,
+            allowed_capabilities=[
+                CAP_ORGANIZATION_READ,
+                CAP_DIAGNOSTICS_READ,
+            ],
+        )
+        workflow = SmartTrigger.objects.create(
+            organization=self.organization,
+            name="Runtime Relation Guard Workflow",
+            enabled=True,
+            position=1,
+            trigger_type="keyword",
+            conditions={
+                "scopes": [
+                    {
+                        "pipeline": str(self.pipeline.id),
+                        "stages": [str(self.new_stage.id)],
+                    }
+                ],
+                "attributes": [],
+                "keywords": ["hello"],
+            },
+            action_type="ai",
+            action={"enabled": True},
+            fingerprint="a" * 64,
+            created_by=self.admin,
+        )
+        foreign_event = TriggerEvent.objects.create(
+            organization=self.other_organization,
+            lead=self.other_lead,
+            kind="lead_updated",
+            key="foreign-event-for-own-run",
+            payload={"private": "foreign-event-payload"},
+        )
+        corrupt_run = TriggerRun.objects.create(
+            rule=workflow,
+            event=foreign_event,
+            lead=self.lead,
+            action_type="ai",
+            action={"enabled": True},
+            status="failed",
+            detail="foreign-event-run-detail",
+            due_at=timezone.now(),
+            finished_at=timezone.now(),
+        )
+        bearer = self._token(
+            actor=self.admin,
+            role=ROLE_ORGANIZATION_ADMIN,
+            organization=self.organization,
+            scopes=[OPERATIONS_READ_SCOPE],
+        )
+
+        trace = self._result(
+            self._call(
+                bearer,
+                "get_workflow_trace",
+                {
+                    "lead_id": str(self.lead.id),
+                    "limit": 20,
+                },
+            )
+        )
+        self.assertFalse(trace["isError"])
+        trace_payload = json.dumps(
+            trace["structuredContent"]
+        )
+        self.assertNotIn(
+            str(corrupt_run.id),
+            trace_payload,
+        )
+        self.assertNotIn(
+            str(foreign_event.id),
+            trace_payload,
+        )
+        self.assertNotIn(
+            "foreign-event-run-detail",
+            trace_payload,
+        )
+        self.assertNotIn(
+            "foreign-event-payload",
+            trace_payload,
+        )
+
+        runtime = self._result(
+            self._call(
+                bearer,
+                "get_runtime_health",
+                {},
+            )
+        )
+        self.assertFalse(runtime["isError"])
+        self.assertEqual(
+            runtime["structuredContent"]["counts"][
+                "workflow_failed_24h"
+            ],
+            0,
         )
 
     def test_conversation_diagnostics_redact_customer_secret_patterns(self):

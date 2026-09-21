@@ -133,6 +133,112 @@ def _tenant_safe_leads(organization):
     )
 
 
+def _tenant_safe_whatsapp_messages(organization):
+    safe_lead_ids = _tenant_safe_leads(
+        organization
+    ).values("id")
+    return (
+        WhatsAppMessage.objects.filter(
+            organization=organization,
+            account__organization=organization,
+        )
+        .filter(
+            Q(lead__isnull=True)
+            | Q(lead_id__in=safe_lead_ids)
+        )
+    )
+
+
+def _tenant_safe_instagram_messages(organization):
+    safe_lead_ids = _tenant_safe_leads(
+        organization
+    ).values("id")
+    return (
+        InstagramMessage.objects.filter(
+            organization=organization,
+            account__organization=organization,
+            conversation__organization=organization,
+            conversation__account__organization=organization,
+        )
+        .filter(
+            account_id=F("conversation__account_id"),
+        )
+        .filter(
+            Q(conversation__lead__isnull=True)
+            | Q(
+                conversation__lead_id__in=safe_lead_ids
+            )
+        )
+    )
+
+
+def _tenant_safe_hosted_jobs(organization):
+    safe_lead_ids = _tenant_safe_leads(
+        organization
+    ).values("id")
+    safe_message_ids = _tenant_safe_whatsapp_messages(
+        organization
+    ).values("id")
+    return (
+        HostedAutomationJob.objects.filter(
+            organization=organization,
+            account__organization=organization,
+            lead_id__in=safe_lead_ids,
+            source_message_id__in=safe_message_ids,
+        )
+        .filter(
+            account_id=F("source_message__account_id"),
+        )
+        .filter(
+            Q(source_message__lead__isnull=True)
+            | Q(source_message__lead_id=F("lead_id"))
+        )
+    )
+
+
+def _tenant_safe_trigger_events(organization):
+    return TriggerEvent.objects.filter(
+        organization=organization,
+        lead_id__in=_tenant_safe_leads(
+            organization
+        ).values("id"),
+    )
+
+
+def _tenant_safe_trigger_runs(organization):
+    safe_message_ids = _tenant_safe_whatsapp_messages(
+        organization
+    ).values("id")
+    return (
+        TriggerRun.objects.filter(
+            rule__organization=organization,
+            lead_id__in=_tenant_safe_leads(
+                organization
+            ).values("id"),
+            event_id__in=_tenant_safe_trigger_events(
+                organization
+            ).values("id"),
+        )
+        .filter(
+            lead_id=F("event__lead_id"),
+        )
+        .filter(
+            Q(message__isnull=True)
+            | Q(message_id__in=safe_message_ids)
+        )
+    )
+
+
+def _tenant_safe_webhook_deliveries(organization):
+    return WebhookDelivery.objects.filter(
+        organization=organization,
+        webhook__organization=organization,
+        lead_id__in=_tenant_safe_leads(
+            organization
+        ).values("id"),
+    )
+
+
 def _lead_for_org(*, organization, lead_id):
     try:
         parsed = uuid.UUID(str(lead_id))
@@ -265,19 +371,17 @@ def get_lead_snapshot(*, organization, arguments):
         organization=organization,
         lead_id=(arguments or {}).get("lead_id"),
     )
-    whatsapp = lead.whatsapp_messages.filter(
-        organization=organization
-    )
+    whatsapp = _tenant_safe_whatsapp_messages(
+        organization
+    ).filter(lead=lead)
     last_wa = whatsapp.order_by(
         "-created_at",
         "-id",
     ).first()
 
-    instagram = InstagramMessage.objects.filter(
-        organization=organization,
-        conversation__lead=lead,
-        conversation__organization=organization,
-    )
+    instagram = _tenant_safe_instagram_messages(
+        organization
+    ).filter(conversation__lead=lead)
     last_ig = instagram.order_by(
         "-created_at",
         "-id",
@@ -425,10 +529,9 @@ def get_conversation(*, organization, arguments):
 
     if channel in {"all", "whatsapp"}:
         wa_rows = list(
-            WhatsAppMessage.objects.filter(
-                organization=organization,
-                lead=lead,
-            )
+            _tenant_safe_whatsapp_messages(
+                organization
+            ).filter(lead=lead)
             .select_related("account")
             .defer("account__access_token")
             .order_by(
@@ -443,11 +546,9 @@ def get_conversation(*, organization, arguments):
 
     if channel in {"all", "instagram"}:
         ig_rows = list(
-            InstagramMessage.objects.filter(
-                organization=organization,
-                conversation__lead=lead,
-                conversation__organization=organization,
-            )
+            _tenant_safe_instagram_messages(
+                organization
+            ).filter(conversation__lead=lead)
             .select_related(
                 "account",
                 "conversation",
@@ -492,8 +593,8 @@ def trace_message(*, organization, arguments):
         pass
 
     wa = (
-        WhatsAppMessage.objects.filter(
-            organization=organization
+        _tenant_safe_whatsapp_messages(
+            organization
         )
         .filter(wa_filters)
         .select_related(
@@ -524,19 +625,17 @@ def trace_message(*, organization, arguments):
         ai_markers = _safe_ai_markers(payload)
 
         hosted_job = (
-            HostedAutomationJob.objects.filter(
-                organization=organization,
-                source_message=wa,
-            )
+            _tenant_safe_hosted_jobs(
+                organization
+            ).filter(source_message=wa)
             .order_by("-created_at")
             .first()
         )
 
         trigger_runs = list(
-            TriggerRun.objects.filter(
-                rule__organization=organization,
-                message=wa,
-            )
+            _tenant_safe_trigger_runs(
+                organization
+            ).filter(message=wa)
             .select_related("rule")
             .order_by("-created_at")[:20]
         )
@@ -582,8 +681,8 @@ def trace_message(*, organization, arguments):
         pass
 
     ig = (
-        InstagramMessage.objects.filter(
-            organization=organization
+        _tenant_safe_instagram_messages(
+            organization
         )
         .filter(ig_filters)
         .select_related(
@@ -770,16 +869,16 @@ def get_workflow_trace(*, organization, arguments):
     limit = max(1, min(limit, 50))
 
     events = list(
-        TriggerEvent.objects.filter(
-            organization=organization,
+        _tenant_safe_trigger_events(
+            organization
+        ).filter(
             lead=lead,
         ).order_by("-created_at")[:limit]
     )
     runs = list(
-        TriggerRun.objects.filter(
-            lead=lead,
-            rule__organization=organization,
-        )
+        _tenant_safe_trigger_runs(
+            organization
+        ).filter(lead=lead)
         .select_related(
             "rule",
             "event",
@@ -855,33 +954,20 @@ def get_recent_errors(*, organization, arguments):
     )
 
     whatsapp = list(
-        WhatsAppMessage.objects.filter(
-            organization=organization,
+        _tenant_safe_whatsapp_messages(
+            organization
+        ).filter(
             status=WhatsAppMessage.Status.FAILED,
             created_at__gte=since,
-        )
-        .filter(account__organization=organization)
-        .filter(
-            Q(lead__isnull=True)
-            | Q(lead__organization=organization)
         )
         .order_by("-created_at")[:limit]
     )
     instagram = list(
-        InstagramMessage.objects.filter(
-            organization=organization,
-            account__organization=organization,
-            conversation__organization=organization,
-            conversation__account__organization=organization,
+        _tenant_safe_instagram_messages(
+            organization
+        ).filter(
             status=InstagramMessage.Status.FAILED,
             created_at__gte=since,
-        )
-        .filter(
-            account_id=F("conversation__account_id"),
-        )
-        .filter(
-            Q(conversation__lead__isnull=True)
-            | Q(conversation__lead__organization=organization)
         )
         .order_by("-created_at")[:limit]
     )
@@ -893,44 +979,28 @@ def get_recent_errors(*, organization, arguments):
         ).order_by("-received_at")[:limit]
     )
     hosted = list(
-        HostedAutomationJob.objects.filter(
-            organization=organization,
-            account__organization=organization,
-            lead__organization=organization,
-            source_message__organization=organization,
-            source_message__account__organization=organization,
-            source_message__lead__organization=organization,
+        _tenant_safe_hosted_jobs(
+            organization
+        ).filter(
             status=HostedAutomationJob.Status.FAILED,
             created_at__gte=since,
-        )
-        .filter(
-            account_id=F("source_message__account_id"),
-            lead_id=F("source_message__lead_id"),
         )
         .order_by("-created_at")[:limit]
     )
     webhooks = list(
-        WebhookDelivery.objects.filter(
-            organization=organization,
-            webhook__organization=organization,
-            lead_id__in=Lead.objects.filter(
-                organization=organization
-            ).values("id"),
+        _tenant_safe_webhook_deliveries(
+            organization
+        ).filter(
             status=WebhookDelivery.Status.FAILED,
             created_at__gte=since,
         ).order_by("-created_at")[:limit]
     )
     workflows = list(
-        TriggerRun.objects.filter(
-            rule__organization=organization,
-            lead__organization=organization,
-            event__organization=organization,
-            event__lead__organization=organization,
+        _tenant_safe_trigger_runs(
+            organization
+        ).filter(
             status__in=["failed", "error"],
             created_at__gte=since,
-        )
-        .filter(
-            lead_id=F("event__lead_id"),
         )
         .select_related("rule")
         .order_by("-created_at")[:limit]
@@ -1045,15 +1115,17 @@ def get_runtime_health(*, organization, arguments):
     )
 
     hosted_stale_queued = (
-        HostedAutomationJob.objects.filter(
-            organization=organization,
+        _tenant_safe_hosted_jobs(
+            organization
+        ).filter(
             status=HostedAutomationJob.Status.QUEUED,
             available_at__lte=stale_queued_before,
         ).count()
     )
     hosted_stale_processing = (
-        HostedAutomationJob.objects.filter(
-            organization=organization,
+        _tenant_safe_hosted_jobs(
+            organization
+        ).filter(
             status=HostedAutomationJob.Status.PROCESSING,
             started_at__lte=stale_processing_before,
         ).count()
@@ -1083,8 +1155,8 @@ def get_runtime_health(*, organization, arguments):
             "instagram_ai_auto_reply_runtime": False,
         },
         "counts": {
-            "leads": Lead.objects.filter(
-                organization=organization
+            "leads": _tenant_safe_leads(
+                organization
             ).count(),
             "whatsapp_connected": (
                 WhatsAppAccount.objects.filter(
@@ -1094,15 +1166,17 @@ def get_runtime_health(*, organization, arguments):
                 ).count()
             ),
             "whatsapp_inbound_24h": (
-                WhatsAppMessage.objects.filter(
-                    organization=organization,
+                _tenant_safe_whatsapp_messages(
+                    organization
+                ).filter(
                     direction=WhatsAppMessage.Direction.INBOUND,
                     created_at__gte=since,
                 ).count()
             ),
             "whatsapp_failed_24h": (
-                WhatsAppMessage.objects.filter(
-                    organization=organization,
+                _tenant_safe_whatsapp_messages(
+                    organization
+                ).filter(
                     status=WhatsAppMessage.Status.FAILED,
                     created_at__gte=since,
                 ).count()
@@ -1114,15 +1188,17 @@ def get_runtime_health(*, organization, arguments):
                 ).count()
             ),
             "instagram_inbound_24h": (
-                InstagramMessage.objects.filter(
-                    organization=organization,
+                _tenant_safe_instagram_messages(
+                    organization
+                ).filter(
                     direction=InstagramMessage.Direction.INBOUND,
                     created_at__gte=since,
                 ).count()
             ),
             "instagram_failed_24h": (
-                InstagramMessage.objects.filter(
-                    organization=organization,
+                _tenant_safe_instagram_messages(
+                    organization
+                ).filter(
                     status=InstagramMessage.Status.FAILED,
                     created_at__gte=since,
                 ).count()
@@ -1135,8 +1211,9 @@ def get_runtime_health(*, organization, arguments):
                 ).count()
             ),
             "hosted_failed_24h": (
-                HostedAutomationJob.objects.filter(
-                    organization=organization,
+                _tenant_safe_hosted_jobs(
+                    organization
+                ).filter(
                     status=HostedAutomationJob.Status.FAILED,
                     created_at__gte=since,
                 ).count()
@@ -1148,8 +1225,9 @@ def get_runtime_health(*, organization, arguments):
                 hosted_stale_processing
             ),
             "workflow_failed_24h": (
-                TriggerRun.objects.filter(
-                    rule__organization=organization,
+                _tenant_safe_trigger_runs(
+                    organization
+                ).filter(
                     status__in=["failed", "error"],
                     created_at__gte=since,
                 ).count()
