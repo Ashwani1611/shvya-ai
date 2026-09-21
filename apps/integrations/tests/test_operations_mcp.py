@@ -1089,13 +1089,16 @@ class OperationsMCPTests(TestCase):
             status=WhatsAppAccount.Status.CONNECTED,
             is_active=True,
         )
-        InstagramAccount.objects.create(
+        instagram = InstagramAccount.objects.create(
             organization=self.organization,
             ig_user_id="ig-health-user",
             username="health_account",
             access_token="ig-health-secret",
             status=InstagramAccount.Status.CONNECTED,
             webhook_subscribed=True,
+            token_expires_at=timezone.now() - timedelta(minutes=5),
+            token_refreshed_at=timezone.now() - timedelta(days=60),
+            last_error="access_token=ig-last-error-secret expired",
         )
         bearer = self._token(
             actor=self.admin,
@@ -1127,6 +1130,15 @@ class OperationsMCPTests(TestCase):
         )
         self.assertTrue(wa["credential_present"])
         self.assertTrue(health["instagram"]["credential_present"])
+        self.assertTrue(health["instagram"]["credential_expired"])
+        self.assertEqual(
+            health["instagram"]["last_error"],
+            "access_token=[REDACTED] expired",
+        )
+        self.assertEqual(
+            health["instagram"]["token_expires_at"],
+            instagram.token_expires_at.isoformat(),
+        )
         payload = json.dumps(health)
         self.assertNotIn("wa-health-secret", payload)
         self.assertNotIn("ig-health-secret", payload)
