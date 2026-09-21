@@ -753,6 +753,43 @@ class OperationsMCPTests(TestCase):
         self.assertEqual(token.organization_id, self.organization.id)
         self.assertEqual(token.role, ROLE_ORGANIZATION_ADMIN)
 
+    def test_superadmin_policy_ignores_approval_flags_on_read_capabilities(self):
+        superadmin_session = SessionStore()
+        set_authenticated_user(superadmin_session, self.superadmin)
+        superadmin_session.create()
+        self.client.cookies[get_session_cookie_name("superadmin")] = (
+            superadmin_session.session_key
+        )
+
+        response = self.client.post(
+            reverse(
+                "superadmin-organization-operations-mcp-policy",
+                kwargs={"organization_id": self.organization.id},
+            ),
+            {
+                "organization_admin_enabled": "on",
+                "allowed_capabilities": [
+                    CAP_ORGANIZATION_READ,
+                    CAP_DIAGNOSTICS_READ,
+                    CAP_LEAD_STAGE_WRITE,
+                ],
+                "approval_required_capabilities": [
+                    CAP_ORGANIZATION_READ,
+                    CAP_DIAGNOSTICS_READ,
+                    CAP_LEAD_STAGE_WRITE,
+                ],
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+
+        policy = OperationsPolicy.objects.get(
+            organization=self.organization
+        )
+        self.assertEqual(
+            set(policy.approval_required_capabilities),
+            {CAP_LEAD_STAGE_WRITE},
+        )
+
     def test_superadmin_disable_revokes_existing_org_admin_tokens_permanently(self):
         policy = OperationsPolicy.objects.create(
             organization=self.organization,
