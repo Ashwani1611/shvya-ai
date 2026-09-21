@@ -373,6 +373,28 @@ class DiagnosticOAuthTests(TestCase):
             DiagnosticOAuthToken.objects.get().refresh_expires_at,
             original_refresh_expiry,
         )
+        refreshed_body = refresh.json()
+        grant = DiagnosticOAuthToken.objects.get()
+        grant.refresh_expires_at = timezone.now() - timedelta(seconds=1)
+        grant.expires_at = timezone.now() + timedelta(hours=1)
+        grant.save(update_fields=["refresh_expires_at", "expires_at"])
+        denied = self.client.post(
+            "/mcp/",
+            data=json.dumps(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 99,
+                    "method": "tools/call",
+                    "params": {
+                        "name": "get_workspace_profile",
+                        "arguments": {},
+                    },
+                }
+            ),
+            content_type="application/json",
+            HTTP_AUTHORIZATION="Bearer " + refreshed_body["access_token"],
+        )
+        self.assertTrue(denied.json()["result"]["isError"])
 
     def test_strict_pkce_rejects_short_challenge(self):
         client_id = self._register()
