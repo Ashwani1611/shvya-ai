@@ -68,7 +68,17 @@ MODERN_PROTOCOL_VERSION = "2026-07-28"
 LEGACY_PROTOCOL_VERSION = "2025-11-25"
 SERVER_INFO = {"name": "shvya-operations", "version": "1.0.0"}
 
-OAUTH_SCHEMES = [
+OAUTH_READ_SCHEMES = [
+    {
+        "type": "oauth2",
+        "scopes": [
+            OPERATIONS_READ_SCOPE,
+            OFFLINE_SCOPE,
+        ],
+    }
+]
+
+OAUTH_WRITE_SCHEMES = [
     {
         "type": "oauth2",
         "scopes": [
@@ -244,7 +254,11 @@ def _tool(
             "destructiveHint": False,
             "openWorldHint": False,
         },
-        "securitySchemes": OAUTH_SCHEMES,
+        "securitySchemes": (
+            OAUTH_READ_SCHEMES
+            if read_only
+            else OAUTH_WRITE_SCHEMES
+        ),
     }
 
 
@@ -550,7 +564,7 @@ for definition in DIAGNOSTIC_TOOL_DEFINITIONS:
     if definition["name"] not in DIAGNOSTIC_TOOL_NAMES:
         continue
     item = deepcopy(definition)
-    item["securitySchemes"] = OAUTH_SCHEMES
+    item["securitySchemes"] = OAUTH_READ_SCHEMES
     item.pop("_meta", None)
     DIAGNOSTIC_DEFINITIONS.append(item)
 
