@@ -136,6 +136,61 @@ def test_sidebar_context_exposes_active_superadmin_operations_support():
 
 
 @pytest.mark.django_db
+def test_sidebar_context_hides_idle_operations_support_without_closing_session():
+    organization = Organization.objects.create(name="Idle Support Org")
+    admin = User.objects.create_user(
+        email="idle-admin@example.test",
+        organization=organization,
+        password=None,
+        name="Org Admin",
+        role=User.Role.ADMIN,
+    )
+    superadmin = User.objects.create_superuser(
+        email="idle-support@example.test",
+        password=None,
+        name="SHVYA Support",
+    )
+    client = OperationsOAuthClient.objects.create(
+        client_id="idle-presence-client",
+        client_name="Idle presence test",
+        redirect_uris=["https://chatgpt.com/aip/callback"],
+        grant_types=["authorization_code", "refresh_token"],
+        response_types=["code"],
+    )
+    token = OperationsOAuthToken.objects.create(
+        client=client,
+        actor=superadmin,
+        role=ROLE_SUPERADMIN,
+        access_token_hash=token_hash("idle-presence-access"),
+        refresh_token_hash=token_hash("idle-presence-refresh"),
+        scope="operations.read operations.write",
+        resource="http://testserver/operations/mcp/",
+        active_organization=organization,
+        expires_at=timezone.now() + timedelta(hours=1),
+        refresh_expires_at=timezone.now() + timedelta(days=1),
+    )
+    session = OperationsSupportSession.objects.create(
+        token=token,
+        actor=superadmin,
+        organization=organization,
+        reason="Idle support session",
+    )
+    OperationsSupportSession.objects.filter(pk=session.pk).update(
+        last_seen_at=timezone.now() - timedelta(minutes=16),
+    )
+
+    request = RequestFactory().get("/dashboard/")
+    request.crm_user = admin
+    context = sidebar_nav(request)
+
+    assert context["operations_support_active"] is False
+    assert context["operations_support_actor"] == ""
+
+    session.refresh_from_db()
+    assert session.ended_at is None
+
+
+@pytest.mark.django_db
 def test_sidebar_context_hides_expired_operations_support():
     organization = Organization.objects.create(name="Expired Support Org")
     admin = User.objects.create_user(
