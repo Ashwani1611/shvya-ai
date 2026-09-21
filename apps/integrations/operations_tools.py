@@ -1031,7 +1031,7 @@ def get_ai_configuration(*, identity, arguments):
             "playbook_length": len(
                 str(info.ai_playbook or "")
             ),
-            "secret_like_text_redacted": any(
+            "sensitive_text_redacted": any(
                 (
                     about_redacted,
                     languages_redacted,
