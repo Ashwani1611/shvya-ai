@@ -533,3 +533,24 @@
 }
 .sc-copy-row { display: flex; gap: 8px; }
 .sc-copy-row input { min-width: 0; flex: 1; }
+
+.sc-booking-manage {
+  margin-top: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  color: #9a9aa0;
+  font-size: 11px;
+}
+.sc-booking-manage a,
+.sc-booking-manage button {
+  border: 0;
+  background: none;
+  color: #77777d;
+  text-decoration: underline;
+  cursor: pointer;
+  font: inherit;
+  padding: 0;
+}
+.sc-booking-manage form { display: inline; margin: 0; }
