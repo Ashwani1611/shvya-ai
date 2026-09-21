@@ -454,7 +454,7 @@ class CalendarBooking(models.Model):
     )
     submission = models.ForeignKey(
         CalendarSubmission,
-        on_delete=models.PROTECT,
+        on_delete=models.CASCADE,
         related_name="bookings",
     )
     lead = models.ForeignKey(
