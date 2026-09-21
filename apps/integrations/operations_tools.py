@@ -2326,41 +2326,109 @@ def upsert_pipeline_configuration(*, identity, arguments):
         )
 
     creating_pipeline = pipeline is None
-    with transaction.atomic():
-        if pipeline is None:
-            pipeline = Pipeline(
-                organization=organization,
-                name=name,
-                description=description,
-                is_active=is_active,
-                ai_enabled=ai_enabled,
+    try:
+        with transaction.atomic():
+            Organization.objects.select_for_update().get(
+                pk=organization.pk
             )
-        else:
-            pipeline.name = name
-            pipeline.description = description
-            pipeline.is_active = is_active
-            pipeline.ai_enabled = ai_enabled
-        pipeline.full_clean()
-        pipeline.save()
-
-        if creating_pipeline:
-            from apps.crm.models.signals import DEFAULT_PIPELINE_STAGES
-
-            expected_stage_names = {
-                str(item["name"])
-                for item in DEFAULT_PIPELINE_STAGES
-            }
-            actual_stage_names = set(
-                Stage.objects.filter(
-                    pipeline=pipeline,
-                    is_active=True,
-                ).values_list("name", flat=True)
-            )
-            if not expected_stage_names.issubset(actual_stage_names):
-                raise OperationsToolError(
-                    "Pipeline creation did not produce SHVYA's required "
-                    "standard stages; the transaction was rolled back."
+            if pipeline is not None:
+                pipeline = (
+                    Pipeline.objects.select_for_update()
+                    .filter(
+                        pk=pipeline.pk,
+                        organization=organization,
+                    )
+                    .first()
                 )
+                if pipeline is None:
+                    raise OperationsApprovalRequired(
+                        "The pipeline changed or was removed after review. "
+                        "Run a fresh dry-run."
+                    )
+
+            duplicate = Pipeline.objects.filter(
+                organization=organization,
+                name__iexact=name,
+            )
+            if pipeline is not None:
+                duplicate = duplicate.exclude(pk=pipeline.pk)
+            if duplicate.exists():
+                raise OperationsToolError(
+                    "A pipeline with this name already exists."
+                )
+
+            locked_before = (
+                {
+                    "id": str(pipeline.id),
+                    "name": pipeline.name,
+                    "description": pipeline.description,
+                    "is_active": pipeline.is_active,
+                    "ai_enabled": pipeline.ai_enabled,
+                }
+                if pipeline is not None
+                else None
+            )
+            locked_proposal = {
+                "organization_id": str(organization.id),
+                "pipeline_id": (
+                    str(pipeline.id)
+                    if pipeline is not None
+                    else None
+                ),
+                "before": locked_before,
+                "after": after,
+            }
+            _ensure_approved_proposal_unchanged(
+                arguments=arguments,
+                proposal=locked_proposal,
+            )
+
+            if pipeline is None:
+                pipeline = Pipeline(
+                    organization=organization,
+                    name=name,
+                    description=description,
+                    is_active=is_active,
+                    ai_enabled=ai_enabled,
+                )
+            else:
+                pipeline.name = name
+                pipeline.description = description
+                pipeline.is_active = is_active
+                pipeline.ai_enabled = ai_enabled
+            pipeline.full_clean()
+            pipeline.save()
+
+            if creating_pipeline:
+                from apps.crm.models.signals import DEFAULT_PIPELINE_STAGES
+
+                expected_stage_names = {
+                    str(item["name"])
+                    for item in DEFAULT_PIPELINE_STAGES
+                }
+                actual_stage_names = set(
+                    Stage.objects.filter(
+                        pipeline=pipeline,
+                        is_active=True,
+                    ).values_list("name", flat=True)
+                )
+                if not expected_stage_names.issubset(
+                    actual_stage_names
+                ):
+                    raise OperationsToolError(
+                        "Pipeline creation did not produce SHVYA's required "
+                        "standard stages; the transaction was rolled back."
+                    )
+            before = locked_before
+    except IntegrityError as exc:
+        raise OperationsToolError(
+            "Pipeline configuration changed concurrently. "
+            "Run a fresh dry-run."
+        ) from exc
+    except ValidationError as exc:
+        raise OperationsToolError(
+            "Pipeline configuration validation failed."
+        ) from exc
 
     pipeline.refresh_from_db()
     if (
@@ -2546,16 +2614,120 @@ def upsert_stage_configuration(*, identity, arguments):
             },
         )
 
-    with transaction.atomic():
-        if stage is None:
-            stage = Stage(pipeline=pipeline)
-        stage.name = name
-        stage.description = description
-        stage.display_order = display_order
-        stage.is_active = is_active
-        stage.ai_on = ai_on
-        stage.full_clean()
-        stage.save()
+    try:
+        with transaction.atomic():
+            pipeline = (
+                Pipeline.objects.select_for_update()
+                .filter(
+                    pk=pipeline.pk,
+                    organization=organization,
+                    is_active=True,
+                )
+                .first()
+            )
+            if pipeline is None:
+                raise OperationsApprovalRequired(
+                    "The target pipeline changed or became inactive. "
+                    "Run a fresh dry-run."
+                )
+            if stage is not None:
+                stage = (
+                    Stage.objects.select_for_update()
+                    .filter(
+                        pk=stage.pk,
+                        pipeline=pipeline,
+                    )
+                    .first()
+                )
+                if stage is None:
+                    raise OperationsApprovalRequired(
+                        "The stage changed or was removed after review. "
+                        "Run a fresh dry-run."
+                    )
+            elif "display_order" not in data:
+                display_order = (
+                    Stage.objects.filter(
+                        pipeline=pipeline
+                    )
+                    .aggregate(value=Max("display_order"))["value"]
+                    or 0
+                ) + 1
+
+            duplicate_name = Stage.objects.filter(
+                pipeline=pipeline,
+                name__iexact=name,
+                is_active=True,
+            )
+            duplicate_order = Stage.objects.filter(
+                pipeline=pipeline,
+                display_order=display_order,
+            )
+            if stage is not None:
+                duplicate_name = duplicate_name.exclude(pk=stage.pk)
+                duplicate_order = duplicate_order.exclude(pk=stage.pk)
+            if is_active and duplicate_name.exists():
+                raise OperationsToolError(
+                    "An active stage with this name already exists."
+                )
+            if duplicate_order.exists():
+                raise OperationsToolError(
+                    "Another stage already uses this display order."
+                )
+
+            locked_before = (
+                {
+                    "id": str(stage.id),
+                    "name": stage.name,
+                    "description": stage.description,
+                    "display_order": stage.display_order,
+                    "is_active": stage.is_active,
+                    "ai_on": stage.ai_on,
+                }
+                if stage is not None
+                else None
+            )
+            locked_after = {
+                "name": name,
+                "description": description,
+                "display_order": display_order,
+                "is_active": is_active,
+                "ai_on": ai_on,
+            }
+            locked_proposal = {
+                "pipeline_id": str(pipeline.id),
+                "stage_id": (
+                    str(stage.id)
+                    if stage is not None
+                    else None
+                ),
+                "before": locked_before,
+                "after": locked_after,
+            }
+            _ensure_approved_proposal_unchanged(
+                arguments=arguments,
+                proposal=locked_proposal,
+            )
+
+            if stage is None:
+                stage = Stage(pipeline=pipeline)
+            stage.name = name
+            stage.description = description
+            stage.display_order = display_order
+            stage.is_active = is_active
+            stage.ai_on = ai_on
+            stage.full_clean()
+            stage.save()
+            before = locked_before
+            after = locked_after
+    except IntegrityError as exc:
+        raise OperationsToolError(
+            "Stage configuration changed concurrently. "
+            "Run a fresh dry-run."
+        ) from exc
+    except ValidationError as exc:
+        raise OperationsToolError(
+            "Stage configuration validation failed."
+        ) from exc
     stage.refresh_from_db()
     if (
         stage.name != name
