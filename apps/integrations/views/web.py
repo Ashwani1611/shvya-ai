@@ -427,7 +427,10 @@ def shvya_api_view(request):
         OperationsAuditEvent,
         OperationsOAuthToken,
     )
-    from apps.integrations.operations_presence import visible_support_sessions
+    from apps.integrations.operations_presence import (
+        open_support_sessions,
+        support_session_recently_active,
+    )
     from apps.integrations.operations_policy import (
         CAPABILITY_LABELS,
         CAP_AUDIT_READ,
@@ -460,9 +463,17 @@ def shvya_api_view(request):
         for key in configured_operations_capabilities
         if key in CAPABILITY_LABELS
     ]
-    active_operations_support = visible_support_sessions(
-        organization=organization,
+    active_operations_support = list(
+        open_support_sessions(
+            organization=organization,
+        )
     )
+    for support_session in active_operations_support:
+        support_session.recently_active = (
+            support_session_recently_active(
+                support_session
+            )
+        )
     operations_audit_visible = bool(
         operations_policy.organization_admin_enabled
         and CAP_AUDIT_READ in (operations_policy.allowed_capabilities or [])
