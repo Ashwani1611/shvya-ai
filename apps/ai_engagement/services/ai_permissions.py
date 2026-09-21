@@ -197,7 +197,6 @@ class AIPermissionService:
         organization,
         lead,
         latest_inbound=None,
-        create_missing_org_info=True,
     ) -> AIPermissionDecision:
         """Evaluate current, non-cached AI permission state for one Lead.
 
@@ -220,19 +219,9 @@ class AIPermissionService:
             )
 
         try:
-            if create_missing_org_info:
-                org_info = self.org_info_service.get_or_create(
-                    organization=organization,
-                )
-            else:
-                from apps.ai_engagement.models import OrgInfo
-
-                org_info = (
-                    OrgInfo.objects.filter(
-                        organization=organization
-                    ).first()
-                    or OrgInfo(organization=organization)
-                )
+            org_info = self.org_info_service.get_or_create(
+                organization=organization,
+            )
         except Exception as exc:
             raise AIPermissionError(
                 "Organization AI configuration could not be loaded."

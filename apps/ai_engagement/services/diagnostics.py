@@ -4,12 +4,24 @@ from django.conf import settings
 from django.db.models import Q
 from apps.ai_engagement.services.playbook import qualification_questions
 
-from apps.ai_engagement.models import AICreditWallet
+from apps.ai_engagement.models import AICreditWallet, OrgInfo
 from apps.ai_engagement.services.ai_permissions import AIPermissionService
 from apps.channels.models import WhatsAppMessage
 from apps.hosted_automation.models import HostedAccountHealth, HostedAutomationJob
 from django.utils import timezone
 from services.channels.hosted_whatsapp_service import get_session_settings
+
+
+class _ReadOnlyOrgInfoService:
+    """Read persisted AI controls without creating default CRM state."""
+
+    def get_or_create(self, *, organization):
+        return (
+            OrgInfo.objects.filter(
+                organization=organization
+            ).first()
+            or OrgInfo(organization=organization)
+        )
 
 
 def diagnose_engagement(*, lead):
@@ -56,11 +68,12 @@ def diagnose_engagement(*, lead):
         .order_by("-created_at", "-id")
         .first()
     )
-    permission = AIPermissionService().evaluate(
+    permission = AIPermissionService(
+        org_info_service=_ReadOnlyOrgInfoService()
+    ).evaluate(
         organization=lead.organization,
         lead=lead,
         latest_inbound=inbound,
-        create_missing_org_info=False,
     )
     if not permission.allowed:
         blockers.append(permission.reason)
