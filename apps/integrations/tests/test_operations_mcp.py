@@ -288,6 +288,12 @@ class OperationsMCPTests(TestCase):
             self.assertIn("reason", properties)
             self.assertNotIn("dry_run", properties)
             self.assertNotIn("approved", properties)
+            self.assertFalse(
+                tools[name]["annotations"]["readOnlyHint"]
+            )
+            scopes = tools[name]["securitySchemes"][0]["scopes"]
+            self.assertIn(OPERATIONS_READ_SCOPE, scopes)
+            self.assertNotIn(OPERATIONS_WRITE_SCOPE, scopes)
 
         mutation_properties = tools["move_lead_stage"]["inputSchema"][
             "properties"
