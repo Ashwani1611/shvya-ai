@@ -14,6 +14,22 @@ from django.core.exceptions import ValidationError
 from django.db import models
 
 
+class ImmutableOperationsAuditQuerySet(models.QuerySet):
+    """Prevent bulk ORM mutation/deletion of append-only Operations audit rows."""
+
+    def update(self, **kwargs):
+        raise ValidationError("Operations audit events are immutable.")
+
+    def delete(self):
+        raise ValidationError("Operations audit events are immutable.")
+
+
+class OperationsAuditManager(models.Manager.from_queryset(ImmutableOperationsAuditQuerySet)):
+    """Manager that preserves create/read access but blocks audit rewrites."""
+
+    pass
+
+
 class OperationsPolicy(models.Model):
     """Superadmin-owned external-AI policy for one customer organization."""
 
@@ -182,6 +198,8 @@ class OperationsSupportSession(models.Model):
 
 class OperationsAuditEvent(models.Model):
     """Append-only safe audit event for every Operations MCP tool call."""
+
+    objects = OperationsAuditManager()
 
     class Outcome(models.TextChoices):
         SUCCESS = "success", "Success"
