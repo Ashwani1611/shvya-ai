@@ -66,6 +66,31 @@ def pkce_s256(verifier: str) -> str:
 def _allowed_redirect(uri: str) -> bool:
     parsed = urlparse(str(uri or ""))
     host = (parsed.hostname or "").lower()
+
+    # VS Code's remote MCP OAuth flow documents these two redirect URLs.
+    # Keep them exact instead of allowing arbitrary localhost/vscode.dev paths.
+    if (
+        parsed.scheme == "http"
+        and host == "127.0.0.1"
+        and parsed.port == 33418
+        and parsed.path in {"", "/"}
+        and not parsed.query
+        and not parsed.fragment
+        and parsed.username is None
+        and parsed.password is None
+    ):
+        return True
+    if (
+        parsed.scheme == "https"
+        and host == "vscode.dev"
+        and parsed.path == "/redirect"
+        and not parsed.query
+        and not parsed.fragment
+        and parsed.username is None
+        and parsed.password is None
+    ):
+        return True
+
     allowed = (
         host == "chatgpt.com"
         or host.endswith(".chatgpt.com")
@@ -76,7 +101,12 @@ def _allowed_redirect(uri: str) -> bool:
         or host == "anthropic.com"
         or host.endswith(".anthropic.com")
     )
-    return parsed.scheme == "https" and allowed
+    return (
+        parsed.scheme == "https"
+        and allowed
+        and parsed.username is None
+        and parsed.password is None
+    )
 
 
 def register_client(
@@ -96,7 +126,7 @@ def register_client(
         raise OperationsAuthError("At least one redirect URI is required.")
     if any(not _allowed_redirect(uri) for uri in redirect_uris):
         raise OperationsAuthError(
-            "Operations MCP accepts only HTTPS ChatGPT/OpenAI/Claude/Anthropic redirect URIs."
+            "Operations MCP accepts only approved ChatGPT/OpenAI/Claude/Anthropic or exact VS Code MCP redirect URIs."
         )
 
     grant_types = list(grant_types or ["authorization_code", "refresh_token"])
