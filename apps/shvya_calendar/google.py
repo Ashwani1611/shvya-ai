@@ -315,6 +315,85 @@ def create_booking_event(booking):
     return booking
 
 
+def update_booking_event(booking):
+    if not booking.google_event_id:
+        return create_booking_event(booking)
+
+    connection = connection_for_page(booking.page)
+    if connection is None:
+        booking.calendar_sync_status = CalendarBooking.SyncStatus.NOT_CONNECTED
+        booking.calendar_sync_error = ""
+        booking.save(
+            update_fields=[
+                "calendar_sync_status",
+                "calendar_sync_error",
+                "updated_at",
+            ]
+        )
+        return booking
+
+    calendar_id = booking.google_calendar_id or connection.calendar_id or "primary"
+    payload = {
+        "start": {
+            "dateTime": booking.start_at.isoformat(),
+            "timeZone": booking.timezone,
+        },
+        "end": {
+            "dateTime": booking.end_at.isoformat(),
+            "timeZone": booking.timezone,
+        },
+    }
+    if booking.page.invite_lead_to_event and booking.lead.email:
+        payload["attendees"] = [
+            {"email": booking.lead.email, "displayName": booking.lead.name}
+        ]
+
+    response = requests.patch(
+        (
+            f"{GOOGLE_CALENDAR_API}/calendars/"
+            f"{quote(calendar_id, safe='')}/events/"
+            f"{quote(booking.google_event_id, safe='')}"
+        ),
+        headers=_headers(connection),
+        params={"sendUpdates": "all"},
+        json=payload,
+        timeout=25,
+    )
+    if not response.ok:
+        message = (
+            f"Google Calendar event update failed ({response.status_code})."
+        )
+        booking.calendar_sync_status = CalendarBooking.SyncStatus.FAILED
+        booking.calendar_sync_error = message
+        booking.save(
+            update_fields=[
+                "calendar_sync_status",
+                "calendar_sync_error",
+                "updated_at",
+            ]
+        )
+        return booking
+
+    event = response.json()
+    meeting_link, conference_id = _conference_details(event)
+    booking.google_event_url = str(event.get("htmlLink") or booking.google_event_url)
+    booking.meeting_link = meeting_link or booking.meeting_link
+    booking.google_conference_id = conference_id or booking.google_conference_id
+    booking.calendar_sync_status = CalendarBooking.SyncStatus.SYNCED
+    booking.calendar_sync_error = ""
+    booking.save(
+        update_fields=[
+            "google_event_url",
+            "meeting_link",
+            "google_conference_id",
+            "calendar_sync_status",
+            "calendar_sync_error",
+            "updated_at",
+        ]
+    )
+    return booking
+
+
 def cancel_booking_event(booking):
     if not booking.google_event_id:
         return
