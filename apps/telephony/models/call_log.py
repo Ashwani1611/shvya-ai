@@ -305,7 +305,7 @@ class CallEvent(models.Model):
         blank=True,
         related_name="call_intelligence_events",
     )
-    event_type = models.CharField(max_length=20, choices=Type.choices)
+    event_type = models.CharField(max_length=32, choices=Type.choices)
     occurred_at = models.DateTimeField()
     payload = models.JSONField(default=dict, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
