@@ -19,19 +19,19 @@ class CallCaptureRepository(private val context: Context) {
     suspend fun captureLatest(
         session: CallSessionStore.Session?,
         captureSource: String = "phone_state",
-    ): Boolean {
+    ): LocalCallEntity? {
         val since = (session?.startedAt ?: System.currentTimeMillis()) - 90_000L
         val snapshot = reader.latestSince(
             sinceMillis = since,
             expectedNumber = session?.incomingNumber?.takeIf { it.isNotBlank() },
-        ) ?: return false
+        ) ?: return null
         return persist(snapshot, session, captureSource)
     }
 
     suspend fun reconcileSince(sinceMillis: Long): Int {
         var inserted = 0
         reader.since(sinceMillis).asReversed().forEach { snapshot ->
-            if (persist(snapshot, null, "call_log_reconcile")) inserted += 1
+            if (persist(snapshot, null, "call_log_reconcile") != null) inserted += 1
         }
         return inserted
     }
@@ -40,9 +40,9 @@ class CallCaptureRepository(private val context: Context) {
         snapshot: CallLogReader.Snapshot,
         session: CallSessionStore.Session?,
         captureSource: String,
-    ): Boolean {
-        if (snapshot.number.isBlank()) return false
-        if (db.callDao().byCallLogId(snapshot.callLogId) != null) return false
+    ): LocalCallEntity? {
+        if (snapshot.number.isBlank()) return null
+        if (db.callDao().byCallLogId(snapshot.callLogId) != null) return null
 
         val sourceCallId = "calllog:${snapshot.callLogId}:${snapshot.dateMillis}"
         val localId = UUID.randomUUID().toString()
@@ -114,7 +114,66 @@ class CallCaptureRepository(private val context: Context) {
                 occurredAtMillis = snapshot.dateMillis,
             )
         )
-        return true
+        return call
+    }
+
+    suspend fun enrich(
+        sourceCallId: String,
+        notes: String,
+        disposition: String,
+        followUpAtMillis: Long?,
+    ): LocalCallEntity? {
+        val current = db.callDao().bySourceCallId(sourceCallId) ?: return null
+        val updated = current.copy(
+            notes = notes.trim(),
+            disposition = disposition.trim(),
+            followUpAtMillis = followUpAtMillis,
+        )
+        db.callDao().upsert(updated)
+
+        val eventUuid = UUID.randomUUID().toString()
+        val eventType = when (updated.status) {
+            "missed" -> "missed"
+            "rejected" -> "rejected"
+            else -> "completed"
+        }
+        val payload = JSONObject()
+            .put("device_id", DeviceIdentity.id(context))
+            .put("event_uuid", eventUuid)
+            .put("source_call_id", updated.sourceCallId)
+            .put("event_type", eventType)
+            .put("direction", updated.direction)
+            .put("status", updated.status)
+            .put("phone_number", updated.phoneNumber)
+            .put("raw_phone_number", updated.rawPhoneNumber)
+            .put("contact_name", updated.contactName)
+            .put("occurred_at", iso(System.currentTimeMillis()))
+            .put("started_at", iso(updated.startedAtMillis ?: updated.calledAtMillis))
+            .put("ended_at", iso(updated.endedAtMillis ?: updated.calledAtMillis))
+            .put("ring_duration_seconds", updated.ringDurationSeconds)
+            .put("duration_seconds", updated.durationSeconds)
+            .put("notes", updated.notes)
+            .put("disposition", updated.disposition)
+            .put(
+                "metadata",
+                JSONObject()
+                    .put("call_log_id", updated.callLogId)
+                    .put("capture_source", "post_call_editor"),
+            )
+
+        followUpAtMillis?.let { payload.put("follow_up_at", iso(it)) }
+        updated.answeredAtMillis?.let { payload.put("answered_at", iso(it)) }
+
+        db.outboxDao().enqueue(
+            OutboxEventEntity(
+                eventUuid = eventUuid,
+                sourceCallId = updated.sourceCallId,
+                eventType = eventType,
+                payloadJson = payload.toString(),
+                occurredAtMillis = System.currentTimeMillis(),
+            )
+        )
+        return updated
     }
 
     private fun iso(millis: Long): String {

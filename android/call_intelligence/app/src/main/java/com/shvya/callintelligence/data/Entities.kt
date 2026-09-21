@@ -27,6 +27,9 @@ data class LocalCallEntity(
     val endedAtMillis: Long?,
     val ringDurationSeconds: Int,
     val durationSeconds: Int,
+    val notes: String = "",
+    val disposition: String = "",
+    val followUpAtMillis: Long? = null,
     val syncedAtMillis: Long? = null,
 )
 

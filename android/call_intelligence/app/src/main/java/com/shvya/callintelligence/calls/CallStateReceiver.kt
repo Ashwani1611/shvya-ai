@@ -36,14 +36,17 @@ class CallStateReceiver : BroadcastReceiver() {
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 val repository = CallCaptureRepository(context.applicationContext)
-                var captured = false
+                var captured: com.shvya.callintelligence.data.LocalCallEntity? = null
                 repeat(4) { attempt ->
-                    if (!captured) {
+                    if (captured == null) {
                         if (attempt > 0) delay(500L * attempt)
                         captured = repository.captureLatest(session)
                     }
                 }
-                if (captured) WorkerScheduler.enqueueSync(context)
+                captured?.let { call ->
+                    WorkerScheduler.enqueueSync(context)
+                    PostCallNotifier.show(context, call)
+                }
             } finally {
                 sessionStore.clear()
                 pending.finish()
