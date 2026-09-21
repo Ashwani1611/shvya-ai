@@ -61,9 +61,17 @@ CALL_INTELLIGENCE_SCHEMA = {
                 "maximum": 10,
             },
             "extracted_attributes": {
-                "type": "object",
-                "additionalProperties": {
-                    "type": ["string", "number", "boolean", "null"],
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "key": {"type": "string"},
+                        "value": {
+                            "type": ["string", "number", "boolean", "null"],
+                        },
+                    },
+                    "required": ["key", "value"],
+                    "additionalProperties": False,
                 },
             },
         },
@@ -179,7 +187,11 @@ def analyze_call_intelligence(self, call_id):
     intelligence.next_action = str(payload.get("next_action") or "")[:255]
     intelligence.follow_up_at = follow_up_at
     intelligence.ai_score = _score(payload.get("ai_score"))
-    intelligence.extracted_attributes = dict(payload.get("extracted_attributes") or {})
+    intelligence.extracted_attributes = {
+        str(item.get("key") or "").strip(): item.get("value")
+        for item in (payload.get("extracted_attributes") or [])
+        if isinstance(item, dict) and str(item.get("key") or "").strip()
+    }
     intelligence.analysis_payload = {
         "provider_model": result.model,
         "source": "transcript" if intelligence.transcript else "employee_notes",
