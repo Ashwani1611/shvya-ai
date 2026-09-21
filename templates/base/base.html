@@ -140,6 +140,58 @@
         display: block;
     }
 
+    /* Visible Superadmin Operations support presence across the organization workspace. */
+    .operations-support-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: .5rem;
+        min-height: 36px;
+        padding: .45rem .7rem;
+        border: 1px solid #bfdbfe;
+        border-radius: .65rem;
+        background: #eff6ff;
+        color: #1d4ed8;
+        font-size: .76rem;
+        font-weight: 750;
+        line-height: 1;
+        white-space: nowrap;
+        box-shadow: 0 1px 2px rgba(15, 23, 42, .04);
+    }
+
+    .operations-support-badge__dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 999px;
+        background: currentColor;
+        animation: shvya-support-presence 1.25s ease-in-out infinite;
+    }
+
+    .operations-support-badge__label {
+        font-weight: 800;
+    }
+
+    .operations-support-badge__actor {
+        opacity: .72;
+        font-size: .7rem;
+    }
+
+    @keyframes shvya-support-presence {
+        0%, 100% { opacity: 1; transform: scale(1); }
+        50% { opacity: .42; transform: scale(.82); }
+    }
+
+    @media (max-width: 1180px) {
+        .operations-support-badge__actor {
+            display: none;
+        }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        .operations-support-badge__dot {
+            animation: none;
+        }
+    }
+
     /* Organization AI-coin balance in the shared dashboard topbar. */
     .ai-credit-badge {
         display: inline-flex;
@@ -222,6 +274,48 @@
 
 <script>
 (function () {
+    function initOperationsSupportBadge() {
+        var active = "{{ operations_support_active|yesno:'1,0' }}" === '1';
+        if (!active) return;
+
+        var topbar = document.querySelector('header');
+        if (!topbar || topbar.querySelector('[data-operations-support-badge]')) return;
+
+        var actions = topbar.querySelector('.flex.items-center.gap-2');
+        if (!actions) return;
+
+        var actor = "{{ operations_support_actor|default:'SHVYA Support'|escapejs }}";
+        var startedAt = "{{ operations_support_started_at|date:'d M Y, h:i A'|default:''|escapejs }}";
+
+        var badge = document.createElement('div');
+        badge.dataset.operationsSupportBadge = '1';
+        badge.className = 'operations-support-badge';
+        badge.setAttribute('role', 'status');
+        badge.setAttribute('aria-live', 'polite');
+        badge.setAttribute(
+            'title',
+            'A SHVYA Superadmin Operations support session is active for this organization' +
+            (startedAt ? ' since ' + startedAt : '') + '. All Operations actions are audited.'
+        );
+
+        var dot = document.createElement('span');
+        dot.className = 'operations-support-badge__dot';
+        dot.setAttribute('aria-hidden', 'true');
+
+        var label = document.createElement('span');
+        label.className = 'operations-support-badge__label';
+        label.textContent = 'SHVYA Support Active';
+
+        var actorNode = document.createElement('span');
+        actorNode.className = 'operations-support-badge__actor';
+        actorNode.textContent = actor || 'SHVYA Support';
+
+        badge.appendChild(dot);
+        badge.appendChild(label);
+        badge.appendChild(actorNode);
+        actions.insertBefore(badge, actions.firstChild);
+    }
+
     function initAICreditBadge() {
         var rawBalance = "{{ ai_coin_balance|default_if_none:''|escapejs }}";
         if (rawBalance === '') return;
@@ -363,6 +457,7 @@
 
     function initDashboardChrome() {
         initSidebarEnhancements();
+        initOperationsSupportBadge();
         initAICreditBadge();
     }
 
