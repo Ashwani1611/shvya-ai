@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}SHVYA Calendar{% endblock %}
+{% block header %}SHVYA Calendar{% endblock %}
+
+{% block extra_head %}
+{{ block.super }}
+<link rel="stylesheet" href="{% static 'shvya_calendar/calendar.css' %}?v=20260922-1">
+{% endblock %}
+
+{% block content %}
+<main class="sc-shell">
+  <section class="sc-hero">
+    <div>
+      <span class="sc-kicker">SHVYA CALENDAR</span>
+      <h1>Turn interest into a real next step.</h1>
+      <p>Capture the lead first, then let them book. Every page stays inside your organization, CRM and calendar rules.</p>
+    </div>
+    <form method="post" class="sc-create-inline">
+      {% csrf_token %}
+      <input name="name" maxlength="120" placeholder="e.g. Product Demo" aria-label="New calendar page name">
+      <button class="sc-button sc-button-primary" type="submit"><i class="ti ti-plus"></i> New page</button>
+    </form>
+  </section>
+
+  <section class="sc-metric-grid">
+    <article class="sc-metric-card">
+      <span>Pages</span>
+      <strong>{{ pages|length }}</strong>
+      <small>Lead capture and booking experiences</small>
+    </article>
+    <article class="sc-metric-card">
+      <span>Upcoming</span>
+      <strong>{{ upcoming_bookings|length }}</strong>
+      <small>Next scheduled sessions</small>
+    </article>
+    <article class="sc-metric-card">
+      <span>Calls to make</span>
+      <strong>{{ pending_call_reminders|length }}</strong>
+      <small>Human call reminders needing attention</small>
+    </article>
+  </section>
+
+  <section class="sc-section-head">
+    <div><span class="sc-kicker">YOUR PAGES</span><h2>Calendar pages</h2></div>
+  </section>
+
+  <section class="sc-page-grid">
+    {% for page in pages %}
+      <article class="sc-page-card">
+        <div class="sc-page-card-top">
+          <div class="sc-app-icon"><i class="ti ti-calendar-event"></i></div>
+          <span class="sc-status sc-status-{{ page.status }}">{{ page.get_status_display }}</span>
+        </div>
+        <div>
+          <h3>{{ page.name }}</h3>
+          <p>{{ page.get_page_type_display }} · {{ page.timezone }}</p>
+        </div>
+        <div class="sc-card-stats">
+          <div><strong>{{ page.submission_count }}</strong><span>Leads</span></div>
+          <div><strong>{{ page.booking_count }}</strong><span>Bookings</span></div>
+        </div>
+        <div class="sc-card-actions">
+          <a class="sc-button" href="{% url 'shvya_calendar:editor' page_id=page.id %}">Manage</a>
+          {% if page.status == 'published' %}
+            <a class="sc-icon-button" title="Open public page" target="_blank" rel="noopener" href="{% url 'shvya_calendar_public:page' public_id=page.public_id slug=page.slug %}"><i class="ti ti-external-link"></i></a>
+          {% else %}
+            <a class="sc-icon-button" title="Preview" target="_blank" rel="noopener" href="{% url 'shvya_calendar:preview' page_id=page.id %}"><i class="ti ti-eye"></i></a>
+          {% endif %}
+        </div>
+      </article>
+    {% empty %}
+      <article class="sc-empty-card">
+        <div class="sc-empty-icon"><i class="ti ti-calendar-plus"></i></div>
+        <h3>Create your first conversion calendar.</h3>
+        <p>Collect CRM-ready lead data before scheduling, then add Google Calendar, Meet and reminder delivery.</p>
+      </article>
+    {% endfor %}
+  </section>
+
+  <section class="sc-two-col">
+    <article class="sc-panel">
+      <header><div><span class="sc-kicker">UPCOMING</span><h2>Next bookings</h2></div></header>
+      <div class="sc-list">
+        {% for booking in upcoming_bookings %}
+          <div class="sc-list-row">
+            <div class="sc-avatar">{{ booking.lead.name|slice:":1"|upper }}</div>
+            <div class="sc-list-copy">
+              <strong>{{ booking.lead.name }}</strong>
+              <span>{{ booking.page.name }} · {{ booking.start_at|date:"d M, g:i A" }}</span>
+            </div>
+            <span class="sc-status sc-status-published">Scheduled</span>
+          </div>
+        {% empty %}
+          <p class="sc-muted">No upcoming bookings yet.</p>
+        {% endfor %}
+      </div>
+    </article>
+
+    <article class="sc-panel">
+      <header><div><span class="sc-kicker">CALL REMINDERS</span><h2>Human follow-ups</h2></div></header>
+      <div class="sc-list">
+        {% for delivery in pending_call_reminders %}
+          <div class="sc-list-row">
+            <div class="sc-avatar"><i class="ti ti-phone"></i></div>
+            <div class="sc-list-copy">
+              <strong>{{ delivery.booking.lead.name }}</strong>
+              <span>{{ delivery.step.name }} · due {{ delivery.due_at|date:"d M, g:i A" }}</span>
+            </div>
+            <form method="post" action="{% url 'shvya_calendar:call_reminder_complete' delivery_id=delivery.id %}">
+              {% csrf_token %}
+              <input type="hidden" name="next" value="{% url 'shvya_calendar:index' %}">
+              <button class="sc-button sc-button-small" type="submit">Done</button>
+            </form>
+          </div>
+        {% empty %}
+          <p class="sc-muted">No call reminders need attention.</p>
+        {% endfor %}
+      </div>
+    </article>
+  </section>
+</main>
+{% endblock %}
