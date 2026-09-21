@@ -471,6 +471,44 @@ class ConnectHubAuthorizationTests(TestCase):
         self.assertNotIn(str(other.id), body)
         self.assertNotIn("Foreign tenant activity", body)
 
+    def test_admin_can_review_audit_after_external_ai_policy_is_disabled(self):
+        OperationsPolicy.objects.create(
+            organization=self.organization,
+            organization_admin_enabled=False,
+            allowed_capabilities=[
+                CAP_ORGANIZATION_READ,
+                CAP_AUDIT_READ,
+            ],
+            approval_required_capabilities=[],
+        )
+        event = OperationsAuditEvent.objects.create(
+            actor=self.admin,
+            role=ROLE_ORGANIZATION_ADMIN,
+            organization=self.organization,
+            tool_name="historical_operations_event",
+            capability=CAP_ORGANIZATION_READ,
+            target_type="organization",
+            target_id=str(self.organization.id),
+            reason="Reviewable after external AI is disabled",
+            outcome=OperationsAuditEvent.Outcome.SUCCESS,
+            request_fingerprint="h" * 64,
+            change_summary={"status": "safe"},
+        )
+
+        self.authenticate(self.admin)
+        response = self.client.get(
+            reverse("crm-connect-hub-shvya-api")
+        )
+        self.assertEqual(response.status_code, 200)
+        body = response.content.decode("utf-8")
+        self.assertIn("Disabled by SHVYA Superadmin", body)
+        self.assertIn("Recent Operations Activity", body)
+        self.assertIn(str(event.id), body)
+        self.assertIn(
+            "Reviewable after external AI is disabled",
+            body,
+        )
+
     def test_admin_operations_panel_hides_audit_when_capability_not_granted(self):
         OperationsPolicy.objects.create(
             organization=self.organization,
