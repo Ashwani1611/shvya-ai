@@ -82,15 +82,26 @@ def organization_operations_policy_update_view(request, organization_id):
     )
 
     enabled = request.POST.get("organization_admin_enabled") == "on"
+    requested_allowed = set(
+        request.POST.getlist("allowed_capabilities")
+    )
     allowed = [
-        item
-        for item in request.POST.getlist("allowed_capabilities")
-        if item in ALL_CAPABILITIES
+        capability
+        for capability in ALL_CAPABILITIES
+        if capability in requested_allowed
     ]
+    requested_approval = set(
+        request.POST.getlist(
+            "approval_required_capabilities"
+        )
+    )
     approval = [
-        item
-        for item in request.POST.getlist("approval_required_capabilities")
-        if item in allowed and item in WRITE_CAPABILITIES
+        capability
+        for capability in WRITE_CAPABILITIES
+        if (
+            capability in allowed
+            and capability in requested_approval
+        )
     ]
 
     revoked_token_count = 0
