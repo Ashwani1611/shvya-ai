@@ -302,14 +302,14 @@ def mapped_lead_values(*, organization, version, normalized):
 
 
 def _find_existing_lead(*, organization, phone, email, match_email):
-    lead = (
+    phone_lead = (
         Lead.objects
         .select_for_update()
         .filter(organization=organization, phone=phone)
         .first()
     )
-    if lead or not match_email or not email:
-        return lead
+    if not match_email or not email:
+        return phone_lead
 
     email_matches = list(
         Lead.objects
@@ -317,13 +317,22 @@ def _find_existing_lead(*, organization, phone, email, match_email):
         .filter(organization=organization, email__iexact=email)
         .order_by("-updated_at")[:2]
     )
-    if len(email_matches) == 1:
-        return email_matches[0]
     if len(email_matches) > 1:
         raise ValidationError(
             {"email": "More than one CRM lead uses this email. Review the duplicate manually."}
         )
-    return None
+
+    email_lead = email_matches[0] if email_matches else None
+    if phone_lead and email_lead and phone_lead.pk != email_lead.pk:
+        raise ValidationError(
+            {
+                "form": (
+                    "Mobile and email match different CRM leads. "
+                    "Review the duplicate manually before merging records."
+                )
+            }
+        )
+    return phone_lead or email_lead
 
 
 def _apply_existing_lead_update(*, lead, name, email, attributes, policy):
@@ -421,21 +430,24 @@ def create_submission_and_lead(
         status = CalendarSubmission.Status.LEAD_MATCHED
     else:
         try:
-            lead_name = (
-                f"{str(version.snapshot.get('lead_name_prefix') or '')}"
-                f"{normalized['name']}"
-            ).strip()
-            lead = create_lead(
-                organization=organization,
-                pipeline=page.pipeline,
-                stage=page.stage,
-                name=lead_name,
-                phone=phone,
-                email=email,
-                attributes=attributes,
-                lead_source="shvya_calendar",
-                send_welcome=False,
-            )
+            # Use an inner savepoint so a concurrent unique-key race can be
+            # recovered without leaving the outer submission transaction broken.
+            with transaction.atomic():
+                lead_name = (
+                    f"{str(version.snapshot.get('lead_name_prefix') or '')}"
+                    f"{normalized['name']}"
+                ).strip()
+                lead = create_lead(
+                    organization=organization,
+                    pipeline=page.pipeline,
+                    stage=page.stage,
+                    name=lead_name,
+                    phone=phone,
+                    email=email,
+                    attributes=attributes,
+                    lead_source="shvya_calendar",
+                    send_welcome=False,
+                )
             created = True
             status = CalendarSubmission.Status.LEAD_CREATED
         except IntegrityError:
