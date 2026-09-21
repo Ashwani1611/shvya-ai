@@ -4,6 +4,7 @@ from apps.integrations.views.operations_mcp import (
     operations_mcp,
     operations_oauth_authorize,
     operations_oauth_register,
+    operations_oauth_revoke,
     operations_oauth_resource_metadata,
     operations_oauth_server_metadata,
     operations_oauth_token,
@@ -50,6 +51,11 @@ urlpatterns = [
         "operations/oauth/token",
         operations_oauth_token,
         name="shvya-operations-oauth-token",
+    ),
+    path(
+        "operations/oauth/revoke",
+        operations_oauth_revoke,
+        name="shvya-operations-oauth-revoke",
     ),
     path(
         "operations/mcp/",
