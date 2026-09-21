@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import re
 import secrets
 from dataclasses import dataclass
 from datetime import timedelta
@@ -37,6 +38,9 @@ SUPPORTED_SCOPES = {
 ACCESS_TOKEN_TTL = timedelta(hours=4)
 REFRESH_TOKEN_TTL = timedelta(days=14)
 AUTH_CODE_TTL = timedelta(minutes=5)
+
+_PKCE_VERIFIER_RE = re.compile(r"^[A-Za-z0-9\-._~]{43,128}$")
+_PKCE_CHALLENGE_RE = re.compile(r"^[A-Za-z0-9_-]{43,128}$")
 
 User = get_user_model()
 
@@ -170,8 +174,13 @@ def validate_authorization_request(
         raise OperationsAuthError("OAuth redirect URI is not registered.")
     if response_type != "code":
         raise OperationsAuthError("Only response_type=code is supported.")
-    if not code_challenge or code_challenge_method != "S256":
-        raise OperationsAuthError("PKCE S256 is required.")
+    if (
+        code_challenge_method != "S256"
+        or not _PKCE_CHALLENGE_RE.fullmatch(str(code_challenge or ""))
+    ):
+        raise OperationsAuthError(
+            "PKCE S256 with a valid 43–128 character challenge is required."
+        )
 
     scopes = set(str(scope or "").split())
     if OPERATIONS_READ_SCOPE not in scopes:
@@ -301,6 +310,10 @@ def exchange_authorization_code(
             raise OperationsAuthError("OAuth client mismatch.")
         if auth_code.redirect_uri != redirect_uri:
             raise OperationsAuthError("OAuth redirect URI mismatch.")
+        if not _PKCE_VERIFIER_RE.fullmatch(str(code_verifier or "")):
+            raise OperationsAuthError(
+                "PKCE verifier must be 43–128 valid unreserved characters."
+            )
         if pkce_s256(code_verifier) != auth_code.code_challenge:
             raise OperationsAuthError("PKCE verification failed.")
         if resource and auth_code.resource != resource:
