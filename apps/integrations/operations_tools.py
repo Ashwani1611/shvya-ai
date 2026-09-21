@@ -106,6 +106,14 @@ class OperationsPermissionError(OperationsToolError):
     outcome = OperationsAuditEvent.Outcome.DENIED
 
 
+class OperationsSuperadminRequired(OperationsPermissionError):
+    code = "operations_superadmin_required"
+
+
+class OperationsManualFixRequired(OperationsToolError):
+    code = "operations_manual_fix_required"
+
+
 class OperationsApprovalRequired(OperationsToolError):
     code = "operations_approval_required"
     outcome = OperationsAuditEvent.Outcome.APPROVAL_REQUIRED
@@ -213,13 +221,11 @@ def _validated_approval_event(
     return event
 
 
-def _write_gate(
+def _require_operations_capability(
     *,
     identity,
     organization,
     capability,
-    tool_name,
-    arguments,
 ):
     try:
         require_capability(
@@ -228,7 +234,28 @@ def _write_gate(
             capability=capability,
         )
     except OperationsPolicyError as exc:
+        if identity.role != ROLE_SUPERADMIN:
+            raise OperationsSuperadminRequired(
+                f"Capability '{capability}' is not enabled for this organization. "
+                "SHVYA Superadmin must enable it in the External AI Operations policy."
+            ) from exc
         raise OperationsPermissionError(str(exc)) from exc
+
+
+
+def _write_gate(
+    *,
+    identity,
+    organization,
+    capability,
+    tool_name,
+    arguments,
+):
+    _require_operations_capability(
+        identity=identity,
+        organization=organization,
+        capability=capability,
+    )
 
     if "operations.write" not in identity.scopes:
         raise OperationsPermissionError(
@@ -636,14 +663,11 @@ def _safe_workflow_config(rule, sensitive_keys):
 
 def get_organization_configuration(*, identity, arguments):
     organization = _organization_for(identity)
-    try:
-        require_capability(
-            role=identity.role,
-            organization=organization,
-            capability=CAP_ORGANIZATION_READ,
-        )
-    except OperationsPolicyError as exc:
-        raise OperationsPermissionError(str(exc)) from exc
+    _require_operations_capability(
+        identity=identity,
+        organization=organization,
+        capability=CAP_ORGANIZATION_READ,
+    )
 
     info = OrgInfo.objects.filter(organization=organization).first()
     pipelines = list(
@@ -739,14 +763,11 @@ def get_organization_configuration(*, identity, arguments):
 
 def get_automation_configuration(*, identity, arguments):
     organization = _organization_for(identity)
-    try:
-        require_capability(
-            role=identity.role,
-            organization=organization,
-            capability=CAP_ORGANIZATION_READ,
-        )
-    except OperationsPolicyError as exc:
-        raise OperationsPermissionError(str(exc)) from exc
+    _require_operations_capability(
+        identity=identity,
+        organization=organization,
+        capability=CAP_ORGANIZATION_READ,
+    )
 
     try:
         limit = int((arguments or {}).get("limit") or 50)
@@ -919,14 +940,11 @@ def _qualification_contract_snapshot(lead):
 
 def diagnose_lead_qualification(*, identity, arguments):
     organization = _organization_for(identity)
-    try:
-        require_capability(
-            role=identity.role,
-            organization=organization,
-            capability=CAP_DIAGNOSTICS_READ,
-        )
-    except OperationsPolicyError as exc:
-        raise OperationsPermissionError(str(exc)) from exc
+    _require_operations_capability(
+        identity=identity,
+        organization=organization,
+        capability=CAP_DIAGNOSTICS_READ,
+    )
     lead = _lead(organization, (arguments or {}).get("lead_id"))
     (
         compiled,
@@ -1161,7 +1179,7 @@ def move_lead_stage(*, identity, arguments, enforce_gate=True):
                     "Complete the target stage's required CRM attributes before "
                     f"moving this lead: {detail}."
                 )
-            raise OperationsPermissionError(
+            raise OperationsManualFixRequired(
                 "The target stage has missing sensitive required CRM data. "
                 "Operations MCP cannot request or fill credential-like fields; "
                 "resolve this manually in SHVYA before moving the lead."
@@ -1622,14 +1640,11 @@ def update_ai_configuration(*, identity, arguments):
 
 def get_conversion_analysis(*, identity, arguments):
     organization = _organization_for(identity)
-    try:
-        require_capability(
-            role=identity.role,
-            organization=organization,
-            capability=CAP_DIAGNOSTICS_READ,
-        )
-    except OperationsPolicyError as exc:
-        raise OperationsPermissionError(str(exc)) from exc
+    _require_operations_capability(
+        identity=identity,
+        organization=organization,
+        capability=CAP_DIAGNOSTICS_READ,
+    )
 
     try:
         days = int((arguments or {}).get("days") or 30)
@@ -1991,14 +2006,11 @@ def get_conversion_analysis(*, identity, arguments):
 
 def get_operations_audit(*, identity, arguments):
     organization = _organization_for(identity)
-    try:
-        require_capability(
-            role=identity.role,
-            organization=organization,
-            capability=CAP_AUDIT_READ,
-        )
-    except OperationsPolicyError as exc:
-        raise OperationsPermissionError(str(exc)) from exc
+    _require_operations_capability(
+        identity=identity,
+        organization=organization,
+        capability=CAP_AUDIT_READ,
+    )
     try:
         limit = int((arguments or {}).get("limit") or 30)
     except (TypeError, ValueError):
@@ -3217,14 +3229,11 @@ def add_cadence_step(*, identity, arguments):
 def execute_operations_tool(*, name, identity, arguments):
     if name in DIAGNOSTIC_TOOL_NAMES:
         organization = _organization_for(identity)
-        try:
-            require_capability(
-                role=identity.role,
-                organization=organization,
-                capability=CAP_DIAGNOSTICS_READ,
-            )
-        except OperationsPolicyError as exc:
-            raise OperationsPermissionError(str(exc)) from exc
+        _require_operations_capability(
+            identity=identity,
+            organization=organization,
+            capability=CAP_DIAGNOSTICS_READ,
+        )
         try:
             data = execute_diagnostic_tool(
                 name=name,
