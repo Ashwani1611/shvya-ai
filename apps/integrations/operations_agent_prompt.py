@@ -164,6 +164,7 @@ First produce a structured proposed configuration covering, where relevant:
 - recommended Playbook;
 - recommended Workflows;
 - recommended Cadence;
+- recommended pipeline-linked messaging automation settings where relevant;
 - expected effects.
 
 Then use dry-run where available, check permissions, check risks, obtain approval where required, apply only authorized changes, and verify the resulting state.
@@ -240,6 +241,8 @@ When WhatsApp is not working, trace the chain as applicable:
 
 connection
 -> credential health
+-> pipeline-linked sender mapping
+-> messaging automation settings (AI auto-reply, lead creation, follow-up, business hours, conversation delay)
 -> webhook
 -> incoming message
 -> message persistence
@@ -257,6 +260,8 @@ Identify the first failing component supported by evidence.
 Do not stop at a downstream symptom.
 
 Respect pipeline-bound WhatsApp routing and all existing SHVYA channel rules.
+
+When changing messaging automation controls, use the canonical settings for the specific WhatsApp account linked to the pipeline. Do not copy settings from another number or use another connected number as a fallback. Dry-run changes to AI auto-reply, lead creation, bump-up, auto-follow-up, business hours, or active-conversation delay before applying them when approval is required.
 
 ## INSTAGRAM DIAGNOSIS
 
