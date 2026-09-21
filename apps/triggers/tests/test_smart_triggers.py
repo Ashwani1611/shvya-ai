@@ -17,6 +17,7 @@ from apps.channels.models import WhatsAppAccount, WhatsAppMessage
 from apps.crm.models import AttributeDefinition, Lead, LeadCall, LeadReminder, Pipeline
 from apps.followups.models import FollowupSequence, FollowupStep, LeadSequenceState
 from apps.organizations.models import Organization
+from apps.telephony.models import CallIntelligenceResult, CallRecord
 from apps.triggers.models import SmartTrigger, TriggerEvent, TriggerRun
 from services.triggers.actions import deliver_email, execute, scheduled_at
 from services.triggers.evaluator import emit, evaluate, scan_timers
@@ -193,6 +194,45 @@ class SmartTriggerTests(TestCase):
             lead=self.lead, status="completed", called_at=timezone.now()
         )
         self.assertEqual(TriggerEvent.objects.filter(kind="call_logged").count(), 1)
+
+    def test_call_intelligence_ready_trigger_uses_intent_and_score(self):
+        conditions = copy.deepcopy(self.data["conditions"])
+        conditions.update(intent="high", min_ai_score=8)
+        rule = self.rule(
+            trigger_type="call_intelligence_ready",
+            conditions=conditions,
+            action_type="attribute",
+            action={"key": "temperature", "value": "Hot"},
+        )
+        call = CallRecord.objects.create(
+            organization=self.org,
+            user=self.user,
+            lead=self.lead,
+            source=CallRecord.Source.ANDROID_SIM,
+            source_call_id="workflow-call",
+            phone_number=self.lead.phone,
+            direction=CallRecord.Direction.INCOMING,
+            status=CallRecord.Status.ANSWERED,
+        )
+        result = CallIntelligenceResult.objects.create(
+            call=call,
+            intent=CallIntelligenceResult.Intent.HIGH,
+            ai_score=9,
+            qualification_score=8,
+            analyzed_at=timezone.now(),
+        )
+        event = TriggerEvent.objects.get(
+            kind="call_intelligence_ready",
+            payload__call_id=str(call.id),
+        )
+        evaluate(event.id)
+        run = TriggerRun.objects.get(rule=rule, event=event)
+        execute(run.id)
+        run.refresh_from_db()
+        self.assertEqual(run.status, "completed")
+        self.lead.refresh_from_db()
+        self.assertEqual(self.lead.attributes["temperature"], "Hot")
+        self.assertEqual(result.intent, "high")
 
     def test_stage_snapshot_survives_a_later_move(self):
         rule = self.rule(trigger_type="stage_moved")
