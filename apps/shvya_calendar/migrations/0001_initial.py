@@ -213,7 +213,7 @@ class Migration(migrations.Migration):
                 ("lead", models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name="calendar_bookings", to="crm.lead")),
                 ("organization", models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name="calendar_bookings", to="organizations.organization")),
                 ("page", models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name="bookings", to="shvya_calendar.calendarpage")),
-                ("submission", models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name="bookings", to="shvya_calendar.calendarsubmission")),
+                ("submission", models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name="bookings", to="shvya_calendar.calendarsubmission")),
             ],
             options={"ordering": ["-start_at"]},
         ),
