@@ -1062,11 +1062,6 @@ def operations_oauth_authorize(request):
                 in requested_scope_set
             )
         )
-        policy = (
-            policy_for(organization)
-            if organization is not None
-            else None
-        )
         identity_options.append(
             {
                 "role": role,
