@@ -69,15 +69,19 @@ def pkce_s256(verifier: str) -> str:
 
 
 def _allowed_redirect(uri: str) -> bool:
-    parsed = urlparse(str(uri or ""))
-    host = (parsed.hostname or "").lower()
+    try:
+        parsed = urlparse(str(uri or ""))
+        host = (parsed.hostname or "").lower()
+        port = parsed.port
+    except (TypeError, ValueError):
+        return False
 
     # VS Code's remote MCP OAuth flow documents these two redirect URLs.
     # Keep them exact instead of allowing arbitrary localhost/vscode.dev paths.
     if (
         parsed.scheme == "http"
         and host == "127.0.0.1"
-        and parsed.port == 33418
+        and port == 33418
         and parsed.path in {"", "/"}
         and not parsed.query
         and not parsed.fragment
@@ -109,7 +113,7 @@ def _allowed_redirect(uri: str) -> bool:
     return (
         parsed.scheme == "https"
         and allowed
-        and parsed.port in {None, 443}
+        and port in {None, 443}
         and not parsed.fragment
         and parsed.username is None
         and parsed.password is None
