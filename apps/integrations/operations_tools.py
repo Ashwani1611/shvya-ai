@@ -689,6 +689,40 @@ def _attribute_value_compatible(*, field_type, options, value):
     return True
 
 
+def _validated_lead_attribute_values(*, definitions, values):
+    normalized = {}
+    for key, value in values.items():
+        definition = definitions[key]
+        if isinstance(value, (dict, list, tuple, set)):
+            raise OperationsToolError(
+                f"CRM attribute '{definition.name}' requires a scalar value."
+            )
+        if not _attribute_value_compatible(
+            field_type=definition.field_type,
+            options=definition.options,
+            value=value,
+        ):
+            raise OperationsToolError(
+                f"Value for CRM attribute '{definition.name}' does not match "
+                "its configured type/options."
+            )
+        normalized[key] = (
+            "" if value is None else str(value).strip()
+        )
+    return normalized
+
+
+def _attribute_schema_snapshot(*, definitions, keys):
+    return {
+        key: {
+            "name": definitions[key].name,
+            "field_type": definitions[key].field_type,
+            "options": list(definitions[key].options or []),
+        }
+        for key in sorted(keys)
+    }
+
+
 def _incompatible_existing_attribute_value_count(
     *,
     organization,
@@ -2267,6 +2301,14 @@ def update_lead_attributes(*, identity, arguments):
         raise OperationsPermissionError(
             "Sensitive/credential-like attributes cannot be written through Operations MCP."
         )
+    values = _validated_lead_attribute_values(
+        definitions=definitions,
+        values=values,
+    )
+    definition_snapshot = _attribute_schema_snapshot(
+        definitions=definitions,
+        keys=values,
+    )
 
     before = {
         key: (lead.attributes or {}).get(key)
@@ -2274,6 +2316,7 @@ def update_lead_attributes(*, identity, arguments):
     }
     proposal = {
         "lead_id": str(lead.id),
+        "definitions": definition_snapshot,
         "before": before,
         "after": values,
     }
@@ -2353,14 +2396,23 @@ def update_lead_attributes(*, identity, arguments):
                     "Operations MCP will not write it."
                 )
 
+            locked_values = _validated_lead_attribute_values(
+                definitions=current_definitions,
+                values=values,
+            )
+            current_definition_snapshot = _attribute_schema_snapshot(
+                definitions=current_definitions,
+                keys=locked_values,
+            )
             locked_before = {
                 key: (lead.attributes or {}).get(key)
                 for key in values
             }
             locked_proposal = {
                 "lead_id": str(lead.id),
+                "definitions": current_definition_snapshot,
                 "before": locked_before,
-                "after": values,
+                "after": locked_values,
             }
             _ensure_approved_proposal_unchanged(
                 arguments=arguments,
@@ -2370,16 +2422,16 @@ def update_lead_attributes(*, identity, arguments):
             update_lead_attribute_values(
                 organization=organization,
                 lead=lead,
-                values=values,
+                values=locked_values,
             )
             lead.refresh_from_db(
                 fields=["attributes", "updated_at"]
             )
             failed = [
                 key
-                for key, value in values.items()
+                for key, value in locked_values.items()
                 if str((lead.attributes or {}).get(key) or "")
-                != str(value or "").strip()
+                != value
             ]
             if failed:
                 raise OperationsToolError(
