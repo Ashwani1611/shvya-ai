@@ -238,6 +238,7 @@ def _tool(
     required=None,
     *,
     read_only=True,
+    requires_write_scope=None,
 ):
     return {
         "name": name,
@@ -255,9 +256,13 @@ def _tool(
             "openWorldHint": False,
         },
         "securitySchemes": (
-            OAUTH_READ_SCHEMES
-            if read_only
-            else OAUTH_WRITE_SCHEMES
+            OAUTH_WRITE_SCHEMES
+            if (
+                (not read_only)
+                if requires_write_scope is None
+                else requires_write_scope
+            )
+            else OAUTH_READ_SCHEMES
         ),
     }
 
@@ -292,6 +297,7 @@ OWN_TOOL_DEFINITIONS = [
         },
         ["organization_id", "reason"],
         read_only=False,
+        requires_write_scope=False,
     ),
     _tool(
         "clear_organization_context",
@@ -307,6 +313,7 @@ OWN_TOOL_DEFINITIONS = [
         },
         ["reason"],
         read_only=False,
+        requires_write_scope=False,
     ),
     _tool(
         "get_organization_configuration",
@@ -596,6 +603,15 @@ for _diagnostic_name in DIAGNOSTIC_TOOL_NAMES:
     TOOL_CAPABILITIES[_diagnostic_name] = CAP_DIAGNOSTICS_READ
 
 
+def _tool_requires_write_scope(item):
+    schemes = item.get("securitySchemes") or []
+    return any(
+        OPERATIONS_WRITE_SCOPE in set(scheme.get("scopes") or [])
+        for scheme in schemes
+        if isinstance(scheme, dict)
+    )
+
+
 def _tools_for_identity(identity):
     """Return only tools the authenticated SHVYA identity can actually invoke."""
 
@@ -605,7 +621,7 @@ def _tools_for_identity(identity):
         return [
             item
             for item in TOOL_DEFINITIONS
-            if item["annotations"]["readOnlyHint"] or has_write_scope
+            if not _tool_requires_write_scope(item) or has_write_scope
         ]
 
     organization = identity.organization
@@ -626,7 +642,7 @@ def _tools_for_identity(identity):
             "clear_organization_context",
         }:
             continue
-        if not item["annotations"]["readOnlyHint"] and not has_write_scope:
+        if _tool_requires_write_scope(item) and not has_write_scope:
             continue
         capability = TOOL_CAPABILITIES.get(name)
         if capability is None or capability in capabilities:
