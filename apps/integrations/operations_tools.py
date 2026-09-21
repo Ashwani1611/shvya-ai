@@ -845,6 +845,8 @@ def _knowledge_health(*, organization, limit=50):
             "document_count": document_qs.count(),
             "sources_returned": len(sources),
             "documents_returned": len(documents),
+            "sources_truncated": source_qs.count() > len(sources),
+            "documents_truncated": document_qs.count() > len(documents),
             "active_completed_documents": active_completed,
             "failed_documents": failed,
             "active_chunks": active_chunks,
@@ -994,11 +996,19 @@ def get_organization_configuration(*, identity, arguments):
             "ai": {
                 "configured": info is not None,
                 "about": str(getattr(info, "about", "") or "")[:4000],
+                "about_length": len(
+                    str(getattr(info, "about", "") or "")
+                ),
+                "about_truncated": len(
+                    str(getattr(info, "about", "") or "")
+                ) > 4000,
                 "bot_languages": str(getattr(info, "bot_languages", "") or "")[:500],
                 "ai_enabled": bool(getattr(info, "ai_enabled", True)) if info else None,
                 "bump_up_enabled": bool(getattr(info, "bump_up_enabled", True)) if info else None,
                 "bump_up_count": int(getattr(info, "bump_up_count", 0)) if info else None,
                 "playbook": playbook[:30000],
+                "playbook_length": len(playbook),
+                "playbook_truncated": len(playbook) > 30000,
                 "qualification": {
                     "mode": compiled.get("mode"),
                     "flow_version": compiled.get("flow_version"),
@@ -1019,6 +1029,8 @@ def get_organization_configuration(*, identity, arguments):
                             "ai_on": stage.ai_on,
                             "display_order": stage.display_order,
                             "description": stage.description[:1000],
+                            "description_length": len(stage.description or ""),
+                            "description_truncated": len(stage.description or "") > 1000,
                         }
                         for stage in pipeline.stages.all()
                     ],
@@ -1032,6 +1044,8 @@ def get_organization_configuration(*, identity, arguments):
                     "name": item.name,
                     "field_type": item.field_type,
                     "description": item.description[:500],
+                    "description_length": len(item.description or ""),
+                    "description_truncated": len(item.description or "") > 500,
                     "options": item.options,
                 }
                 for item in visible_attributes
@@ -1077,9 +1091,20 @@ def get_automation_configuration(*, identity, arguments):
         limit = 50
     limit = max(1, min(limit, 100))
 
+    workflow_qs = SmartTrigger.objects.filter(
+        organization=organization
+    )
+    cadence_qs = FollowupSequence.objects.filter(
+        organization=organization
+    )
+    workflow_total = workflow_qs.count()
+    cadence_total = cadence_qs.count()
+
     workflows = list(
-        SmartTrigger.objects.filter(organization=organization)
-        .order_by("position", "created_at")[:limit]
+        workflow_qs.order_by(
+            "position",
+            "created_at",
+        )[:limit]
     )
     sensitive_attribute_keys = _sensitive_attribute_keys(organization)
     workflow_rows = []
@@ -1105,7 +1130,7 @@ def get_automation_configuration(*, identity, arguments):
         )
 
     cadences = list(
-        FollowupSequence.objects.filter(organization=organization)
+        cadence_qs
         .select_related("whatsapp_account")
         .prefetch_related("steps__whatsapp_template")
         .order_by("-updated_at")[:limit]
@@ -1190,8 +1215,12 @@ def get_automation_configuration(*, identity, arguments):
                 for sequence in cadences
             ],
             "counts": {
+                "workflow_count": workflow_total,
+                "cadence_count": cadence_total,
                 "workflows_returned": len(workflows),
                 "cadences_returned": len(cadences),
+                "workflows_truncated": workflow_total > len(workflows),
+                "cadences_truncated": cadence_total > len(cadences),
                 "sensitive_workflow_fields_redacted": workflow_redaction_count,
             },
         },
