@@ -1103,6 +1103,79 @@ def diagnose_lead_qualification(*, identity, arguments):
     )
 
 
+def _validate_operations_stage_move(*, lead, stage):
+    if (
+        normalize_stage_name(stage.name) == QUALIFIED_STAGE
+        and stage.id != lead.stage_id
+    ):
+        (
+            _,
+            _,
+            qualification_state,
+            _,
+            qualification_criteria,
+            completion_target,
+        ) = _qualification_contract_snapshot(lead)
+        if (
+            str(
+                qualification_state.get(
+                    "qualification_status"
+                )
+                or ""
+            ).casefold()
+            != "completed"
+            or not qualification_criteria.get("qualified")
+        ):
+            raise OperationsPermissionError(
+                "Operations MCP cannot move a lead to Qualified until SHVYA's "
+                "backend qualification is completed and its configured criteria "
+                "are satisfied."
+            )
+        if (
+            not isinstance(completion_target, dict)
+            or str(completion_target.get("id") or "")
+            != str(stage.id)
+        ):
+            raise OperationsPermissionError(
+                "The requested Qualified stage is not the authoritative "
+                "qualification completion target resolved by SHVYA."
+            )
+
+    if stage.id != lead.stage_id:
+        missing = list(
+            missing_attributes(
+                stage,
+                (
+                    lead.attributes
+                    if isinstance(lead.attributes, dict)
+                    else {}
+                ),
+            )
+        )
+        if missing:
+            safe_names = [
+                item.name
+                for item in missing
+                if not is_sensitive_attribute_definition(
+                    {
+                        "key": item.key,
+                        "name": item.name,
+                    }
+                )
+            ]
+            if safe_names:
+                detail = ", ".join(safe_names[:10])
+                raise OperationsPermissionError(
+                    "Complete the target stage's required CRM attributes before "
+                    f"moving this lead: {detail}."
+                )
+            raise OperationsManualFixRequired(
+                "The target stage has missing sensitive required CRM data. "
+                "Operations MCP cannot request or fill credential-like fields; "
+                "resolve this manually in SHVYA before moving the lead."
+            )
+
+
 def move_lead_stage(*, identity, arguments, enforce_gate=True):
     organization = _organization_for(identity)
     if enforce_gate:
@@ -1133,103 +1206,10 @@ def move_lead_stage(*, identity, arguments, enforce_gate=True):
     if stage is None:
         raise OperationsToolError("Active target stage was not found in this organization.")
 
-    if (
-        normalize_stage_name(stage.name) == QUALIFIED_STAGE
-        and stage.id != lead.stage_id
-    ):
-        (
-            _,
-            _,
-            qualification_state,
-            _,
-            qualification_criteria,
-            completion_target,
-        ) = _qualification_contract_snapshot(lead)
-        if (
-            str(qualification_state.get("qualification_status") or "").casefold()
-            != "completed"
-            or not qualification_criteria.get("qualified")
-        ):
-            raise OperationsPermissionError(
-                "Operations MCP cannot move a lead to Qualified until SHVYA's "
-                "backend qualification is completed and its configured criteria "
-                "are satisfied."
-            )
-        if (
-            not isinstance(completion_target, dict)
-            or str(completion_target.get("id") or "") != str(stage.id)
-        ):
-            raise OperationsPermissionError(
-                "The requested Qualified stage is not the authoritative "
-                "qualification completion target resolved by SHVYA."
-            )
-
-    if stage.id != lead.stage_id:
-        missing = list(
-            missing_attributes(
-                stage,
-                lead.attributes if isinstance(lead.attributes, dict) else {},
-            )
-        )
-        if missing:
-            safe_names = [
-                item.name
-                for item in missing
-                if not is_sensitive_attribute_definition(
-                    {"key": item.key, "name": item.name}
-                )
-            ]
-            if safe_names:
-                detail = ", ".join(safe_names[:10])
-                raise OperationsPermissionError(
-                    "Complete the target stage's required CRM attributes before "
-                    f"moving this lead: {detail}."
-                )
-            raise OperationsManualFixRequired(
-                "The target stage has missing sensitive required CRM data. "
-                "Operations MCP cannot request or fill credential-like fields; "
-                "resolve this manually in SHVYA before moving the lead."
-            )
-
-    if (
-        not dry_run
-        and approval_required(
-            role=identity.role,
-            organization=organization,
-            capability=CAP_LEAD_STAGE_WRITE,
-        )
-    ):
-        raw_approval_id = str(
-            (arguments or {}).get("approval_event_id") or ""
-        ).strip()
-        try:
-            approval_id = uuid.UUID(raw_approval_id)
-        except (TypeError, ValueError, AttributeError) as exc:
-            raise OperationsApprovalRequired(
-                "A valid matching approval_event_id is required."
-            ) from exc
-        approval_event = OperationsAuditEvent.objects.filter(
-            pk=approval_id,
-            outcome=OperationsAuditEvent.Outcome.DRY_RUN,
-        ).first()
-        summary = (
-            approval_event.change_summary
-            if approval_event and isinstance(approval_event.change_summary, dict)
-            else {}
-        )
-        expected_stage_id = str(summary.get("from_stage_id") or "")
-        expected_pipeline_id = str(summary.get("from_pipeline_id") or "")
-        if (
-            (expected_stage_id and expected_stage_id != str(lead.stage_id))
-            or (
-                expected_pipeline_id
-                and expected_pipeline_id != str(lead.pipeline_id)
-            )
-        ):
-            raise OperationsApprovalRequired(
-                "The lead pipeline/stage changed after the approved dry-run. "
-                "Run a fresh dry-run and obtain new approval."
-            )
+    _validate_operations_stage_move(
+        lead=lead,
+        stage=stage,
+    )
 
     before = {
         "pipeline_id": str(lead.pipeline_id),
@@ -1244,11 +1224,6 @@ def move_lead_stage(*, identity, arguments, enforce_gate=True):
         "stage": stage.name,
     }
     proposal = {"before": before, "after": after}
-    if not dry_run:
-        _ensure_approved_proposal_unchanged(
-            arguments=arguments,
-            proposal=proposal,
-        )
     if dry_run:
         return ToolExecution(
             data={
@@ -1278,17 +1253,89 @@ def move_lead_stage(*, identity, arguments, enforce_gate=True):
         )
 
     try:
-        move_lead_to_pipeline_stage(
-            lead=lead,
-            pipeline=stage.pipeline,
-            stage=stage,
-            actor=identity.actor,
-        )
+        with transaction.atomic():
+            lead = (
+                Lead.objects.select_for_update()
+                .select_related(
+                    "organization",
+                    "pipeline",
+                    "stage",
+                )
+                .get(
+                    pk=lead.pk,
+                    organization=organization,
+                )
+            )
+            stage = (
+                Stage.objects.select_related("pipeline")
+                .filter(
+                    pk=stage.pk,
+                    pipeline__organization=organization,
+                    pipeline__is_active=True,
+                    is_active=True,
+                )
+                .first()
+            )
+            if stage is None:
+                raise OperationsApprovalRequired(
+                    "The approved target stage is no longer active. "
+                    "Run a fresh dry-run."
+                )
+
+            _validate_operations_stage_move(
+                lead=lead,
+                stage=stage,
+            )
+            before = {
+                "pipeline_id": str(lead.pipeline_id),
+                "pipeline": lead.pipeline.name,
+                "stage_id": str(lead.stage_id),
+                "stage": lead.stage.name,
+            }
+            after = {
+                "pipeline_id": str(stage.pipeline_id),
+                "pipeline": stage.pipeline.name,
+                "stage_id": str(stage.id),
+                "stage": stage.name,
+            }
+            proposal = {
+                "before": before,
+                "after": after,
+            }
+            _ensure_approved_proposal_unchanged(
+                arguments=arguments,
+                proposal=proposal,
+            )
+
+            move_lead_to_pipeline_stage(
+                lead=lead,
+                pipeline=stage.pipeline,
+                stage=stage,
+                actor=identity.actor,
+            )
+            lead.refresh_from_db(
+                fields=[
+                    "pipeline",
+                    "stage",
+                    "stage_entered_at",
+                    "updated_at",
+                ]
+            )
+            if (
+                lead.stage_id != stage.id
+                or lead.pipeline_id != stage.pipeline_id
+            ):
+                raise OperationsToolError(
+                    "Stage repair write completed but verification did not "
+                    "match the requested state."
+                )
     except LeadTransitionError as exc:
         raise OperationsToolError(str(exc)) from exc
-    lead.refresh_from_db(fields=["pipeline", "stage", "stage_entered_at", "updated_at"])
-    if lead.stage_id != stage.id or lead.pipeline_id != stage.pipeline_id:
-        raise OperationsToolError("Stage repair write completed but verification did not match the requested state.")
+    except Lead.DoesNotExist as exc:
+        raise OperationsApprovalRequired(
+            "The lead changed or was removed after the approved dry-run. "
+            "Run a fresh dry-run."
+        ) from exc
 
     return ToolExecution(
         data={
