@@ -10,7 +10,7 @@ from datetime import date, datetime, time as dt_time, timedelta
 
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
-from django.db.models import BooleanField, Case, Count, Max, Q, Value, When
+from django.db.models import BooleanField, Case, Count, F, Max, Q, Value, When
 from django.utils import timezone
 
 from apps.ai_engagement.models import (
@@ -415,10 +415,22 @@ def _ensure_approved_proposal_unchanged(*, arguments, proposal):
 
 
 
+def _tenant_safe_leads(organization):
+    return (
+        Lead.objects.filter(
+            organization=organization,
+            pipeline__organization=organization,
+            stage__pipeline__organization=organization,
+        )
+        .filter(stage__pipeline_id=F("pipeline_id"))
+    )
+
+
 def _lead(organization, lead_id):
     lead = (
-        Lead.objects.select_related("organization", "pipeline", "stage")
-        .filter(pk=_uuid(lead_id, field="lead_id"), organization=organization)
+        _tenant_safe_leads(organization)
+        .select_related("organization", "pipeline", "stage")
+        .filter(pk=_uuid(lead_id, field="lead_id"))
         .first()
     )
     if lead is None:
@@ -2383,16 +2395,14 @@ def move_lead_stage(*, identity, arguments, enforce_gate=True):
     try:
         with transaction.atomic():
             lead = (
-                Lead.objects.select_for_update()
+                _tenant_safe_leads(organization)
+                .select_for_update()
                 .select_related(
                     "organization",
                     "pipeline",
                     "stage",
                 )
-                .get(
-                    pk=lead.pk,
-                    organization=organization,
-                )
+                .get(pk=lead.pk)
             )
             stage = (
                 Stage.objects.select_related("pipeline")
@@ -2640,12 +2650,10 @@ def update_lead_attributes(*, identity, arguments):
     try:
         with transaction.atomic():
             lead = (
-                Lead.objects.select_for_update()
+                _tenant_safe_leads(organization)
+                .select_for_update()
                 .select_related("organization", "pipeline", "stage")
-                .get(
-                    pk=lead.pk,
-                    organization=organization,
-                )
+                .get(pk=lead.pk)
             )
             current_definitions = {
                 item.key: item

@@ -2858,6 +2858,153 @@ class OperationsMCPTests(TestCase):
         self.assertEqual(definition.key, "company_size")
         self.assertEqual(definition.field_type, "numeric")
 
+    def test_operations_fail_closed_on_corrupted_lead_pipeline_stage_links(self):
+        OperationsPolicy.objects.create(
+            organization=self.organization,
+            organization_admin_enabled=True,
+            allowed_capabilities=[
+                CAP_ORGANIZATION_READ,
+                CAP_DIAGNOSTICS_READ,
+                CAP_LEAD_STAGE_WRITE,
+            ],
+            approval_required_capabilities=[
+                CAP_LEAD_STAGE_WRITE,
+            ],
+        )
+        corrupted = Lead.objects.create(
+            organization=self.organization,
+            pipeline=self.other_lead.pipeline,
+            stage=self.other_lead.stage,
+            name="Corrupt Foreign Pipeline Lead",
+            phone="+919999999993",
+        )
+        bearer = self._token(
+            actor=self.admin,
+            role=ROLE_ORGANIZATION_ADMIN,
+            organization=self.organization,
+            scopes=[
+                OPERATIONS_READ_SCOPE,
+                OPERATIONS_WRITE_SCOPE,
+            ],
+        )
+
+        found = self._result(
+            self._call(
+                bearer,
+                "find_leads",
+                {
+                    "query": "Corrupt Foreign Pipeline Lead",
+                    "limit": 10,
+                },
+            )
+        )
+        self.assertFalse(found["isError"])
+        self.assertEqual(found["structuredContent"]["count"], 0)
+
+        snapshot = self._result(
+            self._call(
+                bearer,
+                "get_lead_snapshot",
+                {"lead_id": str(corrupted.id)},
+            )
+        )
+        self.assertTrue(snapshot["isError"])
+        self.assertEqual(
+            snapshot["structuredContent"]["status"],
+            "FAILED",
+        )
+
+        blocked_move = self._result(
+            self._call(
+                bearer,
+                "move_lead_stage",
+                {
+                    "lead_id": str(corrupted.id),
+                    "target_stage_id": str(self.review_stage.id),
+                    "reason": "Review corrupt lead tenant relationship",
+                    "dry_run": True,
+                },
+            )
+        )
+        self.assertTrue(blocked_move["isError"])
+        self.assertEqual(
+            blocked_move["structuredContent"]["status"],
+            "FAILED",
+        )
+
+        payload = json.dumps(
+            {
+                "found": found,
+                "snapshot": snapshot,
+                "blocked_move": blocked_move,
+            }
+        )
+        self.assertNotIn(
+            self.other_organization.name,
+            payload,
+        )
+        self.assertNotIn(
+            self.other_lead.pipeline.name,
+            payload,
+        )
+        self.assertNotIn(
+            self.other_lead.stage.name,
+            payload,
+        )
+
+        dry = self._result(
+            self._call(
+                bearer,
+                "move_lead_stage",
+                {
+                    "lead_id": str(self.lead.id),
+                    "target_stage_id": str(self.review_stage.id),
+                    "reason": "Move reviewed valid lead to review stage",
+                    "dry_run": True,
+                },
+            )
+        )
+        self.assertFalse(dry["isError"])
+
+        Lead.objects.filter(pk=self.lead.pk).update(
+            pipeline=self.other_lead.pipeline,
+            stage=self.other_lead.stage,
+        )
+        stale = self._result(
+            self._call(
+                bearer,
+                "move_lead_stage",
+                {
+                    "lead_id": str(self.lead.id),
+                    "target_stage_id": str(self.review_stage.id),
+                    "reason": "Move reviewed valid lead to review stage",
+                    "dry_run": False,
+                    "approved": True,
+                    "approval_event_id": dry["structuredContent"][
+                        "approval_event_id"
+                    ],
+                },
+            )
+        )
+        self.assertTrue(stale["isError"])
+        self.assertEqual(
+            stale["structuredContent"]["status"],
+            "APPROVAL_REQUIRED",
+        )
+        stale_payload = json.dumps(stale)
+        self.assertNotIn(
+            self.other_organization.name,
+            stale_payload,
+        )
+        self.assertNotIn(
+            self.other_lead.pipeline.name,
+            stale_payload,
+        )
+        self.assertNotIn(
+            self.other_lead.stage.name,
+            stale_payload,
+        )
+
     def test_diagnostics_fail_closed_on_corrupted_cross_tenant_message_links(self):
         OperationsPolicy.objects.create(
             organization=self.organization,

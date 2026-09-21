@@ -122,6 +122,17 @@ def _iso(value):
     return value.isoformat() if value else None
 
 
+def _tenant_safe_leads(organization):
+    return (
+        Lead.objects.filter(
+            organization=organization,
+            pipeline__organization=organization,
+            stage__pipeline__organization=organization,
+        )
+        .filter(stage__pipeline_id=F("pipeline_id"))
+    )
+
+
 def _lead_for_org(*, organization, lead_id):
     try:
         parsed = uuid.UUID(str(lead_id))
@@ -129,12 +140,13 @@ def _lead_for_org(*, organization, lead_id):
         raise DiagnosticToolError("lead_id must be a valid UUID.")
 
     lead = (
-        Lead.objects.select_related(
+        _tenant_safe_leads(organization)
+        .select_related(
             "organization",
             "pipeline",
             "stage",
         )
-        .filter(pk=parsed, organization=organization)
+        .filter(pk=parsed)
         .first()
     )
     if lead is None:
@@ -199,7 +211,7 @@ def find_leads(*, organization, arguments):
         pass
 
     leads = list(
-        Lead.objects.filter(organization=organization)
+        _tenant_safe_leads(organization)
         .filter(filters)
         .select_related("pipeline", "stage")
         .order_by("-updated_at")[:limit]
