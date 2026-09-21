@@ -12,7 +12,7 @@ class Migration(migrations.Migration):
 
     dependencies = [
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
-        ("crm", "0028_alter_lead_lead_source_calendar"),
+        ("crm", "0029_alter_lead_lead_source_calendar"),
     ]
 
     operations = [
