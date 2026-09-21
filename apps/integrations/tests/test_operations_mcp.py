@@ -12,7 +12,9 @@ from django.utils import timezone
 from apps.accounts.models import User
 from apps.accounts.session_utils import get_session_cookie_name, set_authenticated_user
 from apps.ai_engagement.models import OrgInfo
+from apps.channels.models import WhatsAppAccount
 from apps.crm.models import AttributeDefinition, Lead, LeadActivity, Pipeline, Stage
+from apps.followups.models import FollowupSequence
 from apps.integrations.operations_agent_prompt import OPERATIONS_AGENT_INSTRUCTIONS
 from apps.integrations.models import (
     OperationsAuditEvent,
@@ -29,6 +31,7 @@ from apps.integrations.operations_auth import (
 )
 from apps.integrations.operations_policy import (
     CAP_AI_CONFIG_WRITE,
+    CAP_AUTOMATION_CONFIG_WRITE,
     CAP_CRM_CONFIG_WRITE,
     CAP_DIAGNOSTICS_READ,
     CAP_LEAD_STAGE_WRITE,
@@ -316,6 +319,143 @@ class OperationsMCPTests(TestCase):
         self.assertIn("update_ai_configuration", names)
         self.assertIn("upsert_workflow_configuration", names)
         self.assertIn("find_leads", names)
+
+    def test_existing_cadence_sender_change_is_explicitly_rejected(self):
+        OperationsPolicy.objects.create(
+            organization=self.organization,
+            organization_admin_enabled=True,
+            allowed_capabilities=[
+                CAP_ORGANIZATION_READ,
+                CAP_AUTOMATION_CONFIG_WRITE,
+            ],
+            approval_required_capabilities=[],
+        )
+        first = WhatsAppAccount.objects.create(
+            organization=self.organization,
+            connection_type=WhatsAppAccount.ConnectionType.API,
+            business_name="First Sender",
+            display_phone_number="+919000000001",
+            status=WhatsAppAccount.Status.CONNECTED,
+            is_active=True,
+        )
+        second = WhatsAppAccount.objects.create(
+            organization=self.organization,
+            connection_type=WhatsAppAccount.ConnectionType.API,
+            business_name="Second Sender",
+            display_phone_number="+919000000002",
+            status=WhatsAppAccount.Status.CONNECTED,
+            is_active=True,
+        )
+        sequence = FollowupSequence.objects.create(
+            organization=self.organization,
+            created_by=self.admin,
+            name="Existing Cadence",
+            description="Test",
+            whatsapp_account=first,
+        )
+        bearer = self._token(
+            actor=self.admin,
+            role=ROLE_ORGANIZATION_ADMIN,
+            organization=self.organization,
+        )
+
+        result = self._result(
+            self._call(
+                bearer,
+                "upsert_cadence_configuration",
+                {
+                    "cadence_id": str(sequence.id),
+                    "data": {
+                        "name": sequence.name,
+                        "description": sequence.description,
+                        "provider": "api",
+                        "whatsapp_account_id": str(second.id),
+                    },
+                    "reason": "Attempt sender change on cadence",
+                    "dry_run": True,
+                },
+            )
+        )
+        self.assertTrue(result["isError"])
+        self.assertEqual(
+            result["structuredContent"]["status"],
+            "NOT_ALLOWED",
+        )
+        sequence.refresh_from_db()
+        self.assertEqual(sequence.whatsapp_account_id, first.id)
+
+    def test_operations_automation_writes_reject_secret_like_content(self):
+        OperationsPolicy.objects.create(
+            organization=self.organization,
+            organization_admin_enabled=True,
+            allowed_capabilities=[
+                CAP_ORGANIZATION_READ,
+                CAP_AUTOMATION_CONFIG_WRITE,
+            ],
+            approval_required_capabilities=[],
+        )
+        account = WhatsAppAccount.objects.create(
+            organization=self.organization,
+            connection_type=WhatsAppAccount.ConnectionType.API,
+            business_name="Automation Sender",
+            display_phone_number="+919000000003",
+            status=WhatsAppAccount.Status.CONNECTED,
+            is_active=True,
+        )
+        sequence = FollowupSequence.objects.create(
+            organization=self.organization,
+            created_by=self.admin,
+            name="Safe Cadence",
+            description="Test",
+            whatsapp_account=account,
+        )
+        bearer = self._token(
+            actor=self.admin,
+            role=ROLE_ORGANIZATION_ADMIN,
+            organization=self.organization,
+        )
+
+        workflow = self._result(
+            self._call(
+                bearer,
+                "upsert_workflow_configuration",
+                {
+                    "data": {
+                        "name": "password: workflow-secret",
+                    },
+                    "reason": "Attempt unsafe workflow configuration",
+                    "dry_run": True,
+                },
+            )
+        )
+        self.assertTrue(workflow["isError"])
+        self.assertEqual(
+            workflow["structuredContent"]["status"],
+            "NOT_ALLOWED",
+        )
+
+        cadence_step = self._result(
+            self._call(
+                bearer,
+                "add_cadence_step",
+                {
+                    "cadence_id": str(sequence.id),
+                    "data": {
+                        "type": "reminder",
+                        "text": "password: cadence-secret",
+                        "schedule": {"type": "immediate"},
+                    },
+                    "reason": "Attempt unsafe cadence content",
+                    "dry_run": True,
+                },
+            )
+        )
+        self.assertTrue(cadence_step["isError"])
+        self.assertEqual(
+            cadence_step["structuredContent"]["status"],
+            "NOT_ALLOWED",
+        )
+        self.assertEqual(sequence.steps.count(), 0)
 
     def test_pipeline_configuration_create_verifies_standard_stages(self):
         OperationsPolicy.objects.create(
