@@ -825,7 +825,30 @@ def google_disconnect(request, page_id):
         organization=user.organization,
         user=user,
     ).update(is_active=False)
-    messages.success(request, "Google Calendar disconnected.")
+
+    # A published Google Meet page must never silently degrade into a booking
+    # with no conference link after its host disconnects Google. Fail closed
+    # until the host reconnects and the organization republishes the page.
+    disabled_count = CalendarPage.objects.filter(
+        organization=user.organization,
+        host=user,
+        meeting_location=CalendarPage.MeetingLocation.GOOGLE_MEET,
+        status=CalendarPage.Status.PUBLISHED,
+    ).update(
+        status=CalendarPage.Status.DISABLED,
+        updated_by=user,
+        updated_at=timezone.now(),
+    )
+    if disabled_count:
+        messages.warning(
+            request,
+            (
+                "Google Calendar disconnected. Published Google Meet pages "
+                "for this host were disabled until Calendar is reconnected."
+            ),
+        )
+    else:
+        messages.success(request, "Google Calendar disconnected.")
     return redirect(
         f"{reverse('shvya_calendar:editor', kwargs={'page_id': page.id})}?tab=scheduling"
     )
@@ -906,16 +929,22 @@ def _rate_limit_public(request, page):
     if not ip_key:
         return True
     key = f"shvya-calendar:{page.id}:{ip_key}"
-    current = cache.get(key)
-    if current is None:
-        cache.set(key, 1, timeout=900)
-        return True
-    if int(current) >= 20:
-        return False
     try:
-        cache.incr(key)
-    except ValueError:
-        cache.set(key, int(current) + 1, timeout=900)
+        current = cache.get(key)
+        if current is None:
+            cache.set(key, 1, timeout=900)
+            return True
+        if int(current) >= 20:
+            return False
+        try:
+            cache.incr(key)
+        except ValueError:
+            cache.set(key, int(current) + 1, timeout=900)
+    except Exception:
+        # Lead capture should stay available during a transient cache outage.
+        # The signed form token, published-field allowlist and honeypot remain
+        # active even when the secondary abuse throttle cannot be reached.
+        return True
     return True
 
 
