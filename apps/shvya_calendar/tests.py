@@ -1,3 +1,5 @@
+from datetime import timedelta
+
 from unittest.mock import patch
 
 from django.core.exceptions import ValidationError
@@ -261,8 +263,8 @@ class ShvyaCalendarServiceTests(TestCase):
             submission=submission,
             lead=lead,
             host=self.user,
-            start_at=timezone.now() + timezone.timedelta(hours=4),
-            end_at=timezone.now() + timezone.timedelta(hours=4, minutes=30),
+            start_at=timezone.now() + timedelta(hours=4),
+            end_at=timezone.now() + timedelta(hours=4, minutes=30),
             timezone="Asia/Kolkata",
         )
         deliveries = schedule_booking_reminders(booking)
