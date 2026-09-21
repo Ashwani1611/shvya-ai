@@ -88,7 +88,18 @@ def call_intelligence_dashboard(request):
     scoped = _scoped_calls(user)
     calls = _filtered_calls(request, user)
     today = scoped.filter(ended_at__gte=start)
-    stats = today.aggregate(total=Count("id"), average_talk=Avg("talk_duration_seconds"))
+    stats = today.aggregate(
+        total=Count("id"),
+        average_talk=Avg("talk_duration_seconds"),
+        average_response=Avg(
+            "ring_duration_seconds",
+            filter=Q(
+                direction=CallRecord.Direction.INCOMING,
+                status=CallRecord.Status.ANSWERED,
+            ),
+        ),
+        converted=Count("id", filter=Q(disposition="converted")),
+    )
 
     recent_calls = list(
         calls.select_related(
@@ -117,6 +128,7 @@ def call_intelligence_dashboard(request):
                 "id",
                 filter=Q(intelligence__intent=CallIntelligenceResult.Intent.HIGH),
             ),
+            converted=Count("id", filter=Q(disposition="converted")),
         )
         .order_by("-calls", "user__name")
     )
@@ -152,6 +164,8 @@ def call_intelligence_dashboard(request):
             "missed": today.filter(status=CallRecord.Status.MISSED).count(),
             "outgoing": today.filter(direction=CallRecord.Direction.OUTGOING).count(),
             "average_talk": int(stats["average_talk"] or 0),
+            "average_response": int(stats["average_response"] or 0),
+            "converted": stats["converted"] or 0,
             "followups": scoped.filter(
                 follow_up_required=True,
                 follow_up_at__isnull=False,
