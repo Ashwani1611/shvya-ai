@@ -136,6 +136,18 @@ urlpatterns = [
     ),
 
     # =========================================================
+    # SHVYA Calendar
+    # =========================================================
+    path(
+        "dashboard/shvya-calendar/",
+        include("apps.shvya_calendar.urls"),
+    ),
+    path(
+        "calendar/",
+        include("apps.shvya_calendar.public_urls"),
+    ),
+
+    # =========================================================
     # Connect Hub Web Dashboard
     #
     # Keep this before the broad CRM dashboard include so the integrations
