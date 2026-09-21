@@ -553,6 +553,62 @@ class OperationsMCPTests(TestCase):
             "DRY_RUN",
         )
 
+    def test_operations_ai_configuration_can_create_first_org_info_and_verify(self):
+        OperationsPolicy.objects.create(
+            organization=self.organization,
+            organization_admin_enabled=True,
+            allowed_capabilities=[
+                CAP_ORGANIZATION_READ,
+                CAP_AI_CONFIG_WRITE,
+            ],
+            approval_required_capabilities=[],
+        )
+        bearer = self._token(
+            actor=self.admin,
+            role=ROLE_ORGANIZATION_ADMIN,
+            organization=self.organization,
+        )
+        self.assertFalse(
+            OrgInfo.objects.filter(organization=self.organization).exists()
+        )
+
+        applied = self._result(
+            self._call(
+                bearer,
+                "update_ai_configuration",
+                {
+                    "changes": {
+                        "about": "Test organization business profile",
+                        "ai_playbook": (
+                            "Answer business questions from approved context and "
+                            "use backend qualification rules."
+                        ),
+                    },
+                    "reason": "Create initial AI configuration",
+                    "dry_run": False,
+                },
+            )
+        )
+        self.assertFalse(applied["isError"])
+        self.assertEqual(
+            applied["structuredContent"]["status"],
+            "FIXED",
+        )
+        self.assertEqual(
+            applied["structuredContent"]["verification"],
+            "passed",
+        )
+
+        info = OrgInfo.objects.get(organization=self.organization)
+        self.assertEqual(
+            info.about,
+            "Test organization business profile",
+        )
+        self.assertIn(
+            "backend qualification rules",
+            info.ai_playbook,
+        )
+
     def test_ai_configuration_dry_run_does_not_create_org_info(self):
         bearer = self._token(
             actor=self.superadmin,
