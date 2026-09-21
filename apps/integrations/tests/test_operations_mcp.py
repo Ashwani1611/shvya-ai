@@ -2759,6 +2759,70 @@ class OperationsMCPTests(TestCase):
             support_session.id,
         )
 
+    def test_operations_rejects_secret_like_action_reasons_before_persistence(self):
+        bearer = self._token(
+            actor=self.superadmin,
+            role=ROLE_SUPERADMIN,
+        )
+
+        blocked_context = self._result(
+            self._call(
+                bearer,
+                "select_organization_context",
+                {
+                    "organization_id": str(self.organization.id),
+                    "reason": "password: support-secret",
+                },
+            )
+        )
+        self.assertTrue(blocked_context["isError"])
+        self.assertEqual(
+            blocked_context["structuredContent"]["status"],
+            "NOT_ALLOWED",
+        )
+        self.assertFalse(
+            OperationsSupportSession.objects.filter(
+                token__actor=self.superadmin,
+                organization=self.organization,
+                ended_at__isnull=True,
+            ).exists()
+        )
+
+        selected = self._result(
+            self._call(
+                bearer,
+                "select_organization_context",
+                {
+                    "organization_id": str(self.organization.id),
+                    "reason": "Review organization configuration",
+                },
+            )
+        )
+        self.assertFalse(selected["isError"])
+
+        blocked_write = self._result(
+            self._call(
+                bearer,
+                "move_lead_stage",
+                {
+                    "lead_id": str(self.lead.id),
+                    "target_stage_id": str(self.review_stage.id),
+                    "reason": "api_key: mutation-secret",
+                    "dry_run": True,
+                },
+            )
+        )
+        self.assertTrue(blocked_write["isError"])
+        self.assertEqual(
+            blocked_write["structuredContent"]["status"],
+            "NOT_ALLOWED",
+        )
+        self.lead.refresh_from_db()
+        self.assertEqual(self.lead.stage_id, self.new_stage.id)
+
+        payload = json.dumps(blocked_write)
+        self.assertNotIn("mutation-secret", payload)
+
     def test_superadmin_requires_explicit_context_and_creates_support_session(self):
         bearer = self._token(
             actor=self.superadmin,
