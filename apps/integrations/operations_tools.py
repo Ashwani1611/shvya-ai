@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import time as dt_time, timedelta
 
 from django.core.exceptions import ValidationError
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.db.models import Count, Max, Q
 from django.utils import timezone
 
@@ -37,6 +37,7 @@ from apps.integrations.diagnostic_tools import (
 )
 from apps.integrations.operations_approval import approval_fingerprint
 from apps.integrations.operations_models import (
+    OperationsApprovalUse,
     OperationsAuditEvent,
     OperationsSupportSession,
 )
@@ -199,24 +200,15 @@ def _validated_approval_event(
             "Run a new dry-run and approve that result."
         )
 
-    later_success_summaries = OperationsAuditEvent.objects.filter(
-        actor=identity.actor,
-        role=identity.role,
-        organization=organization,
-        tool_name=tool_name,
-        capability=capability,
-        outcome=OperationsAuditEvent.Outcome.SUCCESS,
-        created_at__gte=event.created_at,
-    ).values_list("change_summary", flat=True)
-    for summary in later_success_summaries:
-        if (
-            isinstance(summary, dict)
-            and str(summary.get("approval_event_id") or "") == str(event.id)
-        ):
-            raise OperationsApprovalRequired(
-                "This approval receipt has already been used successfully. "
-                "Run a new dry-run for another mutation."
-            )
+    try:
+        OperationsApprovalUse.objects.create(
+            approval_event=event,
+        )
+    except IntegrityError as exc:
+        raise OperationsApprovalRequired(
+            "This approval receipt has already been claimed by an execution "
+            "attempt. Run a new dry-run before another mutation."
+        ) from exc
     return event
 
 
