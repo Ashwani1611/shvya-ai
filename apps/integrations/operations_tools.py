@@ -882,15 +882,22 @@ def diagnose_lead_qualification(*, identity, arguments):
     )
 
 
-def move_lead_stage(*, identity, arguments):
+def move_lead_stage(*, identity, arguments, enforce_gate=True):
     organization = _organization_for(identity)
-    dry_run, reason = _write_gate(
-        identity=identity,
-        organization=organization,
-        capability=CAP_LEAD_STAGE_WRITE,
-        tool_name="move_lead_stage",
-        arguments=arguments,
-    )
+    if enforce_gate:
+        dry_run, reason = _write_gate(
+            identity=identity,
+            organization=organization,
+            capability=CAP_LEAD_STAGE_WRITE,
+            tool_name="move_lead_stage",
+            arguments=arguments,
+        )
+    else:
+        raw_dry_run = (arguments or {}).get("dry_run", True)
+        if not isinstance(raw_dry_run, bool):
+            raise OperationsToolError("dry_run must be a JSON boolean.")
+        dry_run = raw_dry_run
+        reason = _reason(arguments, required=True)
     lead = _lead(organization, (arguments or {}).get("lead_id"))
     stage = (
         Stage.objects.select_related("pipeline")
@@ -1012,7 +1019,11 @@ def repair_qualification_stage(*, identity, arguments):
     nested["target_stage_id"] = str(target.id)
     nested["dry_run"] = dry_run
     nested["reason"] = reason
-    return move_lead_stage(identity=identity, arguments=nested)
+    return move_lead_stage(
+        identity=identity,
+        arguments=nested,
+        enforce_gate=False,
+    )
 
 
 def update_lead_attributes(*, identity, arguments):
