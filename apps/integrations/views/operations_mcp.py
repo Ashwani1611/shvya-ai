@@ -255,11 +255,15 @@ OWN_TOOL_DEFINITIONS = [
         "select_organization_context",
         "Select organization support context",
         "Superadmin only. Enter one explicit customer support context. This creates an organization-visible SHVYA Support session.",
-        _write_properties(
-            {
-                "organization_id": {"type": "string", "format": "uuid"},
-            }
-        ),
+        {
+            "organization_id": {"type": "string", "format": "uuid"},
+            "reason": {
+                "type": "string",
+                "minLength": 8,
+                "maxLength": 500,
+                "description": "Specific support reason for selecting this organization.",
+            },
+        },
         ["organization_id", "reason"],
         read_only=False,
     ),
@@ -267,7 +271,14 @@ OWN_TOOL_DEFINITIONS = [
         "clear_organization_context",
         "Leave organization support context",
         "Superadmin only. End the active customer support context and its visible support session.",
-        _write_properties(),
+        {
+            "reason": {
+                "type": "string",
+                "minLength": 8,
+                "maxLength": 500,
+                "description": "Specific reason for ending the active support context.",
+            },
+        },
         ["reason"],
         read_only=False,
     ),
