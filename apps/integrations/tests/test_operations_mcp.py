@@ -1486,6 +1486,101 @@ class OperationsMCPTests(TestCase):
             )
             self.assertEqual(rejected.status_code, 400)
 
+    def test_operations_oauth_enforces_strong_pkce_and_no_cache(self):
+        OperationsPolicy.objects.create(
+            organization=self.organization,
+            organization_admin_enabled=True,
+            allowed_capabilities=[CAP_ORGANIZATION_READ],
+        )
+        session = SessionStore()
+        set_authenticated_user(session, self.admin)
+        session.create()
+        self.client.cookies[get_session_cookie_name("dashboard")] = (
+            session.session_key
+        )
+
+        callback = "https://chatgpt.com/aip/callback"
+        resource = "http://testserver/operations/mcp/"
+
+        weak = self.client.get(
+            "/operations/oauth/authorize",
+            {
+                "client_id": self.oauth_client.client_id,
+                "redirect_uri": callback,
+                "response_type": "code",
+                "code_challenge": "weak",
+                "code_challenge_method": "S256",
+                "scope": OPERATIONS_READ_SCOPE,
+                "resource": resource,
+            },
+        )
+        self.assertEqual(weak.status_code, 400)
+
+        verifier = "p" * 64
+        authorize = self.client.post(
+            "/operations/oauth/authorize",
+            data={
+                "client_id": self.oauth_client.client_id,
+                "redirect_uri": callback,
+                "response_type": "code",
+                "code_challenge": pkce_s256(verifier),
+                "code_challenge_method": "S256",
+                "scope": OPERATIONS_READ_SCOPE,
+                "resource": resource,
+                "actor_mode": ROLE_ORGANIZATION_ADMIN,
+            },
+        )
+        self.assertEqual(authorize.status_code, 302)
+        code = parse_qs(urlparse(authorize["Location"]).query)["code"][0]
+
+        weak_exchange = self.client.post(
+            "/operations/oauth/token",
+            data={
+                "grant_type": "authorization_code",
+                "client_id": self.oauth_client.client_id,
+                "code": code,
+                "redirect_uri": callback,
+                "code_verifier": "short",
+                "resource": resource,
+            },
+        )
+        self.assertEqual(weak_exchange.status_code, 400)
+        self.assertEqual(
+            weak_exchange["Cache-Control"],
+            "no-store",
+        )
+        self.assertEqual(
+            weak_exchange["Pragma"],
+            "no-cache",
+        )
+
+        # A failed verifier must not consume the authorization code.
+        success = self.client.post(
+            "/operations/oauth/token",
+            data={
+                "grant_type": "authorization_code",
+                "client_id": self.oauth_client.client_id,
+                "code": code,
+                "redirect_uri": callback,
+                "code_verifier": verifier,
+                "resource": resource,
+            },
+        )
+        self.assertEqual(success.status_code, 200)
+        self.assertEqual(success["Cache-Control"], "no-store")
+        self.assertEqual(success["Pragma"], "no-cache")
+
+        unsupported = self.client.post(
+            "/operations/oauth/token",
+            data={
+                "grant_type": "password",
+                "client_id": self.oauth_client.client_id,
+            },
+        )
+        self.assertEqual(unsupported.status_code, 400)
+        self.assertEqual(unsupported["Cache-Control"], "no-store")
+        self.assertEqual(unsupported["Pragma"], "no-cache")
+
     def test_oauth_binds_org_admin_identity_and_strips_ungranted_write_scope(self):
         OperationsPolicy.objects.create(
             organization=self.organization,
