@@ -333,7 +333,7 @@ OWN_TOOL_DEFINITIONS = [
     _tool(
         "move_lead_stage",
         "Move one lead safely",
-        "Dry-run or move one lead to an active organization-owned stage through SHVYA's canonical pipeline/stage transition service.",
+        "Dry-run or move one lead to an active organization-owned stage through SHVYA's canonical transition service. Target-stage required attributes are enforced, and Qualified remains backend qualification-contract owned.",
         _write_properties(
             {
                 "lead_id": {"type": "string", "format": "uuid"},
@@ -346,7 +346,7 @@ OWN_TOOL_DEFINITIONS = [
     _tool(
         "repair_qualification_stage",
         "Repair completed qualification stage",
-        "Dry-run or reconcile a lead to its active Qualified stage only when persisted backend qualification state is already completed.",
+        "Dry-run or reconcile a lead to SHVYA's authoritative qualification completion target only when backend qualification is completed and configured criteria are satisfied.",
         _write_properties(
             {"lead_id": {"type": "string", "format": "uuid"}}
         ),
@@ -479,7 +479,7 @@ OWN_TOOL_DEFINITIONS = [
     _tool(
         "upsert_cadence_configuration",
         "Configure Cadence",
-        "Dry-run or create/update a tenant-owned Cadence using SHVYA's canonical follow-up service.",
+        "Dry-run or create/update a tenant-owned Cadence using SHVYA's canonical follow-up service. Existing Cadence sender/provider cannot be changed; create a new Cadence for a different sender/provider.",
         _write_properties(
             {
                 "cadence_id": {"type": "string", "format": "uuid"},
