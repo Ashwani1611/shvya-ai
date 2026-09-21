@@ -313,6 +313,8 @@ def exchange_authorization_code(
 
 
 def _validate_live_token(token):
+    if not token.client.is_active:
+        raise OperationsAuthError("OAuth client has been deactivated.")
     actor = token.actor
     if not actor.is_active:
         raise OperationsAuthError("SHVYA user is inactive.")
