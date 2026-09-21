@@ -978,7 +978,7 @@ def _authorization_fields(request):
             "scope",
             f"{OPERATIONS_READ_SCOPE} {OPERATIONS_WRITE_SCOPE} {OFFLINE_SCOPE}",
         ),
-        "state": str(source.get("state", ""))[:OAUTH_MAX_STATE_LENGTH],
+        "state": str(source.get("state", "")),
         "resource": source.get("resource", _resource(request)),
     }
 
@@ -990,6 +990,10 @@ def operations_oauth_authorize(request):
         return _oauth_too_large_response()
     fields = _authorization_fields(request)
     try:
+        if len(fields["state"]) > OAUTH_MAX_STATE_LENGTH:
+            raise OperationsAuthError(
+                "OAuth state is too long."
+            )
         client = validate_authorization_request(
             client_id=fields["client_id"],
             redirect_uri=fields["redirect_uri"],
