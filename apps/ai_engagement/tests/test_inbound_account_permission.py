@@ -135,7 +135,7 @@ class InboundAccountPermissionRegressionTests(TestCase):
             self.assertFalse(decision.allowed)
             self.assertEqual(decision.reason, "pipeline_whatsapp_account_mismatch")
 
-    def test_transactionally_resolved_inbound_survives_legitimate_pipeline_move(self):
+    def test_transactionally_resolved_inbound_is_blocked_after_pipeline_move(self):
         inbound = WhatsAppMessage.objects.create(
             organization=self.organization,
             account=self.hosted_account,
@@ -169,4 +169,5 @@ class InboundAccountPermissionRegressionTests(TestCase):
             lead=self.lead,
             latest_inbound=inbound,
         )
-        self.assertTrue(decision.allowed)
+        self.assertFalse(decision.allowed)
+        self.assertEqual(decision.reason, "pipeline_whatsapp_account_mismatch")

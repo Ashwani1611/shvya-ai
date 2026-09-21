@@ -27,6 +27,7 @@ class BulkWhatsAppRetryIdempotencyTests(TransactionTestCase):
         self.pipeline = Pipeline.objects.create(
             organization=self.organization,
             name="Sales",
+            phone_number="123456789",
         )
         # Pipeline creation installs SHVYA's required system stages. Reuse one
         # instead of hard-coding a display_order that can collide with them.

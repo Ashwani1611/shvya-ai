@@ -4,7 +4,6 @@ Hosted Account conversations use a separate whatsapp-web.js transport and UI.
 Nothing in this module is allowed to read or select a Hosted account.
 """
 
-from django.db import models
 from django.db.models import Count, Max, OuterRef, Q, Subquery
 from django.utils import timezone
 
@@ -92,54 +91,18 @@ def _visible_message_account_q(*, organization, account=None, prefix=""):
 
 
 def resolve_api_account_for_lead(*, organization, lead):
-    """Resolve only a connected Meta/Cloud API account for this lead."""
+    """Resolve only the Meta API account linked to the lead's current pipeline."""
+    from services.channels.whatsapp_service import account_matches_lead_pipeline
+
     connected_accounts = _api_accounts(
         organization=organization,
         connected_only=True,
-    )
+    ).order_by("-updated_at", "-pk")
 
-    # Prefer the currently connected account representing the number this lead
-    # already used, even when the most recent message belongs to an older row
-    # for that same Meta number.
-    last_message = (
-        WhatsAppMessage.objects.filter(
-            organization=organization,
-            lead=lead,
-            account__connection_type=API_CONNECTION_TYPE,
-        )
-        .select_related("account")
-        .order_by("-created_at", "-pk")
-        .first()
-    )
-    if last_message:
-        prior = last_message.account
-        account = connected_accounts.filter(
-            models.Q(phone_number_id=prior.phone_number_id)
-            if prior.phone_number_id
-            else models.Q(pk=prior.pk)
-        ).first()
-        if account:
+    for account in connected_accounts:
+        if account_matches_lead_pipeline(account=account, lead=lead):
             return account
-        if prior.display_phone_number:
-            account = connected_accounts.filter(
-                display_phone_number=prior.display_phone_number
-            ).first()
-            if account:
-                return account
-
-    if lead.pipeline_id and lead.pipeline.phone_number:
-        pipeline_phone = str(lead.pipeline.phone_number or "").strip()
-        account = (
-            connected_accounts.filter(
-                models.Q(display_phone_number=pipeline_phone)
-                | models.Q(phone_number_id=pipeline_phone)
-            )
-            .first()
-        )
-        if account:
-            return account
-
-    return connected_accounts.first()
+    return None
 
 
 def is_within_api_24h_window(*, lead, account=None):

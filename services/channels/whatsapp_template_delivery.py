@@ -67,6 +67,11 @@ def queue_template_message(*, template, lead, user=None):
     ):
         raise WhatsAppTemplateSendError("The WhatsApp account for this template is not connected.")
 
+    try:
+        base.validate_account_for_lead_pipeline(account=account, lead=lead)
+    except base.WhatsAppSendError as exc:
+        raise WhatsAppTemplateSendError(str(exc)) from exc
+
     # Media-header templates need an actual message-time media parameter. The
     # template-creation sample handle cannot be reused as delivered media.
     if template.attachment_type != WhatsAppTemplate.AttachmentType.NONE:
@@ -105,6 +110,9 @@ def _send_template_transport(message):
         raise base.WhatsAppSendError("WhatsApp account is inactive.")
     if account.status != WhatsAppAccount.Status.CONNECTED:
         raise base.WhatsAppSendError("WhatsApp account is not connected.")
+
+    if message.lead_id:
+        base.validate_account_for_lead_pipeline(account=account, lead=message.lead)
 
     payload = message.media_payload if isinstance(message.media_payload, dict) else {}
     template_name = str(payload.get("template_name") or "").strip()

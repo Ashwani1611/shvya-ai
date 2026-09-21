@@ -42,12 +42,9 @@ def create_campaign(*, organization, created_by, name, pipeline, body, account, 
     anything -- call launch_campaign() separately once the sender
     has confirmed the audience/body.
 
-    account is required and explicit (not auto-resolved) -- an
-    organization can have several connected WhatsApp numbers, and
-    a bulk campaign sends to many leads at once, so there's no
-    single "right" number to infer per-recipient the way
-    resolve_account_for_lead() does for a one-to-one send. The
-    sender picks which number the campaign goes out from.
+    account is required and explicit, but it must be the connected
+    WhatsApp number linked to the selected pipeline. Bulk sends never
+    override pipeline ownership by choosing another organization number.
     """
     if account.organization_id != organization.id:
         raise BulkCampaignError(
@@ -69,6 +66,13 @@ def create_campaign(*, organization, created_by, name, pipeline, body, account, 
     if not leads.exists():
         raise BulkCampaignError(
             "No leads match the selected audience."
+        )
+
+    from services.channels.whatsapp_service import account_matches_lead_pipeline
+
+    if not account_matches_lead_pipeline(account=account, lead=leads.first()):
+        raise BulkCampaignError(
+            "Selected WhatsApp account is not linked to this pipeline."
         )
 
     campaign = BulkMessageCampaign.objects.create(

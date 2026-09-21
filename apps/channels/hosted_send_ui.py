@@ -2,6 +2,7 @@
 
 import json
 
+from django.db.models import Q
 from django.http import Http404, JsonResponse
 from django.views.decorators.http import require_POST
 
@@ -53,12 +54,32 @@ def _normalize_chat(chat):
 
 
 def _lead_for_chat(account, chat):
-    if not chat.startswith("+"):
-        return None
-    return Lead.objects.filter(
-        organization=account.organization,
-        phone=chat,
-    ).first()
+    if chat.startswith("+"):
+        return Lead.objects.filter(
+            organization=account.organization,
+            phone=chat,
+        ).first()
+
+    if chat.endswith("@lid"):
+        prior = (
+            WhatsAppMessage.objects.filter(
+                organization=account.organization,
+                account=account,
+                lead__isnull=False,
+            )
+            .filter(
+                Q(raw_payload__rawChatId=chat)
+                | Q(raw_payload__chatId=chat)
+                | Q(raw_payload__peerKey=chat)
+                | Q(raw_payload__shvya_hosted__chat_id=chat)
+            )
+            .select_related("lead")
+            .order_by("-created_at", "-pk")
+            .first()
+        )
+        return prior.lead if prior else None
+
+    return None
 
 
 @crm_login_required
@@ -84,11 +105,22 @@ def hosted_session_chat_send_view(request, account_id):
 
     lead = _lead_for_chat(account, normalized_chat)
     try:
+        if lead is not None:
+            from services.channels.whatsapp_service import (
+                WhatsAppSendError,
+                validate_account_for_lead_pipeline,
+            )
+
+            try:
+                validate_account_for_lead_pipeline(account=account, lead=lead)
+            except WhatsAppSendError as exc:
+                raise HostedWhatsAppValidationError(str(exc)) from exc
+
         if normalized_chat.endswith("@lid"):
             message = WhatsAppMessage.objects.create(
                 organization=account.organization,
                 account=account,
-                lead=None,
+                lead=lead,
                 direction=WhatsAppMessage.Direction.OUTBOUND,
                 from_number=account.display_phone_number or account.phone_number_id,
                 to_number=normalized_chat,

@@ -30,6 +30,7 @@ class WhatsAppAPI24HourSeparationTests(TestCase):
             organization=self.org,
             name="Sales",
             owner=self.user,
+            phone_number="+919000001234",
         )
         self.stage = self.pipeline.stages.get(display_order=1)
         self.lead = Lead.objects.create(

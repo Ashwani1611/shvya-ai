@@ -80,6 +80,15 @@ def send_delivery(delivery_id):
         if is_suppressed(organization_id=plan.campaign.organization_id, phone=delivery.phone, lead=delivery.lead):
             _skip(delivery, "Recipient has opted out of campaign messages.")
             return {"status": "opted_out"}
+        if not whatsapp_service.account_matches_lead_pipeline(
+            account=plan.campaign.account,
+            lead=delivery.lead,
+        ):
+            _skip(
+                delivery,
+                "The lead moved to a pipeline linked to another WhatsApp number.",
+            )
+            return {"status": "pipeline_whatsapp_changed"}
         if delivery.attempt_count >= 1 + plan.retry_attempts:
             _skip(delivery, "The campaign attempt limit has been reached.")
             return {"status": "attempt_limit"}

@@ -344,7 +344,7 @@ class BulkLeadTests(TestCase):
         cleared = self.client.post(reverse("followups-lead-clear", args=[lead.pk]), follow=True)
         self.assertContains(cleared, "No sequence assigned")
 
-    def test_hosted_sequence_uses_connected_destination_sender(self):
+    def test_hosted_sequence_cannot_switch_to_another_pipeline_sender(self):
         sequence = self.sequence()
         sequence.whatsapp_account.connection_type = "hosted"
         sequence.whatsapp_account.is_active = False
@@ -354,9 +354,9 @@ class BulkLeadTests(TestCase):
         self.pipeline.phone_number = "8888888888"
         self.pipeline.country_code = "+91"
         self.pipeline.save()
-        self.assertEqual(self.post("options").json()["sequences"][0]["id"], str(sequence.pk))
+        self.assertEqual(self.post("options").json()["sequences"], [])
         response = self.post("update", sequence_action="assign", sequence=str(sequence.pk))
-        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.status_code, 400, response.content)
 
     def test_completed_sequence_can_be_cleared_from_lead_control(self):
         sequence = self.sequence()

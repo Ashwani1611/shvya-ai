@@ -214,7 +214,10 @@ def whatsapp_chat_detail_view(request, lead_id):
 @require_POST
 def whatsapp_send_message_view(request, lead_id):
     from apps.channels.tasks import send_whatsapp_message_task
-    from services.channels.whatsapp_service import queue_outbound_message
+    from services.channels.whatsapp_service import (
+        account_matches_lead_pipeline,
+        queue_outbound_message,
+    )
 
     user = request.crm_user
     lead = Lead.objects.filter(
@@ -230,7 +233,12 @@ def whatsapp_send_message_view(request, lead_id):
     )
     if not account:
         return JsonResponse(
-            {"error": "No connected WhatsApp API account for this organization."},
+            {"error": "No connected WhatsApp API account is linked to this lead's current pipeline."},
+            status=400,
+        )
+    if not account_matches_lead_pipeline(account=account, lead=lead):
+        return JsonResponse(
+            {"error": "This lead's current pipeline is linked to a different WhatsApp number."},
             status=400,
         )
 
@@ -265,7 +273,10 @@ def whatsapp_send_message_view(request, lead_id):
 def whatsapp_send_template_view(request, lead_id):
     from apps.channels.tasks import send_whatsapp_message_task
     from services.channels.template_service import render_template_body
-    from services.channels.whatsapp_service import queue_outbound_message
+    from services.channels.whatsapp_service import (
+        account_matches_lead_pipeline,
+        queue_outbound_message,
+    )
 
     user = request.crm_user
     lead = Lead.objects.filter(
@@ -295,7 +306,15 @@ def whatsapp_send_template_view(request, lead_id):
         lead=lead,
     )
     if not account:
-        return JsonResponse({"error": "No connected WhatsApp API account."}, status=400)
+        return JsonResponse(
+            {"error": "No connected WhatsApp API account is linked to this lead's current pipeline."},
+            status=400,
+        )
+    if not account_matches_lead_pipeline(account=account, lead=lead):
+        return JsonResponse(
+            {"error": "This lead's current pipeline is linked to a different WhatsApp number."},
+            status=400,
+        )
 
     if template.account_id != account.pk:
         return JsonResponse({"error": "Select a template for this WhatsApp number."}, status=400)
