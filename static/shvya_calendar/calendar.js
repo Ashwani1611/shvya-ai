@@ -124,6 +124,15 @@ document.addEventListener("DOMContentLoaded", () => {
 
   const mapSelect = document.getElementById("sc-new-field-map");
   const typeSelect = document.getElementById("sc-new-field-type");
+  const optionsWrap = document.querySelector(".sc-field-options");
+  const optionsInput = document.getElementById("sc-new-field-options");
+  const syncOptionEditor = () => {
+    if (!optionsWrap) return;
+    optionsWrap.hidden = !(
+      mapSelect?.value === "submission"
+      && typeSelect?.value === "option"
+    );
+  };
   mapSelect?.addEventListener("change", () => {
     const selected = mapSelect.selectedOptions[0];
     const type = selected?.dataset.type;
@@ -134,7 +143,9 @@ document.addEventListener("DOMContentLoaded", () => {
       typeSelect.value = translated[type] || "text";
     }
     typeSelect.disabled = map !== "submission";
+    syncOptionEditor();
   });
+  typeSelect?.addEventListener("change", syncOptionEditor);
   mapSelect?.dispatchEvent(new Event("change"));
 
   document.getElementById("sc-add-field-confirm")?.addEventListener("click", () => {
@@ -155,11 +166,17 @@ document.addEventListener("DOMContentLoaded", () => {
       field_type: typeSelect?.value || "text",
       placeholder: placeholderInput?.value.trim() || "",
       required: Boolean(requiredInput?.checked),
-      options: [],
+      options: (optionsInput?.value || "")
+        .split(/\r?\n/)
+        .map((item) => item.trim())
+        .filter(Boolean)
+        .slice(0, 100),
     });
     if (labelInput) labelInput.value = "";
     if (placeholderInput) placeholderInput.value = "";
     if (requiredInput) requiredInput.checked = false;
+    if (optionsInput) optionsInput.value = "";
+    syncOptionEditor();
     renderFields();
     closeFieldDrawer();
   });
