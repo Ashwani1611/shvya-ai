@@ -412,6 +412,36 @@ def refresh_access_token(*, refresh_token, client_id, resource=""):
     return token, raw_access, raw_refresh
 
 
+def revoke_token_record(*, token) -> bool:
+    """Revoke one persisted Operations OAuth grant and close support context."""
+
+    if token is None or getattr(token, "pk", None) is None:
+        raise OperationsAuthError("Operations OAuth token is required.")
+
+    now = timezone.now()
+    with transaction.atomic():
+        locked = (
+            OperationsOAuthToken.objects.select_for_update()
+            .filter(pk=token.pk)
+            .first()
+        )
+        if locked is None or locked.revoked_at is not None:
+            return False
+
+        locked.revoked_at = now
+        locked.save(update_fields=["revoked_at", "updated_at"])
+        OperationsSupportSession.objects.filter(
+            token=locked,
+            ended_at__isnull=True,
+        ).update(
+            ended_at=now,
+            last_seen_at=now,
+        )
+
+    token.revoked_at = now
+    return True
+
+
 def revoke_token(*, raw_token: str):
     """Revoke an Operations OAuth grant by either access or refresh token.
 
@@ -425,31 +455,21 @@ def revoke_token(*, raw_token: str):
         raise OperationsAuthError("Missing token.")
 
     hashed = token_hash(raw_token)
-    now = timezone.now()
-    with transaction.atomic():
-        token = (
-            OperationsOAuthToken.objects.select_for_update()
-            .filter(revoked_at__isnull=True)
-            .filter(
-                models.Q(access_token_hash=hashed)
-                | models.Q(refresh_token_hash=hashed)
-            )
-            .first()
+    token = (
+        OperationsOAuthToken.objects.filter(
+            revoked_at__isnull=True,
         )
-        if token is None:
-            return None
-
-        token.revoked_at = now
-        token.save(update_fields=["revoked_at", "updated_at"])
-        OperationsSupportSession.objects.filter(
-            token=token,
-            ended_at__isnull=True,
-        ).update(
-            ended_at=now,
-            last_seen_at=now,
+        .filter(
+            models.Q(access_token_hash=hashed)
+            | models.Q(refresh_token_hash=hashed)
         )
-    return True
+        .first()
+    )
+    if token is None:
+        return None
 
+    revoke_token_record(token=token)
+    return token
 
 
 def authenticate_bearer(raw_bearer: str) -> OperationsIdentity:
