@@ -1783,6 +1783,8 @@ class OperationsMCPTests(TestCase):
             "http://127.0.0.1:33419",
             "http://localhost:33418",
             "https://vscode.dev/not-the-mcp-redirect",
+            "https://chatgpt.com:444/aip/callback",
+            "https://chatgpt.com/aip/callback#fragment",
         ):
             rejected = self.client.post(
                 "/operations/oauth/register",
@@ -1795,6 +1797,88 @@ class OperationsMCPTests(TestCase):
                 content_type="application/json",
             )
             self.assertEqual(rejected.status_code, 400)
+
+    def test_operations_oauth_bounds_dynamic_registration_and_state(self):
+        too_many = self.client.post(
+            "/operations/oauth/register",
+            data=json.dumps(
+                {
+                    "redirect_uris": [
+                        f"https://chatgpt.com/aip/callback/{index}"
+                        for index in range(9)
+                    ],
+                    "token_endpoint_auth_method": "none",
+                }
+            ),
+            content_type="application/json",
+        )
+        self.assertEqual(too_many.status_code, 400)
+
+        oversized = self.client.post(
+            "/operations/oauth/register",
+            data=json.dumps(
+                {
+                    "client_name": "x" * 33000,
+                    "redirect_uris": [
+                        "https://chatgpt.com/aip/callback"
+                    ],
+                    "token_endpoint_auth_method": "none",
+                }
+            ),
+            content_type="application/json",
+        )
+        self.assertEqual(oversized.status_code, 413)
+        self.assertEqual(oversized["Cache-Control"], "no-store")
+        self.assertEqual(oversized["Pragma"], "no-cache")
+
+        OperationsPolicy.objects.create(
+            organization=self.organization,
+            organization_admin_enabled=True,
+            allowed_capabilities=[CAP_ORGANIZATION_READ],
+        )
+        session = SessionStore()
+        set_authenticated_user(session, self.admin)
+        session.create()
+        self.client.cookies[get_session_cookie_name("dashboard")] = (
+            session.session_key
+        )
+
+        verifier = "z" * 64
+        state = "state-" + ("s" * 2000)
+        authorize = self.client.post(
+            "/operations/oauth/authorize",
+            data={
+                "client_id": self.oauth_client.client_id,
+                "redirect_uri": "https://chatgpt.com/aip/callback",
+                "response_type": "code",
+                "code_challenge": pkce_s256(verifier),
+                "code_challenge_method": "S256",
+                "scope": OPERATIONS_READ_SCOPE,
+                "resource": "http://testserver/operations/mcp/",
+                "state": state,
+                "actor_mode": ROLE_ORGANIZATION_ADMIN,
+            },
+        )
+        self.assertEqual(authorize.status_code, 302)
+        returned = parse_qs(
+            urlparse(authorize["Location"]).query
+        )["state"][0]
+        self.assertEqual(len(returned), 1024)
+        self.assertEqual(returned, state[:1024])
+
+        huge_token_request = self.client.post(
+            "/operations/oauth/token",
+            data={
+                "grant_type": "password",
+                "client_id": self.oauth_client.client_id,
+                "padding": "y" * 33000,
+            },
+        )
+        self.assertEqual(huge_token_request.status_code, 413)
+        self.assertEqual(
+            huge_token_request["Cache-Control"],
+            "no-store",
+        )
 
     def test_operations_oauth_enforces_strong_pkce_and_no_cache(self):
         OperationsPolicy.objects.create(
