@@ -20,6 +20,12 @@ from apps.integrations.views.mcp import (
 
 
 urlpatterns = [
+    # RFC 8414 metadata location for issuer https://<host>/operations.
+    path(
+        ".well-known/oauth-authorization-server/operations",
+        operations_oauth_server_metadata,
+        name="shvya-operations-oauth-server-metadata-rfc8414",
+    ),
     path(
         "operations/.well-known/oauth-protected-resource",
         operations_oauth_resource_metadata,
