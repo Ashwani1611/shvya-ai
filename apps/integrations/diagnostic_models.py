@@ -2,6 +2,7 @@
 
 import uuid
 
+from django.core.exceptions import ValidationError
 from django.db import models
 
 
@@ -97,6 +98,45 @@ class DiagnosticOAuthToken(models.Model):
         ]
 
 
+class ImmutableDiagnosticAccessLogQuerySet(models.QuerySet):
+    """Prevent ORM rewrites/deletions of diagnostic access evidence."""
+
+    def update(self, **kwargs):
+        raise ValidationError("Diagnostic access logs are immutable.")
+
+    def bulk_update(self, objs, fields, batch_size=None):
+        raise ValidationError("Diagnostic access logs are immutable.")
+
+    def bulk_create(
+        self,
+        objs,
+        batch_size=None,
+        ignore_conflicts=False,
+        update_conflicts=False,
+        update_fields=None,
+        unique_fields=None,
+    ):
+        if update_conflicts:
+            raise ValidationError("Diagnostic access logs are immutable.")
+        return super().bulk_create(
+            objs,
+            batch_size=batch_size,
+            ignore_conflicts=ignore_conflicts,
+            update_conflicts=update_conflicts,
+            update_fields=update_fields,
+            unique_fields=unique_fields,
+        )
+
+    def delete(self):
+        raise ValidationError("Diagnostic access logs are immutable.")
+
+
+class DiagnosticAccessLogManager(
+    models.Manager.from_queryset(ImmutableDiagnosticAccessLogQuerySet)
+):
+    pass
+
+
 class DiagnosticAccessLog(models.Model):
     """Append-only metadata about diagnostic tool usage.
 
@@ -104,6 +144,8 @@ class DiagnosticAccessLog(models.Model):
     lead attributes, API keys, access tokens, and provider errors are never
     persisted in this audit table.
     """
+
+    objects = DiagnosticAccessLogManager()
 
     class Outcome(models.TextChoices):
         SUCCESS = "success", "Success"
@@ -117,12 +159,12 @@ class DiagnosticAccessLog(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     organization = models.ForeignKey(
         "organizations.Organization",
-        on_delete=models.CASCADE,
+        on_delete=models.PROTECT,
         related_name="diagnostic_access_logs",
     )
     api_key = models.ForeignKey(
         "organizations.APIKey",
-        on_delete=models.SET_NULL,
+        on_delete=models.PROTECT,
         null=True,
         blank=True,
         related_name="diagnostic_access_logs",
@@ -156,6 +198,14 @@ class DiagnosticAccessLog(models.Model):
                 name="diag_log_tool_created_idx",
             ),
         ]
+
+    def save(self, *args, **kwargs):
+        if not self._state.adding:
+            raise ValidationError("Diagnostic access logs are immutable.")
+        return super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise ValidationError("Diagnostic access logs are immutable.")
 
     def __str__(self):
         return f"{self.organization_id} · {self.tool_name} · {self.outcome}"
