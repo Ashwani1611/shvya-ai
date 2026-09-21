@@ -262,6 +262,8 @@ def list_organizations(*, identity, arguments):
         active_support = OperationsSupportSession.objects.filter(
             organization=organization,
             ended_at__isnull=True,
+            token__revoked_at__isnull=True,
+            token__expires_at__gt=timezone.now(),
         ).exists()
         rows.append(
             {
@@ -1279,7 +1281,7 @@ def upsert_stage_configuration(*, identity, arguments):
         raise OperationsToolError("Stage name is required and must be at most 100 characters.")
     if len(description) > 10000:
         raise OperationsToolError("Stage description is too large.")
-    if stage is not None and stage.is_name_locked and name.casefold() != stage.name.casefold():
+    if stage is not None and stage.is_name_locked and name != stage.name:
         raise OperationsPermissionError("SHVYA protected stages cannot be renamed.")
     is_active = data.get("is_active", stage.is_active if stage else True)
     ai_on = data.get("ai_on", stage.ai_on if stage else True)
@@ -1770,6 +1772,8 @@ def upsert_cadence_configuration(*, identity, arguments):
 
     account = sequence.whatsapp_account if sequence else None
     provider = str(data.get("provider") or "api").strip()
+    if provider not in {"api", "hosted"}:
+        raise OperationsToolError("Cadence provider must be api or hosted.")
     if sequence is None:
         account_id = data.get("whatsapp_account_id")
         if account_id:
@@ -1783,6 +1787,17 @@ def upsert_cadence_configuration(*, identity, arguments):
             raise OperationsToolError("An active connected WhatsApp API account is required.")
         if account is not None and provider == "api" and account.connection_type != WhatsAppAccount.ConnectionType.API:
             raise OperationsToolError("The selected account is not a WhatsApp API account.")
+        if provider == "hosted":
+            hosted_exists = WhatsAppAccount.objects.filter(
+                organization=organization,
+                connection_type=WhatsAppAccount.ConnectionType.coexisted,
+                status=WhatsAppAccount.Status.CONNECTED,
+                is_active=True,
+            ).exists()
+            if not hosted_exists:
+                raise OperationsToolError(
+                    "Connect at least one Hosted/Coexistence WhatsApp number before creating this Cadence."
+                )
 
     if dry_run:
         return ToolExecution(
