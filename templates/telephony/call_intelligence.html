@@ -145,6 +145,8 @@
       <article><small>Missed</small><strong>{{ stats.missed }}</strong><span>Need attention</span></article>
       <article><small>Outgoing</small><strong>{{ stats.outgoing }}</strong><span>Team dial-outs</span></article>
       <article><small>Avg talk time</small><strong>{{ stats.average_talk }}s</strong><span>Answered calls</span></article>
+      <article><small>Avg response</small><strong>{{ stats.average_response }}s</strong><span>Incoming ring time</span></article>
+      <article><small>Converted</small><strong>{{ stats.converted }}</strong><span>Converted dispositions</span></article>
       <article><small>Follow-ups</small><strong>{{ stats.followups }}</strong><span>Due within 24 hours</span></article>
     </div>
 
@@ -153,6 +155,7 @@
       <select name="status"><option value="">All statuses</option>{% for value,label in call_statuses %}<option value="{{ value }}" {% if filters.status == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>
       <select name="direction"><option value="">All directions</option>{% for value,label in call_directions %}<option value="{{ value }}" {% if filters.direction == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>
       <select name="intent"><option value="">All intent</option>{% for value,label in call_intents %}<option value="{{ value }}" {% if filters.intent == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>
+      <select name="source"><option value="">All sources</option>{% for value,label in call_sources %}<option value="{{ value }}" {% if filters.source == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>
       <select name="pipeline"><option value="">All pipelines</option>{% for pipeline in pipelines %}<option value="{{ pipeline.id }}" {% if filters.pipeline == pipeline.id|stringformat:"s" %}selected{% endif %}>{{ pipeline.name }}</option>{% endfor %}</select>
       {% if is_admin %}<select name="agent"><option value="">All agents</option>{% for owner in owners %}<option value="{{ owner.id }}" {% if filters.agent == owner.id|stringformat:"s" %}selected{% endif %}>{{ owner.name|default:owner.email }}</option>{% endfor %}</select>{% endif %}
       <input type="date" name="date_from" value="{{ filters.date_from }}" aria-label="From date">
@@ -233,6 +236,16 @@
                     {% if call.intelligence.next_action %}<p class="ci-next-action"><strong>Next action</strong>{{ call.intelligence.next_action }}</p>{% endif %}
                     {% if call.intelligence.objections %}<p class="ci-evidence"><strong>Objections</strong>{{ call.intelligence.objections|join:", " }}</p>{% endif %}
                     {% if call.intelligence.buying_signals %}<p class="ci-evidence"><strong>Buying signals</strong>{{ call.intelligence.buying_signals|join:", " }}</p>{% endif %}
+                    {% if call.intelligence.agent_metrics %}
+                    <div class="ci-coaching">
+                      <strong>Agent coaching</strong>
+                      <span>Discovery {{ call.intelligence.agent_metrics.discovery_quality|default:"0" }}/10</span>
+                      <span>Objection handling {{ call.intelligence.agent_metrics.objection_handling|default:"0" }}/10</span>
+                      <span>Next-step clarity {{ call.intelligence.agent_metrics.next_step_clarity|default:"0" }}/10</span>
+                      <span>Questions {{ call.intelligence.agent_metrics.questions_asked|default:"0" }}</span>
+                    </div>
+                    {% endif %}
+                    {% if call.intelligence.compliance_flags %}<p class="ci-evidence ci-compliance"><strong>Compliance flags</strong>{{ call.intelligence.compliance_flags|join:", " }}</p>{% endif %}
                   {% else %}
                     <p class="ci-ai-summary muted">Add grounded notes or a provider transcript to run Call Intelligence.</p>
                   {% endif %}
@@ -336,7 +349,7 @@
           {% for agent in agent_stats %}
           <article>
             <div><strong>{{ agent.user__name|default:agent.user__email }}</strong><span>{{ agent.calls }} calls · {{ agent.answered }} answered · {{ agent.missed }} missed</span></div>
-            <div class="ci-agent-metrics"><span>{{ agent.average_talk|floatformat:0 }}s avg</span><span>{{ agent.high_intent }} high intent</span></div>
+            <div class="ci-agent-metrics"><span>{{ agent.average_talk|floatformat:0 }}s avg</span><span>{{ agent.high_intent }} high intent</span><span>{{ agent.converted }} converted</span></div>
           </article>
           {% empty %}
           <div class="ci-empty small"><i class="ti ti-users"></i><strong>No agent activity yet.</strong><span>Today’s call performance will appear here.</span></div>
