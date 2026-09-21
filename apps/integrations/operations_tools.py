@@ -581,12 +581,12 @@ def select_organization_context(*, identity, arguments):
         reason=reason,
         audit_summary={
             "support_context": "started",
-            "previous_support_session_id": (
+            "_previous_support_session_id": (
                 str(previous_session.id)
                 if previous_session is not None
                 else None
             ),
-            "previous_organization_id": (
+            "_previous_organization_id": (
                 str(previous_session.organization_id)
                 if previous_session is not None
                 else None
