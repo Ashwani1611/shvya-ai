@@ -184,6 +184,9 @@
                             {% else %}
                             <span class="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">Read only</span>
                             {% endif %}
+                            {% if not token.live_authority_valid %}
+                            <span class="rounded-full bg-red-50 px-2 py-0.5 text-[10px] font-semibold text-red-700">Reconnect required</span>
+                            {% endif %}
                         </div>
                         <p class="mt-1 text-xs text-gray-500">
                             {{ token.actor.name|default:"Organization Admin" }}
@@ -194,6 +197,11 @@
                             Access token expires {{ token.expires_at|date:"d M Y, h:i A" }}
                             · Re-authorization required after {{ token.refresh_expires_at|date:"d M Y, h:i A" }}
                         </p>
+                        {% if not token.live_authority_valid %}
+                        <p class="mt-1 text-[11px] font-medium text-red-600">
+                            This grant no longer matches the current SHVYA user/tenant authority. It cannot be used and should be revoked/reconnected.
+                        </p>
+                        {% endif %}
                         <div class="mt-2 flex flex-wrap gap-1.5">
                             {% for capability_label in token.granted_capability_labels %}
                             <span class="rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5 text-[10px] font-medium text-gray-600">{{ capability_label }}</span>
