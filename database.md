@@ -642,11 +642,11 @@ Implicit many-to-many join table from `accounts_user` to `auth_permission`.
 
 **PK:** `id UUID`
 
-**Columns:** `payload_sha256 UNIQUE`, `raw_payload JSON`, `status`, `error_message`, `received_at`, `processed_at NULL`.
+**Columns:** `payload_sha256 UNIQUE`, `raw_payload JSON`, `organization_ids JSON`, `account_ids JSON`, `status`, `error_message`, `received_at`, `processed_at NULL`.
 
 **Index:** `(status,received_at)`.
 
-**Why no organization FK:** this is the raw durable webhook envelope. Organization/account resolution happens from the signed provider payload during processing.
+**Routing metadata:** the envelope intentionally has no single organization FK because one verified Meta payload can contain entries for multiple Instagram accounts. After HMAC signature verification, SHVYA resolves only known Instagram account IDs and stores bounded `organization_ids` / `account_ids` lists. These lists allow tenant-safe failure diagnostics without parsing or returning raw webhook payload data. Existing signed deliveries are backfilled by migration.
 
 ---
 
@@ -1060,6 +1060,44 @@ Append-style diagnostic access metadata: organization, optional API key, OAuth c
 
 **Privacy rule:** raw tool arguments, conversation text, lead attributes, provider errors, API keys and OAuth tokens are deliberately not stored in this audit table.
 
+### Actor-bound Operations MCP
+
+#### `integrations_operationspolicy`
+
+One-to-one organization policy controlling whether Organization Admin external-AI Operations access is enabled, granular allowed capabilities, approval-required write capabilities, the Superadmin updater and timestamps.
+
+#### `integrations_operationsoauthclient`
+
+Dynamic public OAuth client metadata for ChatGPT / Claude / VS Code Operations connections: unique client ID, bounded registered redirects, grant/response types, application type, active flag and creation timestamp.
+
+#### `integrations_operationsoauthauthorizationcode`
+
+One-time actor-bound PKCE authorization code with **hashed** code value, client, SHVYA actor, optional fixed organization, SHVYA role, redirect URI, PKCE challenge, scope, consent-time `granted_capabilities JSON`, resource, expiry/use timestamps and creation timestamp.
+
+#### `integrations_operationsoauthtoken`
+
+Actor-bound Operations access/refresh grant with **hashed** access + refresh token values, client, SHVYA actor, role, fixed Organization Admin tenant or nullable Superadmin active organization context, scope, consent-time `granted_capabilities JSON`, resource, access/refresh expiry, revocation/last-use timestamps and audit timestamps.
+
+**Index:** `(actor, revoked_at, expires_at)`.
+
+#### `integrations_operationssupportsession`
+
+Visible Superadmin customer-support context: token, actor, organization, bounded reason, started/last-seen/ended timestamps. An open context remains organization-visible until explicitly cleared/revoked; recent activity is a separate derived status.
+
+**Index:** `(organization, ended_at, last_seen_at DESC)`.
+
+#### `integrations_operationsauditevent`
+
+Append-only Operations/OAuth lifecycle audit metadata: protected actor/organization/support-session references, role, tool, capability, safe target reference, bounded reason, outcome, request fingerprint, safe change summary, duration/error code and creation timestamp.
+
+**Indexes:** `(organization, created_at DESC)`, `(actor, created_at DESC)`, `(tool_name, created_at DESC)`.
+
+**Immutability:** normal instance update/delete plus queryset update/delete/bulk-update/conflict-update paths are blocked. Audit relationship FKs use `PROTECT` so deleting referenced actors/organizations/support sessions cannot erase audit history.
+
+#### `integrations_operationsapprovaluse`
+
+Append-only one-to-one claim on an approval-required dry-run `OperationsAuditEvent`. The one-to-one constraint atomically makes each approval receipt single-use at execution-attempt time, including concurrent attempts.
+
 ### Support portal
 
 The `support` app is a first-class platform subsystem.
@@ -1200,9 +1238,11 @@ Never log or expose these values in plaintext:
 - `integrations_metaleadpage.encrypted_page_access_token`
 - `integrations_metaleadpage.encrypted_app_secret`
 
+Operations audit and approval-use rows are append-only application ledgers. Do not add mutable status fields or cascade deletion paths that make an already-recorded Operations action or consumed approval receipt rewritable.
+
 Important distinction:
 
-- **Hash when the original secret is never needed again:** organization API keys, one-time login tokens.
+- **Hash when the original secret is never needed again:** organization API keys, one-time login tokens, Diagnostic/Operations OAuth authorization codes, access tokens and refresh tokens.
 - **Encrypt reversibly when the provider credential must later be sent to an external API:** Meta tokens, OAuth code while queued, SMTP password, webhook/integration secrets.
 
 The current reversible encryption helpers derive Fernet keys from Django `SECRET_KEY`. Rotating `SECRET_KEY` without a credential-migration plan can make existing encrypted provider credentials unreadable.
