@@ -224,6 +224,10 @@ def authenticate_bearer(raw_bearer: str):
             raise DiagnosticAuthError("Organization account is disabled.")
         if (
             not oauth_token.api_key.is_active
+            or (
+                oauth_token.api_key.expires_at
+                and oauth_token.api_key.expires_at <= now
+            )
             or not getattr(
                 oauth_token.api_key,
                 "can_read_diagnostics",
@@ -450,6 +454,10 @@ def exchange_authorization_code(
             raise DiagnosticAuthError("OAuth resource mismatch.")
         if (
             not auth_code.api_key.is_active
+            or (
+                auth_code.api_key.expires_at
+                and auth_code.api_key.expires_at <= now
+            )
             or not getattr(
                 auth_code.api_key,
                 "can_read_diagnostics",
@@ -514,6 +522,10 @@ def refresh_access_token(
             )
         if (
             not oauth_token.api_key.is_active
+            or (
+                oauth_token.api_key.expires_at
+                and oauth_token.api_key.expires_at <= now
+            )
             or not getattr(
                 oauth_token.api_key,
                 "can_read_diagnostics",
