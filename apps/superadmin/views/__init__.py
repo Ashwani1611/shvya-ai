@@ -21,4 +21,6 @@ from apps.superadmin.workspace_views import (
 
 from apps.superadmin.operations_views import (
     organization_operations_policy_update_view as organization_operations_policy_update_view,
+    organization_operations_session_revoke_view as organization_operations_session_revoke_view,
+    organization_operations_support_end_view as organization_operations_support_end_view,
 )
