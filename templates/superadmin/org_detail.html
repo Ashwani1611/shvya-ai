@@ -2773,7 +2773,7 @@ document.addEventListener("DOMContentLoaded", function () {
                 <div>
                     {{ support_session.actor.name|default:support_session.actor.email }}
                     · Started {{ support_session.started_at|date:"d M Y, h:i A" }}
-                    {% if support_session.reason %} · {{ support_session.reason }}{% endif %}
+                    {% if support_session.safe_reason %} · {{ support_session.safe_reason }}{% endif %}
                 </div>
                 {% endfor %}
             </div>
@@ -2951,8 +2951,8 @@ document.addEventListener("DOMContentLoaded", function () {
                                     Started {{ support_session.started_at|date:"d M Y, h:i A" }}
                                     · Last activity {{ support_session.last_seen_at|date:"d M Y, h:i A" }}
                                 </p>
-                                {% if support_session.reason %}
-                                <p class="mt-1 line-clamp-2 text-xs text-gray-500">{{ support_session.reason }}</p>
+                                {% if support_session.safe_reason %}
+                                <p class="mt-1 line-clamp-2 text-xs text-gray-500">{{ support_session.safe_reason }}</p>
                                 {% endif %}
                             </div>
                             <form method="post"
