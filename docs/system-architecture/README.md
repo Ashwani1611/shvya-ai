@@ -223,4 +223,5 @@ The production baseline now also includes:
 - Hosted live LID phone resolution, chat read-boundary persistence and session reconciliation;
 - Instagram conversation → CRM lead linkage;
 - Help & Support + Shvya-Ops ticketing with private attachments and durable mail outbox;
-- read-only organization-scoped diagnostic MCP/OAuth access with hashed token material and safe audit metadata.
+- read-only organization-scoped diagnostic MCP/OAuth access with hashed token material and safe audit metadata;
+- actor-bound Operations MCP/OAuth for ChatGPT/Claude with explicit Superadmin tenant context, Superadmin-owned organization capability policy, dry-run/approval gates, verified writes, workspace support-presence visibility and append-only audit.
