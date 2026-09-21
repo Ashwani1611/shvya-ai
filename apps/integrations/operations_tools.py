@@ -3790,82 +3790,171 @@ def add_cadence_step(*, identity, arguments):
         )
 
     try:
-        if step_type == "whatsapp":
-            step = add_whatsapp_step(
-                sequence=sequence,
-                template=template,
-                retry_count=data.get("retry_count", 0),
-                **schedule,
+        with transaction.atomic():
+            sequence = (
+                FollowupSequence.objects.select_for_update()
+                .select_related("whatsapp_account")
+                .filter(
+                    pk=sequence.pk,
+                    organization=organization,
+                    is_active=True,
+                )
+                .first()
             )
-        elif step_type == "email":
-            step = add_email_step(
-                sequence=sequence,
-                title=str(data.get("title") or ""),
-                subject=str(data.get("subject") or ""),
-                body=str(data.get("body") or ""),
-                **schedule,
+            if sequence is None:
+                raise OperationsApprovalRequired(
+                    "The Cadence changed, was removed, or became inactive. "
+                    "Run a fresh dry-run."
+                )
+
+            schedule = _cadence_schedule(data)
+            template = None
+            if step_type == "whatsapp":
+                template = WhatsAppTemplate.objects.filter(
+                    pk=_uuid(
+                        data.get("template_id"),
+                        field="template_id",
+                    ),
+                    organization=organization,
+                    account=sequence.whatsapp_account,
+                    status=WhatsAppTemplate.Status.APPROVED,
+                ).first()
+                if template is None:
+                    raise OperationsApprovalRequired(
+                        "The approved WhatsApp template or Cadence sender "
+                        "changed after review. Run a fresh dry-run."
+                    )
+            elif step_type == "email":
+                if (
+                    not str(data.get("subject") or "").strip()
+                    or not str(data.get("body") or "").strip()
+                ):
+                    raise OperationsToolError(
+                        "Email Cadence steps require subject and body."
+                    )
+            else:
+                if not str(data.get("text") or "").strip():
+                    raise OperationsToolError(
+                        "Reminder Cadence steps require reminder text."
+                    )
+
+            current_step_count = sequence.steps.count()
+            locked_step_proposal = {
+                "cadence_id": str(sequence.id),
+                "existing_step_count": current_step_count,
+                "next_position": current_step_count + 1,
+                "step_type": step_type,
+                "schedule": schedule,
+                "template_id": (
+                    str(template.id) if template else None
+                ),
+                "title": str(data.get("title") or ""),
+                "subject": str(data.get("subject") or ""),
+                "body": str(data.get("body") or ""),
+                "text": str(data.get("text") or ""),
+                "retry_count": data.get("retry_count", 0),
+            }
+            _ensure_approved_proposal_unchanged(
+                arguments=arguments,
+                proposal=locked_step_proposal,
             )
-        else:
-            step = add_reminder_step(
-                sequence=sequence,
-                text=str(data.get("text") or ""),
-                **schedule,
-            )
+
+            if step_type == "whatsapp":
+                step = add_whatsapp_step(
+                    sequence=sequence,
+                    template=template,
+                    retry_count=data.get("retry_count", 0),
+                    **schedule,
+                )
+            elif step_type == "email":
+                step = add_email_step(
+                    sequence=sequence,
+                    title=str(data.get("title") or ""),
+                    subject=str(data.get("subject") or ""),
+                    body=str(data.get("body") or ""),
+                    **schedule,
+                )
+            else:
+                step = add_reminder_step(
+                    sequence=sequence,
+                    text=str(data.get("text") or ""),
+                    **schedule,
+                )
+
+            step.refresh_from_db()
+            verification_errors = []
+            if step.sequence_id != sequence.id:
+                verification_errors.append("sequence")
+            if step.step_type != step_type:
+                verification_errors.append("type")
+            if step.position != locked_step_proposal["next_position"]:
+                verification_errors.append("position")
+            if step.schedule_type != schedule["schedule_type"]:
+                verification_errors.append("schedule_type")
+            if step.delay_value != schedule["delay_value"]:
+                verification_errors.append("delay_value")
+            if step.delay_unit != schedule["delay_unit"]:
+                verification_errors.append("delay_unit")
+            if step.specific_time != schedule["specific_time"]:
+                verification_errors.append("specific_time")
+            if step.specific_weekday != schedule["specific_weekday"]:
+                verification_errors.append("specific_weekday")
+            if step.recurring_every != schedule["recurring_every"]:
+                verification_errors.append("recurring_every")
+            if step.recurring_unit != schedule["recurring_unit"]:
+                verification_errors.append("recurring_unit")
+            if list(step.recurring_weekdays or []) != list(
+                schedule["recurring_weekdays"] or []
+            ):
+                verification_errors.append("recurring_weekdays")
+
+            if step_type == "whatsapp":
+                expected_retry = int(
+                    data.get("retry_count", 0) or 0
+                )
+                if step.whatsapp_template_id != template.id:
+                    verification_errors.append("template")
+                if step.retry_count != expected_retry:
+                    verification_errors.append("retry_count")
+            elif step_type == "email":
+                expected_title = (
+                    str(data.get("title") or "").strip()
+                    or f"Email {step.position}"
+                )
+                if step.title != expected_title:
+                    verification_errors.append("title")
+                if (
+                    step.email_subject
+                    != str(data.get("subject") or "").strip()
+                ):
+                    verification_errors.append("email_subject")
+                if (
+                    step.email_body
+                    != str(data.get("body") or "").strip()
+                ):
+                    verification_errors.append("email_body")
+            else:
+                if (
+                    step.reminder_text
+                    != str(data.get("text") or "").strip()
+                ):
+                    verification_errors.append("reminder_text")
+
+            if verification_errors:
+                raise OperationsToolError(
+                    "Cadence step verification failed for: "
+                    + ", ".join(
+                        sorted(set(verification_errors))
+                    )
+                )
+            step_proposal = locked_step_proposal
     except FollowupError as exc:
         raise OperationsToolError(str(exc)) from exc
-    step.refresh_from_db()
-    verification_errors = []
-    if step.sequence_id != sequence.id:
-        verification_errors.append("sequence")
-    if step.step_type != step_type:
-        verification_errors.append("type")
-    if step.position != step_proposal["next_position"]:
-        verification_errors.append("position")
-    if step.schedule_type != schedule["schedule_type"]:
-        verification_errors.append("schedule_type")
-    if step.delay_value != schedule["delay_value"]:
-        verification_errors.append("delay_value")
-    if step.delay_unit != schedule["delay_unit"]:
-        verification_errors.append("delay_unit")
-    if step.specific_time != schedule["specific_time"]:
-        verification_errors.append("specific_time")
-    if step.specific_weekday != schedule["specific_weekday"]:
-        verification_errors.append("specific_weekday")
-    if step.recurring_every != schedule["recurring_every"]:
-        verification_errors.append("recurring_every")
-    if step.recurring_unit != schedule["recurring_unit"]:
-        verification_errors.append("recurring_unit")
-    if list(step.recurring_weekdays or []) != list(
-        schedule["recurring_weekdays"] or []
-    ):
-        verification_errors.append("recurring_weekdays")
-
-    if step_type == "whatsapp":
-        expected_retry = int(data.get("retry_count", 0) or 0)
-        if step.whatsapp_template_id != template.id:
-            verification_errors.append("template")
-        if step.retry_count != expected_retry:
-            verification_errors.append("retry_count")
-    elif step_type == "email":
-        expected_title = (
-            str(data.get("title") or "").strip()
-            or f"Email {step.position}"
-        )
-        if step.title != expected_title:
-            verification_errors.append("title")
-        if step.email_subject != str(data.get("subject") or "").strip():
-            verification_errors.append("email_subject")
-        if step.email_body != str(data.get("body") or "").strip():
-            verification_errors.append("email_body")
-    else:
-        if step.reminder_text != str(data.get("text") or "").strip():
-            verification_errors.append("reminder_text")
-
-    if verification_errors:
+    except IntegrityError as exc:
         raise OperationsToolError(
-            "Cadence step verification failed for: "
-            + ", ".join(sorted(set(verification_errors)))
-        )
+            "Cadence steps changed concurrently. Run a fresh dry-run."
+        ) from exc
+
     return ToolExecution(
         data={
             "status": "FIXED",
