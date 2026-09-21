@@ -16,6 +16,7 @@ from .views import (
     organization_hosted_ignore_reset_view,
     organization_hosted_ignore_sync_view,
     organization_notes_update_view,
+    organization_operations_policy_update_view,
     organization_payment_create_view,
     organization_payment_delete_view,
     organization_payment_update_view,
@@ -170,6 +171,12 @@ urlpatterns = [
         "organization/<uuid:organization_id>/hosted-account/toggle/",
         organization_hosted_account_toggle_view,
         name="superadmin-organization-hosted-account-toggle",
+    ),
+
+    path(
+        "organization/<uuid:organization_id>/operations-mcp-policy/",
+        organization_operations_policy_update_view,
+        name="superadmin-organization-operations-mcp-policy",
     ),
 
     # =========================================================
