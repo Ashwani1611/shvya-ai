@@ -1,5 +1,5 @@
 import uuid
-from datetime import timedelta
+from datetime import datetime, timedelta
 from urllib.parse import quote
 
 import requests
@@ -201,10 +201,10 @@ def free_busy(*, page, time_min, time_max):
     result = []
     for item in calendar.get("busy", []):
         try:
-            start = timezone.datetime.fromisoformat(
+            start = datetime.fromisoformat(
                 str(item["start"]).replace("Z", "+00:00")
             )
-            end = timezone.datetime.fromisoformat(
+            end = datetime.fromisoformat(
                 str(item["end"]).replace("Z", "+00:00")
             )
         except (KeyError, TypeError, ValueError):
