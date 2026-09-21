@@ -167,7 +167,7 @@ def _editor_context(request, page, active_tab=None):
         "google_connection": connection,
         "google_configured": google_is_configured(),
         "sequence": sequence,
-        "reminder_steps": sequence.steps.all(),
+        "reminder_steps": sequence.steps.filter(enabled=True),
         "pending_call_reminders": pending_calls,
         "active_tab": active_tab or request.GET.get("tab") or "lead",
         "weekday_rows": [
@@ -669,12 +669,12 @@ def calendar_reminder_add(request, page_id):
             "?tab=reminders"
         )
 
-    next_order = (
+    latest_order = (
         sequence.steps.order_by("-display_order")
         .values_list("display_order", flat=True)
         .first()
-        or -1
-    ) + 1
+    )
+    next_order = 0 if latest_order is None else latest_order + 1
     default_names = {
         CalendarReminderStep.Channel.WHATSAPP: "WhatsApp reminder",
         CalendarReminderStep.Channel.EMAIL: "Email reminder",
@@ -857,7 +857,23 @@ def google_callback(request):
     expected = crm_session.pop("shvya_calendar_google_state", "")
     page_id = crm_session.pop("shvya_calendar_google_page", "")
     crm_session.save()
-    page = _page_for_user(user, page_id)
+
+    if not page_id:
+        messages.error(
+            request,
+            "Google Calendar connection state expired. Start the connection again.",
+        )
+        return redirect("shvya_calendar:index")
+
+    try:
+        page = _page_for_user(user, page_id)
+    except (Http404, ValidationError, ValueError):
+        messages.error(
+            request,
+            "Google Calendar connection state is no longer valid. Start again.",
+        )
+        return redirect("shvya_calendar:index")
+
     if not expected or request.GET.get("state") != expected:
         messages.error(request, "Google Calendar connection state expired. Try again.")
         return redirect("shvya_calendar:editor", page_id=page.id)
