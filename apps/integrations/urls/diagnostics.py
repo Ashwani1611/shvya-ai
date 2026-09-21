@@ -14,6 +14,7 @@ from apps.integrations.views.mcp import (
     diagnostic_mcp,
     diagnostic_oauth_authorize,
     diagnostic_oauth_register,
+    diagnostic_oauth_revoke,
     diagnostic_oauth_resource_metadata,
     diagnostic_oauth_server_metadata,
     diagnostic_oauth_token,
@@ -86,6 +87,11 @@ urlpatterns = [
         "oauth/token",
         diagnostic_oauth_token,
         name="shvya-diagnostic-oauth-token",
+    ),
+    path(
+        "oauth/revoke",
+        diagnostic_oauth_revoke,
+        name="shvya-diagnostic-oauth-revoke",
     ),
     path(
         "mcp/",

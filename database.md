@@ -1040,7 +1040,7 @@ One row per WhatsApp account (`account_id` is the O2O primary key) with `next_sl
 
 #### `integrations_diagnosticoauthclient`
 
-Dynamically registered OAuth client metadata: unique client ID, name/application type, redirect/grant/response JSON lists, active flag and creation timestamp.
+OAuth public-client metadata: unique client ID, name/application type, redirect/grant/response JSON lists, active flag and creation timestamp. MCP 2026-07-28 clients may use a validated CIMD HTTPS URL as the client ID; bounded Dynamic Client Registration remains supported for compatibility.
 
 #### `integrations_diagnosticoauthauthorizationcode`
 
@@ -1048,13 +1048,13 @@ Client/API-key/organization scoped authorization code with **hashed** unique cod
 
 #### `integrations_diagnosticoauthtoken`
 
-Client/API-key/organization scoped OAuth access + refresh token **hashes**, scope/resource, access/refresh expiry, revocation/last-used timestamps and audit timestamps.
+Client/API-key/organization scoped OAuth access + refresh token **hashes**, scope/resource, access/refresh expiry, revocation/last-used timestamps and audit timestamps. Refresh rotation preserves the original grant expiry instead of extending it indefinitely.
 
 **Index:** `(api_key, revoked_at, expires_at)`.
 
 #### `integrations_diagnosticaccesslog`
 
-Append-style diagnostic access metadata: organization, optional API key, OAuth client snapshot, tool name, outcome, auth type, request fingerprint, duration and safe error code.
+Immutable diagnostic access metadata: protected organization/API-key references, OAuth client snapshot, tool name, outcome, auth type, request fingerprint, duration and safe error code. Model/queryset mutation and deletion are blocked so the row remains append-only audit evidence.
 
 **Indexes:** `(organization, created_at)`, `(tool_name, created_at)`.
 

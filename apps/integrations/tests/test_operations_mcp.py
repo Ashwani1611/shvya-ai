@@ -241,6 +241,42 @@ class OperationsMCPTests(TestCase):
         self.assertNotIn("integrations", conflicts)
         self.assertNotIn("channels", conflicts)
 
+    def test_operations_tool_schema_rejects_non_object_arguments(self):
+        bearer = self._token(
+            actor=self.superadmin,
+            role=ROLE_SUPERADMIN,
+        )
+        result = self._result(
+            self._call(
+                bearer,
+                "get_operations_context",
+                "not-an-object",
+            )
+        )
+        self.assertTrue(result["isError"])
+        self.assertIn(
+            "must be an object",
+            result["structuredContent"]["error"],
+        )
+
+    def test_operations_tool_schema_rejects_unadvertised_arguments(self):
+        bearer = self._token(
+            actor=self.superadmin,
+            role=ROLE_SUPERADMIN,
+        )
+        result = self._result(
+            self._call(
+                bearer,
+                "get_operations_context",
+                {"unexpected": "value"},
+            )
+        )
+        self.assertTrue(result["isError"])
+        self.assertIn(
+            "unexpected field",
+            result["structuredContent"]["error"],
+        )
+
     def test_operations_agent_contract_is_exposed_by_mcp_discovery(self):
         response = self.client.post(
             "/operations/mcp/",

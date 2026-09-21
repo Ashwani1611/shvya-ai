@@ -12,13 +12,16 @@ from apps.accounts.session_utils import (
 )
 from apps.crm.models import Pipeline, PipelinePermission
 from apps.integrations.models import (
+    DiagnosticOAuthAuthorizationCode,
+    DiagnosticOAuthClient,
+    DiagnosticOAuthToken,
     EmailConfiguration,
+    GoogleSheetIntegration,
+    MetaLeadPage,
     OperationsAuditEvent,
     OperationsOAuthClient,
     OperationsOAuthToken,
     OperationsPolicy,
-    GoogleSheetIntegration,
-    MetaLeadPage,
     WebhookConfiguration,
 )
 from apps.integrations.operations_auth import token_hash
@@ -103,6 +106,59 @@ class ConnectHubAuthorizationTests(TestCase):
         self.assertEqual(revoke_response.status_code, 403)
         existing.refresh_from_db()
         self.assertTrue(existing.is_active)
+
+    def test_admin_revoke_diagnostic_key_revokes_bound_oauth_grants(self):
+        self.authenticate(self.admin)
+        api_key, _ = APIKey.issue(
+            organization=self.organization,
+            name="Diagnostic key",
+        )
+        api_key.can_upsert_leads = False
+        api_key.can_read_diagnostics = True
+        api_key.save(
+            update_fields=["can_upsert_leads", "can_read_diagnostics"]
+        )
+        client = DiagnosticOAuthClient.objects.create(
+            client_id="diagnostic-revoke-client",
+            client_name="External AI",
+            redirect_uris=["https://chatgpt.com/aip/callback"],
+            grant_types=["authorization_code", "refresh_token"],
+            response_types=["code"],
+        )
+        token = DiagnosticOAuthToken.objects.create(
+            client=client,
+            api_key=api_key,
+            organization=self.organization,
+            access_token_hash="a" * 64,
+            refresh_token_hash="b" * 64,
+            scope="diagnostics.read offline_access",
+            resource="https://example.test/mcp/",
+            expires_at=timezone.now() + timedelta(hours=1),
+            refresh_expires_at=timezone.now() + timedelta(days=30),
+        )
+        code = DiagnosticOAuthAuthorizationCode.objects.create(
+            client=client,
+            api_key=api_key,
+            organization=self.organization,
+            code_hash="c" * 64,
+            redirect_uri="https://chatgpt.com/aip/callback",
+            scope="diagnostics.read",
+            code_challenge="d" * 43,
+            resource="https://example.test/mcp/",
+            expires_at=timezone.now() + timedelta(minutes=5),
+        )
+
+        response = self.client.post(
+            reverse("crm-connect-hub-shvya-api"),
+            {"action": "revoke_key", "api_key_id": api_key.pk},
+        )
+        self.assertEqual(response.status_code, 302)
+        api_key.refresh_from_db()
+        token.refresh_from_db()
+        code.refresh_from_db()
+        self.assertFalse(api_key.is_active)
+        self.assertIsNotNone(token.revoked_at)
+        self.assertLessEqual(code.expires_at, timezone.now())
 
     def test_agent_cannot_configure_organization_webhook(self):
         self.authenticate(self.agent)
@@ -435,6 +491,19 @@ class ConnectHubAuthorizationTests(TestCase):
             request_fingerprint="a" * 64,
             change_summary={"result": "safe"},
         )
+        OperationsAuditEvent.objects.create(
+            actor=self.admin,
+            role="SHVYA_SUPERADMIN",
+            organization=self.organization,
+            tool_name="select_organization_context",
+            capability=CAP_ORGANIZATION_READ,
+            target_type="organization",
+            target_id=str(self.organization.id),
+            reason="Internal support-only reason: security investigation",
+            outcome=OperationsAuditEvent.Outcome.SUCCESS,
+            request_fingerprint="c" * 64,
+            change_summary={"support_context": "started"},
+        )
         other_org = Organization.objects.create(name="Other Audit Org")
         other_admin = User.objects.create_user(
             email="other-audit-admin@example.com",
@@ -467,6 +536,11 @@ class ConnectHubAuthorizationTests(TestCase):
         self.assertIn(own.tool_name, body)
         self.assertIn(str(own.id), body)
         self.assertIn("Review organization setup", body)
+        self.assertIn(
+            "SHVYA Support context started for this organization.",
+            body,
+        )
+        self.assertNotIn("Internal support-only reason", body)
         self.assertNotIn(other.tool_name, body)
         self.assertNotIn(str(other.id), body)
         self.assertNotIn("Foreign tenant activity", body)

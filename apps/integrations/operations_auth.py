@@ -6,7 +6,6 @@ import re
 import secrets
 from dataclasses import dataclass
 from datetime import timedelta
-from urllib.parse import urlparse
 
 from django.contrib.auth import BACKEND_SESSION_KEY, HASH_SESSION_KEY, SESSION_KEY, get_user_model
 from django.db import models, transaction
@@ -14,6 +13,12 @@ from django.utils import timezone
 
 from apps.accounts.session_utils import get_session_store
 from apps.organizations.access import crm_user_is_authorized, organization_is_active
+from apps.integrations.mcp_oauth_clients import (
+    MCPClientMetadataError,
+    fetch_cimd_metadata,
+    is_allowed_cimd_url,
+    is_allowed_external_ai_redirect,
+)
 from apps.integrations.operations_models import (
     OperationsAuditEvent,
     OperationsOAuthAuthorizationCode,
@@ -73,55 +78,7 @@ def pkce_s256(verifier: str) -> str:
 
 
 def _allowed_redirect(uri: str) -> bool:
-    try:
-        parsed = urlparse(str(uri or ""))
-        host = (parsed.hostname or "").lower()
-        port = parsed.port
-    except (TypeError, ValueError):
-        return False
-
-    # VS Code's remote MCP OAuth flow documents these two redirect URLs.
-    # Keep them exact instead of allowing arbitrary localhost/vscode.dev paths.
-    if (
-        parsed.scheme == "http"
-        and host == "127.0.0.1"
-        and port == 33418
-        and parsed.path in {"", "/"}
-        and not parsed.query
-        and not parsed.fragment
-        and parsed.username is None
-        and parsed.password is None
-    ):
-        return True
-    if (
-        parsed.scheme == "https"
-        and host == "vscode.dev"
-        and parsed.path == "/redirect"
-        and not parsed.query
-        and not parsed.fragment
-        and parsed.username is None
-        and parsed.password is None
-    ):
-        return True
-
-    allowed = (
-        host == "chatgpt.com"
-        or host.endswith(".chatgpt.com")
-        or host == "openai.com"
-        or host.endswith(".openai.com")
-        or host == "claude.ai"
-        or host.endswith(".claude.ai")
-        or host == "anthropic.com"
-        or host.endswith(".anthropic.com")
-    )
-    return (
-        parsed.scheme == "https"
-        and allowed
-        and port in {None, 443}
-        and not parsed.fragment
-        and parsed.username is None
-        and parsed.password is None
-    )
+    return is_allowed_external_ai_redirect(uri)
 
 
 def register_client(
@@ -170,6 +127,50 @@ def register_client(
     )
 
 
+def _resolve_oauth_client(client_id: str):
+    client_id = str(client_id or "").strip()
+    client = OperationsOAuthClient.objects.filter(
+        client_id=client_id,
+    ).first()
+    if client is not None and not client.is_active:
+        raise OperationsAuthError("OAuth client is inactive.")
+
+    if is_allowed_cimd_url(client_id):
+        try:
+            metadata = fetch_cimd_metadata(client_id)
+        except MCPClientMetadataError as exc:
+            raise OperationsAuthError(str(exc)) from exc
+        if client is None:
+            client = OperationsOAuthClient.objects.create(
+                client_id=client_id,
+                client_name=metadata["client_name"],
+                application_type=metadata["application_type"],
+                redirect_uris=metadata["redirect_uris"],
+                grant_types=metadata["grant_types"],
+                response_types=metadata["response_types"],
+            )
+        else:
+            client.client_name = metadata["client_name"]
+            client.application_type = metadata["application_type"]
+            client.redirect_uris = metadata["redirect_uris"]
+            client.grant_types = metadata["grant_types"]
+            client.response_types = metadata["response_types"]
+            client.save(
+                update_fields=[
+                    "client_name",
+                    "application_type",
+                    "redirect_uris",
+                    "grant_types",
+                    "response_types",
+                ]
+            )
+        return client
+
+    if client is None:
+        raise OperationsAuthError("Unknown OAuth client.")
+    return client
+
+
 def validate_authorization_request(
     *,
     client_id,
@@ -179,12 +180,7 @@ def validate_authorization_request(
     code_challenge_method,
     scope,
 ):
-    client = OperationsOAuthClient.objects.filter(
-        client_id=client_id,
-        is_active=True,
-    ).first()
-    if client is None:
-        raise OperationsAuthError("Unknown OAuth client.")
+    client = _resolve_oauth_client(client_id)
     if redirect_uri not in (client.redirect_uris or []):
         raise OperationsAuthError("OAuth redirect URI is not registered.")
     if response_type != "code":

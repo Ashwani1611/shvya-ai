@@ -1,7 +1,10 @@
 import json
+from datetime import timedelta
 from urllib.parse import parse_qs, urlparse
 
+from django.core.exceptions import ValidationError
 from django.test import TestCase
+from django.utils import timezone
 
 from apps.integrations.diagnostic_auth import (
     DIAGNOSTICS_SCOPE,
@@ -148,6 +151,46 @@ class DiagnosticMCPTests(TestCase):
         self.assertEqual(payload["external_id"], external_id)
         self.assertEqual(payload["safe"], "ok")
 
+    def test_tool_schema_rejects_non_object_arguments(self):
+        response = self._call(
+            "get_workspace_profile",
+            "not-an-object",
+            token=self.raw_key,
+        )
+        result = response.json()["result"]
+        self.assertTrue(result["isError"])
+        self.assertIn("must be an object", result["structuredContent"]["error"])
+
+    def test_tool_schema_rejects_unadvertised_arguments(self):
+        response = self._call(
+            "get_workspace_profile",
+            {"unexpected": "value"},
+            token=self.raw_key,
+        )
+        result = response.json()["result"]
+        self.assertTrue(result["isError"])
+        self.assertIn("unexpected field", result["structuredContent"]["error"])
+
+    def test_diagnostic_access_log_is_immutable(self):
+        response = self._call(
+            "get_workspace_profile",
+            token=self.raw_key,
+        )
+        self.assertEqual(response.status_code, 200)
+        log = DiagnosticAccessLog.objects.get(
+            organization=self.organization,
+            tool_name="get_workspace_profile",
+        )
+        log.error_code = "rewrite"
+        with self.assertRaises(ValidationError):
+            log.save(update_fields=["error_code"])
+        with self.assertRaises(ValidationError):
+            DiagnosticAccessLog.objects.filter(pk=log.pk).update(
+                error_code="bulk-rewrite"
+            )
+        with self.assertRaises(ValidationError):
+            DiagnosticAccessLog.objects.filter(pk=log.pk).delete()
+
     def test_sanitizer_redacts_inline_secret_assignments(self):
         safe = sanitize_text(
             "password=example-value api_key:example-key token=short-token "
@@ -210,6 +253,27 @@ class DiagnosticOAuthTests(TestCase):
             update_fields=["can_upsert_leads", "can_read_diagnostics"]
         )
 
+    def _call(self, name, arguments=None, token=None):
+        headers = {}
+        if token:
+            headers["HTTP_AUTHORIZATION"] = "Bearer " + token
+        return self.client.post(
+            "/mcp/",
+            data=json.dumps(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "tools/call",
+                    "params": {
+                        "name": name,
+                        "arguments": arguments or {},
+                    },
+                }
+            ),
+            content_type="application/json",
+            **headers,
+        )
+
     def _register(self):
         response = self.client.post(
             "/oauth/register",
@@ -238,6 +302,8 @@ class DiagnosticOAuthTests(TestCase):
         self.assertEqual(server.json()["code_challenge_methods_supported"], ["S256"])
         self.assertIn("refresh_token", server.json()["grant_types_supported"])
         self.assertEqual(server.json()["token_endpoint_auth_methods_supported"], ["none"])
+        self.assertTrue(server.json()["client_id_metadata_document_supported"])
+        self.assertTrue(server.json()["revocation_endpoint"].endswith("/oauth/revoke"))
 
         client_id = self._register()
         self.assertTrue(client_id.startswith("shvya_mcp_"))
@@ -294,6 +360,7 @@ class DiagnosticOAuthTests(TestCase):
         self.assertEqual(token_response.status_code, 200)
         body = token_response.json()
         self.assertEqual(DiagnosticOAuthToken.objects.count(), 1)
+        original_refresh_expiry = DiagnosticOAuthToken.objects.get().refresh_expires_at
         self.assertIsNotNone(
             DiagnosticOAuthAuthorizationCode.objects.get().used_at
         )
@@ -323,6 +390,136 @@ class DiagnosticOAuthTests(TestCase):
         self.assertEqual(refresh.status_code, 200)
         self.assertNotEqual(refresh.json()["access_token"], body["access_token"])
         self.assertNotEqual(refresh.json()["refresh_token"], body["refresh_token"])
+        self.assertEqual(
+            DiagnosticOAuthToken.objects.get().refresh_expires_at,
+            original_refresh_expiry,
+        )
+        refreshed_body = refresh.json()
+        grant = DiagnosticOAuthToken.objects.get()
+        grant.refresh_expires_at = timezone.now() - timedelta(seconds=1)
+        grant.expires_at = timezone.now() + timedelta(hours=1)
+        grant.save(update_fields=["refresh_expires_at", "expires_at"])
+        denied = self.client.post(
+            "/mcp/",
+            data=json.dumps(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 99,
+                    "method": "tools/call",
+                    "params": {
+                        "name": "get_workspace_profile",
+                        "arguments": {},
+                    },
+                }
+            ),
+            content_type="application/json",
+            HTTP_AUTHORIZATION="Bearer " + refreshed_body["access_token"],
+        )
+        self.assertTrue(denied.json()["result"]["isError"])
+
+    def test_strict_pkce_rejects_short_challenge(self):
+        client_id = self._register()
+        response = self.client.get(
+            "/oauth/authorize",
+            {
+                "client_id": client_id,
+                "redirect_uri": self.callback,
+                "response_type": "code",
+                "code_challenge": "short",
+                "code_challenge_method": "S256",
+                "scope": DIAGNOSTICS_SCOPE,
+                "resource": "http://testserver/mcp/",
+            },
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_revocation_invalidates_diagnostic_grant(self):
+        client_id = self._register()
+        verifier = "r" * 64
+        resource = "http://testserver/mcp/"
+        authorize = self.client.post(
+            "/oauth/authorize",
+            data={
+                "client_id": client_id,
+                "redirect_uri": self.callback,
+                "response_type": "code",
+                "code_challenge": pkce_s256(verifier),
+                "code_challenge_method": "S256",
+                "scope": f"{DIAGNOSTICS_SCOPE} {OFFLINE_SCOPE}",
+                "resource": resource,
+                "diagnostic_api_key": self.raw_key,
+            },
+        )
+        code = parse_qs(urlparse(authorize["Location"]).query)["code"][0]
+        token_response = self.client.post(
+            "/oauth/token",
+            data={
+                "grant_type": "authorization_code",
+                "client_id": client_id,
+                "code": code,
+                "redirect_uri": self.callback,
+                "code_verifier": verifier,
+                "resource": resource,
+            },
+        )
+        access = token_response.json()["access_token"]
+        revoke = self.client.post("/oauth/revoke", data={"token": access})
+        self.assertEqual(revoke.status_code, 200)
+        self.assertIsNotNone(DiagnosticOAuthToken.objects.get().revoked_at)
+        denied = self._call("get_workspace_profile", token=access)
+        self.assertTrue(denied.json()["result"]["isError"])
+        self.assertTrue(
+            DiagnosticAccessLog.objects.filter(tool_name="oauth_revoke").exists()
+        )
+
+    def test_expired_api_key_invalidates_existing_oauth_grant(self):
+        client_id = self._register()
+        verifier = "e" * 64
+        resource = "http://testserver/mcp/"
+        authorize = self.client.post(
+            "/oauth/authorize",
+            data={
+                "client_id": client_id,
+                "redirect_uri": self.callback,
+                "response_type": "code",
+                "code_challenge": pkce_s256(verifier),
+                "code_challenge_method": "S256",
+                "scope": f"{DIAGNOSTICS_SCOPE} {OFFLINE_SCOPE}",
+                "resource": resource,
+                "diagnostic_api_key": self.raw_key,
+            },
+        )
+        code = parse_qs(urlparse(authorize["Location"]).query)["code"][0]
+        token_response = self.client.post(
+            "/oauth/token",
+            data={
+                "grant_type": "authorization_code",
+                "client_id": client_id,
+                "code": code,
+                "redirect_uri": self.callback,
+                "code_verifier": verifier,
+                "resource": resource,
+            },
+        )
+        body = token_response.json()
+        self.api_key.expires_at = timezone.now() - timedelta(seconds=1)
+        self.api_key.save(update_fields=["expires_at"])
+
+        denied = self._call(
+            "get_workspace_profile",
+            token=body["access_token"],
+        )
+        self.assertTrue(denied.json()["result"]["isError"])
+        refresh = self.client.post(
+            "/oauth/token",
+            data={
+                "grant_type": "refresh_token",
+                "client_id": client_id,
+                "refresh_token": body["refresh_token"],
+                "resource": resource,
+            },
+        )
+        self.assertEqual(refresh.status_code, 400)
 
     def test_wrong_resource_does_not_mint_token(self):
         client_id = self._register()

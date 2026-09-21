@@ -6,11 +6,16 @@ import json
 import re
 import secrets
 from datetime import timedelta
-from urllib.parse import urlparse
 
-from django.db import transaction
+from django.db import models, transaction
 from django.utils import timezone
 
+from apps.integrations.mcp_oauth_clients import (
+    MCPClientMetadataError,
+    fetch_cimd_metadata,
+    is_allowed_cimd_url,
+    is_allowed_external_ai_redirect,
+)
 from apps.integrations.models import (
     DiagnosticOAuthAuthorizationCode,
     DiagnosticOAuthClient,
@@ -25,6 +30,9 @@ SUPPORTED_SCOPES = {DIAGNOSTICS_SCOPE, OFFLINE_SCOPE}
 ACCESS_TOKEN_TTL = timedelta(hours=8)
 REFRESH_TOKEN_TTL = timedelta(days=30)
 AUTH_CODE_TTL = timedelta(minutes=5)
+
+_PKCE_VERIFIER_RE = re.compile(r"^[A-Za-z0-9\-._~]{43,128}$")
+_PKCE_CHALLENGE_RE = re.compile(r"^[A-Za-z0-9_-]{43,128}$")
 
 _SECRET_KEY_PATTERN = re.compile(
     r"(token|secret|password|credential|authorization|api[_-]?key|cookie|session|"
@@ -211,10 +219,18 @@ def authenticate_bearer(raw_bearer: str):
     if oauth_token is not None:
         if oauth_token.expires_at <= now:
             raise DiagnosticAuthError("OAuth access token has expired.")
+        if oauth_token.refresh_expires_at <= now:
+            raise DiagnosticAuthError("Diagnostic OAuth grant has expired.")
+        if not oauth_token.client.is_active:
+            raise DiagnosticAuthError("OAuth client has been deactivated.")
         if not organization_is_active(oauth_token.organization):
             raise DiagnosticAuthError("Organization account is disabled.")
         if (
             not oauth_token.api_key.is_active
+            or (
+                oauth_token.api_key.expires_at
+                and oauth_token.api_key.expires_at <= now
+            )
             or not getattr(
                 oauth_token.api_key,
                 "can_read_diagnostics",
@@ -249,61 +265,83 @@ def register_oauth_client(
     response_types=None,
     application_type="web",
 ):
-    redirect_uris = [
+    raw_redirects = [
         str(item or "").strip()
         for item in (redirect_uris or [])
         if str(item or "").strip()
     ]
+    redirect_uris = list(dict.fromkeys(raw_redirects))
     if not redirect_uris:
+        raise DiagnosticAuthError("At least one redirect URI is required.")
+    if len(redirect_uris) > 8:
+        raise DiagnosticAuthError("At most 8 redirect URIs may be registered.")
+    if any(len(uri) > 2048 for uri in redirect_uris):
+        raise DiagnosticAuthError("OAuth redirect URI is too long.")
+    if any(not is_allowed_external_ai_redirect(uri) for uri in redirect_uris):
         raise DiagnosticAuthError(
-            "At least one redirect URI is required."
+            "Diagnostic MCP accepts only approved ChatGPT/OpenAI/Claude/Anthropic or exact VS Code MCP redirect URIs."
         )
 
-    for uri in redirect_uris:
-        parsed = urlparse(uri)
-        host = (parsed.hostname or "").lower()
-        allowed_host = (
-            host == "chatgpt.com"
-            or host.endswith(".chatgpt.com")
-            or host == "openai.com"
-            or host.endswith(".openai.com")
-        )
-        if parsed.scheme != "https" or not allowed_host:
-            raise DiagnosticAuthError(
-                "Only HTTPS ChatGPT/OpenAI redirect URIs are accepted."
-            )
-
-    grant_types = list(
-        grant_types or ["authorization_code", "refresh_token"]
-    )
+    grant_types = list(grant_types or ["authorization_code", "refresh_token"])
     response_types = list(response_types or ["code"])
-
-    if not set(grant_types) <= {
-        "authorization_code",
-        "refresh_token",
-    }:
+    if not set(grant_types) <= {"authorization_code", "refresh_token"}:
         raise DiagnosticAuthError("Unsupported OAuth grant type.")
     if "authorization_code" not in grant_types:
-        raise DiagnosticAuthError(
-            "authorization_code grant is required."
-        )
+        raise DiagnosticAuthError("authorization_code grant is required.")
     if set(response_types) != {"code"}:
-        raise DiagnosticAuthError(
-            "Only OAuth response_type=code is supported."
-        )
+        raise DiagnosticAuthError("Only OAuth response_type=code is supported.")
     if str(application_type or "web") not in {"web", "native"}:
-        raise DiagnosticAuthError(
-            "Unsupported OAuth application_type."
-        )
+        raise DiagnosticAuthError("Unsupported OAuth application_type.")
 
-    client = DiagnosticOAuthClient.objects.create(
+    return DiagnosticOAuthClient.objects.create(
         client_id="shvya_mcp_" + secrets.token_urlsafe(24),
-        client_name=str(client_name or "ChatGPT").strip()[:200],
+        client_name=str(client_name or "External AI").strip()[:200],
         application_type=str(application_type or "web"),
         redirect_uris=redirect_uris,
         grant_types=grant_types,
         response_types=response_types,
     )
+
+
+def _resolve_oauth_client(client_id: str):
+    client_id = str(client_id or "").strip()
+    client = DiagnosticOAuthClient.objects.filter(client_id=client_id).first()
+    if client is not None and not client.is_active:
+        raise DiagnosticAuthError("OAuth client is inactive.")
+
+    if is_allowed_cimd_url(client_id):
+        try:
+            metadata = fetch_cimd_metadata(client_id)
+        except MCPClientMetadataError as exc:
+            raise DiagnosticAuthError(str(exc)) from exc
+        if client is None:
+            client = DiagnosticOAuthClient.objects.create(
+                client_id=client_id,
+                client_name=metadata["client_name"],
+                application_type=metadata["application_type"],
+                redirect_uris=metadata["redirect_uris"],
+                grant_types=metadata["grant_types"],
+                response_types=metadata["response_types"],
+            )
+        else:
+            client.client_name = metadata["client_name"]
+            client.application_type = metadata["application_type"]
+            client.redirect_uris = metadata["redirect_uris"]
+            client.grant_types = metadata["grant_types"]
+            client.response_types = metadata["response_types"]
+            client.save(
+                update_fields=[
+                    "client_name",
+                    "application_type",
+                    "redirect_uris",
+                    "grant_types",
+                    "response_types",
+                ]
+            )
+        return client
+
+    if client is None:
+        raise DiagnosticAuthError("Unknown OAuth client.")
     return client
 
 
@@ -316,12 +354,7 @@ def validate_authorization_request(
     code_challenge_method,
     scope,
 ):
-    client = DiagnosticOAuthClient.objects.filter(
-        client_id=client_id,
-        is_active=True,
-    ).first()
-    if client is None:
-        raise DiagnosticAuthError("Unknown OAuth client.")
+    client = _resolve_oauth_client(client_id)
     if redirect_uri not in (client.redirect_uris or []):
         raise DiagnosticAuthError(
             "OAuth redirect URI is not registered."
@@ -330,8 +363,13 @@ def validate_authorization_request(
         raise DiagnosticAuthError(
             "Only response_type=code is supported."
         )
-    if not code_challenge or code_challenge_method != "S256":
-        raise DiagnosticAuthError("PKCE S256 is required.")
+    if (
+        code_challenge_method != "S256"
+        or not _PKCE_CHALLENGE_RE.fullmatch(str(code_challenge or ""))
+    ):
+        raise DiagnosticAuthError(
+            "PKCE S256 with a valid 43–128 character challenge is required."
+        )
 
     scopes = set(str(scope or "").split())
     if DIAGNOSTICS_SCOPE not in scopes:
@@ -407,12 +445,22 @@ def exchange_authorization_code(
             raise DiagnosticAuthError(
                 "OAuth redirect URI mismatch."
             )
+        if not auth_code.client.is_active:
+            raise DiagnosticAuthError("OAuth client has been deactivated.")
+        if not _PKCE_VERIFIER_RE.fullmatch(str(code_verifier or "")):
+            raise DiagnosticAuthError(
+                "PKCE verifier must be 43–128 valid unreserved characters."
+            )
         if pkce_s256(code_verifier) != auth_code.code_challenge:
             raise DiagnosticAuthError("PKCE verification failed.")
         if resource and auth_code.resource != resource:
             raise DiagnosticAuthError("OAuth resource mismatch.")
         if (
             not auth_code.api_key.is_active
+            or (
+                auth_code.api_key.expires_at
+                and auth_code.api_key.expires_at <= now
+            )
             or not getattr(
                 auth_code.api_key,
                 "can_read_diagnostics",
@@ -463,6 +511,8 @@ def refresh_access_token(
             raise DiagnosticAuthError("Invalid refresh token.")
         if oauth_token.client.client_id != client_id:
             raise DiagnosticAuthError("OAuth client mismatch.")
+        if not oauth_token.client.is_active:
+            raise DiagnosticAuthError("OAuth client has been deactivated.")
         if resource and oauth_token.resource != resource:
             raise DiagnosticAuthError("OAuth resource mismatch.")
         if oauth_token.refresh_expires_at <= now:
@@ -475,6 +525,10 @@ def refresh_access_token(
             )
         if (
             not oauth_token.api_key.is_active
+            or (
+                oauth_token.api_key.expires_at
+                and oauth_token.api_key.expires_at <= now
+            )
             or not getattr(
                 oauth_token.api_key,
                 "can_read_diagnostics",
@@ -490,16 +544,48 @@ def refresh_access_token(
         oauth_token.access_token_hash = token_hash(raw_access)
         oauth_token.refresh_token_hash = token_hash(raw_refresh)
         oauth_token.expires_at = now + ACCESS_TOKEN_TTL
-        oauth_token.refresh_expires_at = now + REFRESH_TOKEN_TTL
+        # Keep the original diagnostic grant lifetime fixed. Refresh rotation
+        # must not silently create an indefinitely renewable external credential.
         oauth_token.last_used_at = now
         oauth_token.save(
             update_fields=[
                 "access_token_hash",
                 "refresh_token_hash",
                 "expires_at",
-                "refresh_expires_at",
                 "last_used_at",
             ]
         )
 
     return oauth_token, raw_access, raw_refresh
+
+
+def revoke_token_record(*, token):
+    with transaction.atomic():
+        locked = (
+            DiagnosticOAuthToken.objects.select_for_update()
+            .filter(pk=token.pk)
+            .first()
+        )
+        if locked is None or locked.revoked_at is not None:
+            return None
+        locked.revoked_at = timezone.now()
+        locked.save(update_fields=["revoked_at", "updated_at"])
+        return locked
+
+
+def revoke_token(*, raw_token: str):
+    raw_token = str(raw_token or "").strip()
+    if not raw_token:
+        raise DiagnosticAuthError("Missing token.")
+    hashed = token_hash(raw_token)
+    token = (
+        DiagnosticOAuthToken.objects.filter(revoked_at__isnull=True)
+        .filter(
+            models.Q(access_token_hash=hashed)
+            | models.Q(refresh_token_hash=hashed)
+        )
+        .first()
+    )
+    if token is None:
+        return None
+    return revoke_token_record(token=token)

@@ -22,7 +22,7 @@ Operations OAuth uses PKCE S256. Access and refresh values are stored only as ha
 
 ## VS Code connection
 
-VS Code can connect to the remote Streamable HTTP endpoint at `/operations/mcp/` and use the same actor-bound OAuth flow. The server supports Dynamic Client Registration and the exact redirect URLs required by VS Code's MCP OAuth flow.
+VS Code can connect to the remote Streamable HTTP endpoint at `/operations/mcp/` and use the same actor-bound OAuth flow. For MCP 2026-07-28 clients, SHVYA advertises Client ID Metadata Documents (CIMD) as the preferred public-client registration path and keeps Dynamic Client Registration as a backward-compatible fallback. The exact VS Code MCP redirect URLs remain enforced.
 
 A typical VS Code MCP configuration points an HTTP server entry at the deployed `https://<host>/operations/mcp/` URL. Authentication is completed in the browser and still resolves to either the authenticated SHVYA Superadmin role or an enabled Organization Admin role; VS Code itself never receives additional SHVYA authority.
 
@@ -175,7 +175,7 @@ The audit stores bounded metadata:
 
 It does not store raw OAuth tokens, provider credentials, raw tool arguments, full conversations or hidden model reasoning.
 
-Organization audit reads are always limited to the explicitly active tenant. SHVYA Superadmin can separately request `scope=platform` to review only tenantless platform/OAuth lifecycle events (`organization IS NULL`); that scope never aggregates customer organization audit rows.
+Organization audit reads are always limited to the explicitly active tenant. Organization-facing audit views replace internal Superadmin support-context reasons with fixed customer-safe wording while retaining the immutable internal audit event for Superadmin review. SHVYA Superadmin can separately request `scope=platform` to review only tenantless platform/OAuth lifecycle events (`organization IS NULL`); that scope never aggregates customer organization audit rows.
 
 Operations audit rows are append-only at both model-instance and queryset ORM boundaries; normal `.save()`, instance `.delete()`, bulk `.update()` and queryset `.delete()` rewrites are blocked.
 
@@ -203,7 +203,10 @@ Diagnostic MCP remains:
 
 - organization/API-key scoped;
 - read-only;
-- independently revocable;
+- independently revocable at the OAuth grant or underlying API-key boundary;
+- protected by strict PKCE S256 validation, fixed refresh-grant lifetime and hashed access/refresh material;
+- CIMD-capable with DCR fallback for compatible External AI clients;
+- audited through immutable tenant-scoped access-log metadata;
 - suitable for troubleshooting without CRM mutation authority.
 
 Operations MCP is a separate authorization, policy, support-context and audit boundary.

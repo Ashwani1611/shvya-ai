@@ -21,6 +21,10 @@ from apps.integrations.diagnostic_auth import (
     sanitize_data,
     sanitize_text,
 )
+from apps.integrations.mcp_schema import (
+    MCPInputValidationError,
+    validate_mcp_arguments,
+)
 from apps.integrations.models import (
     OperationsAuditEvent,
     OperationsOAuthAuthorizationCode,
@@ -746,6 +750,10 @@ for definition in DIAGNOSTIC_TOOL_DEFINITIONS:
 
 TOOL_DEFINITIONS = OWN_TOOL_DEFINITIONS + DIAGNOSTIC_DEFINITIONS
 KNOWN_TOOLS = {item["name"] for item in TOOL_DEFINITIONS}
+TOOL_INPUT_SCHEMAS = {
+    item["name"]: item.get("inputSchema") or {"type": "object"}
+    for item in TOOL_DEFINITIONS
+}
 
 TOOL_CAPABILITIES = {
     "get_operations_context": None,
@@ -870,6 +878,7 @@ def operations_oauth_server_metadata(request):
             "grant_types_supported": ["authorization_code", "refresh_token"],
             "code_challenge_methods_supported": ["S256"],
             "token_endpoint_auth_methods_supported": ["none"],
+            "client_id_metadata_document_supported": True,
             "scopes_supported": [
                 OPERATIONS_READ_SCOPE,
                 OPERATIONS_WRITE_SCOPE,
@@ -1653,11 +1662,9 @@ def operations_mcp(request):
         )
 
     tool_name = str(params.get("name") or "")
-    arguments = (
-        params.get("arguments")
-        if isinstance(params.get("arguments"), dict)
-        else {}
-    )
+    raw_arguments = params.get("arguments", {})
+    arguments_are_object = isinstance(raw_arguments, dict)
+    arguments = raw_arguments if arguments_are_object else {}
     if tool_name not in KNOWN_TOOLS:
         return JsonResponse(
             _jsonrpc_error(
@@ -1699,6 +1706,17 @@ def operations_mcp(request):
         audit_outcome = None
         error_reason = ""
         try:
+            try:
+                if not arguments_are_object:
+                    raise MCPInputValidationError(
+                        "arguments: must be an object"
+                    )
+                validate_mcp_arguments(
+                    arguments,
+                    TOOL_INPUT_SCHEMAS[tool_name],
+                )
+            except MCPInputValidationError as exc:
+                raise OperationsToolError(str(exc)) from exc
             execution = execute_operations_tool(
                 name=tool_name,
                 identity=identity,

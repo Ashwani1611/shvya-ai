@@ -27,6 +27,7 @@ from apps.integrations.diagnostic_auth import (
     issue_authorization_code,
     refresh_access_token,
     register_oauth_client,
+    revoke_token,
     request_fingerprint,
     sanitize_data,
     sanitize_text,
@@ -35,6 +36,10 @@ from apps.integrations.diagnostic_auth import (
 from apps.integrations.diagnostic_tools import (
     DiagnosticToolError,
     execute_tool,
+)
+from apps.integrations.mcp_schema import (
+    MCPInputValidationError,
+    validate_mcp_arguments,
 )
 from apps.integrations.models import DiagnosticAccessLog
 
@@ -45,6 +50,8 @@ SERVER_INFO = {
     "name": "shvya-diagnostics",
     "version": "1.0.0",
 }
+OAUTH_MAX_BODY_BYTES = 32 * 1024
+OAUTH_MAX_STATE_LENGTH = 1024
 
 OAUTH_SCHEMES = [
     {
@@ -353,6 +360,12 @@ TOOL_DEFINITIONS = [
     },
 ]
 
+TOOL_INPUT_SCHEMAS = {
+    item["name"]: item.get("inputSchema") or {"type": "object"}
+    for item in TOOL_DEFINITIONS
+}
+
+
 for _tool in TOOL_DEFINITIONS:
     _tool.setdefault(
         "annotations",
@@ -366,6 +379,29 @@ for _tool in TOOL_DEFINITIONS:
         "securitySchemes",
         OAUTH_SCHEMES,
     )
+
+
+def _oauth_request_too_large(request):
+    raw = str(request.META.get("CONTENT_LENGTH") or "").strip()
+    if not raw:
+        return False
+    try:
+        return int(raw) > OAUTH_MAX_BODY_BYTES
+    except (TypeError, ValueError):
+        return True
+
+
+def _oauth_too_large_response():
+    response = JsonResponse(
+        {
+            "error": "invalid_request",
+            "error_description": "OAuth request body is too large.",
+        },
+        status=413,
+    )
+    response["Cache-Control"] = "no-store"
+    response["Pragma"] = "no-cache"
+    return response
 
 
 def _issuer(request):
@@ -642,6 +678,11 @@ def diagnostic_oauth_server_metadata(
                     )
                 )
             ),
+            "revocation_endpoint": request.build_absolute_uri(
+                reverse("shvya-diagnostic-oauth-revoke")
+            ),
+            "revocation_endpoint_auth_methods_supported": ["none"],
+            "client_id_metadata_document_supported": True,
             "response_types_supported": [
                 "code"
             ],
@@ -673,6 +714,8 @@ def diagnostic_oauth_server_metadata(
 def diagnostic_oauth_register(
     request,
 ):
+    if _oauth_request_too_large(request):
+        return _oauth_too_large_response()
     try:
         payload = json.loads(
             request.body.decode("utf-8")
@@ -827,10 +870,14 @@ def _authorization_fields(request):
 def diagnostic_oauth_authorize(
     request,
 ):
+    if request.method == "POST" and _oauth_request_too_large(request):
+        return _oauth_too_large_response()
     fields = _authorization_fields(
         request
     )
     try:
+        if len(str(fields["state"] or "")) > OAUTH_MAX_STATE_LENGTH:
+            raise DiagnosticAuthError("OAuth state is too long.")
         client = (
             validate_authorization_request(
                 client_id=fields[
@@ -964,6 +1011,8 @@ def diagnostic_oauth_authorize(
 def diagnostic_oauth_token(
     request,
 ):
+    if _oauth_request_too_large(request):
+        return _oauth_too_large_response()
     grant_type = request.POST.get(
         "grant_type",
         "",
@@ -1069,6 +1118,60 @@ def diagnostic_oauth_token(
             ),
         }
     )
+    response["Cache-Control"] = "no-store"
+    response["Pragma"] = "no-cache"
+    return response
+
+
+@csrf_exempt
+@ratelimit(limit=60, window=60)
+@require_POST
+def diagnostic_oauth_revoke(request):
+    if _oauth_request_too_large(request):
+        return _oauth_too_large_response()
+    raw_token = str(request.POST.get("token") or "").strip()
+    if not raw_token:
+        response = JsonResponse(
+            {
+                "error": "invalid_request",
+                "error_description": "token is required.",
+            },
+            status=400,
+        )
+        response["Cache-Control"] = "no-store"
+        response["Pragma"] = "no-cache"
+        return response
+
+    try:
+        revoked = revoke_token(raw_token=raw_token)
+    except DiagnosticAuthError as exc:
+        response = JsonResponse(
+            {
+                "error": "invalid_request",
+                "error_description": sanitize_text(exc, limit=200),
+            },
+            status=400,
+        )
+        response["Cache-Control"] = "no-store"
+        response["Pragma"] = "no-cache"
+        return response
+
+    if revoked is not None:
+        DiagnosticAccessLog.objects.create(
+            organization=revoked.organization,
+            api_key=revoked.api_key,
+            oauth_client_id=revoked.client.client_id,
+            tool_name="oauth_revoke",
+            outcome=DiagnosticAccessLog.Outcome.SUCCESS,
+            auth_type=DiagnosticAccessLog.AuthType.OAUTH,
+            request_fingerprint=request_fingerprint(
+                {"event": "oauth_revoke", "token_id": str(revoked.id)}
+            ),
+            duration_ms=0,
+            error_code="",
+        )
+
+    response = HttpResponse(status=200)
     response["Cache-Control"] = "no-store"
     response["Pragma"] = "no-cache"
     return response
@@ -1277,14 +1380,9 @@ def diagnostic_mcp(request):
     tool_name = str(
         params.get("name") or ""
     )
-    arguments = (
-        params.get("arguments")
-        if isinstance(
-            params.get("arguments"),
-            dict,
-        )
-        else {}
-    )
+    raw_arguments = params.get("arguments", {})
+    arguments_are_object = isinstance(raw_arguments, dict)
+    arguments = raw_arguments if arguments_are_object else {}
 
     known_tools = {
         item["name"]
@@ -1349,6 +1447,17 @@ def diagnostic_mcp(request):
     error_code = ""
 
     try:
+        try:
+            if not arguments_are_object:
+                raise MCPInputValidationError(
+                    "arguments: must be an object"
+                )
+            validate_mcp_arguments(
+                arguments,
+                TOOL_INPUT_SCHEMAS[tool_name],
+            )
+        except MCPInputValidationError as exc:
+            raise DiagnosticToolError(str(exc)) from exc
         data = execute_tool(
             name=tool_name,
             organization=organization,

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from django.contrib import messages
+from django.db import transaction
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
+from django.utils import timezone
 
 from apps.crm.authentication import crm_login_required
 from apps.integrations.access import connect_hub_admin_required
@@ -326,13 +328,32 @@ def shvya_api_view(request):
             return redirect("crm-connect-hub-shvya-api")
 
         if action == "revoke_key":
+            from apps.integrations.models import (
+                DiagnosticOAuthAuthorizationCode,
+                DiagnosticOAuthToken,
+            )
+
             api_key = get_object_or_404(
                 APIKey,
                 id=request.POST.get("api_key_id"),
                 organization=organization,
             )
-            api_key.is_active = False
-            api_key.save(update_fields=["is_active"])
+            now = timezone.now()
+            with transaction.atomic():
+                api_key.is_active = False
+                api_key.save(update_fields=["is_active"])
+                DiagnosticOAuthToken.objects.filter(
+                    api_key=api_key,
+                    revoked_at__isnull=True,
+                ).update(
+                    revoked_at=now,
+                    updated_at=now,
+                )
+                DiagnosticOAuthAuthorizationCode.objects.filter(
+                    api_key=api_key,
+                    used_at__isnull=True,
+                    expires_at__gt=now,
+                ).update(expires_at=now)
             messages.success(request, f"API key '{api_key.name}' revoked.")
             return redirect("crm-connect-hub-shvya-api")
 
@@ -428,6 +449,7 @@ def shvya_api_view(request):
         OperationsOAuthToken,
     )
     from apps.integrations.operations_auth import operations_grant_status
+    from apps.integrations.operations_audit import organization_visible_audit_reason
     from apps.integrations.operations_presence import (
         open_support_sessions,
         support_session_recently_active,
@@ -490,8 +512,8 @@ def shvya_api_view(request):
         if operations_audit_visible
         else []
     )
-
-    from django.utils import timezone
+    for event in operations_audit_events:
+        event.organization_visible_reason = organization_visible_audit_reason(event)
 
     active_operations_tokens = list(
         OperationsOAuthToken.objects.filter(
