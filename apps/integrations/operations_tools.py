@@ -723,17 +723,37 @@ def _safe_url_host(value):
     return (parsed.hostname or "").lower()[:255]
 
 
+def _safe_knowledge_name(value, *, url=""):
+    text = str(value or "").strip()
+    parsed = None
+    try:
+        parsed = urlparse(text)
+    except (TypeError, ValueError):
+        parsed = None
+    if parsed and parsed.scheme in {"http", "https"} and parsed.hostname:
+        return parsed.hostname.lower()[:255]
+    if url and text == str(url).strip():
+        return _safe_url_host(url)
+    return sanitize_text(
+        text,
+        limit=255,
+        redact_long=False,
+    )
+
+
 def _knowledge_health(*, organization, limit=50):
     limit = max(1, min(int(limit or 50), 100))
+    source_qs = KnowledgeSource.objects.filter(
+        organization=organization,
+    )
+    document_qs = Document.objects.filter(
+        organization=organization,
+    )
     sources = list(
-        KnowledgeSource.objects.filter(
-            organization=organization,
-        ).order_by("-updated_at")[:limit]
+        source_qs.order_by("-updated_at")[:limit]
     )
     documents = list(
-        Document.objects.filter(
-            organization=organization,
-        )
+        document_qs
         .annotate(
             chunk_count=Count("chunks", distinct=True),
             embedded_chunk_count=Count(
@@ -753,34 +773,29 @@ def _knowledge_health(*, organization, limit=50):
         .order_by("-updated_at", "-version")[:limit]
     )
 
-    active_completed = sum(
-        1
-        for item in documents
-        if (
-            item.is_active
-            and item.processing_status
-            == Document.ProcessingStatus.COMPLETED
-        )
+    active_completed = document_qs.filter(
+        is_active=True,
+        processing_status=Document.ProcessingStatus.COMPLETED,
+    ).count()
+    failed = document_qs.filter(
+        processing_status=Document.ProcessingStatus.FAILED,
+    ).count()
+    active_chunk_qs = Chunk.objects.filter(
+        organization=organization,
+        document__organization=organization,
+        document__is_active=True,
+        document__processing_status=Document.ProcessingStatus.COMPLETED,
+        is_active=True,
     )
-    failed = sum(
-        1
-        for item in documents
-        if item.processing_status
-        == Document.ProcessingStatus.FAILED
-    )
-    embedded_active_chunks = sum(
-        int(getattr(item, "embedded_chunk_count", 0) or 0)
-        for item in documents
-        if item.is_active
-    )
-    active_chunks = sum(
-        int(getattr(item, "active_chunk_count", 0) or 0)
-        for item in documents
-        if item.is_active
-    )
+    active_chunks = active_chunk_qs.count()
+    embedded_active_chunks = active_chunk_qs.filter(
+        embedding__isnull=False,
+    ).count()
 
     return {
         "summary": {
+            "source_count": source_qs.count(),
+            "document_count": document_qs.count(),
             "sources_returned": len(sources),
             "documents_returned": len(documents),
             "active_completed_documents": active_completed,
@@ -800,10 +815,9 @@ def _knowledge_health(*, organization, limit=50):
             {
                 "id": str(source.id),
                 "source_type": source.source_type,
-                "name": sanitize_text(
+                "name": _safe_knowledge_name(
                     source.name,
-                    limit=255,
-                    redact_long=False,
+                    url=source.url,
                 ),
                 "url_host": (
                     _safe_url_host(source.url)
@@ -820,10 +834,9 @@ def _knowledge_health(*, organization, limit=50):
         "documents": [
             {
                 "id": str(document.id),
-                "name": sanitize_text(
+                "name": _safe_knowledge_name(
                     document.name,
-                    limit=255,
-                    redact_long=False,
+                    url=document.source_url,
                 ),
                 "version": document.version,
                 "active": document.is_active,
