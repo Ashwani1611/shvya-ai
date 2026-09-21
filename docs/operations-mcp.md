@@ -4,7 +4,7 @@
 
 ## Purpose
 
-SHVYA Operations MCP lets an authorized external AI client such as ChatGPT or Claude inspect, diagnose, propose and, where explicitly permitted, apply bounded SHVYA changes.
+SHVYA Operations MCP lets an authorized external AI client such as ChatGPT, Claude, or VS Code inspect, diagnose, propose and, where explicitly permitted, apply bounded SHVYA changes.
 
 The backend remains authoritative. The external AI never grants itself a role, tenant, capability or approval.
 
@@ -17,7 +17,13 @@ The backend remains authoritative. The external AI never grants itself a role, t
 - Protected-resource metadata: `/operations/.well-known/oauth-protected-resource`
 - Authorization-server metadata: `/.well-known/oauth-authorization-server/operations`
 
-Operations OAuth uses PKCE S256. Access and refresh values are stored only as hashes. Public client redirect URIs are restricted to HTTPS ChatGPT/OpenAI and Claude/Anthropic hosts.
+Operations OAuth uses PKCE S256. Access and refresh values are stored only as hashes. Public client redirect URIs are restricted to HTTPS ChatGPT/OpenAI and Claude/Anthropic hosts plus the exact VS Code MCP callbacks `http://127.0.0.1:33418` and `https://vscode.dev/redirect`. Arbitrary localhost ports/hosts and arbitrary `vscode.dev` paths are rejected.
+
+## VS Code connection
+
+VS Code can connect to the remote Streamable HTTP endpoint at `/operations/mcp/` and use the same actor-bound OAuth flow. The server supports Dynamic Client Registration and the exact redirect URLs required by VS Code's MCP OAuth flow.
+
+A typical VS Code MCP configuration points an HTTP server entry at the deployed `https://<host>/operations/mcp/` URL. Authentication is completed in the browser and still resolves to either the authenticated SHVYA Superadmin role or an enabled Organization Admin role; VS Code itself never receives additional SHVYA authority.
 
 ## Authorization model
 
