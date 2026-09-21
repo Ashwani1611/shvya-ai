@@ -3525,16 +3525,37 @@ def get_conversion_analysis(*, identity, arguments):
             ]
         )
 
-        qualified_activity = LeadActivity.objects.filter(
-            organization=organization,
-            lead_id__in=created.values("id"),
-            topic__in=[
-                LeadActivity.Topic.STAGE_CHANGED,
-                LeadActivity.Topic.PIPELINE_CHANGED,
-            ],
-            created_at__gte=start_at,
-            created_at__lt=end_at,
-            new_stage_name__iexact="Qualified",
+        qualified_activity = (
+            LeadActivity.objects.filter(
+                organization=organization,
+                lead_id__in=created.values("id"),
+                topic__in=[
+                    LeadActivity.Topic.STAGE_CHANGED,
+                    LeadActivity.Topic.PIPELINE_CHANGED,
+                ],
+                created_at__gte=start_at,
+                created_at__lt=end_at,
+                new_stage_name__iexact="Qualified",
+            )
+            .filter(
+                Q(new_stage__isnull=True)
+                | Q(
+                    new_stage__pipeline__organization=organization
+                )
+            )
+            .filter(
+                Q(new_pipeline__isnull=True)
+                | Q(new_pipeline__organization=organization)
+            )
+            .filter(
+                Q(new_stage__isnull=True)
+                | Q(new_pipeline__isnull=True)
+                | Q(
+                    new_stage__pipeline_id=F(
+                        "new_pipeline_id"
+                    )
+                )
+            )
         )
         qualified_ids = qualified_activity.values_list(
             "lead_id",
@@ -3581,6 +3602,74 @@ def get_conversion_analysis(*, identity, arguments):
             }
             for row in source_rows
         ]
+
+        qualification_completed_count = (
+            created.filter(
+                **{
+                    "attributes___shvya_ai_qualification__qualification_status": (
+                        "completed"
+                    )
+                }
+            ).count()
+        )
+
+        qualified_by_pipeline = {
+            row["lead__pipeline_id"]: row["count"]
+            for row in (
+                qualified_activity.values(
+                    "lead__pipeline_id"
+                )
+                .annotate(
+                    count=Count(
+                        "lead_id",
+                        distinct=True,
+                    )
+                )
+            )
+        }
+
+        stage_reach_qs = (
+            LeadActivity.objects.filter(
+                organization=organization,
+                lead_id__in=created.values("id"),
+                topic__in=[
+                    LeadActivity.Topic.STAGE_CHANGED,
+                    LeadActivity.Topic.PIPELINE_CHANGED,
+                ],
+                created_at__gte=start_at,
+                created_at__lt=end_at,
+                new_pipeline__organization=organization,
+                new_stage__pipeline__organization=organization,
+                new_stage__pipeline_id=F(
+                    "new_pipeline_id"
+                ),
+            )
+            .values(
+                "new_pipeline_id",
+                "new_pipeline_name",
+                "new_stage_id",
+                "new_stage_name",
+            )
+            .annotate(
+                lead_count=Count(
+                    "lead_id",
+                    distinct=True,
+                )
+            )
+            .order_by(
+                "-lead_count",
+                "new_pipeline_name",
+                "new_stage_name",
+            )
+        )
+        stage_reach_group_count = (
+            stage_reach_qs.count()
+        )
+        stage_reach_rows = list(
+            stage_reach_qs[
+                :CONVERSION_BREAKDOWN_LIMIT
+            ]
+        )
 
         messages = (
             WhatsAppMessage.objects.filter(
@@ -3660,6 +3749,21 @@ def get_conversion_analysis(*, identity, arguments):
             completed_at__gte=start_at,
             completed_at__lt=end_at,
         ).count()
+        cadence_assignments = LeadSequenceState.objects.filter(
+            organization=organization,
+            lead_id__in=tenant_lead_ids,
+            sequence__organization=organization,
+            sequence__whatsapp_account__organization=organization,
+            assigned_at__gte=start_at,
+            assigned_at__lt=end_at,
+        )
+        cadence_assigned = cadence_assignments.count()
+        cadence_completed_from_assignments = (
+            cadence_assignments.filter(
+                completed_at__isnull=False,
+                completed_at__lt=end_at,
+            ).count()
+        )
 
         workflow_failures = (
             TriggerRun.objects.filter(
@@ -3806,6 +3910,24 @@ def get_conversion_analysis(*, identity, arguments):
                 if lead_count
                 else None
             ),
+            "qualification_completion": {
+                "completed_leads": (
+                    qualification_completed_count
+                ),
+                "completion_rate": (
+                    round(
+                        qualification_completed_count
+                        / lead_count,
+                        4,
+                    )
+                    if lead_count
+                    else None
+                ),
+                "method": (
+                    "Current persisted SHVYA qualification status for leads "
+                    "created in this comparison cohort."
+                ),
+            },
             "source_mix": sources,
             "pipeline_mix": [
                 {
@@ -3814,6 +3936,24 @@ def get_conversion_analysis(*, identity, arguments):
                     ),
                     "pipeline": row["pipeline__name"],
                     "lead_count": row["count"],
+                    "qualified_transitions": (
+                        qualified_by_pipeline.get(
+                            row["pipeline_id"],
+                            0,
+                        )
+                    ),
+                    "qualified_transition_rate": (
+                        round(
+                            qualified_by_pipeline.get(
+                                row["pipeline_id"],
+                                0,
+                            )
+                            / row["count"],
+                            4,
+                        )
+                        if row["count"]
+                        else None
+                    ),
                 }
                 for row in pipeline_rows
             ],
@@ -3828,6 +3968,50 @@ def get_conversion_analysis(*, identity, arguments):
                 }
                 for row in stage_rows
             ],
+            "stage_conversion_proxy": {
+                "method": (
+                    "Distinct leads from the created cohort that reached each "
+                    "persisted tenant-owned stage through a stage/pipeline "
+                    "transition during the comparison window."
+                ),
+                "stages": [
+                    {
+                        "pipeline_id": str(
+                            row["new_pipeline_id"]
+                        ),
+                        "pipeline": (
+                            row["new_pipeline_name"]
+                        ),
+                        "stage_id": str(
+                            row["new_stage_id"]
+                        ),
+                        "stage": (
+                            row["new_stage_name"]
+                        ),
+                        "lead_count": row["lead_count"],
+                        "reach_rate": (
+                            round(
+                                row["lead_count"]
+                                / lead_count,
+                                4,
+                            )
+                            if lead_count
+                            else None
+                        ),
+                    }
+                    for row in stage_reach_rows
+                ],
+                "stage_group_count": (
+                    stage_reach_group_count
+                ),
+                "stages_returned": len(
+                    stage_reach_rows
+                ),
+                "stages_truncated": (
+                    stage_reach_group_count
+                    > len(stage_reach_rows)
+                ),
+            },
             "breakdown_counts": {
                 "source_groups": source_group_count,
                 "source_groups_returned": len(
@@ -3900,6 +4084,19 @@ def get_conversion_analysis(*, identity, arguments):
                     else None
                 ),
                 "cadences_completed": cadence_completed,
+                "cadences_assigned": cadence_assigned,
+                "assigned_cadences_completed_by_period_end": (
+                    cadence_completed_from_assignments
+                ),
+                "assigned_cadence_completion_rate": (
+                    round(
+                        cadence_completed_from_assignments
+                        / cadence_assigned,
+                        4,
+                    )
+                    if cadence_assigned
+                    else None
+                ),
             },
             "failures": {
                 "workflow_failures": workflow_failures,
@@ -3998,6 +4195,15 @@ def get_conversion_analysis(*, identity, arguments):
             previous["qualified_transition_rate"],
         ),
         (
+            "qualification_completion_rate",
+            current["qualification_completion"][
+                "completion_rate"
+            ],
+            previous["qualification_completion"][
+                "completion_rate"
+            ],
+        ),
+        (
             "message_success_rate",
             current["messaging"]["success_rate"],
             previous["messaging"]["success_rate"],
@@ -4032,6 +4238,15 @@ def get_conversion_analysis(*, identity, arguments):
             ],
             previous["followups"][
                 "failure_or_block_rate"
+            ],
+        ),
+        (
+            "assigned_cadence_completion_rate",
+            current["followups"][
+                "assigned_cadence_completion_rate"
+            ],
+            previous["followups"][
+                "assigned_cadence_completion_rate"
             ],
         ),
         (
@@ -4511,7 +4726,17 @@ def get_conversion_analysis(*, identity, arguments):
                 (
                     "Pipeline/stage mix describes the current CRM location of leads "
                     "created in each comparison period; it is not a historical "
-                    "stage snapshot."
+                    "stage snapshot. Pipeline Qualified rates therefore use each "
+                    "lead's current pipeline as the cohort grouping."
+                ),
+                (
+                    "Qualification completion uses each cohort lead's current "
+                    "persisted qualification status. It does not reconstruct the "
+                    "status as it existed at the historical period end."
+                ),
+                (
+                    "Stage conversion is reported as a persisted stage-reach proxy "
+                    "from CRM transition activity, not as revenue conversion."
                 ),
                 (
                     "First-response metrics measure the first persisted outbound "
