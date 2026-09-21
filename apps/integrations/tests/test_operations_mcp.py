@@ -3816,6 +3816,75 @@ class OperationsMCPTests(TestCase):
             0,
         )
 
+    def test_diagnostic_lookup_inputs_are_length_bounded(self):
+        OperationsPolicy.objects.create(
+            organization=self.organization,
+            organization_admin_enabled=True,
+            allowed_capabilities=[
+                CAP_ORGANIZATION_READ,
+                CAP_DIAGNOSTICS_READ,
+            ],
+        )
+        bearer = self._token(
+            actor=self.admin,
+            role=ROLE_ORGANIZATION_ADMIN,
+            organization=self.organization,
+            scopes=[OPERATIONS_READ_SCOPE],
+        )
+        tool_list = self._list_tools(bearer)
+        definitions = {
+            item["name"]: item
+            for item in tool_list["tools"]
+        }
+        self.assertEqual(
+            definitions["find_leads"]["inputSchema"][
+                "properties"
+            ]["query"]["maxLength"],
+            255,
+        )
+        self.assertEqual(
+            definitions["trace_message"]["inputSchema"][
+                "properties"
+            ]["message_id"]["maxLength"],
+            255,
+        )
+
+        oversized = "x" * 256
+
+        lead_search = self._result(
+            self._call(
+                bearer,
+                "find_leads",
+                {"query": oversized},
+            )
+        )
+        self.assertTrue(lead_search["isError"])
+        self.assertEqual(
+            lead_search["structuredContent"]["status"],
+            "FAILED",
+        )
+        self.assertNotIn(
+            oversized,
+            json.dumps(lead_search),
+        )
+
+        message_trace = self._result(
+            self._call(
+                bearer,
+                "trace_message",
+                {"message_id": oversized},
+            )
+        )
+        self.assertTrue(message_trace["isError"])
+        self.assertEqual(
+            message_trace["structuredContent"]["status"],
+            "FAILED",
+        )
+        self.assertNotIn(
+            oversized,
+            json.dumps(message_trace),
+        )
+
     def test_bounded_diagnostic_reads_report_truncation(self):
         OperationsPolicy.objects.create(
             organization=self.organization,
@@ -4197,7 +4266,17 @@ class OperationsMCPTests(TestCase):
                 {
                     "type": opaque_secret,
                     "url": "https://example.test/private-media",
-                }
+                },
+                *[
+                    {
+                        "type": f"media-{index:02d}",
+                        "url": (
+                            "https://example.test/private-media/"
+                            f"{index:02d}"
+                        ),
+                    }
+                    for index in range(10)
+                ],
             ],
         )
         bearer = self._token(
@@ -4225,6 +4304,24 @@ class OperationsMCPTests(TestCase):
                 )
             )
             self.assertFalse(conversation["isError"])
+            instagram_row = next(
+                item
+                for item in conversation["structuredContent"][
+                    "messages"
+                ]
+                if item["channel"] == "instagram"
+            )
+            self.assertEqual(
+                instagram_row["attachment_count"],
+                11,
+            )
+            self.assertEqual(
+                instagram_row["attachment_types_returned"],
+                10,
+            )
+            self.assertTrue(
+                instagram_row["attachment_types_truncated"]
+            )
 
             wa_trace = self._result(
                 self._call(
@@ -4323,6 +4420,15 @@ class OperationsMCPTests(TestCase):
             )
         )
         self.assertFalse(result["isError"])
+        hosted_counts = result["structuredContent"][
+            "result_counts"
+        ]["hosted"]
+        self.assertGreaterEqual(hosted_counts["total"], 1)
+        self.assertEqual(
+            hosted_counts["returned"],
+            len(result["structuredContent"]["hosted"]),
+        )
+        self.assertFalse(hosted_counts["truncated"])
         hosted_rows = result["structuredContent"]["hosted"]
         row = next(
             item
