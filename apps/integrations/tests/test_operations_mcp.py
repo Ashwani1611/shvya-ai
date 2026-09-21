@@ -213,9 +213,13 @@ class OperationsMCPTests(TestCase):
         self.assertEqual(response.status_code, 200)
         return response.json()["result"]
 
-    def test_integrations_migration_graph_has_single_leaf(self):
-        conflicts = MigrationLoader(None, ignore_no_migrations=True).detect_conflicts()
+    def test_operations_related_migration_graphs_have_single_leaf(self):
+        conflicts = MigrationLoader(
+            None,
+            ignore_no_migrations=True,
+        ).detect_conflicts()
         self.assertNotIn("integrations", conflicts)
+        self.assertNotIn("channels", conflicts)
 
     def test_operations_agent_contract_is_exposed_by_mcp_discovery(self):
         response = self.client.post(
