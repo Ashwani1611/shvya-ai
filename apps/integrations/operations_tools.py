@@ -159,8 +159,14 @@ def _write_gate(*, identity, organization, capability, arguments):
             "This OAuth token does not include operations.write."
         )
 
-    dry_run = bool((arguments or {}).get("dry_run", True))
-    approved = bool((arguments or {}).get("approved", False))
+    raw_dry_run = (arguments or {}).get("dry_run", True)
+    raw_approved = (arguments or {}).get("approved", False)
+    if not isinstance(raw_dry_run, bool):
+        raise OperationsToolError("dry_run must be a JSON boolean.")
+    if not isinstance(raw_approved, bool):
+        raise OperationsToolError("approved must be a JSON boolean.")
+    dry_run = raw_dry_run
+    approved = raw_approved
     reason = _reason(arguments, required=True)
     if (
         not dry_run
@@ -490,6 +496,22 @@ def get_automation_configuration(*, identity, arguments):
         .prefetch_related("steps__whatsapp_template")
         .order_by("-updated_at")[:limit]
     )
+    for sequence in cadences:
+        if (
+            sequence.whatsapp_account_id
+            and sequence.whatsapp_account.organization_id != organization.id
+        ):
+            raise OperationsPermissionError(
+                "Cross-tenant Cadence account reference detected; no foreign data was returned."
+            )
+        for step in sequence.steps.all():
+            if (
+                step.whatsapp_template_id
+                and step.whatsapp_template.organization_id != organization.id
+            ):
+                raise OperationsPermissionError(
+                    "Cross-tenant Cadence template reference detected; no foreign data was returned."
+                )
 
     return ToolExecution(
         data={
