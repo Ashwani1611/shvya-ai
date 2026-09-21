@@ -8,6 +8,9 @@ from django.conf import settings
 from django.db.models import BooleanField, Case, Q, Value, When
 from django.utils import timezone
 
+from apps.ai_engagement.services.confidentiality import (
+    is_sensitive_attribute_definition,
+)
 from apps.ai_engagement.services.diagnostics import diagnose_engagement
 from apps.channels.instagram_models import (
     InstagramAccount,
@@ -15,7 +18,13 @@ from apps.channels.instagram_models import (
     InstagramWebhookDelivery,
 )
 from apps.channels.models import WhatsAppAccount, WhatsAppMessage
-from apps.crm.models import Lead, LeadCall, LeadNote, LeadReminder
+from apps.crm.models import (
+    AttributeDefinition,
+    Lead,
+    LeadCall,
+    LeadNote,
+    LeadReminder,
+)
 from apps.hosted_automation.models import HostedAutomationJob
 from apps.integrations.diagnostic_auth import sanitize_data, sanitize_text
 from apps.integrations.models import WebhookDelivery
@@ -148,6 +157,40 @@ def find_leads(*, organization, arguments):
     }
 
 
+def _safe_lead_attributes(*, organization, attributes):
+    values = attributes if isinstance(attributes, dict) else {}
+    if not values:
+        return {}
+
+    definitions = {
+        item.key: item
+        for item in AttributeDefinition.objects.filter(
+            organization=organization,
+            key__in=list(values.keys()),
+        ).only("key", "name")
+    }
+    safe = {}
+    redacted_count = 0
+    for key, value in values.items():
+        definition = definitions.get(str(key))
+        if (
+            definition is not None
+            and is_sensitive_attribute_definition(
+                {
+                    "key": definition.key,
+                    "name": definition.name,
+                }
+            )
+        ):
+            redacted_count += 1
+            continue
+        safe[str(key)] = value
+    return {
+        "values": sanitize_data(safe),
+        "sensitive_attributes_redacted": redacted_count,
+    }
+
+
 def get_lead_snapshot(*, organization, arguments):
     lead = _lead_for_org(
         organization=organization,
@@ -174,8 +217,9 @@ def get_lead_snapshot(*, organization, arguments):
     result = _safe_lead(lead)
     result.update(
         {
-            "attributes": sanitize_data(
-                lead.attributes or {}
+            "attributes": _safe_lead_attributes(
+                organization=organization,
+                attributes=lead.attributes or {},
             ),
             "notes_count": LeadNote.objects.filter(
                 lead=lead
