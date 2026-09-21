@@ -394,7 +394,16 @@ def _save_lead_section(request, page):
 
 
 def _save_scheduling_section(request, page):
-    page.timezone = (request.POST.get("timezone") or page.timezone).strip()[:64]
+    requested_timezone = (
+        request.POST.get("timezone") or page.timezone
+    ).strip()[:64]
+    try:
+        ZoneInfo(requested_timezone)
+    except ZoneInfoNotFoundError as exc:
+        raise ValidationError(
+            {"timezone": "Enter a valid IANA timezone, for example Asia/Kolkata."}
+        ) from exc
+    page.timezone = requested_timezone
     page.session_title = (
         request.POST.get("session_title") or page.session_title
     ).strip()[:80]
@@ -408,10 +417,28 @@ def _save_scheduling_section(request, page):
     ][:12]
     availability = {}
     for key in ("mon", "tue", "wed", "thu", "fri", "sat", "sun"):
+        enabled = _checkbox(request.POST, f"{key}_enabled")
+        start_value = (request.POST.get(f"{key}_start") or "09:00")[:5]
+        end_value = (request.POST.get(f"{key}_end") or "18:00")[:5]
+        try:
+            start_time = datetime.strptime(start_value, "%H:%M").time()
+            end_time = datetime.strptime(end_value, "%H:%M").time()
+        except ValueError as exc:
+            raise ValidationError(
+                {"availability": f"{key.title()} has an invalid time."}
+            ) from exc
+        if enabled and start_time >= end_time:
+            raise ValidationError(
+                {
+                    "availability": (
+                        f"{key.title()} end time must be after its start time."
+                    )
+                }
+            )
         availability[key] = {
-            "enabled": _checkbox(request.POST, f"{key}_enabled"),
-            "start": (request.POST.get(f"{key}_start") or "09:00")[:5],
-            "end": (request.POST.get(f"{key}_end") or "18:00")[:5],
+            "enabled": enabled,
+            "start": start_value,
+            "end": end_value,
         }
     page.availability = availability
     page.bookable_days = _int(
