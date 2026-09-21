@@ -777,6 +777,67 @@ class OperationsMCPTests(TestCase):
         pipeline.refresh_from_db()
         self.assertTrue(pipeline.ai_enabled)
 
+    def test_operations_reads_report_bounded_automation_truncation(self):
+        OperationsPolicy.objects.create(
+            organization=self.organization,
+            organization_admin_enabled=True,
+            allowed_capabilities=[CAP_ORGANIZATION_READ],
+        )
+        account = WhatsAppAccount.objects.create(
+            organization=self.organization,
+            connection_type=WhatsAppAccount.ConnectionType.API,
+            business_name="Truncation Sender",
+            display_phone_number="+919000000040",
+            status=WhatsAppAccount.Status.CONNECTED,
+            is_active=True,
+        )
+        for index in range(2):
+            SmartTrigger.objects.create(
+                organization=self.organization,
+                name=f"Bounded Workflow {index}",
+                enabled=True,
+                position=index + 1,
+                trigger_type="keyword",
+                conditions={
+                    "scopes": [],
+                    "attributes": [],
+                    "keywords": [f"word-{index}"],
+                },
+                action_type="ai",
+                action={"enabled": True},
+                fingerprint=(str(index + 4) * 64),
+                created_by=self.admin,
+            )
+            FollowupSequence.objects.create(
+                organization=self.organization,
+                created_by=self.admin,
+                name=f"Bounded Cadence {index}",
+                description="Bounded automation list test",
+                whatsapp_account=account,
+            )
+
+        bearer = self._token(
+            actor=self.admin,
+            role=ROLE_ORGANIZATION_ADMIN,
+            organization=self.organization,
+            scopes=[OPERATIONS_READ_SCOPE],
+        )
+        result = self._result(
+            self._call(
+                bearer,
+                "get_automation_configuration",
+                {"limit": 1},
+            )
+        )
+        self.assertFalse(result["isError"])
+        counts = result["structuredContent"]["counts"]
+        self.assertEqual(counts["workflow_count"], 2)
+        self.assertEqual(counts["cadence_count"], 2)
+        self.assertEqual(counts["workflows_returned"], 1)
+        self.assertEqual(counts["cadences_returned"], 1)
+        self.assertTrue(counts["workflows_truncated"])
+        self.assertTrue(counts["cadences_truncated"])
+
     def test_existing_cadence_sender_change_is_explicitly_rejected(self):
         OperationsPolicy.objects.create(
             organization=self.organization,
