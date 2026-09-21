@@ -2743,6 +2743,120 @@ document.addEventListener("DOMContentLoaded", function () {
 
 
 <!-- =========================================================
+     EXTERNAL AI OPERATIONS
+========================================================= -->
+
+<div class="bg-white border rounded-lg mb-6">
+    <div class="px-5 py-4 border-b flex items-center justify-between gap-4">
+        <div>
+            <h2 class="text-base font-semibold">External AI Operations</h2>
+            <p class="text-xs text-gray-400 mt-1">
+                Superadmin-owned policy for ChatGPT / Claude Operations MCP access.
+            </p>
+        </div>
+        {% if operations_policy.organization_admin_enabled %}
+        <span class="px-3 py-1 text-xs rounded-full bg-green-100 text-green-700">Organization Admin Enabled</span>
+        {% else %}
+        <span class="px-3 py-1 text-xs rounded-full bg-gray-100 text-gray-600">Organization Admin Disabled</span>
+        {% endif %}
+    </div>
+
+    <div class="p-5">
+        {% if active_operations_support %}
+        <div class="mb-5 rounded-lg border border-blue-200 bg-blue-50 p-4">
+            <div class="flex items-center gap-2 text-sm font-semibold text-blue-800">
+                <span class="inline-block h-2.5 w-2.5 rounded-full bg-blue-500 animate-pulse"></span>
+                SHVYA Support is currently operating in this organization
+            </div>
+            <div class="mt-2 space-y-1 text-xs text-blue-700">
+                {% for support_session in active_operations_support %}
+                <div>
+                    {{ support_session.actor.name|default:support_session.actor.email }}
+                    · Started {{ support_session.started_at|date:"d M Y, h:i A" }}
+                    {% if support_session.reason %} · {{ support_session.reason }}{% endif %}
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
+        <form method="post" action="{% url 'superadmin-organization-operations-mcp-policy' organization_id=organization.id %}">
+            {% csrf_token %}
+
+            <label class="flex items-start gap-3 rounded-lg border border-gray-200 p-4 cursor-pointer">
+                <input
+                    type="checkbox"
+                    name="organization_admin_enabled"
+                    class="mt-1 rounded border-gray-300"
+                    {% if operations_policy.organization_admin_enabled %}checked{% endif %}
+                >
+                <span>
+                    <span class="block text-sm font-medium text-gray-900">
+                        Allow Organization Admin to connect external AI Operations
+                    </span>
+                    <span class="block mt-1 text-xs leading-5 text-gray-500">
+                        Access remains limited to this organization and only to the capabilities selected below.
+                        Organization users/agents never receive Operations MCP authority.
+                    </span>
+                </span>
+            </label>
+
+            <div class="mt-5">
+                <div class="text-sm font-medium text-gray-900">Allowed capabilities</div>
+                <p class="mt-1 text-xs text-gray-500">
+                    Read access and mutation permissions are independently controlled. Backend tenant, CRM and safety rules always remain authoritative.
+                </p>
+
+                <div class="mt-3 divide-y rounded-lg border border-gray-200">
+                    {% for capability in operations_capabilities %}
+                    <div class="grid gap-3 p-4 md:grid-cols-[1fr_auto_auto] md:items-center">
+                        <div>
+                            <div class="text-sm font-medium text-gray-800">{{ capability.label }}</div>
+                            <code class="text-[11px] text-gray-400">{{ capability.key }}</code>
+                        </div>
+                        <label class="flex items-center gap-2 text-xs text-gray-600">
+                            <input
+                                type="checkbox"
+                                name="allowed_capabilities"
+                                value="{{ capability.key }}"
+                                class="rounded border-gray-300"
+                                {% if capability.allowed %}checked{% endif %}
+                            >
+                            Allow
+                        </label>
+                        <label class="flex items-center gap-2 text-xs text-gray-600">
+                            <input
+                                type="checkbox"
+                                name="approval_required_capabilities"
+                                value="{{ capability.key }}"
+                                class="rounded border-gray-300"
+                                {% if capability.approval_required %}checked{% endif %}
+                            >
+                            Approval required
+                        </label>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <div class="mt-5 flex items-center justify-between gap-4 rounded-lg bg-gray-50 p-4">
+                <p class="text-xs leading-5 text-gray-500">
+                    Every Operations tool call is audited. Customer-state mutations use dry-run, explicit reason,
+                    approval when configured, canonical SHVYA services, and post-write verification.
+                </p>
+                <button
+                    type="submit"
+                    class="shrink-0 px-4 py-2 text-xs font-medium rounded-md bg-indigo-600 text-white hover:bg-indigo-700"
+                >
+                    Save Operations Policy
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+
+<!-- =========================================================
      NEXT STEPS NOTICE
 ========================================================= -->
 
