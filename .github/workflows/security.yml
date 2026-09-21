@@ -19,6 +19,7 @@ on:
       - "whatsapp_web_gateway/package-lock.json"
       - "whatsapp_web_gateway/Dockerfile"
       - ".github/workflows/security.yml"
+      - "scripts/ci_change_plan.py"
   workflow_dispatch:
 
 permissions:
