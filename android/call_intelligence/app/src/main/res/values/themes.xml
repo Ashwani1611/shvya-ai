@@ -1,0 +1,9 @@
+<resources>
+    <style name="Theme.ShvyaCallIntelligence" parent="Theme.AppCompat.Light.NoActionBar">
+        <item name="android:fontFamily">sans</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:statusBarColor">@color/shvya_background</item>
+        <item name="android:navigationBarColor">@color/shvya_background</item>
+        <item name="android:colorAccent">@color/shvya_blue</item>
+    </style>
+</resources>

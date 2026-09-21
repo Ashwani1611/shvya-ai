@@ -39,6 +39,21 @@ NAV_ITEMS = [
         ],
     },
     {
+        "label": "CALL INTELLIGENCE",
+        "icon": "ti-phone-call",
+        "url_name": "call-intelligence-dashboard",
+        "path_prefix": "/dashboard/call-intelligence/",
+        "section": "workspace",
+        "search_keywords": [
+            "calls",
+            "call intelligence",
+            "android",
+            "phone",
+            "missed calls",
+            "call tracker",
+        ],
+    },
+    {
         "label": "Cadence",
         "icon": "ti-camera-plus",
         "path_prefix": "/dashboard/cadence/",

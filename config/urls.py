@@ -77,6 +77,14 @@ urlpatterns = [
     ),
 
     # =========================================================
+    # Call Intelligence API — Android internal employee companion
+    # =========================================================
+    path(
+        "api/v1/call-intelligence/",
+        include("apps.calls.urls.api_v1"),
+    ),
+
+    # =========================================================
     # CRM API
     # =========================================================
     path(
@@ -133,6 +141,14 @@ urlpatterns = [
     path(
         "dashboard/sales/",
         include("apps.sales.urls"),
+    ),
+
+    # =========================================================
+    # Call Intelligence — internal Android employee companion
+    # =========================================================
+    path(
+        "dashboard/call-intelligence/",
+        include("apps.calls.urls.web"),
     ),
 
     # =========================================================
