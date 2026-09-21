@@ -2396,13 +2396,9 @@ def update_lead_attributes(*, identity, arguments):
                     "Operations MCP will not write it."
                 )
 
-            locked_values = _validated_lead_attribute_values(
-                definitions=current_definitions,
-                values=values,
-            )
             current_definition_snapshot = _attribute_schema_snapshot(
                 definitions=current_definitions,
-                keys=locked_values,
+                keys=values,
             )
             locked_before = {
                 key: (lead.attributes or {}).get(key)
@@ -2412,11 +2408,15 @@ def update_lead_attributes(*, identity, arguments):
                 "lead_id": str(lead.id),
                 "definitions": current_definition_snapshot,
                 "before": locked_before,
-                "after": locked_values,
+                "after": values,
             }
             _ensure_approved_proposal_unchanged(
                 arguments=arguments,
                 proposal=locked_proposal,
+            )
+            locked_values = _validated_lead_attribute_values(
+                definitions=current_definitions,
+                values=values,
             )
 
             update_lead_attribute_values(
