@@ -27,6 +27,7 @@ from apps.integrations.operations_auth import (
     token_hash,
 )
 from apps.integrations.operations_policy import (
+    CAP_AI_CONFIG_WRITE,
     CAP_CRM_CONFIG_WRITE,
     CAP_DIAGNOSTICS_READ,
     CAP_LEAD_STAGE_WRITE,
@@ -473,6 +474,68 @@ class OperationsMCPTests(TestCase):
             OperationsPolicy.objects.filter(
                 organization=self.organization,
             ).exists()
+        )
+
+    def test_operations_ai_configuration_rejects_secret_like_content(self):
+        OperationsPolicy.objects.create(
+            organization=self.organization,
+            organization_admin_enabled=True,
+            allowed_capabilities=[
+                CAP_ORGANIZATION_READ,
+                CAP_AI_CONFIG_WRITE,
+            ],
+            approval_required_capabilities=[],
+        )
+        bearer = self._token(
+            actor=self.admin,
+            role=ROLE_ORGANIZATION_ADMIN,
+            organization=self.organization,
+        )
+
+        blocked = self._result(
+            self._call(
+                bearer,
+                "update_ai_configuration",
+                {
+                    "changes": {
+                        "ai_playbook": (
+                            "Qualification rules. password: super-secret-value"
+                        ),
+                    },
+                    "reason": "Attempt unsafe AI configuration",
+                    "dry_run": True,
+                },
+            )
+        )
+        self.assertTrue(blocked["isError"])
+        self.assertEqual(
+            blocked["structuredContent"]["status"],
+            "NOT_ALLOWED",
+        )
+        self.assertFalse(
+            OrgInfo.objects.filter(organization=self.organization).exists()
+        )
+
+        allowed = self._result(
+            self._call(
+                bearer,
+                "update_ai_configuration",
+                {
+                    "changes": {
+                        "ai_playbook": (
+                            "Ask only the configured qualification questions "
+                            "and never request credentials."
+                        ),
+                    },
+                    "reason": "Review safe AI configuration",
+                    "dry_run": True,
+                },
+            )
+        )
+        self.assertFalse(allowed["isError"])
+        self.assertEqual(
+            allowed["structuredContent"]["status"],
+            "DRY_RUN",
         )
 
     def test_ai_configuration_dry_run_does_not_create_org_info(self):
