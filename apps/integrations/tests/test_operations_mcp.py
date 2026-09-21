@@ -2418,6 +2418,66 @@ class OperationsMCPTests(TestCase):
             json.dumps(recent["structuredContent"]),
         )
 
+    def test_conversation_diagnostics_redact_customer_secret_patterns(self):
+        OperationsPolicy.objects.create(
+            organization=self.organization,
+            organization_admin_enabled=True,
+            allowed_capabilities=[
+                CAP_ORGANIZATION_READ,
+                CAP_DIAGNOSTICS_READ,
+            ],
+        )
+        account = WhatsAppAccount.objects.create(
+            organization=self.organization,
+            connection_type=WhatsAppAccount.ConnectionType.API,
+            business_name="Conversation Privacy Sender",
+            display_phone_number="+919000000060",
+            phone_number_id="conversation-privacy-sender",
+            status=WhatsAppAccount.Status.CONNECTED,
+            is_active=True,
+        )
+        opaque_secret = "Z" * 64
+        WhatsAppMessage.objects.create(
+            organization=self.organization,
+            account=account,
+            lead=self.lead,
+            external_id="conversation-secret-message",
+            direction=WhatsAppMessage.Direction.INBOUND,
+            status=WhatsAppMessage.Status.RECEIVED,
+            message_type=WhatsAppMessage.MessageType.TEXT,
+            from_number="+919100000060",
+            to_number="+919000000060",
+            body=(
+                "Normal customer question. "
+                "password: customer-password-secret "
+                + opaque_secret
+            ),
+        )
+        bearer = self._token(
+            actor=self.admin,
+            role=ROLE_ORGANIZATION_ADMIN,
+            organization=self.organization,
+            scopes=[OPERATIONS_READ_SCOPE],
+        )
+
+        result = self._result(
+            self._call(
+                bearer,
+                "get_conversation",
+                {
+                    "lead_id": str(self.lead.id),
+                    "channel": "whatsapp",
+                    "limit": 10,
+                },
+            )
+        )
+        self.assertFalse(result["isError"])
+        payload = json.dumps(result["structuredContent"])
+        self.assertIn("Normal customer question.", payload)
+        self.assertIn("password=[REDACTED]", payload)
+        self.assertNotIn("customer-password-secret", payload)
+        self.assertNotIn(opaque_secret, payload)
+
     def test_trace_message_bounds_hosted_job_internal_details(self):
         OperationsPolicy.objects.create(
             organization=self.organization,
