@@ -23,6 +23,7 @@ from apps.channels.instagram_models import InstagramAccount, InstagramWebhookDel
 from apps.channels.models import WhatsAppAccount, WhatsAppMessage
 from apps.crm.models import AttributeDefinition, Lead, LeadActivity, Pipeline, Stage
 from apps.followups.models import FollowupSequence, FollowupStep
+from apps.integrations.diagnostic_auth import sanitize_data
 from apps.integrations.operations_agent_prompt import OPERATIONS_AGENT_INSTRUCTIONS
 from apps.integrations.operations_approval import approval_fingerprint
 from apps.integrations.models import (
@@ -2580,6 +2581,39 @@ class OperationsMCPTests(TestCase):
                 "instagram_ai_auto_reply_runtime"
             ]
         )
+
+    def test_sanitizer_preserves_status_metadata_but_redacts_secret_values(self):
+        cleaned = sanitize_data(
+            {
+                "credential_present": True,
+                "credential_expired": False,
+                "token_expires_at": "2026-09-22T10:00:00+00:00",
+                "token_refreshed_at": "2026-09-20T10:00:00+00:00",
+                "has_credential": True,
+                "access_token": "actual-access-token-secret",
+                "refresh_token": "actual-refresh-token-secret",
+                "credential": "actual-credential-secret",
+                "password": "actual-password-secret",
+            }
+        )
+        self.assertIs(cleaned["credential_present"], True)
+        self.assertIs(cleaned["credential_expired"], False)
+        self.assertEqual(
+            cleaned["token_expires_at"],
+            "2026-09-22T10:00:00+00:00",
+        )
+        self.assertEqual(
+            cleaned["token_refreshed_at"],
+            "2026-09-20T10:00:00+00:00",
+        )
+        self.assertIs(cleaned["has_credential"], True)
+        for key in (
+            "access_token",
+            "refresh_token",
+            "credential",
+            "password",
+        ):
+            self.assertEqual(cleaned[key], "[REDACTED]")
 
     def test_integration_health_never_decrypts_provider_credentials(self):
         OperationsPolicy.objects.create(
