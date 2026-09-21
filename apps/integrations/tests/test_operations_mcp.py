@@ -2215,6 +2215,57 @@ class OperationsMCPTests(TestCase):
             ).exists()
         )
 
+    def test_operations_ai_configuration_obeys_canonical_playbook_validator(self):
+        OperationsPolicy.objects.create(
+            organization=self.organization,
+            organization_admin_enabled=True,
+            allowed_capabilities=[
+                CAP_ORGANIZATION_READ,
+                CAP_AI_CONFIG_WRITE,
+            ],
+            approval_required_capabilities=[],
+        )
+        bearer = self._token(
+            actor=self.admin,
+            role=ROLE_ORGANIZATION_ADMIN,
+            organization=self.organization,
+        )
+
+        with patch(
+            "apps.integrations.operations_tools.validate_playbook",
+            side_effect=ValueError(
+                "Canonical Playbook validation rejected this configuration."
+            ),
+        ):
+            rejected = self._result(
+                self._call(
+                    bearer,
+                    "update_ai_configuration",
+                    {
+                        "changes": {
+                            "ai_playbook": "## Qualification Questions\nQ1. Invalid fixture",
+                        },
+                        "reason": "Validate proposed Playbook",
+                        "dry_run": True,
+                    },
+                )
+            )
+
+        self.assertTrue(rejected["isError"])
+        self.assertEqual(
+            rejected["structuredContent"]["status"],
+            "FAILED",
+        )
+        self.assertIn(
+            "Canonical Playbook validation rejected",
+            rejected["structuredContent"]["error"],
+        )
+        self.assertFalse(
+            OrgInfo.objects.filter(
+                organization=self.organization
+            ).exists()
+        )
+
     def test_operations_ai_configuration_rejects_secret_like_content(self):
         OperationsPolicy.objects.create(
             organization=self.organization,
