@@ -145,6 +145,18 @@ class MainActivity : AppCompatActivity() {
         root.addView(space(10))
         root.addView(battery)
 
+        val workspace = secondaryButton("Open SHVYA Call Intelligence")
+        workspace.setOnClickListener {
+            startActivity(
+                Intent(
+                    Intent.ACTION_VIEW,
+                    Uri.parse(BuildConfig.SHVYA_BASE_URL.trimEnd('/') + "/dashboard/call-intelligence/")
+                )
+            )
+        }
+        root.addView(space(10))
+        root.addView(workspace)
+
         val syncNow = secondaryButton("Sync calls now")
         syncNow.setOnClickListener {
             TrackingScheduler.enqueueReconcile(this)
