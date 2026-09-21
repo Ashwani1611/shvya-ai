@@ -412,10 +412,10 @@ def refresh_access_token(*, refresh_token, client_id, resource=""):
     return token, raw_access, raw_refresh
 
 
-def revoke_token(*, raw_token: str) -> bool:
+def revoke_token(*, raw_token: str):
     """Revoke an Operations OAuth grant by either access or refresh token.
 
-    Returns whether a live token row was found. Unknown tokens deliberately
+    Returns the revoked token row when found. Unknown tokens deliberately
     behave like successful revocation at the HTTP boundary to avoid token
     enumeration.
     """
@@ -437,7 +437,7 @@ def revoke_token(*, raw_token: str) -> bool:
             .first()
         )
         if token is None:
-            return False
+            return None
 
         token.revoked_at = now
         token.save(update_fields=["revoked_at", "updated_at"])
