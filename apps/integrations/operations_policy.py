@@ -42,7 +42,7 @@ CAPABILITY_LABELS = {
     CAP_LEAD_ATTRIBUTES_WRITE: "Update non-sensitive lead attributes",
     CAP_AI_CONFIG_WRITE: "Update organization AI profile / Playbook",
     CAP_CRM_CONFIG_WRITE: "Configure CRM pipelines, stages and attributes",
-    CAP_AUTOMATION_CONFIG_WRITE: "Configure Workflows and Cadence",
+    CAP_AUTOMATION_CONFIG_WRITE: "Configure Workflows, Cadence & messaging automation",
 }
 
 
