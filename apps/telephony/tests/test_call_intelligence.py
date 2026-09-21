@@ -39,7 +39,10 @@ class CallIntelligenceTests(TestCase):
         )
         self.pipeline.country_code = "+91"
         self.pipeline.save(update_fields=["country_code", "updated_at"])
-        self.stage = self.pipeline.stages.get(name="New Lead")
+        self.stage = self.pipeline.stages.filter(is_active=True).order_by(
+            "display_order", "name"
+        ).first()
+        self.assertIsNotNone(self.stage)
         CallIntelligenceSettings.objects.create(
             organization=self.org,
             default_pipeline=self.pipeline,
