@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import UTC, datetime
 import logging
 import secrets
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -736,8 +736,8 @@ def calendar_block_add(request, page_id):
             starts = starts.replace(tzinfo=page_zone)
         if timezone.is_naive(ends):
             ends = ends.replace(tzinfo=page_zone)
-        starts = starts.astimezone(timezone.utc)
-        ends = ends.astimezone(timezone.utc)
+        starts = starts.astimezone(UTC)
+        ends = ends.astimezone(UTC)
         block = CalendarBlock(
             page=page,
             starts_at=starts,
