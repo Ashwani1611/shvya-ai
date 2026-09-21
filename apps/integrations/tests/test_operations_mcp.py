@@ -2053,6 +2053,146 @@ class OperationsMCPTests(TestCase):
         self.assertTrue(workflow.enabled)
         self.assertEqual(workflow.name, "Human Edited Workflow")
 
+    def test_operations_cadence_paths_never_decrypt_provider_credentials(self):
+        OperationsPolicy.objects.create(
+            organization=self.organization,
+            organization_admin_enabled=True,
+            allowed_capabilities=[
+                CAP_ORGANIZATION_READ,
+                CAP_CADENCE_CONFIG_WRITE,
+            ],
+            approval_required_capabilities=[],
+        )
+        api_account = WhatsAppAccount.objects.create(
+            organization=self.organization,
+            connection_type=WhatsAppAccount.ConnectionType.API,
+            business_name="Credential Safe API Sender",
+            display_phone_number="+919000000018",
+            phone_number_id="credential-safe-api",
+            access_token="api-cadence-provider-secret",
+            status=WhatsAppAccount.Status.CONNECTED,
+            is_active=True,
+        )
+        WhatsAppAccount.objects.create(
+            organization=self.organization,
+            connection_type=WhatsAppAccount.ConnectionType.coexisted,
+            business_name="Credential Safe Hosted Sender",
+            display_phone_number="+919000000019",
+            phone_number_id="+919000000019",
+            access_token="hosted-cadence-provider-secret",
+            status=WhatsAppAccount.Status.CONNECTED,
+            is_active=True,
+        )
+        sequence = FollowupSequence.objects.create(
+            organization=self.organization,
+            created_by=self.admin,
+            name="Credential Safe Existing Cadence",
+            description="Initial description",
+            whatsapp_account=api_account,
+        )
+        bearer = self._token(
+            actor=self.admin,
+            role=ROLE_ORGANIZATION_ADMIN,
+            organization=self.organization,
+            scopes=[
+                OPERATIONS_READ_SCOPE,
+                OPERATIONS_WRITE_SCOPE,
+            ],
+        )
+
+        with patch(
+            "apps.channels.models.EncryptedTextField.from_db_value",
+            side_effect=AssertionError(
+                "Operations Cadence paths must not decrypt provider credentials"
+            ),
+        ):
+            inspected = self._result(
+                self._call(
+                    bearer,
+                    "get_automation_configuration",
+                    {},
+                )
+            )
+            self.assertFalse(inspected["isError"])
+
+            updated = self._result(
+                self._call(
+                    bearer,
+                    "upsert_cadence_configuration",
+                    {
+                        "cadence_id": str(sequence.id),
+                        "data": {
+                            "name": sequence.name,
+                            "description": "Reviewed safe description",
+                            "provider": "api",
+                            "whatsapp_account_id": str(api_account.id),
+                        },
+                        "reason": "Update reviewed Cadence description",
+                        "dry_run": False,
+                    },
+                )
+            )
+            self.assertFalse(updated["isError"])
+            self.assertEqual(
+                updated["structuredContent"]["status"],
+                "FIXED",
+            )
+
+            hosted_created = self._result(
+                self._call(
+                    bearer,
+                    "upsert_cadence_configuration",
+                    {
+                        "data": {
+                            "name": "Credential Safe Hosted Cadence",
+                            "description": "Hosted cadence without credential reads",
+                            "provider": "hosted",
+                        },
+                        "reason": "Create reviewed Hosted Cadence",
+                        "dry_run": False,
+                    },
+                )
+            )
+            self.assertFalse(hosted_created["isError"])
+            self.assertEqual(
+                hosted_created["structuredContent"]["status"],
+                "FIXED",
+            )
+
+            step_preview = self._result(
+                self._call(
+                    bearer,
+                    "add_cadence_step",
+                    {
+                        "cadence_id": str(sequence.id),
+                        "data": {
+                            "type": "reminder",
+                            "text": "Review this lead",
+                            "schedule": {"type": "immediate"},
+                        },
+                        "reason": "Add reviewed Cadence reminder",
+                        "dry_run": True,
+                    },
+                )
+            )
+            self.assertFalse(step_preview["isError"])
+            self.assertEqual(
+                step_preview["structuredContent"]["status"],
+                "DRY_RUN",
+            )
+
+        sequence.refresh_from_db()
+        self.assertEqual(
+            sequence.description,
+            "Reviewed safe description",
+        )
+        self.assertTrue(
+            FollowupSequence.objects.filter(
+                organization=self.organization,
+                name="Credential Safe Hosted Cadence",
+            ).exists()
+        )
+
     def test_cadence_config_approval_is_invalid_after_human_edit(self):
         OperationsPolicy.objects.create(
             organization=self.organization,

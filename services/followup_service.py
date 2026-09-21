@@ -112,12 +112,17 @@ def create_sequence(
         if whatsapp_account.status != WhatsAppAccount.Status.CONNECTED or not whatsapp_account.is_active:
             raise FollowupError("Select an active connected WhatsApp API number.")
     else:
-        whatsapp_account = WhatsAppAccount.objects.filter(
-            organization=organization,
-            connection_type=WhatsAppAccount.ConnectionType.coexisted,
-            status=WhatsAppAccount.Status.CONNECTED,
-            is_active=True,
-        ).order_by("business_name", "display_phone_number").first()
+        whatsapp_account = (
+            WhatsAppAccount.objects.filter(
+                organization=organization,
+                connection_type=WhatsAppAccount.ConnectionType.coexisted,
+                status=WhatsAppAccount.Status.CONNECTED,
+                is_active=True,
+            )
+            .defer("access_token")
+            .order_by("business_name", "display_phone_number")
+            .first()
+        )
         if not whatsapp_account:
             raise FollowupError(
                 "Connect at least one Hosted WhatsApp number before creating a WhatsApp sequence."

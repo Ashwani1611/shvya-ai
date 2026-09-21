@@ -1382,6 +1382,7 @@ def get_automation_configuration(*, identity, arguments):
     cadences = list(
         cadence_qs
         .select_related("whatsapp_account")
+        .defer("whatsapp_account__access_token")
         .prefetch_related("steps__whatsapp_template")
         .order_by("-updated_at")[:limit]
     )
@@ -4644,10 +4645,15 @@ def upsert_cadence_configuration(*, identity, arguments):
     sequence_id = (arguments or {}).get("cadence_id")
     sequence = None
     if sequence_id:
-        sequence = FollowupSequence.objects.filter(
-            pk=_uuid(sequence_id, field="cadence_id"),
-            organization=organization,
-        ).select_related("whatsapp_account").first()
+        sequence = (
+            FollowupSequence.objects.filter(
+                pk=_uuid(sequence_id, field="cadence_id"),
+                organization=organization,
+            )
+            .select_related("whatsapp_account")
+            .defer("whatsapp_account__access_token")
+            .first()
+        )
         if sequence is None:
             raise OperationsToolError("Cadence not found in this organization.")
 
@@ -4702,12 +4708,16 @@ def upsert_cadence_configuration(*, identity, arguments):
     if sequence is None:
         account_id = data.get("whatsapp_account_id")
         if account_id:
-            account = WhatsAppAccount.objects.filter(
-                pk=_uuid(account_id, field="whatsapp_account_id"),
-                organization=organization,
-                is_active=True,
-                status=WhatsAppAccount.Status.CONNECTED,
-            ).first()
+            account = (
+                WhatsAppAccount.objects.filter(
+                    pk=_uuid(account_id, field="whatsapp_account_id"),
+                    organization=organization,
+                    is_active=True,
+                    status=WhatsAppAccount.Status.CONNECTED,
+                )
+                .defer("access_token")
+                .first()
+            )
         if provider == "api" and account is None:
             raise OperationsToolError("An active connected WhatsApp API account is required.")
         if account is not None and provider == "api" and account.connection_type != WhatsAppAccount.ConnectionType.API:
@@ -4720,6 +4730,7 @@ def upsert_cadence_configuration(*, identity, arguments):
                     status=WhatsAppAccount.Status.CONNECTED,
                     is_active=True,
                 )
+                .defer("access_token")
                 .order_by(
                     "business_name",
                     "display_phone_number",
@@ -4799,6 +4810,7 @@ def upsert_cadence_configuration(*, identity, arguments):
                 sequence = (
                     FollowupSequence.objects.select_for_update()
                     .select_related("whatsapp_account")
+                    .defer("whatsapp_account__access_token")
                     .filter(
                         pk=sequence.pk,
                         organization=organization,
@@ -4835,7 +4847,9 @@ def upsert_cadence_configuration(*, identity, arguments):
                             is_active=True,
                             status=WhatsAppAccount.Status.CONNECTED,
                             connection_type=WhatsAppAccount.ConnectionType.API,
-                        ).first()
+                        )
+                        .defer("access_token")
+                        .first()
                         if account_id
                         else None
                     )
@@ -4852,6 +4866,7 @@ def upsert_cadence_configuration(*, identity, arguments):
                             status=WhatsAppAccount.Status.CONNECTED,
                             is_active=True,
                         )
+                        .defer("access_token")
                         .order_by(
                             "business_name",
                             "display_phone_number",
@@ -4977,11 +4992,16 @@ def add_cadence_step(*, identity, arguments):
         tool_name="add_cadence_step",
         arguments=arguments,
     )
-    sequence = FollowupSequence.objects.filter(
-        pk=_uuid((arguments or {}).get("cadence_id"), field="cadence_id"),
-        organization=organization,
-        is_active=True,
-    ).select_related("whatsapp_account").first()
+    sequence = (
+        FollowupSequence.objects.filter(
+            pk=_uuid((arguments or {}).get("cadence_id"), field="cadence_id"),
+            organization=organization,
+            is_active=True,
+        )
+        .select_related("whatsapp_account")
+        .defer("whatsapp_account__access_token")
+        .first()
+    )
     if sequence is None:
         raise OperationsToolError("Active Cadence not found in this organization.")
     data = (arguments or {}).get("data")
@@ -5063,6 +5083,7 @@ def add_cadence_step(*, identity, arguments):
             sequence = (
                 FollowupSequence.objects.select_for_update()
                 .select_related("whatsapp_account")
+                .defer("whatsapp_account__access_token")
                 .filter(
                     pk=sequence.pk,
                     organization=organization,
