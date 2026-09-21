@@ -160,6 +160,60 @@
             </div>
         </div>
 
+        <div class="mt-5 overflow-hidden rounded-xl border border-gray-200 bg-white">
+            <div class="flex flex-col gap-2 border-b border-gray-100 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                    <h4 class="text-sm font-semibold text-gray-900">Connected External AI Sessions</h4>
+                    <p class="mt-0.5 text-xs text-gray-500">
+                        Active Organization Admin OAuth grants. Token values are never displayed or stored here in readable form.
+                    </p>
+                </div>
+                <span class="w-fit rounded-full bg-gray-100 px-2.5 py-1 text-[11px] font-semibold text-gray-600">
+                    {{ active_operations_tokens|length }} active
+                </span>
+            </div>
+            {% if active_operations_tokens %}
+            <div class="divide-y divide-gray-100">
+                {% for token in active_operations_tokens %}
+                <div class="flex flex-col gap-3 px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
+                    <div class="min-w-0">
+                        <div class="flex flex-wrap items-center gap-2">
+                            <span class="text-sm font-semibold text-gray-900">{{ token.client.client_name|default:"External AI" }}</span>
+                            {% if 'operations.write' in token.scope %}
+                            <span class="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700">Read + Write scope</span>
+                            {% else %}
+                            <span class="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">Read only</span>
+                            {% endif %}
+                        </div>
+                        <p class="mt-1 text-xs text-gray-500">
+                            {{ token.actor.name|default:"Organization Admin" }}
+                            · Authorized {{ token.created_at|date:"d M Y, h:i A" }}
+                            {% if token.last_used_at %} · Last used {{ token.last_used_at|date:"d M Y, h:i A" }}{% endif %}
+                        </p>
+                        <p class="mt-1 text-[11px] text-gray-400">
+                            Access token expires {{ token.expires_at|date:"d M Y, h:i A" }}
+                            · Re-authorization required after {{ token.refresh_expires_at|date:"d M Y, h:i A" }}
+                        </p>
+                    </div>
+                    <form method="post" onsubmit="return confirm('Revoke this External AI Operations session? The client will lose SHVYA access immediately and must authorize again.');">
+                        {% csrf_token %}
+                        <input type="hidden" name="action" value="revoke_operations_session">
+                        <input type="hidden" name="operations_token_id" value="{{ token.id }}">
+                        <button type="submit" class="inline-flex items-center gap-2 rounded-lg border border-red-200 bg-white px-3 py-2 text-xs font-semibold text-red-600 hover:bg-red-50">
+                            <i class="ti ti-plug-connected-x"></i>
+                            Revoke session
+                        </button>
+                    </form>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="px-4 py-5 text-center text-xs text-gray-500">
+                No active Organization Admin Operations sessions are connected.
+            </div>
+            {% endif %}
+        </div>
+
         {% if active_operations_support %}
         <div class="mt-5 rounded-xl border border-blue-200 bg-blue-50 p-4">
             <div class="flex items-center gap-2 text-sm font-semibold text-blue-800">
