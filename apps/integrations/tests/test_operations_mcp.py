@@ -2049,8 +2049,33 @@ class OperationsMCPTests(TestCase):
         with self.assertRaises(ValidationError):
             OperationsAuditEvent.objects.filter(pk=event.pk).delete()
 
+        event.reason = "Bulk update attempt"
+        with self.assertRaises(ValidationError):
+            OperationsAuditEvent.objects.bulk_update(
+                [event],
+                ["reason"],
+            )
+
+        conflict = OperationsAuditEvent(
+            id=event.id,
+            actor=self.superadmin,
+            role=ROLE_SUPERADMIN,
+            organization=self.organization,
+            tool_name="replacement",
+            outcome=OperationsAuditEvent.Outcome.ERROR,
+            request_fingerprint="b" * 64,
+        )
+        with self.assertRaises(ValidationError):
+            OperationsAuditEvent.objects.bulk_create(
+                [conflict],
+                update_conflicts=True,
+                update_fields=["tool_name", "outcome"],
+                unique_fields=["id"],
+            )
+
         event.refresh_from_db()
         self.assertEqual(event.reason, "Verify immutable audit storage")
+        self.assertEqual(event.tool_name, "test_tool")
 
     def test_audit_stores_argument_fingerprint_not_raw_query(self):
         OperationsPolicy.objects.create(
