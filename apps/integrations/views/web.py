@@ -352,22 +352,43 @@ def shvya_api_view(request):
     api_url = request.build_absolute_uri(reverse("lead-upsert"))
     list_api_url = request.build_absolute_uri(reverse("lead-list"))
 
+    from apps.integrations.operations_models import OperationsAuditEvent
     from apps.integrations.operations_presence import visible_support_sessions
-    from apps.integrations.operations_policy import CAPABILITY_LABELS, policy_for
+    from apps.integrations.operations_policy import (
+        CAPABILITY_LABELS,
+        CAP_AUDIT_READ,
+        WRITE_CAPABILITIES,
+        policy_for,
+    )
 
     operations_policy = policy_for(organization)
     operations_capabilities = [
         {
             "key": key,
             "label": CAPABILITY_LABELS.get(key, key),
-            "approval_required": key
-            in (operations_policy.approval_required_capabilities or []),
+            "approval_required": (
+                key in WRITE_CAPABILITIES
+                and key in (operations_policy.approval_required_capabilities or [])
+            ),
         }
         for key in (operations_policy.allowed_capabilities or [])
         if key in CAPABILITY_LABELS
     ]
     active_operations_support = visible_support_sessions(
         organization=organization,
+    )
+    operations_audit_visible = bool(
+        operations_policy.organization_admin_enabled
+        and CAP_AUDIT_READ in (operations_policy.allowed_capabilities or [])
+    )
+    operations_audit_events = (
+        OperationsAuditEvent.objects.filter(
+            organization=organization,
+        )
+        .select_related("actor")
+        .order_by("-created_at")[:10]
+        if operations_audit_visible
+        else []
     )
 
     return render(
@@ -388,6 +409,8 @@ def shvya_api_view(request):
             "operations_policy": operations_policy,
             "operations_capabilities": operations_capabilities,
             "active_operations_support": active_operations_support,
+            "operations_audit_visible": operations_audit_visible,
+            "operations_audit_events": operations_audit_events,
         },
     )
 
