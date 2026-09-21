@@ -224,6 +224,7 @@ class OperationsMCPTests(TestCase):
             "get_ai_diagnostics",
             "get_runtime_health",
             "get_organization_configuration",
+            "get_ai_configuration",
             "get_knowledge_health",
             "get_messaging_automation_settings",
         ):
@@ -2042,6 +2043,92 @@ class OperationsMCPTests(TestCase):
         payload = json.dumps(health)
         self.assertNotIn("wa-health-secret", payload)
         self.assertNotIn("ig-health-secret", payload)
+
+    def test_full_ai_configuration_read_avoids_truncated_playbook_rewrite_risk(self):
+        OperationsPolicy.objects.create(
+            organization=self.organization,
+            organization_admin_enabled=True,
+            allowed_capabilities=[CAP_ORGANIZATION_READ],
+        )
+        long_playbook = (
+            "General sales guidance. " * 1800
+        ) + " password: legacy-secret-value"
+        info = OrgInfo.objects.create(
+            organization=self.organization,
+            about="Full business profile",
+            bot_languages="English",
+            ai_playbook=long_playbook,
+        )
+        self.assertGreater(len(long_playbook), 30000)
+
+        bearer = self._token(
+            actor=self.admin,
+            role=ROLE_ORGANIZATION_ADMIN,
+            organization=self.organization,
+            scopes=[OPERATIONS_READ_SCOPE],
+        )
+
+        summary = self._result(
+            self._call(
+                bearer,
+                "get_organization_configuration",
+                {},
+            )
+        )
+        self.assertFalse(summary["isError"])
+        self.assertTrue(
+            summary["structuredContent"]["ai"][
+                "playbook_truncated"
+            ]
+        )
+        self.assertEqual(
+            summary["structuredContent"]["ai"][
+                "playbook_length"
+            ],
+            len(long_playbook),
+        )
+        self.assertEqual(
+            len(
+                summary["structuredContent"]["ai"][
+                    "playbook"
+                ]
+            ),
+            30000,
+        )
+
+        full = self._result(
+            self._call(
+                bearer,
+                "get_ai_configuration",
+                {},
+            )
+        )
+        self.assertFalse(full["isError"])
+        data = full["structuredContent"]
+        self.assertTrue(data["configured"])
+        self.assertEqual(
+            data["ai_playbook_length"],
+            len(long_playbook),
+        )
+        self.assertTrue(
+            data["redactions"]["ai_playbook"]
+        )
+        self.assertIn(
+            "legacy-secret-value",
+            long_playbook,
+        )
+        self.assertNotIn(
+            "legacy-secret-value",
+            data["ai_playbook"],
+        )
+        self.assertIn(
+            "password=[REDACTED]",
+            data["ai_playbook"],
+        )
+        self.assertEqual(
+            data["about"],
+            info.about,
+        )
 
     def test_knowledge_health_is_bounded_metadata_only_and_tenant_scoped(self):
         OperationsPolicy.objects.create(
