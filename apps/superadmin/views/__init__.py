@@ -18,3 +18,7 @@ from apps.superadmin.workspace_views import (
     organization_tags_update_view as organization_tags_update_view,
     organization_user_reset_password_view as organization_user_reset_password_view,
 )
+
+from apps.superadmin.operations_views import (
+    organization_operations_policy_update_view as organization_operations_policy_update_view,
+)
