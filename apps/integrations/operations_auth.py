@@ -397,14 +397,15 @@ def refresh_access_token(*, refresh_token, client_id, resource=""):
         token.access_token_hash = token_hash(raw_access)
         token.refresh_token_hash = token_hash(raw_refresh)
         token.expires_at = now + ACCESS_TOKEN_TTL
-        token.refresh_expires_at = now + REFRESH_TOKEN_TTL
+        # Keep the original grant's refresh expiry fixed. Rotation prevents
+        # token replay; it must not silently turn a 14-day external-AI grant
+        # into an indefinitely renewable credential.
         token.last_used_at = now
         token.save(
             update_fields=[
                 "access_token_hash",
                 "refresh_token_hash",
                 "expires_at",
-                "refresh_expires_at",
                 "last_used_at",
                 "updated_at",
             ]
