@@ -62,6 +62,7 @@ from apps.organizations.access import organization_is_active
 from apps.organizations.models import Organization
 from apps.triggers.models import SmartTrigger, TriggerRun
 from services.crm.attribute_service import (
+    MAX_CUSTOM_ATTRIBUTES,
     create_attribute_definition,
     update_attribute_definition,
     update_lead_attribute_values,
@@ -2904,25 +2905,128 @@ def upsert_attribute_configuration(*, identity, arguments):
         )
 
     try:
-        if attribute is None:
-            attribute = create_attribute_definition(
-                organization=organization,
-                name=name,
-                field_type=field_type,
-                description=description,
-                options=options,
+        with transaction.atomic():
+            Organization.objects.select_for_update().get(
+                pk=organization.pk
             )
-        else:
-            attribute = update_attribute_definition(
+            if attribute is not None:
+                attribute = (
+                    AttributeDefinition.objects.select_for_update()
+                    .filter(
+                        pk=attribute.pk,
+                        organization=organization,
+                    )
+                    .first()
+                )
+                if attribute is None:
+                    raise OperationsApprovalRequired(
+                        "The CRM attribute changed or was removed after review. "
+                        "Run a fresh dry-run."
+                    )
+
+            duplicate_name = AttributeDefinition.objects.filter(
                 organization=organization,
-                attribute=attribute,
-                name=name,
-                field_type=field_type,
-                description=description,
-                options=options,
+                name__iexact=name,
             )
+            if attribute is not None:
+                duplicate_name = duplicate_name.exclude(
+                    pk=attribute.pk
+                )
+            if duplicate_name.exists():
+                raise OperationsToolError(
+                    "An attribute with this name already exists."
+                )
+
+            locked_before = (
+                {
+                    "id": str(attribute.id),
+                    "key": attribute.key,
+                    "name": attribute.name,
+                    "field_type": attribute.field_type,
+                    "description": attribute.description,
+                    "options": attribute.options,
+                }
+                if attribute is not None
+                else None
+            )
+            locked_after = {
+                "name": name,
+                "field_type": field_type,
+                "description": description,
+                "options": options,
+            }
+            locked_proposal = {
+                "organization_id": str(organization.id),
+                "attribute_id": (
+                    str(attribute.id)
+                    if attribute is not None
+                    else None
+                ),
+                "before": locked_before,
+                "after": locked_after,
+            }
+            _ensure_approved_proposal_unchanged(
+                arguments=arguments,
+                proposal=locked_proposal,
+            )
+
+            if attribute is not None and (
+                field_type != attribute.field_type
+                or list(options or [])
+                != list(attribute.options or [])
+            ):
+                incompatible_count = (
+                    _incompatible_existing_attribute_value_count(
+                        organization=organization,
+                        attribute=attribute,
+                        field_type=field_type,
+                        options=options,
+                    )
+                )
+                if incompatible_count:
+                    raise OperationsPermissionError(
+                        "This attribute type/options change would make existing "
+                        f"CRM values invalid for {incompatible_count} lead(s). "
+                        "Update or clear those values first, then run a new dry-run."
+                    )
+
+            if attribute is None:
+                attribute = create_attribute_definition(
+                    organization=organization,
+                    name=name,
+                    field_type=field_type,
+                    description=description,
+                    options=options,
+                )
+                if (
+                    AttributeDefinition.objects.filter(
+                        organization=organization
+                    ).count()
+                    > MAX_CUSTOM_ATTRIBUTES
+                ):
+                    raise OperationsToolError(
+                        "Attribute limit changed concurrently; creation was rolled back."
+                    )
+            else:
+                attribute = update_attribute_definition(
+                    organization=organization,
+                    attribute=attribute,
+                    name=name,
+                    field_type=field_type,
+                    description=description,
+                    options=options,
+                )
+            before = locked_before
+            after = locked_after
+    except IntegrityError as exc:
+        raise OperationsToolError(
+            "Attribute configuration changed concurrently. "
+            "Run a fresh dry-run."
+        ) from exc
     except ValidationError as exc:
-        raise OperationsToolError("Attribute configuration validation failed.") from exc
+        raise OperationsToolError(
+            "Attribute configuration validation failed."
+        ) from exc
     attribute.refresh_from_db()
     if (
         attribute.name != name
@@ -3248,13 +3352,20 @@ def upsert_cadence_configuration(*, identity, arguments):
         if account is not None and provider == "api" and account.connection_type != WhatsAppAccount.ConnectionType.API:
             raise OperationsToolError("The selected account is not a WhatsApp API account.")
         if provider == "hosted":
-            hosted_exists = WhatsAppAccount.objects.filter(
-                organization=organization,
-                connection_type=WhatsAppAccount.ConnectionType.coexisted,
-                status=WhatsAppAccount.Status.CONNECTED,
-                is_active=True,
-            ).exists()
-            if not hosted_exists:
+            account = (
+                WhatsAppAccount.objects.filter(
+                    organization=organization,
+                    connection_type=WhatsAppAccount.ConnectionType.coexisted,
+                    status=WhatsAppAccount.Status.CONNECTED,
+                    is_active=True,
+                )
+                .order_by(
+                    "business_name",
+                    "display_phone_number",
+                )
+                .first()
+            )
+            if account is None:
                 raise OperationsToolError(
                     "Connect at least one Hosted/Coexistence WhatsApp number before creating this Cadence."
                 )
