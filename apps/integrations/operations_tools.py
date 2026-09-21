@@ -461,6 +461,39 @@ def clear_organization_context(*, identity, arguments):
     )
 
 
+def _reject_secret_like_content(value, *, field="configuration"):
+    """Reject credential-like strings before persisting external-AI authored text."""
+
+    if isinstance(value, dict):
+        for key, item in value.items():
+            _reject_secret_like_content(
+                item,
+                field=f"{field}.{key}",
+            )
+        return
+    if isinstance(value, (list, tuple)):
+        for index, item in enumerate(value):
+            _reject_secret_like_content(
+                item,
+                field=f"{field}[{index}]",
+            )
+        return
+    if not isinstance(value, str) or not value.strip():
+        return
+
+    redacted = sanitize_text(
+        value,
+        limit=max(len(value) + 32, 800),
+        redact_long=False,
+    )
+    if redacted != value:
+        raise OperationsPermissionError(
+            f"{field} contains credential-like or secret material. "
+            "Do not store secrets through SHVYA Operations MCP."
+        )
+
+
+
 def _sensitive_attribute_keys(organization):
     return {
         item.key
@@ -2406,6 +2439,7 @@ def upsert_workflow_configuration(*, identity, arguments):
     data = (arguments or {}).get("data")
     if not isinstance(data, dict):
         raise OperationsToolError("data must be a Workflow configuration object.")
+    _reject_secret_like_content(data, field="workflow")
     try:
         clean = validate_workflow_rule(organization, data)
     except ValidationError as exc:
@@ -2601,7 +2635,36 @@ def upsert_cadence_configuration(*, identity, arguments):
         raise OperationsToolError("A Cadence with this name already exists.")
 
     account = sequence.whatsapp_account if sequence else None
-    provider = str(data.get("provider") or "api").strip()
+    if sequence is not None:
+        existing_provider = (
+            "api"
+            if account.connection_type == WhatsAppAccount.ConnectionType.API
+            else "hosted"
+        )
+        requested_provider = data.get("provider")
+        if (
+            requested_provider is not None
+            and str(requested_provider).strip() != existing_provider
+        ):
+            raise OperationsPermissionError(
+                "Cadence provider cannot be changed on an existing Cadence "
+                "through the canonical SHVYA service. Create a new Cadence "
+                "for a different provider."
+            )
+        requested_account_id = data.get("whatsapp_account_id")
+        if (
+            requested_account_id is not None
+            and str(requested_account_id).strip() != str(sequence.whatsapp_account_id)
+        ):
+            raise OperationsPermissionError(
+                "Cadence WhatsApp sender cannot be changed on an existing "
+                "Cadence through the canonical SHVYA service. Create a new "
+                "Cadence for a different sender."
+            )
+        provider = existing_provider
+    else:
+        provider = str(data.get("provider") or "api").strip()
+
     if provider not in {"api", "hosted"}:
         raise OperationsToolError("Cadence provider must be api or hosted.")
     if sequence is None:
@@ -2637,7 +2700,7 @@ def upsert_cadence_configuration(*, identity, arguments):
                 "cadence": {
                     "name": name,
                     "description": description,
-                    "provider": provider if sequence is None else "existing",
+                    "provider": provider,
                     "whatsapp_account_id": str(account.id) if account else None,
                 },
                 "approval_required": approval_required(
@@ -2721,6 +2784,7 @@ def add_cadence_step(*, identity, arguments):
     data = (arguments or {}).get("data")
     if not isinstance(data, dict):
         raise OperationsToolError("data must be a Cadence step object.")
+    _reject_secret_like_content(data, field="cadence_step")
     step_type = str(data.get("type") or "").strip().lower()
     if step_type not in {"whatsapp", "email", "reminder"}:
         raise OperationsToolError("Cadence step type must be whatsapp, email, or reminder.")
