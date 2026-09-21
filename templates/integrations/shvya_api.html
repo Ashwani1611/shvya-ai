@@ -165,11 +165,11 @@
                 <div>
                     <h4 class="text-sm font-semibold text-gray-900">Connected External AI Sessions</h4>
                     <p class="mt-0.5 text-xs text-gray-500">
-                        Active Organization Admin OAuth grants. Token values are never displayed or stored here in readable form.
+                        Unrevoked Organization Admin OAuth grants. Live SHVYA authority is checked separately; invalid grants are marked. Token values are never displayed or stored here in readable form.
                     </p>
                 </div>
                 <span class="w-fit rounded-full bg-gray-100 px-2.5 py-1 text-[11px] font-semibold text-gray-600">
-                    {{ active_operations_tokens|length }} active
+                    {{ active_operations_tokens|length }} unrevoked
                 </span>
             </div>
             {% if active_operations_tokens %}
