@@ -355,6 +355,11 @@ OWN_TOOL_DEFINITIONS = [
         "Inspect business/AI configuration, pipelines, stages, attributes, Playbook qualification, Workflows and Cadence counts for the active organization.",
     ),
     _tool(
+        "get_ai_configuration",
+        "Inspect full SHVYA AI configuration",
+        "Return the complete organization AI profile and Playbook up to SHVYA's canonical stored limits, with credential-like text redacted and explicit redaction flags. Use this before replacing a Playbook when the organization summary says the excerpt is truncated.",
+    ),
+    _tool(
         "get_knowledge_health",
         "Inspect SHVYA knowledge health",
         "Return bounded organization knowledge/RAG metadata only: source types/names, URL hostnames, document version/status/publication state, chunk/embedding coverage and timestamps. Document text, file bytes, raw signed URLs and vectors are never returned.",
@@ -728,6 +733,7 @@ TOOL_CAPABILITIES = {
     "select_organization_context": None,
     "clear_organization_context": None,
     "get_organization_configuration": CAP_ORGANIZATION_READ,
+    "get_ai_configuration": CAP_ORGANIZATION_READ,
     "get_knowledge_health": CAP_ORGANIZATION_READ,
     "get_automation_configuration": CAP_ORGANIZATION_READ,
     "get_messaging_automation_settings": CAP_ORGANIZATION_READ,
