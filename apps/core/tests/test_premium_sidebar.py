@@ -21,7 +21,11 @@ def test_sidebar_navigation_is_grouped_for_premium_shell():
     automate = sections[2]
     connect = sections[3]
 
-    assert [item["label"] for item in workspace["items"]] == ["Sales Desk", "SHVYA Sales"]
+    assert [item["label"] for item in workspace["items"]] == [
+        "Sales Desk",
+        "SHVYA Calendar",
+        "SHVYA Sales",
+    ]
     assert [item["label"] for item in customers["items"]] == ["CRM", "Insights"]
     assert [item["label"] for item in automate["items"]] == [
         "Cadence",
