@@ -1449,6 +1449,15 @@ def upsert_attribute_configuration(*, identity, arguments):
     options = data.get("options", list(attribute.options or []) if attribute else [])
     if not isinstance(options, list):
         raise OperationsToolError("Attribute options must be a list.")
+    if field_type == AttributeDefinition.FieldType.OPTION:
+        cleaned_options = []
+        for item in options:
+            value = str(item or "").strip()
+            if value and value not in cleaned_options:
+                cleaned_options.append(value)
+        options = cleaned_options
+    else:
+        options = []
     if is_sensitive_attribute_definition({"key": name, "name": name}):
         raise OperationsPermissionError(
             "Credential-like or secret attribute definitions cannot be created through Operations MCP."
@@ -1538,7 +1547,7 @@ def upsert_attribute_configuration(*, identity, arguments):
         attribute.name != name
         or attribute.field_type != field_type
         or attribute.description != description
-        or list(attribute.options or []) != list(options if field_type == "option" else [])
+        or list(attribute.options or []) != list(options)
     ):
         raise OperationsToolError("Attribute configuration verification failed.")
     return ToolExecution(
