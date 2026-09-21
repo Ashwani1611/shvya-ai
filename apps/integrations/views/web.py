@@ -479,7 +479,7 @@ def shvya_api_view(request):
 
     from django.utils import timezone
 
-    active_operations_tokens = (
+    active_operations_tokens = list(
         OperationsOAuthToken.objects.filter(
             organization=organization,
             role=ROLE_ORGANIZATION_ADMIN,
@@ -489,6 +489,18 @@ def shvya_api_view(request):
         .select_related("actor", "client")
         .order_by("-last_used_at", "-created_at")
     )
+    for token in active_operations_tokens:
+        token.granted_capability_labels = [
+            CAPABILITY_LABELS.get(
+                capability,
+                capability,
+            )
+            for capability in sorted(
+                expand_capabilities(
+                    token.granted_capabilities
+                )
+            )
+        ]
 
     return render(
         request,
