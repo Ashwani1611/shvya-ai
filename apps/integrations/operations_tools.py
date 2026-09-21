@@ -1792,26 +1792,27 @@ def get_automation_configuration(*, identity, arguments):
             raise OperationsPermissionError(
                 "Cross-tenant Cadence account reference detected; no foreign data was returned."
             )
-        for step in sequence.steps.all():
-            if (
-                step.whatsapp_template_id
-                and step.whatsapp_template.organization_id
-                != organization.id
-            ):
-                raise OperationsPermissionError(
-                    "Cross-tenant Cadence template reference detected; "
-                    "no foreign data was returned."
-                )
-            if (
-                step.whatsapp_template_id
-                and step.whatsapp_template.account_id
-                != sequence.whatsapp_account_id
-            ):
-                raise OperationsPermissionError(
-                    "Cadence WhatsApp template does not belong to its "
-                    "configured sender account; no mismatched identifier "
-                    "was returned."
-                )
+        cadence_template_steps = FollowupStep.objects.filter(
+            sequence=sequence,
+            whatsapp_template__isnull=False,
+        )
+        if cadence_template_steps.exclude(
+            whatsapp_template__organization=organization,
+        ).exists():
+            raise OperationsPermissionError(
+                "Cross-tenant Cadence template reference detected; "
+                "no foreign data was returned."
+            )
+        if cadence_template_steps.exclude(
+            whatsapp_template__account_id=(
+                sequence.whatsapp_account_id
+            ),
+        ).exists():
+            raise OperationsPermissionError(
+                "Cadence WhatsApp template does not belong to its "
+                "configured sender account; no mismatched identifier "
+                "was returned."
+            )
 
         operations_steps = list(
             getattr(sequence, "operations_steps", [])
