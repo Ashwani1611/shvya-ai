@@ -689,7 +689,7 @@ def _attribute_value_compatible(*, field_type, options, value):
     return True
 
 
-def _validated_lead_attribute_values(*, definitions, values):
+def _normalized_lead_attribute_values(*, definitions, values):
     normalized = {}
     for key, value in values.items():
         definition = definitions[key]
@@ -697,6 +697,19 @@ def _validated_lead_attribute_values(*, definitions, values):
             raise OperationsToolError(
                 f"CRM attribute '{definition.name}' requires a scalar value."
             )
+        normalized[key] = (
+            "" if value is None else str(value).strip()
+        )
+    return normalized
+
+
+def _validated_lead_attribute_values(*, definitions, values):
+    normalized = _normalized_lead_attribute_values(
+        definitions=definitions,
+        values=values,
+    )
+    for key, value in normalized.items():
+        definition = definitions[key]
         if not _attribute_value_compatible(
             field_type=definition.field_type,
             options=definition.options,
@@ -706,9 +719,6 @@ def _validated_lead_attribute_values(*, definitions, values):
                 f"Value for CRM attribute '{definition.name}' does not match "
                 "its configured type/options."
             )
-        normalized[key] = (
-            "" if value is None else str(value).strip()
-        )
     return normalized
 
 
@@ -2301,31 +2311,30 @@ def update_lead_attributes(*, identity, arguments):
         raise OperationsPermissionError(
             "Sensitive/credential-like attributes cannot be written through Operations MCP."
         )
-    values = _validated_lead_attribute_values(
+    normalized_values = _normalized_lead_attribute_values(
         definitions=definitions,
         values=values,
     )
-    definition_snapshot = _attribute_schema_snapshot(
-        definitions=definitions,
-        keys=values,
-    )
 
-    before = {
-        key: (lead.attributes or {}).get(key)
-        for key in values
-    }
-    proposal = {
-        "lead_id": str(lead.id),
-        "definitions": definition_snapshot,
-        "before": before,
-        "after": values,
-    }
-    if not dry_run:
-        _ensure_approved_proposal_unchanged(
-            arguments=arguments,
-            proposal=proposal,
-        )
     if dry_run:
+        values = _validated_lead_attribute_values(
+            definitions=definitions,
+            values=normalized_values,
+        )
+        definition_snapshot = _attribute_schema_snapshot(
+            definitions=definitions,
+            keys=values,
+        )
+        before = {
+            key: (lead.attributes or {}).get(key)
+            for key in values
+        }
+        proposal = {
+            "lead_id": str(lead.id),
+            "definitions": definition_snapshot,
+            "before": before,
+            "after": values,
+        }
         return ToolExecution(
             data={
                 "status": "DRY_RUN",
@@ -2398,17 +2407,17 @@ def update_lead_attributes(*, identity, arguments):
 
             current_definition_snapshot = _attribute_schema_snapshot(
                 definitions=current_definitions,
-                keys=values,
+                keys=normalized_values,
             )
             locked_before = {
                 key: (lead.attributes or {}).get(key)
-                for key in values
+                for key in normalized_values
             }
             locked_proposal = {
                 "lead_id": str(lead.id),
                 "definitions": current_definition_snapshot,
                 "before": locked_before,
-                "after": values,
+                "after": normalized_values,
             }
             _ensure_approved_proposal_unchanged(
                 arguments=arguments,
@@ -2416,7 +2425,7 @@ def update_lead_attributes(*, identity, arguments):
             )
             locked_values = _validated_lead_attribute_values(
                 definitions=current_definitions,
-                values=values,
+                values=normalized_values,
             )
 
             update_lead_attribute_values(
@@ -2445,7 +2454,7 @@ def update_lead_attributes(*, identity, arguments):
         data={
             "status": "FIXED",
             "lead_id": str(lead.id),
-            "updated_keys": sorted(values),
+            "updated_keys": sorted(normalized_values),
             "verification": "passed",
         },
         capability=CAP_LEAD_ATTRIBUTES_WRITE,
@@ -2453,7 +2462,7 @@ def update_lead_attributes(*, identity, arguments):
         target_id=str(lead.id),
         reason=reason,
         audit_summary={
-            "attribute_keys": sorted(values),
+            "attribute_keys": sorted(normalized_values),
             "operation": "update_lead_attributes",
             "verification": "passed",
         },
