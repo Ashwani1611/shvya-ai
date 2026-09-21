@@ -221,7 +221,13 @@ class CalendarPage(models.Model):
                 {"timezone": "Choose a valid IANA timezone, for example Asia/Kolkata."}
             ) from exc
 
-        for day, rule in (self.availability or {}).items():
+        availability = self.availability or {}
+        if not isinstance(availability, dict):
+            raise ValidationError(
+                {"availability": "Availability must be a weekday configuration."}
+            )
+
+        for day, rule in availability.items():
             if not isinstance(rule, dict) or not rule.get("enabled"):
                 continue
             try:
