@@ -14,6 +14,7 @@ from apps.crm.models import AttributeDefinition, Lead, Pipeline, Stage
 from apps.organizations.models import Organization
 
 from .models import (
+    CalendarBlock,
     CalendarBooking,
     CalendarPage,
     CalendarReminderSequence,
@@ -196,6 +197,67 @@ class ShvyaCalendarServiceTests(TestCase):
         self.assertEqual(self.page.session_title, "Updated Demo")
         self.assertEqual(self.page.status, CalendarPage.Status.PUBLISHED)
         self.assertGreater(self.page.current_version, version_before)
+
+    def test_scheduling_editor_has_no_nested_action_forms(self):
+        CalendarBlock.objects.create(
+            page=self.page,
+            starts_at=timezone.now() + timedelta(days=3),
+            ends_at=timezone.now() + timedelta(days=3, hours=1),
+            reason="Maintenance",
+        )
+        self._authenticate_dashboard_client()
+
+        response = self.client.get(
+            reverse("shvya_calendar:editor", kwargs={"page_id": self.page.id})
+            + "?tab=scheduling"
+        )
+
+        self.assertEqual(response.status_code, 200)
+        delete_url = reverse(
+            "shvya_calendar:block_delete",
+            kwargs={
+                "page_id": self.page.id,
+                "block_id": self.page.blocks.first().id,
+            },
+        )
+        self.assertContains(response, f'formaction="{delete_url}"')
+        self.assertNotContains(
+            response,
+            f'<form method="post" action="{delete_url}"',
+        )
+
+    def test_email_match_with_different_mobile_is_not_silently_reused(self):
+        Lead.objects.create(
+            organization=self.organization,
+            pipeline=self.pipeline,
+            stage=self.stage,
+            name="Existing Email",
+            phone="+917000000099",
+            email="same@example.com",
+        )
+        request = self._request(
+            {
+                "name": "New Mobile",
+                "mobile": "+917000000100",
+                "consent": "on",
+                "f_email": "same@example.com",
+            }
+        )
+        submitted, normalized = validate_public_submission(
+            page=self.page,
+            version=self.version,
+            post=request.POST,
+            files=request.FILES,
+        )
+        with self.assertRaises(ValidationError):
+            create_submission_and_lead(
+                page=self.page,
+                version=self.version,
+                submitted=submitted,
+                normalized=normalized,
+                request=request,
+                files=request.FILES,
+            )
 
     def test_public_link_is_friendly_when_page_is_not_published(self):
         self.page.status = CalendarPage.Status.DISABLED
