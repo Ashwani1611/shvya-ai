@@ -114,6 +114,57 @@ def page_snapshot(page):
     }
 
 
+def validate_page_for_publish(page):
+    """Validate every runtime dependency required by a live public calendar page."""
+    if not page.pipeline_id or not page.stage_id:
+        raise ValidationError(
+            "Select a CRM pipeline and initial stage before publishing."
+        )
+
+    page.full_clean()
+
+    if page.page_type == CalendarPage.PageType.LEAD:
+        return
+
+    if not page.host_id:
+        raise ValidationError("Select a booking host before publishing.")
+
+    # Fail early on invalid timezone/availability rather than letting a public
+    # booking request discover the problem as a server error.
+    zone = _page_zone(page)
+    del zone
+    enabled_days = 0
+    for key in WEEKDAY_KEYS:
+        rule = (page.availability or {}).get(key) or {}
+        if not rule.get("enabled"):
+            continue
+        enabled_days += 1
+        start = _parse_clock(rule.get("start") or "09:00")
+        end = _parse_clock(rule.get("end") or "18:00")
+        if start >= end:
+            raise ValidationError(
+                {"availability": f"{key.title()} end time must be after start time."}
+            )
+    if enabled_days == 0:
+        raise ValidationError(
+            {"availability": "Enable at least one booking day before publishing."}
+        )
+
+    if page.meeting_location == CalendarPage.MeetingLocation.GOOGLE_MEET:
+        from .google import connection_for_page, google_is_configured
+
+        if not google_is_configured():
+            raise ValidationError(
+                "Google Calendar is not configured on this SHVYA server yet. "
+                "Connect the Google OAuth credentials or choose another meeting location."
+            )
+        if connection_for_page(page) is None:
+            raise ValidationError(
+                "Connect the booking host's Google Calendar before publishing "
+                "a Google Meet page."
+            )
+
+
 @transaction.atomic
 def publish_page(*, page, actor):
     page = (
@@ -122,23 +173,15 @@ def publish_page(*, page, actor):
         .select_related("pipeline", "stage", "host")
         .get(pk=page.pk)
     )
-    if not page.pipeline_id or not page.stage_id:
-        raise ValidationError(
-            "Select a CRM pipeline and initial stage before publishing."
-        )
-    page.full_clean()
-    if page.page_type != CalendarPage.PageType.LEAD:
-        if not page.host_id:
-            raise ValidationError("Select a booking host before publishing.")
-        if page.meeting_location == CalendarPage.MeetingLocation.GOOGLE_MEET:
-            from .google import connection_for_page
-            if connection_for_page(page) is None:
-                raise ValidationError(
-                    "Connect the booking host's Google Calendar before publishing "
-                    "a Google Meet page."
-                )
+    validate_page_for_publish(page)
 
-    version = page.current_version + 1
+    latest_version = (
+        page.published_versions.order_by("-version")
+        .values_list("version", flat=True)
+        .first()
+        or 0
+    )
+    version = max(page.current_version or 0, latest_version) + 1
     published = CalendarPageVersion.objects.create(
         page=page,
         version=version,
