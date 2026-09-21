@@ -1583,6 +1583,112 @@ class OperationsMCPTests(TestCase):
             foreign_action_payload,
         )
 
+    def test_automation_read_fails_closed_on_stale_workflow_references(self):
+        OperationsPolicy.objects.create(
+            organization=self.organization,
+            organization_admin_enabled=True,
+            allowed_capabilities=[CAP_ORGANIZATION_READ],
+        )
+        legacy_attribute = AttributeDefinition.objects.create(
+            organization=self.organization,
+            name="Legacy Sensitive Context",
+            key="legacy_sensitive_context",
+            field_type=AttributeDefinition.FieldType.TEXT,
+        )
+        workflow = SmartTrigger.objects.create(
+            organization=self.organization,
+            name="Stale Workflow Reference",
+            enabled=False,
+            position=1,
+            trigger_type="keyword",
+            conditions={
+                "scopes": [
+                    {
+                        "pipeline": str(self.pipeline.id),
+                        "stages": [str(self.new_stage.id)],
+                    }
+                ],
+                "attributes": [
+                    {
+                        "key": legacy_attribute.key,
+                        "match": "equals",
+                        "values": ["short-private-value"],
+                    }
+                ],
+                "keywords": ["hello"],
+            },
+            action_type="ai",
+            action={"enabled": True},
+            fingerprint="9" * 64,
+            created_by=self.admin,
+        )
+        legacy_key = legacy_attribute.key
+        legacy_attribute.delete()
+
+        bearer = self._token(
+            actor=self.admin,
+            role=ROLE_ORGANIZATION_ADMIN,
+            organization=self.organization,
+            scopes=[OPERATIONS_READ_SCOPE],
+        )
+        orphan_attribute = self._result(
+            self._call(
+                bearer,
+                "get_automation_configuration",
+                {},
+            )
+        )
+        self.assertTrue(orphan_attribute["isError"])
+        self.assertEqual(
+            orphan_attribute["structuredContent"]["status"],
+            "NOT_ALLOWED",
+        )
+        orphan_payload = json.dumps(orphan_attribute)
+        self.assertNotIn(legacy_key, orphan_payload)
+        self.assertNotIn(
+            "short-private-value",
+            orphan_payload,
+        )
+
+        workflow.conditions = {
+            "scopes": [
+                {
+                    "pipeline": str(self.pipeline.id),
+                    "stages": [str(self.review_stage.id)],
+                }
+            ],
+            "attributes": [],
+            "keywords": ["hello"],
+        }
+        workflow.save(
+            update_fields=[
+                "conditions",
+                "updated_at",
+            ]
+        )
+        stale_stage_id = str(self.review_stage.id)
+        self.review_stage.is_active = False
+        self.review_stage.save(
+            update_fields=["is_active", "updated_at"]
+        )
+
+        stale_stage = self._result(
+            self._call(
+                bearer,
+                "get_automation_configuration",
+                {},
+            )
+        )
+        self.assertTrue(stale_stage["isError"])
+        self.assertEqual(
+            stale_stage["structuredContent"]["status"],
+            "NOT_ALLOWED",
+        )
+        self.assertNotIn(
+            stale_stage_id,
+            json.dumps(stale_stage),
+        )
+
     def test_existing_cadence_sender_change_is_explicitly_rejected(self):
         OperationsPolicy.objects.create(
             organization=self.organization,

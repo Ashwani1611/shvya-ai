@@ -847,14 +847,17 @@ def _workflow_reference_index(organization):
     stage_pairs = {
         (str(pipeline_id), str(stage_id))
         for pipeline_id, stage_id in Stage.objects.filter(
-            pipeline__organization=organization
+            pipeline__organization=organization,
+            pipeline__is_active=True,
+            is_active=True,
         ).values_list("pipeline_id", "id")
     }
     return {
         "pipeline_ids": {
             str(item)
             for item in Pipeline.objects.filter(
-                organization=organization
+                organization=organization,
+                is_active=True,
             ).values_list("id", flat=True)
         },
         "stage_pairs": stage_pairs,
@@ -862,14 +865,27 @@ def _workflow_reference_index(organization):
             str(item)
             for item in FollowupSequence.objects.filter(
                 organization=organization,
+                is_active=True,
                 whatsapp_account__organization=organization,
             ).values_list("id", flat=True)
         },
         "account_ids": {
             str(item)
             for item in WhatsAppAccount.objects.filter(
-                organization=organization
+                organization=organization,
+                is_active=True,
+                status=WhatsAppAccount.Status.CONNECTED,
+                connection_type__in=[
+                    WhatsAppAccount.ConnectionType.API,
+                    WhatsAppAccount.ConnectionType.coexisted,
+                ],
             ).values_list("id", flat=True)
+        },
+        "attribute_keys": {
+            str(item)
+            for item in AttributeDefinition.objects.filter(
+                organization=organization
+            ).values_list("key", flat=True)
         },
     }
 
@@ -921,6 +937,22 @@ def _assert_workflow_tenant_references(rule, reference_index):
                 not in reference_index["stage_pairs"]
             ):
                 reject()
+
+    attribute_conditions = conditions.get("attributes", [])
+    if not isinstance(attribute_conditions, list):
+        reject()
+    for condition in attribute_conditions:
+        if not isinstance(condition, dict):
+            reject()
+        attribute_key = str(
+            condition.get("key") or ""
+        ).strip()
+        if (
+            attribute_key
+            and attribute_key
+            not in reference_index["attribute_keys"]
+        ):
+            reject()
 
     sequence_refs = conditions.get("sequences")
     if sequence_refs is not None:
@@ -975,6 +1007,26 @@ def _assert_workflow_tenant_references(rule, reference_index):
             account_id
             and account_id
             not in reference_index["account_ids"]
+        ):
+            reject()
+    elif rule.action_type == "attribute":
+        attribute_key = str(
+            action.get("key") or ""
+        ).strip()
+        if (
+            attribute_key
+            and attribute_key
+            not in reference_index["attribute_keys"]
+        ):
+            reject()
+    elif rule.action_type == "reminder":
+        date_attribute = str(
+            action.get("date_attribute") or ""
+        ).strip()
+        if (
+            date_attribute
+            and date_attribute
+            not in reference_index["attribute_keys"]
         ):
             reject()
 
