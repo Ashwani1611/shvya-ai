@@ -2893,6 +2893,11 @@ document.addEventListener("DOMContentLoaded", function () {
                                     {% else %}
                                     <span class="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">Read only</span>
                                     {% endif %}
+                                    {% if not token.live_authority_valid %}
+                                    <span class="rounded-full bg-red-50 px-2 py-0.5 text-[10px] font-semibold text-red-700">
+                                        Invalid authority · {{ token.live_authority_reason_code }}
+                                    </span>
+                                    {% endif %}
                                 </div>
                                 <p class="mt-1 text-xs text-gray-500">
                                     {{ token.actor.name|default:token.actor.email }}
