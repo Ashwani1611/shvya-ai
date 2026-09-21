@@ -423,6 +423,42 @@ class ShvyaCalendarServiceTests(TestCase):
         self.assertNotIn("google/disconnect", outer_form)
         self.assertNotIn("/blocks/", outer_form)
 
+    def test_second_reminder_gets_next_display_order_without_integrity_error(self):
+        add_url = reverse("shvya_calendar:reminder_add", args=[self.page.id])
+        first = self.client.post(
+            add_url,
+            {
+                "channel": "email",
+                "name": "First reminder",
+                "timing": "immediate",
+                "subject": "First",
+                "body": "Hello",
+            },
+        )
+        second = self.client.post(
+            add_url,
+            {
+                "channel": "call_reminder",
+                "name": "Second reminder",
+                "timing": "before",
+                "timing_amount": "30",
+                "timing_unit": "minutes",
+                "body": "Call the lead",
+            },
+        )
+        self.assertEqual(first.status_code, 302)
+        self.assertEqual(second.status_code, 302)
+        orders = list(
+            self.page.reminder_sequence.steps.order_by("display_order")
+            .values_list("display_order", flat=True)
+        )
+        self.assertEqual(orders, [0, 1])
+
+    def test_google_callback_without_saved_state_redirects_instead_of_500(self):
+        response = self.client.get(reverse("shvya_calendar:google_callback"))
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, reverse("shvya_calendar:index"))
+
     def test_reminder_channels_do_not_include_ai_call(self):
         channel_values = {
             value
