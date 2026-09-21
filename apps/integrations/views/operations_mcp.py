@@ -56,7 +56,9 @@ from apps.integrations.operations_policy import (
 from apps.integrations.operations_tools import (
     DIAGNOSTIC_TOOL_NAMES,
     OperationsApprovalRequired,
+    OperationsManualFixRequired,
     OperationsPermissionError,
+    OperationsSuperadminRequired,
     OperationsToolError,
     execute_operations_tool,
 )
@@ -1288,6 +1290,30 @@ def operations_mcp(request):
             "content": [{"type": "text", "text": sanitize_text(exc, limit=400)}],
             "structuredContent": {
                 "status": "APPROVAL_REQUIRED",
+                "error": sanitize_text(exc, limit=400),
+            },
+            "isError": True,
+        }
+    except OperationsSuperadminRequired as exc:
+        error_code = exc.code
+        audit_outcome = exc.outcome
+        error_reason = str(exc)
+        result = {
+            "content": [{"type": "text", "text": sanitize_text(exc, limit=400)}],
+            "structuredContent": {
+                "status": "SUPERADMIN_REQUIRED",
+                "error": sanitize_text(exc, limit=400),
+            },
+            "isError": True,
+        }
+    except OperationsManualFixRequired as exc:
+        error_code = exc.code
+        audit_outcome = exc.outcome
+        error_reason = str(exc)
+        result = {
+            "content": [{"type": "text", "text": sanitize_text(exc, limit=400)}],
+            "structuredContent": {
+                "status": "MANUAL_FIX_REQUIRED",
                 "error": sanitize_text(exc, limit=400),
             },
             "isError": True,
