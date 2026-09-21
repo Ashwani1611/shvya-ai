@@ -12,7 +12,7 @@ from django.utils import timezone
 from apps.accounts.models import User
 from apps.accounts.session_utils import get_session_cookie_name, set_authenticated_user
 from apps.ai_engagement.models import OrgInfo
-from apps.crm.models import AttributeDefinition, Lead, LeadActivity, Pipeline
+from apps.crm.models import AttributeDefinition, Lead, LeadActivity, Pipeline, Stage
 from apps.integrations.operations_agent_prompt import OPERATIONS_AGENT_INSTRUCTIONS
 from apps.integrations.models import (
     OperationsAuditEvent,
@@ -38,6 +38,7 @@ from apps.integrations.operations_policy import (
 )
 from apps.organizations.models import Organization
 from apps.triggers.models import SmartTrigger
+from services.crm.lead_transition import move_lead_to_stage
 
 
 class OperationsMCPTests(TestCase):
@@ -62,6 +63,16 @@ class OperationsMCPTests(TestCase):
         )
         self.new_stage = self.pipeline.stages.get(name="New leads")
         self.qualified = self.pipeline.stages.get(name="Qualified")
+        self.review_stage = Stage.objects.create(
+            pipeline=self.pipeline,
+            name="Review",
+            display_order=90,
+        )
+        self.followup_stage = Stage.objects.create(
+            pipeline=self.pipeline,
+            name="Follow Up",
+            display_order=91,
+        )
         self.lead = Lead.objects.create(
             organization=self.organization,
             pipeline=self.pipeline,
@@ -941,8 +952,8 @@ class OperationsMCPTests(TestCase):
         )
         base_arguments = {
             "lead_id": str(self.lead.id),
-            "target_stage_id": str(self.qualified.id),
-            "reason": "Qualification completion verified",
+            "target_stage_id": str(self.review_stage.id),
+            "reason": "Move lead to reviewed sales stage",
         }
 
         dry = self._result(
@@ -1012,13 +1023,13 @@ class OperationsMCPTests(TestCase):
             "passed",
         )
         self.lead.refresh_from_db()
-        self.assertEqual(self.lead.stage_id, self.qualified.id)
+        self.assertEqual(self.lead.stage_id, self.review_stage.id)
         self.assertTrue(
             LeadActivity.objects.filter(
                 lead=self.lead,
                 organization=self.organization,
                 topic=LeadActivity.Topic.STAGE_CHANGED,
-                new_stage=self.qualified,
+                new_stage=self.review_stage,
             ).exists()
         )
 
@@ -1072,7 +1083,7 @@ class OperationsMCPTests(TestCase):
         )
         arguments = {
             "lead_id": str(self.lead.id),
-            "target_stage_id": str(self.qualified.id),
+            "target_stage_id": str(self.review_stage.id),
             "reason": "Review time-bounded stage change",
         }
         dry = self._result(
@@ -1111,6 +1122,101 @@ class OperationsMCPTests(TestCase):
         )
         self.lead.refresh_from_db()
         self.assertEqual(self.lead.stage_id, self.new_stage.id)
+
+    def test_operations_stage_move_cannot_bypass_backend_qualification(self):
+        OperationsPolicy.objects.create(
+            organization=self.organization,
+            organization_admin_enabled=True,
+            allowed_capabilities=[
+                CAP_ORGANIZATION_READ,
+                CAP_LEAD_STAGE_WRITE,
+            ],
+            approval_required_capabilities=[],
+        )
+        bearer = self._token(
+            actor=self.admin,
+            role=ROLE_ORGANIZATION_ADMIN,
+            organization=self.organization,
+        )
+
+        result = self._result(
+            self._call(
+                bearer,
+                "move_lead_stage",
+                {
+                    "lead_id": str(self.lead.id),
+                    "target_stage_id": str(self.qualified.id),
+                    "reason": "Attempt direct Qualified transition",
+                    "dry_run": True,
+                },
+            )
+        )
+        self.assertTrue(result["isError"])
+        self.assertEqual(
+            result["structuredContent"]["status"],
+            "NOT_ALLOWED",
+        )
+        self.lead.refresh_from_db()
+        self.assertEqual(self.lead.stage_id, self.new_stage.id)
+
+    def test_operations_stage_approval_is_invalid_after_lead_state_changes(self):
+        OperationsPolicy.objects.create(
+            organization=self.organization,
+            organization_admin_enabled=True,
+            allowed_capabilities=[
+                CAP_ORGANIZATION_READ,
+                CAP_LEAD_STAGE_WRITE,
+            ],
+            approval_required_capabilities=[CAP_LEAD_STAGE_WRITE],
+        )
+        bearer = self._token(
+            actor=self.admin,
+            role=ROLE_ORGANIZATION_ADMIN,
+            organization=self.organization,
+        )
+        arguments = {
+            "lead_id": str(self.lead.id),
+            "target_stage_id": str(self.review_stage.id),
+            "reason": "Approve move from current lead stage",
+        }
+        dry = self._result(
+            self._call(
+                bearer,
+                "move_lead_stage",
+                {**arguments, "dry_run": True},
+            )
+        )
+        self.assertFalse(dry["isError"])
+
+        move_lead_to_stage(
+            lead=self.lead,
+            stage=self.followup_stage,
+            actor=self.admin,
+        )
+        self.lead.refresh_from_db()
+        self.assertEqual(self.lead.stage_id, self.followup_stage.id)
+
+        stale = self._result(
+            self._call(
+                bearer,
+                "move_lead_stage",
+                {
+                    **arguments,
+                    "dry_run": False,
+                    "approved": True,
+                    "approval_event_id": dry["structuredContent"][
+                        "approval_event_id"
+                    ],
+                },
+            )
+        )
+        self.assertTrue(stale["isError"])
+        self.assertEqual(
+            stale["structuredContent"]["status"],
+            "APPROVAL_REQUIRED",
+        )
+        self.lead.refresh_from_db()
+        self.assertEqual(self.lead.stage_id, self.followup_stage.id)
 
     def test_approved_true_cannot_bypass_disabled_write_capability(self):
         OperationsPolicy.objects.create(
