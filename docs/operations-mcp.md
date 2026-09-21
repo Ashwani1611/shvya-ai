@@ -218,3 +218,16 @@ OAuth authorization-code issuance and successful token issue/refresh also commit
 ### Knowledge / RAG health
 
 `get_knowledge_health` provides organization-scoped metadata only: knowledge source type/name, URL hostname, document version/status/publication state, chunk counts, embedding coverage and timestamps. It deliberately does not return document/chunk text, file bytes, source keys, signed URL query strings or embedding vectors. The organization configuration summary includes the same bounded knowledge-health view so “understand my business” can distinguish complete grounded context from missing/failed knowledge without broad source retrieval.
+
+
+## Consent-bound capability snapshot
+
+Organization Admin authorization is bounded by three layers:
+
+- **Live Superadmin policy** — the maximum capabilities currently enabled for the organization.
+- **OAuth granted capabilities** — the exact capability snapshot consented to when that external-AI grant was authorized.
+- **Effective capabilities** — the intersection of live policy, the grant snapshot, and OAuth read/write scope.
+
+A policy reduction takes effect immediately on existing grants. A later policy expansion does **not** silently give an already-connected ChatGPT, Claude or VS Code client new authority; the Organization Admin must complete fresh SHVYA OAuth authorization. The MCP context reports `policy_capabilities`, `granted_capabilities` and current `capabilities` separately.
+
+The Superadmin policy is granular for customer-state writes: lead stage, lead attributes, AI/Playbook, CRM pipeline, CRM stage, CRM attribute, Workflow, Cadence and messaging-automation settings can be controlled independently. Legacy stored `crm.config.write` and `automation.config.write` policies are expanded only for backward compatibility and are normalized to granular controls when Superadmin saves the policy.
