@@ -8,6 +8,7 @@ from django.utils import timezone
 
 from apps.accounts.models import User
 from apps.accounts.session_utils import get_session_cookie_name, set_authenticated_user
+from apps.ai_engagement.models import OrgInfo
 from apps.crm.models import AttributeDefinition, Lead, LeadActivity, Pipeline, Stage
 from apps.integrations.models import (
     OperationsAuditEvent,
@@ -23,6 +24,7 @@ from apps.integrations.operations_auth import (
     token_hash,
 )
 from apps.integrations.operations_policy import (
+    CAP_AI_CONFIG_WRITE,
     CAP_CRM_CONFIG_WRITE,
     CAP_DIAGNOSTICS_READ,
     CAP_LEAD_STAGE_WRITE,
@@ -223,6 +225,66 @@ class OperationsMCPTests(TestCase):
         )
         self.assertEqual(definition.key, "company_size")
         self.assertEqual(definition.field_type, "numeric")
+
+    def test_read_context_does_not_create_missing_policy_row(self):
+        bearer = self._token(
+            actor=self.superadmin,
+            role=ROLE_SUPERADMIN,
+            scopes=[OPERATIONS_READ_SCOPE],
+        )
+        self.assertFalse(
+            OperationsPolicy.objects.filter(
+                organization=self.organization,
+            ).exists()
+        )
+        result = self._result(
+            self._call(bearer, "list_organizations")
+        )
+        self.assertFalse(result["isError"])
+        self.assertFalse(
+            OperationsPolicy.objects.filter(
+                organization=self.organization,
+            ).exists()
+        )
+
+    def test_ai_configuration_dry_run_does_not_create_org_info(self):
+        bearer = self._token(
+            actor=self.superadmin,
+            role=ROLE_SUPERADMIN,
+        )
+        selected = self._result(
+            self._call(
+                bearer,
+                "select_organization_context",
+                {
+                    "organization_id": str(self.organization.id),
+                    "reason": "Prepare AI configuration review",
+                },
+            )
+        )
+        self.assertFalse(selected["isError"])
+        self.assertFalse(
+            OrgInfo.objects.filter(organization=self.organization).exists()
+        )
+
+        dry = self._result(
+            self._call(
+                bearer,
+                "update_ai_configuration",
+                {
+                    "changes": {
+                        "about": "Test organization context",
+                    },
+                    "reason": "Review proposed AI context change",
+                    "dry_run": True,
+                },
+            )
+        )
+        self.assertFalse(dry["isError"])
+        self.assertEqual(dry["structuredContent"]["status"], "DRY_RUN")
+        self.assertFalse(
+            OrgInfo.objects.filter(organization=self.organization).exists()
+        )
 
     def test_registration_accepts_chatgpt_and_claude_callbacks(self):
         for callback in (
