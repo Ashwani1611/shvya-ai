@@ -329,20 +329,27 @@ def _operations_support_context(request):
     if not organization_id:
         return {
             "operations_support_active": False,
+            "operations_support_recently_active": False,
             "operations_support_actor": "",
             "operations_support_started_at": None,
+            "operations_support_last_seen_at": None,
         }
 
-    from apps.integrations.operations_presence import visible_support_sessions
+    from apps.integrations.operations_presence import (
+        open_support_sessions,
+        support_session_recently_active,
+    )
 
-    session = visible_support_sessions(
+    session = open_support_sessions(
         organization=user.organization,
     ).first()
     if session is None:
         return {
             "operations_support_active": False,
+            "operations_support_recently_active": False,
             "operations_support_actor": "",
             "operations_support_started_at": None,
+            "operations_support_last_seen_at": None,
         }
 
     actor_name = (
@@ -351,8 +358,12 @@ def _operations_support_context(request):
     )
     return {
         "operations_support_active": True,
+        "operations_support_recently_active": (
+            support_session_recently_active(session)
+        ),
         "operations_support_actor": actor_name,
         "operations_support_started_at": session.started_at,
+        "operations_support_last_seen_at": session.last_seen_at,
     }
 
 
