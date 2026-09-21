@@ -16,6 +16,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
 from apps.accounts.models import User
+from apps.core.ratelimit import _client_ip
 from apps.crm.authentication import crm_login_required, get_crm_session
 from apps.crm.models import AttributeDefinition, Stage
 from apps.crm.views.api import get_user_pipelines
@@ -896,7 +897,7 @@ def _public_page(public_id, slug):
 
 
 def _rate_limit_public(request, page):
-    ip_key = hash_ip(request.META.get("REMOTE_ADDR"))
+    ip_key = hash_ip(_client_ip(request))
     if not ip_key:
         return True
     key = f"shvya-calendar:{page.id}:{ip_key}"
