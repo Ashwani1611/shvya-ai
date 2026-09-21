@@ -1168,6 +1168,9 @@ def update_messaging_automation_settings(*, identity, arguments):
 
     try:
         with transaction.atomic():
+            organization = Organization.objects.select_for_update().get(
+                pk=organization.pk
+            )
             account = (
                 WhatsAppAccount.objects.select_for_update()
                 .select_related("organization")
@@ -1185,11 +1188,9 @@ def update_messaging_automation_settings(*, identity, arguments):
                 )
 
             try:
-                locked_preview = (
-                    preview_session_settings_update(
-                        account=account,
-                        payload=changes,
-                    )
+                first_preview = preview_session_settings_update(
+                    account=account,
+                    payload=changes,
                 )
             except HostedWhatsAppValidationError as exc:
                 raise OperationsApprovalRequired(
@@ -1197,7 +1198,36 @@ def update_messaging_automation_settings(*, identity, arguments):
                     "Run a fresh dry-run."
                 ) from exc
 
-            locked_pipeline = locked_preview["pipeline"]
+            locked_pipeline = (
+                Pipeline.objects.select_for_update()
+                .filter(
+                    pk=first_preview["pipeline"].pk,
+                    organization=organization,
+                    is_active=True,
+                )
+                .first()
+            )
+            if locked_pipeline is None:
+                raise OperationsApprovalRequired(
+                    "The pipeline linked to this WhatsApp account changed "
+                    "after review. Run a fresh dry-run."
+                )
+            try:
+                locked_preview = preview_session_settings_update(
+                    account=account,
+                    payload=changes,
+                )
+            except HostedWhatsAppValidationError as exc:
+                raise OperationsApprovalRequired(
+                    "Messaging automation configuration changed after review. "
+                    "Run a fresh dry-run."
+                ) from exc
+            if locked_preview["pipeline"].id != locked_pipeline.id:
+                raise OperationsApprovalRequired(
+                    "The pipeline linked to this WhatsApp account changed "
+                    "after review. Run a fresh dry-run."
+                )
+
             locked_before = locked_preview["before"]
             locked_after = locked_preview["after"]
             locked_proposal = {
