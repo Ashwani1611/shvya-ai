@@ -287,6 +287,12 @@ def _require_operations_capability(
             ) from exc
         raise OperationsPermissionError(str(exc)) from exc
 
+    if capability not in identity.granted_capabilities:
+        raise OperationsPermissionError(
+            f"Capability '{capability}' was not included in this OAuth grant. "
+            "Fresh SHVYA authorization is required before the external AI can use it."
+        )
+
 
 
 def _write_gate(
@@ -415,13 +421,12 @@ def get_operations_context(*, identity, arguments):
             organization=organization,
         )
     )
+    granted_capabilities = set(
+        identity.granted_capabilities
+    )
     capabilities = sorted(
-        capability
-        for capability in policy_capabilities
-        if (
-            capability not in WRITE_CAPABILITIES
-            or "operations.write" in identity.scopes
-        )
+        policy_capabilities
+        & granted_capabilities
     )
     session = _support_session(identity)
     policy = policy_for(organization) if organization is not None else None
@@ -444,6 +449,9 @@ def get_operations_context(*, identity, arguments):
             "capabilities": capabilities,
             "policy_capabilities": sorted(
                 policy_capabilities
+            ),
+            "granted_capabilities": sorted(
+                granted_capabilities
             ),
             "oauth_scopes": sorted(identity.scopes),
             "organization_admin_external_ai_enabled": (
