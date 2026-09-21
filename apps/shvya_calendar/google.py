@@ -298,7 +298,15 @@ def create_booking_event(booking):
     booking.google_event_url = str(payload.get("htmlLink") or "")
     booking.google_conference_id = conference_id
     booking.meeting_link = meeting_link
-    booking.calendar_sync_status = CalendarBooking.SyncStatus.SYNCED
+    conference_pending = (
+        page.meeting_location == page.MeetingLocation.GOOGLE_MEET
+        and not meeting_link
+    )
+    booking.calendar_sync_status = (
+        CalendarBooking.SyncStatus.PENDING
+        if conference_pending
+        else CalendarBooking.SyncStatus.SYNCED
+    )
     booking.calendar_sync_error = ""
     booking.save(
         update_fields=[
@@ -307,6 +315,78 @@ def create_booking_event(booking):
             "google_event_url",
             "google_conference_id",
             "meeting_link",
+            "calendar_sync_status",
+            "calendar_sync_error",
+            "updated_at",
+        ]
+    )
+    if conference_pending:
+        try:
+            from .tasks import refresh_booking_conference
+
+            refresh_booking_conference.apply_async(
+                args=[str(booking.id)],
+                countdown=3,
+            )
+        except Exception:
+            # Recovery Beat also scans pending Google Meet bookings, so a
+            # temporary broker outage cannot permanently lose conference sync.
+            pass
+    return booking
+
+
+def refresh_booking_event_details(booking):
+    """Refresh Google-owned event/conference details for an existing booking."""
+    if not booking.google_event_id:
+        return booking
+
+    connection = connection_for_page(booking.page)
+    if connection is None:
+        raise GoogleCalendarError("Reconnect Google Calendar to finish meeting sync.")
+
+    calendar_id = booking.google_calendar_id or connection.calendar_id or "primary"
+    response = requests.get(
+        (
+            f"{GOOGLE_CALENDAR_API}/calendars/"
+            f"{quote(calendar_id, safe='')}/events/"
+            f"{quote(booking.google_event_id, safe='')}"
+        ),
+        headers=_headers(connection),
+        timeout=20,
+    )
+    if not response.ok:
+        raise GoogleCalendarError(
+            f"Google Calendar event refresh failed ({response.status_code})."
+        )
+
+    event = response.json()
+    meeting_link, conference_id = _conference_details(event)
+    if booking.page.meeting_location == booking.page.MeetingLocation.CUSTOM:
+        meeting_link = booking.page.custom_meeting_link
+
+    booking.google_event_url = str(
+        event.get("htmlLink") or booking.google_event_url
+    )
+    booking.meeting_link = meeting_link or booking.meeting_link
+    booking.google_conference_id = (
+        conference_id or booking.google_conference_id
+    )
+    still_pending = (
+        booking.page.meeting_location
+        == booking.page.MeetingLocation.GOOGLE_MEET
+        and not booking.meeting_link
+    )
+    booking.calendar_sync_status = (
+        CalendarBooking.SyncStatus.PENDING
+        if still_pending
+        else CalendarBooking.SyncStatus.SYNCED
+    )
+    booking.calendar_sync_error = ""
+    booking.save(
+        update_fields=[
+            "google_event_url",
+            "meeting_link",
+            "google_conference_id",
             "calendar_sync_status",
             "calendar_sync_error",
             "updated_at",
