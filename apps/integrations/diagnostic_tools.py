@@ -316,15 +316,21 @@ def find_leads(*, organization, arguments):
     except (TypeError, ValueError, AttributeError):
         pass
 
-    leads = list(
+    lead_qs = (
         _tenant_safe_leads(organization)
         .filter(filters)
         .select_related("pipeline", "stage")
-        .order_by("-updated_at")[:limit]
+    )
+    match_count = lead_qs.count()
+    leads = list(
+        lead_qs.order_by("-updated_at")[:limit]
     )
     return {
         "matches": [_safe_lead(lead) for lead in leads],
         "count": len(leads),
+        "match_count": match_count,
+        "matches_returned": len(leads),
+        "matches_truncated": match_count > len(leads),
     }
 
 
@@ -526,15 +532,20 @@ def get_conversation(*, organization, arguments):
     limit = max(1, min(limit, 50))
 
     rows = []
+    whatsapp_count = 0
+    instagram_count = 0
 
     if channel in {"all", "whatsapp"}:
-        wa_rows = list(
+        wa_qs = (
             _tenant_safe_whatsapp_messages(
                 organization
             ).filter(lead=lead)
             .select_related("account")
             .defer("account__access_token")
-            .order_by(
+        )
+        whatsapp_count = wa_qs.count()
+        wa_rows = list(
+            wa_qs.order_by(
                 "-created_at",
                 "-id",
             )[:limit]
@@ -545,7 +556,7 @@ def get_conversation(*, organization, arguments):
         )
 
     if channel in {"all", "instagram"}:
-        ig_rows = list(
+        ig_qs = (
             _tenant_safe_instagram_messages(
                 organization
             ).filter(conversation__lead=lead)
@@ -554,7 +565,10 @@ def get_conversation(*, organization, arguments):
                 "conversation",
             )
             .defer("account__access_token")
-            .order_by(
+        )
+        instagram_count = ig_qs.count()
+        ig_rows = list(
+            ig_qs.order_by(
                 "-created_at",
                 "-id",
             )[:limit]
@@ -570,10 +584,18 @@ def get_conversation(*, organization, arguments):
     if len(rows) > limit:
         rows = rows[-limit:]
 
+    message_count = whatsapp_count + instagram_count
     return {
         "lead": _safe_lead(lead),
         "messages": rows,
         "count": len(rows),
+        "message_count": message_count,
+        "messages_returned": len(rows),
+        "messages_truncated": message_count > len(rows),
+        "channel_counts": {
+            "whatsapp": whatsapp_count,
+            "instagram": instagram_count,
+        },
     }
 
 
@@ -878,14 +900,12 @@ def get_workflow_trace(*, organization, arguments):
         limit = 20
     limit = max(1, min(limit, 50))
 
-    events = list(
-        _tenant_safe_trigger_events(
-            organization
-        ).filter(
-            lead=lead,
-        ).order_by("-created_at")[:limit]
+    event_qs = _tenant_safe_trigger_events(
+        organization
+    ).filter(
+        lead=lead,
     )
-    runs = list(
+    run_qs = (
         _tenant_safe_trigger_runs(
             organization
         ).filter(lead=lead)
@@ -893,7 +913,14 @@ def get_workflow_trace(*, organization, arguments):
             "rule",
             "event",
         )
-        .order_by("-created_at")[:limit]
+    )
+    event_count = event_qs.count()
+    run_count = run_qs.count()
+    events = list(
+        event_qs.order_by("-created_at")[:limit]
+    )
+    runs = list(
+        run_qs.order_by("-created_at")[:limit]
     )
 
     return {
@@ -939,6 +966,12 @@ def get_workflow_trace(*, organization, arguments):
             }
             for run in runs
         ],
+        "event_count": event_count,
+        "events_returned": len(events),
+        "events_truncated": event_count > len(events),
+        "run_count": run_count,
+        "runs_returned": len(runs),
+        "runs_truncated": run_count > len(runs),
     }
 
 
