@@ -14,7 +14,7 @@ from apps.accounts.session_utils import get_session_cookie_name, set_authenticat
 from apps.ai_engagement.models import OrgInfo
 from apps.channels.models import WhatsAppAccount
 from apps.crm.models import AttributeDefinition, Lead, LeadActivity, Pipeline, Stage
-from apps.followups.models import FollowupSequence
+from apps.followups.models import FollowupSequence, FollowupStep
 from apps.integrations.operations_agent_prompt import OPERATIONS_AGENT_INSTRUCTIONS
 from apps.integrations.models import (
     OperationsApprovalUse,
@@ -559,6 +559,226 @@ class OperationsMCPTests(TestCase):
         self.assertNotIn(
             context_attribute.key,
             self.lead.attributes or {},
+        )
+
+    def test_pipeline_configuration_cannot_deactivate_pipeline_with_leads(self):
+        OperationsPolicy.objects.create(
+            organization=self.organization,
+            organization_admin_enabled=True,
+            allowed_capabilities=[
+                CAP_ORGANIZATION_READ,
+                CAP_CRM_CONFIG_WRITE,
+            ],
+            approval_required_capabilities=[],
+        )
+        bearer = self._token(
+            actor=self.admin,
+            role=ROLE_ORGANIZATION_ADMIN,
+            organization=self.organization,
+        )
+
+        result = self._result(
+            self._call(
+                bearer,
+                "upsert_pipeline_configuration",
+                {
+                    "pipeline_id": str(self.pipeline.id),
+                    "data": {"is_active": False},
+                    "reason": "Attempt pipeline deactivation with live leads",
+                    "dry_run": True,
+                },
+            )
+        )
+        self.assertTrue(result["isError"])
+        self.assertEqual(
+            result["structuredContent"]["status"],
+            "NOT_ALLOWED",
+        )
+        self.pipeline.refresh_from_db()
+        self.assertTrue(self.pipeline.is_active)
+
+    def test_attribute_type_change_rejects_incompatible_existing_lead_values(self):
+        OperationsPolicy.objects.create(
+            organization=self.organization,
+            organization_admin_enabled=True,
+            allowed_capabilities=[
+                CAP_ORGANIZATION_READ,
+                CAP_CRM_CONFIG_WRITE,
+            ],
+            approval_required_capabilities=[],
+        )
+        definition = AttributeDefinition.objects.create(
+            organization=self.organization,
+            name="Legacy Context",
+            key="legacy_context",
+            field_type=AttributeDefinition.FieldType.TEXT,
+        )
+        self.lead.attributes = {
+            **(self.lead.attributes or {}),
+            definition.key: "not-a-number",
+        }
+        self.lead.save(update_fields=["attributes", "updated_at"])
+
+        bearer = self._token(
+            actor=self.admin,
+            role=ROLE_ORGANIZATION_ADMIN,
+            organization=self.organization,
+        )
+        result = self._result(
+            self._call(
+                bearer,
+                "upsert_attribute_configuration",
+                {
+                    "attribute_id": str(definition.id),
+                    "data": {
+                        "name": definition.name,
+                        "field_type": "numeric",
+                        "description": "",
+                        "options": [],
+                    },
+                    "reason": "Attempt incompatible attribute type change",
+                    "dry_run": True,
+                },
+            )
+        )
+        self.assertTrue(result["isError"])
+        self.assertEqual(
+            result["structuredContent"]["status"],
+            "NOT_ALLOWED",
+        )
+        self.assertIn(
+            "existing CRM values invalid",
+            result["structuredContent"]["error"],
+        )
+        definition.refresh_from_db()
+        self.assertEqual(
+            definition.field_type,
+            AttributeDefinition.FieldType.TEXT,
+        )
+
+        self.lead.attributes[definition.key] = "42"
+        self.lead.save(update_fields=["attributes", "updated_at"])
+        allowed = self._result(
+            self._call(
+                bearer,
+                "upsert_attribute_configuration",
+                {
+                    "attribute_id": str(definition.id),
+                    "data": {
+                        "name": definition.name,
+                        "field_type": "numeric",
+                        "description": "",
+                        "options": [],
+                    },
+                    "reason": "Review compatible attribute type change",
+                    "dry_run": True,
+                },
+            )
+        )
+        self.assertFalse(allowed["isError"])
+        self.assertEqual(
+            allowed["structuredContent"]["status"],
+            "DRY_RUN",
+        )
+
+    def test_cadence_step_verification_checks_schedule_and_content(self):
+        OperationsPolicy.objects.create(
+            organization=self.organization,
+            organization_admin_enabled=True,
+            allowed_capabilities=[
+                CAP_ORGANIZATION_READ,
+                CAP_AUTOMATION_CONFIG_WRITE,
+            ],
+            approval_required_capabilities=[],
+        )
+        account = WhatsAppAccount.objects.create(
+            organization=self.organization,
+            connection_type=WhatsAppAccount.ConnectionType.API,
+            business_name="Cadence Verify Sender",
+            display_phone_number="+919000000004",
+            status=WhatsAppAccount.Status.CONNECTED,
+            is_active=True,
+        )
+        sequence = FollowupSequence.objects.create(
+            organization=self.organization,
+            created_by=self.admin,
+            name="Verification Cadence",
+            description="Test",
+            whatsapp_account=account,
+        )
+        bearer = self._token(
+            actor=self.admin,
+            role=ROLE_ORGANIZATION_ADMIN,
+            organization=self.organization,
+        )
+        arguments = {
+            "cadence_id": str(sequence.id),
+            "data": {
+                "type": "reminder",
+                "text": "Call this lead",
+                "schedule": {
+                    "type": "delay",
+                    "delay_value": 2,
+                    "delay_unit": "hours",
+                },
+            },
+            "reason": "Add verified reminder cadence step",
+            "dry_run": False,
+        }
+
+        applied = self._result(
+            self._call(
+                bearer,
+                "add_cadence_step",
+                arguments,
+            )
+        )
+        self.assertFalse(applied["isError"])
+        self.assertEqual(
+            applied["structuredContent"]["status"],
+            "FIXED",
+        )
+        step = sequence.steps.get()
+        self.assertEqual(step.step_type, FollowupStep.StepType.REMINDER)
+        self.assertEqual(step.reminder_text, "Call this lead")
+        self.assertEqual(step.schedule_type, FollowupStep.ScheduleType.DELAY)
+        self.assertEqual(step.delay_value, 2)
+        self.assertEqual(step.delay_unit, FollowupStep.DelayUnit.HOURS)
+
+        sequence.steps.all().delete()
+
+        def create_wrong_schedule(*, sequence, text, **kwargs):
+            return FollowupStep.objects.create(
+                sequence=sequence,
+                position=sequence.steps.count() + 1,
+                step_type=FollowupStep.StepType.REMINDER,
+                title="Wrong schedule",
+                reminder_text=text,
+                schedule_type=FollowupStep.ScheduleType.IMMEDIATE,
+            )
+
+        with patch(
+            "apps.integrations.operations_tools.add_reminder_step",
+            side_effect=create_wrong_schedule,
+        ):
+            failed = self._result(
+                self._call(
+                    bearer,
+                    "add_cadence_step",
+                    {
+                        **arguments,
+                        "reason": "Detect mismatched cadence persistence",
+                    },
+                )
+            )
+        self.assertTrue(failed["isError"])
+        self.assertEqual(
+            failed["structuredContent"]["status"],
+            "FAILED",
+        )
+        self.assertIn(
+            "schedule_type",
+            failed["structuredContent"]["error"],
         )
 
     def test_pipeline_configuration_create_verifies_standard_stages(self):
