@@ -13,7 +13,7 @@ from django.utils import timezone
 from apps.accounts.models import User
 from apps.accounts.session_utils import get_session_cookie_name, set_authenticated_user
 from apps.ai_engagement.models import OrgInfo
-from apps.channels.instagram_models import InstagramAccount
+from apps.channels.instagram_models import InstagramAccount, InstagramWebhookDelivery
 from apps.channels.models import WhatsAppAccount, WhatsAppMessage
 from apps.crm.models import AttributeDefinition, Lead, LeadActivity, Pipeline, Stage
 from apps.followups.models import FollowupSequence, FollowupStep
@@ -1140,6 +1140,94 @@ class OperationsMCPTests(TestCase):
         self.assertNotIn("hosted-provider-secret", payload)
         self.assertNotIn("internal_prompt", payload)
         self.assertNotIn("free_text", payload)
+
+    def test_instagram_webhook_failures_are_tenant_scoped_and_payload_safe(self):
+        OperationsPolicy.objects.create(
+            organization=self.organization,
+            organization_admin_enabled=True,
+            allowed_capabilities=[
+                CAP_ORGANIZATION_READ,
+                CAP_DIAGNOSTICS_READ,
+            ],
+        )
+        own = InstagramWebhookDelivery.objects.create(
+            payload_sha256="1" * 64,
+            raw_payload={
+                "object": "instagram",
+                "entry": [
+                    {
+                        "id": "own-account",
+                        "private": "raw-own-webhook-secret",
+                    }
+                ],
+            },
+            organization_ids=[str(self.organization.id)],
+            account_ids=[],
+            status=InstagramWebhookDelivery.Status.FAILED,
+            error_message="access_token=own-webhook-secret provider failure",
+            processed_at=timezone.now(),
+        )
+        other = InstagramWebhookDelivery.objects.create(
+            payload_sha256="2" * 64,
+            raw_payload={
+                "object": "instagram",
+                "entry": [
+                    {
+                        "id": "other-account",
+                        "private": "raw-other-webhook-secret",
+                    }
+                ],
+            },
+            organization_ids=[str(self.other_organization.id)],
+            account_ids=[],
+            status=InstagramWebhookDelivery.Status.FAILED,
+            error_message="other tenant webhook failure",
+            processed_at=timezone.now(),
+        )
+        bearer = self._token(
+            actor=self.admin,
+            role=ROLE_ORGANIZATION_ADMIN,
+            organization=self.organization,
+            scopes=[OPERATIONS_READ_SCOPE],
+        )
+
+        recent = self._result(
+            self._call(
+                bearer,
+                "get_recent_errors",
+                {"hours": 24, "limit": 20},
+            )
+        )
+        self.assertFalse(recent["isError"])
+        rows = recent["structuredContent"]["instagram_webhooks"]
+        self.assertEqual(
+            [row["delivery_id"] for row in rows],
+            [str(own.id)],
+        )
+        self.assertEqual(
+            rows[0]["error"],
+            "access_token=[REDACTED] provider failure",
+        )
+        payload = json.dumps(recent["structuredContent"])
+        self.assertNotIn(str(other.id), payload)
+        self.assertNotIn("raw-own-webhook-secret", payload)
+        self.assertNotIn("raw-other-webhook-secret", payload)
+        self.assertNotIn("own-webhook-secret", payload)
+
+        runtime = self._result(
+            self._call(
+                bearer,
+                "get_runtime_health",
+                {},
+            )
+        )
+        self.assertFalse(runtime["isError"])
+        self.assertEqual(
+            runtime["structuredContent"]["counts"][
+                "instagram_webhook_failed_24h"
+            ],
+            1,
+        )
 
     def test_integration_health_never_decrypts_provider_credentials(self):
         OperationsPolicy.objects.create(
