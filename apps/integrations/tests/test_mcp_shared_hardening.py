@@ -3,6 +3,8 @@ from unittest.mock import patch
 
 from django.test import SimpleTestCase, TestCase
 
+from apps.accounts.models import User
+
 from apps.integrations.diagnostic_auth import (
     DIAGNOSTICS_SCOPE,
     validate_authorization_request as validate_diagnostic_authorization,
@@ -17,7 +19,9 @@ from apps.integrations.mcp_schema import (
 )
 from apps.integrations.models import (
     DiagnosticOAuthClient,
+    OperationsAuditEvent,
     OperationsOAuthClient,
+    OperationsPolicy,
 )
 from apps.integrations.operations_audit import (
     organization_visible_audit_reason,
@@ -26,6 +30,12 @@ from apps.integrations.operations_auth import (
     OPERATIONS_READ_SCOPE,
     validate_authorization_request as validate_operations_authorization,
 )
+from apps.integrations.operations_policy import (
+    CAP_AUDIT_READ,
+    ROLE_ORGANIZATION_ADMIN,
+)
+from apps.integrations.operations_tools import get_operations_audit
+from apps.organizations.models import Organization
 
 
 class MCPSharedValidationTests(SimpleTestCase):
@@ -163,3 +173,54 @@ class MCPCIMDAuthorizationTests(TestCase):
                 client_id=self.client_id
             ).exists()
         )
+
+
+class OperationsAuditPresentationTests(TestCase):
+    def test_org_admin_audit_api_hides_internal_support_reason(self):
+        organization = Organization.objects.create(
+            name="Audit Presentation Org"
+        )
+        admin = User.objects.create_user(
+            email="audit-present@example.com",
+            password="test-password",
+            name="Audit Admin",
+            organization=organization,
+            role=User.Role.ADMIN,
+        )
+        OperationsPolicy.objects.create(
+            organization=organization,
+            organization_admin_enabled=True,
+            allowed_capabilities=[CAP_AUDIT_READ],
+            approval_required_capabilities=[],
+        )
+        event = OperationsAuditEvent.objects.create(
+            actor=admin,
+            role="SHVYA_SUPERADMIN",
+            organization=organization,
+            tool_name="select_organization_context",
+            capability="organization.read",
+            target_type="organization",
+            target_id=str(organization.id),
+            reason="Internal incident context that customer must not see",
+            outcome=OperationsAuditEvent.Outcome.SUCCESS,
+            request_fingerprint="e" * 64,
+            change_summary={"support_context": "started"},
+        )
+        identity = SimpleNamespace(
+            role=ROLE_ORGANIZATION_ADMIN,
+            organization=organization,
+            active_organization=None,
+            actor=admin,
+            granted_capabilities=frozenset({CAP_AUDIT_READ}),
+        )
+
+        execution = get_operations_audit(
+            identity=identity,
+            arguments={"audit_event_id": str(event.id)},
+        )
+        row = execution.data["events"][0]
+        self.assertEqual(
+            row["reason"],
+            "SHVYA Support context started for this organization.",
+        )
+        self.assertNotIn("Internal incident", row["reason"])
