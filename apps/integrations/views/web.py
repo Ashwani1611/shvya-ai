@@ -433,20 +433,31 @@ def shvya_api_view(request):
         CAP_AUDIT_READ,
         ROLE_ORGANIZATION_ADMIN,
         WRITE_CAPABILITIES,
+        approval_required,
+        expand_capabilities,
         policy_for,
     )
 
     operations_policy = policy_for(organization)
+    configured_operations_capabilities = sorted(
+        expand_capabilities(
+            operations_policy.allowed_capabilities
+        )
+    )
     operations_capabilities = [
         {
             "key": key,
             "label": CAPABILITY_LABELS.get(key, key),
             "approval_required": (
                 key in WRITE_CAPABILITIES
-                and key in (operations_policy.approval_required_capabilities or [])
+                and approval_required(
+                    role=ROLE_ORGANIZATION_ADMIN,
+                    organization=organization,
+                    capability=key,
+                )
             ),
         }
-        for key in (operations_policy.allowed_capabilities or [])
+        for key in configured_operations_capabilities
         if key in CAPABILITY_LABELS
     ]
     active_operations_support = visible_support_sessions(
