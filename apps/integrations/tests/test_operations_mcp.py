@@ -1215,6 +1215,67 @@ class OperationsMCPTests(TestCase):
         self.lead.refresh_from_db()
         self.assertEqual(self.lead.stage_id, self.new_stage.id)
 
+    def test_operations_stage_move_enforces_target_required_attributes(self):
+        OperationsPolicy.objects.create(
+            organization=self.organization,
+            organization_admin_enabled=True,
+            allowed_capabilities=[
+                CAP_ORGANIZATION_READ,
+                CAP_LEAD_STAGE_WRITE,
+            ],
+            approval_required_capabilities=[],
+        )
+        required = AttributeDefinition.objects.create(
+            organization=self.organization,
+            name="Company Size",
+            key="company_size",
+            field_type=AttributeDefinition.FieldType.NUMERIC,
+        )
+        self.review_stage.config = {
+            "required_attribute_ids": [str(required.id)],
+        }
+        self.review_stage.save(update_fields=["config", "updated_at"])
+
+        bearer = self._token(
+            actor=self.admin,
+            role=ROLE_ORGANIZATION_ADMIN,
+            organization=self.organization,
+        )
+        arguments = {
+            "lead_id": str(self.lead.id),
+            "target_stage_id": str(self.review_stage.id),
+            "reason": "Move after required CRM data is complete",
+            "dry_run": True,
+        }
+
+        blocked = self._result(
+            self._call(bearer, "move_lead_stage", arguments)
+        )
+        self.assertTrue(blocked["isError"])
+        self.assertEqual(
+            blocked["structuredContent"]["status"],
+            "NOT_ALLOWED",
+        )
+        self.assertIn(
+            "Company Size",
+            blocked["structuredContent"]["error"],
+        )
+
+        self.lead.attributes = {
+            **(self.lead.attributes or {}),
+            "company_size": "25",
+        }
+        self.lead.save(update_fields=["attributes", "updated_at"])
+
+        allowed = self._result(
+            self._call(bearer, "move_lead_stage", arguments)
+        )
+        self.assertFalse(allowed["isError"])
+        self.assertEqual(
+            allowed["structuredContent"]["status"],
+            "DRY_RUN",
+        )
+
     def test_operations_stage_approval_is_invalid_after_lead_state_changes(self):
         OperationsPolicy.objects.create(
             organization=self.organization,
