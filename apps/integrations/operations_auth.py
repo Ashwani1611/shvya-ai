@@ -320,7 +320,7 @@ def exchange_authorization_code(
     now = timezone.now()
     with transaction.atomic():
         auth_code = (
-            OperationsOAuthAuthorizationCode.objects.select_for_update()
+            OperationsOAuthAuthorizationCode.objects.select_for_update(of=("self",))
             .select_related("client", "actor", "organization")
             .filter(code_hash=token_hash(code))
             .first()
@@ -564,7 +564,7 @@ def refresh_access_token(*, refresh_token, client_id, resource=""):
     now = timezone.now()
     with transaction.atomic():
         token = (
-            OperationsOAuthToken.objects.select_for_update()
+            OperationsOAuthToken.objects.select_for_update(of=("self",))
             .select_related("client", "actor", "organization", "active_organization")
             .filter(
                 refresh_token_hash=token_hash(refresh_token),
