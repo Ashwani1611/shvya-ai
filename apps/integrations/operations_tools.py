@@ -1274,6 +1274,7 @@ def update_lead_attributes(*, identity, arguments):
     values = (arguments or {}).get("values")
     if not isinstance(values, dict) or not values:
         raise OperationsToolError("values must be a non-empty object keyed by CRM attribute key.")
+    _reject_secret_like_content(values, field="lead_attributes")
 
     definitions = {
         item.key: item
@@ -1931,6 +1932,7 @@ def upsert_pipeline_configuration(*, identity, arguments):
     data = (arguments or {}).get("data")
     if not isinstance(data, dict):
         raise OperationsToolError("data must be a pipeline configuration object.")
+    _reject_secret_like_content(data, field="pipeline")
 
     pipeline_id = (arguments or {}).get("pipeline_id")
     pipeline = None
@@ -2101,6 +2103,7 @@ def upsert_stage_configuration(*, identity, arguments):
     data = (arguments or {}).get("data")
     if not isinstance(data, dict):
         raise OperationsToolError("data must be a stage configuration object.")
+    _reject_secret_like_content(data, field="stage")
     stage_id = (arguments or {}).get("stage_id")
     stage = None
     if stage_id:
@@ -2277,6 +2280,7 @@ def upsert_attribute_configuration(*, identity, arguments):
     data = (arguments or {}).get("data")
     if not isinstance(data, dict):
         raise OperationsToolError("data must be an attribute configuration object.")
+    _reject_secret_like_content(data, field="attribute")
     attribute_id = (arguments or {}).get("attribute_id")
     attribute = None
     if attribute_id:
@@ -2609,6 +2613,7 @@ def upsert_cadence_configuration(*, identity, arguments):
     data = (arguments or {}).get("data")
     if not isinstance(data, dict):
         raise OperationsToolError("data must be a Cadence configuration object.")
+    _reject_secret_like_content(data, field="cadence")
     sequence_id = (arguments or {}).get("cadence_id")
     sequence = None
     if sequence_id:
