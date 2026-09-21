@@ -1,0 +1,62 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Booking confirmed · {{ page.name }}</title>
+  <link rel="stylesheet" href="{% static 'shvya_calendar/calendar.css' %}?v=20260922-1">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.34.0/dist/tabler-icons.min.css">
+</head>
+<body class="sc-public-body" style="--sc-accent: {{ page.accent_color }}">
+  <main class="sc-success-shell">
+    <section class="sc-success-card sc-confirm-card">
+      {% if cancelled %}
+        <div class="sc-success-icon sc-success-icon-neutral"><i class="ti ti-calendar-x"></i></div>
+        <span class="sc-kicker">BOOKING CANCELLED</span>
+        <h1>Your booking has been cancelled.</h1>
+        <p>The lead remains safely in the CRM. You can contact the team whenever you're ready.</p>
+      {% else %}
+        <div class="sc-success-icon"><i class="ti ti-check"></i></div>
+        <span class="sc-kicker">CONFIRMED</span>
+        <h1>{{ page.confirmation_heading }}</h1>
+        <p>{{ page.confirmation_message }}</p>
+
+        {% if page.show_booking_details %}
+          <div class="sc-booking-summary">
+            <div><span>Date</span><strong>{{ booking.start_at|date:"d M Y" }}</strong></div>
+            <div><span>Time</span><strong>{{ booking.start_at|date:"g:i A" }}</strong></div>
+            <div><span>Duration</span><strong>{{ page.slot_duration_minutes }} minutes</strong></div>
+            <div><span>Timezone</span><strong>{{ booking.timezone }}</strong></div>
+          </div>
+        {% endif %}
+
+        {% if booking.meeting_link %}
+          <a class="sc-meet-card" href="{{ booking.meeting_link }}" target="_blank" rel="noopener">
+            <span><i class="ti ti-video"></i><strong>Join Google Meet</strong><small>{{ booking.meeting_link }}</small></span><i class="ti ti-arrow-up-right"></i>
+          </a>
+        {% elif booking.calendar_sync_status == 'failed' %}
+          <div class="sc-alert">Your booking is confirmed. The calendar meeting link is being resolved by the team.</div>
+        {% endif %}
+
+        <div class="sc-success-actions">
+          {% if page.show_add_calendar and booking.google_event_url %}
+            <a class="sc-button" href="{{ booking.google_event_url }}" target="_blank" rel="noopener"><i class="ti ti-brand-google"></i> Add to Google Calendar</a>
+          {% endif %}
+          {% if page.redirect_enabled and page.redirect_url %}
+            <a class="sc-button" href="{{ page.redirect_url }}">{{ page.redirect_button_text|default:"Continue" }}</a>
+          {% endif %}
+        </div>
+
+        <div class="sc-booking-manage">
+          <a href="{% url 'shvya_calendar_public:reschedule' booking_id=booking.id reschedule_token=booking.reschedule_token %}">Reschedule</a>
+          <span>·</span>
+          <form method="post" action="{% url 'shvya_calendar_public:cancel' booking_id=booking.id cancel_token=booking.cancel_token %}">
+            {% csrf_token %}
+            <button type="submit">Cancel booking</button>
+          </form>
+        </div>
+      {% endif %}
+    </section>
+  </main>
+</body>
+</html>

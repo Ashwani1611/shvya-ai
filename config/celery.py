@@ -94,4 +94,12 @@ app.conf.beat_schedule = {
         "task": "sales.maintain_documents",
         "schedule": 60.0,
     },
+    "shvya-calendar-reminders": {
+        "task": "shvya_calendar.dispatch_due_reminders",
+        "schedule": 30.0,
+    },
+    "shvya-calendar-google-meet-recovery": {
+        "task": "shvya_calendar.recover_pending_google_meet",
+        "schedule": 30.0,
+    },
 }

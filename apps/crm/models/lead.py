@@ -119,6 +119,7 @@ class Lead(models.Model):
             ("csv_import", "CSV Import"),
             ("meta_ads", "Meta Ads"),
             ("instagram", "Instagram"),
+            ("shvya_calendar", "SHVYA Calendar"),
         ],
         default="system",
     )

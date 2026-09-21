@@ -1,0 +1,29 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Request received · {{ page.name }}</title>
+  <link rel="stylesheet" href="{% static 'shvya_calendar/calendar.css' %}?v=20260922-1">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.34.0/dist/tabler-icons.min.css">
+</head>
+<body class="sc-public-body" style="--sc-accent: {{ page.accent_color }}">
+  <main class="sc-success-shell">
+    <section class="sc-success-card">
+      <div class="sc-success-icon"><i class="ti ti-check"></i></div>
+      {% if duplicate_blocked %}
+        <span class="sc-kicker">ALREADY RECEIVED</span>
+        <h1>We already have your details.</h1>
+        <p>Your existing CRM record remains protected. The team can continue from your previous enquiry.</p>
+      {% else %}
+        <span class="sc-kicker">REQUEST RECEIVED</span>
+        <h1>Thanks, {{ submission.lead.name }}.</h1>
+        <p>Your details have been securely captured and shared with the team.</p>
+      {% endif %}
+      {% if page.redirect_enabled and page.redirect_url %}
+        <a class="sc-button sc-button-primary" href="{{ page.redirect_url }}">{{ page.redirect_button_text|default:"Continue" }}</a>
+      {% endif %}
+    </section>
+  </main>
+</body>
+</html>

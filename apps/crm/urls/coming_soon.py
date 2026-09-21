@@ -20,8 +20,11 @@ coming_soon_urlpatterns = [
     # Call tools now live inside Connect Hub.
     path(
         "connect-hub/call-scheduler/",
-        coming_soon,
-        {"feature": "call-scheduler"},
+        RedirectView.as_view(
+            pattern_name="shvya_calendar:index",
+            permanent=False,
+            query_string=True,
+        ),
         name="crm-call-scheduler",
     ),
     path(
