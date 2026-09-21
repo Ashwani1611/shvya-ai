@@ -1,12 +1,14 @@
 import uuid
 from datetime import timedelta
 
-from django.test import TestCase
+from django.contrib.sessions.backends.db import SessionStore
+from django.test import Client, TestCase
 from django.utils import timezone
 from rest_framework.test import APIClient
 from unittest.mock import patch
 
 from apps.accounts.models import User
+from apps.accounts.session_utils import get_session_cookie_name, set_authenticated_user
 from apps.crm.models import Lead, LeadReminder, Pipeline
 from apps.organizations.models import Organization
 from apps.telephony.models import (
@@ -288,3 +290,30 @@ class CallIntelligenceApiTests(TestCase):
         self.assertFalse(LeadReminder.objects.filter(pk=old.pk).exists())
         self.assertEqual(LeadReminder.objects.filter(lead=lead).count(), 1)
         self.assertEqual(LeadReminder.objects.get(lead=lead).title, "New follow-up")
+
+
+
+class CallIntelligenceDashboardTests(TestCase):
+    def setUp(self):
+        self.org = Organization.objects.create(name="Call Dashboard Org")
+        self.user = User.objects.create_user(
+            email="call-dashboard@example.com",
+            name="Call Admin",
+            organization=self.org,
+            role="admin",
+            password="secret123",
+        )
+        session = SessionStore()
+        set_authenticated_user(session, self.user)
+        session.save()
+        self.client = Client()
+        self.client.cookies[get_session_cookie_name("dashboard")] = session.session_key
+
+    def test_dashboard_renders_operational_call_intelligence_ui(self):
+        response = self.client.get("/dashboard/call-intelligence/")
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertContains(response, "CALL INTELLIGENCE")
+        self.assertContains(response, "Download for Android")
+        self.assertContains(response, "MISSED-CALL RECOVERY")
+        self.assertContains(response, "AGENT INTELLIGENCE")
+        self.assertContains(response, "Custom dispositions")
