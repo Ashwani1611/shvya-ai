@@ -1,0 +1,53 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Reschedule · {{ page.name }}</title>
+  <link rel="stylesheet" href="{% static 'shvya_calendar/calendar.css' %}?v=20260922-1">
+</head>
+<body class="sc-public-body" style="--sc-accent: {{ page.accent_color }}">
+  <main class="sc-public-shell sc-public-shell-schedule">
+    <section class="sc-public-intro">
+      <span class="sc-kicker">RESCHEDULE</span>
+      <h1>Choose a new time.</h1>
+      <p>Your CRM lead stays the same. SHVYA updates this booking and its connected Google Calendar event instead of creating another lead.</p>
+      <div class="sc-session-facts">
+        <span><i class="ti ti-calendar"></i>Current: {{ booking.start_at|date:"d M Y, g:i A" }}</span>
+        <span><i class="ti ti-clock"></i>{{ page.slot_duration_minutes }} minutes</span>
+        <span><i class="ti ti-world"></i>{{ page.timezone }}</span>
+      </div>
+    </section>
+    <section class="sc-public-card sc-schedule-card">
+      <div class="sc-public-card-head">
+        <span class="sc-kicker">AVAILABLE TIMES</span>
+        <h2>Select your new slot.</h2>
+        <p>Availability is checked live against SHVYA bookings and the connected Google Calendar.</p>
+      </div>
+      {% if booking_error %}<div class="sc-alert sc-alert-error">{{ booking_error }}</div>{% endif %}
+      <div class="sc-slot-days">
+        {% for day in slot_days %}
+          <section class="sc-slot-day">
+            <header><strong>{{ day.date|date:"D" }}</strong><span>{{ day.date|date:"d M" }}</span></header>
+            <div class="sc-slot-grid">
+              {% for slot in day.slots %}
+                <form method="post">
+                  {% csrf_token %}
+                  <input type="hidden" name="slot_start" value="{{ slot.start|date:'c' }}">
+                  <button class="sc-slot-button" type="submit">{{ slot.label }}</button>
+                </form>
+              {% endfor %}
+            </div>
+          </section>
+        {% empty %}
+          <div class="sc-empty-state"><i class="ti ti-calendar-off"></i><h3>No alternative times are available right now.</h3><p>Your current booking remains unchanged.</p></div>
+        {% endfor %}
+      </div>
+      <div class="sc-success-actions">
+        <a class="sc-button" href="{% url 'shvya_calendar_public:confirmation' booking_id=booking.id cancel_token=booking.cancel_token %}">Keep current booking</a>
+      </div>
+    </section>
+  </main>
+</body>
+</html>
