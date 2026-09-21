@@ -51,14 +51,17 @@ class OperationsPolicyError(PermissionError):
 
 
 def policy_for(organization):
-    policy, _ = OperationsPolicy.objects.get_or_create(
+    policy = OperationsPolicy.objects.filter(organization=organization).first()
+    if policy is not None:
+        return policy
+    # Read paths must stay read-only. Return an unsaved disabled default until
+    # SHVYA Superadmin explicitly persists a policy for this organization.
+    return OperationsPolicy(
         organization=organization,
-        defaults={
-            "allowed_capabilities": DEFAULT_ORG_CAPABILITIES,
-            "approval_required_capabilities": DEFAULT_APPROVAL_REQUIRED,
-        },
+        organization_admin_enabled=False,
+        allowed_capabilities=list(DEFAULT_ORG_CAPABILITIES),
+        approval_required_capabilities=list(DEFAULT_APPROVAL_REQUIRED),
     )
-    return policy
 
 
 def effective_capabilities(*, role, organization=None):
