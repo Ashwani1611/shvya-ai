@@ -2780,6 +2780,15 @@ document.addEventListener("DOMContentLoaded", function () {
         </div>
         {% endif %}
 
+        <div class="mb-5 rounded-lg border border-gray-200 bg-gray-50 p-4">
+            <div class="text-xs font-semibold uppercase tracking-wide text-gray-500">Superadmin Operations MCP endpoint</div>
+            <code class="mt-2 block break-all rounded-md bg-white px-3 py-2 text-xs text-gray-700 border border-gray-200">{{ operations_mcp_url }}</code>
+            <p class="mt-2 text-xs leading-5 text-gray-500">
+                Connect this endpoint from ChatGPT or Claude and authorize with your SHVYA Superadmin session.
+                Customer data remains inaccessible until the Operations agent explicitly selects an organization support context.
+            </p>
+        </div>
+
         <form method="post" action="{% url 'superadmin-organization-operations-mcp-policy' organization_id=organization.id %}">
             {% csrf_token %}
 
