@@ -61,6 +61,13 @@ from apps.integrations.operations_policy import (
 from apps.organizations.access import organization_is_active
 from apps.organizations.models import Organization
 from apps.triggers.models import SmartTrigger, TriggerRun
+from services.channels.hosted_whatsapp_service import (
+    HostedWhatsAppValidationError,
+    get_pipeline_for_account,
+    get_session_settings,
+    preview_session_settings_update,
+    update_session_settings,
+)
 from services.crm.attribute_service import (
     MAX_CUSTOM_ATTRIBUTES,
     create_attribute_definition,
@@ -82,6 +89,19 @@ from services.followup_service import (
     update_sequence,
 )
 from services.triggers.rules import validate as validate_workflow_rule
+
+
+MESSAGING_AUTOMATION_SETTING_KEYS = {
+    "ai_auto_reply",
+    "auto_lead_creation",
+    "bump_up_messages",
+    "bump_up_count",
+    "auto_follow_up",
+    "business_hours_start",
+    "business_hours_end",
+    "active_conversation_delay_value",
+    "active_conversation_delay_unit",
+}
 
 
 DIAGNOSTIC_TOOL_NAMES = {
@@ -948,6 +968,315 @@ def _qualification_contract_snapshot(lead):
         config=config,
     )
     return compiled, requirements, state, config, criteria, target
+
+
+def _messaging_account(*, organization, account_id):
+    account = (
+        WhatsAppAccount.objects.select_related("organization")
+        .filter(
+            pk=_uuid(
+                account_id,
+                field="whatsapp_account_id",
+            ),
+            organization=organization,
+            is_active=True,
+        )
+        .first()
+    )
+    if account is None:
+        raise OperationsToolError(
+            "Active WhatsApp account not found in this organization."
+        )
+    return account
+
+
+def _safe_messaging_settings_row(account):
+    pipeline = get_pipeline_for_account(
+        account=account
+    )
+    return {
+        "whatsapp_account_id": str(account.id),
+        "connection_type": account.connection_type,
+        "business_name": account.business_name,
+        "display_phone_number": account.display_phone_number,
+        "status": account.status,
+        "pipeline": (
+            {
+                "id": str(pipeline.id),
+                "name": pipeline.name,
+            }
+            if pipeline is not None
+            else None
+        ),
+        "settings": get_session_settings(
+            account=account
+        ),
+    }
+
+
+def get_messaging_automation_settings(*, identity, arguments):
+    organization = _organization_for(identity)
+    _require_operations_capability(
+        identity=identity,
+        organization=organization,
+        capability=CAP_ORGANIZATION_READ,
+    )
+    arguments = arguments or {}
+    account_id = str(
+        arguments.get("whatsapp_account_id") or ""
+    ).strip()
+    if account_id:
+        accounts = [
+            _messaging_account(
+                organization=organization,
+                account_id=account_id,
+            )
+        ]
+    else:
+        accounts = list(
+            WhatsAppAccount.objects.filter(
+                organization=organization,
+                is_active=True,
+            )
+            .defer("access_token")
+            .order_by(
+                "business_name",
+                "display_phone_number",
+                "id",
+            )[:50]
+        )
+
+    rows = [
+        _safe_messaging_settings_row(account)
+        for account in accounts
+    ]
+    return ToolExecution(
+        data={
+            "accounts": rows,
+            "count": len(rows),
+        },
+        capability=CAP_ORGANIZATION_READ,
+        target_type=(
+            "whatsapp_account"
+            if account_id
+            else "organization"
+        ),
+        target_id=(
+            account_id
+            if account_id
+            else str(organization.id)
+        ),
+        audit_summary={
+            "account_count": len(rows),
+            "specific_account": bool(account_id),
+        },
+    )
+
+
+def update_messaging_automation_settings(*, identity, arguments):
+    organization = _organization_for(identity)
+    dry_run, reason = _write_gate(
+        identity=identity,
+        organization=organization,
+        capability=CAP_AUTOMATION_CONFIG_WRITE,
+        tool_name="update_messaging_automation_settings",
+        arguments=arguments,
+    )
+    account = _messaging_account(
+        organization=organization,
+        account_id=(arguments or {}).get(
+            "whatsapp_account_id"
+        ),
+    )
+    changes = (arguments or {}).get("changes")
+    if not isinstance(changes, dict) or not changes:
+        raise OperationsToolError(
+            "changes must be a non-empty messaging automation settings object."
+        )
+    unknown = sorted(
+        set(changes)
+        - MESSAGING_AUTOMATION_SETTING_KEYS
+    )
+    if unknown:
+        raise OperationsToolError(
+            "Unsupported messaging automation settings: "
+            + ", ".join(unknown)
+        )
+    _reject_secret_like_content(
+        changes,
+        field="messaging_automation",
+    )
+
+    try:
+        preview = preview_session_settings_update(
+            account=account,
+            payload=changes,
+        )
+    except HostedWhatsAppValidationError as exc:
+        raise OperationsToolError(str(exc)) from exc
+
+    before = preview["before"]
+    after = preview["after"]
+    pipeline = preview["pipeline"]
+    changed_fields = sorted(
+        key
+        for key in MESSAGING_AUTOMATION_SETTING_KEYS
+        if before.get(key) != after.get(key)
+    )
+    proposal = {
+        "whatsapp_account_id": str(account.id),
+        "pipeline_id": str(pipeline.id),
+        "before": before,
+        "after": after,
+    }
+
+    if dry_run:
+        return ToolExecution(
+            data={
+                "status": "DRY_RUN",
+                "whatsapp_account_id": str(account.id),
+                "pipeline": {
+                    "id": str(pipeline.id),
+                    "name": pipeline.name,
+                },
+                "changed_fields": changed_fields,
+                "before": before,
+                "after": after,
+                "approval_required": approval_required(
+                    role=identity.role,
+                    organization=organization,
+                    capability=CAP_AUTOMATION_CONFIG_WRITE,
+                ),
+                "risk": (
+                    "Changes pipeline-linked AI reply, lead creation, bump-up, "
+                    "follow-up timing, business-hours or conversation-delay behavior."
+                ),
+                "reversible": True,
+            },
+            capability=CAP_AUTOMATION_CONFIG_WRITE,
+            target_type="whatsapp_account",
+            target_id=str(account.id),
+            reason=reason,
+            outcome=OperationsAuditEvent.Outcome.DRY_RUN,
+            audit_summary={
+                "operation": "update_messaging_automation_settings",
+                "pipeline_id": str(pipeline.id),
+                "changed_fields": changed_fields,
+                "proposal_digest": _proposal_digest(proposal),
+            },
+        )
+
+    try:
+        with transaction.atomic():
+            account = (
+                WhatsAppAccount.objects.select_for_update()
+                .select_related("organization")
+                .filter(
+                    pk=account.pk,
+                    organization=organization,
+                    is_active=True,
+                )
+                .first()
+            )
+            if account is None:
+                raise OperationsApprovalRequired(
+                    "The WhatsApp account changed or became inactive. "
+                    "Run a fresh dry-run."
+                )
+
+            try:
+                locked_preview = (
+                    preview_session_settings_update(
+                        account=account,
+                        payload=changes,
+                    )
+                )
+            except HostedWhatsAppValidationError as exc:
+                raise OperationsApprovalRequired(
+                    "Messaging automation configuration changed after review. "
+                    "Run a fresh dry-run."
+                ) from exc
+
+            locked_pipeline = locked_preview["pipeline"]
+            locked_before = locked_preview["before"]
+            locked_after = locked_preview["after"]
+            locked_proposal = {
+                "whatsapp_account_id": str(account.id),
+                "pipeline_id": str(
+                    locked_pipeline.id
+                ),
+                "before": locked_before,
+                "after": locked_after,
+            }
+            _ensure_approved_proposal_unchanged(
+                arguments=arguments,
+                proposal=locked_proposal,
+            )
+
+            try:
+                updated = update_session_settings(
+                    account=account,
+                    payload=changes,
+                )
+            except HostedWhatsAppValidationError as exc:
+                raise OperationsToolError(
+                    str(exc)
+                ) from exc
+
+            verified = get_session_settings(
+                account=account
+            )
+            if verified != updated:
+                raise OperationsToolError(
+                    "Messaging automation settings verification failed."
+                )
+            for key in MESSAGING_AUTOMATION_SETTING_KEYS:
+                if (
+                    key in locked_after
+                    and verified.get(key)
+                    != locked_after.get(key)
+                ):
+                    raise OperationsToolError(
+                        "Messaging automation settings verification failed "
+                        f"for {key}."
+                    )
+            before = locked_before
+            after = locked_after
+            pipeline = locked_pipeline
+            changed_fields = sorted(
+                key
+                for key in MESSAGING_AUTOMATION_SETTING_KEYS
+                if before.get(key) != after.get(key)
+            )
+    except IntegrityError as exc:
+        raise OperationsToolError(
+            "Messaging automation settings changed concurrently. "
+            "Run a fresh dry-run."
+        ) from exc
+
+    return ToolExecution(
+        data={
+            "status": "FIXED",
+            "whatsapp_account_id": str(account.id),
+            "pipeline": {
+                "id": str(pipeline.id),
+                "name": pipeline.name,
+            },
+            "changed_fields": changed_fields,
+            "settings": after,
+            "verification": "passed",
+        },
+        capability=CAP_AUTOMATION_CONFIG_WRITE,
+        target_type="whatsapp_account",
+        target_id=str(account.id),
+        reason=reason,
+        audit_summary={
+            "operation": "update_messaging_automation_settings",
+            "pipeline_id": str(pipeline.id),
+            "changed_fields": changed_fields,
+            "verification": "passed",
+        },
+    )
 
 
 def diagnose_lead_qualification(*, identity, arguments):
@@ -4117,6 +4446,8 @@ def execute_operations_tool(*, name, identity, arguments):
         "clear_organization_context": clear_organization_context,
         "get_organization_configuration": get_organization_configuration,
         "get_automation_configuration": get_automation_configuration,
+        "get_messaging_automation_settings": get_messaging_automation_settings,
+        "update_messaging_automation_settings": update_messaging_automation_settings,
         "diagnose_lead_qualification": diagnose_lead_qualification,
         "move_lead_stage": move_lead_stage,
         "repair_qualification_stage": repair_qualification_stage,
