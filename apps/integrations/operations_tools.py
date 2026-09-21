@@ -11,16 +11,23 @@ from datetime import date, datetime, time as dt_time, timedelta
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
 from django.db.models import (
+    Avg,
     BooleanField,
     Case,
     Count,
+    DurationField,
+    ExpressionWrapper,
     F,
     Max,
+    Min,
+    OuterRef,
     Prefetch,
     Q,
+    Subquery,
     Value,
     When,
 )
+from django.db.models.fields.json import KeyTextTransform
 from django.utils import timezone
 
 from apps.ai_engagement.models import (
@@ -29,6 +36,7 @@ from apps.ai_engagement.models import (
     KnowledgeSource,
     OrgInfo,
 )
+from apps.analytics.models import AnalyticsSettings
 from apps.ai_engagement.services.confidentiality import is_sensitive_attribute_definition
 from apps.ai_engagement.services.organization_profile import compile_qualification_requirements
 from apps.ai_engagement.services.playbook import (
@@ -42,6 +50,7 @@ from apps.ai_engagement.services.qualification_state import (
     state_for_lead,
 )
 from apps.channels.campaign_models import CampaignDelivery
+from apps.channels.instagram_models import InstagramMessage
 from apps.channels.models import WhatsAppAccount, WhatsAppMessage, WhatsAppTemplate
 from apps.crm.models import AttributeDefinition, Lead, LeadActivity, Pipeline, Stage
 from apps.followups.models import (
@@ -131,6 +140,8 @@ MESSAGING_AUTOMATION_SETTING_KEYS = frozenset(
     MESSAGING_AUTOMATION_SETTING_FIELDS
 )
 ATTRIBUTE_COMPATIBILITY_SCAN_LIMIT = 5000
+CONVERSION_BREAKDOWN_LIMIT = 100
+LOST_REASON_BREAKDOWN_LIMIT = 20
 
 
 GENERIC_ACTION_REASONS = {
@@ -150,6 +161,7 @@ GENERIC_ACTION_REASONS = {
 
 DIAGNOSTIC_TOOL_NAMES = {
     "find_leads",
+    "find_affected_leads",
     "get_lead_snapshot",
     "get_conversation",
     "trace_message",
@@ -3252,6 +3264,217 @@ def get_conversion_analysis(*, identity, arguments):
         organization
     ).values("id")
 
+    analytics_settings = (
+        AnalyticsSettings.objects.select_related(
+            "lead_won_stage__pipeline",
+            "lead_lost_stage__pipeline",
+        )
+        .filter(organization=organization)
+        .first()
+    )
+    configured_won_stage = (
+        analytics_settings.lead_won_stage
+        if (
+            analytics_settings
+            and analytics_settings.lead_won_stage_id
+            and analytics_settings.lead_won_stage.pipeline.organization_id
+            == organization.id
+        )
+        else None
+    )
+    configured_lost_stage = (
+        analytics_settings.lead_lost_stage
+        if (
+            analytics_settings
+            and analytics_settings.lead_lost_stage_id
+            and analytics_settings.lead_lost_stage.pipeline.organization_id
+            == organization.id
+        )
+        else None
+    )
+    stall_day_threshold = max(
+        1,
+        min(
+            int(
+                getattr(
+                    analytics_settings,
+                    "stall_day_threshold",
+                    7,
+                )
+                or 7
+            ),
+            90,
+        ),
+    )
+
+    lost_reason_definition = (
+        AttributeDefinition.objects.filter(
+            organization=organization,
+        )
+        .filter(
+            Q(key__in=["lost_reason", "loss_reason"])
+            | Q(name__iexact="Lost Reason")
+            | Q(name__iexact="Loss Reason")
+        )
+        .order_by("display_order", "created_at")
+        .first()
+    )
+    if (
+        lost_reason_definition is not None
+        and is_sensitive_attribute_definition(
+            {
+                "key": lost_reason_definition.key,
+                "name": lost_reason_definition.name,
+            }
+        )
+    ):
+        lost_reason_definition = None
+
+    def first_response_metrics(
+        *,
+        created,
+        channel,
+        start_at,
+        end_at,
+    ):
+        if channel == "whatsapp":
+            inbound = (
+                WhatsAppMessage.objects.filter(
+                    organization=organization,
+                    account__organization=organization,
+                    lead_id=OuterRef("pk"),
+                    direction=WhatsAppMessage.Direction.INBOUND,
+                    created_at__gte=start_at,
+                    created_at__lt=end_at,
+                )
+                .order_by("created_at", "id")
+                .values("created_at")[:1]
+            )
+            cohort = created.annotate(
+                _first_inbound_at=Subquery(inbound)
+            )
+            outbound = (
+                WhatsAppMessage.objects.filter(
+                    organization=organization,
+                    account__organization=organization,
+                    lead_id=OuterRef("pk"),
+                    direction=WhatsAppMessage.Direction.OUTBOUND,
+                    created_at__gte=OuterRef(
+                        "_first_inbound_at"
+                    ),
+                    created_at__lt=end_at,
+                )
+                .order_by("created_at", "id")
+                .values("created_at")[:1]
+            )
+        else:
+            inbound = (
+                InstagramMessage.objects.filter(
+                    organization=organization,
+                    account__organization=organization,
+                    conversation__organization=organization,
+                    conversation__account__organization=organization,
+                    conversation__lead_id=OuterRef("pk"),
+                    direction=InstagramMessage.Direction.INBOUND,
+                    created_at__gte=start_at,
+                    created_at__lt=end_at,
+                )
+                .filter(
+                    account_id=F(
+                        "conversation__account_id"
+                    )
+                )
+                .order_by("created_at", "id")
+                .values("created_at")[:1]
+            )
+            cohort = created.annotate(
+                _first_inbound_at=Subquery(inbound)
+            )
+            outbound = (
+                InstagramMessage.objects.filter(
+                    organization=organization,
+                    account__organization=organization,
+                    conversation__organization=organization,
+                    conversation__account__organization=organization,
+                    conversation__lead_id=OuterRef("pk"),
+                    direction=InstagramMessage.Direction.OUTBOUND,
+                    created_at__gte=OuterRef(
+                        "_first_inbound_at"
+                    ),
+                    created_at__lt=end_at,
+                )
+                .filter(
+                    account_id=F(
+                        "conversation__account_id"
+                    )
+                )
+                .order_by("created_at", "id")
+                .values("created_at")[:1]
+            )
+
+        cohort = cohort.annotate(
+            _first_outbound_at=Subquery(outbound)
+        )
+        inbound_leads = cohort.filter(
+            _first_inbound_at__isnull=False
+        ).count()
+        responded = (
+            cohort.filter(
+                _first_inbound_at__isnull=False,
+                _first_outbound_at__isnull=False,
+            )
+            .annotate(
+                _first_response_duration=ExpressionWrapper(
+                    F("_first_outbound_at")
+                    - F("_first_inbound_at"),
+                    output_field=DurationField(),
+                )
+            )
+        )
+        response_aggregate = responded.aggregate(
+            responded_leads=Count("id"),
+            average_response=Avg(
+                "_first_response_duration"
+            ),
+        )
+        responded_leads = int(
+            response_aggregate.get(
+                "responded_leads"
+            )
+            or 0
+        )
+        average_response = response_aggregate.get(
+            "average_response"
+        )
+        average_seconds = (
+            round(
+                average_response.total_seconds(),
+                2,
+            )
+            if average_response is not None
+            else None
+        )
+        return {
+            "inbound_leads": inbound_leads,
+            "responded_leads": responded_leads,
+            "response_rate": (
+                round(
+                    responded_leads / inbound_leads,
+                    4,
+                )
+                if inbound_leads
+                else None
+            ),
+            "average_first_response_seconds": (
+                average_seconds
+            ),
+            "method": (
+                "First persisted outbound message after the first persisted "
+                "inbound message for the same lead, channel and comparison "
+                "window."
+            ),
+        }
+
     def window(start_at, end_at):
         created = _tenant_safe_leads(
             organization
@@ -3261,15 +3484,34 @@ def get_conversion_analysis(*, identity, arguments):
         )
         lead_count = created.count()
 
+        source_group_count = (
+            created.values("lead_source")
+            .distinct()
+            .count()
+        )
+        pipeline_group_count = (
+            created.values("pipeline_id")
+            .distinct()
+            .count()
+        )
+        stage_group_count = (
+            created.values("pipeline_id", "stage_id")
+            .distinct()
+            .count()
+        )
         source_rows = list(
             created.values("lead_source")
             .annotate(count=Count("id"))
-            .order_by("-count", "lead_source")
+            .order_by("-count", "lead_source")[
+                :CONVERSION_BREAKDOWN_LIMIT
+            ]
         )
         pipeline_rows = list(
             created.values("pipeline_id", "pipeline__name")
             .annotate(count=Count("id"))
-            .order_by("-count", "pipeline__name")
+            .order_by("-count", "pipeline__name")[
+                :CONVERSION_BREAKDOWN_LIMIT
+            ]
         )
         stage_rows = list(
             created.values(
@@ -3278,7 +3520,9 @@ def get_conversion_analysis(*, identity, arguments):
                 "stage__name",
             )
             .annotate(count=Count("id"))
-            .order_by("-count", "pipeline__name", "stage__name")
+            .order_by("-count", "pipeline__name", "stage__name")[
+                :CONVERSION_BREAKDOWN_LIMIT
+            ]
         )
 
         qualified_activity = LeadActivity.objects.filter(
@@ -3301,7 +3545,12 @@ def get_conversion_analysis(*, identity, arguments):
             row["lead__lead_source"]: row["count"]
             for row in (
                 qualified_activity.values("lead__lead_source")
-                .annotate(count=Count("lead_id", distinct=True))
+                .annotate(
+                    count=Count(
+                        "lead_id",
+                        distinct=True,
+                    )
+                )
             )
         }
         sources = [
@@ -3319,7 +3568,10 @@ def get_conversion_analysis(*, identity, arguments):
                 ),
                 "qualified_transition_rate": (
                     round(
-                        qualified_by_source.get(row["lead_source"], 0)
+                        qualified_by_source.get(
+                            row["lead_source"],
+                            0,
+                        )
                         / row["count"],
                         4,
                     )
@@ -3347,7 +3599,9 @@ def get_conversion_analysis(*, identity, arguments):
         )
         outbound_status = {
             row["status"]: row["count"]
-            for row in outbound.values("status").annotate(count=Count("id"))
+            for row in outbound.values("status").annotate(
+                count=Count("id")
+            )
         }
         successful_outbound = sum(
             outbound_status.get(status, 0)
@@ -3362,6 +3616,21 @@ def get_conversion_analysis(*, identity, arguments):
             0,
         )
         outbound_total = outbound.count()
+
+        first_response = {
+            "whatsapp": first_response_metrics(
+                created=created,
+                channel="whatsapp",
+                start_at=start_at,
+                end_at=end_at,
+            ),
+            "instagram": first_response_metrics(
+                created=created,
+                channel="instagram",
+                start_at=start_at,
+                end_at=end_at,
+            ),
+        }
 
         followups = FollowupExecution.objects.filter(
             organization=organization,
@@ -3378,8 +3647,11 @@ def get_conversion_analysis(*, identity, arguments):
         )
         followup_status = {
             row["status"]: row["count"]
-            for row in followups.values("status").annotate(count=Count("id"))
+            for row in followups.values("status").annotate(
+                count=Count("id")
+            )
         }
+        followup_total = followups.count()
         cadence_completed = LeadSequenceState.objects.filter(
             organization=organization,
             lead_id__in=tenant_lead_ids,
@@ -3458,7 +3730,9 @@ def get_conversion_analysis(*, identity, arguments):
         )
         campaign_states = {
             row["state"]: row["count"]
-            for row in campaign_deliveries.values("state").annotate(
+            for row in campaign_deliveries.values(
+                "state"
+            ).annotate(
                 count=Count("id")
             )
         }
@@ -3469,6 +3743,60 @@ def get_conversion_analysis(*, identity, arguments):
         campaign_replied = campaign_deliveries.filter(
             replied_at__isnull=False,
         ).count()
+
+        lost_transition_count = 0
+        lost_reason_rows = []
+        lost_reason_total = 0
+        if configured_lost_stage is not None:
+            lost_activity = LeadActivity.objects.filter(
+                organization=organization,
+                lead_id__in=created.values("id"),
+                topic__in=[
+                    LeadActivity.Topic.STAGE_CHANGED,
+                    LeadActivity.Topic.PIPELINE_CHANGED,
+                ],
+                created_at__gte=start_at,
+                created_at__lt=end_at,
+                new_stage_id=configured_lost_stage.id,
+            )
+            lost_ids = lost_activity.values(
+                "lead_id"
+            ).distinct()
+            lost_transition_count = lost_ids.count()
+            if (
+                lost_reason_definition is not None
+                and lost_transition_count
+            ):
+                lost_reason_qs = (
+                    _tenant_safe_leads(
+                        organization
+                    )
+                    .filter(id__in=lost_ids)
+                    .annotate(
+                        _loss_reason=KeyTextTransform(
+                            lost_reason_definition.key,
+                            "attributes",
+                        )
+                    )
+                    .exclude(
+                        _loss_reason__isnull=True
+                    )
+                    .exclude(_loss_reason="")
+                    .values("_loss_reason")
+                    .annotate(count=Count("id"))
+                    .order_by(
+                        "-count",
+                        "_loss_reason",
+                    )
+                )
+                lost_reason_total = (
+                    lost_reason_qs.count()
+                )
+                lost_reason_rows = list(
+                    lost_reason_qs[
+                        :LOST_REASON_BREAKDOWN_LIMIT
+                    ]
+                )
 
         return {
             "lead_volume": lead_count,
@@ -3481,7 +3809,9 @@ def get_conversion_analysis(*, identity, arguments):
             "source_mix": sources,
             "pipeline_mix": [
                 {
-                    "pipeline_id": str(row["pipeline_id"]),
+                    "pipeline_id": str(
+                        row["pipeline_id"]
+                    ),
                     "pipeline": row["pipeline__name"],
                     "lead_count": row["count"],
                 }
@@ -3490,25 +3820,58 @@ def get_conversion_analysis(*, identity, arguments):
             "stage_mix": [
                 {
                     "pipeline": row["pipeline__name"],
-                    "stage_id": str(row["stage_id"]),
+                    "stage_id": str(
+                        row["stage_id"]
+                    ),
                     "stage": row["stage__name"],
                     "lead_count": row["count"],
                 }
                 for row in stage_rows
             ],
+            "breakdown_counts": {
+                "source_groups": source_group_count,
+                "source_groups_returned": len(
+                    source_rows
+                ),
+                "source_groups_truncated": (
+                    source_group_count
+                    > len(source_rows)
+                ),
+                "pipeline_groups": pipeline_group_count,
+                "pipeline_groups_returned": len(
+                    pipeline_rows
+                ),
+                "pipeline_groups_truncated": (
+                    pipeline_group_count
+                    > len(pipeline_rows)
+                ),
+                "stage_groups": stage_group_count,
+                "stage_groups_returned": len(
+                    stage_rows
+                ),
+                "stage_groups_truncated": (
+                    stage_group_count
+                    > len(stage_rows)
+                ),
+            },
             "messaging": {
                 "outbound_total": outbound_total,
                 "successful_outbound": successful_outbound,
                 "failed_outbound": failed_outbound,
                 "success_rate": (
-                    round(successful_outbound / outbound_total, 4)
+                    round(
+                        successful_outbound
+                        / outbound_total,
+                        4,
+                    )
                     if outbound_total
                     else None
                 ),
                 "status_counts": outbound_status,
+                "first_response": first_response,
             },
             "followups": {
-                "scheduled_executions": followups.count(),
+                "scheduled_executions": followup_total,
                 "status_counts": followup_status,
                 "failed": followup_status.get(
                     FollowupExecution.Status.FAILED,
@@ -3530,10 +3893,10 @@ def get_conversion_analysis(*, identity, arguments):
                                 0,
                             )
                         )
-                        / followups.count(),
+                        / followup_total,
                         4,
                     )
-                    if followups.count()
+                    if followup_total
                     else None
                 ),
                 "cadences_completed": cadence_completed,
@@ -3547,25 +3910,88 @@ def get_conversion_analysis(*, identity, arguments):
                 "delivered": campaign_delivered,
                 "replied": campaign_replied,
                 "delivery_rate": (
-                    round(campaign_delivered / campaign_total, 4)
+                    round(
+                        campaign_delivered
+                        / campaign_total,
+                        4,
+                    )
                     if campaign_total
                     else None
                 ),
                 "reply_rate": (
-                    round(campaign_replied / campaign_total, 4)
+                    round(
+                        campaign_replied
+                        / campaign_total,
+                        4,
+                    )
                     if campaign_total
                     else None
                 ),
                 "state_counts": campaign_states,
             },
+            "lost": {
+                "lost_stage_configured": (
+                    configured_lost_stage
+                    is not None
+                ),
+                "lost_stage_id": (
+                    str(configured_lost_stage.id)
+                    if configured_lost_stage
+                    else None
+                ),
+                "lost_stage": (
+                    configured_lost_stage.name
+                    if configured_lost_stage
+                    else None
+                ),
+                "lost_transitions": (
+                    lost_transition_count
+                ),
+                "reason_capture_configured": (
+                    lost_reason_definition
+                    is not None
+                ),
+                "reason_attribute_key": (
+                    lost_reason_definition.key
+                    if lost_reason_definition
+                    else None
+                ),
+                "reason_counts": [
+                    {
+                        "reason": sanitize_text(
+                            row["_loss_reason"],
+                            limit=200,
+                        ),
+                        "count": row["count"],
+                    }
+                    for row in lost_reason_rows
+                ],
+                "reason_group_count": (
+                    lost_reason_total
+                ),
+                "reasons_returned": len(
+                    lost_reason_rows
+                ),
+                "reasons_truncated": (
+                    lost_reason_total
+                    > len(lost_reason_rows)
+                ),
+            },
         }
 
     current = window(current_start, now)
-    previous = window(previous_start, current_start)
+    previous = window(
+        previous_start,
+        current_start,
+    )
 
     observations = []
     comparable_metrics = (
-        ("lead_volume", current["lead_volume"], previous["lead_volume"]),
+        (
+            "lead_volume",
+            current["lead_volume"],
+            previous["lead_volume"],
+        ),
         (
             "qualified_transition_rate",
             current["qualified_transition_rate"],
@@ -3577,19 +4003,54 @@ def get_conversion_analysis(*, identity, arguments):
             previous["messaging"]["success_rate"],
         ),
         (
+            "whatsapp_first_response_seconds",
+            current["messaging"]["first_response"][
+                "whatsapp"
+            ]["average_first_response_seconds"],
+            previous["messaging"]["first_response"][
+                "whatsapp"
+            ]["average_first_response_seconds"],
+        ),
+        (
+            "instagram_first_response_seconds",
+            current["messaging"]["first_response"][
+                "instagram"
+            ]["average_first_response_seconds"],
+            previous["messaging"]["first_response"][
+                "instagram"
+            ]["average_first_response_seconds"],
+        ),
+        (
+            "lost_transitions",
+            current["lost"]["lost_transitions"],
+            previous["lost"]["lost_transitions"],
+        ),
+        (
             "followup_failure_or_block_rate",
-            current["followups"]["failure_or_block_rate"],
-            previous["followups"]["failure_or_block_rate"],
+            current["followups"][
+                "failure_or_block_rate"
+            ],
+            previous["followups"][
+                "failure_or_block_rate"
+            ],
         ),
         (
             "workflow_failures",
-            current["failures"]["workflow_failures"],
-            previous["failures"]["workflow_failures"],
+            current["failures"][
+                "workflow_failures"
+            ],
+            previous["failures"][
+                "workflow_failures"
+            ],
         ),
         (
             "hosted_ai_failures",
-            current["failures"]["hosted_ai_failures"],
-            previous["failures"]["hosted_ai_failures"],
+            current["failures"][
+                "hosted_ai_failures"
+            ],
+            previous["failures"][
+                "hosted_ai_failures"
+            ],
         ),
         (
             "campaign_delivery_rate",
@@ -3602,7 +4063,11 @@ def get_conversion_analysis(*, identity, arguments):
             previous["campaigns"]["reply_rate"],
         ),
     )
-    for metric, current_value, previous_value in comparable_metrics:
+    for (
+        metric,
+        current_value,
+        previous_value,
+    ) in comparable_metrics:
         if current_value != previous_value:
             observations.append(
                 {
@@ -3621,17 +4086,24 @@ def get_conversion_analysis(*, identity, arguments):
             {
                 "classification": "Likely contributor",
                 "metric": "workflow_failures",
-                "current": current["failures"]["workflow_failures"],
-                "previous": previous["failures"]["workflow_failures"],
+                "current": current["failures"][
+                    "workflow_failures"
+                ],
+                "previous": previous["failures"][
+                    "workflow_failures"
+                ],
                 "note": (
                     "Workflow failures increased during the same comparison "
-                    "window. This is correlation, not proof of conversion causality."
+                    "window. This is correlation, not proof of conversion "
+                    "causality."
                 ),
             }
         )
     if (
-        current["messaging"]["success_rate"] is not None
-        and previous["messaging"]["success_rate"] is not None
+        current["messaging"]["success_rate"]
+        is not None
+        and previous["messaging"]["success_rate"]
+        is not None
         and current["messaging"]["success_rate"]
         < previous["messaging"]["success_rate"]
     ):
@@ -3639,8 +4111,12 @@ def get_conversion_analysis(*, identity, arguments):
             {
                 "classification": "Likely contributor",
                 "metric": "message_delivery",
-                "current": current["messaging"]["success_rate"],
-                "previous": previous["messaging"]["success_rate"],
+                "current": current["messaging"][
+                    "success_rate"
+                ],
+                "previous": previous["messaging"][
+                    "success_rate"
+                ],
                 "note": (
                     "Outbound WhatsApp success rate decreased while the compared "
                     "conversion proxy was measured. Causality requires lead-level "
@@ -3659,13 +4135,28 @@ def get_conversion_analysis(*, identity, arguments):
     }
     material_source_shift = False
     for source in sorted(
-        set(current_sources) | set(previous_sources)
+        set(current_sources)
+        | set(previous_sources)
     ):
-        current_row = current_sources.get(source) or {}
-        previous_row = previous_sources.get(source) or {}
-        current_share = current_row.get("lead_share") or 0
-        previous_share = previous_row.get("lead_share") or 0
-        if abs(current_share - previous_share) >= 0.05:
+        current_row = (
+            current_sources.get(source) or {}
+        )
+        previous_row = (
+            previous_sources.get(source) or {}
+        )
+        current_share = (
+            current_row.get("lead_share") or 0
+        )
+        previous_share = (
+            previous_row.get("lead_share") or 0
+        )
+        if (
+            abs(
+                current_share
+                - previous_share
+            )
+            >= 0.05
+        ):
             material_source_shift = True
             observations.append(
                 {
@@ -3674,7 +4165,10 @@ def get_conversion_analysis(*, identity, arguments):
                     "source": source,
                     "current": current_share,
                     "previous": previous_share,
-                    "note": "Lead-source share changed by at least 5 percentage points.",
+                    "note": (
+                        "Lead-source share changed by at least "
+                        "5 percentage points."
+                    ),
                 }
             )
 
@@ -3687,14 +4181,24 @@ def get_conversion_analysis(*, identity, arguments):
         if (
             current_rate is not None
             and previous_rate is not None
-            and current_row.get("lead_count", 0) >= 5
-            and previous_row.get("lead_count", 0) >= 5
+            and current_row.get(
+                "lead_count",
+                0,
+            )
+            >= 5
+            and previous_row.get(
+                "lead_count",
+                0,
+            )
+            >= 5
             and current_rate != previous_rate
         ):
             observations.append(
                 {
                     "classification": "Measured",
-                    "metric": "source_qualified_transition_rate",
+                    "metric": (
+                        "source_qualified_transition_rate"
+                    ),
                     "source": source,
                     "current": current_rate,
                     "previous": previous_rate,
@@ -3714,21 +4218,28 @@ def get_conversion_analysis(*, identity, arguments):
             }
         )
 
-    current_followup_rate = current["followups"][
-        "failure_or_block_rate"
-    ]
-    previous_followup_rate = previous["followups"][
-        "failure_or_block_rate"
-    ]
+    current_followup_rate = (
+        current["followups"][
+            "failure_or_block_rate"
+        ]
+    )
+    previous_followup_rate = (
+        previous["followups"][
+            "failure_or_block_rate"
+        ]
+    )
     if (
         current_followup_rate is not None
         and previous_followup_rate is not None
-        and current_followup_rate > previous_followup_rate
+        and current_followup_rate
+        > previous_followup_rate
     ):
         observations.append(
             {
                 "classification": "Likely contributor",
-                "metric": "followup_failure_or_block_rate",
+                "metric": (
+                    "followup_failure_or_block_rate"
+                ),
                 "current": current_followup_rate,
                 "previous": previous_followup_rate,
                 "note": (
@@ -3747,8 +4258,12 @@ def get_conversion_analysis(*, identity, arguments):
             {
                 "classification": "Likely contributor",
                 "metric": "hosted_ai_failures",
-                "current": current["failures"]["hosted_ai_failures"],
-                "previous": previous["failures"]["hosted_ai_failures"],
+                "current": current["failures"][
+                    "hosted_ai_failures"
+                ],
+                "previous": previous["failures"][
+                    "hosted_ai_failures"
+                ],
                 "note": (
                     "Hosted AI execution failures increased. Inspect affected "
                     "lead/message traces to establish whether they interrupted "
@@ -3760,8 +4275,12 @@ def get_conversion_analysis(*, identity, arguments):
     for metric, current_rate, previous_rate in (
         (
             "campaign_delivery_rate",
-            current["campaigns"]["delivery_rate"],
-            previous["campaigns"]["delivery_rate"],
+            current["campaigns"][
+                "delivery_rate"
+            ],
+            previous["campaigns"][
+                "delivery_rate"
+            ],
         ),
         (
             "campaign_reply_rate",
@@ -3788,30 +4307,199 @@ def get_conversion_analysis(*, identity, arguments):
                 }
             )
 
-    stale_cutoff = now - timedelta(days=7)
-    stale_leads = _tenant_safe_leads(
+    ageing_leads = _tenant_safe_leads(
         organization
-    ).filter(
-        stage_entered_at__lt=stale_cutoff,
-    ).count()
+    )
+    terminal_stage_ids = [
+        stage_id
+        for stage_id in (
+            (
+                configured_won_stage.id
+                if configured_won_stage
+                else None
+            ),
+            (
+                configured_lost_stage.id
+                if configured_lost_stage
+                else None
+            ),
+        )
+        if stage_id is not None
+    ]
+    if terminal_stage_ids:
+        ageing_leads = ageing_leads.exclude(
+            stage_id__in=terminal_stage_ids
+        )
+
+    one_day_ago = now - timedelta(days=1)
+    three_days_ago = now - timedelta(days=3)
+    seven_days_ago = now - timedelta(days=7)
+    fourteen_days_ago = now - timedelta(days=14)
+    thirty_days_ago = now - timedelta(days=30)
+    stall_cutoff = now - timedelta(
+        days=stall_day_threshold
+    )
+    ageing = ageing_leads.aggregate(
+        active_lead_count=Count("id"),
+        stalled_count=Count(
+            "id",
+            filter=Q(
+                stage_entered_at__lte=stall_cutoff
+            ),
+        ),
+        under_1_day=Count(
+            "id",
+            filter=Q(
+                stage_entered_at__gt=one_day_ago
+            ),
+        ),
+        days_1_to_3=Count(
+            "id",
+            filter=Q(
+                stage_entered_at__lte=one_day_ago,
+                stage_entered_at__gt=three_days_ago,
+            ),
+        ),
+        days_3_to_7=Count(
+            "id",
+            filter=Q(
+                stage_entered_at__lte=three_days_ago,
+                stage_entered_at__gt=seven_days_ago,
+            ),
+        ),
+        days_7_to_14=Count(
+            "id",
+            filter=Q(
+                stage_entered_at__lte=seven_days_ago,
+                stage_entered_at__gt=fourteen_days_ago,
+            ),
+        ),
+        days_14_to_30=Count(
+            "id",
+            filter=Q(
+                stage_entered_at__lte=fourteen_days_ago,
+                stage_entered_at__gt=thirty_days_ago,
+            ),
+        ),
+        days_30_plus=Count(
+            "id",
+            filter=Q(
+                stage_entered_at__lte=thirty_days_ago
+            ),
+        ),
+        oldest_stage_entered_at=Min(
+            "stage_entered_at"
+        ),
+    )
+    active_lead_count = int(
+        ageing.get("active_lead_count") or 0
+    )
+    stalled_count = int(
+        ageing.get("stalled_count") or 0
+    )
+    oldest_stage_entered_at = ageing.get(
+        "oldest_stage_entered_at"
+    )
+    oldest_stage_age_days = (
+        round(
+            (
+                now
+                - oldest_stage_entered_at
+            ).total_seconds()
+            / 86400,
+            2,
+        )
+        if oldest_stage_entered_at
+        else None
+    )
+    fixed_seven_day_stale = (
+        _tenant_safe_leads(
+            organization
+        )
+        .filter(
+            stage_entered_at__lt=(
+                now - timedelta(days=7)
+            )
+        )
+        .count()
+    )
 
     return ToolExecution(
         data={
             "comparison": {
                 "days_per_period": days,
                 "current_period": {
-                    "start": current_start.isoformat(),
+                    "start": (
+                        current_start.isoformat()
+                    ),
                     "end": now.isoformat(),
                     **current,
                 },
                 "previous_period": {
-                    "start": previous_start.isoformat(),
-                    "end": current_start.isoformat(),
+                    "start": (
+                        previous_start.isoformat()
+                    ),
+                    "end": (
+                        current_start.isoformat()
+                    ),
                     **previous,
                 },
             },
             "current_snapshot": {
-                "leads_in_current_stage_for_7_plus_days": stale_leads,
+                "leads_in_current_stage_for_7_plus_days": (
+                    fixed_seven_day_stale
+                ),
+                "lead_ageing": {
+                    "scope": "current_non_terminal_stage_snapshot",
+                    "stall_day_threshold": (
+                        stall_day_threshold
+                    ),
+                    "threshold_source": (
+                        "analytics_settings"
+                        if analytics_settings
+                        else "default"
+                    ),
+                    "active_lead_count": (
+                        active_lead_count
+                    ),
+                    "stalled_count": stalled_count,
+                    "stalled_rate": (
+                        round(
+                            stalled_count
+                            / active_lead_count,
+                            4,
+                        )
+                        if active_lead_count
+                        else None
+                    ),
+                    "oldest_stage_age_days": (
+                        oldest_stage_age_days
+                    ),
+                    "buckets": {
+                        "under_1_day": (
+                            ageing["under_1_day"]
+                        ),
+                        "days_1_to_3": (
+                            ageing["days_1_to_3"]
+                        ),
+                        "days_3_to_7": (
+                            ageing["days_3_to_7"]
+                        ),
+                        "days_7_to_14": (
+                            ageing["days_7_to_14"]
+                        ),
+                        "days_14_to_30": (
+                            ageing["days_14_to_30"]
+                        ),
+                        "days_30_plus": (
+                            ageing["days_30_plus"]
+                        ),
+                    },
+                    "excluded_terminal_stage_ids": [
+                        str(item)
+                        for item in terminal_stage_ids
+                    ],
+                },
             },
             "observations": observations,
             "limitations": [
@@ -3826,12 +4514,25 @@ def get_conversion_analysis(*, identity, arguments):
                     "stage snapshot."
                 ),
                 (
-                    "First-response-time and lost-reason aggregates are not included "
-                    "because this tool does not have a canonical historical aggregate "
-                    "for them; inspect specific conversations or add a dedicated "
-                    "metric rather than guessing."
+                    "First-response metrics measure the first persisted outbound "
+                    "after the first persisted inbound for the same lead/channel "
+                    "inside each period. They do not infer whether the responder "
+                    "was AI or a human."
                 ),
-                "Likely-contributor labels are correlation, not proven causality.",
+                (
+                    "Lead ageing is a current stage-age snapshot. Historical stage "
+                    "age is not reconstructed for the previous comparison period."
+                ),
+                (
+                    "Lost reasons are reported only when Analytics has an "
+                    "organization-owned lost stage and CRM has a non-sensitive "
+                    "Lost Reason/Loss Reason attribute. Missing reason capture is "
+                    "reported as unavailable rather than guessed."
+                ),
+                (
+                    "Likely-contributor labels are correlation, not proven "
+                    "causality."
+                ),
             ],
         },
         capability=CAP_DIAGNOSTICS_READ,
@@ -3839,10 +4540,14 @@ def get_conversion_analysis(*, identity, arguments):
         target_id=str(organization.id),
         audit_summary={
             "period_days": days,
-            "observation_count": len(observations),
+            "observation_count": len(
+                observations
+            ),
+            "first_response_metrics": True,
+            "lead_ageing_snapshot": True,
+            "lost_reason_analysis": True,
         },
     )
-
 
 def get_operations_audit(*, identity, arguments):
     arguments = arguments or {}
