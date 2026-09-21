@@ -4225,6 +4225,49 @@ class OperationsMCPTests(TestCase):
         self.assertNotIn(refreshed["access_token"], refresh_blob)
         self.assertNotIn(refreshed["refresh_token"], refresh_blob)
 
+    def test_superadmin_policy_workspace_expands_legacy_capabilities(self):
+        OperationsPolicy.objects.create(
+            organization=self.organization,
+            organization_admin_enabled=True,
+            allowed_capabilities=[
+                CAP_CRM_CONFIG_WRITE,
+                CAP_AUTOMATION_CONFIG_WRITE,
+            ],
+            approval_required_capabilities=[
+                CAP_CRM_CONFIG_WRITE,
+                CAP_AUTOMATION_CONFIG_WRITE,
+            ],
+        )
+
+        superadmin_session = SessionStore()
+        set_authenticated_user(superadmin_session, self.superadmin)
+        superadmin_session.create()
+        self.client.cookies[get_session_cookie_name("superadmin")] = (
+            superadmin_session.session_key
+        )
+
+        response = self.client.get(
+            reverse(
+                "superadmin-organization-detail",
+                kwargs={"organization_id": self.organization.id},
+            )
+        )
+        self.assertEqual(response.status_code, 200)
+        rows = {
+            item["key"]: item
+            for item in response.context["operations_capabilities"]
+        }
+        for capability in (
+            CAP_PIPELINE_CONFIG_WRITE,
+            CAP_STAGE_CONFIG_WRITE,
+            CAP_ATTRIBUTE_CONFIG_WRITE,
+            CAP_WORKFLOW_CONFIG_WRITE,
+            CAP_CADENCE_CONFIG_WRITE,
+            CAP_MESSAGING_CONFIG_WRITE,
+        ):
+            self.assertTrue(rows[capability]["allowed"])
+            self.assertTrue(rows[capability]["approval_required"])
+
     def test_superadmin_policy_ignores_approval_flags_on_read_capabilities(self):
         superadmin_session = SessionStore()
         set_authenticated_user(superadmin_session, self.superadmin)
