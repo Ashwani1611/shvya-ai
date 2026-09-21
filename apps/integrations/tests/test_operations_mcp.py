@@ -1538,6 +1538,15 @@ class OperationsMCPTests(TestCase):
         )
         self.assertFalse(dry["isError"])
         self.assertEqual(dry["structuredContent"]["status"], "DRY_RUN")
+        approval_event_id = dry["structuredContent"]["approval_event_id"]
+        self.assertIn(
+            approval_event_id,
+            dry["content"][0]["text"],
+        )
+        self.assertEqual(
+            dry["structuredContent"]["approval_expires_in_seconds"],
+            1800,
+        )
         self.lead.refresh_from_db()
         self.assertEqual(self.lead.stage_id, self.new_stage.id)
 
