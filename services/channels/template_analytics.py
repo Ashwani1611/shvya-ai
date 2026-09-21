@@ -245,7 +245,7 @@ def fetch_template_analytics(*, account, template_ids, start_date, end_date):
             for point in group.get("data_points") or []:
                 if not isinstance(point, dict):
                     continue
-                template_id = str(point.get("template_id") or "")
+                template_id = str(point.get("template_id") or group.get("template_id") or "")
                 if template_id not in results:
                     continue
                 point_date = _date_from_point(point.get("start"))
