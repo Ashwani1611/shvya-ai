@@ -362,6 +362,64 @@ OWN_TOOL_DEFINITIONS = [
         },
     ),
     _tool(
+        "get_messaging_automation_settings",
+        "Inspect messaging automation settings",
+        "Return pipeline-linked WhatsApp automation controls for one or all active organization accounts, including AI auto-reply, lead creation, bump-up, follow-up, business hours, and active-conversation delay. Credentials are never returned.",
+        {
+            "whatsapp_account_id": {
+                "type": "string",
+                "format": "uuid",
+            },
+        },
+    ),
+    _tool(
+        "update_messaging_automation_settings",
+        "Configure messaging automation settings",
+        "Dry-run or update one active organization WhatsApp account's canonical pipeline-linked automation settings. Existing SHVYA pipeline mapping, scheduler, timing, and AI-permission rules remain authoritative.",
+        _write_properties(
+            {
+                "whatsapp_account_id": {
+                    "type": "string",
+                    "format": "uuid",
+                },
+                "changes": {
+                    "type": "object",
+                    "properties": {
+                        "ai_auto_reply": {"type": "boolean"},
+                        "auto_lead_creation": {"type": "boolean"},
+                        "bump_up_messages": {"type": "boolean"},
+                        "bump_up_count": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 10,
+                        },
+                        "auto_follow_up": {"type": "boolean"},
+                        "business_hours_start": {
+                            "type": "string",
+                            "pattern": "^[0-2][0-9]:[0-5][0-9]$",
+                        },
+                        "business_hours_end": {
+                            "type": "string",
+                            "pattern": "^[0-2][0-9]:[0-5][0-9]$",
+                        },
+                        "active_conversation_delay_value": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 168,
+                        },
+                        "active_conversation_delay_unit": {
+                            "type": "string",
+                            "enum": ["minutes", "hours", "days"],
+                        },
+                    },
+                    "additionalProperties": False,
+                },
+            }
+        ),
+        ["whatsapp_account_id", "changes", "reason"],
+        read_only=False,
+    ),
+    _tool(
         "diagnose_lead_qualification",
         "Diagnose lead qualification",
         "Explain why one organization-scoped lead did or did not reach Qualified using persisted qualification and CRM evidence.",
@@ -643,6 +701,8 @@ TOOL_CAPABILITIES = {
     "clear_organization_context": None,
     "get_organization_configuration": CAP_ORGANIZATION_READ,
     "get_automation_configuration": CAP_ORGANIZATION_READ,
+    "get_messaging_automation_settings": CAP_ORGANIZATION_READ,
+    "update_messaging_automation_settings": CAP_AUTOMATION_CONFIG_WRITE,
     "diagnose_lead_qualification": CAP_DIAGNOSTICS_READ,
     "get_conversion_analysis": CAP_DIAGNOSTICS_READ,
     "move_lead_stage": CAP_LEAD_STAGE_WRITE,
