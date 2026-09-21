@@ -5986,6 +5986,17 @@ class OperationsMCPTests(TestCase):
         self.assertTrue(
             chain["webhook"]["subscribed"]
         )
+        self.assertFalse(
+            chain["permissions"][
+                "grant_scope_list_persisted"
+            ]
+        )
+        self.assertEqual(
+            chain["permissions"][
+                "verification_status"
+            ],
+            "unavailable_from_persisted_state",
+        )
         self.assertEqual(
             chain["message_event"]["inbound_24h"],
             1,
@@ -6001,6 +6012,12 @@ class OperationsMCPTests(TestCase):
                 "linked_to_lead"
             ],
             1,
+        )
+        self.assertEqual(
+            chain["pipeline_mapping"][
+                "pipelines"
+            ][0]["pipeline_id"],
+            str(self.pipeline.id),
         )
         self.assertEqual(
             chain["outbound_eligibility"][
