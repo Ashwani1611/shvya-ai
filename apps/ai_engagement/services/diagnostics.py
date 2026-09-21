@@ -1,6 +1,7 @@
 """Inspect a conversation without calling providers or modifying CRM state."""
 
 from django.conf import settings
+from django.db.models import Q
 from apps.ai_engagement.services.playbook import qualification_questions
 
 from apps.ai_engagement.models import AICreditWallet
@@ -18,21 +19,25 @@ def diagnose_engagement(*, lead):
         blockers.append("openai_api_key_missing")
     if getattr(settings, "CELERY_TASK_ALWAYS_EAGER", False):
         blockers.append("celery_eager_mode_use_production_settings")
-    permission = AIPermissionService().evaluate(
-        organization=lead.organization, lead=lead
-    )
-    if not permission.allowed:
-        blockers.append(permission.reason)
     wallet = AICreditWallet.objects.filter(organization=lead.organization).first()
     report["available_ai_credits"] = wallet.available_credits if wallet else 0
     if wallet and wallet.is_blocked:
         blockers.append("organization_ai_credits_blocked")
     elif not wallet or wallet.available_credits <= 0:
         blockers.append("organization_ai_credits_empty")
+    messages = (
+        lead.whatsapp_messages.filter(
+            organization=lead.organization,
+            account__organization=lead.organization,
+        )
+        .select_related(
+            "account",
+            "account__organization",
+        )
+        .defer("account__access_token")
+    )
     latest = (
-        lead.whatsapp_messages.filter(organization=lead.organization)
-        .select_related("account__organization")
-        .order_by("-created_at", "-id")
+        messages.order_by("-created_at", "-id")
         .first()
     )
     if latest is None:
@@ -44,7 +49,21 @@ def diagnose_engagement(*, lead):
         "status": latest.status,
         "created_at": latest.created_at.isoformat(),
     }
-    inbound = lead.whatsapp_messages.filter(organization=lead.organization, direction="inbound").order_by("-created_at", "-id").first()
+    inbound = (
+        messages.filter(
+            direction=WhatsAppMessage.Direction.INBOUND
+        )
+        .order_by("-created_at", "-id")
+        .first()
+    )
+    permission = AIPermissionService().evaluate(
+        organization=lead.organization,
+        lead=lead,
+        latest_inbound=inbound,
+        create_missing_org_info=False,
+    )
+    if not permission.allowed:
+        blockers.append(permission.reason)
     if inbound:
         execution = (inbound.raw_payload or {}).get("shvya_ai_execution") or {}
         report["execution"] = {key: execution.get(key) for key in ("status", "reason", "attempts", "updated_at")}
@@ -89,7 +108,16 @@ def diagnose_engagement(*, lead):
             report["paused_until"] = pause.isoformat()
         job = (
             HostedAutomationJob.objects.filter(
-                organization=lead.organization, lead=lead, account=account
+                organization=lead.organization,
+                account=account,
+                account__organization=lead.organization,
+                lead=lead,
+                source_message__organization=lead.organization,
+                source_message__account=account,
+            )
+            .filter(
+                Q(source_message__lead__isnull=True)
+                | Q(source_message__lead=lead)
             )
             .order_by("-created_at")
             .first()

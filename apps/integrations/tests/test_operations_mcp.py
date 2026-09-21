@@ -3382,6 +3382,123 @@ class OperationsMCPTests(TestCase):
             0,
         )
 
+    def test_ai_diagnostics_are_read_only_and_never_decrypt_provider_credentials(self):
+        OperationsPolicy.objects.create(
+            organization=self.organization,
+            organization_admin_enabled=True,
+            allowed_capabilities=[
+                CAP_ORGANIZATION_READ,
+                CAP_DIAGNOSTICS_READ,
+            ],
+        )
+        OrgInfo.objects.filter(
+            organization=self.organization
+        ).delete()
+        account = WhatsAppAccount.objects.create(
+            organization=self.organization,
+            connection_type=WhatsAppAccount.ConnectionType.API,
+            business_name="AI Diagnostic Credential Safe Sender",
+            display_phone_number="+919000000064",
+            phone_number_id="ai-diagnostic-safe-sender",
+            access_token="ai-diagnostic-provider-secret",
+            status=WhatsAppAccount.Status.CONNECTED,
+            is_active=True,
+        )
+        inbound = WhatsAppMessage.objects.create(
+            organization=self.organization,
+            account=account,
+            lead=self.lead,
+            external_id="ai-diagnostic-safe-inbound",
+            direction=WhatsAppMessage.Direction.INBOUND,
+            status=WhatsAppMessage.Status.RECEIVED,
+            message_type=WhatsAppMessage.MessageType.TEXT,
+            from_number=self.lead.phone,
+            to_number="+919000000064",
+            body="diagnostic question",
+        )
+        foreign_account = WhatsAppAccount.objects.create(
+            organization=self.other_organization,
+            connection_type=WhatsAppAccount.ConnectionType.API,
+            business_name="Foreign AI Diagnostic Sender",
+            display_phone_number="+919000000065",
+            status=WhatsAppAccount.Status.CONNECTED,
+            is_active=True,
+        )
+        foreign_linked = WhatsAppMessage.objects.create(
+            organization=self.organization,
+            account=foreign_account,
+            lead=self.lead,
+            external_id="ai-diagnostic-corrupt-newer",
+            direction=WhatsAppMessage.Direction.OUTBOUND,
+            status=WhatsAppMessage.Status.FAILED,
+            message_type=WhatsAppMessage.MessageType.TEXT,
+            from_number="+919000000065",
+            to_number=self.lead.phone,
+            body="foreign-linked diagnostic message",
+            error="foreign diagnostic relation",
+        )
+        WhatsAppMessage.objects.filter(
+            pk=foreign_linked.pk
+        ).update(
+            created_at=timezone.now()
+            + timedelta(seconds=1)
+        )
+
+        bearer = self._token(
+            actor=self.admin,
+            role=ROLE_ORGANIZATION_ADMIN,
+            organization=self.organization,
+            scopes=[OPERATIONS_READ_SCOPE],
+        )
+
+        self.assertFalse(
+            OrgInfo.objects.filter(
+                organization=self.organization
+            ).exists()
+        )
+        with patch(
+            "apps.channels.models.EncryptedTextField.from_db_value",
+            side_effect=AssertionError(
+                "AI diagnostics must not decrypt provider credentials"
+            ),
+        ):
+            result = self._result(
+                self._call(
+                    bearer,
+                    "get_ai_diagnostics",
+                    {"lead_id": str(self.lead.id)},
+                )
+            )
+
+        self.assertFalse(result["isError"])
+        self.assertFalse(
+            OrgInfo.objects.filter(
+                organization=self.organization
+            ).exists()
+        )
+        diagnostic = result["structuredContent"]
+        self.assertEqual(
+            diagnostic["latest_message"]["id"],
+            str(inbound.id),
+        )
+        self.assertEqual(
+            diagnostic["account_id"],
+            str(account.id),
+        )
+        payload = json.dumps(diagnostic)
+        self.assertNotIn(
+            "ai-diagnostic-provider-secret",
+            payload,
+        )
+        self.assertNotIn(
+            str(foreign_account.id),
+            payload,
+        )
+        self.assertNotIn(
+            "foreign diagnostic relation",
+            payload,
+        )
+
     def test_conversation_diagnostics_redact_customer_secret_patterns(self):
         OperationsPolicy.objects.create(
             organization=self.organization,

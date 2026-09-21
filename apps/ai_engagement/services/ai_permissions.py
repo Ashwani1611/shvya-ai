@@ -77,9 +77,11 @@ class AIPermissionService:
         return (
             lead.whatsapp_messages.filter(
                 organization=organization,
+                account__organization=organization,
                 direction="inbound",
             )
             .select_related("account")
+            .defer("account__access_token")
             .order_by("-created_at", "-id")
             .first()
         )
@@ -195,6 +197,7 @@ class AIPermissionService:
         organization,
         lead,
         latest_inbound=None,
+        create_missing_org_info=True,
     ) -> AIPermissionDecision:
         """Evaluate current, non-cached AI permission state for one Lead.
 
@@ -217,9 +220,19 @@ class AIPermissionService:
             )
 
         try:
-            org_info = self.org_info_service.get_or_create(
-                organization=organization,
-            )
+            if create_missing_org_info:
+                org_info = self.org_info_service.get_or_create(
+                    organization=organization,
+                )
+            else:
+                from apps.ai_engagement.models import OrgInfo
+
+                org_info = (
+                    OrgInfo.objects.filter(
+                        organization=organization
+                    ).first()
+                    or OrgInfo(organization=organization)
+                )
         except Exception as exc:
             raise AIPermissionError(
                 "Organization AI configuration could not be loaded."
