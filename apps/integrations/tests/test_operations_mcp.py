@@ -741,6 +741,18 @@ class OperationsMCPTests(TestCase):
             OperationsApprovalUse.objects.filter(
                 pk=approval_use.pk
             ).delete()
+
+        replacement_use = OperationsApprovalUse(
+            id=approval_use.id,
+            approval_event=approval_use.approval_event,
+        )
+        with self.assertRaises(ValidationError):
+            OperationsApprovalUse.objects.bulk_create(
+                [replacement_use],
+                update_conflicts=True,
+                update_fields=["created_at"],
+                unique_fields=["id"],
+            )
         definition = AttributeDefinition.objects.get(
             organization=self.organization,
             name="Company Size",
