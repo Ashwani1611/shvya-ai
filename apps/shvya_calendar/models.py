@@ -539,13 +539,6 @@ class CalendarBooking(models.Model):
 
     class Meta:
         ordering = ["-start_at"]
-        constraints = [
-            models.UniqueConstraint(
-                fields=["submission"],
-                condition=models.Q(status__in=["scheduled", "rescheduled"]),
-                name="uniq_active_calendar_booking_submission",
-            )
-        ]
         indexes = [
             models.Index(
                 fields=["page", "start_at", "status"],
