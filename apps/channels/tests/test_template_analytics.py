@@ -102,6 +102,7 @@ class MetaTemplateAnalyticsServiceTests(TestCase):
             kwargs["params"]["metric_types"],
             ["SENT", "DELIVERED", "READ", "CLICKED"],
         )
+        self.assertLess(kwargs["params"]["start"], kwargs["params"]["end"])
 
     @patch("services.channels.template_analytics.meta.requests.get")
     def test_missing_click_metric_is_unavailable_not_fabricated(self, requests_get):
