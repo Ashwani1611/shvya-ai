@@ -4370,6 +4370,105 @@ class OperationsMCPTests(TestCase):
         self.lead.refresh_from_db()
         self.assertEqual(self.lead.stage_id, self.new_stage.id)
 
+    def test_operations_audit_lookup_supports_exact_tenant_scoped_filters(self):
+        OperationsPolicy.objects.create(
+            organization=self.organization,
+            organization_admin_enabled=True,
+            allowed_capabilities=[
+                CAP_ORGANIZATION_READ,
+                CAP_AUDIT_READ,
+            ],
+        )
+        own = OperationsAuditEvent.objects.create(
+            actor=self.admin,
+            role=ROLE_ORGANIZATION_ADMIN,
+            organization=self.organization,
+            tool_name="move_lead_stage",
+            capability=CAP_LEAD_STAGE_WRITE,
+            target_type="lead",
+            target_id=str(self.lead.id),
+            reason="Trace this exact action",
+            outcome=OperationsAuditEvent.Outcome.SUCCESS,
+            request_fingerprint="d" * 64,
+            change_summary={"verification": "passed"},
+        )
+        foreign = OperationsAuditEvent.objects.create(
+            actor=self.other_admin,
+            role=ROLE_ORGANIZATION_ADMIN,
+            organization=self.other_organization,
+            tool_name="move_lead_stage",
+            capability=CAP_LEAD_STAGE_WRITE,
+            target_type="lead",
+            target_id=str(self.other_lead.id),
+            reason="Foreign action",
+            outcome=OperationsAuditEvent.Outcome.SUCCESS,
+            request_fingerprint="e" * 64,
+            change_summary={"verification": "passed"},
+        )
+        bearer = self._token(
+            actor=self.admin,
+            role=ROLE_ORGANIZATION_ADMIN,
+            organization=self.organization,
+            scopes=[OPERATIONS_READ_SCOPE],
+        )
+
+        exact = self._result(
+            self._call(
+                bearer,
+                "get_operations_audit",
+                {
+                    "audit_event_id": str(own.id),
+                    "limit": 10,
+                },
+            )
+        )
+        self.assertFalse(exact["isError"])
+        self.assertEqual(
+            exact["structuredContent"]["count"],
+            1,
+        )
+        self.assertEqual(
+            exact["structuredContent"]["events"][0]["id"],
+            str(own.id),
+        )
+
+        resource = self._result(
+            self._call(
+                bearer,
+                "get_operations_audit",
+                {
+                    "tool_name": "move_lead_stage",
+                    "target_type": "lead",
+                    "target_id": str(self.lead.id),
+                    "outcome": "success",
+                },
+            )
+        )
+        self.assertFalse(resource["isError"])
+        self.assertEqual(
+            [row["id"] for row in resource["structuredContent"]["events"]],
+            [str(own.id)],
+        )
+
+        foreign_lookup = self._result(
+            self._call(
+                bearer,
+                "get_operations_audit",
+                {
+                    "audit_event_id": str(foreign.id),
+                },
+            )
+        )
+        self.assertFalse(foreign_lookup["isError"])
+        self.assertEqual(
+            foreign_lookup["structuredContent"]["events"],
+            [],
+        )
+        self.assertNotIn(
+            "Foreign action",
+            json.dumps(foreign_lookup),
+        )
+
     def test_operations_audit_relationships_are_protected_from_deletion(self):
         protected_actor = User.objects.create_superuser(
             email="protected-audit-actor@example.test",
