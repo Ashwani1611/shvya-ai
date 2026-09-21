@@ -4431,6 +4431,105 @@ class OperationsMCPTests(TestCase):
             self.other_organization.id,
         )
 
+    def test_policy_disable_expires_pending_oauth_codes_before_reenable(self):
+        policy = OperationsPolicy.objects.create(
+            organization=self.organization,
+            organization_admin_enabled=True,
+            allowed_capabilities=[CAP_ORGANIZATION_READ],
+            approval_required_capabilities=[],
+        )
+        verifier = "q" * 64
+        resource = "http://testserver/operations/mcp/"
+        callback = "https://chatgpt.com/aip/callback"
+        old_raw_code = "old-pending-operations-code"
+        old_code = OperationsOAuthAuthorizationCode.objects.create(
+            client=self.oauth_client,
+            actor=self.admin,
+            organization=self.organization,
+            role=ROLE_ORGANIZATION_ADMIN,
+            code_hash=token_hash(old_raw_code),
+            redirect_uri=callback,
+            code_challenge=pkce_s256(verifier),
+            scope=OPERATIONS_READ_SCOPE,
+            granted_capabilities=[CAP_ORGANIZATION_READ],
+            resource=resource,
+            expires_at=timezone.now() + timedelta(minutes=5),
+        )
+
+        superadmin_session = SessionStore()
+        set_authenticated_user(superadmin_session, self.superadmin)
+        superadmin_session.create()
+        self.client.cookies[get_session_cookie_name("superadmin")] = (
+            superadmin_session.session_key
+        )
+
+        disabled = self.client.post(
+            reverse(
+                "superadmin-organization-operations-mcp-policy",
+                kwargs={"organization_id": self.organization.id},
+            ),
+            {
+                "allowed_capabilities": [CAP_ORGANIZATION_READ],
+            },
+        )
+        self.assertEqual(disabled.status_code, 302)
+        old_code.refresh_from_db()
+        self.assertLessEqual(old_code.expires_at, timezone.now())
+
+        enabled = self.client.post(
+            reverse(
+                "superadmin-organization-operations-mcp-policy",
+                kwargs={"organization_id": self.organization.id},
+            ),
+            {
+                "organization_admin_enabled": "on",
+                "allowed_capabilities": [CAP_ORGANIZATION_READ],
+            },
+        )
+        self.assertEqual(enabled.status_code, 302)
+        policy.refresh_from_db()
+        self.assertTrue(policy.organization_admin_enabled)
+
+        old_exchange = self.client.post(
+            reverse("shvya-operations-oauth-token"),
+            {
+                "grant_type": "authorization_code",
+                "client_id": self.oauth_client.client_id,
+                "code": old_raw_code,
+                "redirect_uri": callback,
+                "code_verifier": verifier,
+                "resource": resource,
+            },
+        )
+        self.assertEqual(old_exchange.status_code, 400)
+
+        fresh_raw_code = "fresh-operations-code"
+        OperationsOAuthAuthorizationCode.objects.create(
+            client=self.oauth_client,
+            actor=self.admin,
+            organization=self.organization,
+            role=ROLE_ORGANIZATION_ADMIN,
+            code_hash=token_hash(fresh_raw_code),
+            redirect_uri=callback,
+            code_challenge=pkce_s256(verifier),
+            scope=OPERATIONS_READ_SCOPE,
+            granted_capabilities=[CAP_ORGANIZATION_READ],
+            resource=resource,
+            expires_at=timezone.now() + timedelta(minutes=5),
+        )
+        fresh_exchange = self.client.post(
+            reverse("shvya-operations-oauth-token"),
+            {
+                "grant_type": "authorization_code",
+                "client_id": self.oauth_client.client_id,
+                "code": fresh_raw_code,
+                "redirect_uri": callback,
+                "code_verifier": verifier,
+                "resource": resource,
+            },
+        )
+        self.assertEqual(fresh_exchange.status_code, 200)
+
     def test_superadmin_disable_revokes_existing_org_admin_tokens_permanently(self):
         policy = OperationsPolicy.objects.create(
             organization=self.organization,
