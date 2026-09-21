@@ -413,7 +413,7 @@ jobs:
           pytest --cov --cov-fail-under=60 2>&1 | tee pytest-output.log
 
       - name: Upload pytest failure log
-        if: steps.pytest.outcome == 'failure'
+        if: failure() && steps.pytest.outcome == 'failure'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: pytest-failure-log
