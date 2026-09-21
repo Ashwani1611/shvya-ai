@@ -30,7 +30,7 @@ ACCESS_TOKEN_TTL = timedelta(hours=8)
 REFRESH_TOKEN_TTL = timedelta(days=30)
 AUTH_CODE_TTL = timedelta(minutes=5)
 
-_PKCE_VERIFIER_RE = re.compile(r"^[A-Za-z0-9\\-._~]{43,128}$")
+_PKCE_VERIFIER_RE = re.compile(r"^[A-Za-z0-9\-._~]{43,128}$")
 _PKCE_CHALLENGE_RE = re.compile(r"^[A-Za-z0-9_-]{43,128}$")
 
 _SECRET_KEY_PATTERN = re.compile(
