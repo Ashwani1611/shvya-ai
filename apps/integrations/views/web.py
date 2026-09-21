@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from django.contrib import messages
+from django.db import transaction
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 
@@ -326,13 +327,32 @@ def shvya_api_view(request):
             return redirect("crm-connect-hub-shvya-api")
 
         if action == "revoke_key":
+            from apps.integrations.models import (
+                DiagnosticOAuthAuthorizationCode,
+                DiagnosticOAuthToken,
+            )
+
             api_key = get_object_or_404(
                 APIKey,
                 id=request.POST.get("api_key_id"),
                 organization=organization,
             )
-            api_key.is_active = False
-            api_key.save(update_fields=["is_active"])
+            now = timezone.now()
+            with transaction.atomic():
+                api_key.is_active = False
+                api_key.save(update_fields=["is_active"])
+                DiagnosticOAuthToken.objects.filter(
+                    api_key=api_key,
+                    revoked_at__isnull=True,
+                ).update(
+                    revoked_at=now,
+                    updated_at=now,
+                )
+                DiagnosticOAuthAuthorizationCode.objects.filter(
+                    api_key=api_key,
+                    used_at__isnull=True,
+                    expires_at__gt=now,
+                ).update(expires_at=now)
             messages.success(request, f"API key '{api_key.name}' revoked.")
             return redirect("crm-connect-hub-shvya-api")
 
@@ -493,8 +513,6 @@ def shvya_api_view(request):
     )
     for event in operations_audit_events:
         event.organization_visible_reason = organization_visible_audit_reason(event)
-
-    from django.utils import timezone
 
     active_operations_tokens = list(
         OperationsOAuthToken.objects.filter(
