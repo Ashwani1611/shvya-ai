@@ -40,7 +40,7 @@ from apps.followups.models import (
     LeadSequenceState,
 )
 from apps.hosted_automation.models import HostedAutomationJob
-from apps.integrations.diagnostic_auth import sanitize_text
+from apps.integrations.diagnostic_auth import sanitize_data, sanitize_text
 from apps.integrations.diagnostic_tools import (
     DiagnosticToolError,
     execute_tool as execute_diagnostic_tool,
