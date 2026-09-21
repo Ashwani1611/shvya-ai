@@ -1,5 +1,14 @@
 from django.urls import path
 
+from apps.integrations.views.operations_mcp import (
+    operations_mcp,
+    operations_oauth_authorize,
+    operations_oauth_register,
+    operations_oauth_resource_metadata,
+    operations_oauth_server_metadata,
+    operations_oauth_token,
+)
+
 from apps.integrations.views.mcp import (
     diagnostic_mcp,
     diagnostic_oauth_authorize,
@@ -11,6 +20,36 @@ from apps.integrations.views.mcp import (
 
 
 urlpatterns = [
+    path(
+        "operations/.well-known/oauth-protected-resource",
+        operations_oauth_resource_metadata,
+        name="shvya-operations-oauth-resource-metadata",
+    ),
+    path(
+        "operations/.well-known/oauth-authorization-server",
+        operations_oauth_server_metadata,
+        name="shvya-operations-oauth-server-metadata",
+    ),
+    path(
+        "operations/oauth/register",
+        operations_oauth_register,
+        name="shvya-operations-oauth-register",
+    ),
+    path(
+        "operations/oauth/authorize",
+        operations_oauth_authorize,
+        name="shvya-operations-oauth-authorize",
+    ),
+    path(
+        "operations/oauth/token",
+        operations_oauth_token,
+        name="shvya-operations-oauth-token",
+    ),
+    path(
+        "operations/mcp/",
+        operations_mcp,
+        name="shvya-operations-mcp",
+    ),
     path(
         ".well-known/oauth-protected-resource",
         diagnostic_oauth_resource_metadata,
