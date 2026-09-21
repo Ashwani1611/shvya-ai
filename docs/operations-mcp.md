@@ -213,3 +213,8 @@ The Diagnostic MCP implementation remains under `apps/integrations/diagnostic_*.
 Approval-required writes are bound to the exact backend-resolved dry-run proposal. Mutation paths re-lock authoritative rows, re-check the proposal under lock, write, and verify before commit. Successful customer-state writes and their Operations audit event commit atomically; if audit persistence fails, the customer-state mutation rolls back. Failed/denied attempts still produce their bounded audit event, and an approval receipt already claimed by an execution attempt remains single-use.
 
 OAuth authorization-code issuance and successful token issue/refresh also commit only with their lifecycle security audit. Security revocation remains fail-secure: revoking access is prioritized even when the action is initiated from dashboard/session controls.
+
+
+### Knowledge / RAG health
+
+`get_knowledge_health` provides organization-scoped metadata only: knowledge source type/name, URL hostname, document version/status/publication state, chunk counts, embedding coverage and timestamps. It deliberately does not return document/chunk text, file bytes, source keys, signed URL query strings or embedding vectors. The organization configuration summary includes the same bounded knowledge-health view so “understand my business” can distinguish complete grounded context from missing/failed knowledge without broad source retrieval.
