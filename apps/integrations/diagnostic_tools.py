@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import uuid
 from datetime import timedelta
 
@@ -15,6 +16,36 @@ from apps.hosted_automation.models import HostedAutomationJob
 from apps.integrations.diagnostic_auth import sanitize_data, sanitize_text
 from apps.integrations.models import WebhookDelivery
 from apps.triggers.models import TriggerEvent, TriggerRun
+
+_SAFE_DIAGNOSTIC_CODE = re.compile(r"^[a-z0-9_:-]{1,80}$", re.IGNORECASE)
+
+
+def _safe_diagnostic_code(value):
+    value = str(value or "").strip()
+    return value if _SAFE_DIAGNOSTIC_CODE.fullmatch(value) else ""
+
+
+def _safe_hosted_job(job):
+    if job is None:
+        return None
+    result = job.result if isinstance(job.result, dict) else {}
+    delivery = result.get("delivery")
+    return {
+        "id": str(job.id),
+        "status": job.status,
+        "available_at": _iso(job.available_at),
+        "started_at": _iso(job.started_at),
+        "completed_at": _iso(job.completed_at),
+        "reason": _safe_diagnostic_code(result.get("reason")),
+        "delivery_status": (
+            _safe_diagnostic_code(delivery.get("status"))
+            if isinstance(delivery, dict)
+            else ""
+        ),
+        "has_persisted_error": bool(job.error),
+    }
+
+
 
 
 class DiagnosticToolError(ValueError):
@@ -386,24 +417,8 @@ def trace_message(*, organization, arguments):
                     else None
                 ),
                 "ai_markers": ai_markers,
-                "hosted_job": (
-                    {
-                        "id": str(hosted_job.id),
-                        "status": hosted_job.status,
-                        "available_at": _iso(
-                            hosted_job.available_at
-                        ),
-                        "started_at": _iso(
-                            hosted_job.started_at
-                        ),
-                        "completed_at": _iso(
-                            hosted_job.completed_at
-                        ),
-                        "result": hosted_job.result,
-                        "error": hosted_job.error,
-                    }
-                    if hosted_job
-                    else None
+                "hosted_job": _safe_hosted_job(
+                    hosted_job
                 ),
                 "workflow_runs": [
                     {
