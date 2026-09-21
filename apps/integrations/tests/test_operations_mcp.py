@@ -966,6 +966,334 @@ class OperationsMCPTests(TestCase):
             "Verification failure must roll back the malformed Cadence step.",
         )
 
+    def test_stage_config_approval_is_invalid_after_human_edit(self):
+        OperationsPolicy.objects.create(
+            organization=self.organization,
+            organization_admin_enabled=True,
+            allowed_capabilities=[
+                CAP_ORGANIZATION_READ,
+                CAP_CRM_CONFIG_WRITE,
+            ],
+            approval_required_capabilities=[CAP_CRM_CONFIG_WRITE],
+        )
+        bearer = self._token(
+            actor=self.admin,
+            role=ROLE_ORGANIZATION_ADMIN,
+            organization=self.organization,
+        )
+        arguments = {
+            "pipeline_id": str(self.pipeline.id),
+            "stage_id": str(self.review_stage.id),
+            "data": {
+                "name": self.review_stage.name,
+                "description": "Approved stage description",
+                "display_order": self.review_stage.display_order,
+                "is_active": True,
+                "ai_on": True,
+            },
+            "reason": "Update reviewed stage description",
+        }
+        dry = self._result(
+            self._call(
+                bearer,
+                "upsert_stage_configuration",
+                {**arguments, "dry_run": True},
+            )
+        )
+        self.assertFalse(dry["isError"])
+
+        self.review_stage.description = "Human changed stage description"
+        self.review_stage.save(
+            update_fields=["description", "updated_at"]
+        )
+
+        stale = self._result(
+            self._call(
+                bearer,
+                "upsert_stage_configuration",
+                {
+                    **arguments,
+                    "dry_run": False,
+                    "approved": True,
+                    "approval_event_id": dry["structuredContent"][
+                        "approval_event_id"
+                    ],
+                },
+            )
+        )
+        self.assertTrue(stale["isError"])
+        self.assertEqual(
+            stale["structuredContent"]["status"],
+            "APPROVAL_REQUIRED",
+        )
+        self.review_stage.refresh_from_db()
+        self.assertEqual(
+            self.review_stage.description,
+            "Human changed stage description",
+        )
+
+    def test_workflow_config_approval_is_invalid_after_human_edit(self):
+        OperationsPolicy.objects.create(
+            organization=self.organization,
+            organization_admin_enabled=True,
+            allowed_capabilities=[
+                CAP_ORGANIZATION_READ,
+                CAP_AUTOMATION_CONFIG_WRITE,
+            ],
+            approval_required_capabilities=[
+                CAP_AUTOMATION_CONFIG_WRITE,
+            ],
+        )
+        workflow = SmartTrigger.objects.create(
+            organization=self.organization,
+            name="Existing Workflow",
+            enabled=False,
+            position=1,
+            trigger_type="keyword",
+            conditions={
+                "scopes": [
+                    {
+                        "pipeline": str(self.pipeline.id),
+                        "stages": [str(self.new_stage.id)],
+                    }
+                ],
+                "attributes": [],
+                "keywords": ["hello"],
+            },
+            action_type="ai",
+            action={"enabled": True},
+            fingerprint="3" * 64,
+            created_by=self.admin,
+        )
+        data = {
+            "name": "Existing Workflow",
+            "enabled": False,
+            "trigger_type": "keyword",
+            "conditions": {
+                "scopes": [
+                    {
+                        "pipeline": str(self.pipeline.id),
+                        "stages": [str(self.new_stage.id)],
+                    }
+                ],
+                "attributes": [],
+                "keywords": ["hello"],
+            },
+            "action_type": "ai",
+            "action": {"enabled": True},
+        }
+        bearer = self._token(
+            actor=self.admin,
+            role=ROLE_ORGANIZATION_ADMIN,
+            organization=self.organization,
+        )
+        arguments = {
+            "workflow_id": str(workflow.id),
+            "data": data,
+            "reason": "Update reviewed workflow configuration",
+        }
+        dry = self._result(
+            self._call(
+                bearer,
+                "upsert_workflow_configuration",
+                {**arguments, "dry_run": True},
+            )
+        )
+        self.assertFalse(dry["isError"])
+
+        workflow.enabled = True
+        workflow.name = "Human Edited Workflow"
+        workflow.save(
+            update_fields=["enabled", "name", "updated_at"]
+        )
+
+        stale = self._result(
+            self._call(
+                bearer,
+                "upsert_workflow_configuration",
+                {
+                    **arguments,
+                    "dry_run": False,
+                    "approved": True,
+                    "approval_event_id": dry["structuredContent"][
+                        "approval_event_id"
+                    ],
+                },
+            )
+        )
+        self.assertTrue(stale["isError"])
+        self.assertEqual(
+            stale["structuredContent"]["status"],
+            "APPROVAL_REQUIRED",
+        )
+        workflow.refresh_from_db()
+        self.assertTrue(workflow.enabled)
+        self.assertEqual(workflow.name, "Human Edited Workflow")
+
+    def test_cadence_config_approval_is_invalid_after_human_edit(self):
+        OperationsPolicy.objects.create(
+            organization=self.organization,
+            organization_admin_enabled=True,
+            allowed_capabilities=[
+                CAP_ORGANIZATION_READ,
+                CAP_AUTOMATION_CONFIG_WRITE,
+            ],
+            approval_required_capabilities=[
+                CAP_AUTOMATION_CONFIG_WRITE,
+            ],
+        )
+        account = WhatsAppAccount.objects.create(
+            organization=self.organization,
+            connection_type=WhatsAppAccount.ConnectionType.API,
+            business_name="Stale Cadence Sender",
+            display_phone_number="+919000000020",
+            status=WhatsAppAccount.Status.CONNECTED,
+            is_active=True,
+        )
+        sequence = FollowupSequence.objects.create(
+            organization=self.organization,
+            created_by=self.admin,
+            name="Stale Cadence",
+            description="Initial description",
+            whatsapp_account=account,
+        )
+        bearer = self._token(
+            actor=self.admin,
+            role=ROLE_ORGANIZATION_ADMIN,
+            organization=self.organization,
+        )
+        arguments = {
+            "cadence_id": str(sequence.id),
+            "data": {
+                "name": sequence.name,
+                "description": "Approved description",
+                "provider": "api",
+                "whatsapp_account_id": str(account.id),
+            },
+            "reason": "Update reviewed Cadence description",
+        }
+        dry = self._result(
+            self._call(
+                bearer,
+                "upsert_cadence_configuration",
+                {**arguments, "dry_run": True},
+            )
+        )
+        self.assertFalse(dry["isError"])
+
+        sequence.description = "Human edited Cadence description"
+        sequence.save(
+            update_fields=["description", "updated_at"]
+        )
+
+        stale = self._result(
+            self._call(
+                bearer,
+                "upsert_cadence_configuration",
+                {
+                    **arguments,
+                    "dry_run": False,
+                    "approved": True,
+                    "approval_event_id": dry["structuredContent"][
+                        "approval_event_id"
+                    ],
+                },
+            )
+        )
+        self.assertTrue(stale["isError"])
+        self.assertEqual(
+            stale["structuredContent"]["status"],
+            "APPROVAL_REQUIRED",
+        )
+        sequence.refresh_from_db()
+        self.assertEqual(
+            sequence.description,
+            "Human edited Cadence description",
+        )
+
+    def test_cadence_step_approval_is_invalid_after_step_list_changes(self):
+        OperationsPolicy.objects.create(
+            organization=self.organization,
+            organization_admin_enabled=True,
+            allowed_capabilities=[
+                CAP_ORGANIZATION_READ,
+                CAP_AUTOMATION_CONFIG_WRITE,
+            ],
+            approval_required_capabilities=[
+                CAP_AUTOMATION_CONFIG_WRITE,
+            ],
+        )
+        account = WhatsAppAccount.objects.create(
+            organization=self.organization,
+            connection_type=WhatsAppAccount.ConnectionType.API,
+            business_name="Stale Step Sender",
+            display_phone_number="+919000000021",
+            status=WhatsAppAccount.Status.CONNECTED,
+            is_active=True,
+        )
+        sequence = FollowupSequence.objects.create(
+            organization=self.organization,
+            created_by=self.admin,
+            name="Stale Step Cadence",
+            description="",
+            whatsapp_account=account,
+        )
+        bearer = self._token(
+            actor=self.admin,
+            role=ROLE_ORGANIZATION_ADMIN,
+            organization=self.organization,
+        )
+        arguments = {
+            "cadence_id": str(sequence.id),
+            "data": {
+                "type": "reminder",
+                "text": "Approved next reminder",
+                "schedule": {"type": "immediate"},
+            },
+            "reason": "Add reviewed Cadence reminder",
+        }
+        dry = self._result(
+            self._call(
+                bearer,
+                "add_cadence_step",
+                {**arguments, "dry_run": True},
+            )
+        )
+        self.assertFalse(dry["isError"])
+
+        manual_step = FollowupStep.objects.create(
+            sequence=sequence,
+            position=1,
+            step_type=FollowupStep.StepType.REMINDER,
+            title="Human step",
+            reminder_text="Human-added reminder",
+            schedule_type=FollowupStep.ScheduleType.IMMEDIATE,
+        )
+
+        stale = self._result(
+            self._call(
+                bearer,
+                "add_cadence_step",
+                {
+                    **arguments,
+                    "dry_run": False,
+                    "approved": True,
+                    "approval_event_id": dry["structuredContent"][
+                        "approval_event_id"
+                    ],
+                },
+            )
+        )
+        self.assertTrue(stale["isError"])
+        self.assertEqual(
+            stale["structuredContent"]["status"],
+            "APPROVAL_REQUIRED",
+        )
+        self.assertEqual(sequence.steps.count(), 1)
+        self.assertTrue(
+            sequence.steps.filter(pk=manual_step.pk).exists()
+        )
+
     def test_pipeline_configuration_create_verifies_standard_stages(self):
         OperationsPolicy.objects.create(
             organization=self.organization,
