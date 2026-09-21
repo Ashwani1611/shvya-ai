@@ -1135,6 +1135,57 @@ class OperationsMCPTests(TestCase):
         self.assertIn("upsert_workflow_configuration", names)
         self.assertIn("find_leads", names)
 
+    def test_messaging_automation_settings_reports_account_truncation(self):
+        OperationsPolicy.objects.create(
+            organization=self.organization,
+            organization_admin_enabled=True,
+            allowed_capabilities=[CAP_ORGANIZATION_READ],
+        )
+        existing_count = WhatsAppAccount.objects.filter(
+            organization=self.organization,
+            is_active=True,
+        ).count()
+        needed = max(0, 51 - existing_count)
+        WhatsAppAccount.objects.bulk_create(
+            [
+                WhatsAppAccount(
+                    organization=self.organization,
+                    connection_type=WhatsAppAccount.ConnectionType.API,
+                    business_name=f"Bounded Settings {index:03d}",
+                    display_phone_number=f"+9187{index:010d}",
+                    status=WhatsAppAccount.Status.CONNECTED,
+                    is_active=True,
+                )
+                for index in range(needed)
+            ]
+        )
+        expected_count = WhatsAppAccount.objects.filter(
+            organization=self.organization,
+            is_active=True,
+        ).count()
+        self.assertGreaterEqual(expected_count, 51)
+        bearer = self._token(
+            actor=self.admin,
+            role=ROLE_ORGANIZATION_ADMIN,
+            organization=self.organization,
+            scopes=[OPERATIONS_READ_SCOPE],
+        )
+
+        result = self._result(
+            self._call(
+                bearer,
+                "get_messaging_automation_settings",
+                {},
+            )
+        )
+
+        self.assertFalse(result["isError"])
+        data = result["structuredContent"]
+        self.assertEqual(data["count"], 50)
+        self.assertEqual(data["accounts_returned"], 50)
+        self.assertEqual(data["account_count"], expected_count)
+        self.assertTrue(data["accounts_truncated"])
+
     def test_messaging_automation_settings_dry_run_apply_and_verify(self):
         OperationsPolicy.objects.create(
             organization=self.organization,
