@@ -922,6 +922,7 @@ def _record_oauth_security_event(
     client,
     event,
     scopes,
+    capabilities,
     reason,
 ):
     """Record safe actor-bound OAuth lifecycle metadata without token material."""
@@ -944,6 +945,9 @@ def _record_oauth_security_event(
                 "role": role,
                 "client_id": client.client_id,
                 "scopes": sorted(set(scopes or [])),
+                "capabilities": sorted(
+                    set(capabilities or [])
+                ),
             }
         ),
         change_summary={
@@ -952,6 +956,9 @@ def _record_oauth_security_event(
                 limit=120,
             ),
             "scopes": sorted(set(scopes or [])),
+            "capabilities": sorted(
+                set(capabilities or [])
+            ),
             "organization_bound": organization is not None,
         },
         duration_ms=0,
@@ -1128,6 +1135,9 @@ def operations_oauth_authorize(request):
                 scopes=set(
                     str(issued_code.scope or "").split()
                 ),
+                capabilities=set(
+                    issued_code.granted_capabilities or []
+                ),
                 reason="External AI Operations OAuth authorization granted.",
             )
     except OperationsAuthError as exc:
@@ -1197,6 +1207,9 @@ def operations_oauth_token(request):
                 client=token.client,
                 event=token_event,
                 scopes=set(str(token.scope or "").split()),
+                capabilities=set(
+                    token.granted_capabilities or []
+                ),
                 reason=(
                     "External AI Operations OAuth token rotated."
                     if grant_type == "refresh_token"
@@ -1226,6 +1239,9 @@ def operations_oauth_token(request):
             "expires_in": int(ACCESS_TOKEN_TTL.total_seconds()),
             "refresh_token": raw_refresh,
             "scope": token.scope,
+            "granted_capabilities": sorted(
+                set(token.granted_capabilities or [])
+            ),
             "resource": token.resource,
         }
     )
