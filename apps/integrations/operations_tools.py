@@ -3613,12 +3613,19 @@ def get_conversion_analysis(*, identity, arguments):
             ).count()
         )
 
+        returned_pipeline_ids = [
+            row["pipeline_id"]
+            for row in pipeline_rows
+        ]
         qualified_by_pipeline = {
             row["lead__pipeline_id"]: row["count"]
             for row in (
-                qualified_activity.values(
-                    "lead__pipeline_id"
+                qualified_activity.filter(
+                    lead__pipeline_id__in=(
+                        returned_pipeline_ids
+                    )
                 )
+                .values("lead__pipeline_id")
                 .annotate(
                     count=Count(
                         "lead_id",
