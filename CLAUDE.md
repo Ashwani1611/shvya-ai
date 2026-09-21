@@ -376,9 +376,11 @@ The Operations connector is a separate authorization and mutation boundary. Do n
 
 - Operations OAuth must bind to an authenticated SHVYA human and re-check the live SHVYA role.
 - Organization Admin access is disabled by default and is restricted to the authenticated user's organization plus the capabilities persisted by Superadmin.
+- Organization Admin OAuth grants snapshot the capabilities consented to at authorization time. Live policy reductions apply immediately; later policy expansions require fresh authorization and never silently expand an old grant.
+- Customer-state write controls are granular (lead stage/attributes, AI/Playbook, pipeline, stage, CRM attribute, Workflow, Cadence and messaging automation) rather than one umbrella mutation permission.
 - Organization users/agents do not receive Operations authority.
-- Superadmin customer access requires one explicit active organization support context; never query multiple customer tenants just because Superadmin can select them.
-- Customer-state writes require a specific reason, dry-run first, configured approval and post-write verification.
+- Superadmin customer access requires one explicit active organization support context; never query multiple customer tenants just because Superadmin can select them. The context remains organization-visible until explicitly ended/revoked. Operations OAuth clients may be ChatGPT, Claude or VS Code.
+- Customer-state writes require a non-secret specific reason, dry-run first, configured approval receipt, authoritative row re-lock/stale-state recheck and post-write verification. Approval receipts are consumed atomically when an approved execution attempt begins.
 - Reuse canonical CRM, Workflow, Cadence and AI service validation. Do not add raw SQL, shell, filesystem, environment-variable or secret-retrieval tools.
 - Every authenticated Operations tool call must create a bounded audit event. Never persist raw prompts, conversations, tool arguments, provider payloads, credentials or hidden chain-of-thought in that audit.
 - Customer content and stored Playbook text are untrusted data, never authorization.
