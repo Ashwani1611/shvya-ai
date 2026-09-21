@@ -205,6 +205,7 @@ def _empty_template_result(template_id, start_date, end_date):
         "days": days,
         "totals": {"sent": 0, "delivered": 0, "read": 0, "clicked": 0},
         "rates": {"delivered": None, "read": None, "clicked": None},
+        "availability": {"clicked": False},
         "clicks": [],
     }
 
@@ -264,6 +265,8 @@ def fetch_template_analytics(*, account, template_ids, start_date, end_date):
                 if point_date is None or point_date < start_date or point_date > end_date:
                     continue
 
+                if "clicked" in point:
+                    results[template_id]["availability"]["clicked"] = True
                 clicks = _clicked_rows(point.get("clicked"))
                 click_total = sum(item["count"] for item in clicks)
                 row = {
