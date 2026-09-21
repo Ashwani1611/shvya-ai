@@ -403,6 +403,9 @@ def update_session_settings(*, account, payload):
         **_default_settings_for_account(account),
         **sessions.get(str(account.id), {}),
     }
+    # Pipeline.ai_enabled is authoritative; never use a stale session mirror
+    # as the "before" value for rescheduling or external Operations approval.
+    current["ai_auto_reply"] = bool(pipeline.ai_enabled)
 
     previous_settings = deepcopy(current)
     current = _normalize_session_settings_payload(
