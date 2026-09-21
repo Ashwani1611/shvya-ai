@@ -426,6 +426,17 @@ def trace_message(*, organization, arguments):
     )
 
     if wa is not None:
+        if wa.account.organization_id != organization.id:
+            raise DiagnosticToolError(
+                "Message tenant relationship mismatch detected."
+            )
+        if (
+            wa.lead_id
+            and wa.lead.organization_id != organization.id
+        ):
+            raise DiagnosticToolError(
+                "Message tenant relationship mismatch detected."
+            )
         payload = (
             wa.raw_payload
             if isinstance(wa.raw_payload, dict)
@@ -505,12 +516,26 @@ def trace_message(*, organization, arguments):
         )
         .filter(ig_filters)
         .select_related(
+            "account",
             "conversation",
             "conversation__lead",
         )
         .first()
     )
     if ig is not None:
+        if (
+            ig.account.organization_id != organization.id
+            or ig.conversation.organization_id
+            != organization.id
+            or (
+                ig.conversation.lead_id
+                and ig.conversation.lead.organization_id
+                != organization.id
+            )
+        ):
+            raise DiagnosticToolError(
+                "Message tenant relationship mismatch detected."
+            )
         return sanitize_data(
             {
                 "message": _safe_instagram_message(ig),
@@ -760,6 +785,7 @@ def get_recent_errors(*, organization, arguments):
     whatsapp = list(
         WhatsAppMessage.objects.filter(
             organization=organization,
+            lead__organization=organization,
             status=WhatsAppMessage.Status.FAILED,
             created_at__gte=since,
         ).order_by("-created_at")[:limit]
@@ -781,6 +807,7 @@ def get_recent_errors(*, organization, arguments):
     hosted = list(
         HostedAutomationJob.objects.filter(
             organization=organization,
+            lead__organization=organization,
             status=HostedAutomationJob.Status.FAILED,
             created_at__gte=since,
         ).order_by("-created_at")[:limit]
@@ -788,6 +815,7 @@ def get_recent_errors(*, organization, arguments):
     webhooks = list(
         WebhookDelivery.objects.filter(
             organization=organization,
+            lead__organization=organization,
             status=WebhookDelivery.Status.FAILED,
             created_at__gte=since,
         ).order_by("-created_at")[:limit]
@@ -795,6 +823,7 @@ def get_recent_errors(*, organization, arguments):
     workflows = list(
         TriggerRun.objects.filter(
             rule__organization=organization,
+            lead__organization=organization,
             status__in=["failed", "error"],
             created_at__gte=since,
         )
