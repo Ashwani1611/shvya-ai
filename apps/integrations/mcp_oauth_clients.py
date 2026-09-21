@@ -206,6 +206,17 @@ def fetch_cimd_metadata(client_id: str) -> dict:
         raise MCPClientMetadataError(
             "Client ID Metadata Document must use response_type=code."
         )
+    supported_auth_methods = data.get(
+        "token_endpoint_auth_methods_supported"
+    )
+    if supported_auth_methods is not None:
+        if (
+            not isinstance(supported_auth_methods, list)
+            or "none" not in supported_auth_methods
+        ):
+            raise MCPClientMetadataError(
+                "SHVYA MCP requires public PKCE token authentication."
+            )
     if data.get("token_endpoint_auth_method", "none") != "none":
         raise MCPClientMetadataError(
             "SHVYA MCP accepts only public PKCE clients."
