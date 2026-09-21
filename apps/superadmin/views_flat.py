@@ -417,6 +417,8 @@ def organization_detail_view(
         CAPABILITY_LABELS,
         ROLE_ORGANIZATION_ADMIN,
         WRITE_CAPABILITIES,
+        approval_required,
+        expand_capabilities,
         policy_for,
     )
 
