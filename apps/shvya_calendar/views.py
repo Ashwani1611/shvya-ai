@@ -947,6 +947,7 @@ def public_schedule(request, public_id, slug, submission_id):
     if not submission.lead_id:
         raise Http404
 
+    error = ""
     if request.method == "POST":
         try:
             booking = book_slot(
@@ -959,10 +960,17 @@ def public_schedule(request, public_id, slug, submission_id):
                 booking_id=booking.id,
                 cancel_token=booking.cancel_token,
             )
-        except ValidationError as exc:
+        except (ValidationError, GoogleCalendarError) as exc:
             error = _validation_text(exc)
-    else:
-        error = ""
+
+    try:
+        slot_days = upcoming_slot_days(page)
+    except GoogleCalendarError:
+        slot_days = []
+        error = (
+            "Live calendar availability is temporarily unavailable. "
+            "Please try again shortly."
+        )
 
     return render(
         request,
@@ -970,7 +978,7 @@ def public_schedule(request, public_id, slug, submission_id):
         {
             "page": page,
             "submission": submission,
-            "slot_days": upcoming_slot_days(page),
+            "slot_days": slot_days,
             "booking_error": error,
         },
     )
