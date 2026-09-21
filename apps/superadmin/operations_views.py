@@ -1,12 +1,18 @@
 from django.contrib import messages
+from django.db import transaction
 from django.shortcuts import get_object_or_404, redirect
+from django.utils import timezone
 from django.views.decorators.http import require_POST
 
-from apps.integrations.operations_models import OperationsPolicy
+from apps.integrations.operations_models import (
+    OperationsOAuthToken,
+    OperationsPolicy,
+)
 from apps.integrations.operations_policy import (
     ALL_CAPABILITIES,
     DEFAULT_APPROVAL_REQUIRED,
     DEFAULT_ORG_CAPABILITIES,
+    ROLE_ORGANIZATION_ADMIN,
 )
 from apps.organizations.models import Organization
 from apps.superadmin.models import AuditLog
@@ -37,19 +43,28 @@ def organization_operations_policy_update_view(request, organization_id):
         if item in allowed and item in ALL_CAPABILITIES
     ]
 
-    policy.organization_admin_enabled = enabled
-    policy.allowed_capabilities = allowed
-    policy.approval_required_capabilities = approval
-    policy.updated_by = request.user
-    policy.save(
-        update_fields=[
-            "organization_admin_enabled",
-            "allowed_capabilities",
-            "approval_required_capabilities",
-            "updated_by",
-            "updated_at",
-        ]
-    )
+    revoked_token_count = 0
+    with transaction.atomic():
+        policy.organization_admin_enabled = enabled
+        policy.allowed_capabilities = allowed
+        policy.approval_required_capabilities = approval
+        policy.updated_by = request.user
+        policy.save(
+            update_fields=[
+                "organization_admin_enabled",
+                "allowed_capabilities",
+                "approval_required_capabilities",
+                "updated_by",
+                "updated_at",
+            ]
+        )
+
+        if not enabled:
+            revoked_token_count = OperationsOAuthToken.objects.filter(
+                organization=organization,
+                role=ROLE_ORGANIZATION_ADMIN,
+                revoked_at__isnull=True,
+            ).update(revoked_at=timezone.now())
 
     AuditLog.record(
         actor=request.user,
@@ -63,11 +78,15 @@ def organization_operations_policy_update_view(request, organization_id):
         ],
         operations_mcp_enabled=enabled,
         operations_mcp_capability_count=len(allowed),
+        operations_mcp_revoked_token_count=revoked_token_count,
     )
-    messages.success(
-        request,
-        "External AI Operations policy updated for this organization.",
-    )
+    message = "External AI Operations policy updated for this organization."
+    if revoked_token_count:
+        message += (
+            f" Revoked {revoked_token_count} active Organization Admin "
+            "Operations session(s); fresh authorization is required to reconnect."
+        )
+    messages.success(request, message)
     return redirect(
         "superadmin-organization-detail",
         organization_id=organization.id,
