@@ -18,6 +18,7 @@ from apps.channels.models import WhatsAppAccount, WhatsAppMessage
 from apps.crm.models import AttributeDefinition, Lead, LeadActivity, Pipeline, Stage
 from apps.followups.models import FollowupSequence, FollowupStep
 from apps.integrations.operations_agent_prompt import OPERATIONS_AGENT_INSTRUCTIONS
+from apps.integrations.operations_approval import approval_fingerprint
 from apps.integrations.models import (
     OperationsApprovalUse,
     OperationsAuditEvent,
@@ -3490,6 +3491,68 @@ class OperationsMCPTests(TestCase):
             outcomes,
         )
         self.assertIn(OperationsAuditEvent.Outcome.SUCCESS, outcomes)
+
+    def test_approval_receipt_without_proposal_digest_fails_closed(self):
+        OperationsPolicy.objects.create(
+            organization=self.organization,
+            organization_admin_enabled=True,
+            allowed_capabilities=[
+                CAP_ORGANIZATION_READ,
+                CAP_LEAD_STAGE_WRITE,
+            ],
+            approval_required_capabilities=[
+                CAP_LEAD_STAGE_WRITE,
+            ],
+        )
+        bearer = self._token(
+            actor=self.admin,
+            role=ROLE_ORGANIZATION_ADMIN,
+            organization=self.organization,
+        )
+        arguments = {
+            "lead_id": str(self.lead.id),
+            "target_stage_id": str(self.review_stage.id),
+            "reason": "Apply reviewed legacy approval receipt",
+        }
+        legacy = OperationsAuditEvent.objects.create(
+            actor=self.admin,
+            role=ROLE_ORGANIZATION_ADMIN,
+            organization=self.organization,
+            tool_name="move_lead_stage",
+            capability=CAP_LEAD_STAGE_WRITE,
+            target_type="lead",
+            target_id=str(self.lead.id),
+            reason=arguments["reason"],
+            outcome=OperationsAuditEvent.Outcome.DRY_RUN,
+            request_fingerprint=approval_fingerprint(arguments),
+            change_summary={
+                "operation": "move_lead_stage",
+            },
+        )
+
+        blocked = self._result(
+            self._call(
+                bearer,
+                "move_lead_stage",
+                {
+                    **arguments,
+                    "dry_run": False,
+                    "approved": True,
+                    "approval_event_id": str(legacy.id),
+                },
+            )
+        )
+        self.assertTrue(blocked["isError"])
+        self.assertEqual(
+            blocked["structuredContent"]["status"],
+            "APPROVAL_REQUIRED",
+        )
+        self.assertIn(
+            "proposal evidence",
+            blocked["structuredContent"]["error"],
+        )
+        self.lead.refresh_from_db()
+        self.assertEqual(self.lead.stage_id, self.new_stage.id)
 
     def test_operations_approval_receipt_expires(self):
         OperationsPolicy.objects.create(
