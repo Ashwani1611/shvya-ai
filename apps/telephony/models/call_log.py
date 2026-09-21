@@ -207,6 +207,7 @@ class CallRecord(models.Model):
     source_call_id = models.CharField(max_length=255)
     provider = models.CharField(max_length=80, blank=True)
     provider_call_id = models.CharField(max_length=255, blank=True)
+    sim_account_id = models.CharField(max_length=255, blank=True)
     phone_number = models.CharField(max_length=32)
     raw_phone_number = models.CharField(max_length=64, blank=True)
     contact_name = models.CharField(max_length=255, blank=True)

@@ -92,6 +92,7 @@ class Migration(migrations.Migration):
                 ("source_call_id", models.CharField(max_length=255)),
                 ("provider", models.CharField(blank=True, max_length=80)),
                 ("provider_call_id", models.CharField(blank=True, max_length=255)),
+                ("sim_account_id", models.CharField(blank=True, max_length=255)),
                 ("phone_number", models.CharField(max_length=32)),
                 ("raw_phone_number", models.CharField(blank=True, max_length=64)),
                 ("contact_name", models.CharField(blank=True, max_length=255)),

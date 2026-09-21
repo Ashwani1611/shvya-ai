@@ -9,6 +9,7 @@ import androidx.core.content.ContextCompat
 data class DeviceCall(
     val callLogId: Long,
     val sourceCallId: String,
+    val simAccountId: String,
     val phoneNumber: String,
     val contactName: String,
     val direction: String,
@@ -40,6 +41,7 @@ class CallLogReader(private val context: Context) {
             CallLog.Calls._ID,
             CallLog.Calls.NUMBER,
             CallLog.Calls.CACHED_NAME,
+            CallLog.Calls.PHONE_ACCOUNT_ID,
             CallLog.Calls.TYPE,
             CallLog.Calls.DATE,
             CallLog.Calls.DURATION,
@@ -55,6 +57,7 @@ class CallLogReader(private val context: Context) {
             val idIndex = cursor.getColumnIndexOrThrow(CallLog.Calls._ID)
             val numberIndex = cursor.getColumnIndexOrThrow(CallLog.Calls.NUMBER)
             val nameIndex = cursor.getColumnIndexOrThrow(CallLog.Calls.CACHED_NAME)
+            val accountIndex = cursor.getColumnIndexOrThrow(CallLog.Calls.PHONE_ACCOUNT_ID)
             val typeIndex = cursor.getColumnIndexOrThrow(CallLog.Calls.TYPE)
             val dateIndex = cursor.getColumnIndexOrThrow(CallLog.Calls.DATE)
             val durationIndex = cursor.getColumnIndexOrThrow(CallLog.Calls.DURATION)
@@ -63,6 +66,7 @@ class CallLogReader(private val context: Context) {
                 val id = cursor.getLong(idIndex)
                 val number = cursor.getString(numberIndex) ?: ""
                 val name = cursor.getString(nameIndex) ?: ""
+                val simAccountId = cursor.getString(accountIndex) ?: ""
                 val type = cursor.getInt(typeIndex)
                 val startedAt = cursor.getLong(dateIndex)
                 val duration = cursor.getLong(durationIndex).coerceAtLeast(0L).toInt()
@@ -83,6 +87,7 @@ class CallLogReader(private val context: Context) {
                 calls += DeviceCall(
                     callLogId = id,
                     sourceCallId = "call-log:" + id + ":" + startedAt,
+                    simAccountId = simAccountId,
                     phoneNumber = number,
                     contactName = name,
                     direction = direction,

@@ -59,6 +59,7 @@ class ReconcileWorker(
                     eventUuid = UUID.randomUUID().toString(),
                     callLogId = row.callLogId,
                     sourceCallId = row.sourceCallId,
+                    simAccountId = row.simAccountId,
                     phoneNumber = row.phoneNumber,
                     rawPhoneNumber = row.phoneNumber,
                     contactName = row.contactName,

@@ -18,6 +18,7 @@ data class LocalCall(
     val eventUuid: String,
     val callLogId: Long,
     val sourceCallId: String,
+    val simAccountId: String = "",
     val phoneNumber: String,
     val rawPhoneNumber: String,
     val contactName: String,

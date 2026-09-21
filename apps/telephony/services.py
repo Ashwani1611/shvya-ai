@@ -312,6 +312,7 @@ def ingest_call_event(*, user, payload):
             "user": user,
             "provider": _clean_text(payload.get("provider"), limit=80),
             "provider_call_id": _clean_text(payload.get("provider_call_id")),
+            "sim_account_id": _clean_text(payload.get("sim_account_id")),
             "phone_number": phone,
             "raw_phone_number": _clean_text(payload.get("raw_phone_number") or payload.get("phone_number"), limit=64),
             "contact_name": _clean_text(payload.get("contact_name")),
@@ -347,6 +348,7 @@ def ingest_call_event(*, user, payload):
         record.user = user
         record.provider = _clean_text(payload.get("provider"), limit=80) or record.provider
         record.provider_call_id = _clean_text(payload.get("provider_call_id")) or record.provider_call_id
+        record.sim_account_id = _clean_text(payload.get("sim_account_id")) or record.sim_account_id
         record.phone_number = phone
         record.raw_phone_number = _clean_text(payload.get("raw_phone_number") or record.raw_phone_number, limit=64)
         record.contact_name = _clean_text(payload.get("contact_name")) or record.contact_name

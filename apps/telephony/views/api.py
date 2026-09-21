@@ -70,6 +70,7 @@ def serialize_call(call):
         "source_call_id": call.source_call_id,
         "provider": call.provider,
         "provider_call_id": call.provider_call_id,
+        "sim_account_id": call.sim_account_id,
         "phone_number": call.phone_number,
         "contact_name": call.contact_name,
         "direction": call.direction,

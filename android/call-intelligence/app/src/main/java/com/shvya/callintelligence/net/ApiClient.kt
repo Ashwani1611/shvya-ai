@@ -96,6 +96,7 @@ class ApiClient(private val context: Context) {
             .put("event_uuid", call.eventUuid)
             .put("device_id", deviceId())
             .put("source_call_id", call.sourceCallId)
+            .put("sim_account_id", call.simAccountId)
             .put("phone_number", call.phoneNumber)
             .put("raw_phone_number", call.rawPhoneNumber)
             .put("contact_name", call.contactName)
