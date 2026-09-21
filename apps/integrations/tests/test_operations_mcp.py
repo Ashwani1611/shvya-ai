@@ -53,16 +53,8 @@ class OperationsMCPTests(TestCase):
             organization=self.organization,
             name="Sales",
         )
-        self.new_stage = Stage.objects.create(
-            pipeline=self.pipeline,
-            name="New Lead",
-            display_order=0,
-        )
-        self.qualified = Stage.objects.create(
-            pipeline=self.pipeline,
-            name="Qualified",
-            display_order=10,
-        )
+        self.new_stage = self.pipeline.stages.get(name="New leads")
+        self.qualified = self.pipeline.stages.get(name="Qualified")
         self.lead = Lead.objects.create(
             organization=self.organization,
             pipeline=self.pipeline,
@@ -74,11 +66,7 @@ class OperationsMCPTests(TestCase):
             organization=self.other_organization,
             name="Other Sales",
         )
-        other_stage = Stage.objects.create(
-            pipeline=other_pipeline,
-            name="New Lead",
-            display_order=0,
-        )
+        other_stage = other_pipeline.stages.get(name="New leads")
         self.other_lead = Lead.objects.create(
             organization=self.other_organization,
             pipeline=other_pipeline,
