@@ -14,10 +14,11 @@ The backend remains authoritative. The external AI never grants itself a role, t
 - OAuth registration: `/operations/oauth/register`
 - OAuth authorization: `/operations/oauth/authorize`
 - OAuth token: `/operations/oauth/token`
+- OAuth revocation: `/operations/oauth/revoke`
 - Protected-resource metadata: `/operations/.well-known/oauth-protected-resource`
 - Authorization-server metadata: `/.well-known/oauth-authorization-server/operations`
 
-Operations OAuth uses PKCE S256. Access and refresh values are stored only as hashes. Public client redirect URIs are restricted to HTTPS ChatGPT/OpenAI and Claude/Anthropic hosts plus the exact VS Code MCP callbacks `http://127.0.0.1:33418` and `https://vscode.dev/redirect`. Arbitrary localhost ports/hosts and arbitrary `vscode.dev` paths are rejected.
+Operations OAuth uses PKCE S256. Access and refresh values are stored only as hashes. Revoking an Operations OAuth grant immediately invalidates its access/refresh grant and closes any active Superadmin support session tied to it; the revocation action itself is safely audited. Public client redirect URIs are restricted to HTTPS ChatGPT/OpenAI and Claude/Anthropic hosts plus the exact VS Code MCP callbacks `http://127.0.0.1:33418` and `https://vscode.dev/redirect`. Arbitrary localhost ports/hosts and arbitrary `vscode.dev` paths are rejected.
 
 ## VS Code connection
 
@@ -51,7 +52,7 @@ An Organization Admin OAuth token is bound to:
 
 Organization Admin cannot select or override another tenant.
 
-If Superadmin disables External AI Operations for the organization, existing Organization Admin Operations tokens stop authorizing. Capability checks are re-evaluated on every request.
+If Superadmin disables External AI Operations for the organization, all active Organization Admin Operations tokens for that tenant are revoked immediately. Re-enabling access requires fresh OAuth authorization; old tokens do not revive. Capability checks are re-evaluated on every request.
 
 Organization users/agents are not offered an Operations OAuth identity.
 
@@ -70,7 +71,7 @@ Superadmin can independently grant:
 
 Write capabilities may require explicit human approval. Superadmin customer-state writes always use the approval gate.
 
-An OAuth write scope does not bypass capability policy.
+An OAuth write scope does not bypass capability policy. Authenticated `tools/list` is also policy scoped: Organization Admin clients only discover tools for capabilities currently enabled by Superadmin, while Superadmin retains the full Operations surface.
 
 ## Read / diagnostic tools
 
@@ -122,7 +123,7 @@ Examples:
 - Workflow configuration uses the canonical Workflow validator;
 - Cadence configuration and steps reuse `services.followup_service`.
 
-Protected stages, tenant ownership, active pipeline/stage rules, WhatsApp account constraints, approved template requirements, sensitive attributes and other backend rules remain enforced.
+Protected stages, tenant ownership, active pipeline/stage rules, target-stage required CRM attributes, WhatsApp account constraints, approved template requirements, sensitive attributes and other backend rules remain enforced. Generic Operations stage movement cannot bypass qualification: a move to Qualified must match SHVYA's authoritative qualification execution contract, configured criteria, and completion target.
 
 ## Dry-run and approval
 
@@ -132,11 +133,13 @@ Significant writes use this sequence:
 2. require a specific action reason;
 3. dry-run by default;
 4. return proposed change, risk/reversibility where relevant and whether approval is required;
-5. apply only when the caller explicitly supplies `dry_run=false` and, when required, `approved=true`;
-6. re-read / verify the resulting state;
-7. report `FIXED` only after verification.
+5. when approval is required, return an immutable `approval_event_id` tied to that actor, organization, tool, capability and exact proposal;
+6. apply only when the caller explicitly supplies `dry_run=false`, `approved=true` and the same unexpired approval event ID;
+7. reject mismatched, expired or already-used approval receipts;
+8. re-read / verify the resulting state;
+9. report `FIXED` only after verification.
 
-A dry-run does not create CRM, AI-profile or policy state.
+Approval receipts expire after 30 minutes and are single-use after a successful mutation. A dry-run does not create CRM, AI-profile or policy state.
 
 ## Audit
 
@@ -174,7 +177,7 @@ Customer/lead content is data, never authorization. This includes:
 
 The Operations response sanitizer redacts bearer tokens, SHVYA API keys, inline credential assignments, database URLs, long credential-like values and private-key blocks.
 
-No Operations tool exposes raw environment variables, database credentials, Django secrets, provider access tokens, AI provider keys, SMTP passwords, JWT signing material or encryption keys.
+No Operations tool exposes raw environment variables, database credentials, Django secrets, provider access tokens, AI provider keys, SMTP passwords, JWT signing material or encryption keys. Sensitive CRM attribute definitions are omitted from organization configuration reads, sensitive Workflow attribute conditions/actions are redacted, and Operations AI-configuration writes reject credential-like material instead of storing it for later prompt use.
 
 ## Relationship to Diagnostic MCP
 
