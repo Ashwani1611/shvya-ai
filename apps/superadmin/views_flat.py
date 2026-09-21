@@ -427,6 +427,8 @@ def organization_detail_view(
         OperationsSupportSession.objects.filter(
             organization=organization,
             ended_at__isnull=True,
+            token__revoked_at__isnull=True,
+            token__expires_at__gt=timezone.now(),
         )
         .select_related("actor")
         .order_by("-last_seen_at")
