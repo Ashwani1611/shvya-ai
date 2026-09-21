@@ -3573,6 +3573,183 @@ class OperationsMCPTests(TestCase):
             "DRY_RUN",
         )
 
+    def test_lead_attribute_write_validates_definition_type_and_options(self):
+        OperationsPolicy.objects.create(
+            organization=self.organization,
+            organization_admin_enabled=True,
+            allowed_capabilities=[
+                CAP_ORGANIZATION_READ,
+                CAP_LEAD_ATTRIBUTES_WRITE,
+            ],
+            approval_required_capabilities=[],
+        )
+        numeric = AttributeDefinition.objects.create(
+            organization=self.organization,
+            name="Employee Count",
+            key="employee_count",
+            field_type=AttributeDefinition.FieldType.NUMERIC,
+        )
+        option = AttributeDefinition.objects.create(
+            organization=self.organization,
+            name="Priority Band",
+            key="priority_band",
+            field_type=AttributeDefinition.FieldType.OPTION,
+            options=["High", "Low"],
+        )
+        bearer = self._token(
+            actor=self.admin,
+            role=ROLE_ORGANIZATION_ADMIN,
+            organization=self.organization,
+        )
+
+        invalid_numeric = self._result(
+            self._call(
+                bearer,
+                "update_lead_attributes",
+                {
+                    "lead_id": str(self.lead.id),
+                    "values": {
+                        numeric.key: "not-a-number",
+                    },
+                    "reason": "Validate numeric CRM attribute value",
+                    "dry_run": True,
+                },
+            )
+        )
+        self.assertTrue(invalid_numeric["isError"])
+        self.assertEqual(
+            invalid_numeric["structuredContent"]["status"],
+            "ERROR",
+        )
+
+        invalid_option = self._result(
+            self._call(
+                bearer,
+                "update_lead_attributes",
+                {
+                    "lead_id": str(self.lead.id),
+                    "values": {
+                        option.key: "Medium",
+                    },
+                    "reason": "Validate option CRM attribute value",
+                    "dry_run": True,
+                },
+            )
+        )
+        self.assertTrue(invalid_option["isError"])
+        self.assertEqual(
+            invalid_option["structuredContent"]["status"],
+            "ERROR",
+        )
+
+        valid = self._result(
+            self._call(
+                bearer,
+                "update_lead_attributes",
+                {
+                    "lead_id": str(self.lead.id),
+                    "values": {
+                        numeric.key: "25",
+                        option.key: "High",
+                    },
+                    "reason": "Review valid CRM attribute values",
+                    "dry_run": True,
+                },
+            )
+        )
+        self.assertFalse(valid["isError"])
+        self.assertEqual(
+            valid["structuredContent"]["status"],
+            "DRY_RUN",
+        )
+
+    def test_approved_lead_attribute_write_rejects_definition_schema_drift(self):
+        OperationsPolicy.objects.create(
+            organization=self.organization,
+            organization_admin_enabled=True,
+            allowed_capabilities=[
+                CAP_ORGANIZATION_READ,
+                CAP_LEAD_ATTRIBUTES_WRITE,
+            ],
+            approval_required_capabilities=[
+                CAP_LEAD_ATTRIBUTES_WRITE,
+            ],
+        )
+        definition = AttributeDefinition.objects.create(
+            organization=self.organization,
+            name="Qualification Note",
+            key="qualification_note_drift",
+            field_type=AttributeDefinition.FieldType.TEXT,
+        )
+        self.lead.attributes = {
+            **(self.lead.attributes or {}),
+            definition.key: "Initial",
+        }
+        self.lead.save(
+            update_fields=["attributes", "updated_at"]
+        )
+        bearer = self._token(
+            actor=self.admin,
+            role=ROLE_ORGANIZATION_ADMIN,
+            organization=self.organization,
+        )
+        arguments = {
+            "lead_id": str(self.lead.id),
+            "values": {
+                definition.key: "Reviewed",
+            },
+            "reason": "Update reviewed qualification note",
+        }
+        dry = self._result(
+            self._call(
+                bearer,
+                "update_lead_attributes",
+                {
+                    **arguments,
+                    "dry_run": True,
+                },
+            )
+        )
+        self.assertFalse(dry["isError"])
+
+        definition.field_type = (
+            AttributeDefinition.FieldType.OPTION
+        )
+        definition.options = ["Allowed"]
+        definition.full_clean()
+        definition.save(
+            update_fields=[
+                "field_type",
+                "options",
+                "updated_at",
+            ]
+        )
+
+        stale = self._result(
+            self._call(
+                bearer,
+                "update_lead_attributes",
+                {
+                    **arguments,
+                    "dry_run": False,
+                    "approved": True,
+                    "approval_event_id": dry[
+                        "structuredContent"
+                    ]["approval_event_id"],
+                },
+            )
+        )
+        self.assertTrue(stale["isError"])
+        self.assertEqual(
+            stale["structuredContent"]["status"],
+            "APPROVAL_REQUIRED",
+        )
+        self.lead.refresh_from_db()
+        self.assertEqual(
+            self.lead.attributes[definition.key],
+            "Initial",
+        )
+
     def test_approved_lead_attribute_write_rejects_human_edit_after_dry_run(self):
         OperationsPolicy.objects.create(
             organization=self.organization,
