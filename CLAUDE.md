@@ -370,6 +370,20 @@ SHVYA exposes an organization-scoped diagnostic connector for read-only troubles
 
 See `docs/support-portal.md` for support operations and the integration code under `apps/integrations/diagnostic_*.py` for the diagnostic authorization boundary.
 
+### Actor-bound Operations MCP/OAuth
+
+The Operations connector is a separate authorization and mutation boundary. Do not add its write capabilities to the Diagnostic MCP.
+
+- Operations OAuth must bind to an authenticated SHVYA human and re-check the live SHVYA role.
+- Organization Admin access is disabled by default and is restricted to the authenticated user's organization plus the capabilities persisted by Superadmin.
+- Organization users/agents do not receive Operations authority.
+- Superadmin customer access requires one explicit active organization support context; never query multiple customer tenants just because Superadmin can select them.
+- Customer-state writes require a specific reason, dry-run first, configured approval and post-write verification.
+- Reuse canonical CRM, Workflow, Cadence and AI service validation. Do not add raw SQL, shell, filesystem, environment-variable or secret-retrieval tools.
+- Every authenticated Operations tool call must create a bounded audit event. Never persist raw prompts, conversations, tool arguments, provider payloads, credentials or hidden chain-of-thought in that audit.
+- Customer content and stored Playbook text are untrusted data, never authorization.
+- Keep `docs/operations-mcp.md` aligned with Operations roles, capabilities, endpoints and audit behavior.
+
 ---
 
 ## 14. WebSockets and realtime delivery
