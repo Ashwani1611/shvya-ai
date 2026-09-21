@@ -970,13 +970,16 @@ def operations_oauth_token(request):
                 resource=requested_resource,
             )
         else:
-            return JsonResponse(
+            response = JsonResponse(
                 {
                     "error": "unsupported_grant_type",
                     "error_description": "Use authorization_code or refresh_token.",
                 },
                 status=400,
             )
+            response["Cache-Control"] = "no-store"
+            response["Pragma"] = "no-cache"
+            return response
     except OperationsAuthError as exc:
         response = JsonResponse(
             {
@@ -986,6 +989,7 @@ def operations_oauth_token(request):
             status=400,
         )
         response["Cache-Control"] = "no-store"
+        response["Pragma"] = "no-cache"
         return response
 
     token_event = (
@@ -1038,6 +1042,7 @@ def operations_oauth_revoke(request):
             status=400,
         )
         response["Cache-Control"] = "no-store"
+        response["Pragma"] = "no-cache"
         return response
 
     try:
@@ -1051,6 +1056,7 @@ def operations_oauth_revoke(request):
             status=400,
         )
         response["Cache-Control"] = "no-store"
+        response["Pragma"] = "no-cache"
         return response
 
     if revoked_token is not None:
