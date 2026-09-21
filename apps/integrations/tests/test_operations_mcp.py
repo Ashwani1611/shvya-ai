@@ -219,6 +219,7 @@ class OperationsMCPTests(TestCase):
             "get_ai_diagnostics",
             "get_runtime_health",
             "get_organization_configuration",
+            "get_messaging_automation_settings",
         ):
             self.assertIn(name, tools)
             schemes = tools[name]["securitySchemes"]
@@ -240,6 +241,7 @@ class OperationsMCPTests(TestCase):
             "move_lead_stage",
             "update_ai_configuration",
             "upsert_workflow_configuration",
+            "update_messaging_automation_settings",
         ):
             schemes = tools[name]["securitySchemes"]
             self.assertIn(
