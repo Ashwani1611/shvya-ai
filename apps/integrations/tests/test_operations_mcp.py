@@ -837,6 +837,57 @@ class OperationsMCPTests(TestCase):
             2,
         )
 
+    def test_conversion_analysis_uses_same_created_lead_cohort_for_rate(self):
+        OperationsPolicy.objects.create(
+            organization=self.organization,
+            organization_admin_enabled=True,
+            allowed_capabilities=[
+                CAP_ORGANIZATION_READ,
+                CAP_DIAGNOSTICS_READ,
+            ],
+        )
+        old_lead = Lead.objects.create(
+            organization=self.organization,
+            pipeline=self.pipeline,
+            stage=self.new_stage,
+            name="Old Lead",
+            phone="+919999999993",
+        )
+        old_created_at = timezone.now() - timedelta(days=45)
+        Lead.objects.filter(pk=old_lead.pk).update(
+            created_at=old_created_at,
+        )
+        old_lead.refresh_from_db()
+        move_lead_to_stage(
+            lead=old_lead,
+            stage=self.qualified,
+            actor=self.admin,
+        )
+
+        bearer = self._token(
+            actor=self.admin,
+            role=ROLE_ORGANIZATION_ADMIN,
+            organization=self.organization,
+            scopes=[OPERATIONS_READ_SCOPE],
+        )
+        result = self._result(
+            self._call(
+                bearer,
+                "get_conversion_analysis",
+                {"days": 30},
+            )
+        )
+        self.assertFalse(result["isError"])
+        current = result["structuredContent"]["comparison"][
+            "current_period"
+        ]
+        self.assertEqual(current["lead_volume"], 1)
+        self.assertEqual(current["qualified_transitions"], 0)
+        self.assertEqual(
+            current["qualified_transition_rate"],
+            0.0,
+        )
+
     def test_read_context_does_not_create_missing_policy_row(self):
         bearer = self._token(
             actor=self.superadmin,
