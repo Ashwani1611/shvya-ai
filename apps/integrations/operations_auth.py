@@ -487,6 +487,39 @@ def revoke_token_record(*, token):
         return _revoke_locked_token(locked)
 
 
+def end_support_context_record(*, token, organization):
+    """End one Superadmin support context without requiring raw OAuth material."""
+
+    now = timezone.now()
+    with transaction.atomic():
+        locked = (
+            OperationsOAuthToken.objects.select_for_update()
+            .filter(pk=token.pk, role=ROLE_SUPERADMIN)
+            .first()
+        )
+        if locked is None:
+            return 0
+
+        sessions = OperationsSupportSession.objects.filter(
+            token=locked,
+            organization=organization,
+            ended_at__isnull=True,
+        )
+        ended_count = sessions.update(
+            ended_at=now,
+            last_seen_at=now,
+        )
+        if locked.active_organization_id == organization.id:
+            locked.active_organization = None
+            locked.save(
+                update_fields=[
+                    "active_organization",
+                    "updated_at",
+                ]
+            )
+        return ended_count
+
+
 def revoke_token(*, raw_token: str):
     """Revoke an Operations OAuth grant by either access or refresh token.
 
