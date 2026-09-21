@@ -166,6 +166,11 @@
         animation: shvya-support-presence 1.25s ease-in-out infinite;
     }
 
+    .operations-support-badge--idle .operations-support-badge__dot {
+        animation: none;
+        opacity: .5;
+    }
+
     .operations-support-badge__label {
         font-weight: 800;
     }
@@ -286,16 +291,21 @@
 
         var actor = "{{ operations_support_actor|default:'SHVYA Support'|escapejs }}";
         var startedAt = "{{ operations_support_started_at|date:'d M Y, h:i A'|default:''|escapejs }}";
+        var lastSeenAt = "{{ operations_support_last_seen_at|date:'d M Y, h:i A'|default:''|escapejs }}";
+        var recentlyActive = "{{ operations_support_recently_active|yesno:'1,0' }}" === '1';
 
         var badge = document.createElement('div');
         badge.dataset.operationsSupportBadge = '1';
-        badge.className = 'operations-support-badge';
+        badge.className = 'operations-support-badge' +
+            (recentlyActive ? '' : ' operations-support-badge--idle');
         badge.setAttribute('role', 'status');
         badge.setAttribute('aria-live', 'polite');
         badge.setAttribute(
             'title',
-            'A SHVYA Superadmin Operations support session is active for this organization' +
-            (startedAt ? ' since ' + startedAt : '') + '. All Operations actions are audited.'
+            'A SHVYA Superadmin Operations support context is open for this organization' +
+            (startedAt ? ' since ' + startedAt : '') +
+            (lastSeenAt ? '. Last activity: ' + lastSeenAt : '') +
+            '. All Operations actions are audited.'
         );
 
         var dot = document.createElement('span');
@@ -304,7 +314,9 @@
 
         var label = document.createElement('span');
         label.className = 'operations-support-badge__label';
-        label.textContent = 'SHVYA Support Active';
+        label.textContent = recentlyActive
+            ? 'SHVYA Support Active'
+            : 'SHVYA Support Context Open';
 
         var actorNode = document.createElement('span');
         actorNode.className = 'operations-support-badge__actor';
