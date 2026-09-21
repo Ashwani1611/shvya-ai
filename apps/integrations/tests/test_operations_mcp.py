@@ -23,6 +23,7 @@ from apps.channels.instagram_models import InstagramAccount, InstagramWebhookDel
 from apps.channels.models import WhatsAppAccount, WhatsAppMessage
 from apps.crm.models import AttributeDefinition, Lead, LeadActivity, Pipeline, Stage
 from apps.followups.models import FollowupSequence, FollowupStep
+from apps.hosted_automation.models import HostedAutomationJob
 from apps.integrations.diagnostic_auth import sanitize_data
 from apps.integrations.operations_agent_prompt import OPERATIONS_AGENT_INSTRUCTIONS
 from apps.integrations.operations_approval import approval_fingerprint
