@@ -746,7 +746,7 @@ def calendar_block_add(request, page_id):
         ends = datetime.fromisoformat(request.POST.get("ends_at") or "")
         try:
             page_zone = ZoneInfo(page.timezone)
-        except ZoneInfoNotFoundError as exc:
+        except (ZoneInfoNotFoundError, ValueError) as exc:
             raise ValidationError("Choose a valid booking timezone first.") from exc
         if timezone.is_naive(starts):
             starts = timezone.make_aware(starts, page_zone)
@@ -931,6 +931,16 @@ def google_disconnect(request, page_id):
     user = request.crm_user
     _require_calendar_manager(user)
     page = _page_for_user(user, page_id)
+    if page.host_id != user.id:
+        messages.error(
+            request,
+            "Only the selected booking host can disconnect their Google Calendar.",
+        )
+        return redirect(
+            f"{reverse('shvya_calendar:editor', kwargs={'page_id': page.id})}"
+            "?tab=scheduling"
+        )
+
     GoogleCalendarConnection.objects.filter(
         organization=user.organization,
         user=user,
@@ -1293,7 +1303,7 @@ def public_confirmation(request, booking_id, cancel_token):
     )
     try:
         booking_zone = ZoneInfo(booking.timezone)
-    except ZoneInfoNotFoundError:
+    except (ZoneInfoNotFoundError, ValueError):
         booking_zone = timezone.get_current_timezone()
     return render(
         request,
@@ -1369,7 +1379,7 @@ def public_reschedule(request, booking_id, reschedule_token):
 
     try:
         booking_zone = ZoneInfo(booking.timezone)
-    except ZoneInfoNotFoundError:
+    except (ZoneInfoNotFoundError, ValueError):
         booking_zone = timezone.get_current_timezone()
     return render(
         request,
