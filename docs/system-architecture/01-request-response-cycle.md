@@ -477,6 +477,10 @@ Customer support requests enter through `/dashboard/support-portal/`; Shvya-Ops 
 
 The diagnostic connector is a separate **read-only** authorization boundary. Access is organization/API-key scoped and requires `can_read_diagnostics`. OAuth authorization/access/refresh secret material is hashed, and diagnostic access logs persist only safe metadata/fingerprints.
 
+### Operations MCP/OAuth
+
+The Operations connector is a separate **actor-bound** authorization and mutation boundary for external AI clients such as ChatGPT and Claude. OAuth binds to a real SHVYA human and re-validates the live role. Organization Admin access is disabled by default and limited by a Superadmin-owned capability policy. Superadmin customer access requires one explicit active organization support context. Customer-state writes use specific reasons, dry-run, configured approval, canonical service validation and post-write verification. Every authenticated Operations tool call creates a bounded append-only audit event, while raw prompts, conversations, credentials, provider payloads and hidden reasoning are excluded.
+
 ### Bulk Campaign UI/actions
 
 Bulk Campaign HTTP flows prepare audience/template/schedule state, then asynchronous send workers operate on frozen delivery rows. Recipient “View chat” and CRM actions resolve the same lead/current pipeline instead of trusting browser-provided arbitrary account/pipeline IDs.
