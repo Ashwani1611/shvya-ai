@@ -452,7 +452,7 @@ def organization_detail_view(
             limit=500,
             redact_long=False,
         )
-    active_operations_tokens = (
+    active_operations_tokens = list(
         OperationsOAuthToken.objects.filter(
             organization=organization,
             role=ROLE_ORGANIZATION_ADMIN,
@@ -462,6 +462,18 @@ def organization_detail_view(
         .select_related("actor", "client")
         .order_by("-last_used_at", "-created_at")
     )
+    for token in active_operations_tokens:
+        token.granted_capability_labels = [
+            CAPABILITY_LABELS.get(
+                capability,
+                capability,
+            )
+            for capability in sorted(
+                expand_capabilities(
+                    token.granted_capabilities
+                )
+            )
+        ]
     open_operations_support_sessions = list(
         OperationsSupportSession.objects.filter(
             organization=organization,
