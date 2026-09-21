@@ -912,6 +912,67 @@ def move_lead_stage(*, identity, arguments, enforce_gate=True):
     if stage is None:
         raise OperationsToolError("Active target stage was not found in this organization.")
 
+    if (
+        normalize_stage_name(stage.name) == QUALIFIED_STAGE
+        and stage.id != lead.stage_id
+    ):
+        _, _, qualification_state = _qualification_snapshot(lead)
+        if qualification_state.get("qualification_status") != "completed":
+            raise OperationsPermissionError(
+                "Operations MCP cannot move a lead to Qualified until SHVYA's "
+                "backend qualification state is completed. Diagnose the lead "
+                "and use qualification repair/reconciliation when eligible."
+            )
+        configured_target_id = qualification_state.get("qualified_stage_id")
+        if (
+            configured_target_id
+            and str(configured_target_id) != str(stage.id)
+        ):
+            raise OperationsPermissionError(
+                "The requested Qualified stage is not the backend-configured "
+                "qualification completion target for this lead."
+            )
+
+    if (
+        not dry_run
+        and approval_required(
+            role=identity.role,
+            organization=organization,
+            capability=CAP_LEAD_STAGE_WRITE,
+        )
+    ):
+        raw_approval_id = str(
+            (arguments or {}).get("approval_event_id") or ""
+        ).strip()
+        try:
+            approval_id = uuid.UUID(raw_approval_id)
+        except (TypeError, ValueError, AttributeError) as exc:
+            raise OperationsApprovalRequired(
+                "A valid matching approval_event_id is required."
+            ) from exc
+        approval_event = OperationsAuditEvent.objects.filter(
+            pk=approval_id,
+            outcome=OperationsAuditEvent.Outcome.DRY_RUN,
+        ).first()
+        summary = (
+            approval_event.change_summary
+            if approval_event and isinstance(approval_event.change_summary, dict)
+            else {}
+        )
+        expected_stage_id = str(summary.get("from_stage_id") or "")
+        expected_pipeline_id = str(summary.get("from_pipeline_id") or "")
+        if (
+            (expected_stage_id and expected_stage_id != str(lead.stage_id))
+            or (
+                expected_pipeline_id
+                and expected_pipeline_id != str(lead.pipeline_id)
+            )
+        ):
+            raise OperationsApprovalRequired(
+                "The lead pipeline/stage changed after the approved dry-run. "
+                "Run a fresh dry-run and obtain new approval."
+            )
+
     before = {
         "pipeline_id": str(lead.pipeline_id),
         "pipeline": lead.pipeline.name,
@@ -944,7 +1005,9 @@ def move_lead_stage(*, identity, arguments, enforce_gate=True):
             outcome=OperationsAuditEvent.Outcome.DRY_RUN,
             audit_summary={
                 "operation": "move_lead_stage",
+                "from_pipeline_id": str(lead.pipeline_id),
                 "from_stage_id": str(lead.stage_id),
+                "to_pipeline_id": str(stage.pipeline_id),
                 "to_stage_id": str(stage.id),
             },
         )
@@ -975,7 +1038,9 @@ def move_lead_stage(*, identity, arguments, enforce_gate=True):
         reason=reason,
         audit_summary={
             "operation": "move_lead_stage",
+            "from_pipeline_id": before["pipeline_id"],
             "from_stage_id": before["stage_id"],
+            "to_pipeline_id": after["pipeline_id"],
             "to_stage_id": after["stage_id"],
             "verification": "passed",
         },
