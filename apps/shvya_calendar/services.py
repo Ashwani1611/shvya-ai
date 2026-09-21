@@ -361,6 +361,15 @@ def _find_existing_lead(*, organization, phone, email, match_email):
                 )
             }
         )
+    if email_lead and phone_lead is None and email_lead.phone != phone:
+        raise ValidationError(
+            {
+                "form": (
+                    "This email already belongs to a CRM lead with a different "
+                    "mobile number. Review the existing lead before continuing."
+                )
+            }
+        )
     return phone_lead or email_lead
 
 
