@@ -579,4 +579,4 @@ class ShvyaCalendarServiceTests(TestCase):
             ).count(),
             1,
         )
-        mocked_create_event.assert_not_called()
+        mocked_create_event.assert_called_once()
