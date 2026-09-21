@@ -1,6 +1,8 @@
 import uuid
 
-from datetime import timedelta\n\nfrom django.utils import timezone
+from datetime import timedelta
+
+from django.utils import timezone
 from rest_framework.test import APIClient, APITestCase
 
 from apps.accounts.models import User
