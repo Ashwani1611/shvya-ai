@@ -499,6 +499,10 @@ def set_call_follow_up(*, call, assigned_to, due_at, title="", description=""):
     if call.lead_id is None:
         raise ValidationError("A CRM lead is required before a follow-up can be created.")
 
+    # SHVYA contract: one reminder per lead. A new post-call follow-up
+    # replaces the previous reminder rather than stacking duplicates.
+    LeadReminder.objects.filter(lead=call.lead).delete()
+
     reminder = LeadReminder.objects.create(
         lead=call.lead,
         assigned_to=assigned_to,
