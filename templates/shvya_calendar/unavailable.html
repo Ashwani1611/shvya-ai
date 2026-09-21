@@ -1,0 +1,26 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>{{ page.name }} · {{ page.organization.name }}</title>
+  <link rel="stylesheet" href="{% static 'shvya_calendar/calendar.css' %}?v=20260922-2">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.34.0/dist/tabler-icons.min.css">
+</head>
+<body class="sc-public-body" style="--sc-accent: {{ page.accent_color|default:'#0060A2' }}">
+  <main class="sc-success-shell">
+    <section class="sc-success-card">
+      <div class="sc-success-icon sc-success-icon-neutral"><i class="ti ti-calendar-off"></i></div>
+      <span class="sc-kicker">SHVYA CALENDAR</span>
+      {% if is_draft %}
+        <h1>This booking page is not published yet.</h1>
+        <p>The page owner is still preparing this experience. Please check the link again after it is published.</p>
+      {% else %}
+        <h1>This booking page is currently unavailable.</h1>
+        <p>The organization has temporarily paused this page. Your previous CRM and booking records are unaffected.</p>
+      {% endif %}
+    </section>
+  </main>
+</body>
+</html>
