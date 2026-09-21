@@ -5,6 +5,20 @@ on:
     branches: [main, staging]
   push:
     branches: [main, staging]
+    paths:
+      - "requirements.txt"
+      - "requirements-dev.txt"
+      - "pyproject.toml"
+      - "Dockerfile"
+      - ".dockerignore"
+      - "docker-compose.yml"
+      - "docker-compose.staging.yml"
+      - ".env.example"
+      - ".env.staging.example"
+      - "whatsapp_web_gateway/package.json"
+      - "whatsapp_web_gateway/package-lock.json"
+      - "whatsapp_web_gateway/Dockerfile"
+      - ".github/workflows/security.yml"
   workflow_dispatch:
 
 permissions:
@@ -15,9 +29,42 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  plan:
+    name: Security change plan
+    runs-on: ubuntu-latest
+    outputs:
+      full: ${{ steps.plan.outputs.full }}
+      python: ${{ steps.plan.outputs.python }}
+      gateway: ${{ steps.plan.outputs.gateway }}
+      docker_app: ${{ steps.plan.outputs.docker_app }}
+      compose: ${{ steps.plan.outputs.compose }}
+
+    steps:
+      - name: Checkout repository history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+
+      - name: Build security plan
+        id: plan
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          set -euo pipefail
+          args=(--head "$GITHUB_SHA" --github-output "$GITHUB_OUTPUT")
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            args+=(--force-full)
+          else
+            args+=(--base "$BASE_SHA")
+          fi
+          python scripts/ci_change_plan.py "${args[@]}"
+
   python-security:
     name: Python dependency audit and SAST
     runs-on: ubuntu-latest
+    needs: plan
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch' || needs.plan.outputs.full == 'true' || needs.plan.outputs.python == 'true'
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -45,6 +92,8 @@ jobs:
   node-security:
     name: Node dependency audit and lockfile
     runs-on: ubuntu-latest
+    needs: plan
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch' || needs.plan.outputs.full == 'true' || needs.plan.outputs.gateway == 'true'
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -60,6 +109,7 @@ jobs:
   secret-scan:
     name: Secret scan
     runs-on: ubuntu-latest
+    needs: plan
     steps:
       - name: Checkout repository history
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -74,6 +124,7 @@ jobs:
   trivy-filesystem:
     name: Filesystem security and SBOM
     runs-on: ubuntu-latest
+    needs: plan
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -107,6 +158,8 @@ jobs:
   container-security:
     name: Container vulnerability scan
     runs-on: ubuntu-latest
+    needs: plan
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch' || needs.plan.outputs.full == 'true' || needs.plan.outputs.docker_app == 'true' || needs.plan.outputs.gateway == 'true' || needs.plan.outputs.compose == 'true'
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
