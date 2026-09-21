@@ -1,5 +1,7 @@
-from datetime import datetime
+from datetime import UTC, datetime
+import logging
 import secrets
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from django.contrib import messages
 from django.core import signing
@@ -49,8 +51,12 @@ from .services import (
     reschedule_booking,
     schema_from_json,
     upcoming_slot_days,
+    validate_page_for_publish,
     validate_public_submission,
 )
+
+
+logger = logging.getLogger(__name__)
 
 
 def _validation_text(exc):
@@ -161,7 +167,7 @@ def _editor_context(request, page, active_tab=None):
         "google_connection": connection,
         "google_configured": google_is_configured(),
         "sequence": sequence,
-        "reminder_steps": sequence.steps.all(),
+        "reminder_steps": sequence.steps.filter(enabled=True),
         "pending_call_reminders": pending_calls,
         "active_tab": active_tab or request.GET.get("tab") or "lead",
         "weekday_rows": [
@@ -388,7 +394,16 @@ def _save_lead_section(request, page):
 
 
 def _save_scheduling_section(request, page):
-    page.timezone = (request.POST.get("timezone") or page.timezone).strip()[:64]
+    requested_timezone = (
+        request.POST.get("timezone") or page.timezone
+    ).strip()[:64]
+    try:
+        ZoneInfo(requested_timezone)
+    except ZoneInfoNotFoundError as exc:
+        raise ValidationError(
+            {"timezone": "Enter a valid IANA timezone, for example Asia/Kolkata."}
+        ) from exc
+    page.timezone = requested_timezone
     page.session_title = (
         request.POST.get("session_title") or page.session_title
     ).strip()[:80]
@@ -402,10 +417,28 @@ def _save_scheduling_section(request, page):
     ][:12]
     availability = {}
     for key in ("mon", "tue", "wed", "thu", "fri", "sat", "sun"):
+        enabled = _checkbox(request.POST, f"{key}_enabled")
+        start_value = (request.POST.get(f"{key}_start") or "09:00")[:5]
+        end_value = (request.POST.get(f"{key}_end") or "18:00")[:5]
+        try:
+            start_time = datetime.strptime(start_value, "%H:%M").time()
+            end_time = datetime.strptime(end_value, "%H:%M").time()
+        except ValueError as exc:
+            raise ValidationError(
+                {"availability": f"{key.title()} has an invalid time."}
+            ) from exc
+        if enabled and start_time >= end_time:
+            raise ValidationError(
+                {
+                    "availability": (
+                        f"{key.title()} end time must be after its start time."
+                    )
+                }
+            )
         availability[key] = {
-            "enabled": _checkbox(request.POST, f"{key}_enabled"),
-            "start": (request.POST.get(f"{key}_start") or "09:00")[:5],
-            "end": (request.POST.get(f"{key}_end") or "18:00")[:5],
+            "enabled": enabled,
+            "start": start_value,
+            "end": end_value,
         }
     page.availability = availability
     page.bookable_days = _int(
@@ -492,6 +525,7 @@ def calendar_editor_save(request, page_id):
     _require_calendar_manager(user)
     page = _page_for_user(user, page_id)
     section = request.POST.get("section") or "lead"
+    was_published = page.status == CalendarPage.Status.PUBLISHED
 
     try:
         if section == "lead":
@@ -520,12 +554,58 @@ def calendar_editor_save(request, page_id):
 
         page.updated_by = user
         page.full_clean()
+
+        publish_validation_error = None
+        if was_published:
+            try:
+                validate_page_for_publish(page)
+            except ValidationError as exc:
+                publish_validation_error = exc
+                page.status = CalendarPage.Status.DISABLED
+
         page.save()
-        if page.status == CalendarPage.Status.PUBLISHED:
-            publish_page(page=page, actor=user)
-        messages.success(request, "SHVYA Calendar settings saved.")
+
+        if was_published and publish_validation_error is None:
+            try:
+                publish_page(page=page, actor=user)
+            except ValidationError as exc:
+                page.status = CalendarPage.Status.DISABLED
+                page.save(update_fields=["status", "updated_at"])
+                publish_validation_error = exc
+            except Exception:
+                logger.exception(
+                    "Unable to republish SHVYA Calendar page %s after settings save.",
+                    page.id,
+                )
+                page.status = CalendarPage.Status.DISABLED
+                page.save(update_fields=["status", "updated_at"])
+                publish_validation_error = ValidationError(
+                    "Settings were saved, but the public page was disabled because "
+                    "the new version could not be published safely."
+                )
+
+        if publish_validation_error is not None:
+            messages.warning(
+                request,
+                (
+                    "Settings saved. The public page was disabled until this is fixed: "
+                    f"{_validation_text(publish_validation_error)}"
+                ),
+            )
+        else:
+            messages.success(request, "SHVYA Calendar settings saved.")
     except ValidationError as exc:
         messages.error(request, _validation_text(exc))
+    except Exception:
+        logger.exception(
+            "Unexpected error while saving SHVYA Calendar page %s section %s.",
+            page.id,
+            section,
+        )
+        messages.error(
+            request,
+            "Unable to save these Calendar settings right now. No unsafe changes were published.",
+        )
 
     tab_map = {
         "lead": "lead",
@@ -546,6 +626,7 @@ def calendar_status(request, page_id):
     _require_calendar_manager(user)
     page = _page_for_user(user, page_id)
     action = request.POST.get("action") or ""
+
     try:
         if action == "publish":
             publish_page(page=page, actor=user)
@@ -559,6 +640,17 @@ def calendar_status(request, page_id):
             raise ValidationError("Unknown page status action.")
     except ValidationError as exc:
         messages.error(request, _validation_text(exc))
+    except Exception:
+        logger.exception(
+            "Unable to change SHVYA Calendar page %s status using action %s.",
+            page.id,
+            action,
+        )
+        messages.error(
+            request,
+            "Unable to change Booking Page Status right now. The existing page status was kept.",
+        )
+
     return redirect("shvya_calendar:editor", page_id=page.id)
 
 
@@ -604,12 +696,12 @@ def calendar_reminder_add(request, page_id):
             "?tab=reminders"
         )
 
-    next_order = (
+    latest_order = (
         sequence.steps.order_by("-display_order")
         .values_list("display_order", flat=True)
         .first()
-        or -1
-    ) + 1
+    )
+    next_order = 0 if latest_order is None else latest_order + 1
     default_names = {
         CalendarReminderStep.Channel.WHATSAPP: "WhatsApp reminder",
         CalendarReminderStep.Channel.EMAIL: "Email reminder",
@@ -663,10 +755,16 @@ def calendar_block_add(request, page_id):
     try:
         starts = datetime.fromisoformat(request.POST.get("starts_at") or "")
         ends = datetime.fromisoformat(request.POST.get("ends_at") or "")
+        try:
+            page_zone = ZoneInfo(page.timezone)
+        except ZoneInfoNotFoundError as exc:
+            raise ValidationError("Choose a valid booking timezone first.") from exc
         if timezone.is_naive(starts):
-            starts = timezone.make_aware(starts)
+            starts = starts.replace(tzinfo=page_zone)
         if timezone.is_naive(ends):
-            ends = timezone.make_aware(ends)
+            ends = ends.replace(tzinfo=page_zone)
+        starts = starts.astimezone(UTC)
+        ends = ends.astimezone(UTC)
         block = CalendarBlock(
             page=page,
             starts_at=starts,
@@ -786,7 +884,23 @@ def google_callback(request):
     expected = crm_session.pop("shvya_calendar_google_state", "")
     page_id = crm_session.pop("shvya_calendar_google_page", "")
     crm_session.save()
-    page = _page_for_user(user, page_id)
+
+    if not page_id:
+        messages.error(
+            request,
+            "Google Calendar connection state expired. Start the connection again.",
+        )
+        return redirect("shvya_calendar:index")
+
+    try:
+        page = _page_for_user(user, page_id)
+    except (Http404, ValidationError, ValueError):
+        messages.error(
+            request,
+            "Google Calendar connection state is no longer valid. Start again.",
+        )
+        return redirect("shvya_calendar:index")
+
     if not expected or request.GET.get("state") != expected:
         messages.error(request, "Google Calendar connection state expired. Try again.")
         return redirect("shvya_calendar:editor", page_id=page.id)
@@ -910,8 +1024,11 @@ def _verify_booking_flow_token(token, page, submission):
         raise ValidationError("This booking session is no longer valid.")
 
 
-def _public_page(public_id, slug):
-    return get_object_or_404(
+def _public_page(public_id, slug, *, require_published=True):
+    # public_id is the stable, unguessable page identifier. The human slug is
+    # cosmetic, so previously shared links keep working after an admin renames
+    # a page or changes its slug.
+    page = get_object_or_404(
         CalendarPage.objects.select_related(
             "organization",
             "pipeline",
@@ -919,9 +1036,10 @@ def _public_page(public_id, slug):
             "host",
         ),
         public_id=public_id,
-        slug=slug,
-        status=CalendarPage.Status.PUBLISHED,
     )
+    if require_published and page.status != CalendarPage.Status.PUBLISHED:
+        raise Http404
+    return page
 
 
 def _rate_limit_public(request, page):
@@ -951,10 +1069,20 @@ def _rate_limit_public(request, page):
 @xframe_options_exempt
 @require_GET
 def public_page(request, public_id, slug):
-    page = _public_page(public_id, slug)
+    page = _public_page(public_id, slug, require_published=False)
     version = latest_published_version(page)
-    if version is None:
-        raise Http404
+
+    if page.status != CalendarPage.Status.PUBLISHED or version is None:
+        return render(
+            request,
+            "shvya_calendar/unavailable.html",
+            {
+                "page": page,
+                "preview_url": None,
+            },
+            status=200,
+        )
+
     return render(
         request,
         "shvya_calendar/public.html",

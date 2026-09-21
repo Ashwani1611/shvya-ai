@@ -1,13 +1,14 @@
 {% extends "base.html" %}
 {% load static %}
+{% load tz %}
 
 {% block title %}{{ page.name }} · SHVYA Calendar{% endblock %}
 {% block header %}SHVYA Calendar{% endblock %}
 
 {% block extra_head %}
 {{ block.super }}
-<link rel="stylesheet" href="{% static 'shvya_calendar/calendar.css' %}?v=20260922-1">
-<script src="{% static 'shvya_calendar/calendar.js' %}?v=20260922-1" defer></script>
+<link rel="stylesheet" href="{% static 'shvya_calendar/calendar.css' %}?v=20260922-2">
+<script src="{% static 'shvya_calendar/calendar.js' %}?v=20260922-2" defer></script>
 {% endblock %}
 
 {% block content %}
@@ -36,7 +37,7 @@
     <div class="sc-editor-tile">
       <i class="ti ti-calendar"></i>
       <div><strong>Booking Page Status</strong><span>{{ page.get_status_display }}</span></div>
-      <form method="post" action="{% url 'shvya_calendar:status' page_id=page.id %}" class="sc-status-form">
+      <form method="post" action="{% url 'shvya_calendar:status' page_id=page.id %}" class="sc-status-form" data-status-form>
         {% csrf_token %}
         {% if page.status == 'published' %}
           <input type="hidden" name="action" value="disable"><button class="sc-switch is-on" type="submit" aria-label="Disable booking page"><span></span></button>
@@ -196,7 +197,7 @@
       <details class="sc-accordion">
         <summary><span class="sc-summary-icon"><i class="ti ti-calendar-x"></i></span><span><strong>Blocking</strong><small>Temporarily block days or ranges from booking.</small></span><i class="ti ti-chevron-down"></i></summary>
         <div class="sc-accordion-body">
-          <div class="sc-block-list">{% for block in page.blocks.all %}<div class="sc-block-row"><div><strong>{{ block.starts_at|date:"d M Y, g:i A" }} → {{ block.ends_at|date:"d M Y, g:i A" }}</strong><span>{{ block.reason|default:"Blocked" }}</span></div><form method="post" action="{% url 'shvya_calendar:block_delete' page_id=page.id block_id=block.id %}">{% csrf_token %}<button class="sc-icon-button sc-danger" type="submit"><i class="ti ti-trash"></i></button></form></div>{% empty %}<p class="sc-muted">No blocked ranges.</p>{% endfor %}</div>
+          <div class="sc-block-list">{% for block in page.blocks.all %}<div class="sc-block-row"><div><strong>{{ block.starts_at|timezone:page.timezone|date:"d M Y, g:i A" }} → {{ block.ends_at|timezone:page.timezone|date:"d M Y, g:i A" }}</strong><span>{{ block.reason|default:"Blocked" }}</span></div><button class="sc-icon-button sc-danger" type="submit" form="sc-delete-block-{{ block.id }}" aria-label="Delete blocked range"><i class="ti ti-trash"></i></button></div>{% empty %}<p class="sc-muted">No blocked ranges.</p>{% endfor %}</div>
         </div>
       </details>
 
@@ -204,7 +205,7 @@
         <summary><span class="sc-summary-icon"><i class="ti ti-brand-google"></i></span><span><strong>Calendar & Meeting</strong><small>Read Google busy time, create the event and generate a unique Meet link.</small></span><i class="ti ti-chevron-down"></i></summary>
         <div class="sc-accordion-body">
           {% if google_connection %}
-            <div class="sc-connected-card"><div class="sc-google-mark">G</div><div><strong>{{ google_connection.email }}</strong><span>Connected · calendar {{ google_connection.calendar_id }}</span></div><form method="post" action="{% url 'shvya_calendar:google_disconnect' page_id=page.id %}">{% csrf_token %}<button class="sc-button sc-button-small" type="submit">Disconnect</button></form></div>
+            <div class="sc-connected-card"><div class="sc-google-mark">G</div><div><strong>{{ google_connection.email }}</strong><span>Connected · calendar {{ google_connection.calendar_id }}</span></div><button class="sc-button sc-button-small" type="submit" form="sc-google-disconnect-form">Disconnect</button></div>
           {% elif page.host_id == request.crm_user.id and google_configured %}
             <div class="sc-connected-card"><div class="sc-google-mark">G</div><div><strong>Connect Google Calendar</strong><span>Required for conflict checking and automatic Google Meet creation.</span></div><a class="sc-button" href="{% url 'shvya_calendar:google_connect' page_id=page.id %}">Connect Google Calendar</a></div>
           {% elif not google_configured %}
@@ -223,9 +224,20 @@
       <div class="sc-sticky-save"><span>Availability is always rechecked on the server before booking.</span><button class="sc-button sc-button-primary" type="submit">Save Scheduling</button></div>
     </form>
 
+    {% if google_connection %}
+      <form id="sc-google-disconnect-form" method="post" action="{% url 'shvya_calendar:google_disconnect' page_id=page.id %}" hidden>
+        {% csrf_token %}
+      </form>
+    {% endif %}
+    {% for block in page.blocks.all %}
+      <form id="sc-delete-block-{{ block.id }}" method="post" action="{% url 'shvya_calendar:block_delete' page_id=page.id block_id=block.id %}" hidden>
+        {% csrf_token %}
+      </form>
+    {% endfor %}
+
     <form method="post" action="{% url 'shvya_calendar:block_add' page_id=page.id %}" class="sc-inline-panel">
       {% csrf_token %}
-      <div><strong>Add blocked range</strong><span>Use the server's configured timezone for this temporary block.</span></div>
+      <div><strong>Add blocked range</strong><span>Times are interpreted in this booking page’s timezone.</span></div>
       <input type="datetime-local" name="starts_at" required><span>to</span><input type="datetime-local" name="ends_at" required><input name="reason" maxlength="160" placeholder="Reason"><button class="sc-button" type="submit">Block</button>
     </form>
   </section>
@@ -301,7 +313,7 @@
           <span class="sc-kicker">PUBLIC LINK</span>
           <strong>Lead capture + booking in one link</strong>
           <div class="sc-copy-row"><input readonly value="{{ public_link }}" data-copy-source="public"><button class="sc-button" type="button" data-copy-target="public"><i class="ti ti-copy"></i> Copy</button></div>
-          {% if page.status != 'published' %}<small>Publish the page before sharing this URL publicly.</small>{% endif %}
+          {% if page.status != 'published' %}<small>This link is valid, but it will show a “not live yet” page until Booking Page Status is published.</small>{% else %}<small>Live now. Anyone with this link can submit the form and book.</small>{% endif %}
         </div>
         <div class="sc-share-card">
           <span class="sc-kicker">WEBSITE EMBED</span>
