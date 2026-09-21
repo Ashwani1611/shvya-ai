@@ -206,3 +206,10 @@ Operations MCP is a separate authorization, policy, support-context and audit bo
 - `apps/integrations/tests/test_operations_mcp.py`
 
 The Diagnostic MCP implementation remains under `apps/integrations/diagnostic_*.py` and `apps/integrations/views/mcp.py`.
+
+
+## Transaction and audit guarantee
+
+Approval-required writes are bound to the exact backend-resolved dry-run proposal. Mutation paths re-lock authoritative rows, re-check the proposal under lock, write, and verify before commit. Successful customer-state writes and their Operations audit event commit atomically; if audit persistence fails, the customer-state mutation rolls back. Failed/denied attempts still produce their bounded audit event, and an approval receipt already claimed by an execution attempt remains single-use.
+
+OAuth authorization-code issuance and successful token issue/refresh also commit only with their lifecycle security audit. Security revocation remains fail-secure: revoking access is prioritized even when the action is initiated from dashboard/session controls.
