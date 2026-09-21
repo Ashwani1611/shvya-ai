@@ -226,7 +226,7 @@ def test_sidebar_context_hides_expired_operations_support():
         resource="http://testserver/operations/mcp/",
         active_organization=organization,
         expires_at=timezone.now() - timedelta(minutes=1),
-        refresh_expires_at=timezone.now() + timedelta(days=1),
+        refresh_expires_at=timezone.now() - timedelta(minutes=1),
     )
     OperationsSupportSession.objects.create(
         token=token,
