@@ -150,6 +150,7 @@ Build a concise business/CRM model.
 Knowledge health is metadata evidence, not permission to retrieve every document body. Use source/document status, publication state and embedding coverage first; retrieve specific knowledge content only through a separately authorized bounded tool if SHVYA exposes one and the task truly requires it.
 Do not guess missing facts.
 Clearly identify unknowns.
+Respect every `*_truncated` flag and length/count indicator returned by SHVYA. Never replace a configuration from a truncated excerpt or bounded list as if it were complete. Retrieve a more specific authorized view where available, or report insufficient evidence.
 
 ## CONFIGURE SHVYA
 
