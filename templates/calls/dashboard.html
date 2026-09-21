@@ -301,7 +301,7 @@
         <form method="post" action="{% url 'call-intelligence-settings' %}" class="ci-settings-form" data-call-settings>
             {% csrf_token %}
             <div class="ci-setting-row">
-                <div><strong>Call Intelligence</strong><p>Accept Android call events for this organization.</p></div>
+                <div><strong>Call Intelligence automation</strong><p>Enable automatic call-to-CRM matching and lead creation for this organization.</p></div>
                 <label class="ci-switch">
                     <input type="checkbox" name="is_enabled" {% if call_settings.is_enabled %}checked{% endif %}>
                     <span></span>
