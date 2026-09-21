@@ -35,7 +35,7 @@ Current platform capabilities include:
 | Analytics | CRM and engagement insights, operational reporting, account health |
 | Support | Organization Help & Support portal, Shvya-Ops Client's Portal, private attachments, ticket response indicator, email delivery/outbox |
 | Diagnostics | Read-only organization-scoped diagnostic MCP/OAuth connector with explicit API-key permission and audit metadata |
-| Operations MCP | Actor-bound ChatGPT/Claude Operations connector with explicit Superadmin tenant context, per-organization capability policy, dry-run/approval gates, verified writes and append-only audit |
+| Operations MCP | Actor-bound ChatGPT / Claude / VS Code connector with explicit Superadmin tenant context, consent-bound + Superadmin-granular capabilities, dry-run approval receipts, row-locked verified writes, session controls and append-only audit |
 | Administration | Organization management, roles, API keys, Superadmin console, global search |
 
 ---
