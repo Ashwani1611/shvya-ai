@@ -49,6 +49,7 @@ def page_snapshot(page):
         "slug": page.slug,
         "page_type": page.page_type,
         "timezone": page.timezone,
+        "language": page.language,
         "accent_color": page.accent_color,
         "logo_url": page.logo_url,
         "intro_title": page.intro_title,
@@ -63,6 +64,7 @@ def page_snapshot(page):
         "host_id": str(page.host_id or ""),
         "duplicate_behavior": page.duplicate_behavior,
         "duplicate_match_email": page.duplicate_match_email,
+        "lead_name_prefix": page.lead_name_prefix,
         "attribute_update_policy": page.attribute_update_policy,
         "session_title": page.session_title,
         "session_description": page.session_description,
@@ -85,6 +87,9 @@ def page_snapshot(page):
         "redirect_enabled": page.redirect_enabled,
         "redirect_button_text": page.redirect_button_text,
         "redirect_url": page.redirect_url,
+        "acknowledgement_enabled": page.acknowledgement_enabled,
+        "acknowledgement_subject": page.acknowledgement_subject,
+        "acknowledgement_body": page.acknowledgement_body,
     }
 
 
@@ -406,11 +411,15 @@ def create_submission_and_lead(
         status = CalendarSubmission.Status.LEAD_MATCHED
     else:
         try:
+            lead_name = (
+                f"{str(version.snapshot.get('lead_name_prefix') or '')}"
+                f"{normalized['name']}"
+            ).strip()
             lead = create_lead(
                 organization=organization,
                 pipeline=page.pipeline,
                 stage=page.stage,
-                name=normalized["name"],
+                name=lead_name,
                 phone=phone,
                 email=email,
                 attributes=attributes,
@@ -488,8 +497,8 @@ def notify_submission(submission_id):
     recipients = set()
     if page.notify_host_on_submission and page.host and page.host.email:
         recipients.add(page.host.email)
+    from apps.accounts.models import User
     if page.notify_user_ids:
-        from apps.accounts.models import User
         recipients.update(
             User.objects.filter(
                 organization=page.organization,
@@ -497,20 +506,57 @@ def notify_submission(submission_id):
                 is_active=True,
             ).values_list("email", flat=True)
         )
+    allowed_roles = {
+        User.Role.ADMIN,
+        User.Role.AGENT,
+    }
+    notify_roles = [
+        role
+        for role in (page.notify_roles or [])
+        if role in allowed_roles
+    ]
+    if notify_roles:
+        recipients.update(
+            User.objects.filter(
+                organization=page.organization,
+                role__in=notify_roles,
+                is_active=True,
+            ).values_list("email", flat=True)
+        )
     recipients.discard("")
     if not recipients:
         return
-    send_mail(
-        subject=f"New SHVYA Calendar lead · {page.name}",
-        message=(
-            f"{submission.lead.name} submitted {page.name}.\n"
-            f"Phone: {submission.lead.phone}\n"
-            f"Status: {submission.get_status_display()}\n"
-        ),
-        from_email=settings.DEFAULT_FROM_EMAIL,
-        recipient_list=sorted(recipients),
-        fail_silently=True,
-    )
+    if recipients:
+        send_mail(
+            subject=f"New SHVYA Calendar lead · {page.name}",
+            message=(
+                f"{submission.lead.name} submitted {page.name}.\n"
+                f"Phone: {submission.lead.phone}\n"
+                f"Status: {submission.get_status_display()}\n"
+            ),
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=sorted(recipients),
+            fail_silently=True,
+        )
+
+    if page.acknowledgement_enabled and submission.lead.email:
+        variables = {
+            "{{lead.name}}": submission.lead.name,
+            "{{organization.name}}": page.organization.name,
+            "{{page.name}}": page.name,
+        }
+        subject = page.acknowledgement_subject
+        body = page.acknowledgement_body
+        for token, value in variables.items():
+            subject = subject.replace(token, str(value))
+            body = body.replace(token, str(value))
+        send_mail(
+            subject=subject,
+            message=body,
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[submission.lead.email],
+            fail_silently=True,
+        )
 
 
 def _page_zone(page):
