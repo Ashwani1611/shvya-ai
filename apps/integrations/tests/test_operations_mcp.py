@@ -276,6 +276,31 @@ class OperationsMCPTests(TestCase):
         self.assertIn("dry_run", mutation_properties)
         self.assertIn("approved", mutation_properties)
 
+    def test_direct_disabled_capability_call_returns_superadmin_required(self):
+        OperationsPolicy.objects.create(
+            organization=self.organization,
+            organization_admin_enabled=True,
+            allowed_capabilities=[CAP_ORGANIZATION_READ],
+            approval_required_capabilities=[],
+        )
+        bearer = self._token(
+            actor=self.admin,
+            role=ROLE_ORGANIZATION_ADMIN,
+            organization=self.organization,
+            scopes=[OPERATIONS_READ_SCOPE],
+        )
+        result = self._result(
+            self._call(
+                bearer,
+                "get_runtime_health",
+            )
+        )
+        self.assertTrue(result["isError"])
+        self.assertEqual(
+            result["structuredContent"]["status"],
+            "SUPERADMIN_REQUIRED",
+        )
+
     def test_authenticated_org_admin_tool_discovery_matches_superadmin_policy(self):
         OperationsPolicy.objects.create(
             organization=self.organization,
@@ -2333,6 +2358,58 @@ class OperationsMCPTests(TestCase):
         self.lead.refresh_from_db()
         self.assertEqual(self.lead.stage_id, self.new_stage.id)
 
+    def test_sensitive_target_requirement_returns_manual_fix_required(self):
+        OperationsPolicy.objects.create(
+            organization=self.organization,
+            organization_admin_enabled=True,
+            allowed_capabilities=[
+                CAP_ORGANIZATION_READ,
+                CAP_LEAD_STAGE_WRITE,
+            ],
+            approval_required_capabilities=[],
+        )
+        sensitive = AttributeDefinition.objects.create(
+            organization=self.organization,
+            name="API Token",
+            key="api_token",
+            field_type=AttributeDefinition.FieldType.TEXT,
+        )
+        self.review_stage.config = {
+            "required_attribute_ids": [str(sensitive.id)],
+        }
+        self.review_stage.save(update_fields=["config", "updated_at"])
+
+        bearer = self._token(
+            actor=self.admin,
+            role=ROLE_ORGANIZATION_ADMIN,
+            organization=self.organization,
+        )
+        result = self._result(
+            self._call(
+                bearer,
+                "move_lead_stage",
+                {
+                    "lead_id": str(self.lead.id),
+                    "target_stage_id": str(self.review_stage.id),
+                    "reason": "Attempt stage with sensitive requirement",
+                    "dry_run": True,
+                },
+            )
+        )
+        self.assertTrue(result["isError"])
+        self.assertEqual(
+            result["structuredContent"]["status"],
+            "MANUAL_FIX_REQUIRED",
+        )
+        self.assertNotIn(
+            "API Token",
+            result["structuredContent"]["error"],
+        )
+        self.assertIn(
+            "sensitive required CRM data",
+            result["structuredContent"]["error"],
+        )
+
     def test_operations_stage_move_enforces_target_required_attributes(self):
         OperationsPolicy.objects.create(
             organization=self.organization,
@@ -2478,7 +2555,14 @@ class OperationsMCPTests(TestCase):
             )
         )
         self.assertTrue(result["isError"])
-        self.assertEqual(result["structuredContent"]["status"], "NOT_ALLOWED")
+        self.assertEqual(
+            result["structuredContent"]["status"],
+            "SUPERADMIN_REQUIRED",
+        )
+        self.assertIn(
+            "SHVYA Superadmin",
+            result["structuredContent"]["error"],
+        )
         self.lead.refresh_from_db()
         self.assertEqual(self.lead.stage_id, self.new_stage.id)
 
