@@ -524,8 +524,6 @@ def notify_submission(submission_id):
             ).values_list("email", flat=True)
         )
     recipients.discard("")
-    if not recipients:
-        return
     if recipients:
         send_mail(
             subject=f"New SHVYA Calendar lead · {page.name}",
@@ -627,14 +625,11 @@ def available_slots(*, page, local_date):
             ends_at__gt=range_start,
         ).values_list("starts_at", "ends_at")
     )
-    try:
-        google_busy = free_busy(
-            page=page,
-            time_min=range_start,
-            time_max=range_end,
-        )
-    except GoogleCalendarError:
-        google_busy = []
+    google_busy = free_busy(
+        page=page,
+        time_min=range_start,
+        time_max=range_end,
+    )
 
     duration = timedelta(minutes=page.slot_duration_minutes)
     before = timedelta(minutes=page.buffer_before_minutes)
