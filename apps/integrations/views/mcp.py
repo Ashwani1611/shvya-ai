@@ -119,6 +119,63 @@ TOOL_DEFINITIONS = [
         },
     },
     {
+        "name": "find_affected_leads",
+        "title": "Find leads affected by an issue",
+        "description": (
+            "Find a bounded tenant-scoped cohort sharing one persisted issue signal. "
+            "Supports qualification-completed/not-Qualified candidates, workflow or "
+            "AI failures, WhatsApp/Instagram delivery failures, and stalled stages. "
+            "Use the lead-specific diagnostic before applying any repair."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "issue_type": {
+                    "type": "string",
+                    "enum": [
+                        "qualification_completed_not_qualified",
+                        "workflow_failure",
+                        "hosted_ai_failure",
+                        "whatsapp_delivery_failure",
+                        "instagram_delivery_failure",
+                        "stalled_stage",
+                    ],
+                },
+                "days": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 90,
+                    "default": 30,
+                },
+                "threshold_days": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 90,
+                    "description": (
+                        "Only used for stalled_stage. Defaults to the organization's "
+                        "Analytics stall threshold, or 7 days when not configured."
+                    ),
+                },
+                "pipeline_id": {
+                    "type": "string",
+                    "format": "uuid",
+                },
+                "stage_id": {
+                    "type": "string",
+                    "format": "uuid",
+                },
+                "limit": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 50,
+                    "default": 20,
+                },
+            },
+            "required": ["issue_type"],
+            "additionalProperties": False,
+        },
+    },
+    {
         "name": "get_lead_snapshot",
         "title": "Inspect a SHVYA lead",
         "description": (
