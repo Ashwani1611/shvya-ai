@@ -32,12 +32,12 @@ A typical VS Code MCP configuration points an HTTP server entry at the deployed 
 
 A Superadmin OAuth token is bound to the authenticated SHVYA Superadmin human.
 
-It does not automatically expose customer data. Before any customer-specific tool can run, the Superadmin must select one explicit organization support context. Switching context closes the previous support session.
+It does not automatically expose customer data. Before any customer-specific tool can run, the Superadmin must select one explicit organization support context. Selecting or clearing support context requires `operations.read` but does not grant customer write authority; mutation tools separately require `operations.write`. Switching context closes the previous support session.
 
 While a Superadmin support context is active:
 
 - all customer-specific queries are forced into that organization;
-- organization users can see that SHVYA Support is active across the shared dashboard workspace, including Connect Hub / SHVYA API;
+- organization users can see that SHVYA Support is active across the shared dashboard workspace, including Connect Hub / SHVYA API, while the support session has had activity within the last 15 minutes;
 - the Superadmin organization page also shows the live support session;
 - tool calls are linked to the support session in the Operations audit ledger.
 
@@ -84,7 +84,7 @@ Operations exposes the existing tenant-scoped diagnostic tools through the Opera
 - AI diagnostics
 - integration health
 - Workflow trace
-- recent errors
+- recent errors, including tenant-safe signed Instagram webhook failure evidence without raw webhook payloads
 - runtime health
 
 Operations-specific inspection also includes:
