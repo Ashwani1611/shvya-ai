@@ -299,6 +299,10 @@ def find_leads(*, organization, arguments):
     ).strip()
     if not query:
         raise DiagnosticToolError("query is required.")
+    if len(query) > 255:
+        raise DiagnosticToolError(
+            "query must be 255 characters or fewer."
+        )
 
     try:
         limit = int((arguments or {}).get("limit") or 5)
@@ -606,6 +610,10 @@ def trace_message(*, organization, arguments):
     if not identifier:
         raise DiagnosticToolError(
             "message_id is required."
+        )
+    if len(identifier) > 255:
+        raise DiagnosticToolError(
+            "message_id must be 255 characters or fewer."
         )
 
     wa_filters = Q(external_id=identifier)
