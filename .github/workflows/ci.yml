@@ -393,7 +393,7 @@ jobs:
           ruff check . 2>&1 | tee ruff-output.log
 
       - name: Upload Ruff failure log
-        if: steps.ruff.outcome == 'failure'
+        if: failure() && steps.ruff.outcome == 'failure'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: ruff-failure-log
