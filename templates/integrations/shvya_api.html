@@ -224,18 +224,20 @@
         {% if active_operations_support %}
         <div class="mt-5 rounded-xl border border-blue-200 bg-blue-50 p-4">
             <div class="flex items-center gap-2 text-sm font-semibold text-blue-800">
-                <span class="inline-block h-2.5 w-2.5 rounded-full bg-blue-500 animate-pulse"></span>
-                SHVYA Support is active in your organization
+                <span class="inline-block h-2.5 w-2.5 rounded-full bg-blue-500 {% if active_operations_support.0.recently_active %}animate-pulse{% endif %}"></span>
+                SHVYA Support context is open in your organization
             </div>
             <p class="mt-1 text-xs leading-5 text-blue-700">
-                A SHVYA Superadmin Operations session currently has this organization selected for support.
-                All Operations actions are audited.
+                A SHVYA Superadmin Operations session still has this organization selected for support.
+                The context remains visible until it is explicitly ended or revoked. All Operations actions are audited.
             </p>
             <div class="mt-2 space-y-1 text-xs text-blue-700">
                 {% for support_session in active_operations_support %}
                 <div>
                     {{ support_session.actor.name|default:"SHVYA Support" }}
                     · Since {{ support_session.started_at|date:"d M Y, h:i A" }}
+                    · Last activity {{ support_session.last_seen_at|date:"d M Y, h:i A" }}
+                    · {% if support_session.recently_active %}Recently active{% else %}Context open · idle{% endif %}
                 </div>
                 {% endfor %}
             </div>
