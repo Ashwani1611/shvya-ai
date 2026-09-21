@@ -1330,6 +1330,11 @@ class OperationsMCPTests(TestCase):
             context["structuredContent"]["organization"]["active"]
         )
 
+        support_session = OperationsSupportSession.objects.get(
+            token__actor=self.superadmin,
+            organization=self.organization,
+            ended_at__isnull=True,
+        )
         cleared = self._result(
             self._call(
                 bearer,
@@ -1341,6 +1346,21 @@ class OperationsMCPTests(TestCase):
         self.assertEqual(
             cleared["structuredContent"]["status"],
             "cleared",
+        )
+        support_session.refresh_from_db()
+        self.assertIsNotNone(support_session.ended_at)
+
+        audit = OperationsAuditEvent.objects.get(
+            actor=self.superadmin,
+            tool_name="clear_organization_context",
+        )
+        self.assertEqual(
+            audit.organization_id,
+            self.organization.id,
+        )
+        self.assertEqual(
+            audit.support_session_id,
+            support_session.id,
         )
 
     def test_superadmin_requires_explicit_context_and_creates_support_session(self):
