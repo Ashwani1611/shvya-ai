@@ -45,6 +45,7 @@ from .services import (
     hash_ip,
     latest_published_version,
     publish_page,
+    reschedule_booking,
     schema_from_json,
     upcoming_slot_days,
     validate_public_submission,
@@ -1109,6 +1110,66 @@ def public_confirmation(request, booking_id, cancel_token):
         request,
         "shvya_calendar/confirmation.html",
         {"booking": booking, "page": booking.page},
+    )
+
+
+@csrf_exempt
+@xframe_options_exempt
+@require_http_methods(["GET", "POST"])
+def public_reschedule(request, booking_id, reschedule_token):
+    booking = get_object_or_404(
+        CalendarBooking.objects.select_related(
+            "page",
+            "organization",
+            "lead",
+            "submission",
+            "host",
+        ),
+        id=booking_id,
+        reschedule_token=reschedule_token,
+    )
+    page = booking.page
+    if booking.status == CalendarBooking.Status.CANCELLED:
+        return render(
+            request,
+            "shvya_calendar/confirmation.html",
+            {"booking": booking, "page": page, "cancelled": True},
+            status=409,
+        )
+
+    error = ""
+    if request.method == "POST":
+        try:
+            booking = reschedule_booking(
+                booking=booking,
+                slot_start_iso=request.POST.get("slot_start") or "",
+            )
+            return redirect(
+                "shvya_calendar_public:confirmation",
+                booking_id=booking.id,
+                cancel_token=booking.cancel_token,
+            )
+        except (ValidationError, GoogleCalendarError) as exc:
+            error = _validation_text(exc)
+
+    try:
+        slot_days = upcoming_slot_days(page)
+    except GoogleCalendarError:
+        slot_days = []
+        error = (
+            "Live calendar availability is temporarily unavailable. "
+            "Please try again shortly."
+        )
+
+    return render(
+        request,
+        "shvya_calendar/reschedule.html",
+        {
+            "booking": booking,
+            "page": page,
+            "slot_days": slot_days,
+            "booking_error": error,
+        },
     )
 
 
