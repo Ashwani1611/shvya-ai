@@ -1978,6 +1978,7 @@ def upsert_pipeline_configuration(*, identity, arguments):
             },
         )
 
+    creating_pipeline = pipeline is None
     with transaction.atomic():
         if pipeline is None:
             pipeline = Pipeline(
@@ -1994,6 +1995,25 @@ def upsert_pipeline_configuration(*, identity, arguments):
             pipeline.ai_enabled = ai_enabled
         pipeline.full_clean()
         pipeline.save()
+
+        if creating_pipeline:
+            from apps.crm.models.signals import DEFAULT_PIPELINE_STAGES
+
+            expected_stage_names = {
+                str(item["name"])
+                for item in DEFAULT_PIPELINE_STAGES
+            }
+            actual_stage_names = set(
+                Stage.objects.filter(
+                    pipeline=pipeline,
+                    is_active=True,
+                ).values_list("name", flat=True)
+            )
+            if not expected_stage_names.issubset(actual_stage_names):
+                raise OperationsToolError(
+                    "Pipeline creation did not produce SHVYA's required "
+                    "standard stages; the transaction was rolled back."
+                )
 
     pipeline.refresh_from_db()
     if (
@@ -2064,14 +2084,27 @@ def upsert_stage_configuration(*, identity, arguments):
     ).strip()
     if not name or len(name) > 100:
         raise OperationsToolError("Stage name is required and must be at most 100 characters.")
-    if len(description) > 10000:
-        raise OperationsToolError("Stage description is too large.")
+    if len(description) > 1200:
+        raise OperationsToolError("Stage description must be 1200 characters or fewer.")
     if stage is not None and stage.is_name_locked and name != stage.name:
         raise OperationsPermissionError("SHVYA protected stages cannot be renamed.")
     is_active = data.get("is_active", stage.is_active if stage else True)
     ai_on = data.get("ai_on", stage.ai_on if stage else True)
     if stage is not None and stage.is_system_locked and is_active is False:
         raise OperationsPermissionError("SHVYA protected stages cannot be deactivated.")
+    if (
+        stage is not None
+        and is_active is False
+        and Lead.objects.filter(
+            organization=organization,
+            pipeline=pipeline,
+            stage=stage,
+        ).exists()
+    ):
+        raise OperationsPermissionError(
+            "This stage still contains leads. Move those leads to another "
+            "stage before deactivating it."
+        )
     if not isinstance(is_active, bool) or not isinstance(ai_on, bool):
         raise OperationsToolError("is_active and ai_on must be true or false.")
 
