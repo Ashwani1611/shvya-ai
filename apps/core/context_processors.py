@@ -24,6 +24,21 @@ NAV_ITEMS = [
         "search_keywords": ["copilot", "sales", "ai sales"],
     },
     {
+        "label": "SHVYA Calendar",
+        "icon": "ti-calendar-event",
+        "url_name": "shvya_calendar:index",
+        "path_prefix": "/dashboard/shvya-calendar/",
+        "section": "workspace",
+        "search_keywords": [
+            "calendar",
+            "booking",
+            "meetings",
+            "web to lead",
+            "lead forms",
+            "google meet",
+        ],
+    },
+    {
         "label": "SHVYA Sales",
         "icon": "ti-file-invoice",
         "url_name": "shvya-sales-dashboard",
