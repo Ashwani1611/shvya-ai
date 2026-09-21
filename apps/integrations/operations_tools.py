@@ -62,6 +62,7 @@ from apps.integrations.operations_policy import (
     CAP_LEAD_STAGE_WRITE,
     CAP_ORGANIZATION_READ,
     ROLE_SUPERADMIN,
+    WRITE_CAPABILITIES,
     approval_required,
     effective_capabilities,
     policy_for,
@@ -404,10 +405,18 @@ def _support_session(identity):
 
 def get_operations_context(*, identity, arguments):
     organization = _organization_for(identity, required=False)
-    capabilities = sorted(
+    policy_capabilities = set(
         effective_capabilities(
             role=identity.role,
             organization=organization,
+        )
+    )
+    capabilities = sorted(
+        capability
+        for capability in policy_capabilities
+        if (
+            capability not in WRITE_CAPABILITIES
+            or "operations.write" in identity.scopes
         )
     )
     session = _support_session(identity)
@@ -429,6 +438,10 @@ def get_operations_context(*, identity, arguments):
                 else None
             ),
             "capabilities": capabilities,
+            "policy_capabilities": sorted(
+                policy_capabilities
+            ),
+            "oauth_scopes": sorted(identity.scopes),
             "organization_admin_external_ai_enabled": (
                 policy.organization_admin_enabled if policy else None
             ),
