@@ -1976,6 +1976,68 @@ class OperationsMCPTests(TestCase):
         self.assertNotIn("wa-health-secret", payload)
         self.assertNotIn("ig-health-secret", payload)
 
+    def test_lead_snapshot_redacts_sensitive_crm_attribute_values(self):
+        OperationsPolicy.objects.create(
+            organization=self.organization,
+            organization_admin_enabled=True,
+            allowed_capabilities=[
+                CAP_ORGANIZATION_READ,
+                CAP_DIAGNOSTICS_READ,
+            ],
+        )
+        safe_definition = AttributeDefinition.objects.create(
+            organization=self.organization,
+            name="Company Size Snapshot",
+            key="company_size_snapshot",
+            field_type=AttributeDefinition.FieldType.TEXT,
+        )
+        sensitive_definition = AttributeDefinition.objects.create(
+            organization=self.organization,
+            name="API Key",
+            key="integration_reference",
+            field_type=AttributeDefinition.FieldType.TEXT,
+        )
+        self.lead.attributes = {
+            **(self.lead.attributes or {}),
+            safe_definition.key: "25",
+            sensitive_definition.key: "short-sensitive-value",
+        }
+        self.lead.save(
+            update_fields=["attributes", "updated_at"]
+        )
+        bearer = self._token(
+            actor=self.admin,
+            role=ROLE_ORGANIZATION_ADMIN,
+            organization=self.organization,
+            scopes=[OPERATIONS_READ_SCOPE],
+        )
+
+        snapshot = self._result(
+            self._call(
+                bearer,
+                "get_lead_snapshot",
+                {"lead_id": str(self.lead.id)},
+            )
+        )
+        self.assertFalse(snapshot["isError"])
+        data = snapshot["structuredContent"]
+        self.assertEqual(
+            data["attributes"][safe_definition.key],
+            "25",
+        )
+        self.assertNotIn(
+            sensitive_definition.key,
+            data["attributes"],
+        )
+        self.assertEqual(
+            data["sensitive_attributes_redacted"],
+            1,
+        )
+        self.assertNotIn(
+            "short-sensitive-value",
+            json.dumps(data),
+        )
+
     def test_operations_reads_redact_sensitive_attributes_workflows_and_playbook_secrets(self):
         OperationsPolicy.objects.create(
             organization=self.organization,
