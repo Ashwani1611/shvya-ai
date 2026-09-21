@@ -1,10 +1,13 @@
 import json
 from datetime import timedelta
+from urllib.parse import parse_qs, urlparse
 
+from django.contrib.sessions.backends.db import SessionStore
 from django.test import TestCase
 from django.utils import timezone
 
 from apps.accounts.models import User
+from apps.accounts.session_utils import get_session_cookie_name, set_authenticated_user
 from apps.crm.models import AttributeDefinition, Lead, LeadActivity, Pipeline, Stage
 from apps.integrations.models import (
     OperationsAuditEvent,
@@ -16,6 +19,7 @@ from apps.integrations.models import (
 from apps.integrations.operations_auth import (
     OPERATIONS_READ_SCOPE,
     OPERATIONS_WRITE_SCOPE,
+    pkce_s256,
     token_hash,
 )
 from apps.integrations.operations_policy import (
@@ -263,6 +267,60 @@ class OperationsMCPTests(TestCase):
             content_type="application/json",
         )
         self.assertEqual(rejected.status_code, 400)
+
+    def test_oauth_binds_org_admin_identity_and_strips_ungranted_write_scope(self):
+        OperationsPolicy.objects.create(
+            organization=self.organization,
+            organization_admin_enabled=True,
+            allowed_capabilities=[
+                CAP_ORGANIZATION_READ,
+                CAP_DIAGNOSTICS_READ,
+            ],
+        )
+        session = SessionStore()
+        set_authenticated_user(session, self.admin)
+        session.create()
+        self.client.cookies[get_session_cookie_name("dashboard")] = session.session_key
+
+        verifier = "v" * 64
+        callback = "https://chatgpt.com/aip/callback"
+        resource = "http://testserver/operations/mcp/"
+        authorize = self.client.post(
+            "/operations/oauth/authorize",
+            data={
+                "client_id": self.oauth_client.client_id,
+                "redirect_uri": callback,
+                "response_type": "code",
+                "code_challenge": pkce_s256(verifier),
+                "code_challenge_method": "S256",
+                "scope": f"{OPERATIONS_READ_SCOPE} {OPERATIONS_WRITE_SCOPE}",
+                "resource": resource,
+                "actor_mode": ROLE_ORGANIZATION_ADMIN,
+            },
+        )
+        self.assertEqual(authorize.status_code, 302)
+        code = parse_qs(urlparse(authorize["Location"]).query)["code"][0]
+
+        token_response = self.client.post(
+            "/operations/oauth/token",
+            data={
+                "grant_type": "authorization_code",
+                "client_id": self.oauth_client.client_id,
+                "code": code,
+                "redirect_uri": callback,
+                "code_verifier": verifier,
+                "resource": resource,
+            },
+        )
+        self.assertEqual(token_response.status_code, 200)
+        body = token_response.json()
+        self.assertIn(OPERATIONS_READ_SCOPE, body["scope"].split())
+        self.assertNotIn(OPERATIONS_WRITE_SCOPE, body["scope"].split())
+
+        token = OperationsOAuthToken.objects.get()
+        self.assertEqual(token.actor_id, self.admin.id)
+        self.assertEqual(token.organization_id, self.organization.id)
+        self.assertEqual(token.role, ROLE_ORGANIZATION_ADMIN)
 
     def test_org_admin_token_is_rejected_while_policy_disabled(self):
         bearer = self._token(
