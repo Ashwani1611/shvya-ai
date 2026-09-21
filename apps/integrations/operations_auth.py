@@ -356,16 +356,42 @@ def exchange_authorization_code(
     return token, raw_access, raw_refresh
 
 
+def _deny_and_revoke_live_grant(token, message):
+    """Permanently revoke a grant whose live SHVYA authority is gone."""
+
+    now = timezone.now()
+    if token.revoked_at is None:
+        token.revoked_at = now
+        token.save(update_fields=["revoked_at", "updated_at"])
+    OperationsSupportSession.objects.filter(
+        token=token,
+        ended_at__isnull=True,
+    ).update(
+        ended_at=now,
+        last_seen_at=now,
+    )
+    raise OperationsAuthError(message)
+
+
 def _validate_live_token(token):
     if not token.client.is_active:
-        raise OperationsAuthError("OAuth client has been deactivated.")
+        _deny_and_revoke_live_grant(
+            token,
+            "OAuth client has been deactivated.",
+        )
     actor = token.actor
     if not actor.is_active:
-        raise OperationsAuthError("SHVYA user is inactive.")
+        _deny_and_revoke_live_grant(
+            token,
+            "SHVYA user is inactive.",
+        )
 
     if token.role == ROLE_SUPERADMIN:
         if not actor.is_superuser:
-            raise OperationsAuthError("Superadmin permission has been revoked.")
+            _deny_and_revoke_live_grant(
+                token,
+                "Superadmin permission has been revoked.",
+            )
         return
 
     if token.role == ROLE_ORGANIZATION_ADMIN:
@@ -377,10 +403,16 @@ def _validate_live_token(token):
             or not organization_is_active(token.organization)
             or not policy_for(token.organization).organization_admin_enabled
         ):
-            raise OperationsAuthError("Organization Operations permission has been revoked.")
+            _deny_and_revoke_live_grant(
+                token,
+                "Organization Operations permission has been revoked.",
+            )
         return
 
-    raise OperationsAuthError("Unsupported SHVYA Operations role.")
+    _deny_and_revoke_live_grant(
+        token,
+        "Unsupported SHVYA Operations role.",
+    )
 
 
 def refresh_access_token(*, refresh_token, client_id, resource=""):
@@ -424,36 +456,6 @@ def refresh_access_token(*, refresh_token, client_id, resource=""):
             ]
         )
     return token, raw_access, raw_refresh
-
-
-def revoke_token_record(*, token) -> bool:
-    """Revoke one persisted Operations OAuth grant and close support context."""
-
-    if token is None or getattr(token, "pk", None) is None:
-        raise OperationsAuthError("Operations OAuth token is required.")
-
-    now = timezone.now()
-    with transaction.atomic():
-        locked = (
-            OperationsOAuthToken.objects.select_for_update()
-            .filter(pk=token.pk)
-            .first()
-        )
-        if locked is None or locked.revoked_at is not None:
-            return False
-
-        locked.revoked_at = now
-        locked.save(update_fields=["revoked_at", "updated_at"])
-        OperationsSupportSession.objects.filter(
-            token=locked,
-            ended_at__isnull=True,
-        ).update(
-            ended_at=now,
-            last_seen_at=now,
-        )
-
-    token.revoked_at = now
-    return True
 
 
 def _revoke_locked_token(token, *, now=None):
