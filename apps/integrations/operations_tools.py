@@ -6,7 +6,7 @@ from datetime import time as dt_time, timedelta
 
 from django.core.exceptions import ValidationError
 from django.db import transaction
-from django.db.models import Max, Q
+from django.db.models import Count, Max, Q
 from django.utils import timezone
 
 from apps.ai_engagement.models import OrgInfo
