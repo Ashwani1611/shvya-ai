@@ -2024,9 +2024,9 @@ class OperationsMCPTests(TestCase):
             for item in health["whatsapp"]
             if item["business_name"] == "Health WA"
         )
-        self.assertTrue(wa["credential_present"])
-        self.assertTrue(health["instagram"]["credential_present"])
-        self.assertTrue(health["instagram"]["credential_expired"])
+        self.assertTrue(wa["provider_auth_configured"])
+        self.assertTrue(health["instagram"]["provider_auth_configured"])
+        self.assertTrue(health["instagram"]["provider_auth_expired"])
         self.assertFalse(
             health["instagram"]["automation_capabilities"][
                 "ai_auto_reply_runtime"
@@ -2037,7 +2037,7 @@ class OperationsMCPTests(TestCase):
             "access_token=[REDACTED] expired",
         )
         self.assertEqual(
-            health["instagram"]["token_expires_at"],
+            health["instagram"]["provider_auth_expires_at"],
             instagram.token_expires_at.isoformat(),
         )
         payload = json.dumps(health)
@@ -4246,7 +4246,7 @@ class OperationsMCPTests(TestCase):
         self.assertFalse(first["isError"])
         first_session = OperationsSupportSession.objects.get(
             pk=first["structuredContent"][
-                "support_session_id"
+                "support_context_id"
             ]
         )
 
@@ -4382,7 +4382,7 @@ class OperationsMCPTests(TestCase):
         )
         self.assertFalse(context["isError"])
         support_context = context["structuredContent"][
-            "superadmin_support_session"
+            "superadmin_support_context"
         ]
         self.assertIsNotNone(support_context)
         self.assertFalse(
