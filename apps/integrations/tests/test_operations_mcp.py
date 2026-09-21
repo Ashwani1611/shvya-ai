@@ -2967,6 +2967,7 @@ class OperationsMCPTests(TestCase):
             **(self.lead.attributes or {}),
             safe_definition.key: "25",
             sensitive_definition.key: "short-sensitive-value",
+            "legacy_orphan_context": "legacy-orphan-secret-value",
         }
         self.lead.save(
             update_fields=["attributes", "updated_at"]
@@ -2999,9 +3000,22 @@ class OperationsMCPTests(TestCase):
             data["sensitive_attributes_redacted"],
             1,
         )
+        self.assertEqual(
+            data["undefined_attributes_omitted"],
+            1,
+        )
+        self.assertNotIn(
+            "legacy_orphan_context",
+            data["attributes"],
+        )
+        payload = json.dumps(data)
         self.assertNotIn(
             "short-sensitive-value",
-            json.dumps(data),
+            payload,
+        )
+        self.assertNotIn(
+            "legacy-orphan-secret-value",
+            payload,
         )
 
     def test_operations_reads_redact_sensitive_attributes_workflows_and_playbook_secrets(self):
