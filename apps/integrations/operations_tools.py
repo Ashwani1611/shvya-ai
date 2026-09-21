@@ -30,6 +30,7 @@ from apps.followups.models import (
     LeadSequenceState,
 )
 from apps.hosted_automation.models import HostedAutomationJob
+from apps.integrations.diagnostic_auth import sanitize_text
 from apps.integrations.diagnostic_tools import (
     DiagnosticToolError,
     execute_tool as execute_diagnostic_tool,
@@ -1068,6 +1069,16 @@ def update_ai_configuration(*, identity, arguments):
             limits = {"about": 12000, "bot_languages": 500, "ai_playbook": 50000}
             if len(text) > limits[key]:
                 raise OperationsToolError(f"{key} is too large.")
+            redacted = sanitize_text(
+                text,
+                limit=max(len(text) + 32, 800),
+                redact_long=False,
+            )
+            if redacted != text:
+                raise OperationsPermissionError(
+                    f"{key} contains credential-like or secret material. "
+                    "Do not store secrets in SHVYA AI configuration."
+                )
             normalized[key] = text
         elif key in {"ai_enabled", "bump_up_enabled"}:
             if not isinstance(value, bool):
