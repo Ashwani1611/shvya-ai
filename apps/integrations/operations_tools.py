@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from urllib.parse import urlparse
 from copy import deepcopy
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
@@ -11,7 +12,12 @@ from django.db import IntegrityError, transaction
 from django.db.models import Count, Max, Q
 from django.utils import timezone
 
-from apps.ai_engagement.models import OrgInfo
+from apps.ai_engagement.models import (
+    Chunk,
+    Document,
+    KnowledgeSource,
+    OrgInfo,
+)
 from apps.ai_engagement.services.confidentiality import is_sensitive_attribute_definition
 from apps.ai_engagement.services.organization_profile import compile_qualification_requirements
 from apps.ai_engagement.services.playbook import (
@@ -709,6 +715,190 @@ def _safe_workflow_config(rule, sensitive_keys):
 
 
 
+def _safe_url_host(value):
+    try:
+        parsed = urlparse(str(value or "").strip())
+    except (TypeError, ValueError):
+        return ""
+    return (parsed.hostname or "").lower()[:255]
+
+
+def _knowledge_health(*, organization, limit=50):
+    limit = max(1, min(int(limit or 50), 100))
+    sources = list(
+        KnowledgeSource.objects.filter(
+            organization=organization,
+        ).order_by("-updated_at")[:limit]
+    )
+    documents = list(
+        Document.objects.filter(
+            organization=organization,
+        )
+        .annotate(
+            chunk_count=Count("chunks", distinct=True),
+            embedded_chunk_count=Count(
+                "chunks",
+                filter=Q(
+                    chunks__embedding__isnull=False,
+                    chunks__is_active=True,
+                ),
+                distinct=True,
+            ),
+            active_chunk_count=Count(
+                "chunks",
+                filter=Q(chunks__is_active=True),
+                distinct=True,
+            ),
+        )
+        .order_by("-updated_at", "-version")[:limit]
+    )
+
+    active_completed = sum(
+        1
+        for item in documents
+        if (
+            item.is_active
+            and item.processing_status
+            == Document.ProcessingStatus.COMPLETED
+        )
+    )
+    failed = sum(
+        1
+        for item in documents
+        if item.processing_status
+        == Document.ProcessingStatus.FAILED
+    )
+    embedded_active_chunks = sum(
+        int(getattr(item, "embedded_chunk_count", 0) or 0)
+        for item in documents
+        if item.is_active
+    )
+    active_chunks = sum(
+        int(getattr(item, "active_chunk_count", 0) or 0)
+        for item in documents
+        if item.is_active
+    )
+
+    return {
+        "summary": {
+            "sources_returned": len(sources),
+            "documents_returned": len(documents),
+            "active_completed_documents": active_completed,
+            "failed_documents": failed,
+            "active_chunks": active_chunks,
+            "embedded_active_chunks": embedded_active_chunks,
+            "embedding_coverage": (
+                round(
+                    embedded_active_chunks / active_chunks,
+                    4,
+                )
+                if active_chunks
+                else None
+            ),
+        },
+        "sources": [
+            {
+                "id": str(source.id),
+                "source_type": source.source_type,
+                "name": sanitize_text(
+                    source.name,
+                    limit=255,
+                    redact_long=False,
+                ),
+                "url_host": (
+                    _safe_url_host(source.url)
+                    if source.source_type
+                    == KnowledgeSource.SourceType.URL
+                    else ""
+                ),
+                "active": source.is_active,
+                "created_at": source.created_at.isoformat(),
+                "updated_at": source.updated_at.isoformat(),
+            }
+            for source in sources
+        ],
+        "documents": [
+            {
+                "id": str(document.id),
+                "name": sanitize_text(
+                    document.name,
+                    limit=255,
+                    redact_long=False,
+                ),
+                "version": document.version,
+                "active": document.is_active,
+                "processing_status": document.processing_status,
+                "has_processing_error": bool(
+                    document.processing_error
+                ),
+                "source_url_host": _safe_url_host(
+                    document.source_url
+                ),
+                "has_file": bool(document.file),
+                "share_instruction_present": bool(
+                    str(document.share_instruction or "").strip()
+                ),
+                "chunk_count": int(
+                    getattr(document, "chunk_count", 0) or 0
+                ),
+                "active_chunk_count": int(
+                    getattr(
+                        document,
+                        "active_chunk_count",
+                        0,
+                    )
+                    or 0
+                ),
+                "embedded_chunk_count": int(
+                    getattr(
+                        document,
+                        "embedded_chunk_count",
+                        0,
+                    )
+                    or 0
+                ),
+                "created_at": document.created_at.isoformat(),
+                "updated_at": document.updated_at.isoformat(),
+            }
+            for document in documents
+        ],
+    }
+
+
+def get_knowledge_health(*, identity, arguments):
+    organization = _organization_for(identity)
+    _require_operations_capability(
+        identity=identity,
+        organization=organization,
+        capability=CAP_ORGANIZATION_READ,
+    )
+    try:
+        limit = int((arguments or {}).get("limit") or 50)
+    except (TypeError, ValueError):
+        limit = 50
+    health = _knowledge_health(
+        organization=organization,
+        limit=limit,
+    )
+    return ToolExecution(
+        data=health,
+        capability=CAP_ORGANIZATION_READ,
+        target_type="organization",
+        target_id=str(organization.id),
+        audit_summary={
+            "sources_returned": health["summary"][
+                "sources_returned"
+            ],
+            "documents_returned": health["summary"][
+                "documents_returned"
+            ],
+            "failed_documents": health["summary"][
+                "failed_documents"
+            ],
+        },
+    )
+
+
 def get_organization_configuration(*, identity, arguments):
     organization = _organization_for(identity)
     _require_operations_capability(
@@ -786,6 +976,10 @@ def get_organization_configuration(*, identity, arguments):
                 }
                 for item in visible_attributes
             ],
+            "knowledge": _knowledge_health(
+                organization=organization,
+                limit=20,
+            ),
             "automation": {
                 "workflow_count": SmartTrigger.objects.filter(organization=organization).count(),
                 "workflow_enabled_count": SmartTrigger.objects.filter(
@@ -4673,6 +4867,7 @@ def execute_operations_tool(*, name, identity, arguments):
         "select_organization_context": select_organization_context,
         "clear_organization_context": clear_organization_context,
         "get_organization_configuration": get_organization_configuration,
+        "get_knowledge_health": get_knowledge_health,
         "get_automation_configuration": get_automation_configuration,
         "get_messaging_automation_settings": get_messaging_automation_settings,
         "update_messaging_automation_settings": update_messaging_automation_settings,
