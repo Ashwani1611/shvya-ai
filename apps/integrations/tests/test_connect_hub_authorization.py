@@ -10,9 +10,16 @@ from apps.accounts.session_utils import (
 from apps.crm.models import Pipeline, PipelinePermission
 from apps.integrations.models import (
     EmailConfiguration,
+    OperationsAuditEvent,
+    OperationsPolicy,
     GoogleSheetIntegration,
     MetaLeadPage,
     WebhookConfiguration,
+)
+from apps.integrations.operations_policy import (
+    CAP_AUDIT_READ,
+    CAP_ORGANIZATION_READ,
+    ROLE_ORGANIZATION_ADMIN,
 )
 from apps.organizations.models import APIKey, Organization
 
@@ -205,6 +212,96 @@ class ConnectHubAuthorizationTests(TestCase):
             with self.subTest(route_name=route_name):
                 response = self.client.get(reverse(route_name))
                 self.assertEqual(response.status_code, 403)
+
+    def test_admin_operations_panel_shows_only_tenant_audit_when_enabled(self):
+        OperationsPolicy.objects.create(
+            organization=self.organization,
+            organization_admin_enabled=True,
+            allowed_capabilities=[
+                CAP_ORGANIZATION_READ,
+                CAP_AUDIT_READ,
+            ],
+            approval_required_capabilities=[],
+        )
+        own = OperationsAuditEvent.objects.create(
+            actor=self.admin,
+            role=ROLE_ORGANIZATION_ADMIN,
+            organization=self.organization,
+            tool_name="get_organization_configuration",
+            capability=CAP_ORGANIZATION_READ,
+            target_type="organization",
+            target_id=str(self.organization.id),
+            reason="Review organization setup",
+            outcome=OperationsAuditEvent.Outcome.SUCCESS,
+            request_fingerprint="a" * 64,
+            change_summary={"result": "safe"},
+        )
+        other_org = Organization.objects.create(name="Other Audit Org")
+        other_admin = User.objects.create_user(
+            email="other-audit-admin@example.com",
+            password="test-password",
+            name="Other Audit Admin",
+            organization=other_org,
+            role=User.Role.ADMIN,
+        )
+        other = OperationsAuditEvent.objects.create(
+            actor=other_admin,
+            role=ROLE_ORGANIZATION_ADMIN,
+            organization=other_org,
+            tool_name="foreign_tenant_tool",
+            capability=CAP_ORGANIZATION_READ,
+            target_type="organization",
+            target_id=str(other_org.id),
+            reason="Foreign tenant activity",
+            outcome=OperationsAuditEvent.Outcome.SUCCESS,
+            request_fingerprint="b" * 64,
+            change_summary={"result": "foreign"},
+        )
+
+        self.authenticate(self.admin)
+        response = self.client.get(
+            reverse("crm-connect-hub-shvya-api")
+        )
+        self.assertEqual(response.status_code, 200)
+        body = response.content.decode("utf-8")
+        self.assertIn("Recent Operations Activity", body)
+        self.assertIn(own.tool_name, body)
+        self.assertIn(str(own.id), body)
+        self.assertIn("Review organization setup", body)
+        self.assertNotIn(other.tool_name, body)
+        self.assertNotIn(str(other.id), body)
+        self.assertNotIn("Foreign tenant activity", body)
+
+    def test_admin_operations_panel_hides_audit_when_capability_not_granted(self):
+        OperationsPolicy.objects.create(
+            organization=self.organization,
+            organization_admin_enabled=True,
+            allowed_capabilities=[CAP_ORGANIZATION_READ],
+            approval_required_capabilities=[],
+        )
+        OperationsAuditEvent.objects.create(
+            actor=self.admin,
+            role=ROLE_ORGANIZATION_ADMIN,
+            organization=self.organization,
+            tool_name="hidden_audit_tool",
+            capability=CAP_ORGANIZATION_READ,
+            target_type="organization",
+            target_id=str(self.organization.id),
+            reason="Should stay hidden in panel",
+            outcome=OperationsAuditEvent.Outcome.SUCCESS,
+            request_fingerprint="c" * 64,
+            change_summary={},
+        )
+
+        self.authenticate(self.admin)
+        response = self.client.get(
+            reverse("crm-connect-hub-shvya-api")
+        )
+        self.assertEqual(response.status_code, 200)
+        body = response.content.decode("utf-8")
+        self.assertNotIn("Recent Operations Activity", body)
+        self.assertNotIn("hidden_audit_tool", body)
+        self.assertNotIn("Should stay hidden in panel", body)
 
     def test_admin_can_open_sensitive_connect_hub_management_pages(self):
         self.authenticate(self.admin)
