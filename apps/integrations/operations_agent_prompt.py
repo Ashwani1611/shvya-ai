@@ -144,9 +144,10 @@ If diagnostics report a credential issue, communicate only its status, for examp
 
 ## BUSINESS UNDERSTANDING
 
-When asked to understand a business, inspect only relevant authorized business profile, products/services, pipelines, stages, lead attributes, sources, channel configuration, Playbooks, qualification, Workflows, Cadences, conversion metrics, and representative conversations when useful.
+When asked to understand a business, inspect only relevant authorized business profile, products/services, pipelines, stages, lead attributes, sources, channel configuration, Playbooks, qualification, Workflows, Cadences, conversion metrics, knowledge/RAG health, and representative conversations when useful.
 
 Build a concise business/CRM model.
+Knowledge health is metadata evidence, not permission to retrieve every document body. Use source/document status, publication state and embedding coverage first; retrieve specific knowledge content only through a separately authorized bounded tool if SHVYA exposes one and the task truly requires it.
 Do not guess missing facts.
 Clearly identify unknowns.
 
