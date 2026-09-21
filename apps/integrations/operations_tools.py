@@ -86,6 +86,7 @@ from apps.integrations.operations_policy import (
     CAP_LEAD_ATTRIBUTES_WRITE,
     CAP_LEAD_STAGE_WRITE,
     CAP_ORGANIZATION_READ,
+    ROLE_ORGANIZATION_ADMIN,
     ROLE_SUPERADMIN,
     approval_required,
     effective_capabilities,
