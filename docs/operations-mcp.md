@@ -175,6 +175,8 @@ The audit stores bounded metadata:
 
 It does not store raw OAuth tokens, provider credentials, raw tool arguments, full conversations or hidden model reasoning.
 
+Organization audit reads are always limited to the explicitly active tenant. SHVYA Superadmin can separately request `scope=platform` to review only tenantless platform/OAuth lifecycle events (`organization IS NULL`); that scope never aggregates customer organization audit rows.
+
 Operations audit rows are append-only at both model-instance and queryset ORM boundaries; normal `.save()`, instance `.delete()`, bulk `.update()` and queryset `.delete()` rewrites are blocked.
 
 ## Untrusted content and secrets
