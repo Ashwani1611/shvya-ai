@@ -41,12 +41,18 @@ from apps.integrations.operations_auth import (
 )
 from apps.integrations.operations_policy import (
     CAP_AI_CONFIG_WRITE,
+    CAP_ATTRIBUTE_CONFIG_WRITE,
     CAP_AUTOMATION_CONFIG_WRITE,
+    CAP_CADENCE_CONFIG_WRITE,
     CAP_CRM_CONFIG_WRITE,
     CAP_DIAGNOSTICS_READ,
     CAP_LEAD_ATTRIBUTES_WRITE,
     CAP_LEAD_STAGE_WRITE,
+    CAP_MESSAGING_CONFIG_WRITE,
     CAP_ORGANIZATION_READ,
+    CAP_PIPELINE_CONFIG_WRITE,
+    CAP_STAGE_CONFIG_WRITE,
+    CAP_WORKFLOW_CONFIG_WRITE,
     ROLE_ORGANIZATION_ADMIN,
     ROLE_SUPERADMIN,
 )
@@ -353,6 +359,150 @@ class OperationsMCPTests(TestCase):
         self.assertEqual(
             result["structuredContent"]["status"],
             "SUPERADMIN_REQUIRED",
+        )
+
+    def test_legacy_policy_umbrellas_expand_but_granular_controls_can_isolate_tools(self):
+        policy = OperationsPolicy.objects.create(
+            organization=self.organization,
+            organization_admin_enabled=True,
+            allowed_capabilities=[
+                CAP_ORGANIZATION_READ,
+                CAP_AUTOMATION_CONFIG_WRITE,
+            ],
+            approval_required_capabilities=[
+                CAP_AUTOMATION_CONFIG_WRITE,
+            ],
+        )
+        bearer = self._token(
+            actor=self.admin,
+            role=ROLE_ORGANIZATION_ADMIN,
+            organization=self.organization,
+        )
+
+        legacy_names = {
+            item["name"]
+            for item in self._list_tools(bearer)["tools"]
+        }
+        self.assertIn(
+            "upsert_workflow_configuration",
+            legacy_names,
+        )
+        self.assertIn(
+            "upsert_cadence_configuration",
+            legacy_names,
+        )
+        self.assertIn(
+            "add_cadence_step",
+            legacy_names,
+        )
+        self.assertIn(
+            "update_messaging_automation_settings",
+            legacy_names,
+        )
+
+        context = self._result(
+            self._call(
+                bearer,
+                "get_operations_context",
+                {},
+            )
+        )
+        self.assertFalse(context["isError"])
+        for capability in (
+            CAP_WORKFLOW_CONFIG_WRITE,
+            CAP_CADENCE_CONFIG_WRITE,
+            CAP_MESSAGING_CONFIG_WRITE,
+        ):
+            self.assertIn(
+                capability,
+                context["structuredContent"]["capabilities"],
+            )
+
+        policy.allowed_capabilities = [
+            CAP_ORGANIZATION_READ,
+            CAP_WORKFLOW_CONFIG_WRITE,
+        ]
+        policy.approval_required_capabilities = [
+            CAP_WORKFLOW_CONFIG_WRITE,
+        ]
+        policy.save(
+            update_fields=[
+                "allowed_capabilities",
+                "approval_required_capabilities",
+                "updated_at",
+            ]
+        )
+
+        workflow_only_names = {
+            item["name"]
+            for item in self._list_tools(bearer)["tools"]
+        }
+        self.assertIn(
+            "upsert_workflow_configuration",
+            workflow_only_names,
+        )
+        self.assertNotIn(
+            "upsert_cadence_configuration",
+            workflow_only_names,
+        )
+        self.assertNotIn(
+            "add_cadence_step",
+            workflow_only_names,
+        )
+        self.assertNotIn(
+            "update_messaging_automation_settings",
+            workflow_only_names,
+        )
+
+        denied_cadence = self._result(
+            self._call(
+                bearer,
+                "upsert_cadence_configuration",
+                {
+                    "data": {
+                        "name": "Denied Cadence",
+                    },
+                    "reason": "Test granular automation denial",
+                    "dry_run": True,
+                },
+            )
+        )
+        self.assertTrue(denied_cadence["isError"])
+        self.assertEqual(
+            denied_cadence["structuredContent"]["status"],
+            "SUPERADMIN_REQUIRED",
+        )
+
+        policy.allowed_capabilities = [
+            CAP_ORGANIZATION_READ,
+            CAP_PIPELINE_CONFIG_WRITE,
+        ]
+        policy.approval_required_capabilities = [
+            CAP_PIPELINE_CONFIG_WRITE,
+        ]
+        policy.save(
+            update_fields=[
+                "allowed_capabilities",
+                "approval_required_capabilities",
+                "updated_at",
+            ]
+        )
+
+        pipeline_only_names = {
+            item["name"]
+            for item in self._list_tools(bearer)["tools"]
+        }
+        self.assertIn(
+            "upsert_pipeline_configuration",
+            pipeline_only_names,
+        )
+        self.assertNotIn(
+            "upsert_stage_configuration",
+            pipeline_only_names,
+        )
+        self.assertNotIn(
+            "upsert_attribute_configuration",
+            pipeline_only_names,
         )
 
     def test_authenticated_org_admin_tool_discovery_matches_superadmin_policy(self):
