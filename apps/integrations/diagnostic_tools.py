@@ -285,7 +285,6 @@ def _safe_wa_message(message):
         "body": sanitize_text(
             message.body,
             limit=1200,
-            redact_long=False,
         ),
         "has_media": bool(message.media_payload),
         "has_error": bool(message.error),
