@@ -92,6 +92,22 @@ def test_ci_self_change_forces_every_safety_gate():
         assert plan[key] == "true"
 
 
+def test_security_workflow_change_forces_every_safety_gate():
+    plan = classify([".github/workflows/security.yml"])
+    assert plan["full"] == "true"
+    for key in (
+        "python",
+        "django",
+        "migration_check",
+        "ai",
+        "gateway",
+        "browser",
+        "docker_app",
+        "compose",
+    ):
+        assert plan[key] == "true"
+
+
 def test_cross_cutting_service_change_falls_back_to_full_suite():
     plan = classify(["services/followup_service.py"])
     assert plan["full"] == "true"
