@@ -104,6 +104,7 @@ class CalendarPage(models.Model):
         db_index=True,
     )
     timezone = models.CharField(max_length=64, default="Asia/Kolkata")
+    language = models.CharField(max_length=12, default="en")
     accent_color = models.CharField(max_length=16, default="#0060A2")
     logo_url = models.URLField(blank=True)
 
@@ -127,6 +128,7 @@ class CalendarPage(models.Model):
         default=DuplicateBehavior.USE_EXISTING,
     )
     duplicate_match_email = models.BooleanField(default=True)
+    lead_name_prefix = models.CharField(max_length=60, blank=True)
     attribute_update_policy = models.CharField(
         max_length=24,
         choices=AttributeUpdatePolicy.choices,
@@ -134,6 +136,19 @@ class CalendarPage(models.Model):
     )
     notify_host_on_submission = models.BooleanField(default=True)
     notify_user_ids = models.JSONField(default=list, blank=True)
+    notify_roles = models.JSONField(default=list, blank=True)
+    acknowledgement_enabled = models.BooleanField(default=False)
+    acknowledgement_subject = models.CharField(
+        max_length=180,
+        default="We received your request",
+    )
+    acknowledgement_body = models.TextField(
+        default=(
+            "Hi {{lead.name}},\n\n"
+            "Thanks for contacting {{organization.name}}. "
+            "We have received your request."
+        )
+    )
 
     session_title = models.CharField(
         max_length=80,
