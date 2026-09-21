@@ -356,6 +356,62 @@ class ConnectHubAuthorizationTests(TestCase):
         token.refresh_from_db()
         self.assertIsNone(token.revoked_at)
 
+    def test_admin_operations_panel_marks_stale_human_authority_without_token_leak(self):
+        OperationsPolicy.objects.create(
+            organization=self.organization,
+            organization_admin_enabled=True,
+            allowed_capabilities=[CAP_ORGANIZATION_READ],
+            approval_required_capabilities=[],
+        )
+        former_admin = User.objects.create_user(
+            email="former-operations-admin@example.com",
+            password="test-password",
+            name="Former Operations Admin",
+            organization=self.organization,
+            role=User.Role.ADMIN,
+        )
+        client = OperationsOAuthClient.objects.create(
+            client_id="stale-authority-client",
+            client_name="Claude Operations",
+            redirect_uris=["https://claude.ai/api/mcp/auth_callback"],
+            grant_types=["authorization_code", "refresh_token"],
+            response_types=["code"],
+        )
+        raw_access = "stale-authority-access-secret"
+        raw_refresh = "stale-authority-refresh-secret"
+        OperationsOAuthToken.objects.create(
+            client=client,
+            actor=former_admin,
+            organization=self.organization,
+            role=ROLE_ORGANIZATION_ADMIN,
+            access_token_hash=token_hash(raw_access),
+            refresh_token_hash=token_hash(raw_refresh),
+            scope="operations.read",
+            granted_capabilities=[CAP_ORGANIZATION_READ],
+            resource="http://testserver/operations/mcp/",
+            expires_at=timezone.now() + timedelta(hours=1),
+            refresh_expires_at=timezone.now() + timedelta(days=14),
+        )
+
+        former_admin.role = User.Role.AGENT
+        former_admin.save(update_fields=["role", "updated_at"])
+
+        self.authenticate(self.admin)
+        response = self.client.get(
+            reverse("crm-connect-hub-shvya-api")
+        )
+        self.assertEqual(response.status_code, 200)
+        body = response.content.decode("utf-8")
+        self.assertIn("Claude Operations", body)
+        self.assertIn("Former Operations Admin", body)
+        self.assertIn("Reconnect required", body)
+        self.assertIn(
+            "no longer matches the current SHVYA user/tenant authority",
+            body,
+        )
+        self.assertNotIn(raw_access, body)
+        self.assertNotIn(raw_refresh, body)
+
     def test_admin_operations_panel_shows_only_tenant_audit_when_enabled(self):
         OperationsPolicy.objects.create(
             organization=self.organization,
