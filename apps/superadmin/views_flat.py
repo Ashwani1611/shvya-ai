@@ -405,6 +405,33 @@ def organization_detail_view(
         organization=organization,
     )
 
+    from apps.integrations.operations_models import OperationsSupportSession
+    from apps.integrations.operations_policy import (
+        ALL_CAPABILITIES,
+        CAPABILITY_LABELS,
+        policy_for,
+    )
+
+    operations_policy = policy_for(organization)
+    operations_capabilities = [
+        {
+            "key": key,
+            "label": CAPABILITY_LABELS[key],
+            "allowed": key in (operations_policy.allowed_capabilities or []),
+            "approval_required": key
+            in (operations_policy.approval_required_capabilities or []),
+        }
+        for key in ALL_CAPABILITIES
+    ]
+    active_operations_support = (
+        OperationsSupportSession.objects.filter(
+            organization=organization,
+            ended_at__isnull=True,
+        )
+        .select_related("actor")
+        .order_by("-last_seen_at")
+    )
+
     return render(
         request,
         "superadmin/org_detail.html",
@@ -416,6 +443,9 @@ def organization_detail_view(
             "payment_total": payment_total,
             "organization_users": organization_users,
             "pipeline_form": pipeline_form,
+            "operations_policy": operations_policy,
+            "operations_capabilities": operations_capabilities,
+            "active_operations_support": active_operations_support,
         },
     )
 
