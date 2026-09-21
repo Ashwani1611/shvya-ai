@@ -317,6 +317,106 @@ class OperationsMCPTests(TestCase):
         self.assertIn("upsert_workflow_configuration", names)
         self.assertIn("find_leads", names)
 
+    def test_pipeline_configuration_create_verifies_standard_stages(self):
+        OperationsPolicy.objects.create(
+            organization=self.organization,
+            organization_admin_enabled=True,
+            allowed_capabilities=[
+                CAP_ORGANIZATION_READ,
+                CAP_CRM_CONFIG_WRITE,
+            ],
+            approval_required_capabilities=[],
+        )
+        bearer = self._token(
+            actor=self.admin,
+            role=ROLE_ORGANIZATION_ADMIN,
+            organization=self.organization,
+        )
+        result = self._result(
+            self._call(
+                bearer,
+                "upsert_pipeline_configuration",
+                {
+                    "data": {
+                        "name": "Enterprise Sales",
+                        "description": "Enterprise pipeline",
+                        "is_active": True,
+                        "ai_enabled": True,
+                    },
+                    "reason": "Create enterprise sales pipeline",
+                    "dry_run": False,
+                },
+            )
+        )
+        self.assertFalse(result["isError"])
+        self.assertEqual(
+            result["structuredContent"]["status"],
+            "FIXED",
+        )
+        pipeline = Pipeline.objects.get(
+            organization=self.organization,
+            name="Enterprise Sales",
+        )
+        active_names = set(
+            pipeline.stages.filter(is_active=True).values_list(
+                "name",
+                flat=True,
+            )
+        )
+        self.assertTrue(
+            {
+                "New leads",
+                "Qualified",
+                "Nurturing",
+                "Average lead",
+                "Ultra Hot",
+                "Lead Won",
+                "DNP",
+                "Lead Lost",
+            }.issubset(active_names)
+        )
+
+    def test_stage_configuration_cannot_deactivate_occupied_stage(self):
+        OperationsPolicy.objects.create(
+            organization=self.organization,
+            organization_admin_enabled=True,
+            allowed_capabilities=[
+                CAP_ORGANIZATION_READ,
+                CAP_CRM_CONFIG_WRITE,
+            ],
+            approval_required_capabilities=[],
+        )
+        move_lead_to_stage(
+            lead=self.lead,
+            stage=self.review_stage,
+            actor=self.admin,
+        )
+        bearer = self._token(
+            actor=self.admin,
+            role=ROLE_ORGANIZATION_ADMIN,
+            organization=self.organization,
+        )
+        result = self._result(
+            self._call(
+                bearer,
+                "upsert_stage_configuration",
+                {
+                    "pipeline_id": str(self.pipeline.id),
+                    "stage_id": str(self.review_stage.id),
+                    "data": {"is_active": False},
+                    "reason": "Attempt occupied stage deactivation",
+                    "dry_run": True,
+                },
+            )
+        )
+        self.assertTrue(result["isError"])
+        self.assertEqual(
+            result["structuredContent"]["status"],
+            "NOT_ALLOWED",
+        )
+        self.review_stage.refresh_from_db()
+        self.assertTrue(self.review_stage.is_active)
+
     def test_attribute_configuration_uses_policy_dry_run_approval_and_service(self):
         OperationsPolicy.objects.create(
             organization=self.organization,
