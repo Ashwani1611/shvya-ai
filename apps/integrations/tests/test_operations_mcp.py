@@ -30,6 +30,7 @@ from apps.channels.models import (
     WhatsAppMessage,
     WhatsAppTemplate,
 )
+from apps.analytics.models import AnalyticsSettings
 from apps.crm.models import AttributeDefinition, Lead, LeadActivity, Pipeline, Stage
 from apps.followups.models import FollowupSequence, FollowupStep
 from apps.hosted_automation.models import HostedAutomationJob
@@ -5641,6 +5642,436 @@ class OperationsMCPTests(TestCase):
         self.assertEqual(
             current["qualified_transition_rate"],
             0.0,
+        )
+
+    def test_find_affected_leads_finds_same_issue_without_cross_tenant_leakage(self):
+        OperationsPolicy.objects.create(
+            organization=self.organization,
+            organization_admin_enabled=True,
+            allowed_capabilities=[
+                CAP_ORGANIZATION_READ,
+                CAP_DIAGNOSTICS_READ,
+            ],
+        )
+        self.lead.attributes = {
+            "_shvya_ai_qualification": {
+                "qualification_status": "completed",
+            }
+        }
+        self.lead.save(
+            update_fields=[
+                "attributes",
+                "updated_at",
+            ]
+        )
+        self.other_lead.attributes = {
+            "_shvya_ai_qualification": {
+                "qualification_status": "completed",
+            }
+        }
+        self.other_lead.save(
+            update_fields=[
+                "attributes",
+                "updated_at",
+            ]
+        )
+        bearer = self._token(
+            actor=self.admin,
+            role=ROLE_ORGANIZATION_ADMIN,
+            organization=self.organization,
+            scopes=[OPERATIONS_READ_SCOPE],
+        )
+
+        tool_names = {
+            item["name"]
+            for item in self._list_tools(
+                bearer
+            )["tools"]
+        }
+        self.assertIn(
+            "find_affected_leads",
+            tool_names,
+        )
+
+        result = self._result(
+            self._call(
+                bearer,
+                "find_affected_leads",
+                {
+                    "issue_type": (
+                        "qualification_completed_not_qualified"
+                    ),
+                    "limit": 20,
+                },
+            )
+        )
+        self.assertFalse(result["isError"])
+        affected = result["structuredContent"]
+        self.assertEqual(
+            affected["match_count"],
+            1,
+        )
+        self.assertEqual(
+            affected["matches_returned"],
+            1,
+        )
+        self.assertFalse(
+            affected["matches_truncated"]
+        )
+        self.assertEqual(
+            affected["matches"][0]["id"],
+            str(self.lead.id),
+        )
+        payload = json.dumps(affected)
+        self.assertNotIn(
+            str(self.other_lead.id),
+            payload,
+        )
+        self.assertNotIn(
+            self.other_organization.name,
+            payload,
+        )
+
+    def test_conversion_analysis_reports_first_response_ageing_and_lost_reasons(self):
+        OperationsPolicy.objects.create(
+            organization=self.organization,
+            organization_admin_enabled=True,
+            allowed_capabilities=[
+                CAP_ORGANIZATION_READ,
+                CAP_DIAGNOSTICS_READ,
+            ],
+        )
+        AnalyticsSettings.objects.create(
+            organization=self.organization,
+            hot_lead_stage=self.qualified,
+            lead_won_stage=self.qualified,
+            lead_lost_stage=self.review_stage,
+            stall_day_threshold=3,
+        )
+        AttributeDefinition.objects.create(
+            organization=self.organization,
+            name="Lost Reason",
+            key="lost_reason",
+            field_type=AttributeDefinition.FieldType.TEXT,
+        )
+        now = timezone.now()
+        Lead.objects.filter(
+            pk=self.lead.pk
+        ).update(
+            attributes={
+                "lost_reason": "Budget",
+                "_shvya_ai_qualification": {
+                    "qualification_status": (
+                        "completed"
+                    ),
+                },
+            },
+            stage_entered_at=(
+                now - timedelta(days=5)
+            ),
+        )
+        self.lead.refresh_from_db()
+
+        account = WhatsAppAccount.objects.create(
+            organization=self.organization,
+            connection_type=(
+                WhatsAppAccount.ConnectionType.API
+            ),
+            business_name="Conversion Metrics Sender",
+            display_phone_number="+919000000081",
+            status=WhatsAppAccount.Status.CONNECTED,
+            is_active=True,
+        )
+        inbound = WhatsAppMessage.objects.create(
+            organization=self.organization,
+            account=account,
+            lead=self.lead,
+            external_id="conversion-first-response-inbound",
+            direction=WhatsAppMessage.Direction.INBOUND,
+            status=WhatsAppMessage.Status.RECEIVED,
+            message_type=WhatsAppMessage.MessageType.TEXT,
+            from_number=self.lead.phone,
+            to_number="+919000000081",
+            body="Hello",
+        )
+        outbound = WhatsAppMessage.objects.create(
+            organization=self.organization,
+            account=account,
+            lead=self.lead,
+            external_id="conversion-first-response-outbound",
+            direction=WhatsAppMessage.Direction.OUTBOUND,
+            status=WhatsAppMessage.Status.SENT,
+            message_type=WhatsAppMessage.MessageType.TEXT,
+            from_number="+919000000081",
+            to_number=self.lead.phone,
+            body="Hello, how can I help?",
+        )
+        WhatsAppMessage.objects.filter(
+            pk=inbound.pk
+        ).update(
+            created_at=now - timedelta(minutes=10)
+        )
+        WhatsAppMessage.objects.filter(
+            pk=outbound.pk
+        ).update(
+            created_at=now - timedelta(minutes=5)
+        )
+        LeadActivity.objects.create(
+            organization=self.organization,
+            lead=self.lead,
+            topic=LeadActivity.Topic.STAGE_CHANGED,
+            actor=self.admin,
+            actor_name=self.admin.name,
+            old_pipeline=self.pipeline,
+            old_pipeline_name=self.pipeline.name,
+            new_pipeline=self.pipeline,
+            new_pipeline_name=self.pipeline.name,
+            old_stage=self.new_stage,
+            old_stage_name=self.new_stage.name,
+            new_stage=self.review_stage,
+            new_stage_name=self.review_stage.name,
+        )
+
+        bearer = self._token(
+            actor=self.admin,
+            role=ROLE_ORGANIZATION_ADMIN,
+            organization=self.organization,
+            scopes=[OPERATIONS_READ_SCOPE],
+        )
+        result = self._result(
+            self._call(
+                bearer,
+                "get_conversion_analysis",
+                {"days": 30},
+            )
+        )
+        self.assertFalse(result["isError"])
+        analysis = result["structuredContent"]
+        current = analysis["comparison"][
+            "current_period"
+        ]
+        whatsapp_response = current[
+            "messaging"
+        ]["first_response"]["whatsapp"]
+        self.assertEqual(
+            whatsapp_response["inbound_leads"],
+            1,
+        )
+        self.assertEqual(
+            whatsapp_response["responded_leads"],
+            1,
+        )
+        self.assertEqual(
+            whatsapp_response["response_rate"],
+            1.0,
+        )
+        self.assertGreaterEqual(
+            whatsapp_response[
+                "average_first_response_seconds"
+            ],
+            250,
+        )
+        self.assertLessEqual(
+            whatsapp_response[
+                "average_first_response_seconds"
+            ],
+            350,
+        )
+
+        self.assertEqual(
+            current["qualification_completion"][
+                "completed_leads"
+            ],
+            1,
+        )
+        self.assertEqual(
+            current["qualification_completion"][
+                "completion_rate"
+            ],
+            1.0,
+        )
+        stage_reach = current[
+            "stage_conversion_proxy"
+        ]["stages"]
+        self.assertTrue(
+            any(
+                row["stage_id"]
+                == str(self.review_stage.id)
+                and row["lead_count"] == 1
+                for row in stage_reach
+            )
+        )
+
+        self.assertEqual(
+            current["lost"]["lost_transitions"],
+            1,
+        )
+        self.assertTrue(
+            current["lost"][
+                "reason_capture_configured"
+            ]
+        )
+        self.assertIn(
+            {
+                "reason": "Budget",
+                "count": 1,
+            },
+            current["lost"]["reason_counts"],
+        )
+
+        ageing = analysis[
+            "current_snapshot"
+        ]["lead_ageing"]
+        self.assertEqual(
+            ageing["stall_day_threshold"],
+            3,
+        )
+        self.assertEqual(
+            ageing["stalled_count"],
+            1,
+        )
+        self.assertGreaterEqual(
+            ageing["buckets"]["days_3_to_7"],
+            1,
+        )
+
+    def test_instagram_health_reports_full_diagnostic_chain_without_secrets(self):
+        OperationsPolicy.objects.create(
+            organization=self.organization,
+            organization_admin_enabled=True,
+            allowed_capabilities=[
+                CAP_ORGANIZATION_READ,
+                CAP_DIAGNOSTICS_READ,
+            ],
+        )
+        instagram = InstagramAccount.objects.create(
+            organization=self.organization,
+            ig_user_id="ig-complete-health-user",
+            username="complete_health",
+            access_token="ig-complete-health-secret",
+            status=InstagramAccount.Status.CONNECTED,
+            webhook_subscribed=True,
+            subscribed_fields=[
+                "messages",
+                "messaging_postbacks",
+            ],
+            token_expires_at=(
+                timezone.now()
+                + timedelta(days=30)
+            ),
+            last_webhook_at=timezone.now(),
+        )
+        conversation = (
+            InstagramConversation.objects.create(
+                organization=self.organization,
+                account=instagram,
+                lead=self.lead,
+                participant_id="ig-participant-1",
+                participant_username="lead_user",
+            )
+        )
+        InstagramMessage.objects.create(
+            organization=self.organization,
+            account=instagram,
+            conversation=conversation,
+            external_id="ig-complete-health-message",
+            direction=InstagramMessage.Direction.INBOUND,
+            status=InstagramMessage.Status.RECEIVED,
+            message_type=InstagramMessage.MessageType.SHARE,
+            sender_id="ig-participant-1",
+            recipient_id=instagram.ig_user_id,
+            body="Shared a reel",
+            attachments=[
+                {
+                    "type": "ig_reel",
+                    "payload": {
+                        "link": (
+                            "https://www.instagram.com/"
+                            "reel/example/"
+                        ),
+                    },
+                }
+            ],
+            sent_at=timezone.now(),
+        )
+
+        bearer = self._token(
+            actor=self.admin,
+            role=ROLE_ORGANIZATION_ADMIN,
+            organization=self.organization,
+            scopes=[OPERATIONS_READ_SCOPE],
+        )
+        result = self._result(
+            self._call(
+                bearer,
+                "get_integration_health",
+                {},
+            )
+        )
+        self.assertFalse(result["isError"])
+        health = result["structuredContent"][
+            "instagram"
+        ]
+        chain = health["diagnostic_chain"]
+        self.assertTrue(
+            chain["connection"]["connected"]
+        )
+        self.assertTrue(
+            chain["webhook"]["subscribed"]
+        )
+        self.assertFalse(
+            chain["permissions"][
+                "grant_scope_list_persisted"
+            ]
+        )
+        self.assertEqual(
+            chain["permissions"][
+                "verification_status"
+            ],
+            "unavailable_from_persisted_state",
+        )
+        self.assertEqual(
+            chain["message_event"]["inbound_24h"],
+            1,
+        )
+        self.assertEqual(
+            chain["media_story_reel_handling"][
+                "type_counts"
+            ]["reel"],
+            1,
+        )
+        self.assertEqual(
+            chain["lead_creation_and_linking"][
+                "linked_to_lead"
+            ],
+            1,
+        )
+        self.assertEqual(
+            chain["pipeline_mapping"][
+                "pipelines"
+            ][0]["pipeline_id"],
+            str(self.pipeline.id),
+        )
+        self.assertEqual(
+            chain["outbound_eligibility"][
+                "standard_window_conversations"
+            ],
+            1,
+        )
+        self.assertFalse(
+            chain["ai_processing"][
+                "runtime_available"
+            ]
+        )
+        self.assertEqual(
+            chain[
+                "first_known_ai_auto_reply_blocker"
+            ],
+            "ai_processing_runtime",
+        )
+        self.assertNotIn(
+            "ig-complete-health-secret",
+            json.dumps(health),
         )
 
     def test_read_context_does_not_create_missing_policy_row(self):
