@@ -3267,19 +3267,21 @@ def upsert_workflow_configuration(*, identity, arguments):
                 setattr(workflow, key, value)
             workflow.save()
             clean = clean_locked
+            workflow.refresh_from_db()
+            if (
+                workflow.fingerprint != clean["fingerprint"]
+                or workflow.trigger_type != clean["trigger_type"]
+                or workflow.action_type != clean["action_type"]
+                or workflow.enabled != clean["enabled"]
+            ):
+                raise OperationsToolError(
+                    "Workflow configuration verification failed."
+                )
     except IntegrityError as exc:
         raise OperationsToolError(
             "Workflow configuration changed concurrently. "
             "Run a fresh dry-run."
         ) from exc
-    workflow.refresh_from_db()
-    if (
-        workflow.fingerprint != clean["fingerprint"]
-        or workflow.trigger_type != clean["trigger_type"]
-        or workflow.action_type != clean["action_type"]
-        or workflow.enabled != clean["enabled"]
-    ):
-        raise OperationsToolError("Workflow configuration verification failed.")
     return ToolExecution(
         data={
             "status": "FIXED",
@@ -3520,26 +3522,160 @@ def upsert_cadence_configuration(*, identity, arguments):
         )
 
     try:
-        if sequence is None:
-            sequence = create_sequence(
+        with transaction.atomic():
+            Organization.objects.select_for_update().get(
+                pk=organization.pk
+            )
+            if sequence is not None:
+                sequence = (
+                    FollowupSequence.objects.select_for_update()
+                    .select_related("whatsapp_account")
+                    .filter(
+                        pk=sequence.pk,
+                        organization=organization,
+                    )
+                    .first()
+                )
+                if sequence is None:
+                    raise OperationsApprovalRequired(
+                        "The Cadence changed or was removed after review. "
+                        "Run a fresh dry-run."
+                    )
+                account = sequence.whatsapp_account
+                locked_provider = (
+                    "api"
+                    if account.connection_type
+                    == WhatsAppAccount.ConnectionType.API
+                    else "hosted"
+                )
+                if locked_provider != provider:
+                    raise OperationsApprovalRequired(
+                        "The Cadence provider changed after review. "
+                        "Run a fresh dry-run."
+                    )
+            else:
+                if provider == "api":
+                    account_id = data.get("whatsapp_account_id")
+                    account = (
+                        WhatsAppAccount.objects.filter(
+                            pk=_uuid(
+                                account_id,
+                                field="whatsapp_account_id",
+                            ),
+                            organization=organization,
+                            is_active=True,
+                            status=WhatsAppAccount.Status.CONNECTED,
+                            connection_type=WhatsAppAccount.ConnectionType.API,
+                        ).first()
+                        if account_id
+                        else None
+                    )
+                    if account is None:
+                        raise OperationsApprovalRequired(
+                            "The selected WhatsApp API sender is no longer "
+                            "active/connected. Run a fresh dry-run."
+                        )
+                else:
+                    account = (
+                        WhatsAppAccount.objects.filter(
+                            organization=organization,
+                            connection_type=WhatsAppAccount.ConnectionType.coexisted,
+                            status=WhatsAppAccount.Status.CONNECTED,
+                            is_active=True,
+                        )
+                        .order_by(
+                            "business_name",
+                            "display_phone_number",
+                        )
+                        .first()
+                    )
+                    if account is None:
+                        raise OperationsApprovalRequired(
+                            "No active Hosted/Coexistence sender is available. "
+                            "Run a fresh dry-run."
+                        )
+
+            duplicate = FollowupSequence.objects.filter(
                 organization=organization,
-                created_by=identity.actor,
-                name=name,
-                description=description,
-                whatsapp_account=account,
-                provider=provider,
+                name__iexact=name,
             )
-        else:
-            sequence = update_sequence(
-                sequence=sequence,
-                name=name,
-                description=description,
+            if sequence is not None:
+                duplicate = duplicate.exclude(pk=sequence.pk)
+            if duplicate.exists():
+                raise OperationsToolError(
+                    "A Cadence with this name already exists."
+                )
+
+            locked_before = (
+                {
+                    "id": str(sequence.id),
+                    "name": sequence.name,
+                    "description": sequence.description,
+                    "provider": provider,
+                    "whatsapp_account_id": str(
+                        sequence.whatsapp_account_id
+                    ),
+                }
+                if sequence is not None
+                else None
             )
+            locked_after = {
+                "name": name,
+                "description": description,
+                "provider": provider,
+                "whatsapp_account_id": (
+                    str(account.id) if account else None
+                ),
+            }
+            locked_proposal = {
+                "organization_id": str(organization.id),
+                "cadence_id": (
+                    str(sequence.id)
+                    if sequence is not None
+                    else None
+                ),
+                "before": locked_before,
+                "after": locked_after,
+            }
+            _ensure_approved_proposal_unchanged(
+                arguments=arguments,
+                proposal=locked_proposal,
+            )
+
+            if sequence is None:
+                sequence = create_sequence(
+                    organization=organization,
+                    created_by=identity.actor,
+                    name=name,
+                    description=description,
+                    whatsapp_account=account,
+                    provider=provider,
+                )
+            else:
+                sequence = update_sequence(
+                    sequence=sequence,
+                    name=name,
+                    description=description,
+                )
+
+            sequence.refresh_from_db()
+            if (
+                sequence.name != name
+                or sequence.description != description
+                or sequence.whatsapp_account_id != account.id
+            ):
+                raise OperationsToolError(
+                    "Cadence configuration verification failed."
+                )
+            cadence_before = locked_before
+            cadence_after = locked_after
     except FollowupError as exc:
         raise OperationsToolError(str(exc)) from exc
-    sequence.refresh_from_db()
-    if sequence.name != name or sequence.description != description:
-        raise OperationsToolError("Cadence configuration verification failed.")
+    except IntegrityError as exc:
+        raise OperationsToolError(
+            "Cadence configuration changed concurrently. "
+            "Run a fresh dry-run."
+        ) from exc
     return ToolExecution(
         data={
             "status": "FIXED",
@@ -3557,7 +3693,7 @@ def upsert_cadence_configuration(*, identity, arguments):
         reason=reason,
         audit_summary={
             "operation": "upsert_cadence",
-            "mode": "update" if sequence_id else "create",
+            "mode": "update" if cadence_before else "create",
             "verification": "passed",
         },
     )
