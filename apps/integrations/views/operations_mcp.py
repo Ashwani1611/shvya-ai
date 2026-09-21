@@ -62,6 +62,7 @@ from apps.integrations.operations_policy import (
     ROLE_ORGANIZATION_ADMIN,
     ROLE_SUPERADMIN,
     WRITE_CAPABILITIES,
+    approval_required,
     effective_capabilities,
     policy_for,
 )
@@ -1057,9 +1058,6 @@ def operations_oauth_authorize(request):
             if organization is not None
             else None
         )
-        approval_values = set(
-            policy.approval_required_capabilities or []
-        ) if policy is not None else set()
         identity_options.append(
             {
                 "role": role,
@@ -1072,10 +1070,11 @@ def operations_oauth_authorize(request):
                             capability,
                         ),
                         "approval_required": (
-                            capability.endswith(".write")
-                            and (
-                                role == ROLE_SUPERADMIN
-                                or capability in approval_values
+                            capability in WRITE_CAPABILITIES
+                            and approval_required(
+                                role=role,
+                                organization=organization,
+                                capability=capability,
                             )
                         ),
                     }
