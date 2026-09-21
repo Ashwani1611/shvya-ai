@@ -438,6 +438,21 @@ def _lead(organization, lead_id):
     return lead
 
 
+def _lead_for_write(*, organization, lead_id, dry_run, arguments):
+    try:
+        return _lead(organization, lead_id)
+    except OperationsToolError as exc:
+        approval_event_id = str(
+            (arguments or {}).get("approval_event_id") or ""
+        ).strip()
+        if not dry_run and approval_event_id:
+            raise OperationsApprovalRequired(
+                "The lead or its tenant/pipeline/stage relationships changed "
+                "after review. Run a fresh dry-run and obtain new approval."
+            ) from exc
+        raise
+
+
 def _support_session(identity):
     if identity.role != ROLE_SUPERADMIN:
         return None
@@ -2332,7 +2347,12 @@ def move_lead_stage(*, identity, arguments, enforce_gate=True):
             raise OperationsToolError("dry_run must be a JSON boolean.")
         dry_run = raw_dry_run
         reason = _reason(arguments, required=True)
-    lead = _lead(organization, (arguments or {}).get("lead_id"))
+    lead = _lead_for_write(
+        organization=organization,
+        lead_id=(arguments or {}).get("lead_id"),
+        dry_run=dry_run,
+        arguments=arguments,
+    )
     stage = (
         Stage.objects.select_related("pipeline")
         .filter(
@@ -2506,7 +2526,12 @@ def repair_qualification_stage(*, identity, arguments):
         tool_name="repair_qualification_stage",
         arguments=arguments,
     )
-    lead = _lead(organization, (arguments or {}).get("lead_id"))
+    lead = _lead_for_write(
+        organization=organization,
+        lead_id=(arguments or {}).get("lead_id"),
+        dry_run=dry_run,
+        arguments=arguments,
+    )
     (
         _,
         _,
@@ -2567,7 +2592,12 @@ def update_lead_attributes(*, identity, arguments):
         tool_name="update_lead_attributes",
         arguments=arguments,
     )
-    lead = _lead(organization, (arguments or {}).get("lead_id"))
+    lead = _lead_for_write(
+        organization=organization,
+        lead_id=(arguments or {}).get("lead_id"),
+        dry_run=dry_run,
+        arguments=arguments,
+    )
     values = (arguments or {}).get("values")
     if not isinstance(values, dict) or not values:
         raise OperationsToolError("values must be a non-empty object keyed by CRM attribute key.")
