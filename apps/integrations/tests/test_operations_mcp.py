@@ -44,6 +44,7 @@ from apps.integrations.operations_auth import (
 )
 from apps.integrations.operations_policy import (
     CAP_AI_CONFIG_WRITE,
+    CAP_AUDIT_READ,
     CAP_ATTRIBUTE_CONFIG_WRITE,
     CAP_AUTOMATION_CONFIG_WRITE,
     CAP_CADENCE_CONFIG_WRITE,
