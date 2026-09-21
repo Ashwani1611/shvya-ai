@@ -275,6 +275,10 @@ def _save_lead_section(request, page):
     page.logo_url = (request.POST.get("logo_url") or "").strip()
     accent = (request.POST.get("accent_color") or "#0060A2").strip()
     page.accent_color = accent if accent.startswith("#") else "#0060A2"
+    page.language = (request.POST.get("language") or "en").strip()[:12]
+    page.lead_name_prefix = (
+        request.POST.get("lead_name_prefix") or ""
+    ).strip()[:60]
     page.submit_button_text = (
         request.POST.get("submit_button_text") or "Continue to scheduling"
     ).strip()[:80]
@@ -336,6 +340,24 @@ def _save_lead_section(request, page):
         ).exists():
             notify_ids.append(str(raw_id))
     page.notify_user_ids = notify_ids
+    allowed_roles = {User.Role.ADMIN, User.Role.AGENT}
+    page.notify_roles = [
+        role
+        for role in request.POST.getlist("notify_roles")
+        if role in allowed_roles
+    ]
+    page.acknowledgement_enabled = _checkbox(
+        request.POST,
+        "acknowledgement_enabled",
+    )
+    page.acknowledgement_subject = (
+        request.POST.get("acknowledgement_subject")
+        or "We received your request"
+    ).strip()[:180]
+    page.acknowledgement_body = (
+        request.POST.get("acknowledgement_body")
+        or "Hi {{lead.name}},\n\nThanks for contacting {{organization.name}}."
+    ).strip()
     page.form_schema = schema_from_json(
         organization=user.organization,
         raw=request.POST.get("form_schema"),
