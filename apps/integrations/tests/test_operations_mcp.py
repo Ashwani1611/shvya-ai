@@ -2269,6 +2269,7 @@ class OperationsMCPTests(TestCase):
             "http://localhost:33418",
             "https://vscode.dev/not-the-mcp-redirect",
             "https://chatgpt.com:444/aip/callback",
+            "https://chatgpt.com:bad/aip/callback",
             "https://chatgpt.com/aip/callback#fragment",
         ):
             rejected = self.client.post(
