@@ -3,7 +3,8 @@ from __future__ import annotations
 import uuid
 from copy import deepcopy
 from dataclasses import dataclass
-from datetime import time as dt_time, timedelta
+from decimal import Decimal, InvalidOperation
+from datetime import date, datetime, time as dt_time, timedelta
 
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
@@ -522,6 +523,55 @@ def _reject_secret_like_content(value, *, field="configuration"):
             f"{field} contains credential-like or secret material. "
             "Do not store secrets through SHVYA Operations MCP."
         )
+
+
+
+def _attribute_value_compatible(*, field_type, options, value):
+    """Return whether an existing stored CRM value remains valid for a definition."""
+
+    if value is None or value == "" or value == [] or value == {}:
+        return True
+    text = str(value).strip()
+    if not text:
+        return True
+    try:
+        if field_type == AttributeDefinition.FieldType.NUMERIC:
+            return Decimal(text).is_finite()
+        if field_type == AttributeDefinition.FieldType.DATE:
+            date.fromisoformat(text)
+            return True
+        if field_type == AttributeDefinition.FieldType.DATETIME:
+            datetime.fromisoformat(text)
+            return True
+        if field_type == AttributeDefinition.FieldType.OPTION:
+            return text in set(str(item) for item in (options or []))
+    except (ValueError, TypeError, InvalidOperation):
+        return False
+    return True
+
+
+def _incompatible_existing_attribute_value_count(
+    *,
+    organization,
+    attribute,
+    field_type,
+    options,
+):
+    count = 0
+    for attributes in (
+        Lead.objects.filter(organization=organization)
+        .values_list("attributes", flat=True)
+        .iterator(chunk_size=500)
+    ):
+        if not isinstance(attributes, dict) or attribute.key not in attributes:
+            continue
+        if not _attribute_value_compatible(
+            field_type=field_type,
+            options=options,
+            value=attributes.get(attribute.key),
+        ):
+            count += 1
+    return count
 
 
 
@@ -2024,6 +2074,19 @@ def upsert_pipeline_configuration(*, identity, arguments):
     ai_enabled = data.get("ai_enabled", pipeline.ai_enabled if pipeline else True)
     if not isinstance(is_active, bool) or not isinstance(ai_enabled, bool):
         raise OperationsToolError("is_active and ai_enabled must be true or false.")
+    if (
+        pipeline is not None
+        and pipeline.is_active
+        and is_active is False
+        and Lead.objects.filter(
+            organization=organization,
+            pipeline=pipeline,
+        ).exists()
+    ):
+        raise OperationsPermissionError(
+            "This pipeline still contains leads. Move those leads to another "
+            "active pipeline before deactivating it."
+        )
     duplicate = Pipeline.objects.filter(
         organization=organization,
         name__iexact=name,
@@ -2410,6 +2473,23 @@ def upsert_attribute_configuration(*, identity, arguments):
         raise OperationsPermissionError(
             "Credential-like or secret attribute definitions cannot be created through Operations MCP."
         )
+
+    if attribute is not None and (
+        field_type != attribute.field_type
+        or list(options or []) != list(attribute.options or [])
+    ):
+        incompatible_count = _incompatible_existing_attribute_value_count(
+            organization=organization,
+            attribute=attribute,
+            field_type=field_type,
+            options=options,
+        )
+        if incompatible_count:
+            raise OperationsPermissionError(
+                "This attribute type/options change would make existing CRM "
+                f"values invalid for {incompatible_count} lead(s). Update or "
+                "clear those values first, then run a new dry-run."
+            )
 
     before = (
         {
@@ -3056,8 +3136,58 @@ def add_cadence_step(*, identity, arguments):
     except FollowupError as exc:
         raise OperationsToolError(str(exc)) from exc
     step.refresh_from_db()
-    if step.sequence_id != sequence.id or step.step_type != step_type:
-        raise OperationsToolError("Cadence step verification failed.")
+    verification_errors = []
+    if step.sequence_id != sequence.id:
+        verification_errors.append("sequence")
+    if step.step_type != step_type:
+        verification_errors.append("type")
+    if step.position != step_proposal["next_position"]:
+        verification_errors.append("position")
+    if step.schedule_type != schedule["schedule_type"]:
+        verification_errors.append("schedule_type")
+    if step.delay_value != schedule["delay_value"]:
+        verification_errors.append("delay_value")
+    if step.delay_unit != schedule["delay_unit"]:
+        verification_errors.append("delay_unit")
+    if step.specific_time != schedule["specific_time"]:
+        verification_errors.append("specific_time")
+    if step.specific_weekday != schedule["specific_weekday"]:
+        verification_errors.append("specific_weekday")
+    if step.recurring_every != schedule["recurring_every"]:
+        verification_errors.append("recurring_every")
+    if step.recurring_unit != schedule["recurring_unit"]:
+        verification_errors.append("recurring_unit")
+    if list(step.recurring_weekdays or []) != list(
+        schedule["recurring_weekdays"] or []
+    ):
+        verification_errors.append("recurring_weekdays")
+
+    if step_type == "whatsapp":
+        expected_retry = int(data.get("retry_count", 0) or 0)
+        if step.whatsapp_template_id != template.id:
+            verification_errors.append("template")
+        if step.retry_count != expected_retry:
+            verification_errors.append("retry_count")
+    elif step_type == "email":
+        expected_title = (
+            str(data.get("title") or "").strip()
+            or f"Email {step.position}"
+        )
+        if step.title != expected_title:
+            verification_errors.append("title")
+        if step.email_subject != str(data.get("subject") or "").strip():
+            verification_errors.append("email_subject")
+        if step.email_body != str(data.get("body") or "").strip():
+            verification_errors.append("email_body")
+    else:
+        if step.reminder_text != str(data.get("text") or "").strip():
+            verification_errors.append("reminder_text")
+
+    if verification_errors:
+        raise OperationsToolError(
+            "Cadence step verification failed for: "
+            + ", ".join(sorted(set(verification_errors)))
+        )
     return ToolExecution(
         data={
             "status": "FIXED",
