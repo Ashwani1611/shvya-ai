@@ -1,5 +1,7 @@
 from datetime import datetime
+import logging
 import secrets
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from django.contrib import messages
 from django.core import signing
@@ -39,6 +41,9 @@ from .models import (
     CalendarSubmission,
     GoogleCalendarConnection,
 )
+logger = logging.getLogger(__name__)
+
+
 from .services import (
     attribution_from_request,
     book_slot,
@@ -49,6 +54,7 @@ from .services import (
     reschedule_booking,
     schema_from_json,
     upcoming_slot_days,
+    validate_page_for_publish,
     validate_public_submission,
 )
 
@@ -492,6 +498,7 @@ def calendar_editor_save(request, page_id):
     _require_calendar_manager(user)
     page = _page_for_user(user, page_id)
     section = request.POST.get("section") or "lead"
+    was_published = page.status == CalendarPage.Status.PUBLISHED
 
     try:
         if section == "lead":
@@ -520,12 +527,58 @@ def calendar_editor_save(request, page_id):
 
         page.updated_by = user
         page.full_clean()
+
+        publish_validation_error = None
+        if was_published:
+            try:
+                validate_page_for_publish(page)
+            except ValidationError as exc:
+                publish_validation_error = exc
+                page.status = CalendarPage.Status.DISABLED
+
         page.save()
-        if page.status == CalendarPage.Status.PUBLISHED:
-            publish_page(page=page, actor=user)
-        messages.success(request, "SHVYA Calendar settings saved.")
+
+        if was_published and publish_validation_error is None:
+            try:
+                publish_page(page=page, actor=user)
+            except ValidationError as exc:
+                page.status = CalendarPage.Status.DISABLED
+                page.save(update_fields=["status", "updated_at"])
+                publish_validation_error = exc
+            except Exception:
+                logger.exception(
+                    "Unable to republish SHVYA Calendar page %s after settings save.",
+                    page.id,
+                )
+                page.status = CalendarPage.Status.DISABLED
+                page.save(update_fields=["status", "updated_at"])
+                publish_validation_error = ValidationError(
+                    "Settings were saved, but the public page was disabled because "
+                    "the new version could not be published safely."
+                )
+
+        if publish_validation_error is not None:
+            messages.warning(
+                request,
+                (
+                    "Settings saved. The public page was disabled until this is fixed: "
+                    f"{_validation_text(publish_validation_error)}"
+                ),
+            )
+        else:
+            messages.success(request, "SHVYA Calendar settings saved.")
     except ValidationError as exc:
         messages.error(request, _validation_text(exc))
+    except Exception:
+        logger.exception(
+            "Unexpected error while saving SHVYA Calendar page %s section %s.",
+            page.id,
+            section,
+        )
+        messages.error(
+            request,
+            "Unable to save these Calendar settings right now. No unsafe changes were published.",
+        )
 
     tab_map = {
         "lead": "lead",
@@ -546,6 +599,7 @@ def calendar_status(request, page_id):
     _require_calendar_manager(user)
     page = _page_for_user(user, page_id)
     action = request.POST.get("action") or ""
+
     try:
         if action == "publish":
             publish_page(page=page, actor=user)
@@ -559,6 +613,17 @@ def calendar_status(request, page_id):
             raise ValidationError("Unknown page status action.")
     except ValidationError as exc:
         messages.error(request, _validation_text(exc))
+    except Exception:
+        logger.exception(
+            "Unable to change SHVYA Calendar page %s status using action %s.",
+            page.id,
+            action,
+        )
+        messages.error(
+            request,
+            "Unable to change Booking Page Status right now. The existing page status was kept.",
+        )
+
     return redirect("shvya_calendar:editor", page_id=page.id)
 
 
@@ -663,10 +728,16 @@ def calendar_block_add(request, page_id):
     try:
         starts = datetime.fromisoformat(request.POST.get("starts_at") or "")
         ends = datetime.fromisoformat(request.POST.get("ends_at") or "")
+        try:
+            page_zone = ZoneInfo(page.timezone)
+        except ZoneInfoNotFoundError as exc:
+            raise ValidationError("Choose a valid booking timezone first.") from exc
         if timezone.is_naive(starts):
-            starts = timezone.make_aware(starts)
+            starts = starts.replace(tzinfo=page_zone)
         if timezone.is_naive(ends):
-            ends = timezone.make_aware(ends)
+            ends = ends.replace(tzinfo=page_zone)
+        starts = starts.astimezone(timezone.utc)
+        ends = ends.astimezone(timezone.utc)
         block = CalendarBlock(
             page=page,
             starts_at=starts,
@@ -910,8 +981,8 @@ def _verify_booking_flow_token(token, page, submission):
         raise ValidationError("This booking session is no longer valid.")
 
 
-def _public_page(public_id, slug):
-    return get_object_or_404(
+def _public_page(public_id, slug, *, require_published=True):
+    page = get_object_or_404(
         CalendarPage.objects.select_related(
             "organization",
             "pipeline",
@@ -920,8 +991,10 @@ def _public_page(public_id, slug):
         ),
         public_id=public_id,
         slug=slug,
-        status=CalendarPage.Status.PUBLISHED,
     )
+    if require_published and page.status != CalendarPage.Status.PUBLISHED:
+        raise Http404
+    return page
 
 
 def _rate_limit_public(request, page):
@@ -951,10 +1024,20 @@ def _rate_limit_public(request, page):
 @xframe_options_exempt
 @require_GET
 def public_page(request, public_id, slug):
-    page = _public_page(public_id, slug)
+    page = _public_page(public_id, slug, require_published=False)
     version = latest_published_version(page)
-    if version is None:
-        raise Http404
+
+    if page.status != CalendarPage.Status.PUBLISHED or version is None:
+        return render(
+            request,
+            "shvya_calendar/unavailable.html",
+            {
+                "page": page,
+                "preview_url": None,
+            },
+            status=200,
+        )
+
     return render(
         request,
         "shvya_calendar/public.html",
