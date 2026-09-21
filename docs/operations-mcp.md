@@ -30,7 +30,7 @@ It does not automatically expose customer data. Before any customer-specific too
 While a Superadmin support context is active:
 
 - all customer-specific queries are forced into that organization;
-- organization users can see that SHVYA Support is active from their Connect Hub / SHVYA API page;
+- organization users can see that SHVYA Support is active across the shared dashboard workspace, including Connect Hub / SHVYA API;
 - the Superadmin organization page also shows the live support session;
 - tool calls are linked to the support session in the Operations audit ledger.
 
@@ -152,7 +152,7 @@ The audit stores bounded metadata:
 
 It does not store raw OAuth tokens, provider credentials, raw tool arguments, full conversations or hidden model reasoning.
 
-Operations audit rows are append-only at the model boundary.
+Operations audit rows are append-only at both model-instance and queryset ORM boundaries; normal `.save()`, instance `.delete()`, bulk `.update()` and queryset `.delete()` rewrites are blocked.
 
 ## Untrusted content and secrets
 
@@ -188,6 +188,7 @@ Operations MCP is a separate authorization, policy, support-context and audit bo
 - `apps/integrations/operations_models.py`
 - `apps/integrations/operations_policy.py`
 - `apps/integrations/operations_auth.py`
+- `apps/integrations/operations_agent_prompt.py`
 - `apps/integrations/operations_tools.py`
 - `apps/integrations/views/operations_mcp.py`
 - `apps/integrations/migrations/0006_operations_mcp.py`
