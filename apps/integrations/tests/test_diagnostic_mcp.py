@@ -253,6 +253,27 @@ class DiagnosticOAuthTests(TestCase):
             update_fields=["can_upsert_leads", "can_read_diagnostics"]
         )
 
+    def _call(self, name, arguments=None, token=None):
+        headers = {}
+        if token:
+            headers["HTTP_AUTHORIZATION"] = "Bearer " + token
+        return self.client.post(
+            "/mcp/",
+            data=json.dumps(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "tools/call",
+                    "params": {
+                        "name": name,
+                        "arguments": arguments or {},
+                    },
+                }
+            ),
+            content_type="application/json",
+            **headers,
+        )
+
     def _register(self):
         response = self.client.post(
             "/oauth/register",
