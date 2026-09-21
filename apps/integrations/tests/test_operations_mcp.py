@@ -3321,6 +3321,24 @@ class OperationsMCPTests(TestCase):
 
         token.refresh_from_db()
         self.assertIsNotNone(token.revoked_at)
+        revoke_audit = OperationsAuditEvent.objects.get(
+            actor=self.admin,
+            organization=self.organization,
+            tool_name="oauth_auto_revoke",
+            target_id=str(token.id),
+        )
+        self.assertEqual(
+            revoke_audit.change_summary["reason_code"],
+            "live_authority_invalid",
+        )
+        self.assertNotIn(
+            "test-access",
+            json.dumps(revoke_audit.change_summary),
+        )
+        self.assertNotIn(
+            "test-refresh",
+            json.dumps(revoke_audit.change_summary),
+        )
 
         self.admin.role = User.Role.ADMIN
         self.admin.save(update_fields=["role", "updated_at"])
@@ -3555,6 +3573,21 @@ class OperationsMCPTests(TestCase):
         support.refresh_from_db()
         self.assertIsNotNone(token.revoked_at)
         self.assertIsNotNone(support.ended_at)
+        revoke_audit = OperationsAuditEvent.objects.get(
+            actor=self.superadmin,
+            organization=self.organization,
+            tool_name="oauth_auto_revoke",
+            target_id=str(token.id),
+        )
+        self.assertEqual(
+            revoke_audit.support_session_id,
+            support.id,
+        )
+        self.assertTrue(
+            revoke_audit.change_summary[
+                "support_session_closed"
+            ]
+        )
 
         self.superadmin.is_superuser = True
         self.superadmin.save(update_fields=["is_superuser", "updated_at"])
