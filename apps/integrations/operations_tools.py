@@ -1626,6 +1626,8 @@ def get_conversion_analysis(*, identity, arguments):
             ],
             created_at__gte=start_at,
             created_at__lt=end_at,
+            lead__created_at__gte=start_at,
+            lead__created_at__lt=end_at,
             new_stage_name__iexact="Qualified",
         )
         qualified_ids = qualified_activity.values_list(
@@ -1636,11 +1638,7 @@ def get_conversion_analysis(*, identity, arguments):
         qualified_by_source = {
             row["lead__lead_source"]: row["count"]
             for row in (
-                qualified_activity.filter(
-                    lead__created_at__gte=start_at,
-                    lead__created_at__lt=end_at,
-                )
-                .values("lead__lead_source")
+                qualified_activity.values("lead__lead_source")
                 .annotate(count=Count("lead_id", distinct=True))
             )
         }
