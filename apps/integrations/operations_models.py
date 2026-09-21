@@ -124,6 +124,11 @@ class OperationsOAuthAuthorizationCode(models.Model):
     redirect_uri = models.URLField(max_length=2048)
     code_challenge = models.CharField(max_length=128)
     scope = models.CharField(max_length=512)
+    granted_capabilities = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="Consent-time Operations capability snapshot.",
+    )
     resource = models.URLField(max_length=2048)
     expires_at = models.DateTimeField(db_index=True)
     used_at = models.DateTimeField(null=True, blank=True)
@@ -167,6 +172,11 @@ class OperationsOAuthToken(models.Model):
     access_token_hash = models.CharField(max_length=64, unique=True, db_index=True)
     refresh_token_hash = models.CharField(max_length=64, unique=True, db_index=True)
     scope = models.CharField(max_length=512)
+    granted_capabilities = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="Consent-time Operations capability snapshot.",
+    )
     resource = models.URLField(max_length=2048)
     expires_at = models.DateTimeField(db_index=True)
     refresh_expires_at = models.DateTimeField(db_index=True)
