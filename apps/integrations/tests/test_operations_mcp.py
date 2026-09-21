@@ -55,6 +55,7 @@ from apps.integrations.operations_policy import (
     CAP_WORKFLOW_CONFIG_WRITE,
     ROLE_ORGANIZATION_ADMIN,
     ROLE_SUPERADMIN,
+    capabilities_for_grant,
 )
 from apps.organizations.models import Organization
 from apps.triggers.models import SmartTrigger
@@ -124,8 +125,34 @@ class OperationsMCPTests(TestCase):
             response_types=["code"],
         )
 
-    def _token(self, *, actor, role, organization=None, scopes=None):
+    def _token(
+        self,
+        *,
+        actor,
+        role,
+        organization=None,
+        scopes=None,
+        granted_capabilities=None,
+    ):
         raw = "test-bearer"
+        scope_values = (
+            scopes
+            or [
+                OPERATIONS_READ_SCOPE,
+                OPERATIONS_WRITE_SCOPE,
+            ]
+        )
+        if granted_capabilities is None:
+            granted_capabilities = sorted(
+                capabilities_for_grant(
+                    role=role,
+                    organization=organization,
+                    allow_writes=(
+                        OPERATIONS_WRITE_SCOPE
+                        in scope_values
+                    ),
+                )
+            )
         OperationsOAuthToken.objects.create(
             client=self.oauth_client,
             actor=actor,
@@ -133,8 +160,9 @@ class OperationsMCPTests(TestCase):
             role=role,
             access_token_hash=token_hash(raw),
             refresh_token_hash=token_hash("test-refresh"),
-            scope=" ".join(
-                scopes or [OPERATIONS_READ_SCOPE, OPERATIONS_WRITE_SCOPE]
+            scope=" ".join(scope_values),
+            granted_capabilities=list(
+                granted_capabilities
             ),
             resource="http://testserver/operations/mcp/",
             expires_at=timezone.now() + timedelta(hours=4),
