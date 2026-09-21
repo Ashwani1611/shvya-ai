@@ -10,6 +10,7 @@ from apps.integrations.diagnostic_auth import (
     validate_authorization_request as validate_diagnostic_authorization,
 )
 from apps.integrations.mcp_oauth_clients import (
+    fetch_cimd_metadata,
     is_allowed_cimd_url,
     is_allowed_external_ai_redirect,
 )
@@ -107,6 +108,36 @@ class MCPSharedValidationTests(SimpleTestCase):
             is_allowed_external_ai_redirect(
                 "https://vscode.dev/arbitrary"
             )
+        )
+
+    @patch("apps.integrations.mcp_oauth_clients.requests.get")
+    def test_chatgpt_cimd_plural_public_auth_metadata_is_accepted(self, mocked):
+        client_id = "https://chatgpt.com/oauth/client.json"
+
+        class Response:
+            status_code = 200
+            headers = {}
+            content = b"{}"
+
+            def json(self):
+                return {
+                    "client_id": client_id,
+                    "client_name": "ChatGPT",
+                    "redirect_uris": [
+                        "https://chatgpt.com/connector_platform_oauth_redirect"
+                    ],
+                    "grant_types": ["authorization_code", "refresh_token"],
+                    "response_types": ["code"],
+                    "token_endpoint_auth_methods_supported": ["none"],
+                    "token_endpoint_auth_method": "none",
+                }
+
+        mocked.return_value = Response()
+        metadata = fetch_cimd_metadata(client_id)
+        self.assertEqual(metadata["client_id"], client_id)
+        self.assertEqual(
+            metadata["redirect_uris"],
+            ["https://chatgpt.com/connector_platform_oauth_redirect"],
         )
 
     def test_org_visible_support_reason_hides_internal_context_reason(self):
