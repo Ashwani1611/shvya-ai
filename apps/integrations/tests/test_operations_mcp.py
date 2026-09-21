@@ -2263,6 +2263,51 @@ class OperationsMCPTests(TestCase):
         self.assertTrue(old_token_result["isError"])
         self.assertIn("mcp/www_authenticate", old_token_result["_meta"])
 
+    def test_invalid_refresh_authority_commits_permanent_grant_revocation(self):
+        OperationsPolicy.objects.create(
+            organization=self.organization,
+            organization_admin_enabled=True,
+            allowed_capabilities=[CAP_ORGANIZATION_READ],
+        )
+        self._token(
+            actor=self.admin,
+            role=ROLE_ORGANIZATION_ADMIN,
+            organization=self.organization,
+            scopes=[OPERATIONS_READ_SCOPE],
+        )
+        token = OperationsOAuthToken.objects.get(actor=self.admin)
+
+        self.admin.role = User.Role.AGENT
+        self.admin.save(update_fields=["role", "updated_at"])
+
+        denied = self.client.post(
+            reverse("shvya-operations-oauth-token"),
+            {
+                "grant_type": "refresh_token",
+                "client_id": self.oauth_client.client_id,
+                "refresh_token": "test-refresh",
+                "resource": "http://testserver/operations/mcp/",
+            },
+        )
+        self.assertEqual(denied.status_code, 400)
+
+        token.refresh_from_db()
+        self.assertIsNotNone(token.revoked_at)
+
+        self.admin.role = User.Role.ADMIN
+        self.admin.save(update_fields=["role", "updated_at"])
+
+        still_denied = self.client.post(
+            reverse("shvya-operations-oauth-token"),
+            {
+                "grant_type": "refresh_token",
+                "client_id": self.oauth_client.client_id,
+                "refresh_token": "test-refresh",
+                "resource": "http://testserver/operations/mcp/",
+            },
+        )
+        self.assertEqual(still_denied.status_code, 400)
+
     def test_oauth_refresh_rotates_tokens_without_extending_grant_lifetime(self):
         OperationsPolicy.objects.create(
             organization=self.organization,
