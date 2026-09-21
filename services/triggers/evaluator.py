@@ -74,6 +74,16 @@ def matches(rule, lead, payload):
         return (
             payload.get("status") == c["call_status"] and payload.get("manual") is True
         )
+    if rule.trigger_type == "call_intelligence_ready":
+        intent = payload.get("intent", "unknown")
+        try:
+            score = int(payload.get("ai_score") or 0)
+        except (TypeError, ValueError):
+            score = 0
+        return (
+            c.get("intent", "any") in {"any", intent}
+            and score >= int(c.get("min_ai_score", 0))
+        )
     return True
 
 

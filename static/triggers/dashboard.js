@@ -31,7 +31,8 @@
   const help = {
     stage_moved:'Runs when a lead enters a selected stage.', sequence_ended:'Runs when a selected Auto Follow-up sequence finishes. Pipeline filters are optional.',
     lead_created:'Runs when a new lead is added, including imports.', no_response:'Runs after the latest sent WhatsApp message goes unanswered for this long.',
-    keyword:'Matches incoming WhatsApp messages. Use * to match any message.', stage_idle:'Runs once per stage entry, after the selected duration.', call_logged:'Uses the original CRM call statuses. Only calls logged by a team member are included.'
+    keyword:'Matches incoming WhatsApp messages. Use * to match any message.', stage_idle:'Runs once per stage entry, after the selected duration.', call_logged:'Uses the original CRM call statuses. Only calls logged by a team member are included.',
+    call_intelligence_ready:'Runs after grounded Call Intelligence analysis is saved. Use intent and score to drive validated CRM actions.'
   };
   async function api(path='', method='GET', body) {
     const response = await fetch(root.dataset.api + path, {method, credentials:'same-origin', headers:{'Content-Type':'application/json','X-CSRFToken':root.querySelector('[name=csrfmiddlewaretoken]').value}, body: body === undefined ? undefined : JSON.stringify(body)});
@@ -103,6 +104,10 @@
         `<p class="st-hint">${cat.sequences.length?'Runs when any selected sequence completes. Pipeline filters are optional.':'No active sequences available. Create a sequence in Cadence first.'}</p><button type="button" class="st-link" id="c-add-sequence" ${cat.sequences.length?'':'disabled'}>＋ Add another sequence</button>`;
     }
     if(kind==='call_logged')html=label('Call status',`<select id="c-call-status" required>${option('','Select status',c.call_status)}${Object.entries(cat.call_statuses).map(([k,v])=>option(k,v,c.call_status)).join('')}</select>`);
+    if(kind==='call_intelligence_ready')html=
+      label('Intent',`<select id="c-call-intent" required>${Object.entries(cat.call_intents||{}).map(([k,v])=>option(k,v,c.intent||'any')).join('')}</select>`)+
+      label('Minimum AI score',input('c-min-ai-score',c.min_ai_score??0,'number','min="0" max="10" step="1" required'))+
+      '<p class="st-hint">AI emits evidence-backed analysis only. The selected workflow action still runs through SHVYA\'s validated action layer.</p>';
     $('st-trigger-extra').innerHTML=html;
     $('c-add-sequence')?.addEventListener('click',()=>{readDraft();draft.conditions.sequences.push('');dirty=true;renderTrigger();});
     $('st-trigger-extra').querySelectorAll('[data-remove-sequence]').forEach(button=>button.onclick=()=>{readDraft();draft.conditions.sequences.splice(Number(button.dataset.removeSequence),1);dirty=true;renderTrigger();});
@@ -165,6 +170,8 @@
     if($('c-keywords'))c.keywords=$('c-keywords').value.split(',').map(x=>x.trim()).filter(Boolean);
     if($('c-sequences'))c.sequences=[...root.querySelectorAll('[data-trigger-sequence]')].map(el=>el.value);
     if($('c-call-status'))c.call_status=$('c-call-status').value;
+    if($('c-call-intent'))c.intent=$('c-call-intent').value;
+    if($('c-min-ai-score'))c.min_ai_score=Number($('c-min-ai-score').value);
   }
   function summary(){
     $('st-name-count').textContent=`${$('st-name').value.length} / 255`;

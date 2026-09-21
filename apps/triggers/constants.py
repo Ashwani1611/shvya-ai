@@ -6,6 +6,7 @@ TRIGGERS = {
     "keyword": "Keyword detected",
     "stage_idle": "Lead stays in a stage",
     "call_logged": "Call is logged",
+    "call_intelligence_ready": "Call intelligence is ready",
 }
 ACTIONS = {
     "start_sequence": "Initiate a sequence",
