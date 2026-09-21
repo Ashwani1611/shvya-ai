@@ -18,6 +18,7 @@ class CallIntelligenceSettings(models.Model):
     auto_create_answered_outgoing = models.BooleanField(default=True)
     auto_create_missed = models.BooleanField(default=True)
     auto_create_rejected = models.BooleanField(default=False)
+    auto_create_unknown = models.BooleanField(default=False)
     default_pipeline = models.ForeignKey(
         "crm.Pipeline",
         on_delete=models.SET_NULL,
@@ -66,6 +67,44 @@ class CallIntelligenceSettings(models.Model):
 
     def __str__(self):
         return f"{self.organization.name} — Call Intelligence"
+
+
+class CallDisposition(models.Model):
+    class Category(models.TextChoices):
+        CONNECTED = "connected", "Connected"
+        NOT_CONNECTED = "not_connected", "Not Connected"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    organization = models.ForeignKey(
+        Organization,
+        on_delete=models.CASCADE,
+        related_name="call_dispositions",
+    )
+    code = models.CharField(max_length=80)
+    name = models.CharField(max_length=120)
+    category = models.CharField(max_length=24, choices=Category.choices, default=Category.CONNECTED)
+    position = models.PositiveIntegerField(default=0)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["category", "position", "name"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["organization", "code"],
+                name="telephony_org_disposition_unique",
+            )
+        ]
+        indexes = [
+            models.Index(
+                fields=["organization", "is_active", "position"],
+                name="telephony_org_disp_idx",
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.organization.name} — {self.name}"
 
 
 class CallDevice(models.Model):
@@ -166,6 +205,8 @@ class CallRecord(models.Model):
     )
     source = models.CharField(max_length=24, choices=Source.choices, default=Source.ANDROID_SIM)
     source_call_id = models.CharField(max_length=255)
+    provider = models.CharField(max_length=80, blank=True)
+    provider_call_id = models.CharField(max_length=255, blank=True)
     phone_number = models.CharField(max_length=32)
     raw_phone_number = models.CharField(max_length=64, blank=True)
     contact_name = models.CharField(max_length=255, blank=True)
@@ -180,6 +221,11 @@ class CallRecord(models.Model):
     ring_duration_seconds = models.PositiveIntegerField(default=0)
     talk_duration_seconds = models.PositiveIntegerField(default=0)
     total_duration_seconds = models.PositiveIntegerField(default=0)
+    recording_url = models.URLField(max_length=1000, blank=True)
+    recording_status = models.CharField(max_length=32, blank=True)
+    transcript_status = models.CharField(max_length=32, blank=True)
+    transcript = models.TextField(blank=True)
+    transcript_speakers = models.JSONField(default=list, blank=True)
     notes = models.TextField(blank=True)
     disposition = models.CharField(max_length=80, blank=True)
     follow_up_required = models.BooleanField(default=False)
@@ -204,7 +250,7 @@ class CallRecord(models.Model):
         ordering = ["-ended_at", "-created_at"]
         constraints = [
             models.UniqueConstraint(
-                fields=["organization", "device", "source", "source_call_id"],
+                fields=["organization", "source", "source_call_id"],
                 name="telephony_source_call_unique",
             )
         ]
@@ -231,6 +277,11 @@ class CallEvent(models.Model):
         NO_ANSWER = "no_answer", "No Answer"
         FAILED = "failed", "Failed"
         RECONCILED = "reconciled", "Reconciled"
+        RECORDING_READY = "recording_ready", "Recording Ready"
+        TRANSCRIPTION_STARTED = "transcription_started", "Transcription Started"
+        TRANSCRIPTION_COMPLETED = "transcription_completed", "Transcription Completed"
+        AI_ANALYSIS_STARTED = "ai_analysis_started", "AI Analysis Started"
+        AI_ANALYSIS_COMPLETED = "ai_analysis_completed", "AI Analysis Completed"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     event_uuid = models.UUIDField(unique=True)
@@ -291,6 +342,13 @@ class CallIntelligenceResult(models.Model):
     budget = models.CharField(max_length=255, blank=True)
     timeline = models.CharField(max_length=255, blank=True)
     next_action = models.CharField(max_length=255, blank=True)
+    product_interest = models.CharField(max_length=255, blank=True)
+    decision_maker = models.CharField(max_length=16, blank=True)
+    follow_up_at = models.DateTimeField(null=True, blank=True)
+    ai_score = models.PositiveSmallIntegerField(null=True, blank=True)
+    qualification_score = models.PositiveSmallIntegerField(null=True, blank=True)
+    agent_metrics = models.JSONField(default=dict, blank=True)
+    compliance_flags = models.JSONField(default=list, blank=True)
     extracted_attributes = models.JSONField(default=list, blank=True)
     raw_analysis = models.JSONField(default=dict, blank=True)
     model = models.CharField(max_length=100, blank=True)

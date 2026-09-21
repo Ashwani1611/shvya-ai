@@ -1,6 +1,7 @@
 from .call_log import (
     CallAppRelease,
     CallDevice,
+    CallDisposition,
     CallEvent,
     CallIntelligenceResult,
     CallIntelligenceSettings,
@@ -10,6 +11,7 @@ from .call_log import (
 __all__ = [
     "CallAppRelease",
     "CallDevice",
+    "CallDisposition",
     "CallEvent",
     "CallIntelligenceResult",
     "CallIntelligenceSettings",

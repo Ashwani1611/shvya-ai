@@ -3,6 +3,7 @@ from django.contrib import admin
 from .models import (
     CallAppRelease,
     CallDevice,
+    CallDisposition,
     CallEvent,
     CallIntelligenceResult,
     CallIntelligenceSettings,
@@ -17,6 +18,14 @@ class CallIntelligenceSettingsAdmin(admin.ModelAdmin):
         "auto_create_missed", "updated_at",
     )
     search_fields = ("organization__name",)
+
+
+@admin.register(CallDisposition)
+class CallDispositionAdmin(admin.ModelAdmin):
+    list_display = ("name", "code", "category", "organization", "position", "is_active")
+    list_filter = ("category", "is_active", "organization")
+    search_fields = ("name", "code", "organization__name")
+    ordering = ("organization", "category", "position", "name")
 
 
 @admin.register(CallDevice)
