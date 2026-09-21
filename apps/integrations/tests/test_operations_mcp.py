@@ -3816,6 +3816,147 @@ class OperationsMCPTests(TestCase):
             0,
         )
 
+    def test_bounded_diagnostic_reads_report_truncation(self):
+        OperationsPolicy.objects.create(
+            organization=self.organization,
+            organization_admin_enabled=True,
+            allowed_capabilities=[
+                CAP_ORGANIZATION_READ,
+                CAP_DIAGNOSTICS_READ,
+            ],
+        )
+        for index in range(11):
+            Lead.objects.create(
+                organization=self.organization,
+                pipeline=self.pipeline,
+                stage=self.new_stage,
+                name=f"Bounded Diagnostic Lead {index:02d}",
+                phone=f"+918600000{index:03d}",
+            )
+
+        account = WhatsAppAccount.objects.create(
+            organization=self.organization,
+            connection_type=WhatsAppAccount.ConnectionType.API,
+            business_name="Bounded Diagnostic Sender",
+            display_phone_number="+919000000066",
+            phone_number_id="bounded-diagnostic-sender",
+            status=WhatsAppAccount.Status.CONNECTED,
+            is_active=True,
+        )
+        for index in range(6):
+            WhatsAppMessage.objects.create(
+                organization=self.organization,
+                account=account,
+                lead=self.lead,
+                external_id=f"bounded-conversation-{index:02d}",
+                direction=WhatsAppMessage.Direction.INBOUND,
+                status=WhatsAppMessage.Status.RECEIVED,
+                message_type=WhatsAppMessage.MessageType.TEXT,
+                from_number="+919100000066",
+                to_number="+919000000066",
+                body=f"Conversation message {index:02d}",
+            )
+        for index in range(2):
+            WhatsAppMessage.objects.create(
+                organization=self.organization,
+                account=account,
+                lead=self.lead,
+                external_id=f"bounded-error-{index:02d}",
+                direction=WhatsAppMessage.Direction.OUTBOUND,
+                status=WhatsAppMessage.Status.FAILED,
+                message_type=WhatsAppMessage.MessageType.TEXT,
+                from_number="+919000000066",
+                to_number="+919100000066",
+                body="Failed diagnostic message",
+                error="provider failure",
+            )
+        for index in range(2):
+            TriggerEvent.objects.create(
+                organization=self.organization,
+                lead=self.lead,
+                kind="lead_updated",
+                key=f"bounded-event-{index:02d}",
+                payload={},
+            )
+
+        bearer = self._token(
+            actor=self.admin,
+            role=ROLE_ORGANIZATION_ADMIN,
+            organization=self.organization,
+            scopes=[OPERATIONS_READ_SCOPE],
+        )
+
+        found = self._result(
+            self._call(
+                bearer,
+                "find_leads",
+                {
+                    "query": "Bounded Diagnostic Lead",
+                    "limit": 10,
+                },
+            )
+        )
+        self.assertFalse(found["isError"])
+        found_data = found["structuredContent"]
+        self.assertEqual(found_data["match_count"], 11)
+        self.assertEqual(found_data["matches_returned"], 10)
+        self.assertTrue(found_data["matches_truncated"])
+
+        conversation = self._result(
+            self._call(
+                bearer,
+                "get_conversation",
+                {
+                    "lead_id": str(self.lead.id),
+                    "channel": "whatsapp",
+                    "limit": 5,
+                },
+            )
+        )
+        self.assertFalse(conversation["isError"])
+        conversation_data = conversation["structuredContent"]
+        self.assertGreaterEqual(conversation_data["message_count"], 8)
+        self.assertEqual(conversation_data["messages_returned"], 5)
+        self.assertTrue(conversation_data["messages_truncated"])
+        self.assertEqual(
+            conversation_data["channel_counts"]["instagram"],
+            0,
+        )
+
+        workflow = self._result(
+            self._call(
+                bearer,
+                "get_workflow_trace",
+                {
+                    "lead_id": str(self.lead.id),
+                    "limit": 1,
+                },
+            )
+        )
+        self.assertFalse(workflow["isError"])
+        workflow_data = workflow["structuredContent"]
+        self.assertGreaterEqual(workflow_data["event_count"], 2)
+        self.assertEqual(workflow_data["events_returned"], 1)
+        self.assertTrue(workflow_data["events_truncated"])
+
+        recent = self._result(
+            self._call(
+                bearer,
+                "get_recent_errors",
+                {
+                    "hours": 24,
+                    "limit": 1,
+                },
+            )
+        )
+        self.assertFalse(recent["isError"])
+        whatsapp_counts = recent["structuredContent"][
+            "result_counts"
+        ]["whatsapp"]
+        self.assertGreaterEqual(whatsapp_counts["total"], 2)
+        self.assertEqual(whatsapp_counts["returned"], 1)
+        self.assertTrue(whatsapp_counts["truncated"])
+
     def test_ai_diagnostics_are_read_only_and_never_decrypt_provider_credentials(self):
         OperationsPolicy.objects.create(
             organization=self.organization,
