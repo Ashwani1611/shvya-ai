@@ -41,9 +41,6 @@ from .models import (
     CalendarSubmission,
     GoogleCalendarConnection,
 )
-logger = logging.getLogger(__name__)
-
-
 from .services import (
     attribution_from_request,
     book_slot,
@@ -57,6 +54,9 @@ from .services import (
     validate_page_for_publish,
     validate_public_submission,
 )
+
+
+logger = logging.getLogger(__name__)
 
 
 def _validation_text(exc):
