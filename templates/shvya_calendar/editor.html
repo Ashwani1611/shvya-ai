@@ -64,6 +64,7 @@
             <label class="sc-field"><span>Public slug</span><div class="sc-input-prefix"><b>/calendar/…/</b><input name="slug" maxlength="120" value="{{ page.slug }}" required></div></label>
             <label class="sc-field"><span>Page type</span><select name="page_type"><option value="lead" {% if page.page_type == 'lead' %}selected{% endif %}>Lead capture only</option><option value="booking" {% if page.page_type == 'booking' %}selected{% endif %}>Booking</option><option value="lead_booking" {% if page.page_type == 'lead_booking' %}selected{% endif %}>Lead capture + booking</option></select></label>
             <label class="sc-field"><span>Accent color</span><div class="sc-color-input"><input type="color" value="{{ page.accent_color }}" data-color-picker><input name="accent_color" value="{{ page.accent_color }}" data-color-text></div></label>
+            <label class="sc-field"><span>Page language</span><select name="language"><option value="en" {% if page.language == 'en' %}selected{% endif %}>English</option><option value="hi" {% if page.language == 'hi' %}selected{% endif %}>Hindi</option></select></label>
             <label class="sc-field sc-field-wide"><span>Logo URL</span><input type="url" name="logo_url" value="{{ page.logo_url }}" placeholder="https://…"><small>Optional brand mark for the public page.</small></label>
             <label class="sc-field"><span>Heading</span><input name="intro_title" maxlength="120" value="{{ page.intro_title }}" placeholder="Book a product demo"></label>
             <label class="sc-field"><span>Description</span><textarea name="intro_description" rows="3" placeholder="A short reason to book.">{{ page.intro_description }}</textarea></label>
@@ -94,6 +95,7 @@
             <label class="sc-field"><span>Initial stage *</span><select name="stage" id="sc-stage" required><option value="">Choose stage</option>{% for stage in stages %}<option value="{{ stage.id }}" data-pipeline="{{ stage.pipeline_id }}" {% if page.stage_id == stage.id %}selected{% endif %}>{{ stage.name }}</option>{% endfor %}</select></label>
             <label class="sc-field"><span>Booking host</span><select name="host"><option value="">Choose host</option>{% for member in organization_users %}<option value="{{ member.id }}" {% if page.host_id == member.id %}selected{% endif %}>{{ member.name|default:member.email }} · {{ member.email }}</option>{% endfor %}</select></label>
             <label class="sc-field"><span>Lead source</span><input value="SHVYA Calendar" disabled><small>New calendar leads are permanently attributed to SHVYA Calendar.</small></label>
+            <label class="sc-field"><span>Lead name prefix</span><input name="lead_name_prefix" maxlength="60" value="{{ page.lead_name_prefix }}" placeholder="e.g. Demo - "><small>Applied only when a new lead is created. Existing lead names stay untouched.</small></label>
           </div>
           <div class="sc-info-strip"><i class="ti ti-shield-check"></i><span>Existing leads keep their current pipeline, stage and phone. New leads use the routing above.</span></div>
         </div>
@@ -114,7 +116,10 @@
         <summary><span class="sc-summary-icon"><i class="ti ti-bell"></i></span><span><strong>Internal Notifications</strong><small>Tell the right people when a lead submits this page.</small></span><i class="ti ti-chevron-down"></i></summary>
         <div class="sc-accordion-body">
           <label class="sc-toggle-row"><span><strong>Notify booking host</strong><small>Email the selected host when a lead is captured.</small></span><input type="checkbox" name="notify_host_on_submission" {% if page.notify_host_on_submission %}checked{% endif %}></label>
-          <label class="sc-field sc-field-wide"><span>Additional organization users</span><select name="notify_user_ids" multiple size="5">{% for member in organization_users %}<option value="{{ member.id }}" {% if member.id|stringformat:"s" in page.notify_user_ids %}selected{% endif %}>{{ member.name|default:member.email }} · {{ member.email }}</option>{% endfor %}</select><small>Only active users from this organization can be selected.</small></label>
+          <div class="sc-grid-2">
+            <label class="sc-field"><span>Notify by role</span><select name="notify_roles" multiple size="3"><option value="admin" {% if 'admin' in page.notify_roles %}selected{% endif %}>Organization Admins</option><option value="agent" {% if 'agent' in page.notify_roles %}selected{% endif %}>Agents</option></select><small>Role recipients are always resolved inside this organization.</small></label>
+            <label class="sc-field"><span>Additional organization users</span><select name="notify_user_ids" multiple size="5">{% for member in organization_users %}<option value="{{ member.id }}" {% if member.id|stringformat:"s" in page.notify_user_ids %}selected{% endif %}>{{ member.name|default:member.email }} · {{ member.email }}</option>{% endfor %}</select><small>Only active users from this organization can be selected.</small></label>
+          </div>
         </div>
       </details>
 
@@ -124,6 +129,12 @@
           <label class="sc-field sc-field-wide"><span>Submit button text</span><input name="submit_button_text" maxlength="80" value="{{ page.submit_button_text }}" placeholder="Continue to scheduling"></label>
           <label class="sc-toggle-row"><span><strong>Show consent checkbox</strong><small>Consent text is snapshotted with the published page and submission.</small></span><input type="checkbox" name="consent_enabled" {% if page.consent_enabled %}checked{% endif %}></label>
           <label class="sc-field sc-field-wide"><span>Consent text</span><textarea name="consent_text" maxlength="300">{{ page.consent_text }}</textarea></label>
+          <label class="sc-toggle-row"><span><strong>Send lead acknowledgement email</strong><small>Uses the email field mapped in this form. Useful for lead-only pages and enquiries.</small></span><input type="checkbox" name="acknowledgement_enabled" {% if page.acknowledgement_enabled %}checked{% endif %}></label>
+          <div class="sc-grid-2">
+            <label class="sc-field"><span>Acknowledgement subject</span><input name="acknowledgement_subject" maxlength="180" value="{{ page.acknowledgement_subject }}"></label>
+            <label class="sc-field"><span>Variables</span><input value="&#123;&#123;lead.name&#125;&#125; · &#123;&#123;organization.name&#125;&#125; · &#123;&#123;page.name&#125;&#125;" disabled></label>
+            <label class="sc-field sc-field-wide"><span>Acknowledgement email</span><textarea name="acknowledgement_body" rows="5">{{ page.acknowledgement_body }}</textarea></label>
+          </div>
           <div class="sc-security-grid"><div><i class="ti ti-shield-lock"></i><strong>Server allowlist</strong><span>Unknown form fields are rejected.</span></div><div><i class="ti ti-clock-shield"></i><strong>Rate limiting</strong><span>Public submissions are throttled per page and IP fingerprint.</span></div><div><i class="ti ti-user-check"></i><strong>Tenant isolation</strong><span>CRM mapping stays inside this organization.</span></div></div>
         </div>
       </details>
