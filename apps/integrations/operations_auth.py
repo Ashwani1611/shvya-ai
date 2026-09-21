@@ -8,7 +8,7 @@ from datetime import timedelta
 from urllib.parse import urlparse
 
 from django.contrib.auth import BACKEND_SESSION_KEY, HASH_SESSION_KEY, SESSION_KEY, get_user_model
-from django.db import transaction
+from django.db import models, transaction
 from django.utils import timezone
 
 from apps.accounts.session_utils import get_session_store
@@ -17,6 +17,7 @@ from apps.integrations.operations_models import (
     OperationsOAuthAuthorizationCode,
     OperationsOAuthClient,
     OperationsOAuthToken,
+    OperationsSupportSession,
 )
 from apps.integrations.operations_policy import (
     ROLE_ORGANIZATION_ADMIN,
@@ -409,6 +410,46 @@ def refresh_access_token(*, refresh_token, client_id, resource=""):
             ]
         )
     return token, raw_access, raw_refresh
+
+
+def revoke_token(*, raw_token: str) -> bool:
+    """Revoke an Operations OAuth grant by either access or refresh token.
+
+    Returns whether a live token row was found. Unknown tokens deliberately
+    behave like successful revocation at the HTTP boundary to avoid token
+    enumeration.
+    """
+
+    raw_token = str(raw_token or "").strip()
+    if not raw_token:
+        raise OperationsAuthError("Missing token.")
+
+    hashed = token_hash(raw_token)
+    now = timezone.now()
+    with transaction.atomic():
+        token = (
+            OperationsOAuthToken.objects.select_for_update()
+            .filter(revoked_at__isnull=True)
+            .filter(
+                models.Q(access_token_hash=hashed)
+                | models.Q(refresh_token_hash=hashed)
+            )
+            .first()
+        )
+        if token is None:
+            return False
+
+        token.revoked_at = now
+        token.save(update_fields=["revoked_at", "updated_at"])
+        OperationsSupportSession.objects.filter(
+            token=token,
+            ended_at__isnull=True,
+        ).update(
+            ended_at=now,
+            last_seen_at=now,
+        )
+    return True
+
 
 
 def authenticate_bearer(raw_bearer: str) -> OperationsIdentity:
