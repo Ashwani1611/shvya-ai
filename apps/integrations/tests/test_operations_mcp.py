@@ -47,6 +47,10 @@ from apps.integrations.operations_policy import (
 )
 from apps.organizations.models import Organization
 from apps.triggers.models import SmartTrigger
+from services.channels.hosted_whatsapp_service import (
+    get_session_settings,
+    update_session_settings,
+)
 from services.crm.lead_transition import move_lead_to_stage
 
 
@@ -286,6 +290,7 @@ class OperationsMCPTests(TestCase):
             "upsert_workflow_configuration",
             "upsert_cadence_configuration",
             "add_cadence_step",
+            "update_messaging_automation_settings",
         ):
             self.assertIn(name, tools)
             self.assertFalse(tools[name]["annotations"]["readOnlyHint"])
@@ -531,6 +536,238 @@ class OperationsMCPTests(TestCase):
         self.assertIn("update_ai_configuration", names)
         self.assertIn("upsert_workflow_configuration", names)
         self.assertIn("find_leads", names)
+
+    def test_messaging_automation_settings_dry_run_apply_and_verify(self):
+        OperationsPolicy.objects.create(
+            organization=self.organization,
+            organization_admin_enabled=True,
+            allowed_capabilities=[
+                CAP_ORGANIZATION_READ,
+                CAP_AUTOMATION_CONFIG_WRITE,
+            ],
+            approval_required_capabilities=[
+                CAP_AUTOMATION_CONFIG_WRITE,
+            ],
+        )
+        pipeline = Pipeline.objects.create(
+            organization=self.organization,
+            name="Messaging Operations Pipeline",
+            phone_number="+919000000030",
+            ai_enabled=True,
+        )
+        account = WhatsAppAccount.objects.create(
+            organization=self.organization,
+            connection_type=WhatsAppAccount.ConnectionType.API,
+            business_name="Messaging Operations Sender",
+            display_phone_number="+919000000030",
+            phone_number_id="messaging-ops-sender",
+            status=WhatsAppAccount.Status.CONNECTED,
+            is_active=True,
+        )
+        bearer = self._token(
+            actor=self.admin,
+            role=ROLE_ORGANIZATION_ADMIN,
+            organization=self.organization,
+        )
+
+        initial = self._result(
+            self._call(
+                bearer,
+                "get_messaging_automation_settings",
+                {
+                    "whatsapp_account_id": str(account.id),
+                },
+            )
+        )
+        self.assertFalse(initial["isError"])
+        self.assertEqual(
+            initial["structuredContent"]["accounts"][0][
+                "pipeline"
+            ]["id"],
+            str(pipeline.id),
+        )
+        self.assertTrue(
+            initial["structuredContent"]["accounts"][0][
+                "settings"
+            ]["ai_auto_reply"]
+        )
+
+        arguments = {
+            "whatsapp_account_id": str(account.id),
+            "changes": {
+                "ai_auto_reply": False,
+                "auto_follow_up": False,
+                "business_hours_start": "09:15",
+                "business_hours_end": "18:30",
+                "active_conversation_delay_value": 45,
+                "active_conversation_delay_unit": "minutes",
+            },
+            "reason": "Configure reviewed pipeline messaging automation",
+        }
+        dry = self._result(
+            self._call(
+                bearer,
+                "update_messaging_automation_settings",
+                {
+                    **arguments,
+                    "dry_run": True,
+                },
+            )
+        )
+        self.assertFalse(dry["isError"])
+        self.assertEqual(
+            dry["structuredContent"]["status"],
+            "DRY_RUN",
+        )
+        self.assertTrue(
+            dry["structuredContent"]["approval_required"]
+        )
+        self.assertIn(
+            "approval_event_id",
+            dry["structuredContent"],
+        )
+
+        pipeline.refresh_from_db()
+        self.assertTrue(pipeline.ai_enabled)
+        persisted_before = get_session_settings(
+            account=account
+        )
+        self.assertTrue(persisted_before["auto_follow_up"])
+        self.assertNotEqual(
+            persisted_before["business_hours_start"],
+            "09:15",
+        )
+
+        applied = self._result(
+            self._call(
+                bearer,
+                "update_messaging_automation_settings",
+                {
+                    **arguments,
+                    "dry_run": False,
+                    "approved": True,
+                    "approval_event_id": dry["structuredContent"][
+                        "approval_event_id"
+                    ],
+                },
+            )
+        )
+        self.assertFalse(applied["isError"])
+        self.assertEqual(
+            applied["structuredContent"]["status"],
+            "FIXED",
+        )
+        self.assertEqual(
+            applied["structuredContent"]["verification"],
+            "passed",
+        )
+
+        pipeline.refresh_from_db()
+        self.assertFalse(pipeline.ai_enabled)
+        persisted = get_session_settings(account=account)
+        self.assertFalse(persisted["ai_auto_reply"])
+        self.assertFalse(persisted["auto_follow_up"])
+        self.assertEqual(
+            persisted["business_hours_start"],
+            "09:15",
+        )
+        self.assertEqual(
+            persisted["business_hours_end"],
+            "18:30",
+        )
+        self.assertEqual(
+            persisted["active_conversation_delay_value"],
+            45,
+        )
+        self.assertEqual(
+            persisted["active_conversation_delay_unit"],
+            "minutes",
+        )
+
+    def test_messaging_automation_approval_is_invalid_after_human_change(self):
+        OperationsPolicy.objects.create(
+            organization=self.organization,
+            organization_admin_enabled=True,
+            allowed_capabilities=[
+                CAP_ORGANIZATION_READ,
+                CAP_AUTOMATION_CONFIG_WRITE,
+            ],
+            approval_required_capabilities=[
+                CAP_AUTOMATION_CONFIG_WRITE,
+            ],
+        )
+        pipeline = Pipeline.objects.create(
+            organization=self.organization,
+            name="Messaging Stale Pipeline",
+            phone_number="+919000000031",
+            ai_enabled=True,
+        )
+        account = WhatsAppAccount.objects.create(
+            organization=self.organization,
+            connection_type=WhatsAppAccount.ConnectionType.API,
+            business_name="Messaging Stale Sender",
+            display_phone_number="+919000000031",
+            phone_number_id="messaging-stale-sender",
+            status=WhatsAppAccount.Status.CONNECTED,
+            is_active=True,
+        )
+        bearer = self._token(
+            actor=self.admin,
+            role=ROLE_ORGANIZATION_ADMIN,
+            organization=self.organization,
+        )
+        arguments = {
+            "whatsapp_account_id": str(account.id),
+            "changes": {
+                "business_hours_start": "08:30",
+            },
+            "reason": "Update reviewed messaging business hours",
+        }
+        dry = self._result(
+            self._call(
+                bearer,
+                "update_messaging_automation_settings",
+                {
+                    **arguments,
+                    "dry_run": True,
+                },
+            )
+        )
+        self.assertFalse(dry["isError"])
+
+        update_session_settings(
+            account=account,
+            payload={
+                "business_hours_start": "07:45",
+            },
+        )
+
+        stale = self._result(
+            self._call(
+                bearer,
+                "update_messaging_automation_settings",
+                {
+                    **arguments,
+                    "dry_run": False,
+                    "approved": True,
+                    "approval_event_id": dry["structuredContent"][
+                        "approval_event_id"
+                    ],
+                },
+            )
+        )
+        self.assertTrue(stale["isError"])
+        self.assertEqual(
+            stale["structuredContent"]["status"],
+            "APPROVAL_REQUIRED",
+        )
+        persisted = get_session_settings(account=account)
+        self.assertEqual(
+            persisted["business_hours_start"],
+            "07:45",
+        )
+        pipeline.refresh_from_db()
+        self.assertTrue(pipeline.ai_enabled)
 
     def test_existing_cadence_sender_change_is_explicitly_rejected(self):
         OperationsPolicy.objects.create(
