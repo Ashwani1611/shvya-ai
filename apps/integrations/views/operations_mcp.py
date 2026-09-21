@@ -1358,6 +1358,15 @@ def operations_mcp(request):
     ):
         result["structuredContent"]["approval_event_id"] = str(audit.id)
         result["structuredContent"]["approval_expires_in_seconds"] = 1800
+        # Keep MCP text and structured payloads semantically identical so
+        # clients that primarily consume text still receive the approval
+        # receipt required for the execution turn.
+        if result.get("content") and isinstance(result["content"][0], dict):
+            result["content"][0]["text"] = json.dumps(
+                result["structuredContent"],
+                ensure_ascii=False,
+                default=str,
+            )
 
     response = JsonResponse(
         _jsonrpc_result(request_id, result, modern=modern)
