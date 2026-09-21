@@ -67,6 +67,8 @@ from apps.integrations.views.mcp import TOOL_DEFINITIONS as DIAGNOSTIC_TOOL_DEFI
 MODERN_PROTOCOL_VERSION = "2026-07-28"
 LEGACY_PROTOCOL_VERSION = "2025-11-25"
 SERVER_INFO = {"name": "shvya-operations", "version": "1.0.0"}
+OAUTH_MAX_BODY_BYTES = 32 * 1024
+OAUTH_MAX_STATE_LENGTH = 1024
 
 OAUTH_READ_SCHEMES = [
     {
@@ -89,6 +91,30 @@ OAUTH_WRITE_SCHEMES = [
     }
 ]
 
+
+
+
+def _oauth_request_too_large(request):
+    raw = str(request.META.get("CONTENT_LENGTH") or "").strip()
+    if not raw:
+        return False
+    try:
+        return int(raw) > OAUTH_MAX_BODY_BYTES
+    except (TypeError, ValueError):
+        return True
+
+
+def _oauth_too_large_response():
+    response = JsonResponse(
+        {
+            "error": "invalid_request",
+            "error_description": "OAuth request body is too large.",
+        },
+        status=413,
+    )
+    response["Cache-Control"] = "no-store"
+    response["Pragma"] = "no-cache"
+    return response
 
 
 
@@ -704,6 +730,8 @@ def operations_oauth_server_metadata(request):
 @ratelimit(limit=20, window=3600)
 @require_POST
 def operations_oauth_register(request):
+    if _oauth_request_too_large(request):
+        return _oauth_too_large_response()
     try:
         payload = json.loads(request.body.decode("utf-8") or "{}")
     except (json.JSONDecodeError, UnicodeDecodeError):
@@ -805,7 +833,7 @@ def _authorization_fields(request):
             "scope",
             f"{OPERATIONS_READ_SCOPE} {OPERATIONS_WRITE_SCOPE} {OFFLINE_SCOPE}",
         ),
-        "state": source.get("state", ""),
+        "state": str(source.get("state", ""))[:OAUTH_MAX_STATE_LENGTH],
         "resource": source.get("resource", _resource(request)),
     }
 
@@ -813,6 +841,8 @@ def _authorization_fields(request):
 @ratelimit(limit=30, window=60)
 @require_http_methods(["GET", "POST"])
 def operations_oauth_authorize(request):
+    if request.method == "POST" and _oauth_request_too_large(request):
+        return _oauth_too_large_response()
     fields = _authorization_fields(request)
     try:
         client = validate_authorization_request(
@@ -967,6 +997,8 @@ def operations_oauth_authorize(request):
 @ratelimit(limit=60, window=60)
 @require_POST
 def operations_oauth_token(request):
+    if _oauth_request_too_large(request):
+        return _oauth_too_large_response()
     grant_type = request.POST.get("grant_type", "")
     client_id = request.POST.get("client_id", "")
     requested_resource = request.POST.get("resource", "") or _resource(request)
@@ -1048,6 +1080,8 @@ def operations_oauth_token(request):
 def operations_oauth_revoke(request):
     """RFC 7009-style revocation for actor-bound Operations OAuth grants."""
 
+    if _oauth_request_too_large(request):
+        return _oauth_too_large_response()
     raw_token = str(request.POST.get("token") or "").strip()
     if not raw_token:
         response = JsonResponse(
