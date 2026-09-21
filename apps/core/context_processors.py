@@ -1,5 +1,4 @@
 from django.urls import NoReverseMatch, reverse
-from django.utils import timezone
 
 from apps.ai_engagement.coins import credits_to_coins
 
@@ -334,19 +333,11 @@ def _operations_support_context(request):
             "operations_support_started_at": None,
         }
 
-    from apps.integrations.operations_models import OperationsSupportSession
+    from apps.integrations.operations_presence import visible_support_sessions
 
-    session = (
-        OperationsSupportSession.objects.filter(
-            organization_id=organization_id,
-            ended_at__isnull=True,
-            token__revoked_at__isnull=True,
-            token__expires_at__gt=timezone.now(),
-        )
-        .select_related("actor")
-        .order_by("-last_seen_at", "-started_at")
-        .first()
-    )
+    session = visible_support_sessions(
+        organization=user.organization,
+    ).first()
     if session is None:
         return {
             "operations_support_active": False,
