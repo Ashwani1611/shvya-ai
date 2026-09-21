@@ -981,7 +981,6 @@ def _public_page(public_id, slug, *, require_published=True):
             "host",
         ),
         public_id=public_id,
-        slug=slug,
     )
     if require_published and page.status != CalendarPage.Status.PUBLISHED:
         raise Http404
