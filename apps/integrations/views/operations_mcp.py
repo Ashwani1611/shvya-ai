@@ -582,14 +582,44 @@ OWN_TOOL_DEFINITIONS = [
     _tool(
         "get_operations_audit",
         "Review SHVYA Operations audit",
-        "Return safe tenant-scoped audit events for external-AI and Superadmin Operations actions.",
+        "Return safe tenant-scoped audit events. Filter by an exact audit event, tool, resource, support session, or outcome when reviewing one action.",
         {
+            "audit_event_id": {
+                "type": "string",
+                "format": "uuid",
+            },
+            "tool_name": {
+                "type": "string",
+                "maxLength": 100,
+            },
+            "target_type": {
+                "type": "string",
+                "maxLength": 80,
+            },
+            "target_id": {
+                "type": "string",
+                "maxLength": 100,
+            },
+            "support_session_id": {
+                "type": "string",
+                "format": "uuid",
+            },
+            "outcome": {
+                "type": "string",
+                "enum": [
+                    "success",
+                    "error",
+                    "denied",
+                    "approval_required",
+                    "dry_run",
+                ],
+            },
             "limit": {
                 "type": "integer",
                 "minimum": 1,
                 "maximum": 100,
                 "default": 30,
-            }
+            },
         },
     ),
 ]
