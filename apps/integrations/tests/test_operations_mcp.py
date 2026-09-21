@@ -19,7 +19,12 @@ from apps.ai_engagement.models import (
     KnowledgeSource,
     OrgInfo,
 )
-from apps.channels.instagram_models import InstagramAccount, InstagramWebhookDelivery
+from apps.channels.instagram_models import (
+    InstagramAccount,
+    InstagramConversation,
+    InstagramMessage,
+    InstagramWebhookDelivery,
+)
 from apps.channels.models import WhatsAppAccount, WhatsAppMessage
 from apps.crm.models import AttributeDefinition, Lead, LeadActivity, Pipeline, Stage
 from apps.followups.models import FollowupSequence, FollowupStep
@@ -2779,6 +2784,134 @@ class OperationsMCPTests(TestCase):
         self.assertIn("password=[REDACTED]", payload)
         self.assertNotIn("customer-password-secret", payload)
         self.assertNotIn(opaque_secret, payload)
+
+    def test_conversation_and_trace_diagnostics_never_decrypt_provider_credentials(self):
+        OperationsPolicy.objects.create(
+            organization=self.organization,
+            organization_admin_enabled=True,
+            allowed_capabilities=[
+                CAP_ORGANIZATION_READ,
+                CAP_DIAGNOSTICS_READ,
+            ],
+        )
+        wa_account = WhatsAppAccount.objects.create(
+            organization=self.organization,
+            connection_type=WhatsAppAccount.ConnectionType.API,
+            business_name="Diagnostic Credential Safe WhatsApp",
+            display_phone_number="+919000000063",
+            phone_number_id="diagnostic-credential-safe-wa",
+            access_token="diagnostic-whatsapp-provider-secret",
+            status=WhatsAppAccount.Status.CONNECTED,
+            is_active=True,
+        )
+        wa_message = WhatsAppMessage.objects.create(
+            organization=self.organization,
+            account=wa_account,
+            lead=self.lead,
+            external_id="diagnostic-credential-safe-wa-message",
+            direction=WhatsAppMessage.Direction.INBOUND,
+            status=WhatsAppMessage.Status.RECEIVED,
+            message_type=WhatsAppMessage.MessageType.TEXT,
+            from_number="+919100000063",
+            to_number="+919000000063",
+            body="WhatsApp diagnostic message",
+        )
+
+        ig_account = InstagramAccount.objects.create(
+            organization=self.organization,
+            ig_user_id="diagnostic-credential-safe-instagram",
+            username="diagnostic_safe_instagram",
+            access_token="diagnostic-instagram-provider-secret",
+            status=InstagramAccount.Status.CONNECTED,
+        )
+        ig_conversation = InstagramConversation.objects.create(
+            organization=self.organization,
+            account=ig_account,
+            lead=self.lead,
+            participant_id="diagnostic-participant",
+            participant_username="diagnostic_participant",
+        )
+        opaque_secret = "Y" * 64
+        ig_message = InstagramMessage.objects.create(
+            organization=self.organization,
+            account=ig_account,
+            conversation=ig_conversation,
+            external_id="diagnostic-credential-safe-ig-message",
+            direction=InstagramMessage.Direction.INBOUND,
+            status=InstagramMessage.Status.RECEIVED,
+            message_type=InstagramMessage.MessageType.TEXT,
+            body=(
+                "Instagram customer question with opaque token "
+                + opaque_secret
+            ),
+            attachments=[
+                {
+                    "type": opaque_secret,
+                    "url": "https://example.test/private-media",
+                }
+            ],
+        )
+        bearer = self._token(
+            actor=self.admin,
+            role=ROLE_ORGANIZATION_ADMIN,
+            organization=self.organization,
+            scopes=[OPERATIONS_READ_SCOPE],
+        )
+
+        with patch(
+            "apps.channels.models.EncryptedTextField.from_db_value",
+            side_effect=AssertionError(
+                "Operations diagnostics must not decrypt provider credentials"
+            ),
+        ):
+            conversation = self._result(
+                self._call(
+                    bearer,
+                    "get_conversation",
+                    {
+                        "lead_id": str(self.lead.id),
+                        "channel": "all",
+                        "limit": 10,
+                    },
+                )
+            )
+            self.assertFalse(conversation["isError"])
+
+            wa_trace = self._result(
+                self._call(
+                    bearer,
+                    "trace_message",
+                    {"message_id": str(wa_message.id)},
+                )
+            )
+            self.assertFalse(wa_trace["isError"])
+
+            ig_trace = self._result(
+                self._call(
+                    bearer,
+                    "trace_message",
+                    {"message_id": str(ig_message.id)},
+                )
+            )
+            self.assertFalse(ig_trace["isError"])
+
+        payload = json.dumps(
+            {
+                "conversation": conversation["structuredContent"],
+                "wa_trace": wa_trace["structuredContent"],
+                "ig_trace": ig_trace["structuredContent"],
+            }
+        )
+        self.assertNotIn(opaque_secret, payload)
+        self.assertNotIn(
+            "diagnostic-whatsapp-provider-secret",
+            payload,
+        )
+        self.assertNotIn(
+            "diagnostic-instagram-provider-secret",
+            payload,
+        )
+        self.assertIn("[REDACTED]", payload)
 
     def test_recent_errors_bounds_hosted_provider_details(self):
         OperationsPolicy.objects.create(

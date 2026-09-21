@@ -356,11 +356,12 @@ def _safe_instagram_message(message):
     for item in attachments[:10]:
         if isinstance(item, dict):
             attachment_types.append(
-                str(
+                sanitize_text(
                     item.get("type")
                     or item.get("media_type")
-                    or "attachment"
-                )[:40]
+                    or "attachment",
+                    limit=40,
+                )
             )
         else:
             attachment_types.append("attachment")
@@ -375,7 +376,6 @@ def _safe_instagram_message(message):
         "body": sanitize_text(
             message.body,
             limit=1200,
-            redact_long=False,
         ),
         "attachment_count": len(attachments),
         "attachment_types": attachment_types,
@@ -418,6 +418,7 @@ def get_conversation(*, organization, arguments):
                 lead=lead,
             )
             .select_related("account")
+            .defer("account__access_token")
             .order_by(
                 "-created_at",
                 "-id",
@@ -439,6 +440,7 @@ def get_conversation(*, organization, arguments):
                 "account",
                 "conversation",
             )
+            .defer("account__access_token")
             .order_by(
                 "-created_at",
                 "-id",
@@ -486,6 +488,7 @@ def trace_message(*, organization, arguments):
             "lead",
             "account",
         )
+        .defer("account__access_token")
         .first()
     )
 
@@ -576,6 +579,7 @@ def trace_message(*, organization, arguments):
             "conversation",
             "conversation__lead",
         )
+        .defer("account__access_token")
         .first()
     )
     if ig is not None:
