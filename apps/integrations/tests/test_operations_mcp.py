@@ -366,6 +366,9 @@ class OperationsMCPTests(TestCase):
                     **arguments,
                     "dry_run": False,
                     "approved": True,
+                    "approval_event_id": dry["structuredContent"][
+                        "approval_event_id"
+                    ],
                 },
             )
         )
@@ -966,6 +969,27 @@ class OperationsMCPTests(TestCase):
             "APPROVAL_REQUIRED",
         )
 
+        wrong_receipt = self._result(
+            self._call(
+                bearer,
+                "move_lead_stage",
+                {
+                    **base_arguments,
+                    "target_stage_id": str(self.new_stage.id),
+                    "dry_run": False,
+                    "approved": True,
+                    "approval_event_id": dry["structuredContent"][
+                        "approval_event_id"
+                    ],
+                },
+            )
+        )
+        self.assertTrue(wrong_receipt["isError"])
+        self.assertEqual(
+            wrong_receipt["structuredContent"]["status"],
+            "APPROVAL_REQUIRED",
+        )
+
         applied = self._result(
             self._call(
                 bearer,
@@ -974,6 +998,9 @@ class OperationsMCPTests(TestCase):
                     **base_arguments,
                     "dry_run": False,
                     "approved": True,
+                    "approval_event_id": dry["structuredContent"][
+                        "approval_event_id"
+                    ],
                 },
             )
         )
@@ -992,6 +1019,26 @@ class OperationsMCPTests(TestCase):
                 topic=LeadActivity.Topic.STAGE_CHANGED,
                 new_stage=self.qualified,
             ).exists()
+        )
+
+        replayed_approval = self._result(
+            self._call(
+                bearer,
+                "move_lead_stage",
+                {
+                    **base_arguments,
+                    "dry_run": False,
+                    "approved": True,
+                    "approval_event_id": dry["structuredContent"][
+                        "approval_event_id"
+                    ],
+                },
+            )
+        )
+        self.assertTrue(replayed_approval["isError"])
+        self.assertEqual(
+            replayed_approval["structuredContent"]["status"],
+            "APPROVAL_REQUIRED",
         )
 
         outcomes = list(
