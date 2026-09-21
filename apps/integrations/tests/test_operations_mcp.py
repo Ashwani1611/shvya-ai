@@ -5,6 +5,7 @@ from urllib.parse import parse_qs, urlparse
 from django.contrib.sessions.backends.db import SessionStore
 from django.core.exceptions import ValidationError
 from django.test import TestCase
+from django.urls import reverse
 from django.utils import timezone
 
 from apps.accounts.models import User
@@ -519,6 +520,63 @@ class OperationsMCPTests(TestCase):
         self.assertEqual(token.actor_id, self.admin.id)
         self.assertEqual(token.organization_id, self.organization.id)
         self.assertEqual(token.role, ROLE_ORGANIZATION_ADMIN)
+
+    def test_superadmin_disable_revokes_existing_org_admin_tokens_permanently(self):
+        policy = OperationsPolicy.objects.create(
+            organization=self.organization,
+            organization_admin_enabled=True,
+            allowed_capabilities=[CAP_ORGANIZATION_READ],
+            approval_required_capabilities=[],
+        )
+        bearer = self._token(
+            actor=self.admin,
+            role=ROLE_ORGANIZATION_ADMIN,
+            organization=self.organization,
+            scopes=[OPERATIONS_READ_SCOPE],
+        )
+
+        superadmin_session = SessionStore()
+        set_authenticated_user(superadmin_session, self.superadmin)
+        superadmin_session.create()
+        self.client.cookies[get_session_cookie_name("superadmin")] = (
+            superadmin_session.session_key
+        )
+
+        disable = self.client.post(
+            reverse(
+                "superadmin-organization-operations-mcp-policy",
+                kwargs={"organization_id": self.organization.id},
+            ),
+            {
+                "allowed_capabilities": [CAP_ORGANIZATION_READ],
+            },
+        )
+        self.assertEqual(disable.status_code, 302)
+
+        token = OperationsOAuthToken.objects.get(actor=self.admin)
+        self.assertIsNotNone(token.revoked_at)
+        policy.refresh_from_db()
+        self.assertFalse(policy.organization_admin_enabled)
+
+        enable = self.client.post(
+            reverse(
+                "superadmin-organization-operations-mcp-policy",
+                kwargs={"organization_id": self.organization.id},
+            ),
+            {
+                "organization_admin_enabled": "on",
+                "allowed_capabilities": [CAP_ORGANIZATION_READ],
+            },
+        )
+        self.assertEqual(enable.status_code, 302)
+        policy.refresh_from_db()
+        self.assertTrue(policy.organization_admin_enabled)
+
+        old_token_result = self._result(
+            self._call(bearer, "get_operations_context")
+        )
+        self.assertTrue(old_token_result["isError"])
+        self.assertIn("mcp/www_authenticate", old_token_result["_meta"])
 
     def test_org_admin_token_is_rejected_while_policy_disabled(self):
         bearer = self._token(
