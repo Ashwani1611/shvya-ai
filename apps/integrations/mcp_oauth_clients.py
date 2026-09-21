@@ -15,7 +15,7 @@ class MCPClientMetadataError(ValueError):
     pass
 
 
-def _provider_host_allowed(host: str) -> bool:
+def _web_provider_host_allowed(host: str) -> bool:
     host = str(host or "").lower()
     return (
         host == "chatgpt.com"
@@ -26,6 +26,13 @@ def _provider_host_allowed(host: str) -> bool:
         or host.endswith(".claude.ai")
         or host == "anthropic.com"
         or host.endswith(".anthropic.com")
+    )
+
+
+def _cimd_host_allowed(host: str) -> bool:
+    host = str(host or "").lower()
+    return bool(
+        _web_provider_host_allowed(host)
         or host == "vscode.dev"
         or host.endswith(".vscode.dev")
     )
@@ -64,7 +71,7 @@ def is_allowed_external_ai_redirect(uri: str) -> bool:
 
     return bool(
         parsed.scheme == "https"
-        and _provider_host_allowed(host)
+        and _web_provider_host_allowed(host)
         and port in {None, 443}
         and not parsed.fragment
         and parsed.username is None
@@ -84,7 +91,7 @@ def is_allowed_cimd_url(client_id: str) -> bool:
     segments = [segment for segment in path.split("/") if segment]
     return bool(
         parsed.scheme == "https"
-        and _provider_host_allowed(host)
+        and _cimd_host_allowed(host)
         and port in {None, 443}
         and path not in {"", "/"}
         and segments
