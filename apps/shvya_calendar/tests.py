@@ -2,11 +2,14 @@ from datetime import timedelta
 
 from unittest.mock import patch
 
+from django.contrib.sessions.backends.db import SessionStore
 from django.core.exceptions import ValidationError
 from django.test import RequestFactory, TestCase
+from django.urls import reverse
 from django.utils import timezone
 
 from apps.accounts.models import User
+from apps.accounts.session_utils import set_authenticated_user
 from apps.crm.models import AttributeDefinition, Lead, Pipeline, Stage
 from apps.organizations.models import Organization
 
@@ -35,6 +38,10 @@ class ShvyaCalendarServiceTests(TestCase):
             name="Calendar Admin",
             role=User.Role.ADMIN,
         )
+        session = SessionStore()
+        set_authenticated_user(session, self.user)
+        session.save()
+        self.client.cookies["shvya_crm_sessionid"] = session.session_key
         self.pipeline = Pipeline.objects.create(
             organization=self.organization,
             name="Sales",
@@ -287,6 +294,134 @@ class ShvyaCalendarServiceTests(TestCase):
         self.page.stage = None
         with self.assertRaises(ValidationError):
             self.page.full_clean()
+
+    def _scheduling_payload(self, **overrides):
+        payload = {
+            "section": "scheduling",
+            "timezone": "Asia/Kolkata",
+            "session_title": "Updated consultation",
+            "session_description": "Updated calendar description",
+            "discussion_points": "Review\nNext steps",
+            "mon_enabled": "on",
+            "mon_start": "09:00",
+            "mon_end": "18:00",
+            "tue_enabled": "on",
+            "tue_start": "09:00",
+            "tue_end": "18:00",
+            "wed_enabled": "on",
+            "wed_start": "09:00",
+            "wed_end": "18:00",
+            "thu_enabled": "on",
+            "thu_start": "09:00",
+            "thu_end": "18:00",
+            "fri_enabled": "on",
+            "fri_start": "09:00",
+            "fri_end": "18:00",
+            "sat_start": "09:00",
+            "sat_end": "18:00",
+            "sun_start": "09:00",
+            "sun_end": "18:00",
+            "bookable_days": "30",
+            "minimum_notice_minutes": "60",
+            "slot_duration_minutes": "30",
+            "max_slots_per_day": "25",
+            "bookings_per_slot": "1",
+            "buffer_before_minutes": "0",
+            "buffer_after_minutes": "0",
+            "meeting_location": "phone",
+            "invite_lead_to_event": "on",
+        }
+        payload.update(overrides)
+        return payload
+
+    def test_booking_page_status_publish_validation_never_returns_500(self):
+        self.page.status = CalendarPage.Status.DISABLED
+        self.page.meeting_location = CalendarPage.MeetingLocation.GOOGLE_MEET
+        self.page.save(update_fields=["status", "meeting_location", "updated_at"])
+
+        with patch(
+            "apps.shvya_calendar.google.google_is_configured",
+            return_value=False,
+        ):
+            response = self.client.post(
+                reverse("shvya_calendar:status", args=[self.page.id]),
+                {"action": "publish"},
+            )
+
+        self.assertEqual(response.status_code, 302)
+        self.page.refresh_from_db()
+        self.assertEqual(self.page.status, CalendarPage.Status.DISABLED)
+
+    def test_scheduling_settings_save_and_republish_without_nested_form_failure(self):
+        response = self.client.post(
+            reverse("shvya_calendar:save", args=[self.page.id]),
+            self._scheduling_payload(),
+        )
+        self.assertEqual(response.status_code, 302)
+        self.page.refresh_from_db()
+        self.assertEqual(self.page.session_title, "Updated consultation")
+        self.assertEqual(self.page.status, CalendarPage.Status.PUBLISHED)
+        self.assertGreaterEqual(self.page.current_version, 2)
+
+    def test_scheduling_save_is_kept_but_page_disables_if_google_not_ready(self):
+        with patch(
+            "apps.shvya_calendar.google.google_is_configured",
+            return_value=False,
+        ):
+            response = self.client.post(
+                reverse("shvya_calendar:save", args=[self.page.id]),
+                self._scheduling_payload(meeting_location="google_meet"),
+            )
+        self.assertEqual(response.status_code, 302)
+        self.page.refresh_from_db()
+        self.assertEqual(self.page.session_title, "Updated consultation")
+        self.assertEqual(self.page.meeting_location, "google_meet")
+        self.assertEqual(self.page.status, CalendarPage.Status.DISABLED)
+
+    def test_unpublished_public_link_is_friendly_not_generic_404(self):
+        self.page.status = CalendarPage.Status.DISABLED
+        self.page.save(update_fields=["status", "updated_at"])
+        response = self.client.get(
+            reverse(
+                "shvya_calendar_public:page",
+                kwargs={"public_id": self.page.public_id, "slug": self.page.slug},
+            )
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "isn’t live yet")
+
+    def test_public_link_survives_slug_edit(self):
+        old_slug = self.page.slug
+        self.page.slug = "renamed-demo"
+        self.page.save(update_fields=["slug", "updated_at"])
+
+        response = self.client.get(
+            reverse(
+                "shvya_calendar_public:page",
+                kwargs={"public_id": self.page.public_id, "slug": old_slug},
+            )
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, self.page.intro_title)
+
+    def test_editor_scheduling_controls_do_not_nest_action_forms(self):
+        response = self.client.get(
+            f"{reverse('shvya_calendar:editor', args=[self.page.id])}?tab=scheduling"
+        )
+        self.assertEqual(response.status_code, 200)
+        html = response.content.decode("utf-8")
+        scheduling_start = html.index('data-tab-panel="scheduling"')
+        confirmation_start = html.index('data-tab-panel="confirmation"')
+        scheduling_html = html[scheduling_start:confirmation_start]
+
+        # Delete/disconnect forms live outside the scheduling settings form and
+        # are targeted by the button form= attribute. Invalid nested forms were
+        # causing browsers to terminate the settings form before Save Scheduling.
+        outer_start = scheduling_html.index('<form method="post" action="')
+        outer_end = scheduling_html.index("</form>", outer_start)
+        outer_form = scheduling_html[outer_start:outer_end]
+        self.assertNotIn("google/disconnect", outer_form)
+        self.assertNotIn("/blocks/", outer_form)
 
     def test_reminder_channels_do_not_include_ai_call(self):
         channel_values = {
