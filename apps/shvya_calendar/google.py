@@ -116,7 +116,10 @@ def save_connection(*, organization, user, token_payload, userinfo):
     refresh_token = token_payload.get("refresh_token")
     if refresh_token:
         connection.refresh_token = refresh_token
-    expires_in = int(token_payload.get("expires_in") or 3600)
+    try:
+        expires_in = int(token_payload.get("expires_in") or 3600)
+    except (TypeError, ValueError):
+        expires_in = 3600
     connection.token_expires_at = timezone.now() + timedelta(
         seconds=max(60, expires_in - 60)
     )
@@ -162,7 +165,10 @@ def _refresh_access_token(connection):
         failure_message="Google returned an invalid token refresh response.",
     )
     connection.access_token = payload.get("access_token") or ""
-    expires_in = int(payload.get("expires_in") or 3600)
+    try:
+        expires_in = int(payload.get("expires_in") or 3600)
+    except (TypeError, ValueError):
+        expires_in = 3600
     connection.token_expires_at = timezone.now() + timedelta(
         seconds=max(60, expires_in - 60)
     )
