@@ -2038,8 +2038,9 @@ def get_messaging_automation_settings(*, identity, arguments):
                 account_id=account_id,
             )
         ]
+        account_count = 1
     else:
-        accounts = list(
+        account_qs = (
             WhatsAppAccount.objects.filter(
                 organization=organization,
                 is_active=True,
@@ -2049,8 +2050,10 @@ def get_messaging_automation_settings(*, identity, arguments):
                 "business_name",
                 "display_phone_number",
                 "id",
-            )[:50]
+            )
         )
+        account_count = account_qs.count()
+        accounts = list(account_qs[:50])
 
     rows = [
         _safe_messaging_settings_row(account)
@@ -2060,6 +2063,9 @@ def get_messaging_automation_settings(*, identity, arguments):
         data={
             "accounts": rows,
             "count": len(rows),
+            "account_count": account_count,
+            "accounts_returned": len(rows),
+            "accounts_truncated": account_count > len(rows),
         },
         capability=CAP_ORGANIZATION_READ,
         target_type=(
@@ -2073,7 +2079,9 @@ def get_messaging_automation_settings(*, identity, arguments):
             else str(organization.id)
         ),
         audit_summary={
-            "account_count": len(rows),
+            "result_count": len(rows),
+            "account_count": account_count,
+            "truncated": account_count > len(rows),
             "specific_account": bool(account_id),
         },
     )
