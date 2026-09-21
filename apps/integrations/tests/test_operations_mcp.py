@@ -4392,6 +4392,52 @@ class OperationsMCPTests(TestCase):
             self.assertTrue(rows[capability]["allowed"])
             self.assertTrue(rows[capability]["approval_required"])
 
+    def test_superadmin_policy_normalizes_duplicate_and_unknown_capabilities(self):
+        superadmin_session = SessionStore()
+        set_authenticated_user(superadmin_session, self.superadmin)
+        superadmin_session.create()
+        self.client.cookies[get_session_cookie_name("superadmin")] = (
+            superadmin_session.session_key
+        )
+
+        response = self.client.post(
+            reverse(
+                "superadmin-organization-operations-mcp-policy",
+                kwargs={"organization_id": self.organization.id},
+            ),
+            {
+                "organization_admin_enabled": "on",
+                "allowed_capabilities": [
+                    CAP_ORGANIZATION_READ,
+                    CAP_PIPELINE_CONFIG_WRITE,
+                    CAP_PIPELINE_CONFIG_WRITE,
+                    "unknown.capability",
+                ],
+                "approval_required_capabilities": [
+                    CAP_PIPELINE_CONFIG_WRITE,
+                    CAP_PIPELINE_CONFIG_WRITE,
+                    CAP_ORGANIZATION_READ,
+                    "unknown.capability",
+                ],
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+
+        policy = OperationsPolicy.objects.get(
+            organization=self.organization
+        )
+        self.assertEqual(
+            policy.allowed_capabilities,
+            [
+                CAP_ORGANIZATION_READ,
+                CAP_PIPELINE_CONFIG_WRITE,
+            ],
+        )
+        self.assertEqual(
+            policy.approval_required_capabilities,
+            [CAP_PIPELINE_CONFIG_WRITE],
+        )
+
     def test_superadmin_policy_ignores_approval_flags_on_read_capabilities(self):
         superadmin_session = SessionStore()
         set_authenticated_user(superadmin_session, self.superadmin)
