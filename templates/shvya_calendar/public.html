@@ -37,6 +37,7 @@
 
       <form method="post" enctype="multipart/form-data" {% if not preview %}action="{% url 'shvya_calendar_public:submit' public_id=page.public_id slug=page.slug %}"{% endif %}>
         {% csrf_token %}
+        {% if form_token %}<input type="hidden" name="form_token" value="{{ form_token }}">{% endif %}
         <input class="sc-honeypot" tabindex="-1" autocomplete="off" name="website" aria-hidden="true">
         {% for key,value in attribution.items %}<input type="hidden" name="{{ key }}" value="{{ value }}">{% endfor %}
 
