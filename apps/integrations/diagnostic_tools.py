@@ -550,6 +550,16 @@ def get_integration_health(*, organization, arguments):
                 "credential_present": bool(
                     instagram.diagnostic_credential_present
                 ),
+                "token_expires_at": _iso(
+                    instagram.token_expires_at
+                ),
+                "token_refreshed_at": _iso(
+                    instagram.token_refreshed_at
+                ),
+                "credential_expired": bool(
+                    instagram.token_expires_at
+                    and instagram.token_expires_at <= timezone.now()
+                ),
                 "last_webhook_at": _iso(
                     instagram.last_webhook_at
                 ),
@@ -559,6 +569,10 @@ def get_integration_health(*, organization, arguments):
                 "has_last_error": bool(
                     instagram.last_error
                 ),
+                "last_error": sanitize_text(
+                    instagram.last_error,
+                    limit=500,
+                ) if instagram.last_error else "",
                 "updated_at": _iso(
                     instagram.updated_at
                 ),
