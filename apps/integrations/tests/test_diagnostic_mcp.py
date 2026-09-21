@@ -150,11 +150,20 @@ class DiagnosticMCPTests(TestCase):
 
     def test_sanitizer_redacts_inline_secret_assignments(self):
         safe = sanitize_text(
-            "password=example-value api_key:example-key postgres://user:pass@example.test/db"
+            "password=example-value api_key:example-key token=short-token "
+            "secret:short-secret credential=short-credential "
+            "session=session-value postgres://user:pass@example.test/db"
         )
-        self.assertNotIn("example-value", safe)
-        self.assertNotIn("example-key", safe)
-        self.assertNotIn("user:pass", safe)
+        for leaked in (
+            "example-value",
+            "example-key",
+            "short-token",
+            "short-secret",
+            "short-credential",
+            "session-value",
+            "user:pass",
+        ):
+            self.assertNotIn(leaked, safe)
         self.assertIn("[REDACTED]", safe)
 
     def test_modern_server_discovery(self):
