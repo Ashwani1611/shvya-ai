@@ -786,3 +786,9 @@ Support attachment storage is private and downloads are authorized. Ticket/reply
 ### Diagnostic MCP/OAuth
 
 Diagnostic access requires the dedicated API-key capability. OAuth authorization/access/refresh tokens are stored as hashes, and access logs keep only safe metadata plus an argument fingerprint. Diagnostic tools are read-only and tenant scoped; they must never become an alternate CRM mutation API.
+
+### Operations MCP/OAuth
+
+Operations access is actor-bound rather than API-key-global. OAuth authorization/access/refresh tokens are tied to a live SHVYA human role and stored as hashes. Organization Admin tokens are fixed to one organization and are rechecked against the Superadmin-owned capability policy on every request. Superadmin tokens expose no customer data until an explicit support context is selected. `approved=true` is never authority by itself: OAuth scope, tenant ownership, capability policy, active-state rules and canonical service validation still apply.
+
+Operations writes default to dry-run, require a specific reason, use approval gates where configured, and verify post-write state before reporting success. Every authenticated tool call writes a bounded `OperationsAuditEvent`; model-instance and queryset mutation/deletion paths are blocked so the application audit ledger remains append-only. Active Superadmin support context is surfaced across the organization dashboard.
