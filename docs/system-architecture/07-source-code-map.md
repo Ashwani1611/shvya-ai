@@ -29,6 +29,8 @@ The map intentionally distinguishes entry points, orchestration, deterministic b
 | Organization access policy | `apps/organizations/access.py` | Central active/authorized CRM organization checks in current staging. |
 | API key model | `apps/organizations/models.py` | Prefix + hash storage, tenant ownership and capabilities. |
 | Lead API authentication | CRM API authentication classes used by `apps/crm/views/api.py` | API-key scoped access. |
+| Read-only Diagnostic MCP | `apps/integrations/diagnostic_auth.py`, `diagnostic_tools.py`, `views/mcp.py` | Organization/API-key scoped troubleshooting; never add writes here. |
+| Actor-bound Operations MCP | `apps/integrations/operations_auth.py`, `operations_policy.py`, `operations_tools.py`, `views/operations_mcp.py` | Superadmin explicit tenant context or Superadmin-policy-bounded Organization Admin access; dry-run/approval/verification/audit. |
 
 When adding a new tenant-facing entry point, reuse central organization authorization rather than checking only `user.is_active`.
 
