@@ -785,10 +785,14 @@ def get_recent_errors(*, organization, arguments):
     whatsapp = list(
         WhatsAppMessage.objects.filter(
             organization=organization,
-            lead__organization=organization,
             status=WhatsAppMessage.Status.FAILED,
             created_at__gte=since,
-        ).order_by("-created_at")[:limit]
+        )
+        .filter(
+            Q(lead__isnull=True)
+            | Q(lead__organization=organization)
+        )
+        .order_by("-created_at")[:limit]
     )
     instagram = list(
         InstagramMessage.objects.filter(
