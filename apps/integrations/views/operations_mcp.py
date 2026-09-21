@@ -51,6 +51,7 @@ from apps.integrations.operations_policy import (
     ROLE_ORGANIZATION_ADMIN,
     ROLE_SUPERADMIN,
     effective_capabilities,
+    policy_for,
 )
 from apps.integrations.operations_tools import (
     DIAGNOSTIC_TOOL_NAMES,
@@ -755,11 +756,61 @@ def operations_oauth_authorize(request):
         )
 
     identities = available_browser_identities(request)
+    identity_options = []
+    for role, actor in identities.items():
+        organization = (
+            None if role == ROLE_SUPERADMIN else actor.organization
+        )
+        capabilities = sorted(
+            effective_capabilities(
+                role=role,
+                organization=organization,
+            )
+        )
+        policy = (
+            policy_for(organization)
+            if organization is not None
+            else None
+        )
+        approval_values = set(
+            policy.approval_required_capabilities or []
+        ) if policy is not None else set()
+        identity_options.append(
+            {
+                "role": role,
+                "actor": actor,
+                "capabilities": [
+                    {
+                        "key": capability,
+                        "label": CAPABILITY_LABELS.get(
+                            capability,
+                            capability,
+                        ),
+                        "approval_required": (
+                            capability.endswith(".write")
+                            and (
+                                role == ROLE_SUPERADMIN
+                                or capability in approval_values
+                            )
+                        ),
+                    }
+                    for capability in capabilities
+                ],
+            }
+        )
+
+    requested_scopes = sorted(
+        set(str(fields.get("scope") or "").split())
+    )
     current_url = request.get_full_path()
     context = {
         "fields": fields,
         "client_name": client.client_name or "External AI",
         "identities": identities,
+        "identity_options": identity_options,
+        "requested_scopes": requested_scopes,
+        "operations_read_scope": OPERATIONS_READ_SCOPE,
+        "operations_write_scope": OPERATIONS_WRITE_SCOPE,
         "role_superadmin": ROLE_SUPERADMIN,
         "role_org_admin": ROLE_ORGANIZATION_ADMIN,
         "superadmin_login_url": (
