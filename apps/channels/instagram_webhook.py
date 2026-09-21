@@ -11,7 +11,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 
 from services.channels.instagram_service import instagram_app_secret, instagram_verify_token
-from .instagram_models import InstagramWebhookDelivery
+from .instagram_models import InstagramAccount, InstagramWebhookDelivery
 from .instagram_tasks import process_instagram_webhook_delivery_task
 
 logger = logging.getLogger(__name__)
@@ -28,6 +28,25 @@ def _valid_signature(request):
         return False
     expected = hmac.new(secret.encode("utf-8"), request.body, hashlib.sha256).hexdigest()
     return _constant_time_equal(expected, header[7:].lower())
+
+
+def _routing_metadata(payload):
+    """Resolve only known SHVYA tenant/account IDs from a verified Meta payload."""
+
+    own_ids = sorted({
+        str(entry.get("id") or "").strip()
+        for entry in (payload.get("entry", []) or [])
+        if isinstance(entry, dict) and str(entry.get("id") or "").strip()
+    })
+    if not own_ids:
+        return [], []
+
+    rows = InstagramAccount.objects.filter(
+        ig_user_id__in=own_ids,
+    ).values_list("id", "organization_id")
+    account_ids = sorted({str(account_id) for account_id, _ in rows})
+    organization_ids = sorted({str(org_id) for _, org_id in rows})
+    return organization_ids, account_ids
 
 
 @csrf_exempt
@@ -48,13 +67,28 @@ def instagram_webhook_view(request):
     if not isinstance(payload, dict):
         return HttpResponseBadRequest("Invalid payload")
     digest = hashlib.sha256(request.body).hexdigest()
+    organization_ids, account_ids = _routing_metadata(payload)
 
     # Commit the envelope before publishing. A worker on another connection can
     # always find it, and a broker failure must not roll back the incoming event.
     with transaction.atomic():
-        delivery, _ = InstagramWebhookDelivery.objects.get_or_create(
-            payload_sha256=digest, defaults={"raw_payload": payload},
+        delivery, created = InstagramWebhookDelivery.objects.get_or_create(
+            payload_sha256=digest,
+            defaults={
+                "raw_payload": payload,
+                "organization_ids": organization_ids,
+                "account_ids": account_ids,
+            },
         )
+        if not created and (
+            list(delivery.organization_ids or []) != organization_ids
+            or list(delivery.account_ids or []) != account_ids
+        ):
+            delivery.organization_ids = organization_ids
+            delivery.account_ids = account_ids
+            delivery.save(
+                update_fields=["organization_ids", "account_ids"]
+            )
 
     try:
         # Serialize dispatches using the same row lock as the processor. Keep
