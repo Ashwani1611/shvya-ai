@@ -843,6 +843,141 @@ def _safe_workflow_config(rule, sensitive_keys):
     return conditions, action, redacted
 
 
+def _workflow_reference_index(organization):
+    stage_pairs = {
+        (str(pipeline_id), str(stage_id))
+        for pipeline_id, stage_id in Stage.objects.filter(
+            pipeline__organization=organization
+        ).values_list("pipeline_id", "id")
+    }
+    return {
+        "pipeline_ids": {
+            str(item)
+            for item in Pipeline.objects.filter(
+                organization=organization
+            ).values_list("id", flat=True)
+        },
+        "stage_pairs": stage_pairs,
+        "sequence_ids": {
+            str(item)
+            for item in FollowupSequence.objects.filter(
+                organization=organization,
+                whatsapp_account__organization=organization,
+            ).values_list("id", flat=True)
+        },
+        "account_ids": {
+            str(item)
+            for item in WhatsAppAccount.objects.filter(
+                organization=organization
+            ).values_list("id", flat=True)
+        },
+    }
+
+
+def _assert_workflow_tenant_references(rule, reference_index):
+    def reject():
+        raise OperationsPermissionError(
+            "Workflow configuration contains a stale or cross-tenant "
+            "resource reference. No referenced identifier was returned."
+        )
+
+    conditions = (
+        rule.conditions
+        if isinstance(rule.conditions, dict)
+        else {}
+    )
+    action = (
+        rule.action
+        if isinstance(rule.action, dict)
+        else {}
+    )
+
+    scopes = conditions.get("scopes", [])
+    if not isinstance(scopes, list):
+        reject()
+    for scope in scopes:
+        if not isinstance(scope, dict):
+            reject()
+        pipeline_id = str(
+            scope.get("pipeline") or ""
+        ).strip()
+        if (
+            pipeline_id
+            and pipeline_id
+            not in reference_index["pipeline_ids"]
+        ):
+            reject()
+        stages = scope.get("stages", [])
+        if not isinstance(stages, list):
+            reject()
+        for stage in stages:
+            stage_id = str(stage or "").strip()
+            if (
+                stage_id
+                and (
+                    pipeline_id,
+                    stage_id,
+                )
+                not in reference_index["stage_pairs"]
+            ):
+                reject()
+
+    sequence_refs = conditions.get("sequences")
+    if sequence_refs is not None:
+        if not isinstance(sequence_refs, list):
+            reject()
+        for sequence_id in sequence_refs:
+            value = str(sequence_id or "").strip()
+            if (
+                value
+                and value
+                not in reference_index["sequence_ids"]
+            ):
+                reject()
+
+    if rule.action_type == "move_stage":
+        pipeline_id = str(
+            action.get("pipeline") or ""
+        ).strip()
+        stage_id = str(
+            action.get("stage") or ""
+        ).strip()
+        if (
+            pipeline_id
+            and pipeline_id
+            not in reference_index["pipeline_ids"]
+        ):
+            reject()
+        if (
+            stage_id
+            and (
+                pipeline_id,
+                stage_id,
+            )
+            not in reference_index["stage_pairs"]
+        ):
+            reject()
+    elif rule.action_type == "start_sequence":
+        sequence_id = str(
+            action.get("sequence") or ""
+        ).strip()
+        if (
+            sequence_id
+            and sequence_id
+            not in reference_index["sequence_ids"]
+        ):
+            reject()
+    elif rule.action_type == "message":
+        account_id = str(
+            action.get("account") or ""
+        ).strip()
+        if (
+            account_id
+            and account_id
+            not in reference_index["account_ids"]
+        ):
+            reject()
+
 
 def _safe_url_host(value):
     try:
@@ -1357,9 +1492,16 @@ def get_automation_configuration(*, identity, arguments):
         )[:limit]
     )
     sensitive_attribute_keys = _sensitive_attribute_keys(organization)
+    workflow_reference_index = _workflow_reference_index(
+        organization
+    )
     workflow_rows = []
     workflow_redaction_count = 0
     for rule in workflows:
+        _assert_workflow_tenant_references(
+            rule,
+            workflow_reference_index,
+        )
         safe_conditions, safe_action, redacted = _safe_workflow_config(
             rule,
             sensitive_attribute_keys,

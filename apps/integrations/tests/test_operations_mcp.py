@@ -1458,6 +1458,131 @@ class OperationsMCPTests(TestCase):
         self.assertTrue(counts["workflows_truncated"])
         self.assertTrue(counts["cadences_truncated"])
 
+    def test_automation_read_fails_closed_on_foreign_workflow_references(self):
+        OperationsPolicy.objects.create(
+            organization=self.organization,
+            organization_admin_enabled=True,
+            allowed_capabilities=[CAP_ORGANIZATION_READ],
+        )
+        foreign_account = WhatsAppAccount.objects.create(
+            organization=self.other_organization,
+            connection_type=WhatsAppAccount.ConnectionType.API,
+            business_name="Foreign Workflow Sender",
+            display_phone_number="+919000000041",
+            status=WhatsAppAccount.Status.CONNECTED,
+            is_active=True,
+        )
+        workflow = SmartTrigger.objects.create(
+            organization=self.organization,
+            name="Corrupt Cross Tenant Workflow",
+            enabled=False,
+            position=1,
+            trigger_type="keyword",
+            conditions={
+                "scopes": [
+                    {
+                        "pipeline": str(
+                            self.other_lead.pipeline_id
+                        ),
+                        "stages": [
+                            str(self.other_lead.stage_id)
+                        ],
+                    }
+                ],
+                "attributes": [],
+                "keywords": ["hello"],
+            },
+            action_type="ai",
+            action={"enabled": True},
+            fingerprint="8" * 64,
+            created_by=self.admin,
+        )
+        bearer = self._token(
+            actor=self.admin,
+            role=ROLE_ORGANIZATION_ADMIN,
+            organization=self.organization,
+            scopes=[OPERATIONS_READ_SCOPE],
+        )
+
+        foreign_scope = self._result(
+            self._call(
+                bearer,
+                "get_automation_configuration",
+                {},
+            )
+        )
+        self.assertTrue(foreign_scope["isError"])
+        self.assertEqual(
+            foreign_scope["structuredContent"]["status"],
+            "NOT_ALLOWED",
+        )
+        foreign_scope_payload = json.dumps(
+            foreign_scope
+        )
+        self.assertNotIn(
+            str(self.other_lead.pipeline_id),
+            foreign_scope_payload,
+        )
+        self.assertNotIn(
+            str(self.other_lead.stage_id),
+            foreign_scope_payload,
+        )
+        self.assertNotIn(
+            self.other_organization.name,
+            foreign_scope_payload,
+        )
+
+        workflow.conditions = {
+            "scopes": [
+                {
+                    "pipeline": str(self.pipeline.id),
+                    "stages": [str(self.new_stage.id)],
+                }
+            ],
+            "attributes": [],
+            "keywords": ["hello"],
+        }
+        workflow.action_type = "message"
+        workflow.action = {
+            "body": "Hello from a corrupt stored rule",
+            "account": str(foreign_account.id),
+            "schedule": "relative",
+            "duration": 1,
+            "unit": "hours",
+        }
+        workflow.save(
+            update_fields=[
+                "conditions",
+                "action_type",
+                "action",
+                "updated_at",
+            ]
+        )
+
+        foreign_action = self._result(
+            self._call(
+                bearer,
+                "get_automation_configuration",
+                {},
+            )
+        )
+        self.assertTrue(foreign_action["isError"])
+        self.assertEqual(
+            foreign_action["structuredContent"]["status"],
+            "NOT_ALLOWED",
+        )
+        foreign_action_payload = json.dumps(
+            foreign_action
+        )
+        self.assertNotIn(
+            str(foreign_account.id),
+            foreign_action_payload,
+        )
+        self.assertNotIn(
+            self.other_organization.name,
+            foreign_action_payload,
+        )
+
     def test_existing_cadence_sender_change_is_explicitly_rejected(self):
         OperationsPolicy.objects.create(
             organization=self.organization,
