@@ -93,8 +93,10 @@ urlpatterns = [
     path("campaigns/<uuid:campaign_id>/launch/", campaign_ui.legacy_launch, name="whatsapp-campaign-launch"),
 
     path("templates/", template_action_ui.template_list, name="whatsapp-template-list"),
+    path("templates/analytics-summary/", template_ui.template_analytics_summary, name="whatsapp-template-analytics-summary"),
     path("templates/new/", template_action_ui.template_create, name="whatsapp-template-create"),
     path("templates/<uuid:template_id>/edit/", template_action_ui.template_edit, name="whatsapp-template-edit"),
+    path("templates/<uuid:template_id>/analytics/", template_ui.template_analytics, name="whatsapp-template-analytics"),
     path("templates/<uuid:template_id>/submit/", template_ui.template_submit, name="whatsapp-template-submit"),
     path("templates/<uuid:template_id>/copy/", template_ui.template_copy, name="whatsapp-template-copy"),
     path("templates/<uuid:template_id>/delete/", template_ui.template_delete, name="whatsapp-template-delete"),

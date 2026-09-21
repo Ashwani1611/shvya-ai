@@ -2,7 +2,59 @@
 {% block title %}SHVYA AI — Message Templates{% endblock %}
 {% block header %}Template Message{% endblock %}
 {% block content %}
-<div class="mx-auto max-w-7xl space-y-5">
+<style>
+  .wa-template-shell{--wa-blue:#0071e3;--wa-green:#248a3d;--wa-purple:#7c3aed;--wa-text:#1d1d1f;--wa-muted:#6e6e73}
+  .wa-metric-value{font-variant-numeric:tabular-nums}
+  .wa-metric-loading{display:inline-block;width:52px;height:12px;border-radius:999px;background:linear-gradient(90deg,#f1f2f4 25%,#fafafa 50%,#f1f2f4 75%);background-size:200% 100%;animation:wa-shimmer 1.25s infinite}
+  @keyframes wa-shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+  .wa-read-track{height:5px;width:116px;overflow:hidden;border-radius:999px;border:1px solid #8bc89a;background:#fff}
+  .wa-read-fill{height:100%;width:0;border-radius:999px;background:#209447;transition:width .35s ease}
+  .wa-insights-open{display:inline-flex;height:30px;width:30px;align-items:center;justify-content:center;border-radius:10px;color:#0877bd;transition:background .18s ease,transform .18s ease}
+  .wa-insights-open:hover{background:#eef7ff;transform:translateY(-1px)}
+  .wa-tooltip{position:relative;display:inline-flex;cursor:help;color:#87909d}
+  .wa-tooltip:hover:after,.wa-tooltip:focus:after{content:attr(data-tip);position:absolute;z-index:30;top:24px;left:50%;width:260px;transform:translateX(-50%);border-radius:9px;background:#666;padding:7px 9px;color:#fff;font-size:11px;font-weight:600;line-height:1.25;text-transform:none;letter-spacing:0;box-shadow:0 8px 24px rgba(0,0,0,.18)}
+  .wa-insights-backdrop{position:fixed;inset:0;z-index:90;display:flex;align-items:center;justify-content:center;padding:22px;background:rgba(15,23,42,.24);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)}
+  .wa-insights-backdrop.hidden{display:none}
+  .wa-insights-panel{width:min(980px,96vw);max-height:92vh;overflow:auto;border:1px solid rgba(0,0,0,.12);border-radius:28px;background:rgba(255,255,255,.98);box-shadow:0 30px 90px rgba(0,0,0,.22);color:var(--wa-text)}
+  .wa-insights-header{position:sticky;top:0;z-index:3;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #e5e5e7;background:rgba(255,255,255,.92);padding:20px 24px;backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px)}
+  .wa-close{display:flex;height:36px;width:36px;align-items:center;justify-content:center;border-radius:50%;color:#343438;transition:background .18s ease,transform .18s ease}
+  .wa-close:hover{background:#f2f2f4;transform:scale(1.04)}
+  .wa-insights-body{padding:24px}
+  .wa-chip-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px;color:var(--wa-muted);font-size:13px}
+  .wa-chip{display:inline-flex;align-items:center;border-radius:9px;background:#f5f5f7;padding:6px 10px;font-weight:600}
+  .wa-chip.approved{background:#eaf6ed;color:#237a37}
+  .wa-range-wrap{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-top:16px}
+  .wa-range-segment{display:inline-flex;gap:2px;border:1px solid #d2d2d7;border-radius:12px;background:#f7f7f9;padding:3px}
+  .wa-range-btn{min-width:72px;border-radius:9px;padding:8px 13px;color:#6e6e73;font-size:13px;font-weight:600;transition:background .18s ease,color .18s ease,box-shadow .18s ease}
+  .wa-range-btn.active{background:#fff;color:var(--wa-blue);box-shadow:0 2px 7px rgba(0,0,0,.09)}
+  .wa-custom-range{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:12px}
+  .wa-custom-range.hidden{display:none}
+  .wa-date-input{border:1px solid #d2d2d7;border-radius:11px;background:#fff;padding:9px 11px;font-size:13px;color:#1d1d1f}
+  .wa-apply{border-radius:11px;background:#1d1d1f;padding:9px 14px;color:#fff;font-size:13px;font-weight:700}
+  .wa-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin-top:22px}
+  .wa-kpi{min-height:116px;border:1px solid #d7d7dc;border-radius:16px;background:linear-gradient(180deg,#fff,#fbfbfc);padding:17px 18px;box-shadow:0 2px 6px rgba(0,0,0,.06)}
+  .wa-kpi-label{display:flex;align-items:center;gap:7px;color:#717786;font-size:14px}
+  .wa-kpi-number{margin-top:8px;font-size:29px;font-weight:750;letter-spacing:-.03em;font-variant-numeric:tabular-nums}
+  .wa-kpi-sub{margin-top:2px;font-size:11px;font-weight:600;color:#6e6e73}
+  .wa-kpi.delivered .wa-kpi-sub{color:#0877bd}.wa-kpi.read .wa-kpi-sub{color:#2b7f39}.wa-kpi.clicks .wa-kpi-sub{color:#7c3aed}
+  .wa-chart-card{margin-top:26px;border-top:1px solid #efeff1;padding-top:22px}
+  .wa-chart-head{display:flex;align-items:center;justify-content:space-between;gap:12px}
+  .wa-legend{display:flex;flex-wrap:wrap;gap:14px;color:#717786;font-size:12px}
+  .wa-dot{display:inline-block;height:9px;width:9px;border-radius:50%;margin-right:5px}.wa-dot.sent{background:#69717f}.wa-dot.delivered{background:#0877bd}.wa-dot.read{background:#2b7f39}
+  #wa-insights-chart{display:block;width:100%;height:270px;margin-top:12px}
+  .wa-click-breakdown{margin-top:18px;border-top:1px solid #efeff1;padding-top:18px}
+  .wa-click-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:10px}
+  .wa-click-row{display:flex;align-items:center;justify-content:space-between;gap:12px;border:1px solid #ececf0;border-radius:13px;background:#fafafa;padding:10px 12px;font-size:12px}
+  .wa-click-row strong{font-size:14px;font-variant-numeric:tabular-nums}
+  .wa-meta-note{margin-top:24px;border-top:1px solid #d7d7dc;padding-top:12px;color:#717786;font-size:11px}
+  .wa-insights-error{margin-top:18px;border-radius:14px;border:1px solid #ffd1d1;background:#fff5f5;padding:12px 14px;color:#b42318;font-size:13px}
+  .wa-insights-error.hidden,.wa-insights-content.hidden,.wa-click-breakdown.hidden{display:none}
+  .wa-loading-card{margin-top:22px;border-radius:16px;background:#f5f5f7;padding:20px;color:#6e6e73;font-size:13px}
+  .wa-loading-card.hidden{display:none}
+  @media(max-width:780px){.wa-insights-backdrop{padding:8px;align-items:flex-end}.wa-insights-panel{width:100%;max-height:94vh;border-radius:24px 24px 0 0}.wa-insights-header,.wa-insights-body{padding:17px}.wa-range-wrap{align-items:flex-start;flex-direction:column}.wa-range-segment{width:100%;overflow:auto}.wa-range-btn{min-width:74px}.wa-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.wa-click-list{grid-template-columns:1fr}#wa-insights-chart{height:230px}}
+</style>
+
+<div class="wa-template-shell mx-auto max-w-7xl space-y-5">
   <div class="flex flex-wrap items-center justify-between gap-3">
     <div>
       <h2 class="text-lg font-semibold text-gray-900">Template Message</h2>
@@ -28,15 +80,49 @@
 
   <div class="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
     <div class="overflow-x-auto">
-      <table class="w-full min-w-[920px] text-left text-sm">
-        <thead class="bg-gray-50 text-[11px] font-semibold uppercase tracking-wide text-gray-500"><tr><th class="px-5 py-3">Template Name</th><th class="px-5 py-3">Category</th><th class="px-5 py-3">Status</th><th class="px-5 py-3">Delivered</th><th class="px-5 py-3">Read rate</th><th class="px-5 py-3">Last Updated</th><th class="px-5 py-3 text-right">Action</th></tr></thead>
+      <table class="w-full min-w-[980px] text-left text-sm">
+        <thead class="bg-gray-50 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+          <tr>
+            <th class="px-5 py-3">Template Name</th>
+            <th class="px-5 py-3">Category</th>
+            <th class="px-5 py-3">Status</th>
+            <th class="px-5 py-3">
+              <span class="inline-flex items-center gap-1.5">Delivered
+                <span class="wa-tooltip" tabindex="0" data-tip="Figures cover the last 30 days and come directly from Meta."><i class="ti ti-info-circle"></i></span>
+              </span>
+            </th>
+            <th class="px-5 py-3">
+              <span class="inline-flex items-center gap-1.5">Read rate
+                <span class="wa-tooltip" tabindex="0" data-tip="Figures cover the last 30 days. Read counts exclude recipients who disabled WhatsApp read receipts, so actual read rates may be higher."><i class="ti ti-info-circle"></i></span>
+              </span>
+            </th>
+            <th class="px-5 py-3">Last Updated</th>
+            <th class="px-5 py-3 text-right">Action</th>
+          </tr>
+        </thead>
         <tbody class="divide-y divide-gray-100">
         {% for template in templates %}
-          <tr id="template-row-{{ template.id }}" class="hover:bg-gray-50/70">
+          <tr id="template-row-{{ template.id }}" class="hover:bg-gray-50/70" {% if template.status == 'approved' and template.meta_template_id %}data-template-analytics-id="{{ template.id }}"{% endif %}>
             <td class="px-5 py-4"><a {% if template.status == 'draft' %}href="{% url 'whatsapp-template-edit' template.id %}"{% endif %} class="font-semibold text-gray-900 {% if template.status == 'draft' %}hover:text-emerald-700{% endif %}">{{ template.name }}</a><div class="mt-1 text-[11px] text-gray-400">{{ template.account.business_name|default:template.account.display_phone_number }}{% if template.meta_template_id %} · Meta {{ template.meta_template_id }}{% endif %}</div>{% if template.rejection_reason %}<div class="mt-1 max-w-sm text-xs text-red-600">{{ template.rejection_reason|truncatechars:120 }}</div>{% endif %}</td>
             <td class="px-5 py-4 uppercase text-gray-600">{{ template.category }}</td>
             <td class="px-5 py-4"><span class="inline-flex rounded-full px-2.5 py-1 text-xs font-semibold {% if template.status == 'approved' %}bg-green-50 text-green-700{% elif template.status == 'pending' %}bg-amber-50 text-amber-700{% elif template.status == 'rejected' %}bg-red-50 text-red-700{% elif template.status == 'draft' %}bg-gray-100 text-gray-600{% else %}bg-blue-50 text-blue-700{% endif %}">{{ template.get_status_display }}</span></td>
-            <td class="px-5 py-4 text-gray-400">—</td><td class="px-5 py-4 text-gray-400">—</td>
+            <td class="px-5 py-4" data-delivered-cell>
+              {% if template.status == 'approved' and template.meta_template_id %}
+              <div class="wa-metric-value font-semibold text-gray-900"><span class="wa-metric-loading" aria-label="Loading delivered analytics"></span></div>
+              <div class="mt-1 text-[11px] text-gray-400" data-delivered-sub>Meta · 30 days</div>
+              {% else %}<span class="text-gray-400">—</span>{% endif %}
+            </td>
+            <td class="px-5 py-4" data-read-cell>
+              {% if template.status == 'approved' and template.meta_template_id %}
+              <div class="flex items-center gap-2">
+                <div>
+                  <div class="wa-metric-value font-semibold text-gray-900"><span class="wa-metric-loading" aria-label="Loading read analytics"></span></div>
+                  <div class="wa-read-track mt-2" aria-hidden="true"><div class="wa-read-fill"></div></div>
+                </div>
+                <button type="button" class="wa-insights-open" data-analytics-url="{% url 'whatsapp-template-analytics' template.id %}" data-template-name="{{ template.name|escape }}" aria-label="View analytics for {{ template.name }}" title="View insights"><i class="ti ti-chart-pie-filled"></i></button>
+              </div>
+              {% else %}<span class="text-gray-400">—</span>{% endif %}
+            </td>
             <td class="px-5 py-4 text-gray-500">{{ template.updated_at|date:"d M Y, H:i" }}</td>
             <td class="px-5 py-4"><div class="flex justify-end gap-1">
               <button type="button" data-copy="{{ template.id }}" aria-label="Copy {{ template.name }}" title="Copy to draft" class="action-copy flex h-9 w-9 items-center justify-center rounded-lg text-gray-400 hover:bg-emerald-50 hover:text-emerald-600"><i class="ti ti-copy"></i></button>
@@ -51,19 +137,355 @@
     </div>
   </div>
 </div>
+
+<div id="template-insights-modal" class="wa-insights-backdrop hidden" aria-hidden="true">
+  <section class="wa-insights-panel" role="dialog" aria-modal="true" aria-labelledby="wa-insights-title">
+    <header class="wa-insights-header">
+      <div>
+        <h2 id="wa-insights-title" class="text-xl font-semibold tracking-tight text-gray-900">Template insights</h2>
+        <p id="wa-insights-subtitle" class="mt-0.5 text-xs text-gray-500">Meta WhatsApp template analytics</p>
+      </div>
+      <button type="button" id="wa-insights-close" class="wa-close" aria-label="Close insights"><i class="ti ti-x text-xl"></i></button>
+    </header>
+
+    <div class="wa-insights-body">
+      <div id="wa-insights-chips" class="wa-chip-row"></div>
+
+      <div class="wa-range-wrap">
+        <div class="text-xs text-gray-500"><i class="ti ti-calendar mr-1"></i><span id="wa-insights-dates">—</span></div>
+        <div class="wa-range-segment" role="group" aria-label="Analytics date range">
+          <button type="button" class="wa-range-btn active" data-range="7">7 Days</button>
+          <button type="button" class="wa-range-btn" data-range="30">30 Days</button>
+          <button type="button" class="wa-range-btn" data-range="90">90 Days</button>
+          <button type="button" class="wa-range-btn" data-range="custom">Custom</button>
+        </div>
+      </div>
+
+      <div id="wa-custom-range" class="wa-custom-range hidden">
+        <label class="text-xs font-semibold text-gray-600">From <input id="wa-custom-start" type="date" class="wa-date-input ml-1"></label>
+        <label class="text-xs font-semibold text-gray-600">To <input id="wa-custom-end" type="date" class="wa-date-input ml-1"></label>
+        <button type="button" id="wa-custom-apply" class="wa-apply">Apply</button>
+      </div>
+
+      <div id="wa-insights-error" class="wa-insights-error hidden"></div>
+      <div id="wa-insights-loading" class="wa-loading-card hidden"><i class="ti ti-loader-2 mr-1 animate-spin"></i> Loading actual analytics from Meta…</div>
+
+      <div id="wa-insights-content" class="wa-insights-content hidden">
+        <div class="wa-kpis">
+          <article class="wa-kpi">
+            <div class="wa-kpi-label"><i class="ti ti-mail"></i> Sent</div>
+            <div id="wa-kpi-sent" class="wa-kpi-number">0</div>
+            <div class="wa-kpi-sub">Total messages sent</div>
+          </article>
+          <article class="wa-kpi delivered">
+            <div class="wa-kpi-label"><i class="ti ti-checks"></i> Delivered</div>
+            <div id="wa-kpi-delivered" class="wa-kpi-number">0</div>
+            <div id="wa-kpi-delivered-sub" class="wa-kpi-sub">—</div>
+          </article>
+          <article class="wa-kpi read">
+            <div class="wa-kpi-label"><i class="ti ti-eye"></i> Read <span class="wa-tooltip" tabindex="0" data-tip="Read counts depend on recipients having WhatsApp read receipts enabled."><i class="ti ti-info-circle"></i></span></div>
+            <div id="wa-kpi-read" class="wa-kpi-number">0</div>
+            <div id="wa-kpi-read-sub" class="wa-kpi-sub">—</div>
+          </article>
+          <article class="wa-kpi clicks">
+            <div class="wa-kpi-label"><i class="ti ti-pointer"></i> Button clicks</div>
+            <div id="wa-kpi-clicks" class="wa-kpi-number">—</div>
+            <div id="wa-kpi-clicks-sub" class="wa-kpi-sub">Meta availability varies by template</div>
+          </article>
+        </div>
+
+        <section class="wa-chart-card">
+          <div class="wa-chart-head">
+            <h3 class="text-sm font-semibold text-gray-900">Message performance over time</h3>
+            <div class="wa-legend"><span><i class="wa-dot sent"></i>Sent</span><span><i class="wa-dot delivered"></i>Delivered</span><span><i class="wa-dot read"></i>Read</span></div>
+          </div>
+          <canvas id="wa-insights-chart" aria-label="Sent, delivered, and read messages by day"></canvas>
+        </section>
+
+        <section id="wa-click-breakdown" class="wa-click-breakdown hidden">
+          <div class="flex items-center justify-between gap-3"><h3 class="text-sm font-semibold text-gray-900">Button click details</h3><span class="text-[11px] text-gray-500">Meta-reported</span></div>
+          <div id="wa-click-list" class="wa-click-list"></div>
+        </section>
+
+        <div class="wa-meta-note">* <span id="wa-read-note">Read counts exclude recipients who disabled WhatsApp read receipts, so actual reads may be higher.</span> · Data from Meta · <span id="wa-fetched-at">Fetched now</span></div>
+      </div>
+    </div>
+  </section>
+</div>
+
 <script>
 (function(){
  const csrf='{{ csrf_token }}';
  const toast=(m,t)=>typeof window.shvyaToast==='function'?window.shvyaToast(m,t):alert(m);
  const syncBtn=document.getElementById('sync-btn'), business=document.getElementById('business-filter'), result=document.getElementById('sync-result');
+
  if(syncBtn) syncBtn.addEventListener('click', async()=>{
    if(!business.value){toast('Select a Business before syncing.','warning');business.focus();return;}
    syncBtn.disabled=true;syncBtn.querySelector('span').textContent='Syncing…';
    const fd=new FormData();fd.append('account',business.value);
-   try{const r=await fetch('{% url "whatsapp-template-sync" %}',{method:'POST',headers:{'X-CSRFToken':csrf},body:fd});const d=await r.json();if(!r.ok)throw new Error(d.error||'Template synchronization failed.');result.className='rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800';result.textContent=`Sync completed: ${d.created} created, ${d.updated} updated, ${d.unchanged} unchanged, ${d.failed} failed.`;toast('Templates synchronized successfully.','success');setTimeout(()=>location.reload(),700);}catch(e){result.className='rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700';result.textContent=e.message;toast(e.message,'error');}finally{syncBtn.disabled=false;syncBtn.querySelector('span').textContent='Sync Templates';}
+   try{const r=await fetch('{% url "whatsapp-template-sync" %}',{method:'POST',headers:{'X-CSRFToken':csrf},body:fd});const d=await r.json();if(!r.ok)throw new Error(d.error||'Template synchronization failed.');result.className='rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800';result.textContent='Sync completed: '+d.created+' created, '+d.updated+' updated, '+d.unchanged+' unchanged, '+d.failed+' failed.';toast('Templates synchronized successfully.','success');setTimeout(()=>location.reload(),700);}catch(e){result.className='rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700';result.textContent=e.message;toast(e.message,'error');}finally{syncBtn.disabled=false;syncBtn.querySelector('span').textContent='Sync Templates';}
  });
- document.querySelectorAll('.action-copy').forEach(b=>b.addEventListener('click',async()=>{b.disabled=true;try{const r=await fetch(`/dashboard/whatsapp/templates/${b.dataset.copy}/copy/`,{method:'POST',headers:{'X-CSRFToken':csrf}});const d=await r.json();if(!r.ok)throw new Error(d.error||'Could not copy template.');location.href=d.edit_url;}catch(e){toast(e.message,'error');b.disabled=false;}}));
- document.querySelectorAll('.action-delete').forEach(b=>b.addEventListener('click',async()=>{if(!confirm(`Delete template?\n\n${b.dataset.name}\n\nThis removes the template from the configured WhatsApp Business Account and SHVYA.`))return;b.disabled=true;try{const r=await fetch(`/dashboard/whatsapp/templates/${b.dataset.delete}/delete/`,{method:'POST',headers:{'X-CSRFToken':csrf}});const d=await r.json();if(!r.ok)throw new Error(d.error||'Could not delete template.');document.getElementById(`template-row-${b.dataset.delete}`)?.remove();toast('Template deletion requested successfully.','success');}catch(e){toast(e.message,'error');b.disabled=false;}}));
+ document.querySelectorAll('.action-copy').forEach(b=>b.addEventListener('click',async()=>{b.disabled=true;try{const r=await fetch('/dashboard/whatsapp/templates/'+b.dataset.copy+'/copy/',{method:'POST',headers:{'X-CSRFToken':csrf}});const d=await r.json();if(!r.ok)throw new Error(d.error||'Could not copy template.');location.href=d.edit_url;}catch(e){toast(e.message,'error');b.disabled=false;}}));
+ document.querySelectorAll('.action-delete').forEach(b=>b.addEventListener('click',async()=>{if(!confirm('Delete template?\\n\\n'+b.dataset.name+'\\n\\nThis removes the template from the configured WhatsApp Business Account and SHVYA.'))return;b.disabled=true;try{const r=await fetch('/dashboard/whatsapp/templates/'+b.dataset.delete+'/delete/',{method:'POST',headers:{'X-CSRFToken':csrf}});const d=await r.json();if(!r.ok)throw new Error(d.error||'Could not delete template.');document.getElementById('template-row-'+b.dataset.delete)?.remove();toast('Template deletion requested successfully.','success');}catch(e){toast(e.message,'error');b.disabled=false;}}));
+
+ const nf=new Intl.NumberFormat('en-IN');
+ const fmtNumber=value=>nf.format(Number(value||0));
+ const fmtPercent=value=>{
+   if(value===null||value===undefined||Number.isNaN(Number(value))) return '—';
+   const n=Number(value);
+   return (Math.round(n*10)/10).toString().replace(/\\.0$/,'')+'%';
+ };
+ const prettyDate=value=>{
+   if(!value) return '—';
+   const d=new Date(value+'T00:00:00Z');
+   return new Intl.DateTimeFormat('en-GB',{day:'2-digit',month:'short',year:'numeric',timeZone:'UTC'}).format(d);
+ };
+
+ async function loadSummary(){
+   const rows=Array.from(document.querySelectorAll('tr[data-template-analytics-id]'));
+   if(!rows.length) return;
+   try{
+     const response=await fetch('{% url "whatsapp-template-analytics-summary" %}',{headers:{'Accept':'application/json'}});
+     const data=await response.json();
+     if(!response.ok||!data.ok) throw new Error(data.error||'Meta analytics unavailable.');
+     rows.forEach(row=>{
+       const item=(data.templates||{})[row.dataset.templateAnalyticsId];
+       const delivered=row.querySelector('[data-delivered-cell]');
+       const read=row.querySelector('[data-read-cell]');
+       if(!item){
+         if(delivered) delivered.innerHTML='<span class="text-xs font-medium text-gray-400">Unavailable</span><div class="mt-1 text-[11px] text-gray-400">Meta analytics</div>';
+         const readValue=read?.querySelector('.wa-metric-value');
+         if(readValue) readValue.innerHTML='<span class="text-xs font-medium text-gray-400">Unavailable</span>';
+         return;
+       }
+       if(delivered){
+         const value=delivered.querySelector('.wa-metric-value');
+         const sub=delivered.querySelector('[data-delivered-sub]');
+         if(value) value.textContent=fmtNumber(item.delivered);
+         if(sub) sub.textContent=item.delivered_rate===null?'Meta · 30 days':fmtPercent(item.delivered_rate)+' of sent';
+       }
+       if(read){
+         const value=read.querySelector('.wa-metric-value');
+         const fill=read.querySelector('.wa-read-fill');
+         if(value) value.textContent=(item.read_rate===null?'—%':fmtPercent(item.read_rate))+' ('+fmtNumber(item.read)+')';
+         if(fill) fill.style.width=Math.max(0,Math.min(100,Number(item.read_rate||0)))+'%';
+       }
+     });
+   }catch(error){
+     rows.forEach(row=>{
+       const delivered=row.querySelector('[data-delivered-cell]');
+       const readValue=row.querySelector('[data-read-cell] .wa-metric-value');
+       if(delivered) delivered.innerHTML='<span class="text-xs font-medium text-gray-400">Unavailable</span><div class="mt-1 text-[11px] text-gray-400">Meta analytics</div>';
+       if(readValue) readValue.innerHTML='<span class="text-xs font-medium text-gray-400">Unavailable</span>';
+     });
+   }
+ }
+ loadSummary();
+
+ const modal=document.getElementById('template-insights-modal');
+ const closeBtn=document.getElementById('wa-insights-close');
+ const title=document.getElementById('wa-insights-title');
+ const chips=document.getElementById('wa-insights-chips');
+ const dates=document.getElementById('wa-insights-dates');
+ const customWrap=document.getElementById('wa-custom-range');
+ const customStart=document.getElementById('wa-custom-start');
+ const customEnd=document.getElementById('wa-custom-end');
+ const customApply=document.getElementById('wa-custom-apply');
+ const errorBox=document.getElementById('wa-insights-error');
+ const loading=document.getElementById('wa-insights-loading');
+ const insightsContent=document.getElementById('wa-insights-content');
+ const canvas=document.getElementById('wa-insights-chart');
+ let activeUrl='';
+ let activeRange='7';
+ let lastChartPoints=[];
+ let lastFocus=null;
+
+ function openModal(button){
+   activeUrl=button.dataset.analyticsUrl;
+   activeRange='7';
+   lastFocus=button;
+   title.textContent=button.dataset.templateName||'Template insights';
+   document.querySelectorAll('.wa-range-btn').forEach(btn=>btn.classList.toggle('active',btn.dataset.range==='7'));
+   customWrap.classList.add('hidden');
+   modal.classList.remove('hidden');
+   modal.setAttribute('aria-hidden','false');
+   document.body.style.overflow='hidden';
+   closeBtn.focus();
+   loadDetail('7');
+ }
+ function closeModal(){
+   modal.classList.add('hidden');
+   modal.setAttribute('aria-hidden','true');
+   document.body.style.overflow='';
+   activeUrl='';
+   if(lastFocus) lastFocus.focus();
+ }
+ document.querySelectorAll('.wa-insights-open').forEach(button=>button.addEventListener('click',()=>openModal(button)));
+ closeBtn.addEventListener('click',closeModal);
+ modal.addEventListener('click',event=>{if(event.target===modal) closeModal();});
+ document.addEventListener('keydown',event=>{if(event.key==='Escape'&&!modal.classList.contains('hidden')) closeModal();});
+
+ document.querySelectorAll('.wa-range-btn').forEach(button=>button.addEventListener('click',()=>{
+   activeRange=button.dataset.range;
+   document.querySelectorAll('.wa-range-btn').forEach(btn=>btn.classList.toggle('active',btn===button));
+   if(activeRange==='custom'){
+     customWrap.classList.remove('hidden');
+     return;
+   }
+   customWrap.classList.add('hidden');
+   loadDetail(activeRange);
+ }));
+ customApply.addEventListener('click',()=>{
+   if(!customStart.value||!customEnd.value){toast('Choose both custom dates.','warning');return;}
+   loadDetail('custom',customStart.value,customEnd.value);
+ });
+
+ async function loadDetail(range,start,end){
+   if(!activeUrl) return;
+   errorBox.classList.add('hidden');
+   insightsContent.classList.add('hidden');
+   loading.classList.remove('hidden');
+   const params=new URLSearchParams({range:range});
+   if(range==='custom'){params.set('start',start);params.set('end',end);}
+   try{
+     const response=await fetch(activeUrl+'?'+params.toString(),{headers:{'Accept':'application/json'}});
+     const data=await response.json();
+     if(!response.ok||!data.ok) throw new Error(data.error||'Meta analytics are unavailable.');
+     renderDetail(data);
+   }catch(error){
+     errorBox.textContent=error.message;
+     errorBox.classList.remove('hidden');
+   }finally{
+     loading.classList.add('hidden');
+   }
+ }
+
+ function renderDetail(data){
+   const tpl=data.template||{};
+   const analytics=data.analytics||{};
+   const totals=analytics.totals||{};
+   const rates=analytics.rates||{};
+   title.textContent=tpl.name||'Template insights';
+   chips.innerHTML='';
+   [
+     {text:tpl.category||'Template',cls:''},
+     {text:tpl.status||'Approved',cls:'approved'},
+     {text:tpl.language||'—',cls:''}
+   ].forEach(item=>{
+     const span=document.createElement('span');
+     span.className='wa-chip '+item.cls;
+     span.textContent=item.text;
+     chips.appendChild(span);
+   });
+   dates.textContent=prettyDate(data.range?.start)+' – '+prettyDate(data.range?.end);
+   if(data.range?.start) customStart.value=data.range.start;
+   if(data.range?.end) customEnd.value=data.range.end;
+
+   document.getElementById('wa-kpi-sent').textContent=fmtNumber(totals.sent);
+   document.getElementById('wa-kpi-delivered').textContent=fmtNumber(totals.delivered);
+   document.getElementById('wa-kpi-read').textContent=fmtNumber(totals.read);
+   document.getElementById('wa-kpi-delivered-sub').textContent=rates.delivered===null?'No sent messages':fmtPercent(rates.delivered)+' of sent';
+   document.getElementById('wa-kpi-read-sub').textContent=rates.read===null?'No delivered messages':fmtPercent(rates.read)+' of delivered';
+
+   const clickNumber=document.getElementById('wa-kpi-clicks');
+   const clickSub=document.getElementById('wa-kpi-clicks-sub');
+   const clickSection=document.getElementById('wa-click-breakdown');
+   const clickList=document.getElementById('wa-click-list');
+   const clickAvailable=Boolean(analytics.availability?.clicked);
+   if(!data.clicks_supported){
+     clickNumber.textContent='—';
+     clickSub.textContent='Unavailable for this template category';
+   }else if(!clickAvailable){
+     clickNumber.textContent='—';
+     clickSub.textContent='Not returned by Meta';
+   }else{
+     clickNumber.textContent=fmtNumber(totals.clicked);
+     clickSub.textContent=rates.clicked===null?'0 clicks reported':fmtPercent(rates.clicked)+' of delivered';
+   }
+   clickList.innerHTML='';
+   const clicks=Array.isArray(analytics.clicks)?analytics.clicks:[];
+   if(clickAvailable&&clicks.length){
+     clicks.forEach(click=>{
+       const row=document.createElement('div');
+       row.className='wa-click-row';
+       const left=document.createElement('div');
+       const label=document.createElement('div');
+       label.className='font-semibold text-gray-800';
+       label.textContent=click.button_content||'Button';
+       const type=document.createElement('div');
+       type.className='mt-0.5 text-[10px] uppercase tracking-wide text-gray-400';
+       type.textContent=(click.type||'button').replaceAll('_',' ');
+       left.appendChild(label);left.appendChild(type);
+       const count=document.createElement('strong');
+       count.textContent=fmtNumber(click.count);
+       row.appendChild(left);row.appendChild(count);clickList.appendChild(row);
+     });
+     clickSection.classList.remove('hidden');
+   }else{
+     clickSection.classList.add('hidden');
+   }
+
+   document.getElementById('wa-read-note').textContent=data.read_receipt_note||'Read counts depend on WhatsApp read receipts.';
+   const fetched=analytics.fetched_at?new Date(analytics.fetched_at):null;
+   document.getElementById('wa-fetched-at').textContent=fetched&&!Number.isNaN(fetched.getTime())?'Fetched '+fetched.toLocaleString('en-IN'):'Fetched from Meta';
+   lastChartPoints=Array.isArray(analytics.days)?analytics.days:[];
+   insightsContent.classList.remove('hidden');
+   requestAnimationFrame(()=>drawChart(lastChartPoints));
+ }
+
+ function drawChart(points){
+   const rect=canvas.getBoundingClientRect();
+   const width=Math.max(320,Math.floor(rect.width));
+   const height=Math.max(220,Math.floor(rect.height));
+   const ratio=Math.max(1,window.devicePixelRatio||1);
+   canvas.width=Math.floor(width*ratio);canvas.height=Math.floor(height*ratio);
+   const ctx=canvas.getContext('2d');
+   ctx.setTransform(ratio,0,0,ratio,0,0);
+   ctx.clearRect(0,0,width,height);
+   const pad={left:46,right:14,top:16,bottom:34};
+   const plotW=width-pad.left-pad.right,plotH=height-pad.top-pad.bottom;
+   const maxValue=Math.max(1,...points.flatMap(point=>[Number(point.sent||0),Number(point.delivered||0),Number(point.read||0)]));
+   ctx.font='11px -apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",sans-serif';
+   ctx.textBaseline='middle';
+   ctx.strokeStyle='#e2e5e9';ctx.lineWidth=1;ctx.setLineDash([4,5]);
+   for(let i=0;i<=4;i++){
+     const y=pad.top+(plotH*i/4);
+     ctx.beginPath();ctx.moveTo(pad.left,y);ctx.lineTo(width-pad.right,y);ctx.stroke();
+     const value=Math.round(maxValue*(1-i/4));
+     ctx.fillStyle='#89919e';ctx.textAlign='right';ctx.fillText(String(value),pad.left-9,y);
+   }
+   ctx.setLineDash([]);
+   const xFor=index=>points.length<=1?pad.left+plotW/2:pad.left+(plotW*index/(points.length-1));
+   const yFor=value=>pad.top+plotH-(Math.max(0,Number(value||0))/maxValue)*plotH;
+   const series=[
+     {key:'sent',color:'#69717f'},
+     {key:'delivered',color:'#0877bd'},
+     {key:'read',color:'#2b7f39'}
+   ];
+   series.forEach(item=>{
+     ctx.strokeStyle=item.color;ctx.lineWidth=2.4;ctx.lineJoin='round';ctx.lineCap='round';ctx.beginPath();
+     points.forEach((point,index)=>{
+       const x=xFor(index),y=yFor(point[item.key]);
+       if(index===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);
+     });
+     ctx.stroke();
+   });
+   if(!points.length){
+     ctx.fillStyle='#89919e';ctx.textAlign='center';ctx.fillText('No Meta data for this period',width/2,height/2);
+     return;
+   }
+   const labelCount=width<600?4:7;
+   const step=Math.max(1,Math.ceil(points.length/labelCount));
+   ctx.fillStyle='#89919e';ctx.textAlign='center';ctx.textBaseline='top';
+   points.forEach((point,index)=>{
+     if(index%step!==0&&index!==points.length-1)return;
+     const d=new Date(point.date+'T00:00:00Z');
+     const label=new Intl.DateTimeFormat('en-GB',{day:'2-digit',month:'short',timeZone:'UTC'}).format(d);
+     ctx.fillText(label,xFor(index),height-pad.bottom+11);
+   });
+ }
+ let resizeTimer=null;
+ window.addEventListener('resize',()=>{clearTimeout(resizeTimer);resizeTimer=setTimeout(()=>{if(!modal.classList.contains('hidden'))drawChart(lastChartPoints);},120);});
 })();
 </script>
 {% endblock %}
