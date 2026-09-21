@@ -538,6 +538,11 @@ class CalendarReminderStep(models.Model):
         EMAIL = "email", "Email"
         CALL_REMINDER = "call_reminder", "Call Reminder"
 
+    class TimingMode(models.TextChoices):
+        IMMEDIATE = "immediate", "Immediately after booking"
+        BEFORE = "before", "Before booked slot"
+        SPECIFIC_TIME = "specific_time", "Specific time on booking date"
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     sequence = models.ForeignKey(
         CalendarReminderSequence,
@@ -548,10 +553,16 @@ class CalendarReminderStep(models.Model):
     name = models.CharField(max_length=255)
     subject = models.CharField(max_length=180, blank=True)
     body = models.TextField(blank=True)
-    offset_minutes = models.IntegerField(
-        default=0,
-        help_text="Minutes relative to booking start. Negative means before the slot.",
+    timing_mode = models.CharField(
+        max_length=20,
+        choices=TimingMode.choices,
+        default=TimingMode.BEFORE,
     )
+    offset_minutes = models.IntegerField(
+        default=-120,
+        help_text="Minutes relative to booking start for before-slot reminders.",
+    )
+    specific_time = models.TimeField(null=True, blank=True)
     display_order = models.PositiveSmallIntegerField(default=0)
     enabled = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
