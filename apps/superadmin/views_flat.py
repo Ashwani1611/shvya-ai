@@ -405,7 +405,7 @@ def organization_detail_view(
         organization=organization,
     )
 
-    from apps.integrations.operations_models import OperationsSupportSession
+    from apps.integrations.operations_presence import visible_support_sessions
     from apps.integrations.operations_policy import (
         ALL_CAPABILITIES,
         CAPABILITY_LABELS,
@@ -427,15 +427,8 @@ def organization_detail_view(
         }
         for key in ALL_CAPABILITIES
     ]
-    active_operations_support = (
-        OperationsSupportSession.objects.filter(
-            organization=organization,
-            ended_at__isnull=True,
-            token__revoked_at__isnull=True,
-            token__expires_at__gt=timezone.now(),
-        )
-        .select_related("actor")
-        .order_by("-last_seen_at")
+    active_operations_support = visible_support_sessions(
+        organization=organization,
     )
 
     return render(
