@@ -2745,6 +2745,41 @@ class OperationsMCPTests(TestCase):
             info.about,
         )
 
+    def test_full_ai_configuration_flags_legacy_text_over_canonical_limit(self):
+        OperationsPolicy.objects.create(
+            organization=self.organization,
+            organization_admin_enabled=True,
+            allowed_capabilities=[CAP_ORGANIZATION_READ],
+        )
+        legacy_playbook = ("Legacy guidance. " * 4000)
+        self.assertGreater(len(legacy_playbook), 50000)
+        OrgInfo.objects.create(
+            organization=self.organization,
+            ai_playbook=legacy_playbook,
+        )
+        bearer = self._token(
+            actor=self.admin,
+            role=ROLE_ORGANIZATION_ADMIN,
+            organization=self.organization,
+            scopes=[OPERATIONS_READ_SCOPE],
+        )
+
+        result = self._result(
+            self._call(
+                bearer,
+                "get_ai_configuration",
+                {},
+            )
+        )
+        self.assertFalse(result["isError"])
+        data = result["structuredContent"]
+        self.assertEqual(
+            data["ai_playbook_length"],
+            len(legacy_playbook),
+        )
+        self.assertTrue(data["ai_playbook_truncated"])
+        self.assertEqual(len(data["ai_playbook"]), 50000)
+
     def test_knowledge_health_is_bounded_metadata_only_and_tenant_scoped(self):
         OperationsPolicy.objects.create(
             organization=self.organization,
