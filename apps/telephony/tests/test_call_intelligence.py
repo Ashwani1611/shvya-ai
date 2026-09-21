@@ -238,15 +238,16 @@ class CallIntelligenceApiTests(TestCase):
             direction=CallRecord.Direction.INCOMING,
             status=CallRecord.Status.ANSWERED,
         )
-        response = self.client.patch(
-            f"/api/v1/call-intelligence/calls/{call.id}/media/",
-            {
-                "recording_url": "https://example.com/call.mp3",
-                "transcript": "Agent: Hello\nLead: I want a demo.",
-                "transcript_speakers": [{"speaker": "agent"}, {"speaker": "lead"}],
-            },
-            format="json",
-        )
+        with self.captureOnCommitCallbacks(execute=True):
+            response = self.client.patch(
+                f"/api/v1/call-intelligence/calls/{call.id}/media/",
+                {
+                    "recording_url": "https://example.com/call.mp3",
+                    "transcript": "Agent: Hello\nLead: I want a demo.",
+                    "transcript_speakers": [{"speaker": "agent"}, {"speaker": "lead"}],
+                },
+                format="json",
+            )
         self.assertEqual(response.status_code, 200, response.content)
         call.refresh_from_db()
         self.assertEqual(call.recording_status, "ready")
