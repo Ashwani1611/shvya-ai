@@ -421,15 +421,22 @@ def organization_detail_view(
     )
 
     operations_policy = policy_for(organization)
+    configured_operations_capabilities = expand_capabilities(
+        operations_policy.allowed_capabilities
+    )
     operations_capabilities = [
         {
             "key": key,
             "label": CAPABILITY_LABELS[key],
-            "allowed": key in (operations_policy.allowed_capabilities or []),
+            "allowed": key in configured_operations_capabilities,
             "is_write": key in WRITE_CAPABILITIES,
             "approval_required": (
                 key in WRITE_CAPABILITIES
-                and key in (operations_policy.approval_required_capabilities or [])
+                and approval_required(
+                    role=ROLE_ORGANIZATION_ADMIN,
+                    organization=organization,
+                    capability=key,
+                )
             ),
         }
         for key in ALL_CAPABILITIES
