@@ -17,6 +17,7 @@ from apps.crm.models import AttributeDefinition, Lead, LeadActivity, Pipeline, S
 from apps.followups.models import FollowupSequence
 from apps.integrations.operations_agent_prompt import OPERATIONS_AGENT_INSTRUCTIONS
 from apps.integrations.models import (
+    OperationsApprovalUse,
     OperationsAuditEvent,
     OperationsOAuthClient,
     OperationsOAuthToken,
@@ -729,6 +730,17 @@ class OperationsMCPTests(TestCase):
         )
         self.assertFalse(applied["isError"])
         self.assertEqual(applied["structuredContent"]["status"], "FIXED")
+        approval_use = OperationsApprovalUse.objects.get(
+            approval_event_id=dry["structuredContent"]["approval_event_id"]
+        )
+        with self.assertRaises(ValidationError):
+            OperationsApprovalUse.objects.filter(
+                pk=approval_use.pk
+            ).update(created_at=timezone.now())
+        with self.assertRaises(ValidationError):
+            OperationsApprovalUse.objects.filter(
+                pk=approval_use.pk
+            ).delete()
         definition = AttributeDefinition.objects.get(
             organization=self.organization,
             name="Company Size",
