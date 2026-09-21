@@ -34,6 +34,7 @@ from apps.integrations.operations_policy import (
     CAP_AUTOMATION_CONFIG_WRITE,
     CAP_CRM_CONFIG_WRITE,
     CAP_DIAGNOSTICS_READ,
+    CAP_LEAD_ATTRIBUTES_WRITE,
     CAP_LEAD_STAGE_WRITE,
     CAP_ORGANIZATION_READ,
     ROLE_ORGANIZATION_ADMIN,
@@ -456,6 +457,80 @@ class OperationsMCPTests(TestCase):
             "NOT_ALLOWED",
         )
         self.assertEqual(sequence.steps.count(), 0)
+
+    def test_operations_crm_and_lead_writes_reject_secret_like_values(self):
+        OperationsPolicy.objects.create(
+            organization=self.organization,
+            organization_admin_enabled=True,
+            allowed_capabilities=[
+                CAP_ORGANIZATION_READ,
+                CAP_CRM_CONFIG_WRITE,
+                CAP_LEAD_ATTRIBUTES_WRITE,
+            ],
+            approval_required_capabilities=[],
+        )
+        context_attribute = AttributeDefinition.objects.create(
+            organization=self.organization,
+            name="Customer Context",
+            key="customer_context",
+            field_type=AttributeDefinition.FieldType.TEXT,
+        )
+        bearer = self._token(
+            actor=self.admin,
+            role=ROLE_ORGANIZATION_ADMIN,
+            organization=self.organization,
+        )
+
+        pipeline_result = self._result(
+            self._call(
+                bearer,
+                "upsert_pipeline_configuration",
+                {
+                    "data": {
+                        "name": "Unsafe Pipeline",
+                        "description": "api_key: pipeline-secret",
+                    },
+                    "reason": "Attempt unsafe pipeline configuration",
+                    "dry_run": True,
+                },
+            )
+        )
+        self.assertTrue(pipeline_result["isError"])
+        self.assertEqual(
+            pipeline_result["structuredContent"]["status"],
+            "NOT_ALLOWED",
+        )
+        self.assertFalse(
+            Pipeline.objects.filter(
+                organization=self.organization,
+                name="Unsafe Pipeline",
+            ).exists()
+        )
+
+        lead_result = self._result(
+            self._call(
+                bearer,
+                "update_lead_attributes",
+                {
+                    "lead_id": str(self.lead.id),
+                    "values": {
+                        context_attribute.key: "password: lead-secret",
+                    },
+                    "reason": "Attempt unsafe lead attribute write",
+                    "dry_run": True,
+                },
+            )
+        )
+        self.assertTrue(lead_result["isError"])
+        self.assertEqual(
+            lead_result["structuredContent"]["status"],
+            "NOT_ALLOWED",
+        )
+        self.lead.refresh_from_db()
+        self.assertNotIn(
+            context_attribute.key,
+            self.lead.attributes or {},
+        )
 
     def test_pipeline_configuration_create_verifies_standard_stages(self):
         OperationsPolicy.objects.create(
