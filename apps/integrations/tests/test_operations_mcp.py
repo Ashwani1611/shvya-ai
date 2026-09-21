@@ -4340,6 +4340,51 @@ class OperationsMCPTests(TestCase):
             second_blob,
         )
 
+    def test_superadmin_platform_tool_audit_is_not_attributed_to_selected_tenant(self):
+        bearer = self._token(
+            actor=self.superadmin,
+            role=ROLE_SUPERADMIN,
+            scopes=[OPERATIONS_READ_SCOPE],
+        )
+        selected = self._result(
+            self._call(
+                bearer,
+                "select_organization_context",
+                {
+                    "organization_id": str(self.organization.id),
+                    "reason": "Select customer before platform audit test",
+                },
+            )
+        )
+        self.assertFalse(selected["isError"])
+
+        listed = self._result(
+            self._call(
+                bearer,
+                "list_organizations",
+                {"limit": 5},
+            )
+        )
+        self.assertFalse(listed["isError"])
+
+        audit = (
+            OperationsAuditEvent.objects.filter(
+                actor=self.superadmin,
+                tool_name="list_organizations",
+            )
+            .order_by("-created_at")
+            .first()
+        )
+        self.assertIsNotNone(audit)
+        self.assertIsNone(audit.organization_id)
+        self.assertIsNone(audit.support_session_id)
+
+        tenant_audits = OperationsAuditEvent.objects.filter(
+            organization=self.organization,
+            tool_name="list_organizations",
+        )
+        self.assertFalse(tenant_audits.exists())
+
     def test_superadmin_org_discovery_distinguishes_open_from_recent_support(self):
         bearer = self._token(
             actor=self.superadmin,
