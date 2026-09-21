@@ -1325,8 +1325,19 @@ def _record_audit(
     )
     support_session = None
 
+    if (
+        execution is not None
+        and execution.target_type == "platform"
+    ):
+        organization = None
+
     if identity.role == ROLE_SUPERADMIN:
-        if organization is not None:
+        if (
+            execution is not None
+            and execution.target_type == "platform"
+        ):
+            support_session = None
+        elif organization is not None:
             support_session = (
                 OperationsSupportSession.objects.filter(
                     token=identity.token,
