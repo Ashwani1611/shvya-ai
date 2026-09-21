@@ -1,4 +1,5 @@
 from django.urls import NoReverseMatch, reverse
+from django.utils import timezone
 
 from apps.ai_engagement.coins import credits_to_coins
 
@@ -321,6 +322,50 @@ def _ai_credit_context(request):
     }
 
 
+def _operations_support_context(request):
+    """Expose active Superadmin Operations support presence across the dashboard."""
+
+    user = getattr(request, "crm_user", None)
+    organization_id = getattr(user, "organization_id", None)
+    if not organization_id:
+        return {
+            "operations_support_active": False,
+            "operations_support_actor": "",
+            "operations_support_started_at": None,
+        }
+
+    from apps.integrations.operations_models import OperationsSupportSession
+
+    session = (
+        OperationsSupportSession.objects.filter(
+            organization_id=organization_id,
+            ended_at__isnull=True,
+            token__revoked_at__isnull=True,
+            token__expires_at__gt=timezone.now(),
+        )
+        .select_related("actor")
+        .order_by("-last_seen_at", "-started_at")
+        .first()
+    )
+    if session is None:
+        return {
+            "operations_support_active": False,
+            "operations_support_actor": "",
+            "operations_support_started_at": None,
+        }
+
+    actor_name = (
+        str(getattr(session.actor, "name", "") or "").strip()
+        or "SHVYA Support"
+    )
+    return {
+        "operations_support_active": True,
+        "operations_support_actor": actor_name,
+        "operations_support_started_at": session.started_at,
+    }
+
+
+
 def sidebar_nav(request):
     """Build shared, section-aware sidebar navigation for the dashboard shell."""
     nav_items = []
@@ -416,4 +461,5 @@ def sidebar_nav(request):
         "pending_reminder_count": _pending_reminder_count(request),
     }
     context.update(_ai_credit_context(request))
+    context.update(_operations_support_context(request))
     return context
