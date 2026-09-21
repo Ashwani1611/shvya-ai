@@ -6123,6 +6123,82 @@ class OperationsMCPTests(TestCase):
         payload = json.dumps(blocked_write)
         self.assertNotIn("mutation-secret", payload)
 
+    def test_operations_rejects_generic_action_reasons_before_persistence(self):
+        bearer = self._token(
+            actor=self.superadmin,
+            role=ROLE_SUPERADMIN,
+            scopes=[
+                OPERATIONS_READ_SCOPE,
+                OPERATIONS_WRITE_SCOPE,
+            ],
+        )
+
+        blocked_context = self._result(
+            self._call(
+                bearer,
+                "select_organization_context",
+                {
+                    "organization_id": str(self.organization.id),
+                    "reason": "Fixing issue",
+                },
+            )
+        )
+        self.assertTrue(blocked_context["isError"])
+        self.assertEqual(
+            blocked_context["structuredContent"]["status"],
+            "FAILED",
+        )
+        self.assertIn(
+            "specific operational reason",
+            blocked_context["structuredContent"]["error"],
+        )
+        self.assertFalse(
+            OperationsSupportSession.objects.filter(
+                token__actor=self.superadmin,
+                organization=self.organization,
+                ended_at__isnull=True,
+            ).exists()
+        )
+
+        selected = self._result(
+            self._call(
+                bearer,
+                "select_organization_context",
+                {
+                    "organization_id": str(self.organization.id),
+                    "reason": "Review one lead stage transition",
+                },
+            )
+        )
+        self.assertFalse(selected["isError"])
+
+        blocked_write = self._result(
+            self._call(
+                bearer,
+                "move_lead_stage",
+                {
+                    "lead_id": str(self.lead.id),
+                    "target_stage_id": str(self.review_stage.id),
+                    "reason": "User asked me to.",
+                    "dry_run": True,
+                },
+            )
+        )
+        self.assertTrue(blocked_write["isError"])
+        self.assertEqual(
+            blocked_write["structuredContent"]["status"],
+            "FAILED",
+        )
+        self.assertIn(
+            "specific operational reason",
+            blocked_write["structuredContent"]["error"],
+        )
+        self.lead.refresh_from_db()
+        self.assertEqual(
+            self.lead.stage_id,
+            self.new_stage.id,
+        )
+
     def test_superadmin_customer_writes_still_require_bound_approval_receipt(self):
         bearer = self._token(
             actor=self.superadmin,

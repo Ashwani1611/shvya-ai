@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import uuid
 from urllib.parse import urlparse
 from copy import deepcopy
@@ -121,6 +122,21 @@ MESSAGING_AUTOMATION_SETTING_KEYS = frozenset(
 )
 
 
+GENERIC_ACTION_REASONS = {
+    "apply change",
+    "fix issue",
+    "fixing issue",
+    "make change",
+    "repair issue",
+    "requested change",
+    "resolve issue",
+    "update config",
+    "update configuration",
+    "user asked me to",
+    "user requested this",
+}
+
+
 DIAGNOSTIC_TOOL_NAMES = {
     "find_leads",
     "get_lead_snapshot",
@@ -209,6 +225,14 @@ def _reason(arguments, *, required=False):
         raise OperationsPermissionError(
             "Action reason contains credential-like or secret material. "
             "Use a non-secret operational reason."
+        )
+    normalized = " ".join(
+        re.sub(r"[^a-z0-9]+", " ", value.casefold()).split()
+    )
+    if required and normalized in GENERIC_ACTION_REASONS:
+        raise OperationsToolError(
+            "A specific operational reason is required. Generic placeholders "
+            "such as 'Fixing issue' or 'User asked me to' are not accepted."
         )
     return value[:500]
 
