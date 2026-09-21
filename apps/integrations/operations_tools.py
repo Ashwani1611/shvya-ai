@@ -66,6 +66,7 @@ from apps.integrations.diagnostic_tools import (
     execute_tool as execute_diagnostic_tool,
 )
 from apps.integrations.operations_approval import approval_fingerprint
+from apps.integrations.operations_audit import organization_visible_audit_reason
 from apps.integrations.operations_models import (
     OperationsApprovalUse,
     OperationsAuditEvent,
@@ -4913,7 +4914,11 @@ def get_operations_audit(*, identity, arguments):
                         if item.support_session_id
                         else None
                     ),
-                    "reason": item.reason,
+                    "reason": (
+                        organization_visible_audit_reason(item)
+                        if identity.role == ROLE_ORGANIZATION_ADMIN
+                        else item.reason
+                    ),
                     "outcome": item.outcome,
                     "change_summary": item.change_summary,
                     "error_code": item.error_code,
