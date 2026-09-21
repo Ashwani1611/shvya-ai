@@ -437,6 +437,36 @@ def _validate_live_token(token, *, revoke_on_failure=True):
     )
 
 
+def revoke_refresh_grant_if_live_authority_invalid(
+    *,
+    refresh_token,
+):
+    """Persist revocation after a failed refresh when live SHVYA authority is gone."""
+
+    token = (
+        OperationsOAuthToken.objects.select_related(
+            "client",
+            "actor",
+            "organization",
+            "active_organization",
+        )
+        .filter(
+            refresh_token_hash=token_hash(refresh_token),
+            revoked_at__isnull=True,
+        )
+        .first()
+    )
+    if token is None:
+        return False
+
+    try:
+        _validate_live_token(token)
+    except OperationsAuthError:
+        token.refresh_from_db(fields=["revoked_at"])
+        return token.revoked_at is not None
+    return False
+
+
 def refresh_access_token(*, refresh_token, client_id, resource=""):
     now = timezone.now()
     with transaction.atomic():
