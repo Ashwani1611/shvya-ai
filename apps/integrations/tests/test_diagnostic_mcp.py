@@ -1,8 +1,10 @@
 import json
+from datetime import timedelta
 from urllib.parse import parse_qs, urlparse
 
 from django.core.exceptions import ValidationError
 from django.test import TestCase
+from django.utils import timezone
 
 from apps.integrations.diagnostic_auth import (
     DIAGNOSTICS_SCOPE,
@@ -416,6 +418,55 @@ class DiagnosticOAuthTests(TestCase):
         self.assertTrue(
             DiagnosticAccessLog.objects.filter(tool_name="oauth_revoke").exists()
         )
+
+    def test_expired_api_key_invalidates_existing_oauth_grant(self):
+        client_id = self._register()
+        verifier = "e" * 64
+        resource = "http://testserver/mcp/"
+        authorize = self.client.post(
+            "/oauth/authorize",
+            data={
+                "client_id": client_id,
+                "redirect_uri": self.callback,
+                "response_type": "code",
+                "code_challenge": pkce_s256(verifier),
+                "code_challenge_method": "S256",
+                "scope": f"{DIAGNOSTICS_SCOPE} {OFFLINE_SCOPE}",
+                "resource": resource,
+                "diagnostic_api_key": self.raw_key,
+            },
+        )
+        code = parse_qs(urlparse(authorize["Location"]).query)["code"][0]
+        token_response = self.client.post(
+            "/oauth/token",
+            data={
+                "grant_type": "authorization_code",
+                "client_id": client_id,
+                "code": code,
+                "redirect_uri": self.callback,
+                "code_verifier": verifier,
+                "resource": resource,
+            },
+        )
+        body = token_response.json()
+        self.api_key.expires_at = timezone.now() - timedelta(seconds=1)
+        self.api_key.save(update_fields=["expires_at"])
+
+        denied = self._call(
+            "get_workspace_profile",
+            token=body["access_token"],
+        )
+        self.assertTrue(denied.json()["result"]["isError"])
+        refresh = self.client.post(
+            "/oauth/token",
+            data={
+                "grant_type": "refresh_token",
+                "client_id": client_id,
+                "refresh_token": body["refresh_token"],
+                "resource": resource,
+            },
+        )
+        self.assertEqual(refresh.status_code, 400)
 
     def test_wrong_resource_does_not_mint_token(self):
         client_id = self._register()
