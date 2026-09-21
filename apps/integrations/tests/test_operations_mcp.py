@@ -492,6 +492,27 @@ class OperationsMCPTests(TestCase):
         )
         self.assertFalse(config["isError"])
 
+        context = self._result(
+            self._call(
+                bearer,
+                "get_operations_context",
+                {},
+            )
+        )
+        self.assertFalse(context["isError"])
+        self.assertNotIn(
+            CAP_LEAD_STAGE_WRITE,
+            context["structuredContent"]["capabilities"],
+        )
+        self.assertIn(
+            CAP_LEAD_STAGE_WRITE,
+            context["structuredContent"]["policy_capabilities"],
+        )
+        self.assertEqual(
+            context["structuredContent"]["oauth_scopes"],
+            [OPERATIONS_READ_SCOPE],
+        )
+
         blocked = self._result(
             self._call(
                 bearer,
