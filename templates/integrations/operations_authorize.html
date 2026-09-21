@@ -21,6 +21,21 @@
       propose or apply verified changes. Tenant isolation, backend validation and approval rules remain authoritative.
     </p>
 
+    <div style="margin:16px 0;padding:14px 16px;border-radius:14px;background:#f8fafc;border:1px solid #e2e8f0;">
+      <div style="font-size:12px;font-weight:800;letter-spacing:.08em;color:#64748b;">REQUESTED ACCESS</div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:9px;">
+        {% for scope in requested_scopes %}
+          <span style="display:inline-flex;align-items:center;border-radius:999px;padding:6px 10px;font-size:12px;font-weight:700;{% if scope == operations_write_scope %}background:#fff7ed;color:#9a3412;border:1px solid #fed7aa;{% else %}background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;{% endif %}">
+            {% if scope == operations_read_scope %}Read SHVYA Operations{% elif scope == operations_write_scope %}Request write capability{% else %}{{ scope }}{% endif %}
+          </span>
+        {% endfor %}
+      </div>
+      <p style="margin:9px 0 0;color:#64748b;font-size:12px;line-height:1.55;">
+        A requested write scope does not grant write authority. SHVYA role, organization policy, dry-run approval receipts,
+        tenant ownership and backend business rules are checked again for every operation.
+      </p>
+    </div>
+
     {% if authorization_error %}
       <div style="margin:18px 0;padding:14px 16px;border-radius:14px;background:#fef2f2;color:#991b1b;border:1px solid #fecaca;">
         {{ authorization_error }}
@@ -35,18 +50,18 @@
         {% endfor %}
 
         <div style="display:grid;gap:12px;">
-          {% for role, actor in identities.items %}
+          {% for option in identity_options %}
             <label style="display:flex;gap:12px;align-items:flex-start;border:1px solid #d1d5db;border-radius:16px;padding:16px;cursor:pointer;">
-              <input type="radio" name="actor_mode" value="{{ role }}" required style="margin-top:4px;">
-              <span>
+              <input type="radio" name="actor_mode" value="{{ option.role }}" required style="margin-top:4px;">
+              <span style="min-width:0;flex:1;">
                 <strong style="display:block;color:#111827;">
-                  {% if role == role_superadmin %}SHVYA Superadmin{% else %}Organization Admin{% endif %}
+                  {% if option.role == role_superadmin %}SHVYA Superadmin{% else %}Organization Admin{% endif %}
                 </strong>
                 <span style="display:block;color:#6b7280;font-size:14px;margin-top:4px;">
-                  {{ actor.name|default:actor.email }}
-                  {% if actor.organization %} · {{ actor.organization.name }}{% endif %}
+                  {{ option.actor.name|default:option.actor.email }}
+                  {% if option.actor.organization %} · {{ option.actor.organization.name }}{% endif %}
                 </span>
-                {% if role == role_superadmin %}
+                {% if option.role == role_superadmin %}
                   <span style="display:block;color:#6b7280;font-size:13px;margin-top:5px;">
                     Cross-organization access is not automatic. Select an explicit organization support context after connecting.
                   </span>
@@ -55,6 +70,19 @@
                     Access is limited to this organization and the capabilities enabled by SHVYA Superadmin.
                   </span>
                 {% endif %}
+
+                <span style="display:block;margin-top:10px;">
+                  <span style="display:block;font-size:11px;font-weight:800;letter-spacing:.07em;color:#94a3b8;">EFFECTIVE SHVYA CAPABILITIES</span>
+                  <span style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;">
+                    {% for capability in option.capabilities %}
+                      <span style="display:inline-flex;align-items:center;border:1px solid #e2e8f0;border-radius:999px;padding:5px 8px;background:#fff;color:#475569;font-size:11px;">
+                        {{ capability.label }}{% if capability.approval_required %} · approval{% endif %}
+                      </span>
+                    {% empty %}
+                      <span style="font-size:12px;color:#b45309;">No Operations capabilities are currently enabled.</span>
+                    {% endfor %}
+                  </span>
+                </span>
               </span>
             </label>
           {% endfor %}
@@ -62,6 +90,7 @@
 
         <div style="margin-top:18px;padding:14px 16px;border-radius:14px;background:#f8fafc;color:#475569;font-size:13px;line-height:1.6;">
           Every Operations tool call creates a SHVYA audit event. Superadmin customer-support context is visible to the organization while active.
+          SHVYA does not disclose your password, API keys, provider credentials, raw environment variables or OAuth bearer/refresh token values to the external AI.
         </div>
 
         <button type="submit" style="margin-top:20px;width:100%;border:0;border-radius:14px;padding:13px 18px;background:#0071e3;color:white;font-weight:700;cursor:pointer;">
