@@ -105,6 +105,7 @@ TOOL_DEFINITIONS = [
                 "query": {
                     "type": "string",
                     "minLength": 1,
+                    "maxLength": 255,
                 },
                 "limit": {
                     "type": "integer",
@@ -185,6 +186,7 @@ TOOL_DEFINITIONS = [
                 "message_id": {
                     "type": "string",
                     "minLength": 1,
+                    "maxLength": 255,
                 }
             },
             "required": ["message_id"],
