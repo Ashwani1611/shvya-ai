@@ -10,6 +10,14 @@ document.addEventListener("DOMContentLoaded", () => {
     panel.classList.toggle("is-active", panel.dataset.tabPanel === active);
   });
 
+  const statusForm = document.querySelector("[data-status-form]");
+  statusForm?.addEventListener("submit", () => {
+    const button = statusForm.querySelector("button[type='submit']");
+    if (!button || button.disabled) return;
+    button.disabled = true;
+    button.setAttribute("aria-busy", "true");
+  });
+
   const pipeline = document.getElementById("sc-pipeline");
   const stage = document.getElementById("sc-stage");
   const filterStages = () => {
