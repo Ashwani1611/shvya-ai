@@ -14,7 +14,7 @@ from apps.accounts.models import User
 from apps.accounts.session_utils import get_session_cookie_name, set_authenticated_user
 from apps.ai_engagement.models import OrgInfo
 from apps.channels.instagram_models import InstagramAccount
-from apps.channels.models import WhatsAppAccount
+from apps.channels.models import WhatsAppAccount, WhatsAppMessage
 from apps.crm.models import AttributeDefinition, Lead, LeadActivity, Pipeline, Stage
 from apps.followups.models import FollowupSequence, FollowupStep
 from apps.integrations.operations_agent_prompt import OPERATIONS_AGENT_INSTRUCTIONS
@@ -1069,6 +1069,77 @@ class OperationsMCPTests(TestCase):
         )
         self.assertEqual(definition.key, "company_size")
         self.assertEqual(definition.field_type, "numeric")
+
+    def test_trace_message_bounds_hosted_job_internal_details(self):
+        OperationsPolicy.objects.create(
+            organization=self.organization,
+            organization_admin_enabled=True,
+            allowed_capabilities=[
+                CAP_ORGANIZATION_READ,
+                CAP_DIAGNOSTICS_READ,
+            ],
+        )
+        account = WhatsAppAccount.objects.create(
+            organization=self.organization,
+            connection_type=WhatsAppAccount.ConnectionType.coexisted,
+            business_name="Hosted Trace",
+            display_phone_number="+919000000011",
+            status=WhatsAppAccount.Status.CONNECTED,
+            is_active=True,
+        )
+        inbound = WhatsAppMessage.objects.create(
+            organization=self.organization,
+            account=account,
+            lead=self.lead,
+            external_id="trace-hosted-sensitive",
+            direction=WhatsAppMessage.Direction.INBOUND,
+            status=WhatsAppMessage.Status.RECEIVED,
+            message_type=WhatsAppMessage.MessageType.TEXT,
+            from_number="+919100000000",
+            to_number="+919000000011",
+            body="hello",
+        )
+        HostedAutomationJob.objects.create(
+            organization=self.organization,
+            account=account,
+            lead=self.lead,
+            source_message=inbound,
+            available_at=timezone.now(),
+            status=HostedAutomationJob.Status.FAILED,
+            result={
+                "reason": "lead_ai_disabled",
+                "delivery": {"status": "blocked"},
+                "internal_prompt": "private system prompt",
+                "free_text": "password: hosted-result-secret",
+            },
+            error="access_token=hosted-provider-secret",
+        )
+        bearer = self._token(
+            actor=self.admin,
+            role=ROLE_ORGANIZATION_ADMIN,
+            organization=self.organization,
+            scopes=[OPERATIONS_READ_SCOPE],
+        )
+
+        result = self._result(
+            self._call(
+                bearer,
+                "trace_message",
+                {"message_id": str(inbound.id)},
+            )
+        )
+        self.assertFalse(result["isError"])
+        hosted = result["structuredContent"]["hosted_job"]
+        self.assertEqual(hosted["status"], HostedAutomationJob.Status.FAILED)
+        self.assertEqual(hosted["reason"], "lead_ai_disabled")
+        self.assertEqual(hosted["delivery_status"], "blocked")
+        self.assertTrue(hosted["has_persisted_error"])
+        payload = json.dumps(result["structuredContent"])
+        self.assertNotIn("private system prompt", payload)
+        self.assertNotIn("hosted-result-secret", payload)
+        self.assertNotIn("hosted-provider-secret", payload)
+        self.assertNotIn("internal_prompt", payload)
+        self.assertNotIn("free_text", payload)
 
     def test_integration_health_never_decrypts_provider_credentials(self):
         OperationsPolicy.objects.create(
