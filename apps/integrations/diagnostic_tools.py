@@ -5,7 +5,7 @@ import uuid
 from datetime import timedelta
 
 from django.conf import settings
-from django.db.models import BooleanField, Case, F, Q, Value, When
+from django.db.models import BooleanField, Case, Count, F, Max, Q, Value, When
 from django.utils import timezone
 
 from apps.ai_engagement.services.confidentiality import (
@@ -14,10 +14,12 @@ from apps.ai_engagement.services.confidentiality import (
 from apps.ai_engagement.services.diagnostics import diagnose_engagement
 from apps.channels.instagram_models import (
     InstagramAccount,
+    InstagramConversation,
     InstagramMessage,
     InstagramWebhookDelivery,
 )
 from apps.channels.models import WhatsAppAccount, WhatsAppMessage
+from apps.analytics.models import AnalyticsSettings
 from apps.crm.models import (
     AttributeDefinition,
     Lead,
@@ -29,6 +31,7 @@ from apps.hosted_automation.models import HostedAutomationJob
 from apps.integrations.diagnostic_auth import sanitize_data, sanitize_text
 from apps.integrations.models import WebhookDelivery
 from apps.triggers.models import TriggerEvent, TriggerRun
+from services.channels.instagram_content import display_attachments
 
 _SAFE_DIAGNOSTIC_CODE = re.compile(r"^[a-z0-9_:-]{1,80}$", re.IGNORECASE)
 
@@ -149,14 +152,34 @@ def _tenant_safe_whatsapp_messages(organization):
     )
 
 
+def _tenant_safe_instagram_conversations(organization):
+    safe_lead_ids = _tenant_safe_leads(
+        organization
+    ).values("id")
+    return (
+        InstagramConversation.objects.filter(
+            organization=organization,
+            account__organization=organization,
+        )
+        .filter(
+            Q(lead__isnull=True)
+            | Q(lead_id__in=safe_lead_ids)
+        )
+    )
+
+
 def _tenant_safe_instagram_messages(organization):
     safe_lead_ids = _tenant_safe_leads(
+        organization
+    ).values("id")
+    safe_conversation_ids = _tenant_safe_instagram_conversations(
         organization
     ).values("id")
     return (
         InstagramMessage.objects.filter(
             organization=organization,
             account__organization=organization,
+            conversation_id__in=safe_conversation_ids,
             conversation__organization=organization,
             conversation__account__organization=organization,
         )
@@ -338,6 +361,168 @@ def find_leads(*, organization, arguments):
     }
 
 
+_AFFECTED_LEAD_ISSUES = {
+    "qualification_completed_not_qualified",
+    "workflow_failure",
+    "hosted_ai_failure",
+    "whatsapp_delivery_failure",
+    "instagram_delivery_failure",
+    "stalled_stage",
+}
+
+
+def find_affected_leads(*, organization, arguments):
+    """Find a bounded tenant-scoped cohort sharing one persisted issue signal."""
+
+    arguments = arguments or {}
+    issue_type = str(
+        arguments.get("issue_type") or ""
+    ).strip().casefold()
+    if issue_type not in _AFFECTED_LEAD_ISSUES:
+        raise DiagnosticToolError(
+            "issue_type must be one of: "
+            + ", ".join(sorted(_AFFECTED_LEAD_ISSUES))
+            + "."
+        )
+
+    try:
+        days = int(arguments.get("days") or 30)
+    except (TypeError, ValueError):
+        days = 30
+    days = max(1, min(days, 90))
+
+    try:
+        limit = int(arguments.get("limit") or 20)
+    except (TypeError, ValueError):
+        limit = 20
+    limit = max(1, min(limit, 50))
+
+    pipeline_id = arguments.get("pipeline_id")
+    stage_id = arguments.get("stage_id")
+    lead_qs = _tenant_safe_leads(
+        organization
+    ).select_related("pipeline", "stage")
+
+    if pipeline_id:
+        try:
+            parsed_pipeline_id = uuid.UUID(str(pipeline_id))
+        except (TypeError, ValueError, AttributeError) as exc:
+            raise DiagnosticToolError(
+                "pipeline_id must be a valid UUID."
+            ) from exc
+        lead_qs = lead_qs.filter(
+            pipeline_id=parsed_pipeline_id
+        )
+
+    if stage_id:
+        try:
+            parsed_stage_id = uuid.UUID(str(stage_id))
+        except (TypeError, ValueError, AttributeError) as exc:
+            raise DiagnosticToolError(
+                "stage_id must be a valid UUID."
+            ) from exc
+        lead_qs = lead_qs.filter(
+            stage_id=parsed_stage_id
+        )
+
+    now = timezone.now()
+    since = now - timedelta(days=days)
+    evidence = {
+        "window_days": days,
+        "pipeline_filter_applied": bool(pipeline_id),
+        "stage_filter_applied": bool(stage_id),
+    }
+
+    if issue_type == "qualification_completed_not_qualified":
+        lead_qs = lead_qs.filter(
+            **{
+                "attributes___shvya_ai_qualification__qualification_status": (
+                    "completed"
+                )
+            }
+        ).exclude(
+            stage__name__iexact="Qualified"
+        )
+        evidence["semantics"] = (
+            "Persisted qualification status is completed while the current "
+            "stage is not named Qualified. Run diagnose_lead_qualification "
+            "before applying any repair because completed does not by itself "
+            "prove that qualification criteria are satisfied."
+        )
+    elif issue_type == "workflow_failure":
+        affected_ids = _tenant_safe_trigger_runs(
+            organization
+        ).filter(
+            status__in=["failed", "error"],
+            created_at__gte=since,
+        ).values("lead_id")
+        lead_qs = lead_qs.filter(id__in=affected_ids)
+    elif issue_type == "hosted_ai_failure":
+        affected_ids = _tenant_safe_hosted_jobs(
+            organization
+        ).filter(
+            status=HostedAutomationJob.Status.FAILED,
+            created_at__gte=since,
+        ).values("lead_id")
+        lead_qs = lead_qs.filter(id__in=affected_ids)
+    elif issue_type == "whatsapp_delivery_failure":
+        affected_ids = _tenant_safe_whatsapp_messages(
+            organization
+        ).filter(
+            lead__isnull=False,
+            direction=WhatsAppMessage.Direction.OUTBOUND,
+            status=WhatsAppMessage.Status.FAILED,
+            created_at__gte=since,
+        ).values("lead_id")
+        lead_qs = lead_qs.filter(id__in=affected_ids)
+    elif issue_type == "instagram_delivery_failure":
+        affected_ids = _tenant_safe_instagram_messages(
+            organization
+        ).filter(
+            conversation__lead__isnull=False,
+            direction=InstagramMessage.Direction.OUTBOUND,
+            status=InstagramMessage.Status.FAILED,
+            created_at__gte=since,
+        ).values("conversation__lead_id")
+        lead_qs = lead_qs.filter(id__in=affected_ids)
+    else:
+        settings_row = AnalyticsSettings.objects.filter(
+            organization=organization
+        ).only("stall_day_threshold").first()
+        try:
+            threshold_days = int(
+                arguments.get("threshold_days")
+                or getattr(settings_row, "stall_day_threshold", 7)
+                or 7
+            )
+        except (TypeError, ValueError):
+            threshold_days = 7
+        threshold_days = max(1, min(threshold_days, 90))
+        lead_qs = lead_qs.filter(
+            stage_entered_at__lte=(
+                now - timedelta(days=threshold_days)
+            )
+        )
+        evidence["threshold_days"] = threshold_days
+
+    lead_qs = lead_qs.distinct()
+    match_count = lead_qs.count()
+    leads = list(
+        lead_qs.order_by(
+            "-updated_at",
+            "-id",
+        )[:limit]
+    )
+    return {
+        "issue_type": issue_type,
+        "evidence": evidence,
+        "matches": [_safe_lead(lead) for lead in leads],
+        "match_count": match_count,
+        "matches_returned": len(leads),
+        "matches_truncated": match_count > len(leads),
+    }
+
+
 def _safe_lead_attributes(*, organization, attributes):
     values = attributes if isinstance(attributes, dict) else {}
     if not values:
@@ -492,6 +677,27 @@ def _safe_instagram_message(message):
         else:
             attachment_types.append("attachment")
 
+    derived_media = []
+    for item in display_attachments(
+        attachments,
+        message.raw_payload,
+    )[:10]:
+        derived_media.append(
+            {
+                "kind": sanitize_text(
+                    item.get("kind"),
+                    limit=40,
+                ),
+                "label": sanitize_text(
+                    item.get("label"),
+                    limit=80,
+                ),
+                "unavailable": bool(
+                    item.get("unavailable")
+                ),
+            }
+        )
+
     return {
         "id": str(message.id),
         "external_id": message.external_id,
@@ -508,6 +714,16 @@ def _safe_instagram_message(message):
         "attachment_types_returned": len(attachment_types),
         "attachment_types_truncated": (
             len(attachments) > len(attachment_types)
+        ),
+        "derived_media": derived_media,
+        "derived_media_truncated": (
+            len(
+                display_attachments(
+                    attachments,
+                    message.raw_payload,
+                )
+            )
+            > len(derived_media)
         ),
         "has_error": bool(message.error),
         "created_at": _iso(message.created_at),
@@ -752,6 +968,14 @@ def trace_message(*, organization, arguments):
                     if ig.conversation.lead_id
                     else None
                 ),
+                "provider_error": (
+                    sanitize_text(
+                        ig.error,
+                        limit=500,
+                    )
+                    if ig.error
+                    else ""
+                ),
             }
         )
 
@@ -777,7 +1001,55 @@ def get_ai_diagnostics(*, organization, arguments):
     return sanitize_data(report)
 
 
+def _instagram_media_diagnostic_summary(messages):
+    counts = {
+        "story_reply": 0,
+        "reel": 0,
+        "shared_content": 0,
+        "image": 0,
+        "video": 0,
+        "audio": 0,
+        "other": 0,
+    }
+    observed = 0
+    for message in messages:
+        for item in display_attachments(
+            message.attachments,
+            message.raw_payload,
+        ):
+            observed += 1
+            label = str(
+                item.get("label") or ""
+            ).casefold()
+            kind = str(
+                item.get("kind") or ""
+            ).casefold()
+            if "story" in label:
+                counts["story_reply"] += 1
+            elif "reel" in label:
+                counts["reel"] += 1
+            elif (
+                "shared" in label
+                or "post" in label
+            ):
+                counts["shared_content"] += 1
+            elif kind in {
+                "image",
+                "video",
+                "audio",
+            }:
+                counts[kind] += 1
+            else:
+                counts["other"] += 1
+    return {
+        "observed_items": observed,
+        "type_counts": counts,
+    }
+
+
 def get_integration_health(*, organization, arguments):
+    now = timezone.now()
+    since = now - timedelta(hours=24)
     whatsapp_qs = (
         WhatsAppAccount.objects.filter(
             organization=organization
@@ -809,6 +1081,289 @@ def get_integration_health(*, organization, arguments):
         )
         .first()
     )
+
+    instagram_messages = _tenant_safe_instagram_messages(
+        organization
+    )
+    instagram_conversations = (
+        _tenant_safe_instagram_conversations(
+            organization
+        )
+    )
+    conversation_count = (
+        instagram_conversations.count()
+    )
+    linked_conversation_count = (
+        instagram_conversations.filter(
+            lead__isnull=False
+        ).count()
+    )
+    recent_instagram = instagram_messages.filter(
+        created_at__gte=since
+    )
+    recent_message_count = recent_instagram.count()
+    recent_inbound_count = recent_instagram.filter(
+        direction=InstagramMessage.Direction.INBOUND
+    ).count()
+    recent_outbound_count = recent_instagram.filter(
+        direction=InstagramMessage.Direction.OUTBOUND
+    ).count()
+    failed_outbound_qs = recent_instagram.filter(
+        direction=InstagramMessage.Direction.OUTBOUND,
+        status=InstagramMessage.Status.FAILED,
+    )
+    latest_failed_outbound = (
+        failed_outbound_qs.order_by(
+            "-created_at",
+            "-id",
+        ).first()
+    )
+    latest_inbound_at = instagram_messages.filter(
+        direction=InstagramMessage.Direction.INBOUND
+    ).aggregate(
+        value=Max("created_at")
+    )["value"]
+    latest_outbound_at = instagram_messages.filter(
+        direction=InstagramMessage.Direction.OUTBOUND
+    ).aggregate(
+        value=Max("created_at")
+    )["value"]
+
+    customer_started_conversations = (
+        instagram_messages.filter(
+            direction=InstagramMessage.Direction.INBOUND
+        )
+        .values("conversation_id")
+        .distinct()
+        .count()
+    )
+    standard_window_conversations = (
+        instagram_messages.filter(
+            direction=InstagramMessage.Direction.INBOUND,
+        )
+        .filter(
+            Q(sent_at__gte=since)
+            | Q(
+                sent_at__isnull=True,
+                created_at__gte=since,
+            )
+        )
+        .values("conversation_id")
+        .distinct()
+        .count()
+    )
+
+    media_sample = list(
+        recent_instagram.order_by(
+            "-created_at",
+            "-id",
+        )[:100]
+    )
+    media_summary = (
+        _instagram_media_diagnostic_summary(
+            media_sample
+        )
+    )
+
+    instagram_payload = None
+    if instagram is not None:
+        credential_expired = bool(
+            instagram.token_expires_at
+            and instagram.token_expires_at <= now
+        )
+        connected = (
+            instagram.status
+            == InstagramAccount.Status.CONNECTED
+        )
+        credential_ready = bool(
+            instagram.diagnostic_credential_present
+            and not credential_expired
+        )
+        eligible_now = (
+            standard_window_conversations
+            if connected and credential_ready
+            else 0
+        )
+        if not connected:
+            first_blocker = "connection"
+        elif not credential_ready:
+            first_blocker = "credential_health"
+        elif not instagram.webhook_subscribed:
+            first_blocker = "webhook"
+        elif recent_inbound_count == 0:
+            first_blocker = "incoming_message"
+        else:
+            first_blocker = "ai_processing_runtime"
+
+        subscribed_fields = (
+            instagram.subscribed_fields
+            if isinstance(
+                instagram.subscribed_fields,
+                list,
+            )
+            else []
+        )
+        instagram_payload = {
+            "id": str(instagram.id),
+            "username": instagram.username,
+            "display_name": instagram.display_name,
+            "status": instagram.status,
+            "webhook_subscribed": (
+                instagram.webhook_subscribed
+            ),
+            "subscribed_webhook_fields": [
+                sanitize_text(
+                    item,
+                    limit=80,
+                )
+                for item in subscribed_fields[:20]
+            ],
+            "subscribed_webhook_fields_truncated": (
+                len(subscribed_fields) > 20
+            ),
+            "provider_auth_configured": bool(
+                instagram.diagnostic_credential_present
+            ),
+            "provider_auth_expires_at": _iso(
+                instagram.token_expires_at
+            ),
+            "provider_auth_refreshed_at": _iso(
+                instagram.token_refreshed_at
+            ),
+            "provider_auth_expired": credential_expired,
+            "last_webhook_at": _iso(
+                instagram.last_webhook_at
+            ),
+            "last_sync_at": _iso(
+                instagram.last_sync_at
+            ),
+            "has_last_error": bool(
+                instagram.last_error
+            ),
+            "last_error": sanitize_text(
+                instagram.last_error,
+                limit=500,
+            ) if instagram.last_error else "",
+            "updated_at": _iso(
+                instagram.updated_at
+            ),
+            "diagnostic_chain": {
+                "connection": {
+                    "status": instagram.status,
+                    "connected": connected,
+                },
+                "credential_health": {
+                    "configured": bool(
+                        instagram.diagnostic_credential_present
+                    ),
+                    "expired": credential_expired,
+                },
+                "webhook": {
+                    "subscribed": bool(
+                        instagram.webhook_subscribed
+                    ),
+                    "last_received_at": _iso(
+                        instagram.last_webhook_at
+                    ),
+                },
+                "message_event": {
+                    "messages_24h": recent_message_count,
+                    "inbound_24h": recent_inbound_count,
+                    "outbound_24h": recent_outbound_count,
+                    "last_inbound_at": _iso(
+                        latest_inbound_at
+                    ),
+                    "last_outbound_at": _iso(
+                        latest_outbound_at
+                    ),
+                },
+                "media_story_reel_handling": {
+                    "normalization_supported": True,
+                    "sample_messages": len(
+                        media_sample
+                    ),
+                    "sample_truncated": (
+                        recent_message_count
+                        > len(media_sample)
+                    ),
+                    **media_summary,
+                },
+                "lead_creation_and_linking": {
+                    "conversation_count": conversation_count,
+                    "linked_to_lead": (
+                        linked_conversation_count
+                    ),
+                    "unlinked": (
+                        conversation_count
+                        - linked_conversation_count
+                    ),
+                },
+                "pipeline_mapping": {
+                    "linked_leads_tenant_validated": True,
+                    "linked_conversations": (
+                        linked_conversation_count
+                    ),
+                },
+                "ai_processing": {
+                    "runtime_available": False,
+                    "status": "not_exposed",
+                    "reason": (
+                        "Persisted Instagram inbox and manual outbound "
+                        "messaging are available, but this deployment "
+                        "does not expose an Instagram AI auto-reply "
+                        "execution runtime."
+                    ),
+                },
+                "outbound_eligibility": {
+                    "customer_started_conversations": (
+                        customer_started_conversations
+                    ),
+                    "standard_window_hours": 24,
+                    "standard_window_conversations": (
+                        standard_window_conversations
+                    ),
+                    "eligible_now": eligible_now,
+                    "human_agent_enabled": False,
+                },
+                "provider_response": {
+                    "failed_outbound_24h": (
+                        failed_outbound_qs.count()
+                    ),
+                    "last_failed_at": (
+                        _iso(
+                            latest_failed_outbound.created_at
+                        )
+                        if latest_failed_outbound
+                        else None
+                    ),
+                    "last_failed_error": (
+                        sanitize_text(
+                            latest_failed_outbound.error,
+                            limit=500,
+                        )
+                        if latest_failed_outbound
+                        and latest_failed_outbound.error
+                        else ""
+                    ),
+                },
+                "first_known_ai_auto_reply_blocker": (
+                    first_blocker
+                ),
+            },
+            "automation_capabilities": {
+                "lead_linking": True,
+                "manual_outbound": True,
+                "media_story_reel_normalization": True,
+                "ai_auto_reply_runtime": False,
+                "note": (
+                    "Instagram diagnostics now cover connection, credential "
+                    "health, webhook, persisted messages, media/story/reel "
+                    "normalization, CRM lead linking, reply-window eligibility "
+                    "and provider failures. AI auto-reply execution itself is "
+                    "not exposed by this deployment."
+                ),
+            },
+        }
 
     return {
         "whatsapp": [
@@ -844,60 +1399,8 @@ def get_integration_health(*, organization, arguments):
         "whatsapp_truncated": (
             whatsapp_count > len(whatsapp_accounts)
         ),
-        "instagram": (
-            {
-                "id": str(instagram.id),
-                "username": instagram.username,
-                "display_name": instagram.display_name,
-                "status": instagram.status,
-                "webhook_subscribed": (
-                    instagram.webhook_subscribed
-                ),
-                "provider_auth_configured": bool(
-                    instagram.diagnostic_credential_present
-                ),
-                "provider_auth_expires_at": _iso(
-                    instagram.token_expires_at
-                ),
-                "provider_auth_refreshed_at": _iso(
-                    instagram.token_refreshed_at
-                ),
-                "provider_auth_expired": bool(
-                    instagram.token_expires_at
-                    and instagram.token_expires_at <= timezone.now()
-                ),
-                "last_webhook_at": _iso(
-                    instagram.last_webhook_at
-                ),
-                "last_sync_at": _iso(
-                    instagram.last_sync_at
-                ),
-                "has_last_error": bool(
-                    instagram.last_error
-                ),
-                "last_error": sanitize_text(
-                    instagram.last_error,
-                    limit=500,
-                ) if instagram.last_error else "",
-                "updated_at": _iso(
-                    instagram.updated_at
-                ),
-                "automation_capabilities": {
-                    "lead_linking": True,
-                    "manual_outbound": True,
-                    "ai_auto_reply_runtime": False,
-                    "note": (
-                        "This deployment has persisted Instagram webhook/inbox "
-                        "and manual outbound support, but no Instagram AI "
-                        "auto-reply execution runtime is exposed."
-                    ),
-                },
-            }
-            if instagram
-            else None
-        ),
+        "instagram": instagram_payload,
     }
-
 
 def get_workflow_trace(*, organization, arguments):
     lead = _lead_for_org(
@@ -1322,6 +1825,7 @@ def get_runtime_health(*, organization, arguments):
 TOOL_HANDLERS = {
     "get_workspace_profile": get_workspace_profile,
     "find_leads": find_leads,
+    "find_affected_leads": find_affected_leads,
     "get_lead_snapshot": get_lead_snapshot,
     "get_conversation": get_conversation,
     "trace_message": trace_message,
