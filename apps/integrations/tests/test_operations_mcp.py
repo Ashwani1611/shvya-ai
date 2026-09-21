@@ -198,6 +198,34 @@ class OperationsMCPTests(TestCase):
         ):
             self.assertIn(required_text, instructions)
 
+    def test_reused_diagnostic_tools_advertise_operations_oauth_scopes(self):
+        result = self._list_tools()
+        tools = {
+            item["name"]: item
+            for item in result["tools"]
+        }
+        for name in (
+            "find_leads",
+            "get_lead_snapshot",
+            "get_ai_diagnostics",
+            "get_runtime_health",
+        ):
+            self.assertIn(name, tools)
+            schemes = tools[name]["securitySchemes"]
+            self.assertEqual(schemes[0]["type"], "oauth2")
+            self.assertIn(
+                OPERATIONS_READ_SCOPE,
+                schemes[0]["scopes"],
+            )
+            self.assertIn(
+                OPERATIONS_WRITE_SCOPE,
+                schemes[0]["scopes"],
+            )
+            self.assertNotIn(
+                "diagnostics.read",
+                schemes[0]["scopes"],
+            )
+
     def test_operations_tools_advertise_configuration_surfaces(self):
         response = self.client.post(
             "/operations/mcp/",
