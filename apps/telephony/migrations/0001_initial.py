@@ -100,7 +100,7 @@ class Migration(migrations.Migration):
                 ("updated_at", models.DateTimeField(auto_now=True)),
                 ("crm_call", models.OneToOneField(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name="intelligence_record", to="crm.leadcall")),
                 ("device", models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name="calls", to="telephony.calldevice")),
-                ("lead", models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name="intelligent_calls", to="crm.lead")),
+                ("lead", models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, related_name="intelligent_calls", to="crm.lead")),
                 ("organization", models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name="call_intelligence_calls", to="organizations.organization")),
                 ("user", models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name="call_intelligence_calls", to=settings.AUTH_USER_MODEL)),
             ],
