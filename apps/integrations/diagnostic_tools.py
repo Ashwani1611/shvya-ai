@@ -4,7 +4,7 @@ import uuid
 from datetime import timedelta
 
 from django.conf import settings
-from django.db.models import Q
+from django.db.models import BooleanField, Case, Q, Value, When
 from django.utils import timezone
 
 from apps.ai_engagement.services.diagnostics import diagnose_engagement
@@ -485,11 +485,31 @@ def get_integration_health(*, organization, arguments):
     whatsapp_accounts = list(
         WhatsAppAccount.objects.filter(
             organization=organization
-        ).order_by("-updated_at")
+        )
+        .defer("access_token")
+        .annotate(
+            diagnostic_credential_present=Case(
+                When(access_token="", then=Value(False)),
+                default=Value(True),
+                output_field=BooleanField(),
+            )
+        )
+        .order_by("-updated_at")
     )
-    instagram = InstagramAccount.objects.filter(
-        organization=organization
-    ).first()
+    instagram = (
+        InstagramAccount.objects.filter(
+            organization=organization
+        )
+        .defer("access_token")
+        .annotate(
+            diagnostic_credential_present=Case(
+                When(access_token="", then=Value(False)),
+                default=Value(True),
+                output_field=BooleanField(),
+            )
+        )
+        .first()
+    )
 
     return {
         "whatsapp": [
@@ -505,7 +525,7 @@ def get_integration_health(*, organization, arguments):
                 ),
                 "waba_id_present": bool(account.waba_id),
                 "credential_present": bool(
-                    account.access_token
+                    account.diagnostic_credential_present
                 ),
                 "status": account.status,
                 "is_active": account.is_active,
@@ -528,7 +548,7 @@ def get_integration_health(*, organization, arguments):
                     instagram.webhook_subscribed
                 ),
                 "credential_present": bool(
-                    instagram.access_token
+                    instagram.diagnostic_credential_present
                 ),
                 "last_webhook_at": _iso(
                     instagram.last_webhook_at
