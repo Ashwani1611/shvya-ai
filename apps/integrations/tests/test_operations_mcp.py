@@ -234,7 +234,6 @@ class OperationsMCPTests(TestCase):
             "move_lead_stage",
             "update_ai_configuration",
             "upsert_workflow_configuration",
-            "select_organization_context",
         ):
             schemes = tools[name]["securitySchemes"]
             self.assertIn(
@@ -242,6 +241,20 @@ class OperationsMCPTests(TestCase):
                 schemes[0]["scopes"],
             )
             self.assertIn(
+                OPERATIONS_WRITE_SCOPE,
+                schemes[0]["scopes"],
+            )
+
+        for name in (
+            "select_organization_context",
+            "clear_organization_context",
+        ):
+            schemes = tools[name]["securitySchemes"]
+            self.assertIn(
+                OPERATIONS_READ_SCOPE,
+                schemes[0]["scopes"],
+            )
+            self.assertNotIn(
                 OPERATIONS_WRITE_SCOPE,
                 schemes[0]["scopes"],
             )
