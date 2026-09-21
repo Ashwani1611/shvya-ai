@@ -349,6 +349,19 @@ OWN_TOOL_DEFINITIONS = [
         "Inspect business/AI configuration, pipelines, stages, attributes, Playbook qualification, Workflows and Cadence counts for the active organization.",
     ),
     _tool(
+        "get_knowledge_health",
+        "Inspect SHVYA knowledge health",
+        "Return bounded organization knowledge/RAG metadata only: source types/names, URL hostnames, document version/status/publication state, chunk/embedding coverage and timestamps. Document text, file bytes, raw signed URLs and vectors are never returned.",
+        {
+            "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100,
+                "default": 50,
+            },
+        },
+    ),
+    _tool(
         "get_automation_configuration",
         "Inspect Workflows and Cadence",
         "Return tenant-scoped Workflow definitions and Cadence/step configuration needed to diagnose or safely edit automation. Secrets and provider credentials are not returned.",
@@ -709,6 +722,7 @@ TOOL_CAPABILITIES = {
     "select_organization_context": None,
     "clear_organization_context": None,
     "get_organization_configuration": CAP_ORGANIZATION_READ,
+    "get_knowledge_health": CAP_ORGANIZATION_READ,
     "get_automation_configuration": CAP_ORGANIZATION_READ,
     "get_messaging_automation_settings": CAP_ORGANIZATION_READ,
     "update_messaging_automation_settings": CAP_AUTOMATION_CONFIG_WRITE,
