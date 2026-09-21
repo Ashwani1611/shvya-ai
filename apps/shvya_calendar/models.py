@@ -288,7 +288,7 @@ class CalendarSubmission(models.Model):
     )
     lead = models.ForeignKey(
         "crm.Lead",
-        on_delete=models.SET_NULL,
+        on_delete=models.CASCADE,
         null=True,
         blank=True,
         related_name="calendar_submissions",
@@ -459,7 +459,7 @@ class CalendarBooking(models.Model):
     )
     lead = models.ForeignKey(
         "crm.Lead",
-        on_delete=models.PROTECT,
+        on_delete=models.CASCADE,
         related_name="calendar_bookings",
     )
     host = models.ForeignKey(
