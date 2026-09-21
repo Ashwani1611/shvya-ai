@@ -1893,7 +1893,7 @@ class OperationsMCPTests(TestCase):
             1,
         )
         self.assertFalse(
-            runtime["structuredContent"]["counts"][
+            runtime["structuredContent"]["capabilities"][
                 "instagram_ai_auto_reply_runtime"
             ]
         )
