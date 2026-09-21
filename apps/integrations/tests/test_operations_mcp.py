@@ -1590,6 +1590,145 @@ class OperationsMCPTests(TestCase):
             "DRY_RUN",
         )
 
+    def test_approved_lead_attribute_write_rejects_human_edit_after_dry_run(self):
+        OperationsPolicy.objects.create(
+            organization=self.organization,
+            organization_admin_enabled=True,
+            allowed_capabilities=[
+                CAP_ORGANIZATION_READ,
+                CAP_LEAD_ATTRIBUTES_WRITE,
+            ],
+            approval_required_capabilities=[
+                CAP_LEAD_ATTRIBUTES_WRITE,
+            ],
+        )
+        definition = AttributeDefinition.objects.create(
+            organization=self.organization,
+            name="Company Size",
+            key="company_size_lock_test",
+            field_type=AttributeDefinition.FieldType.TEXT,
+        )
+        self.lead.attributes = {
+            **(self.lead.attributes or {}),
+            definition.key: "10",
+        }
+        self.lead.save(update_fields=["attributes", "updated_at"])
+
+        bearer = self._token(
+            actor=self.admin,
+            role=ROLE_ORGANIZATION_ADMIN,
+            organization=self.organization,
+        )
+        arguments = {
+            "lead_id": str(self.lead.id),
+            "values": {definition.key: "25"},
+            "reason": "Update reviewed company size",
+        }
+        dry = self._result(
+            self._call(
+                bearer,
+                "update_lead_attributes",
+                {**arguments, "dry_run": True},
+            )
+        )
+        self.assertFalse(dry["isError"])
+
+        self.lead.refresh_from_db()
+        self.lead.attributes = {
+            **(self.lead.attributes or {}),
+            definition.key: "18",
+        }
+        self.lead.save(update_fields=["attributes", "updated_at"])
+
+        stale = self._result(
+            self._call(
+                bearer,
+                "update_lead_attributes",
+                {
+                    **arguments,
+                    "dry_run": False,
+                    "approved": True,
+                    "approval_event_id": dry["structuredContent"][
+                        "approval_event_id"
+                    ],
+                },
+            )
+        )
+        self.assertTrue(stale["isError"])
+        self.assertEqual(
+            stale["structuredContent"]["status"],
+            "APPROVAL_REQUIRED",
+        )
+        self.lead.refresh_from_db()
+        self.assertEqual(
+            self.lead.attributes[definition.key],
+            "18",
+        )
+
+    def test_approved_ai_configuration_rejects_human_edit_after_dry_run(self):
+        OperationsPolicy.objects.create(
+            organization=self.organization,
+            organization_admin_enabled=True,
+            allowed_capabilities=[
+                CAP_ORGANIZATION_READ,
+                CAP_AI_CONFIG_WRITE,
+            ],
+            approval_required_capabilities=[
+                CAP_AI_CONFIG_WRITE,
+            ],
+        )
+        info = OrgInfo.objects.create(
+            organization=self.organization,
+            about="Initial business profile",
+        )
+        bearer = self._token(
+            actor=self.admin,
+            role=ROLE_ORGANIZATION_ADMIN,
+            organization=self.organization,
+        )
+        arguments = {
+            "changes": {
+                "about": "AI proposed business profile",
+            },
+            "reason": "Update reviewed business profile",
+        }
+        dry = self._result(
+            self._call(
+                bearer,
+                "update_ai_configuration",
+                {**arguments, "dry_run": True},
+            )
+        )
+        self.assertFalse(dry["isError"])
+
+        info.about = "Human edited business profile"
+        info.save(update_fields=["about", "updated_at"])
+
+        stale = self._result(
+            self._call(
+                bearer,
+                "update_ai_configuration",
+                {
+                    **arguments,
+                    "dry_run": False,
+                    "approved": True,
+                    "approval_event_id": dry["structuredContent"][
+                        "approval_event_id"
+                    ],
+                },
+            )
+        )
+        self.assertTrue(stale["isError"])
+        self.assertEqual(
+            stale["structuredContent"]["status"],
+            "APPROVAL_REQUIRED",
+        )
+        info.refresh_from_db()
+        self.assertEqual(
+            info.about,
+            "Human edited business profile",
+        )
+
     def test_operations_ai_configuration_can_create_first_org_info_and_verify(self):
         OperationsPolicy.objects.create(
             organization=self.organization,
