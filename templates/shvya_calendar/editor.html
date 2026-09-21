@@ -19,6 +19,7 @@
       <h1>{{ page.name }}</h1>
     </div>
     <div class="sc-title-actions">
+      <button class="sc-button" type="button" data-open-share><i class="ti ti-share"></i> Share</button>
       {% if page.status == 'published' %}
         <a class="sc-button" target="_blank" rel="noopener" href="{% url 'shvya_calendar_public:page' public_id=page.public_id slug=page.slug %}"><i class="ti ti-external-link"></i> Open page</a>
       {% endif %}
@@ -289,6 +290,29 @@
       <button type="button" class="sc-button sc-reminder-add" data-reminder-channel="call_reminder"><i class="ti ti-phone"></i> Add Call Reminder</button>
     </div>
   </section>
+
+  <aside class="sc-drawer" id="sc-share-drawer" aria-hidden="true">
+    <div class="sc-drawer-backdrop" data-close-share></div>
+    <section class="sc-drawer-panel">
+      <header><div><span class="sc-kicker">PUBLISH & SHARE</span><h2>Share this calendar</h2></div><button class="sc-icon-button" type="button" data-close-share><i class="ti ti-x"></i></button></header>
+      <div class="sc-drawer-content">
+        <div class="sc-share-card">
+          <span class="sc-kicker">PUBLIC LINK</span>
+          <strong>Lead capture + booking in one link</strong>
+          <div class="sc-copy-row"><input readonly value="{{ public_link }}" data-copy-source="public"><button class="sc-button" type="button" data-copy-target="public"><i class="ti ti-copy"></i> Copy</button></div>
+          {% if page.status != 'published' %}<small>Publish the page before sharing this URL publicly.</small>{% endif %}
+        </div>
+        <div class="sc-share-card">
+          <span class="sc-kicker">WEBSITE EMBED</span>
+          <strong>Place the complete flow inside your website</strong>
+          <textarea readonly rows="6" data-copy-source="embed">{{ embed_code }}</textarea>
+          <button class="sc-button" type="button" data-copy-target="embed"><i class="ti ti-code"></i> Copy embed</button>
+          <small>The public flow is signed and does not depend on third-party CSRF cookies.</small>
+        </div>
+        <div class="sc-info-strip sc-info-blue"><i class="ti ti-shield-check"></i><span>Every submission still goes through the published field allowlist, tenant-scoped CRM mapping, duplicate handling and rate limits.</span></div>
+      </div>
+    </section>
+  </aside>
 
   <aside class="sc-drawer" id="sc-field-drawer" aria-hidden="true">
     <div class="sc-drawer-backdrop" data-close-drawer></div>
