@@ -448,6 +448,9 @@ def organization_detail_view(
             "operations_policy": operations_policy,
             "operations_capabilities": operations_capabilities,
             "active_operations_support": active_operations_support,
+            "operations_mcp_url": request.build_absolute_uri(
+                reverse("shvya-operations-mcp")
+            ),
         },
     )
 
