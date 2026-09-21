@@ -45,6 +45,7 @@ from apps.integrations.operations_models import (
     OperationsAuditEvent,
     OperationsSupportSession,
 )
+from apps.integrations.operations_presence import visible_support_sessions
 from apps.integrations.operations_policy import (
     CAP_AI_CONFIG_WRITE,
     CAP_AUDIT_READ,
@@ -429,6 +430,11 @@ def get_operations_context(*, identity, arguments):
                 {
                     "id": str(session.id),
                     "started_at": session.started_at.isoformat(),
+                    "last_seen_at": session.last_seen_at.isoformat(),
+                    "recently_active": (
+                        session.last_seen_at
+                        >= timezone.now() - timedelta(minutes=15)
+                    ),
                     "reason": sanitize_text(
                         session.reason,
                         limit=500,
@@ -462,11 +468,14 @@ def list_organizations(*, identity, arguments):
     rows = []
     for organization in qs[:limit]:
         policy = policy_for(organization)
-        active_support = OperationsSupportSession.objects.filter(
+        support_context_open = OperationsSupportSession.objects.filter(
             organization=organization,
             ended_at__isnull=True,
             token__revoked_at__isnull=True,
-            token__expires_at__gt=timezone.now(),
+            token__refresh_expires_at__gt=timezone.now(),
+        ).exists()
+        support_recently_active = visible_support_sessions(
+            organization=organization,
         ).exists()
         rows.append(
             {
@@ -474,7 +483,11 @@ def list_organizations(*, identity, arguments):
                 "name": organization.name,
                 "active": organization.is_active,
                 "organization_admin_external_ai_enabled": policy.organization_admin_enabled,
-                "superadmin_support_active": active_support,
+                "superadmin_support_context_open": support_context_open,
+                "superadmin_support_recently_active": support_recently_active,
+                # Backward-compatible field now means visible/recent activity,
+                # matching the customer-facing support-presence indicator.
+                "superadmin_support_active": support_recently_active,
             }
         )
     return ToolExecution(
