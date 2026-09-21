@@ -1,0 +1,352 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}SHVYA AI — Call Intelligence{% endblock %}
+{% block header %}Call Intelligence{% endblock %}
+
+{% block extra_head %}
+{{ block.super }}
+<link rel="stylesheet" href="{% static 'css/call_intelligence.css' %}?v=20260922-1">
+<script src="{% static 'js/call_intelligence.js' %}?v=20260922-1" defer></script>
+{% endblock %}
+
+{% block content %}
+<main class="ci-page">
+    <section class="ci-hero">
+        <div class="ci-hero-copy">
+            <p class="ci-eyebrow">SHVYA CALL INTELLIGENCE</p>
+            <h1>Every call.<br><span>Already in context.</span></h1>
+            <p class="ci-lead">
+                Your team keeps using the Android phone they already know.
+                SHVYA captures incoming, outgoing, missed and rejected calls,
+                connects them to CRM leads, and keeps the next action visible.
+            </p>
+            <div class="ci-actions">
+                {% if apk.available %}
+                <a class="ci-button ci-button-primary" href="{% url 'call-intelligence-download' %}">
+                    <i class="ti ti-brand-android"></i>
+                    Download for Android
+                </a>
+                {% else %}
+                <span class="ci-button ci-button-disabled" title="APK binary is not installed on this deployment yet">
+                    <i class="ti ti-brand-android"></i>
+                    Android package pending
+                </span>
+                {% endif %}
+                <a class="ci-text-link" href="#how-it-works">
+                    See how it works <i class="ti ti-chevron-right"></i>
+                </a>
+            </div>
+            <p class="ci-version">
+                Android · v{{ apk.version }} · Internal team distribution
+                {% if apk.available %}<span class="ci-status-dot"></span> Ready to install{% endif %}
+            </p>
+        </div>
+
+        <div class="ci-phone-stage" aria-label="Call Intelligence preview">
+            <div class="ci-orbit ci-orbit-one"></div>
+            <div class="ci-orbit ci-orbit-two"></div>
+            <div class="ci-phone">
+                <div class="ci-phone-island"></div>
+                <div class="ci-phone-screen">
+                    <div class="ci-phone-top">
+                        <span>9:41</span>
+                        <span><i class="ti ti-wifi"></i> 100%</span>
+                    </div>
+                    <div class="ci-call-avatar">AK</div>
+                    <p class="ci-phone-label">SHVYA matched</p>
+                    <h3>Arjun Kumar</h3>
+                    <p>Qualified · Leads</p>
+                    <div class="ci-live-pill"><span></span> Call captured</div>
+                    <div class="ci-call-summary">
+                        <div><small>Duration</small><strong>04:21</strong></div>
+                        <div><small>Intent</small><strong>High</strong></div>
+                    </div>
+                    <div class="ci-next-action">
+                        <small>Next action</small>
+                        <strong>Demo tomorrow at 11:00</strong>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="ci-live-section">
+        <div class="ci-section-heading">
+            <p class="ci-eyebrow">TODAY</p>
+            <h2>Your calling operation.<br>At a glance.</h2>
+        </div>
+        <div class="ci-metrics">
+            <article class="ci-metric ci-metric-feature">
+                <span class="ci-metric-icon"><i class="ti ti-phone-call"></i></span>
+                <small>Calls today</small>
+                <strong>{{ metrics.total|default:0 }}</strong>
+                <p>{{ metrics.minutes|default:0 }} conversation minutes</p>
+            </article>
+            <article class="ci-metric">
+                <small>Completed</small>
+                <strong>{{ metrics.completed|default:0 }}</strong>
+                <p>Answered conversations</p>
+            </article>
+            <article class="ci-metric">
+                <small>Missed</small>
+                <strong>{{ metrics.missed|default:0 }}</strong>
+                <p>Need attention</p>
+            </article>
+            <article class="ci-metric">
+                <small>Devices online</small>
+                <strong>{{ active_devices }}</strong>
+                <p>{{ device_count }} registered</p>
+            </article>
+        </div>
+    </section>
+
+    <section class="ci-highlights" id="how-it-works">
+        <div class="ci-section-heading ci-section-heading-centered">
+            <p class="ci-eyebrow">HIGHLIGHTS</p>
+            <h2>Phone calls become<br>CRM intelligence.</h2>
+            <p>No double entry. No lost calls. No separate spreadsheet.</p>
+        </div>
+
+        <div class="ci-feature-grid">
+            <article class="ci-feature ci-feature-dark">
+                <div>
+                    <p class="ci-feature-kicker">Native Android capture</p>
+                    <h3>It knows the call happened.</h3>
+                    <p>
+                        READ_CALL_LOG and native phone-state tracking capture incoming,
+                        outgoing, missed and rejected SIM calls. Call-log reconciliation
+                        fills the gaps Android broadcasts can leave behind.
+                    </p>
+                </div>
+                <div class="ci-signal-visual">
+                    <span></span><span></span><span></span><span></span><span></span>
+                </div>
+            </article>
+
+            <article class="ci-feature ci-feature-blue">
+                <div>
+                    <p class="ci-feature-kicker">Offline first</p>
+                    <h3>Signal lost.<br>Call not lost.</h3>
+                    <p>
+                        A local Room database and durable sync outbox retain every call
+                        event until SHVYA acknowledges it. Retries are idempotent.
+                    </p>
+                </div>
+                <div class="ci-sync-visual">
+                    <i class="ti ti-device-mobile"></i>
+                    <span></span>
+                    <i class="ti ti-cloud-check"></i>
+                </div>
+            </article>
+
+            <article class="ci-feature ci-feature-soft">
+                <div>
+                    <p class="ci-feature-kicker">CRM-native matching</p>
+                    <h3>The lead is already there.</h3>
+                    <p>
+                        SHVYA normalizes the number, respects organization and pipeline
+                        boundaries, links the call to an existing lead, or creates a new
+                        one using the configured pipeline and stage.
+                    </p>
+                </div>
+                <div class="ci-match-card">
+                    <span class="ci-match-avatar">RS</span>
+                    <div><strong>Rahul Sharma</strong><small>+91 98765 43210</small></div>
+                    <span class="ci-match-check"><i class="ti ti-check"></i></span>
+                </div>
+            </article>
+
+            <article class="ci-feature ci-feature-violet">
+                <div>
+                    <p class="ci-feature-kicker">Post-call action</p>
+                    <h3>End the call.<br>Keep the momentum.</h3>
+                    <p>
+                        Notes sync to the CRM activity timeline. A follow-up uses SHVYA’s
+                        existing single-reminder-per-lead contract, so another reminder
+                        never silently piles up for the same lead.
+                    </p>
+                </div>
+                <div class="ci-reminder-preview">
+                    <i class="ti ti-bell-ringing"></i>
+                    <div><small>Follow up</small><strong>Tomorrow · 11:00 AM</strong></div>
+                </div>
+            </article>
+        </div>
+    </section>
+
+    <section class="ci-journey">
+        <div class="ci-section-heading">
+            <p class="ci-eyebrow">ONE CONTINUOUS RECORD</p>
+            <h2>From the phone.<br>To the pipeline.</h2>
+        </div>
+        <div class="ci-journey-track">
+            <article><span>01</span><i class="ti ti-phone-incoming"></i><h3>Call</h3><p>Native Android observes the SIM call lifecycle.</p></article>
+            <article><span>02</span><i class="ti ti-database"></i><h3>Store</h3><p>Room persists the call and its unsent events locally.</p></article>
+            <article><span>03</span><i class="ti ti-arrows-sync"></i><h3>Sync</h3><p>JWT-authenticated events reach the tenant-safe SHVYA API.</p></article>
+            <article><span>04</span><i class="ti ti-user-check"></i><h3>Match</h3><p>The server finds or safely creates the CRM lead.</p></article>
+            <article><span>05</span><i class="ti ti-sparkles"></i><h3>Act</h3><p>Notes, reminder, disposition and intelligence stay with the lead.</p></article>
+        </div>
+    </section>
+
+    <section class="ci-operation-grid">
+        <article class="ci-panel">
+            <div class="ci-panel-head">
+                <div>
+                    <p class="ci-eyebrow">RECENT CALLS</p>
+                    <h2>Latest activity.</h2>
+                </div>
+                <span class="ci-panel-meta">{{ today|date:"d M Y" }}</span>
+            </div>
+
+            <div class="ci-call-list">
+                {% for call in recent_calls %}
+                <div class="ci-call-row">
+                    <div class="ci-call-direction ci-call-direction-{{ call.direction }}">
+                        {% if call.direction == "inbound" %}
+                        <i class="ti ti-phone-incoming"></i>
+                        {% elif call.direction == "outbound" %}
+                        <i class="ti ti-phone-outgoing"></i>
+                        {% else %}
+                        <i class="ti ti-phone"></i>
+                        {% endif %}
+                    </div>
+                    <div class="ci-call-main">
+                        <strong>
+                            {% if call.lead %}{{ call.lead.name }}
+                            {% elif call.contact_name %}{{ call.contact_name }}
+                            {% else %}{{ call.phone_number }}{% endif %}
+                        </strong>
+                        <small>
+                            {{ call.phone_number }}
+                            {% if call.pipeline %} · {{ call.pipeline.name }} / {{ call.stage.name }}{% endif %}
+                        </small>
+                    </div>
+                    <div class="ci-call-outcome">
+                        <span class="ci-call-status ci-call-status-{{ call.status }}">{{ call.get_status_display }}</span>
+                        <small>{{ call.duration_seconds }}s</small>
+                    </div>
+                    <time>{{ call.called_at|date:"h:i A" }}</time>
+                </div>
+                {% empty %}
+                <div class="ci-empty">
+                    <i class="ti ti-phone-off"></i>
+                    <h3>No calls synced yet.</h3>
+                    <p>Install the Android companion, sign in, grant phone permissions and your first call will appear here automatically.</p>
+                </div>
+                {% endfor %}
+            </div>
+        </article>
+
+        <article class="ci-panel ci-device-panel">
+            <div class="ci-panel-head">
+                <div>
+                    <p class="ci-eyebrow">ANDROID DEVICES</p>
+                    <h2>Team phones.</h2>
+                </div>
+                <span class="ci-panel-meta">{{ active_devices }} online</span>
+            </div>
+            <div class="ci-device-list">
+                {% for device in devices %}
+                <div class="ci-device-row">
+                    <span class="ci-device-icon"><i class="ti ti-device-mobile"></i></span>
+                    <div>
+                        <strong>{{ device.device_name|default:device.model|default:"Android device" }}</strong>
+                        <small>{{ device.user.name|default:device.user.email }} · Android {{ device.android_version|default:"—" }}</small>
+                    </div>
+                    <time>{{ device.last_seen_at|timesince }} ago</time>
+                </div>
+                {% empty %}
+                <div class="ci-empty ci-empty-compact">
+                    <i class="ti ti-device-mobile-question"></i>
+                    <h3>No device connected.</h3>
+                    <p>Download the Android app and sign in with a SHVYA team account.</p>
+                </div>
+                {% endfor %}
+            </div>
+        </article>
+    </section>
+
+    <section class="ci-install-section">
+        <div class="ci-section-heading ci-section-heading-centered">
+            <p class="ci-eyebrow">GET STARTED</p>
+            <h2>Three steps.<br>Then it stays in sync.</h2>
+        </div>
+        <div class="ci-install-grid">
+            <article><span>1</span><h3>Download</h3><p>Install the signed SHVYA Android APK on an employee phone.</p></article>
+            <article><span>2</span><h3>Sign in & permit</h3><p>Use the employee’s SHVYA account and allow Phone, Call Log, Contacts and Notifications.</p></article>
+            <article><span>3</span><h3>Keep battery access</h3><p>Allow background operation so calls can be reconciled and synced even when the app is closed.</p></article>
+        </div>
+        {% if apk.available %}
+        <div class="ci-install-cta">
+            <a class="ci-button ci-button-primary ci-button-large" href="{% url 'call-intelligence-download' %}">
+                <i class="ti ti-download"></i> Download SHVYA Call Intelligence
+            </a>
+        </div>
+        {% endif %}
+    </section>
+
+    {% if call_intelligence_admin %}
+    <section class="ci-settings">
+        <div class="ci-section-heading">
+            <p class="ci-eyebrow">ORGANIZATION SETTINGS</p>
+            <h2>Choose what happens<br>after the call.</h2>
+        </div>
+
+        <form method="post" action="{% url 'call-intelligence-settings' %}" class="ci-settings-form" data-call-settings>
+            {% csrf_token %}
+            <div class="ci-setting-row">
+                <div><strong>Call Intelligence</strong><p>Accept Android call events for this organization.</p></div>
+                <label class="ci-switch">
+                    <input type="checkbox" name="is_enabled" {% if call_settings.is_enabled %}checked{% endif %}>
+                    <span></span>
+                </label>
+            </div>
+            <div class="ci-setting-row">
+                <div><strong>Auto-create answered inbound leads</strong><p>Create a lead after a completed incoming call if no CRM lead exists.</p></div>
+                <label class="ci-switch"><input type="checkbox" name="auto_create_answered" {% if call_settings.auto_create_answered %}checked{% endif %}><span></span></label>
+            </div>
+            <div class="ci-setting-row">
+                <div><strong>Auto-create missed callers</strong><p>Keep missed opportunities visible in the CRM.</p></div>
+                <label class="ci-switch"><input type="checkbox" name="auto_create_missed" {% if call_settings.auto_create_missed %}checked{% endif %}><span></span></label>
+            </div>
+            <div class="ci-setting-row">
+                <div><strong>Auto-create completed outbound leads</strong><p>Attach successful employee-initiated calls to a CRM record.</p></div>
+                <label class="ci-switch"><input type="checkbox" name="auto_create_outbound" {% if call_settings.auto_create_outbound %}checked{% endif %}><span></span></label>
+            </div>
+
+            <div class="ci-field-grid">
+                <label>
+                    <span>Default country code</span>
+                    <input type="text" name="default_country_code" value="{{ call_settings.default_country_code }}" maxlength="8" placeholder="+91">
+                </label>
+                <label>
+                    <span>Default pipeline</span>
+                    <select name="default_pipeline" data-pipeline-select>
+                        <option value="">Auto-select accessible pipeline</option>
+                        {% for pipeline in pipelines %}
+                        <option value="{{ pipeline.id }}" {% if call_settings.default_pipeline_id == pipeline.id %}selected{% endif %}>{{ pipeline.name }}</option>
+                        {% endfor %}
+                    </select>
+                </label>
+                <label>
+                    <span>Default stage</span>
+                    <select name="default_stage" data-stage-select>
+                        <option value="">Auto-select New Lead</option>
+                        {% for stage in stages %}
+                        <option value="{{ stage.id }}" data-pipeline="{{ stage.pipeline_id }}" {% if call_settings.default_stage_id == stage.id %}selected{% endif %}>
+                            {{ stage.pipeline.name }} · {{ stage.name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </label>
+            </div>
+            <div class="ci-settings-footer">
+                <p>Pipeline and stage are always validated against this organization before a lead is created.</p>
+                <button class="ci-button ci-button-primary" type="submit">Save settings</button>
+            </div>
+        </form>
+    </section>
+    {% endif %}
+</main>
+{% endblock %}

@@ -144,6 +144,14 @@ urlpatterns = [
     ),
 
     # =========================================================
+    # Call Intelligence — internal Android employee companion
+    # =========================================================
+    path(
+        "dashboard/call-intelligence/",
+        include("apps.calls.urls.web"),
+    ),
+
+    # =========================================================
     # Connect Hub Web Dashboard
     #
     # Keep this before the broad CRM dashboard include so the integrations
