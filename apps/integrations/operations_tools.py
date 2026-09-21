@@ -334,7 +334,12 @@ def _ensure_approved_proposal_unchanged(*, arguments, proposal):
         else {}
     )
     expected = str(summary.get("proposal_digest") or "")
-    if expected and expected != _proposal_digest(proposal):
+    if not expected:
+        raise OperationsApprovalRequired(
+            "The approval receipt does not contain current backend proposal "
+            "evidence. Run a fresh dry-run and obtain new approval."
+        )
+    if expected != _proposal_digest(proposal):
         raise OperationsApprovalRequired(
             "The backend-resolved state changed after the approved dry-run. "
             "Run a fresh dry-run and obtain new approval."
