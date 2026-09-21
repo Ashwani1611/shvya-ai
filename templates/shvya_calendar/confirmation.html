@@ -46,10 +46,14 @@
           {% endif %}
         </div>
 
-        <form class="sc-cancel-form" method="post" action="{% url 'shvya_calendar_public:cancel' booking_id=booking.id cancel_token=booking.cancel_token %}">
-          {% csrf_token %}
-          <button type="submit">Cancel booking</button>
-        </form>
+        <div class="sc-booking-manage">
+          <a href="{% url 'shvya_calendar_public:reschedule' booking_id=booking.id reschedule_token=booking.reschedule_token %}">Reschedule</a>
+          <span>·</span>
+          <form method="post" action="{% url 'shvya_calendar_public:cancel' booking_id=booking.id cancel_token=booking.cancel_token %}">
+            {% csrf_token %}
+            <button type="submit">Cancel booking</button>
+          </form>
+        </div>
       {% endif %}
     </section>
   </main>
