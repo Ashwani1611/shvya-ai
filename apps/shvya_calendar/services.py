@@ -1,5 +1,6 @@
 import hashlib
 import json
+import logging
 import re
 from datetime import UTC, datetime, time, timedelta
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -22,6 +23,7 @@ from services.crm.lead_service import create_lead
 
 from .google import (
     GoogleCalendarError,
+    connection_for_page,
     create_booking_event,
     free_busy,
     update_booking_event,
@@ -62,6 +64,8 @@ ALLOWED_UPLOAD_EXTENSIONS = {
     ".xlsx",
 }
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
+
+logger = logging.getLogger(__name__)
 
 
 def page_snapshot(page):
@@ -127,17 +131,14 @@ def publish_page(*, page, actor):
             "Select a CRM pipeline and initial stage before publishing."
         )
     page.full_clean()
-    if page.page_type != CalendarPage.PageType.LEAD:
-        if not page.host_id:
-            raise ValidationError("Select a booking host before publishing.")
-        if page.meeting_location == CalendarPage.MeetingLocation.GOOGLE_MEET:
-            from .google import connection_for_page
-            if connection_for_page(page) is None:
-                raise ValidationError(
-                    "Connect the booking host's Google Calendar before publishing "
-                    "a Google Meet page."
-                )
+    if page.page_type != CalendarPage.PageType.LEAD and not page.host_id:
+        raise ValidationError("Select a booking host before publishing.")
 
+    # Publication and provider readiness are separate concerns. A page must be
+    # shareable even before Google is connected so Web-to-Lead capture still
+    # works. When Google Meet is selected without a connection, scheduling
+    # fails closed with a clear message instead of creating a booking that has
+    # no conference link.
     version = page.current_version + 1
     published = CalendarPageVersion.objects.create(
         page=page,
@@ -441,6 +442,9 @@ def create_submission_and_lead(
             user_agent=str(request.META.get("HTTP_USER_AGENT") or "")[:500],
             ip_hash=hash_ip(_client_ip(request)),
         )
+        transaction.on_commit(
+            lambda submission_id=str(submission.id): notify_submission(submission_id)
+        )
         return submission, existing, False
 
     created = False
@@ -610,6 +614,13 @@ def notify_submission(submission_id):
             # is disconnected; internal staff notification above still records
             # that the submission exists.
             pass
+        except Exception:
+            # Provider/network failures must never turn an already committed
+            # Web-to-Lead submission into an HTTP 500 for the visitor.
+            logger.exception(
+                "SHVYA Calendar acknowledgement delivery failed for submission %s",
+                submission.id,
+            )
 
 
 def _page_zone(page):
@@ -634,6 +645,14 @@ def _overlaps(start, end, busy_start, busy_end):
 def available_slots(*, page, local_date):
     if page.status != CalendarPage.Status.PUBLISHED:
         return []
+    if (
+        page.meeting_location == CalendarPage.MeetingLocation.GOOGLE_MEET
+        and connection_for_page(page) is None
+    ):
+        raise GoogleCalendarError(
+            "Google Calendar is not connected for this booking host yet. "
+            "Your lead details are saved, but scheduling is temporarily unavailable."
+        )
     zone = _page_zone(page)
     now = timezone.now()
     local_now = now.astimezone(zone)
