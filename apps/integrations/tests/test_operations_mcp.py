@@ -5760,6 +5760,11 @@ class OperationsMCPTests(TestCase):
         ).update(
             attributes={
                 "lost_reason": "Budget",
+                "_shvya_ai_qualification": {
+                    "qualification_status": (
+                        "completed"
+                    ),
+                },
             },
             stage_entered_at=(
                 now - timedelta(days=5)
@@ -5867,6 +5872,30 @@ class OperationsMCPTests(TestCase):
                 "average_first_response_seconds"
             ],
             350,
+        )
+
+        self.assertEqual(
+            current["qualification_completion"][
+                "completed_leads"
+            ],
+            1,
+        )
+        self.assertEqual(
+            current["qualification_completion"][
+                "completion_rate"
+            ],
+            1.0,
+        )
+        stage_reach = current[
+            "stage_conversion_proxy"
+        ]["stages"]
+        self.assertTrue(
+            any(
+                row["stage_id"]
+                == str(self.review_stage.id)
+                and row["lead_count"] == 1
+                for row in stage_reach
+            )
         )
 
         self.assertEqual(
