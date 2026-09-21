@@ -169,3 +169,65 @@ def dispatch_due_calendar_reminders():
     for delivery_id in due_ids:
         dispatch_calendar_reminder.delay(str(delivery_id))
     return {"queued": len(due_ids)}
+
+
+@shared_task(
+    bind=True,
+    max_retries=6,
+    default_retry_delay=5,
+    name="shvya_calendar.refresh_booking_conference",
+)
+def refresh_booking_conference(self, booking_id):
+    booking = (
+        CalendarBooking.objects
+        .select_related("page", "organization", "host", "lead")
+        .filter(pk=booking_id)
+        .first()
+    )
+    if booking is None:
+        return {"status": "missing"}
+    if booking.status == CalendarBooking.Status.CANCELLED:
+        return {"status": "cancelled"}
+    if booking.meeting_link:
+        return {"status": "synced", "meeting_link": booking.meeting_link}
+    if (
+        booking.page.meeting_location
+        != booking.page.MeetingLocation.GOOGLE_MEET
+    ):
+        return {"status": "not_google_meet"}
+
+    from .google import GoogleCalendarError, refresh_booking_event_details
+
+    try:
+        booking = refresh_booking_event_details(booking)
+        if not booking.meeting_link:
+            raise GoogleCalendarError(
+                "Google Meet conference is still being prepared."
+            )
+        return {"status": "synced", "meeting_link": booking.meeting_link}
+    except GoogleCalendarError as exc:
+        CalendarBooking.objects.filter(pk=booking.pk).update(
+            calendar_sync_status=CalendarBooking.SyncStatus.PENDING,
+            calendar_sync_error=str(exc)[:1000],
+        )
+        raise self.retry(exc=exc)
+
+
+@shared_task(name="shvya_calendar.recover_pending_google_meet")
+def recover_pending_google_meet():
+    booking_ids = list(
+        CalendarBooking.objects
+        .filter(
+            status__in=[
+                CalendarBooking.Status.SCHEDULED,
+                CalendarBooking.Status.RESCHEDULED,
+            ],
+            calendar_sync_status=CalendarBooking.SyncStatus.PENDING,
+            meeting_link="",
+        )
+        .exclude(google_event_id="")
+        .values_list("id", flat=True)[:100]
+    )
+    for booking_id in booking_ids:
+        refresh_booking_conference.delay(str(booking_id))
+    return {"queued": len(booking_ids)}
