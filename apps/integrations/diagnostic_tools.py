@@ -1034,6 +1034,7 @@ def get_runtime_health(*, organization, arguments):
             )
         ),
         "capabilities": {
+            "instagram_ai_auto_reply_runtime": False,
         },
         "counts": {
             "leads": Lead.objects.filter(
@@ -1080,7 +1081,6 @@ def get_runtime_health(*, organization, arguments):
                     created_at__gte=since,
                 ).count()
             ),
-            "instagram_ai_auto_reply_runtime": False,
             "instagram_webhook_failed_24h": (
                 InstagramWebhookDelivery.objects.filter(
                     organization_ids__contains=[str(organization.id)],

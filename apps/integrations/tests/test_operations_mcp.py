@@ -3202,9 +3202,10 @@ class OperationsMCPTests(TestCase):
             embedding=[0.0] * 1536,
             is_active=True,
         )
+        opaque_label_secret = "A" * 64
         failed = Document.objects.create(
             organization=self.organization,
-            name="Failed knowledge document",
+            name=f"Failed knowledge {opaque_label_secret}",
             source_key="failed-source",
             version=1,
             processing_status=Document.ProcessingStatus.FAILED,
@@ -3301,8 +3302,12 @@ class OperationsMCPTests(TestCase):
         self.assertNotIn("private-pricing-secret", payload)
         self.assertNotIn("private share instruction", payload)
         self.assertNotIn("ingestion-secret", payload)
+        self.assertNotIn(opaque_label_secret, payload)
         self.assertNotIn("foreign tenant knowledge body", payload)
-        self.assertNotIn(str(foreign.id), payload)
+        self.assertNotIn(
+            str(foreign.id),
+            {item["id"] for item in health["documents"]},
+        )
         self.assertNotIn("embedding", payload.lower().replace("embedding_coverage", "").replace("embedded_chunk_count", "").replace("embedded_active_chunks", ""))
 
     def test_lead_snapshot_redacts_sensitive_crm_attribute_values(self):

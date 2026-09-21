@@ -842,7 +842,7 @@ def _safe_knowledge_name(value, *, url=""):
     return sanitize_text(
         text,
         limit=255,
-        redact_long=False,
+        redact_long=True,
     )
 
 
