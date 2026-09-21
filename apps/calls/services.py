@@ -373,6 +373,10 @@ def ingest_call_event(*, user, validated_data):
         ),
         "ring_duration_seconds": validated_data.get("ring_duration_seconds") or 0,
         "duration_seconds": validated_data.get("duration_seconds") or 0,
+        "notes": validated_data.get("notes") or "",
+        "disposition": validated_data.get("disposition") or "",
+        "follow_up_required": bool(validated_data.get("follow_up_at")),
+        "follow_up_at": validated_data.get("follow_up_at"),
         "metadata": validated_data.get("metadata") or {},
     }
 
@@ -424,6 +428,14 @@ def ingest_call_event(*, user, validated_data):
     elif event_status:
         call.status = event_status
 
+    if "notes" in validated_data:
+        call.notes = str(validated_data.get("notes") or "").strip()
+    if "disposition" in validated_data:
+        call.disposition = str(validated_data.get("disposition") or "").strip()
+    if "follow_up_at" in validated_data:
+        call.follow_up_at = validated_data.get("follow_up_at")
+        call.follow_up_required = bool(call.follow_up_at)
+
     if validated_data.get("metadata"):
         call.metadata = {
             **(call.metadata or {}),
@@ -450,7 +462,23 @@ def ingest_call_event(*, user, validated_data):
     if call.crm_call_id:
         call.save(update_fields=["crm_call", "updated_at"])
 
-    CallIntelligence.objects.get_or_create(call=call)
+    intelligence, _ = CallIntelligence.objects.get_or_create(call=call)
+
+    if call.follow_up_at and call.lead_id:
+        set_call_follow_up(
+            call=call,
+            assigned_to=user,
+            due_at=call.follow_up_at,
+            title="Call follow-up",
+            description=(
+                call.notes
+                or f"Follow up after {call.get_direction_display().lower()} call."
+            ),
+        )
+
+    if call.notes or intelligence.transcript:
+        queue_call_intelligence_analysis(call)
+
     return call, created
 
 
@@ -461,6 +489,8 @@ def update_call_notes(*, call, notes):
     if call.crm_call_id:
         call.crm_call.notes = call.notes
         call.crm_call.save(update_fields=["notes"])
+    if call.notes:
+        queue_call_intelligence_analysis(call)
     return call
 
 
@@ -486,3 +516,20 @@ def set_call_follow_up(*, call, assigned_to, due_at, title="", description=""):
     call.follow_up_at = due_at
     call.save(update_fields=["follow_up_required", "follow_up_at", "updated_at"])
     return reminder
+
+
+
+def queue_call_intelligence_analysis(call):
+    """Queue bounded AI enrichment without allowing the model to mutate CRM state."""
+    intelligence, _ = CallIntelligence.objects.get_or_create(call=call)
+    intelligence.analysis_status = CallIntelligence.AnalysisStatus.PENDING
+    intelligence.analysis_error = ""
+    intelligence.save(update_fields=["analysis_status", "analysis_error", "updated_at"])
+
+    call_id = str(call.id)
+
+    def _enqueue():
+        from apps.calls.tasks import analyze_call_intelligence
+        analyze_call_intelligence.delay(call_id)
+
+    transaction.on_commit(_enqueue)

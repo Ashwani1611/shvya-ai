@@ -1,11 +1,11 @@
 import uuid
 
-from django.utils import timezone
+from datetime import timedelta\n\nfrom django.utils import timezone
 from rest_framework.test import APIClient, APITestCase
 
 from apps.accounts.models import User
 from apps.calls.models import CallRecord
-from apps.crm.models import Pipeline, Stage
+from apps.crm.models import LeadReminder, Pipeline, Stage
 from apps.organizations.models import Organization
 
 
@@ -124,3 +124,49 @@ class CallIntelligenceAPITests(APITestCase):
         response = self.client.get("/api/v1/call-intelligence/calls/")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data["count"], 0)
+
+
+    def test_same_call_can_receive_post_call_notes_and_follow_up(self):
+        self.register_device()
+        source_call_id = "android-call-enrichment"
+        first = {
+            "device_id": str(self.device_id),
+            "event_uuid": str(uuid.uuid4()),
+            "source_call_id": source_call_id,
+            "event_type": "completed",
+            "direction": "inbound",
+            "status": "completed",
+            "phone_number": "9888888888",
+            "contact_name": "Post Call Lead",
+            "occurred_at": timezone.now().isoformat(),
+            "duration_seconds": 90,
+        }
+        response = self.client.post(
+            "/api/v1/call-intelligence/events/",
+            first,
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201)
+
+        follow_up = timezone.now() + timedelta(days=1)
+        second = {
+            **first,
+            "event_uuid": str(uuid.uuid4()),
+            "notes": "Customer asked for a product demo.",
+            "disposition": "demo_requested",
+            "follow_up_at": follow_up.isoformat(),
+        }
+        with self.captureOnCommitCallbacks(execute=False):
+            response = self.client.post(
+                "/api/v1/call-intelligence/events/",
+                second,
+                format="json",
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(CallRecord.objects.count(), 1)
+
+        call = CallRecord.objects.get()
+        self.assertEqual(call.notes, "Customer asked for a product demo.")
+        self.assertEqual(call.disposition, "demo_requested")
+        self.assertEqual(call.crm_call.notes, call.notes)
+        self.assertEqual(LeadReminder.objects.filter(lead=call.lead).count(), 1)

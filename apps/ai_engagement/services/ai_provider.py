@@ -75,6 +75,7 @@ class OpenAIProvider:
         "internal_summary": "OPENAI_SUMMARY_MODEL",
         "lead_briefing": "OPENAI_QUALIFICATION_MODEL",
         "bump_up": "OPENAI_ENGAGEMENT_MODEL",
+        "call_intelligence": "OPENAI_SUMMARY_MODEL",
     }
 
     TASK_MAX_OUTPUT_TOKENS = {
@@ -84,6 +85,7 @@ class OpenAIProvider:
         "internal_summary": 300,
         "lead_briefing": 350,
         "bump_up": 200,
+        "call_intelligence": 500,
     }
 
     def __init__(

@@ -45,6 +45,9 @@ class CallEventIngestSerializer(serializers.Serializer):
     ended_at = serializers.DateTimeField(required=False, allow_null=True)
     ring_duration_seconds = serializers.IntegerField(required=False, min_value=0)
     duration_seconds = serializers.IntegerField(required=False, min_value=0)
+    notes = serializers.CharField(required=False, allow_blank=True, max_length=5000)
+    disposition = serializers.CharField(required=False, allow_blank=True, max_length=80)
+    follow_up_at = serializers.DateTimeField(required=False, allow_null=True)
     metadata = serializers.JSONField(required=False)
     payload = serializers.JSONField(required=False)
 

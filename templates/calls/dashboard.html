@@ -224,7 +224,12 @@
                     </div>
                     <div class="ci-call-outcome">
                         <span class="ci-call-status ci-call-status-{{ call.status }}">{{ call.get_status_display }}</span>
-                        <small>{{ call.duration_seconds }}s</small>
+                        <small>
+                            {{ call.duration_seconds }}s
+                            {% if call.intelligence.intent and call.intelligence.intent != "unknown" %}
+                            · {{ call.intelligence.get_intent_display }} intent
+                            {% endif %}
+                        </small>
                     </div>
                     <time>{{ call.called_at|date:"h:i A" }}</time>
                 </div>
