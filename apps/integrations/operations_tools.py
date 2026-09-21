@@ -63,6 +63,7 @@ from services.crm.attribute_service import (
     update_attribute_definition,
     update_lead_attribute_values,
 )
+from services.crm.stage_requirements import missing_attributes
 from services.crm.lead_transition import (
     LeadTransitionError,
     move_lead_to_pipeline_stage,
@@ -931,6 +932,33 @@ def move_lead_stage(*, identity, arguments, enforce_gate=True):
             raise OperationsPermissionError(
                 "The requested Qualified stage is not the backend-configured "
                 "qualification completion target for this lead."
+            )
+
+    if stage.id != lead.stage_id:
+        missing = list(
+            missing_attributes(
+                stage,
+                lead.attributes if isinstance(lead.attributes, dict) else {},
+            )
+        )
+        if missing:
+            safe_names = [
+                item.name
+                for item in missing
+                if not is_sensitive_attribute_definition(
+                    {"key": item.key, "name": item.name}
+                )
+            ]
+            if safe_names:
+                detail = ", ".join(safe_names[:10])
+                raise OperationsPermissionError(
+                    "Complete the target stage's required CRM attributes before "
+                    f"moving this lead: {detail}."
+                )
+            raise OperationsPermissionError(
+                "The target stage has missing sensitive required CRM data. "
+                "Operations MCP cannot request or fill credential-like fields; "
+                "resolve this manually in SHVYA before moving the lead."
             )
 
     if (
