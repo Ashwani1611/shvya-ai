@@ -139,11 +139,11 @@ Significant writes use this sequence:
 8. re-read / verify the resulting state;
 9. report `FIXED` only after verification.
 
-Approval receipts expire after 30 minutes and are single-use after a successful mutation. A dry-run does not create CRM, AI-profile or policy state.
+Approval receipts expire after 30 minutes and are atomically single-use at execution-attempt time. Once an approved attempt claims a receipt, a fresh dry-run is required for any later attempt even if the first attempt does not complete successfully. A dry-run does not create CRM, AI-profile or policy state.
 
 ## Audit
 
-Every authenticated Operations tool call creates an `OperationsAuditEvent`.
+Every authenticated Operations tool call creates an `OperationsAuditEvent`. Approval-required executions also create a unique append-only `OperationsApprovalUse` claim against the dry-run audit event before mutation begins, preventing concurrent or later receipt replay.
 
 The audit stores bounded metadata:
 
