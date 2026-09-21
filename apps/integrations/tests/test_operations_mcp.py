@@ -7954,7 +7954,7 @@ class OperationsMCPTests(TestCase):
             status=WhatsAppAccount.Status.CONNECTED,
             is_active=True,
         )
-        own_message = WhatsAppMessage.objects.create(
+        WhatsAppMessage.objects.create(
             organization=self.organization,
             account=own_account,
             lead=self.lead,
