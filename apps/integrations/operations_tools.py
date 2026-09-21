@@ -987,11 +987,12 @@ def update_ai_configuration(*, identity, arguments):
             "requirement_count": len(compiled.get("requirements", [])),
         }
 
-    info, _ = OrgInfo.objects.get_or_create(organization=organization)
+    existing_info = OrgInfo.objects.filter(organization=organization).first()
+    info_for_compare = existing_info or OrgInfo(organization=organization)
     changed_fields = [
         key
         for key, value in normalized.items()
-        if getattr(info, key) != value
+        if getattr(info_for_compare, key) != value
     ]
 
     if dry_run:
@@ -1016,6 +1017,7 @@ def update_ai_configuration(*, identity, arguments):
             audit_summary={"changed_fields": changed_fields, "operation": "update_ai_configuration"},
         )
 
+    info = existing_info or OrgInfo(organization=organization)
     for key, value in normalized.items():
         setattr(info, key, value)
     if normalized:
