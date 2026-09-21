@@ -56,6 +56,7 @@ from apps.integrations.operations_policy import (
     require_capability,
     OperationsPolicyError,
 )
+from apps.organizations.access import organization_is_active
 from apps.organizations.models import Organization
 from apps.triggers.models import SmartTrigger, TriggerRun
 from services.crm.attribute_service import (
@@ -135,6 +136,12 @@ def _organization_for(identity, *, required=True):
     if required and organization is None:
         raise OperationsToolError(
             "Select an organization support context before using this tool."
+        )
+    if required and not organization_is_active(organization):
+        raise OperationsPermissionError(
+            "The active organization is disabled. Customer-specific Operations "
+            "are blocked until the organization is re-enabled or Superadmin "
+            "clears/selects another support context."
         )
     return organization
 
