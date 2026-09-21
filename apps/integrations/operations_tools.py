@@ -35,6 +35,7 @@ from apps.integrations.diagnostic_tools import (
     DiagnosticToolError,
     execute_tool as execute_diagnostic_tool,
 )
+from apps.integrations.operations_approval import approval_fingerprint
 from apps.integrations.operations_models import (
     OperationsAuditEvent,
     OperationsSupportSession,
@@ -146,7 +147,79 @@ def _reason(arguments, *, required=False):
     return value[:500]
 
 
-def _write_gate(*, identity, organization, capability, arguments):
+APPROVAL_RECEIPT_TTL = timedelta(minutes=30)
+
+
+def _validated_approval_event(
+    *,
+    identity,
+    organization,
+    capability,
+    tool_name,
+    arguments,
+):
+    raw_event_id = str(
+        (arguments or {}).get("approval_event_id") or ""
+    ).strip()
+    if not raw_event_id:
+        raise OperationsApprovalRequired(
+            "Approval is required. Run the exact dry-run first, obtain its "
+            "approval_event_id, then re-run with approved=true and that event ID."
+        )
+    try:
+        event_id = uuid.UUID(raw_event_id)
+    except (TypeError, ValueError, AttributeError) as exc:
+        raise OperationsApprovalRequired(
+            "approval_event_id must be the UUID returned by the matching SHVYA dry-run."
+        ) from exc
+
+    event = OperationsAuditEvent.objects.filter(
+        pk=event_id,
+        actor=identity.actor,
+        role=identity.role,
+        organization=organization,
+        tool_name=tool_name,
+        capability=capability,
+        outcome=OperationsAuditEvent.Outcome.DRY_RUN,
+        request_fingerprint=approval_fingerprint(arguments),
+        created_at__gte=timezone.now() - APPROVAL_RECEIPT_TTL,
+    ).first()
+    if event is None:
+        raise OperationsApprovalRequired(
+            "The approval receipt is missing, expired, belongs to another actor/"
+            "organization/tool, or does not match this exact proposed change. "
+            "Run a new dry-run and approve that result."
+        )
+
+    later_success_summaries = OperationsAuditEvent.objects.filter(
+        actor=identity.actor,
+        role=identity.role,
+        organization=organization,
+        tool_name=tool_name,
+        capability=capability,
+        outcome=OperationsAuditEvent.Outcome.SUCCESS,
+        created_at__gte=event.created_at,
+    ).values_list("change_summary", flat=True)
+    for summary in later_success_summaries:
+        if (
+            isinstance(summary, dict)
+            and str(summary.get("approval_event_id") or "") == str(event.id)
+        ):
+            raise OperationsApprovalRequired(
+                "This approval receipt has already been used successfully. "
+                "Run a new dry-run for another mutation."
+            )
+    return event
+
+
+def _write_gate(
+    *,
+    identity,
+    organization,
+    capability,
+    tool_name,
+    arguments,
+):
     try:
         require_capability(
             role=identity.role,
@@ -170,17 +243,23 @@ def _write_gate(*, identity, organization, capability, arguments):
     dry_run = raw_dry_run
     approved = raw_approved
     reason = _reason(arguments, required=True)
-    if (
-        not dry_run
-        and approval_required(
-            role=identity.role,
+    needs_approval = approval_required(
+        role=identity.role,
+        organization=organization,
+        capability=capability,
+    )
+    if not dry_run and needs_approval:
+        if not approved:
+            raise OperationsApprovalRequired(
+                "Approval is required. Run the exact dry-run first and obtain "
+                "human approval before execution."
+            )
+        _validated_approval_event(
+            identity=identity,
             organization=organization,
             capability=capability,
-        )
-        and not approved
-    ):
-        raise OperationsApprovalRequired(
-            "Approval is required. Re-run with approved=true only after the human has approved the displayed dry-run."
+            tool_name=tool_name,
+            arguments=arguments,
         )
     return dry_run, reason
 
@@ -809,6 +888,7 @@ def move_lead_stage(*, identity, arguments):
         identity=identity,
         organization=organization,
         capability=CAP_LEAD_STAGE_WRITE,
+        tool_name="move_lead_stage",
         arguments=arguments,
     )
     lead = _lead(organization, (arguments or {}).get("lead_id"))
@@ -901,6 +981,7 @@ def repair_qualification_stage(*, identity, arguments):
         identity=identity,
         organization=organization,
         capability=CAP_LEAD_STAGE_WRITE,
+        tool_name="repair_qualification_stage",
         arguments=arguments,
     )
     lead = _lead(organization, (arguments or {}).get("lead_id"))
@@ -940,6 +1021,7 @@ def update_lead_attributes(*, identity, arguments):
         identity=identity,
         organization=organization,
         capability=CAP_LEAD_ATTRIBUTES_WRITE,
+        tool_name="update_lead_attributes",
         arguments=arguments,
     )
     lead = _lead(organization, (arguments or {}).get("lead_id"))
@@ -1042,6 +1124,7 @@ def update_ai_configuration(*, identity, arguments):
         identity=identity,
         organization=organization,
         capability=CAP_AI_CONFIG_WRITE,
+        tool_name="update_ai_configuration",
         arguments=arguments,
     )
     changes = (arguments or {}).get("changes")
@@ -1593,6 +1676,7 @@ def upsert_pipeline_configuration(*, identity, arguments):
         identity=identity,
         organization=organization,
         capability=CAP_CRM_CONFIG_WRITE,
+        tool_name="upsert_pipeline_configuration",
         arguments=arguments,
     )
     data = (arguments or {}).get("data")
@@ -1734,6 +1818,7 @@ def upsert_stage_configuration(*, identity, arguments):
         identity=identity,
         organization=organization,
         capability=CAP_CRM_CONFIG_WRITE,
+        tool_name="upsert_stage_configuration",
         arguments=arguments,
     )
     pipeline = Pipeline.objects.filter(
@@ -1904,6 +1989,7 @@ def upsert_attribute_configuration(*, identity, arguments):
         identity=identity,
         organization=organization,
         capability=CAP_CRM_CONFIG_WRITE,
+        tool_name="upsert_attribute_configuration",
         arguments=arguments,
     )
     data = (arguments or {}).get("data")
@@ -2065,6 +2151,7 @@ def upsert_workflow_configuration(*, identity, arguments):
         identity=identity,
         organization=organization,
         capability=CAP_AUTOMATION_CONFIG_WRITE,
+        tool_name="upsert_workflow_configuration",
         arguments=arguments,
     )
     data = (arguments or {}).get("data")
@@ -2233,6 +2320,7 @@ def upsert_cadence_configuration(*, identity, arguments):
         identity=identity,
         organization=organization,
         capability=CAP_AUTOMATION_CONFIG_WRITE,
+        tool_name="upsert_cadence_configuration",
         arguments=arguments,
     )
     data = (arguments or {}).get("data")
@@ -2371,6 +2459,7 @@ def add_cadence_step(*, identity, arguments):
         identity=identity,
         organization=organization,
         capability=CAP_AUTOMATION_CONFIG_WRITE,
+        tool_name="add_cadence_step",
         arguments=arguments,
     )
     sequence = FollowupSequence.objects.filter(
