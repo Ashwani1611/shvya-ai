@@ -3,6 +3,7 @@ from datetime import timedelta
 from urllib.parse import parse_qs, urlparse
 
 from django.contrib.sessions.backends.db import SessionStore
+from django.core.exceptions import ValidationError
 from django.test import TestCase
 from django.utils import timezone
 
@@ -622,6 +623,36 @@ class OperationsMCPTests(TestCase):
         self.assertEqual(result["structuredContent"]["status"], "NOT_ALLOWED")
         self.lead.refresh_from_db()
         self.assertEqual(self.lead.stage_id, self.new_stage.id)
+
+    def test_operations_audit_events_are_append_only_even_through_queryset(self):
+        event = OperationsAuditEvent.objects.create(
+            actor=self.superadmin,
+            role=ROLE_SUPERADMIN,
+            organization=self.organization,
+            tool_name="test_tool",
+            capability=CAP_ORGANIZATION_READ,
+            target_type="organization",
+            target_id=str(self.organization.id),
+            reason="Verify immutable audit storage",
+            outcome=OperationsAuditEvent.Outcome.SUCCESS,
+            request_fingerprint="a" * 64,
+            change_summary={"status": "verified"},
+        )
+
+        event.reason = "Attempted rewrite"
+        with self.assertRaises(ValidationError):
+            event.save(update_fields=["reason"])
+
+        with self.assertRaises(ValidationError):
+            OperationsAuditEvent.objects.filter(pk=event.pk).update(
+                reason="Bulk rewrite"
+            )
+
+        with self.assertRaises(ValidationError):
+            OperationsAuditEvent.objects.filter(pk=event.pk).delete()
+
+        event.refresh_from_db()
+        self.assertEqual(event.reason, "Verify immutable audit storage")
 
     def test_audit_stores_argument_fingerprint_not_raw_query(self):
         OperationsPolicy.objects.create(
