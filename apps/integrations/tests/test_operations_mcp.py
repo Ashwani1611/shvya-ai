@@ -4137,6 +4137,22 @@ class OperationsMCPTests(TestCase):
         self.assertNotIn(bearer, json.dumps(audit.change_summary))
         self.assertNotIn(bearer, audit.request_fingerprint)
 
+        repeated = self.client.post(
+            reverse("shvya-operations-oauth-revoke"),
+            {
+                "token": bearer,
+                "token_type_hint": "access_token",
+            },
+        )
+        self.assertEqual(repeated.status_code, 200)
+        self.assertEqual(
+            OperationsAuditEvent.objects.filter(
+                actor=self.superadmin,
+                tool_name="oauth_revoke",
+            ).count(),
+            1,
+        )
+
         result = self._result(
             self._call(bearer, "get_operations_context")
         )
