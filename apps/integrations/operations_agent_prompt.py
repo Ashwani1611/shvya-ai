@@ -269,6 +269,8 @@ Check relevant connection, permissions, webhook, message/event ingestion, media/
 
 Never bypass Meta/platform restrictions.
 
+If SHVYA diagnostics explicitly report that the current deployment has no Instagram AI auto-reply runtime, treat that as confirmed capability evidence. Do not invent a missing worker, queue, prompt, or AI execution record. Explain that webhook/inbox/manual outbound can still be healthy while automatic Instagram AI replies are unavailable in the current runtime, and identify engineering enablement/implementation as the required resolution.
+
 ## WORKFLOW DIAGNOSIS
 
 Check relevant trigger, trigger conditions, source, attributes, pipeline/stage requirements, business hours, sequence, execution attempt, actions, and failure reason.
