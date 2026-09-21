@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from copy import deepcopy
 from dataclasses import dataclass
 from datetime import time as dt_time, timedelta
 
@@ -372,6 +373,65 @@ def clear_organization_context(*, identity, arguments):
     )
 
 
+def _sensitive_attribute_keys(organization):
+    return {
+        item.key
+        for item in AttributeDefinition.objects.filter(
+            organization=organization
+        ).only("key", "name")
+        if is_sensitive_attribute_definition(
+            {"key": item.key, "name": item.name}
+        )
+    }
+
+
+def _safe_workflow_config(rule, sensitive_keys):
+    conditions = (
+        deepcopy(rule.conditions)
+        if isinstance(rule.conditions, dict)
+        else {}
+    )
+    action = (
+        deepcopy(rule.action)
+        if isinstance(rule.action, dict)
+        else {}
+    )
+    redacted = 0
+
+    attribute_conditions = conditions.get("attributes")
+    if isinstance(attribute_conditions, list):
+        safe_conditions = []
+        for item in attribute_conditions:
+            if (
+                isinstance(item, dict)
+                and str(item.get("key") or "") in sensitive_keys
+            ):
+                safe_conditions.append(
+                    {
+                        "key": "[REDACTED_SENSITIVE_ATTRIBUTE]",
+                        "match": item.get("match"),
+                        "values": "[REDACTED]",
+                    }
+                )
+                redacted += 1
+            else:
+                safe_conditions.append(item)
+        conditions["attributes"] = safe_conditions
+
+    if str(action.get("key") or "") in sensitive_keys:
+        action["key"] = "[REDACTED_SENSITIVE_ATTRIBUTE]"
+        if "value" in action:
+            action["value"] = "[REDACTED]"
+        redacted += 1
+
+    if str(action.get("date_attribute") or "") in sensitive_keys:
+        action["date_attribute"] = "[REDACTED_SENSITIVE_ATTRIBUTE]"
+        redacted += 1
+
+    return conditions, action, redacted
+
+
+
 def get_organization_configuration(*, identity, arguments):
     organization = _organization_for(identity)
     try:
@@ -393,6 +453,11 @@ def get_organization_configuration(*, identity, arguments):
         AttributeDefinition.objects.filter(organization=organization)
         .order_by("display_order", "name")
     )
+    sensitive_attribute_keys = _sensitive_attribute_keys(organization)
+    visible_attributes = [
+        item for item in attributes
+        if item.key not in sensitive_attribute_keys
+    ]
     playbook = str(getattr(info, "ai_playbook", "") or "")
     compiled = compile_qualification_requirements(qualification_questions(playbook))
     return ToolExecution(
@@ -445,7 +510,7 @@ def get_organization_configuration(*, identity, arguments):
                     "description": item.description[:500],
                     "options": item.options,
                 }
-                for item in attributes
+                for item in visible_attributes
             ],
             "automation": {
                 "workflow_count": SmartTrigger.objects.filter(organization=organization).count(),
@@ -463,7 +528,8 @@ def get_organization_configuration(*, identity, arguments):
         target_id=str(organization.id),
         audit_summary={
             "pipelines": len(pipelines),
-            "attributes": len(attributes),
+            "attributes": len(visible_attributes),
+            "sensitive_attributes_redacted": len(sensitive_attribute_keys),
             "qualification_requirements": len(compiled.get("requirements", [])),
         },
     )
@@ -490,6 +556,29 @@ def get_automation_configuration(*, identity, arguments):
         SmartTrigger.objects.filter(organization=organization)
         .order_by("position", "created_at")[:limit]
     )
+    sensitive_attribute_keys = _sensitive_attribute_keys(organization)
+    workflow_rows = []
+    workflow_redaction_count = 0
+    for rule in workflows:
+        safe_conditions, safe_action, redacted = _safe_workflow_config(
+            rule,
+            sensitive_attribute_keys,
+        )
+        workflow_redaction_count += redacted
+        workflow_rows.append(
+            {
+                "id": str(rule.id),
+                "name": rule.name,
+                "enabled": rule.enabled,
+                "position": rule.position,
+                "trigger_type": rule.trigger_type,
+                "conditions": safe_conditions,
+                "action_type": rule.action_type,
+                "action": safe_action,
+                "updated_at": rule.updated_at.isoformat(),
+            }
+        )
+
     cadences = list(
         FollowupSequence.objects.filter(organization=organization)
         .select_related("whatsapp_account")
@@ -515,20 +604,7 @@ def get_automation_configuration(*, identity, arguments):
 
     return ToolExecution(
         data={
-            "workflows": [
-                {
-                    "id": str(rule.id),
-                    "name": rule.name,
-                    "enabled": rule.enabled,
-                    "position": rule.position,
-                    "trigger_type": rule.trigger_type,
-                    "conditions": rule.conditions,
-                    "action_type": rule.action_type,
-                    "action": rule.action,
-                    "updated_at": rule.updated_at.isoformat(),
-                }
-                for rule in workflows
-            ],
+            "workflows": workflow_rows,
             "cadences": [
                 {
                     "id": str(sequence.id),
@@ -591,6 +667,7 @@ def get_automation_configuration(*, identity, arguments):
             "counts": {
                 "workflows_returned": len(workflows),
                 "cadences_returned": len(cadences),
+                "sensitive_workflow_fields_redacted": workflow_redaction_count,
             },
         },
         capability=CAP_ORGANIZATION_READ,
@@ -599,6 +676,7 @@ def get_automation_configuration(*, identity, arguments):
         audit_summary={
             "workflows_returned": len(workflows),
             "cadences_returned": len(cadences),
+            "sensitive_workflow_fields_redacted": workflow_redaction_count,
         },
     )
 
