@@ -151,6 +151,9 @@ def _editor_context(request, page, active_tab=None):
             kwargs={"public_id": page.public_id, "slug": page.slug},
         )
     )
+    preview_link = request.build_absolute_uri(
+        reverse("shvya_calendar:preview", kwargs={"page_id": page.id})
+    )
     embed_code = (
         f'<iframe src="{public_link}" title="{page.name}" '
         'style="width:100%;min-height:760px;border:0;border-radius:20px" '
@@ -159,6 +162,7 @@ def _editor_context(request, page, active_tab=None):
     return {
         "page": page,
         "public_link": public_link,
+        "preview_link": preview_link,
         "embed_code": embed_code,
         "pipelines": pipelines,
         "stages": stages,
