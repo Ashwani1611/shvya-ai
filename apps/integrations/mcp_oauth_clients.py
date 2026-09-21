@@ -89,7 +89,7 @@ def is_allowed_cimd_url(client_id: str) -> bool:
         and path not in {"", "/"}
         and segments
         and all(segment not in {".", ".."} for segment in segments)
-        and "\" not in path
+        and "\\" not in path
         and not parsed.query
         and not parsed.fragment
         and parsed.username is None
