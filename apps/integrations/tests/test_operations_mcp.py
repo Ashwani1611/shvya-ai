@@ -81,6 +81,13 @@ class OperationsMCPTests(TestCase):
             name="Organization Admin",
             role=User.Role.ADMIN,
         )
+        self.other_admin = User.objects.create_user(
+            email="other-org-admin@example.test",
+            organization=self.other_organization,
+            password=None,
+            name="Other Organization Admin",
+            role=User.Role.ADMIN,
+        )
         self.superadmin = User.objects.create_superuser(
             email="superadmin@example.test",
             password=None,
@@ -528,6 +535,39 @@ class OperationsMCPTests(TestCase):
             ]
         )
 
+        stale_grant_names = {
+            item["name"]
+            for item in self._list_tools(bearer)["tools"]
+        }
+        self.assertNotIn(
+            "upsert_pipeline_configuration",
+            stale_grant_names,
+        )
+        stale_context = self._result(
+            self._call(
+                bearer,
+                "get_operations_context",
+                {},
+            )
+        )
+        self.assertFalse(stale_context["isError"])
+        self.assertIn(
+            CAP_PIPELINE_CONFIG_WRITE,
+            stale_context["structuredContent"]["policy_capabilities"],
+        )
+        self.assertNotIn(
+            CAP_PIPELINE_CONFIG_WRITE,
+            stale_context["structuredContent"]["granted_capabilities"],
+        )
+
+        OperationsOAuthToken.objects.filter(
+            actor=self.admin,
+        ).delete()
+        bearer = self._token(
+            actor=self.admin,
+            role=ROLE_ORGANIZATION_ADMIN,
+            organization=self.organization,
+        )
         pipeline_only_names = {
             item["name"]
             for item in self._list_tools(bearer)["tools"]
@@ -1030,7 +1070,7 @@ class OperationsMCPTests(TestCase):
             "NOT_ALLOWED",
         )
         self.assertIn(
-            "operations.write",
+            "Fresh SHVYA authorization",
             blocked["structuredContent"]["error"],
         )
         self.lead.refresh_from_db()
@@ -3687,7 +3727,7 @@ class OperationsMCPTests(TestCase):
         self.assertTrue(invalid_numeric["isError"])
         self.assertEqual(
             invalid_numeric["structuredContent"]["status"],
-            "ERROR",
+            "FAILED",
         )
 
         invalid_option = self._result(
@@ -3707,7 +3747,7 @@ class OperationsMCPTests(TestCase):
         self.assertTrue(invalid_option["isError"])
         self.assertEqual(
             invalid_option["structuredContent"]["status"],
-            "ERROR",
+            "FAILED",
         )
 
         valid = self._result(
