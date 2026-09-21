@@ -3171,17 +3171,107 @@ def upsert_workflow_configuration(*, identity, arguments):
             },
         )
 
-    with transaction.atomic():
-        Organization.objects.select_for_update().get(pk=organization.pk)
-        if workflow is None:
-            workflow = SmartTrigger(
-                organization=organization,
-                created_by=identity.actor,
-                position=proposed_position,
+    try:
+        with transaction.atomic():
+            Organization.objects.select_for_update().get(
+                pk=organization.pk
             )
-        for key, value in clean.items():
-            setattr(workflow, key, value)
-        workflow.save()
+            try:
+                clean_locked = validate_workflow_rule(
+                    organization,
+                    data,
+                )
+            except ValidationError as exc:
+                raise OperationsApprovalRequired(
+                    "Workflow references changed after review. "
+                    "Run a fresh dry-run."
+                ) from exc
+
+            if workflow is not None:
+                workflow = (
+                    SmartTrigger.objects.select_for_update()
+                    .filter(
+                        pk=workflow.pk,
+                        organization=organization,
+                    )
+                    .first()
+                )
+                if workflow is None:
+                    raise OperationsApprovalRequired(
+                        "The Workflow changed or was removed after review. "
+                        "Run a fresh dry-run."
+                    )
+
+            duplicate = SmartTrigger.objects.filter(
+                organization=organization,
+                fingerprint=clean_locked["fingerprint"],
+            )
+            if workflow is not None:
+                duplicate = duplicate.exclude(pk=workflow.pk)
+            if duplicate.exists():
+                raise OperationsToolError(
+                    "An identical Workflow already exists."
+                )
+
+            proposed_position = (
+                workflow.position
+                if workflow is not None
+                else (
+                    SmartTrigger.objects.filter(
+                        organization=organization
+                    ).aggregate(value=Max("position"))["value"]
+                    or 0
+                ) + 1
+            )
+            locked_before = (
+                {
+                    "id": str(workflow.id),
+                    "name": workflow.name,
+                    "enabled": workflow.enabled,
+                    "position": workflow.position,
+                    "trigger_type": workflow.trigger_type,
+                    "conditions": workflow.conditions,
+                    "action_type": workflow.action_type,
+                    "action": workflow.action,
+                    "fingerprint": workflow.fingerprint,
+                }
+                if workflow is not None
+                else None
+            )
+            locked_after = {
+                **clean_locked,
+                "position": proposed_position,
+            }
+            locked_proposal = {
+                "organization_id": str(organization.id),
+                "workflow_id": (
+                    str(workflow.id)
+                    if workflow is not None
+                    else None
+                ),
+                "before": locked_before,
+                "after": locked_after,
+            }
+            _ensure_approved_proposal_unchanged(
+                arguments=arguments,
+                proposal=locked_proposal,
+            )
+
+            if workflow is None:
+                workflow = SmartTrigger(
+                    organization=organization,
+                    created_by=identity.actor,
+                    position=proposed_position,
+                )
+            for key, value in clean_locked.items():
+                setattr(workflow, key, value)
+            workflow.save()
+            clean = clean_locked
+    except IntegrityError as exc:
+        raise OperationsToolError(
+            "Workflow configuration changed concurrently. "
+            "Run a fresh dry-run."
+        ) from exc
     workflow.refresh_from_db()
     if (
         workflow.fingerprint != clean["fingerprint"]
