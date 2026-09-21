@@ -710,6 +710,51 @@ def operations_oauth_register(request):
     )
 
 
+def _record_oauth_security_event(
+    *,
+    actor,
+    role,
+    organization,
+    client,
+    event,
+    scopes,
+    reason,
+):
+    """Record safe actor-bound OAuth lifecycle metadata without token material."""
+
+    return OperationsAuditEvent.objects.create(
+        actor=actor,
+        role=role,
+        organization=organization,
+        support_session=None,
+        tool_name=event,
+        capability="",
+        target_type="oauth_client",
+        target_id=str(client.client_id)[:100],
+        reason=reason[:500],
+        outcome=OperationsAuditEvent.Outcome.SUCCESS,
+        request_fingerprint=request_fingerprint(
+            {
+                "event": event,
+                "actor_id": str(actor.id),
+                "role": role,
+                "client_id": client.client_id,
+                "scopes": sorted(set(scopes or [])),
+            }
+        ),
+        change_summary={
+            "client_name": sanitize_text(
+                client.client_name or "External AI",
+                limit=120,
+            ),
+            "scopes": sorted(set(scopes or [])),
+            "organization_bound": organization is not None,
+        },
+        duration_ms=0,
+        error_code="",
+    )
+
+
 def _authorization_fields(request):
     source = request.POST if request.method == "POST" else request.GET
     return {
@@ -848,6 +893,20 @@ def operations_oauth_authorize(request):
             code_challenge=fields["code_challenge"],
             resource=fields["resource"],
         )
+        authorization_organization = (
+            actor.organization
+            if role == ROLE_ORGANIZATION_ADMIN
+            else None
+        )
+        _record_oauth_security_event(
+            actor=actor,
+            role=role,
+            organization=authorization_organization,
+            client=client,
+            event="oauth_authorize",
+            scopes=set(str(fields["scope"] or "").split()),
+            reason="External AI Operations OAuth authorization granted.",
+        )
     except OperationsAuthError as exc:
         context["authorization_error"] = sanitize_text(exc, limit=240)
         return render(
@@ -906,6 +965,25 @@ def operations_oauth_token(request):
         )
         response["Cache-Control"] = "no-store"
         return response
+
+    token_event = (
+        "oauth_token_refresh"
+        if grant_type == "refresh_token"
+        else "oauth_token_issue"
+    )
+    _record_oauth_security_event(
+        actor=token.actor,
+        role=token.role,
+        organization=token.organization,
+        client=token.client,
+        event=token_event,
+        scopes=set(str(token.scope or "").split()),
+        reason=(
+            "External AI Operations OAuth token rotated."
+            if grant_type == "refresh_token"
+            else "External AI Operations OAuth token issued."
+        ),
+    )
 
     response = JsonResponse(
         {
