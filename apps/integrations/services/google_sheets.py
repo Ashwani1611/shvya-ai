@@ -237,7 +237,7 @@ def _resolve_mapping(integration: GoogleSheetIntegration):
         if isinstance(target, str) and target.startswith("attribute:"):
             attribute_ids.append(target.split(":", 1)[1])
 
-    attributes = AttributeDefinition.objects.filter(
+    attributes = AttributeDefinition.objects.filter(is_active=True, 
         organization=integration.organization,
         id__in=attribute_ids,
     )
