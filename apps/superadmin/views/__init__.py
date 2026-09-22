@@ -20,6 +20,9 @@ from apps.superadmin.workspace_views import (
 )
 
 from apps.superadmin.operations_views import (
+    operations_mcp_workspace_view as operations_mcp_workspace_view,
+    operations_mcp_superadmin_session_revoke_view as operations_mcp_superadmin_session_revoke_view,
+    operations_mcp_support_end_view as operations_mcp_support_end_view,
     organization_operations_policy_update_view as organization_operations_policy_update_view,
     organization_operations_session_revoke_view as organization_operations_session_revoke_view,
     organization_operations_support_end_view as organization_operations_support_end_view,
