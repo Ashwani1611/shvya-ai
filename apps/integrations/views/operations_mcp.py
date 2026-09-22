@@ -289,6 +289,7 @@ def _tool(
     *,
     read_only=True,
     requires_write_scope=None,
+    destructive=False,
 ):
     security_schemes = (
         OAUTH_WRITE_SCHEMES
@@ -311,7 +312,7 @@ def _tool(
         },
         "annotations": {
             "readOnlyHint": read_only,
-            "destructiveHint": False,
+            "destructiveHint": destructive,
             "openWorldHint": False,
         },
         "securitySchemes": security_schemes,
@@ -691,6 +692,398 @@ OWN_TOOL_DEFINITIONS = [
         read_only=False,
     ),
     _tool(
+        "get_qualification_configuration",
+        "Inspect qualification configuration",
+        "Return the compiled qualification requirements, conditional eligibility, mappings, completion target, final acknowledgment, and configuration diagnostics.",
+    ),
+    _tool(
+        "validate_qualification_configuration",
+        "Validate qualification configuration",
+        "Compile and validate a proposed structured qualification configuration without writing it.",
+        {
+            "data": {
+                "type": "object",
+                "properties": {
+                    "mode": {"type": "string", "enum": ["configured", "all_required", "majority"]},
+                    "requirements": {
+                        "type": "array",
+                        "minItems": 1,
+                        "maxItems": 30,
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "stable_id": {"type": "string", "maxLength": 64},
+                                "question": {"type": "string", "maxLength": 2000},
+                                "required": {"type": "boolean"},
+                                "options": {
+                                    "type": "array",
+                                    "maxItems": 30,
+                                    "items": {
+                                        "type": "object",
+                                        "properties": {
+                                            "key": {"type": "string", "maxLength": 10},
+                                            "value": {"type": "string", "maxLength": 500},
+                                        },
+                                        "required": ["key", "value"],
+                                        "additionalProperties": False,
+                                    },
+                                },
+                                "eligible_when": {
+                                    "type": "object",
+                                    "properties": {
+                                        "requirement_id": {"type": "string"},
+                                        "operator": {"type": "string", "enum": ["eq"]},
+                                        "value": {"type": ["string", "number", "boolean"]},
+                                    },
+                                    "required": ["requirement_id", "value"],
+                                    "additionalProperties": False,
+                                },
+                            },
+                            "required": ["stable_id", "question"],
+                            "additionalProperties": False,
+                        },
+                    },
+                    "mappings": {
+                        "type": ["array", "object"],
+                    },
+                    "criteria": {
+                        "type": "array",
+                        "items": {"type": "string", "maxLength": 2000},
+                        "minItems": 1,
+                        "maxItems": 30,
+                    },
+                    "target_stage_id": {"type": "string", "format": "uuid"},
+                    "final_ack": {"type": "string", "maxLength": 2000},
+                },
+                "required": ["requirements", "target_stage_id", "final_ack"],
+                "additionalProperties": False,
+            },
+        },
+        ["data"],
+    ),
+    _tool(
+        "upsert_qualification_configuration",
+        "Configure qualification",
+        "Dry-run or atomically replace the qualification-owned sections of the canonical AI Playbook while preserving unrelated Playbook sections.",
+        _write_properties(
+            {
+                "data": {
+                    "type": "object",
+                    "properties": {
+                        "mode": {"type": "string", "enum": ["configured", "all_required", "majority"]},
+                        "requirements": {"type": "array", "minItems": 1, "maxItems": 30, "items": {"type": "object"}},
+                        "mappings": {"type": ["array", "object"]},
+                        "criteria": {"type": "array", "items": {"type": "string"}},
+                        "target_stage_id": {"type": "string", "format": "uuid"},
+                        "final_ack": {"type": "string", "maxLength": 2000},
+                    },
+                    "required": ["requirements", "target_stage_id", "final_ack"],
+                    "additionalProperties": False,
+                }
+            }
+        ),
+        ["data", "reason"],
+        read_only=False,
+    ),
+    _tool(
+        "list_whatsapp_accounts",
+        "List WhatsApp accounts",
+        "Return safe organization WhatsApp account identity, status, and pipeline routing only. Credentials and session secrets are never returned.",
+    ),
+    _tool(
+        "validate_whatsapp_routing",
+        "Validate WhatsApp routing",
+        "Audit active WhatsApp accounts against active pipeline-bound phone routing and report duplicates or unbound accounts without exposing credentials.",
+    ),
+    _tool(
+        "bind_whatsapp_account_to_pipeline",
+        "Bind WhatsApp routing to pipeline",
+        "Dry-run or bind a WhatsApp number to one active pipeline using SHVYA's pipeline-bound routing invariant. May be used before Hosted connection creation.",
+        _write_properties(
+            {
+                "pipeline_id": {"type": "string", "format": "uuid"},
+                "whatsapp_account_id": {"type": "string", "format": "uuid"},
+                "country_code": {"type": "string", "maxLength": 10},
+                "phone_number": {"type": "string", "maxLength": 32},
+            }
+        ),
+        ["pipeline_id", "reason"],
+        read_only=False,
+    ),
+    _tool(
+        "begin_whatsapp_connection",
+        "Begin Hosted WhatsApp connection",
+        "Dry-run or create/restart a Hosted linked-device WhatsApp session for a number already bound to an active pipeline. Returns safe status only; QR/session credentials are never exposed through MCP.",
+        _write_properties(
+            {
+                "country_code": {"type": "string", "maxLength": 10},
+                "phone_number": {"type": "string", "maxLength": 32},
+            }
+        ),
+        ["country_code", "phone_number", "reason"],
+        read_only=False,
+    ),
+    _tool(
+        "list_workflow_triggers",
+        "List Workflow triggers",
+        "Return every canonical Workflow trigger and its typed conditions schema.",
+    ),
+    _tool(
+        "list_workflow_actions",
+        "List Workflow actions",
+        "Return every canonical Workflow action and its typed action schema.",
+    ),
+    _tool(
+        "get_workflow_schema",
+        "Get Workflow schema",
+        "Return typed canonical trigger/action schemas plus tenant-safe reference catalogs so agents do not guess Workflow payloads.",
+        {
+            "trigger_type": {"type": "string"},
+            "action_type": {"type": "string"},
+        },
+    ),
+    _tool(
+        "validate_workflow_configuration",
+        "Validate Workflow configuration",
+        "Validate and normalize one proposed Workflow through SHVYA's canonical Workflow validator without saving or executing it.",
+        {"data": {"type": "object"}},
+        ["data"],
+    ),
+    _tool(
+        "list_touchpoints",
+        "List Touchpoints",
+        "Return organization saved replies grouped by category.",
+        {"include_archived": {"type": "boolean", "default": False}},
+    ),
+    _tool(
+        "upsert_touchpoint",
+        "Configure Touchpoint",
+        "Dry-run or create/update one organization saved reply. Existing category records are reused where possible.",
+        _write_properties(
+            {
+                "touchpoint_id": {"type": "string", "format": "uuid"},
+                "data": {
+                    "type": "object",
+                    "properties": {
+                        "category_id": {"type": "string", "format": "uuid"},
+                        "category_name": {"type": "string", "maxLength": 100},
+                        "title": {"type": "string", "maxLength": 150},
+                        "body": {"type": "string", "maxLength": 1000},
+                    },
+                    "required": ["title", "body"],
+                    "additionalProperties": False,
+                },
+            }
+        ),
+        ["data", "reason"],
+        read_only=False,
+    ),
+    _tool(
+        "archive_touchpoint",
+        "Archive Touchpoint",
+        "Dry-run or archive one saved reply. Archiving hides it from normal Cadence/contact-panel use while retaining the record.",
+        _write_properties(
+            {"touchpoint_id": {"type": "string", "format": "uuid"}}
+        ),
+        ["touchpoint_id", "reason"],
+        read_only=False,
+    ),
+    _tool(
+        "list_faqs",
+        "List FAQs",
+        "Return organization FAQs independently from the AI Playbook.",
+        {"active_only": {"type": "boolean", "default": False}},
+    ),
+    _tool(
+        "upsert_faq",
+        "Configure FAQ",
+        "Dry-run or create/update one organization FAQ through the canonical FAQ service.",
+        _write_properties(
+            {
+                "faq_id": {"type": "string"},
+                "data": {
+                    "type": "object",
+                    "properties": {
+                        "question": {"type": "string"},
+                        "answer": {"type": "string"},
+                        "is_active": {"type": "boolean"},
+                    },
+                    "required": ["question", "answer"],
+                    "additionalProperties": False,
+                },
+            }
+        ),
+        ["data", "reason"],
+        read_only=False,
+    ),
+    _tool(
+        "archive_faq",
+        "Archive FAQ",
+        "Dry-run or deactivate one FAQ while retaining its history.",
+        _write_properties({"faq_id": {"type": "string"}}),
+        ["faq_id", "reason"],
+        read_only=False,
+    ),
+    _tool(
+        "create_knowledge_source",
+        "Create knowledge source",
+        "Dry-run or create an organization URL knowledge source and optionally queue canonical ingestion/indexing.",
+        _write_properties(
+            {
+                "data": {
+                    "type": "object",
+                    "properties": {
+                        "source_type": {"type": "string", "enum": ["url"]},
+                        "name": {"type": "string", "maxLength": 255},
+                        "url": {"type": "string", "format": "uri"},
+                        "ingest": {"type": "boolean", "default": True},
+                    },
+                    "required": ["url"],
+                    "additionalProperties": False,
+                }
+            }
+        ),
+        ["data", "reason"],
+        read_only=False,
+    ),
+    _tool(
+        "upload_knowledge_document",
+        "Upload knowledge document",
+        "Dry-run or upload a base64 knowledge file through SHVYA's existing file security/quota validation, then queue canonical ingestion/indexing.",
+        _write_properties(
+            {
+                "data": {
+                    "type": "object",
+                    "properties": {
+                        "filename": {"type": "string", "maxLength": 255},
+                        "name": {"type": "string", "maxLength": 255},
+                        "content_base64": {"type": "string"},
+                    },
+                    "required": ["filename", "content_base64"],
+                    "additionalProperties": False,
+                }
+            }
+        ),
+        ["data", "reason"],
+        read_only=False,
+    ),
+    _tool(
+        "publish_knowledge_document",
+        "Publish knowledge document",
+        "Dry-run or publish a completed fully embedded organization knowledge document through the canonical version publisher.",
+        _write_properties({"document_id": {"type": "string"}}),
+        ["document_id", "reason"],
+        read_only=False,
+    ),
+    _tool(
+        "archive_knowledge_document",
+        "Archive knowledge document",
+        "Dry-run or deactivate a knowledge document and its active chunks without deleting file/history.",
+        _write_properties({"document_id": {"type": "string"}}),
+        ["document_id", "reason"],
+        read_only=False,
+    ),
+    _tool(
+        "add_hosted_whatsapp_step",
+        "Add Hosted WhatsApp Cadence step",
+        "Dry-run or add a free-form Hosted WhatsApp message step using SHVYA's existing Hosted automation service. Optional base64 media is validated and stored through the canonical attachment rules.",
+        _write_properties(
+            {
+                "cadence_id": {"type": "string", "format": "uuid"},
+                "data": {
+                    "type": "object",
+                    "properties": {
+                        "title": {"type": "string", "maxLength": 255},
+                        "body": {"type": "string", "maxLength": 20000},
+                        "schedule": {"type": "object"},
+                        "attachment_name": {"type": "string", "maxLength": 255},
+                        "attachment_mime_type": {"type": "string", "maxLength": 120},
+                        "attachment_base64": {"type": "string"},
+                    },
+                    "required": ["title", "body"],
+                    "additionalProperties": False,
+                },
+            }
+        ),
+        ["cadence_id", "data", "reason"],
+        read_only=False,
+    ),
+    _tool(
+        "update_cadence_step",
+        "Update Cadence step",
+        "Dry-run or update an existing Cadence step and its schedule. Hosted free-form content remains Hosted-only and API WhatsApp steps remain approved-template-only.",
+        _write_properties(
+            {
+                "cadence_id": {"type": "string", "format": "uuid"},
+                "step_id": {"type": "string", "format": "uuid"},
+                "data": {"type": "object"},
+            }
+        ),
+        ["cadence_id", "step_id", "data", "reason"],
+        read_only=False,
+    ),
+    _tool(
+        "delete_cadence_step",
+        "Delete Cadence step",
+        "Dry-run or permanently delete one Cadence step only when it has no delivery execution history. Historical steps fail closed.",
+        _write_properties(
+            {
+                "cadence_id": {"type": "string", "format": "uuid"},
+                "step_id": {"type": "string", "format": "uuid"},
+            }
+        ),
+        ["cadence_id", "step_id", "reason"],
+        read_only=False,
+        destructive=True,
+    ),
+    _tool(
+        "reorder_cadence_steps",
+        "Reorder Cadence steps",
+        "Dry-run or atomically reorder all steps in one Cadence. The supplied list must contain every current step exactly once.",
+        _write_properties(
+            {
+                "cadence_id": {"type": "string", "format": "uuid"},
+                "step_ids": {
+                    "type": "array",
+                    "items": {"type": "string", "format": "uuid"},
+                    "minItems": 1,
+                },
+            }
+        ),
+        ["cadence_id", "step_ids", "reason"],
+        read_only=False,
+    ),
+    _tool(
+        "simulate_ai_conversation",
+        "Simulate AI qualification",
+        "Run a deterministic no-side-effect qualification simulation against the current Playbook using synthetic answers. It does not create a lead or send a message.",
+        {
+            "answers": {"type": "object"},
+        },
+    ),
+    _tool(
+        "simulate_workflow",
+        "Simulate Workflow",
+        "Evaluate a stored or proposed Workflow against one organization lead and synthetic event payload without creating a TriggerRun or executing actions.",
+        {
+            "lead_id": {"type": "string", "format": "uuid"},
+            "workflow_id": {"type": "string", "format": "uuid"},
+            "data": {"type": "object"},
+            "event": {"type": "object"},
+        },
+        ["lead_id"],
+    ),
+    _tool(
+        "simulate_cadence",
+        "Simulate Cadence",
+        "Calculate ordered Cadence timing through the canonical scheduler/business-hours logic without sending messages or creating lead sequence state.",
+        {
+            "cadence_id": {"type": "string", "format": "uuid"},
+            "reference_at": {"type": "string"},
+        },
+        ["cadence_id"],
+    ),
+    _tool(
         "get_operations_audit",
         "Review SHVYA Operations audit",
         "Return safe organization-scoped audit events, or Superadmin-only platform audit events that have no customer tenant. Never mixes customer organizations.",
@@ -785,6 +1178,34 @@ TOOL_CAPABILITIES = {
     "upsert_workflow_configuration": CAP_WORKFLOW_CONFIG_WRITE,
     "upsert_cadence_configuration": CAP_CADENCE_CONFIG_WRITE,
     "add_cadence_step": CAP_CADENCE_CONFIG_WRITE,
+    "get_qualification_configuration": CAP_ORGANIZATION_READ,
+    "validate_qualification_configuration": CAP_ORGANIZATION_READ,
+    "upsert_qualification_configuration": CAP_AI_CONFIG_WRITE,
+    "list_whatsapp_accounts": CAP_ORGANIZATION_READ,
+    "validate_whatsapp_routing": CAP_ORGANIZATION_READ,
+    "bind_whatsapp_account_to_pipeline": CAP_MESSAGING_CONFIG_WRITE,
+    "begin_whatsapp_connection": CAP_MESSAGING_CONFIG_WRITE,
+    "list_workflow_triggers": CAP_ORGANIZATION_READ,
+    "list_workflow_actions": CAP_ORGANIZATION_READ,
+    "get_workflow_schema": CAP_ORGANIZATION_READ,
+    "validate_workflow_configuration": CAP_ORGANIZATION_READ,
+    "list_touchpoints": CAP_ORGANIZATION_READ,
+    "upsert_touchpoint": CAP_CADENCE_CONFIG_WRITE,
+    "archive_touchpoint": CAP_CADENCE_CONFIG_WRITE,
+    "list_faqs": CAP_ORGANIZATION_READ,
+    "upsert_faq": CAP_AI_CONFIG_WRITE,
+    "archive_faq": CAP_AI_CONFIG_WRITE,
+    "create_knowledge_source": CAP_AI_CONFIG_WRITE,
+    "upload_knowledge_document": CAP_AI_CONFIG_WRITE,
+    "publish_knowledge_document": CAP_AI_CONFIG_WRITE,
+    "archive_knowledge_document": CAP_AI_CONFIG_WRITE,
+    "add_hosted_whatsapp_step": CAP_CADENCE_CONFIG_WRITE,
+    "update_cadence_step": CAP_CADENCE_CONFIG_WRITE,
+    "delete_cadence_step": CAP_CADENCE_CONFIG_WRITE,
+    "reorder_cadence_steps": CAP_CADENCE_CONFIG_WRITE,
+    "simulate_ai_conversation": CAP_DIAGNOSTICS_READ,
+    "simulate_workflow": CAP_DIAGNOSTICS_READ,
+    "simulate_cadence": CAP_DIAGNOSTICS_READ,
     "get_operations_audit": CAP_AUDIT_READ,
 }
 for _diagnostic_name in DIAGNOSTIC_TOOL_NAMES:
