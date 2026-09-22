@@ -1,6 +1,7 @@
 import secrets
 import uuid
 from datetime import datetime
+from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from django.conf import settings
@@ -8,6 +9,16 @@ from django.core.exceptions import ValidationError
 from django.db import models
 
 from apps.core.crypto import credential_cipher
+
+
+def calendar_logo_path(instance, filename):
+    extension = Path(str(filename or "")).suffix.lower()
+    if extension not in {".png", ".jpg", ".jpeg", ".webp"}:
+        extension = ".img"
+    return (
+        f"calendar/logos/{instance.organization_id}/"
+        f"{uuid.uuid4().hex}{extension}"
+    )
 
 
 def default_availability():
@@ -109,6 +120,11 @@ class CalendarPage(models.Model):
     language = models.CharField(max_length=12, default="en")
     accent_color = models.CharField(max_length=16, default="#0060A2")
     logo_url = models.URLField(blank=True)
+    logo_file = models.FileField(
+        upload_to=calendar_logo_path,
+        blank=True,
+        max_length=300,
+    )
 
     intro_title = models.CharField(max_length=120, blank=True)
     intro_description = models.TextField(blank=True)
@@ -267,6 +283,15 @@ class CalendarPage(models.Model):
             raise ValidationError({"bookings_per_slot": "Must be at least 1."})
         if self.slot_duration_minutes < 5:
             raise ValidationError({"slot_duration_minutes": "Must be at least 5 minutes."})
+
+    @property
+    def logo_display_url(self):
+        if self.logo_file:
+            try:
+                return self.logo_file.url
+            except ValueError:
+                pass
+        return self.logo_url or ""
 
     def __str__(self):
         return f"{self.organization.name} · {self.name}"

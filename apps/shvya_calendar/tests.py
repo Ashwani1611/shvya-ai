@@ -1,10 +1,13 @@
 from datetime import timedelta
+import json
+import tempfile
 
 from unittest.mock import patch
 
 from django.contrib.sessions.backends.db import SessionStore
 from django.core.exceptions import ValidationError
-from django.test import RequestFactory, TestCase
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test import RequestFactory, TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
@@ -92,6 +95,13 @@ class ShvyaCalendarServiceTests(TestCase):
         self.version = publish_page(page=self.page, actor=self.user)
         self.page.refresh_from_db()
         self.factory = RequestFactory()
+        self._media_directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self._media_directory.cleanup)
+        self._media_override = override_settings(
+            MEDIA_ROOT=self._media_directory.name
+        )
+        self._media_override.enable()
+        self.addCleanup(self._media_override.disable)
 
     def _request(self, data):
         request = self.factory.post("/calendar/demo/submit/", data=data)
@@ -104,6 +114,106 @@ class ShvyaCalendarServiceTests(TestCase):
         set_authenticated_user(session, self.user)
         session.save()
         self.client.cookies["shvya_crm_sessionid"] = session.session_key
+
+    def test_publish_recovers_from_stale_current_version(self):
+        self.page.current_version = 0
+        self.page.status = CalendarPage.Status.DISABLED
+        self.page.save(
+            update_fields=["current_version", "status", "updated_at"]
+        )
+
+        version = publish_page(page=self.page, actor=self.user)
+
+        self.page.refresh_from_db()
+        self.assertEqual(version.version, 2)
+        self.assertEqual(self.page.current_version, 2)
+        self.assertEqual(self.page.status, CalendarPage.Status.PUBLISHED)
+
+    def test_status_toggle_recovers_legacy_stale_version_state(self):
+        self.page.current_version = 0
+        self.page.status = CalendarPage.Status.DISABLED
+        self.page.save(
+            update_fields=["current_version", "status", "updated_at"]
+        )
+        self._authenticate_dashboard_client()
+
+        response = self.client.post(
+            reverse(
+                "shvya_calendar:status",
+                kwargs={"page_id": self.page.id},
+            ),
+            {"action": "publish"},
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.page.refresh_from_db()
+        self.assertEqual(self.page.status, CalendarPage.Status.PUBLISHED)
+        self.assertEqual(self.page.current_version, 2)
+
+    def test_share_always_shows_website_embed_code(self):
+        self.page.status = CalendarPage.Status.DISABLED
+        self.page.save(update_fields=["status", "updated_at"])
+        self._authenticate_dashboard_client()
+
+        response = self.client.get(
+            reverse(
+                "shvya_calendar:editor",
+                kwargs={"page_id": self.page.id},
+            )
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(
+            response,
+            "Place the complete flow inside your website",
+        )
+        self.assertContains(response, "Copy embed")
+        self.assertContains(response, "<iframe", html=False)
+
+    def test_logo_upload_is_saved_and_published_in_snapshot(self):
+        self._authenticate_dashboard_client()
+        logo = SimpleUploadedFile(
+            "brand.png",
+            b"\x89PNG\r\n\x1a\nSHVYA",
+            content_type="image/png",
+        )
+
+        response = self.client.post(
+            reverse(
+                "shvya_calendar:save",
+                kwargs={"page_id": self.page.id},
+            ),
+            {
+                "section": "lead",
+                "page_type": self.page.page_type,
+                "name": self.page.name,
+                "slug": self.page.slug,
+                "accent_color": self.page.accent_color,
+                "language": "en",
+                "pipeline": str(self.pipeline.id),
+                "stage": str(self.stage.id),
+                "host": str(self.user.id),
+                "submit_button_text": self.page.submit_button_text,
+                "duplicate_behavior": self.page.duplicate_behavior,
+                "duplicate_match_email": "on",
+                "attribute_update_policy": self.page.attribute_update_policy,
+                "notify_host_on_submission": "on",
+                "consent_enabled": "on",
+                "consent_text": self.page.consent_text,
+                "form_schema": json.dumps(self.page.form_schema),
+                "logo_file": logo,
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.page.refresh_from_db()
+        self.assertTrue(self.page.logo_file.name)
+        self.assertIn("/media/calendar/logos/", self.page.logo_display_url)
+        version = self.page.published_versions.order_by("-version").first()
+        self.assertEqual(
+            version.snapshot["logo_url"],
+            self.page.logo_display_url,
+        )
 
     def test_google_meet_page_can_publish_before_google_connection(self):
         self.page.meeting_location = CalendarPage.MeetingLocation.GOOGLE_MEET

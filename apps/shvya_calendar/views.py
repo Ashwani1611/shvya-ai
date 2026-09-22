@@ -1,6 +1,7 @@
 from datetime import datetime
 import logging
 import secrets
+from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from django.contrib import messages
@@ -109,6 +110,63 @@ def _int(value, default, minimum=0, maximum=100000):
 
 def _checkbox(post, key):
     return str(post.get(key) or "").lower() in {"1", "true", "on", "yes"}
+
+
+CALENDAR_LOGO_MAX_BYTES = 2 * 1024 * 1024
+CALENDAR_LOGO_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
+CALENDAR_LOGO_TYPES = {"image/png", "image/jpeg", "image/webp"}
+
+
+def _update_page_logo(request, page):
+    upload = request.FILES.get("logo_file")
+    remove = _checkbox(request.POST, "remove_logo")
+    old_name = page.logo_file.name if page.logo_file else ""
+    old_storage = page.logo_file.storage if page.logo_file else None
+
+    if remove:
+        page.logo_file = ""
+        page.logo_url = ""
+
+    if upload is not None:
+        extension = Path(str(upload.name or "")).suffix.casefold()
+        content_type = str(getattr(upload, "content_type", "") or "").casefold()
+        if upload.size > CALENDAR_LOGO_MAX_BYTES:
+            raise ValidationError(
+                {"logo_file": "Logo must be 2 MB or smaller."}
+            )
+        if extension not in CALENDAR_LOGO_EXTENSIONS:
+            raise ValidationError(
+                {"logo_file": "Use PNG, JPG, JPEG or WebP for the logo."}
+            )
+        if content_type not in CALENDAR_LOGO_TYPES:
+            raise ValidationError(
+                {"logo_file": "The uploaded logo file type is not supported."}
+            )
+        header = upload.read(16)
+        upload.seek(0)
+        signature_ok = (
+            (extension == ".png" and header.startswith(b"\x89PNG\r\n\x1a\n"))
+            or (
+                extension in {".jpg", ".jpeg"}
+                and header.startswith(b"\xff\xd8\xff")
+            )
+            or (
+                extension == ".webp"
+                and len(header) >= 12
+                and header[:4] == b"RIFF"
+                and header[8:12] == b"WEBP"
+            )
+        )
+        if not signature_ok:
+            raise ValidationError(
+                {"logo_file": "The uploaded file is not a valid logo image."}
+            )
+        page.logo_file = upload
+
+    if old_name and (remove or upload is not None) and old_storage is not None:
+        transaction.on_commit(
+            lambda storage=old_storage, name=old_name: storage.delete(name)
+        )
 
 
 def _editor_context(request, page, active_tab=None):
@@ -325,6 +383,7 @@ def _save_lead_section(request, page):
         if line.strip()
     ][:8]
     page.logo_url = (request.POST.get("logo_url") or "").strip()
+    _update_page_logo(request, page)
     accent = (request.POST.get("accent_color") or "#0060A2").strip()
     page.accent_color = accent if accent.startswith("#") else "#0060A2"
     page.language = (request.POST.get("language") or "en").strip()[:12]
@@ -817,6 +876,7 @@ def calendar_preview(request, page_id):
                     "form_schema": page.form_schema,
                     "intro_title": page.intro_title,
                     "intro_description": page.intro_description,
+                    "logo_url": page.logo_display_url,
                     "intro_highlights": page.intro_highlights,
                     "submit_button_text": page.submit_button_text,
                     "consent_enabled": page.consent_enabled,

@@ -24,6 +24,24 @@ document.addEventListener("DOMContentLoaded", () => {
   pipeline?.addEventListener("change", filterStages);
   filterStages();
 
+  const logoInput = document.getElementById("sc-logo-file");
+  const logoPreview = document.querySelector("[data-logo-preview]");
+  const logoFilename = document.querySelector("[data-logo-filename]");
+  logoInput?.addEventListener("change", () => {
+    const file = logoInput.files?.[0];
+    if (!file) return;
+    if (logoFilename) logoFilename.textContent = file.name;
+    if (logoPreview && file.type.startsWith("image/")) {
+      const previous = logoPreview.dataset.objectUrl;
+      if (previous) URL.revokeObjectURL(previous);
+      const objectUrl = URL.createObjectURL(file);
+      logoPreview.dataset.objectUrl = objectUrl;
+      logoPreview.innerHTML = '<img alt="Logo preview">';
+      const image = logoPreview.querySelector("img");
+      if (image) image.src = objectUrl;
+    }
+  });
+
   const colorPicker = document.querySelector("[data-color-picker]");
   const colorText = document.querySelector("[data-color-text]");
   colorPicker?.addEventListener("input", () => {

@@ -5,13 +5,13 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>{{ config.intro_title|default:page.name }} · {{ page.organization.name }}</title>
-  <link rel="stylesheet" href="{% static 'shvya_calendar/calendar.css' %}?v=20260922-1">
+  <link rel="stylesheet" href="{% static 'shvya_calendar/calendar.css' %}?v=20260922-2">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.34.0/dist/tabler-icons.min.css">
 </head>
-<body class="sc-public-body" style="--sc-accent: {{ page.accent_color|default:'#0060A2' }}">
+<body class="sc-public-body" style="--sc-accent: {{ config.accent_color|default:page.accent_color|default:'#0060A2' }}">
   <main class="sc-public-shell">
     <section class="sc-public-intro">
-      {% if page.logo_url %}<img class="sc-public-logo" src="{{ page.logo_url }}" alt="{{ page.organization.name }}">{% endif %}
+      {% if config.logo_url %}<img class="sc-public-logo" src="{{ config.logo_url }}" alt="{{ page.organization.name }}">{% endif %}
       <span class="sc-kicker">{{ page.organization.name|upper }}</span>
       <h1>{{ config.intro_title|default:page.name }}</h1>
       {% if config.intro_description %}<p>{{ config.intro_description }}</p>{% endif %}
