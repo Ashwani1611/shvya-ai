@@ -422,7 +422,11 @@ def _render_qualification_playbook(*, organization, data, existing_raw):
     if actual_stable != expected_stable:
         raise OperationsToolError("Qualification stable IDs did not compile deterministically.")
 
-    config = _config(organization=organization, requirements=requirements)
+    config = _config(
+        organization=organization,
+        requirements=requirements,
+        raw_override=candidate,
+    )
     errors = list(config.get("errors") or [])
     if errors:
         codes = ", ".join(sorted({str(item.get("code") or "configuration_error") for item in errors}))
@@ -927,7 +931,7 @@ def begin_whatsapp_connection(*, identity, arguments):
                     capability=CAP_MESSAGING_CONFIG_WRITE,
                 ),
                 "requires_human_qr_scan": True,
-                "credentials_exposed": False,
+                "safe_status_only": True,
             },
             capability=CAP_MESSAGING_CONFIG_WRITE,
             target_type="pipeline",
@@ -1000,7 +1004,7 @@ def begin_whatsapp_connection(*, identity, arguments):
             },
             "pipeline": {"id": str(pipeline_locked.id), "name": pipeline_locked.name},
             "requires_human_qr_scan": account.status != WhatsAppAccount.Status.CONNECTED,
-            "credentials_exposed": False,
+            "safe_status_only": True,
             "verification": "passed",
         },
         capability=CAP_MESSAGING_CONFIG_WRITE,
@@ -1594,6 +1598,16 @@ def list_faqs(*, identity, arguments):
     )
 
 
+def _faq_id(value):
+    try:
+        faq_id = int(str(value or "").strip())
+    except (TypeError, ValueError) as exc:
+        raise OperationsToolError("faq_id must be a positive integer.") from exc
+    if faq_id <= 0:
+        raise OperationsToolError("faq_id must be a positive integer.")
+    return faq_id
+
+
 def _faq_proposal(*, organization, arguments):
     data = (arguments or {}).get("data")
     if not isinstance(data, dict):
@@ -1603,7 +1617,7 @@ def _faq_proposal(*, organization, arguments):
     faq = None
     if faq_id:
         faq = FAQ.objects.filter(
-            pk=_uuid(faq_id, field="faq_id"),
+            pk=_faq_id(faq_id),
             organization=organization,
         ).first()
         if faq is None:
@@ -1723,7 +1737,7 @@ def archive_faq(*, identity, arguments):
         arguments=arguments,
     )
     faq = FAQ.objects.filter(
-        pk=_uuid((arguments or {}).get("faq_id"), field="faq_id"),
+        pk=_faq_id((arguments or {}).get("faq_id")),
         organization=organization,
     ).first()
     if faq is None:
