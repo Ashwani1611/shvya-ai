@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import re
 import uuid
+from contextlib import contextmanager
+from contextvars import ContextVar
 from urllib.parse import urlparse
 from copy import deepcopy
 from dataclasses import dataclass
@@ -144,6 +146,26 @@ MESSAGING_AUTOMATION_SETTING_KEYS = frozenset(
 ATTRIBUTE_COMPATIBILITY_SCAN_LIMIT = 5000
 CONVERSION_BREAKDOWN_LIMIT = 100
 LOST_REASON_BREAKDOWN_LIMIT = 20
+
+_CONFIGURATION_PLAN_EXECUTION = ContextVar(
+    "shvya_operations_configuration_plan_execution",
+    default=False,
+)
+
+
+@contextmanager
+def configuration_plan_execution():
+    """Authorize nested member writes only inside one approved plan apply/rollback.
+
+    This context is not user-controlled. Public MCP calls still pass through the
+    ordinary write gate and one-use approval receipt checks.
+    """
+
+    token = _CONFIGURATION_PLAN_EXECUTION.set(True)
+    try:
+        yield
+    finally:
+        _CONFIGURATION_PLAN_EXECUTION.reset(token)
 
 
 GENERIC_ACTION_REASONS = {
@@ -366,6 +388,15 @@ def _write_gate(
             "This OAuth token does not include operations.write."
         )
 
+    reason = _reason(arguments, required=True)
+
+    if _CONFIGURATION_PLAN_EXECUTION.get():
+        # apply_configuration_plan / rollback_configuration_plan owns the
+        # outer approval, drift check, transaction, and audit event. Nested
+        # member tools retain tenant/capability validation but do not require
+        # independent approval receipts.
+        return False, reason
+
     raw_dry_run = (arguments or {}).get("dry_run", True)
     raw_approved = (arguments or {}).get("approved", False)
     if not isinstance(raw_dry_run, bool):
@@ -374,7 +405,6 @@ def _write_gate(
         raise OperationsToolError("approved must be a JSON boolean.")
     dry_run = raw_dry_run
     approved = raw_approved
-    reason = _reason(arguments, required=True)
     needs_approval = approval_required(
         role=identity.role,
         organization=organization,
