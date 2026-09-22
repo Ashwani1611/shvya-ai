@@ -1739,6 +1739,57 @@ def apply_configuration_plan(*, identity, arguments):
     reason = _reason(arguments, required=True)
     plan_id = _uuid((arguments or {}).get("plan_id"), field="plan_id")
 
+    # Preflight before consuming the one-use human approval receipt. The actual
+    # mutation then re-locks/re-checks everything in a single inner transaction.
+    preflight = OperationsConfigurationPlan.objects.filter(
+        pk=plan_id,
+        organization=organization,
+        actor=identity.actor,
+        token=identity.token,
+        role=identity.role,
+    ).first()
+    if preflight is None:
+        raise OperationsPermissionError(
+            "Configuration plan not found for this actor, OAuth grant, and organization."
+        )
+    if preflight.status == OperationsConfigurationPlan.Status.APPLIED:
+        return ToolExecution(
+            data={
+                "status": "ALREADY_APPLIED",
+                "plan_id": str(preflight.id),
+                "applied_etag": preflight.applied_etag,
+                "result": preflight.apply_result,
+            },
+            capability=CAP_CONFIGURATION_PLAN_WRITE,
+            target_type="configuration_plan",
+            target_id=str(preflight.id),
+            reason=reason,
+            audit_summary={"operation": "apply_configuration_plan", "idempotent": True},
+        )
+    if preflight.status != OperationsConfigurationPlan.Status.READY:
+        raise OperationsToolError("Configuration plan is not in a ready state.")
+    if preflight.expires_at <= timezone.now():
+        OperationsConfigurationPlan.objects.filter(pk=preflight.pk).update(
+            status=OperationsConfigurationPlan.Status.EXPIRED
+        )
+        raise OperationsApprovalRequired(
+            "Configuration plan expired. Create and approve a fresh plan."
+        )
+    if configuration_etag(organization) != preflight.base_etag:
+        raise OperationsApprovalRequired(
+            "Organization configuration changed after plan review. "
+            "Create a fresh plan against the current configuration."
+        )
+
+    # This receipt is consumed for the execution attempt even if a later member
+    # fails and the configuration transaction is fully rolled back.
+    _consume_plan_approval(
+        identity=identity,
+        organization=organization,
+        plan=preflight,
+        arguments=arguments,
+    )
+
     with transaction.atomic():
         plan = (
             OperationsConfigurationPlan.objects.select_for_update()
@@ -1751,31 +1802,9 @@ def apply_configuration_plan(*, identity, arguments):
             )
             .first()
         )
-        if plan is None:
-            raise OperationsPermissionError(
-                "Configuration plan not found for this actor, OAuth grant, and organization."
-            )
-        if plan.status == OperationsConfigurationPlan.Status.APPLIED:
-            return ToolExecution(
-                data={
-                    "status": "ALREADY_APPLIED",
-                    "plan_id": str(plan.id),
-                    "applied_etag": plan.applied_etag,
-                    "result": plan.apply_result,
-                },
-                capability=CAP_CONFIGURATION_PLAN_WRITE,
-                target_type="configuration_plan",
-                target_id=str(plan.id),
-                reason=reason,
-                audit_summary={"operation": "apply_configuration_plan", "idempotent": True},
-            )
-        if plan.status != OperationsConfigurationPlan.Status.READY:
-            raise OperationsToolError("Configuration plan is not in a ready state.")
-        if plan.expires_at <= timezone.now():
-            plan.status = OperationsConfigurationPlan.Status.EXPIRED
-            plan.save(update_fields=["status", "updated_at"])
+        if plan is None or plan.status != OperationsConfigurationPlan.Status.READY:
             raise OperationsApprovalRequired(
-                "Configuration plan expired. Create and approve a fresh plan."
+                "Configuration plan changed after execution began. Create a fresh plan."
             )
 
         OrganizationModel = organization.__class__
@@ -1783,15 +1812,9 @@ def apply_configuration_plan(*, identity, arguments):
         current_etag = configuration_etag(organization)
         if current_etag != plan.base_etag:
             raise OperationsApprovalRequired(
-                "Organization configuration changed after plan review. "
+                "Organization configuration changed after approval. "
                 "Create a fresh plan against the current configuration."
             )
-        _consume_plan_approval(
-            identity=identity,
-            organization=organization,
-            plan=plan,
-            arguments=arguments,
-        )
 
         refs = {}
         results = []
