@@ -7,6 +7,7 @@ from unittest.mock import patch
 from django.contrib.sessions.backends.db import SessionStore
 from django.core.exceptions import ValidationError
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.template.loader import render_to_string
 from django.test import RequestFactory, TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
@@ -23,6 +24,7 @@ from .models import (
     CalendarReminderSequence,
     CalendarReminderStep,
     CalendarSubmission,
+    CalendarSubmissionAttachment,
 )
 from .google import GoogleCalendarError
 from .services import (
@@ -150,6 +152,87 @@ class ShvyaCalendarServiceTests(TestCase):
         self.assertEqual(self.page.status, CalendarPage.Status.PUBLISHED)
         self.assertEqual(self.page.current_version, 2)
 
+    @patch("apps.shvya_calendar.models.CalendarPage.full_clean")
+    def test_status_toggle_does_not_depend_on_model_full_clean(
+        self,
+        mocked_full_clean,
+    ):
+        mocked_full_clean.side_effect = RuntimeError("legacy validator failure")
+        self.page.status = CalendarPage.Status.DISABLED
+        self.page.save(update_fields=["status", "updated_at"])
+        self._authenticate_dashboard_client()
+
+        response = self.client.post(
+            reverse(
+                "shvya_calendar:status",
+                kwargs={"page_id": self.page.id},
+            ),
+            {"action": "publish"},
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.page.refresh_from_db()
+        self.assertEqual(self.page.status, CalendarPage.Status.PUBLISHED)
+        mocked_full_clean.assert_not_called()
+
+    def test_calendar_attachment_is_visible_on_lead_card_and_downloadable(self):
+        lead = Lead.objects.create(
+            organization=self.organization,
+            pipeline=self.pipeline,
+            stage=self.stage,
+            name="Attachment Lead",
+            phone="+919111111111",
+            lead_source="shvya_calendar",
+        )
+        submission = CalendarSubmission.objects.create(
+            organization=self.organization,
+            page=self.page,
+            page_version=self.version,
+            lead=lead,
+            status=CalendarSubmission.Status.LEAD_CREATED,
+            submitted_data={},
+            normalized_data={"name": lead.name, "mobile": lead.phone},
+        )
+        attachment = CalendarSubmissionAttachment.objects.create(
+            submission=submission,
+            field_key="requirements",
+            file=SimpleUploadedFile(
+                "requirements.pdf",
+                b"%PDF-1.4\ncalendar attachment\n",
+                content_type="application/pdf",
+            ),
+            original_name="requirements.pdf",
+            content_type="application/pdf",
+            size=31,
+        )
+        self._authenticate_dashboard_client()
+
+        from apps.crm.views.dashboard import _lead_card_context
+        context = _lead_card_context(lead, self.user)
+        context["all_stages"] = [self.stage]
+        html = render_to_string("crm/partials/lead_card.html", context)
+
+        self.assertEqual(context["lead"].calendar_attachment_count, 1)
+        self.assertIn("requirements.pdf", html)
+        self.assertIn(
+            reverse(
+                "shvya_calendar:attachment_download",
+                kwargs={"attachment_id": attachment.id},
+            ),
+            html,
+        )
+
+        response = self.client.get(
+            reverse(
+                "shvya_calendar:attachment_download",
+                kwargs={"attachment_id": attachment.id},
+            )
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Cache-Control"], "private, no-store")
+        self.assertEqual(response["X-Content-Type-Options"], "nosniff")
+        self.assertIn("attachment", response["Content-Disposition"])
+
     def test_share_always_shows_website_embed_code(self):
         self.page.status = CalendarPage.Status.DISABLED
         self.page.save(update_fields=["status", "updated_at"])
@@ -174,7 +257,7 @@ class ShvyaCalendarServiceTests(TestCase):
         self._authenticate_dashboard_client()
         logo = SimpleUploadedFile(
             "brand.png",
-            b"\x89PNG\r\n\x1a\nSHVYA",
+            b"SHVYA-EDITOR-EXPORTED-IMAGE-BYTES",
             content_type="image/png",
         )
 
