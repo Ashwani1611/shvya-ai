@@ -1,4 +1,5 @@
 from datetime import UTC, datetime, timedelta
+from zoneinfo import ZoneInfo
 from unittest.mock import patch
 
 from django.contrib.sessions.backends.db import SessionStore
@@ -285,7 +286,7 @@ class CalendarWorkspaceTests(TestCase):
     def test_slots_use_availability_service(self, slots):
         from django.utils import timezone
 
-        day = timezone.now().date().isoformat()
+        day = timezone.now().astimezone(ZoneInfo(self.org.timezone)).date().isoformat()
         slots.return_value = [{"start": self.booking.start_at, "label": "12:15 AM"}]
         response = self.client.get(self.url("booking_slots"), {"date": day})
         self.assertEqual(response.status_code, 200)
