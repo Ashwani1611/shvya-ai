@@ -6885,12 +6885,18 @@ def execute_operations_tool(*, name, identity, arguments):
     }
     handler = handlers.get(str(name or ""))
     if handler is None:
-        # Extended configuration tools are kept in a lazily imported module so
+        # Extended configuration tools are kept in lazily imported modules so
         # this core Operations boundary remains the single source of approval,
-        # tenant, audit, and error semantics without creating an import cycle.
+        # tenant, audit, and error semantics without creating import cycles.
         from apps.integrations.operations_extended_tools import EXTENDED_HANDLERS
 
         handler = EXTENDED_HANDLERS.get(str(name or ""))
+    if handler is None:
+        from apps.integrations.operations_configuration_management import (
+            CONFIGURATION_MANAGEMENT_HANDLERS,
+        )
+
+        handler = CONFIGURATION_MANAGEMENT_HANDLERS.get(str(name or ""))
     if handler is None:
         raise OperationsToolError("Unknown SHVYA Operations tool.")
     return handler(identity=identity, arguments=arguments or {})
