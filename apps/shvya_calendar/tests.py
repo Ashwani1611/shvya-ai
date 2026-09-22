@@ -2,22 +2,29 @@ from datetime import timedelta
 
 from unittest.mock import patch
 
+from django.contrib.sessions.backends.db import SessionStore
 from django.core.exceptions import ValidationError
 from django.test import RequestFactory, TestCase
+from django.urls import reverse
 from django.utils import timezone
 
 from apps.accounts.models import User
+from apps.accounts.session_utils import set_authenticated_user
 from apps.crm.models import AttributeDefinition, Lead, Pipeline, Stage
 from apps.organizations.models import Organization
 
 from .models import (
+    CalendarBlock,
     CalendarBooking,
     CalendarPage,
     CalendarReminderSequence,
     CalendarReminderStep,
     CalendarSubmission,
 )
+from .google import GoogleCalendarError
 from .services import (
+    available_slots,
+    book_slot,
     create_submission_and_lead,
     publish_page,
     schedule_booking_reminders,
@@ -91,6 +98,211 @@ class ShvyaCalendarServiceTests(TestCase):
         request.GET = request.GET.copy()
         request.META["REMOTE_ADDR"] = "203.0.113.10"
         return request
+
+    def _authenticate_dashboard_client(self):
+        session = SessionStore()
+        set_authenticated_user(session, self.user)
+        session.save()
+        self.client.cookies["shvya_crm_sessionid"] = session.session_key
+
+    def test_google_meet_page_can_publish_before_google_connection(self):
+        self.page.meeting_location = CalendarPage.MeetingLocation.GOOGLE_MEET
+        self.page.status = CalendarPage.Status.DISABLED
+        self.page.save(update_fields=["meeting_location", "status", "updated_at"])
+
+        version = publish_page(page=self.page, actor=self.user)
+
+        self.page.refresh_from_db()
+        self.assertEqual(self.page.status, CalendarPage.Status.PUBLISHED)
+        self.assertEqual(version.version, self.page.current_version)
+        with self.assertRaises(GoogleCalendarError):
+            available_slots(
+                page=self.page,
+                local_date=timezone.localdate() + timedelta(days=1),
+            )
+
+    def test_status_toggle_publishes_google_meet_page_without_http_500(self):
+        self.page.meeting_location = CalendarPage.MeetingLocation.GOOGLE_MEET
+        self.page.status = CalendarPage.Status.DISABLED
+        self.page.save(update_fields=["meeting_location", "status", "updated_at"])
+        self._authenticate_dashboard_client()
+
+        response = self.client.post(
+            reverse("shvya_calendar:status", kwargs={"page_id": self.page.id}),
+            {"action": "publish"},
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.page.refresh_from_db()
+        self.assertEqual(self.page.status, CalendarPage.Status.PUBLISHED)
+
+        public_response = self.client.get(
+            reverse(
+                "shvya_calendar_public:page",
+                kwargs={"public_id": self.page.public_id, "slug": self.page.slug},
+            )
+        )
+        self.assertEqual(public_response.status_code, 200)
+        self.assertContains(public_response, "Tell us how to reach you")
+
+    def test_scheduling_save_succeeds_for_published_page_without_google_connection(self):
+        self.page.meeting_location = CalendarPage.MeetingLocation.GOOGLE_MEET
+        self.page.save(update_fields=["meeting_location", "updated_at"])
+        publish_page(page=self.page, actor=self.user)
+        self.page.refresh_from_db()
+        version_before = self.page.current_version
+        self._authenticate_dashboard_client()
+
+        response = self.client.post(
+            reverse("shvya_calendar:save", kwargs={"page_id": self.page.id}),
+            {
+                "section": "scheduling",
+                "timezone": "Asia/Kolkata",
+                "session_title": "Updated Demo",
+                "session_description": "Calendar regression",
+                "discussion_points": "Review goals\nNext steps",
+                "mon_enabled": "on",
+                "mon_start": "09:00",
+                "mon_end": "18:00",
+                "tue_enabled": "on",
+                "tue_start": "09:00",
+                "tue_end": "18:00",
+                "wed_enabled": "on",
+                "wed_start": "09:00",
+                "wed_end": "18:00",
+                "thu_enabled": "on",
+                "thu_start": "09:00",
+                "thu_end": "18:00",
+                "fri_enabled": "on",
+                "fri_start": "09:00",
+                "fri_end": "18:00",
+                "sat_start": "09:00",
+                "sat_end": "18:00",
+                "sun_start": "09:00",
+                "sun_end": "18:00",
+                "bookable_days": "30",
+                "minimum_notice_minutes": "60",
+                "slot_duration_minutes": "30",
+                "max_slots_per_day": "25",
+                "bookings_per_slot": "1",
+                "buffer_before_minutes": "0",
+                "buffer_after_minutes": "0",
+                "meeting_location": "google_meet",
+                "invite_lead_to_event": "on",
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.page.refresh_from_db()
+        self.assertEqual(self.page.session_title, "Updated Demo")
+        self.assertEqual(self.page.status, CalendarPage.Status.PUBLISHED)
+        self.assertGreater(self.page.current_version, version_before)
+
+    def test_scheduling_editor_has_no_nested_action_forms(self):
+        CalendarBlock.objects.create(
+            page=self.page,
+            starts_at=timezone.now() + timedelta(days=3),
+            ends_at=timezone.now() + timedelta(days=3, hours=1),
+            reason="Maintenance",
+        )
+        self._authenticate_dashboard_client()
+
+        response = self.client.get(
+            reverse("shvya_calendar:editor", kwargs={"page_id": self.page.id})
+            + "?tab=scheduling"
+        )
+
+        self.assertEqual(response.status_code, 200)
+        delete_url = reverse(
+            "shvya_calendar:block_delete",
+            kwargs={
+                "page_id": self.page.id,
+                "block_id": self.page.blocks.first().id,
+            },
+        )
+        self.assertContains(response, f'formaction="{delete_url}"')
+        self.assertNotContains(
+            response,
+            f'<form method="post" action="{delete_url}"',
+        )
+
+    def test_email_match_with_different_mobile_is_not_silently_reused(self):
+        Lead.objects.create(
+            organization=self.organization,
+            pipeline=self.pipeline,
+            stage=self.stage,
+            name="Existing Email",
+            phone="+917000000099",
+            email="same@example.com",
+        )
+        request = self._request(
+            {
+                "name": "New Mobile",
+                "mobile": "+917000000100",
+                "consent": "on",
+                "f_email": "same@example.com",
+            }
+        )
+        submitted, normalized = validate_public_submission(
+            page=self.page,
+            version=self.version,
+            post=request.POST,
+            files=request.FILES,
+        )
+        with self.assertRaises(ValidationError):
+            create_submission_and_lead(
+                page=self.page,
+                version=self.version,
+                submitted=submitted,
+                normalized=normalized,
+                request=request,
+                files=request.FILES,
+            )
+
+    def test_public_link_is_friendly_when_page_is_not_published(self):
+        self.page.status = CalendarPage.Status.DISABLED
+        self.page.save(update_fields=["status", "updated_at"])
+
+        response = self.client.get(
+            reverse(
+                "shvya_calendar_public:page",
+                kwargs={"public_id": self.page.public_id, "slug": self.page.slug},
+            )
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "currently unavailable")
+
+    def test_old_public_slug_still_resolves_after_slug_change(self):
+        old_slug = self.page.slug
+        self.page.slug = "renamed-demo"
+        self.page.save(update_fields=["slug", "updated_at"])
+
+        response = self.client.get(
+            reverse(
+                "shvya_calendar_public:page",
+                kwargs={"public_id": self.page.public_id, "slug": old_slug},
+            )
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Tell us how to reach you")
+
+    def test_invalid_timezone_is_rejected_by_page_validation(self):
+        self.page.timezone = "Not/A-Timezone"
+        with self.assertRaises(ValidationError):
+            self.page.full_clean()
+
+    def test_invalid_working_hours_are_rejected(self):
+        availability = dict(self.page.availability)
+        availability["mon"] = {
+            "enabled": True,
+            "start": "18:00",
+            "end": "09:00",
+        }
+        self.page.availability = availability
+        with self.assertRaises(ValidationError):
+            self.page.full_clean()
 
     def test_unknown_public_field_is_rejected(self):
         request = self._request(
@@ -357,3 +569,76 @@ class ShvyaCalendarServiceTests(TestCase):
             5,
         )
         mocked_delay.assert_called_once()
+
+    @patch("apps.shvya_calendar.services.create_booking_event")
+    @patch("apps.shvya_calendar.services.available_slots")
+    def test_booking_retry_reuses_existing_active_booking(
+        self,
+        mocked_available_slots,
+        mocked_create_event,
+    ):
+        Lead.objects.create(
+            organization=self.organization,
+            pipeline=self.pipeline,
+            stage=self.stage,
+            name="Retry Lead",
+            phone="+918111111111",
+            lead_source="shvya_calendar",
+        )
+        request = self._request(
+            {
+                "name": "Retry Lead",
+                "mobile": "+918111111111",
+                "consent": "on",
+            }
+        )
+        submitted, normalized = validate_public_submission(
+            page=self.page,
+            version=self.version,
+            post=request.POST,
+            files=request.FILES,
+        )
+        submission, _lead, _created = create_submission_and_lead(
+            page=self.page,
+            version=self.version,
+            submitted=submitted,
+            normalized=normalized,
+            request=request,
+            files=request.FILES,
+        )
+        self.page.meeting_location = CalendarPage.MeetingLocation.PHONE
+        self.page.save(update_fields=["meeting_location", "updated_at"])
+
+        slot_start = timezone.now() + timedelta(days=2)
+        slot_start = slot_start.replace(second=0, microsecond=0)
+        mocked_available_slots.return_value = [
+            {
+                "start": slot_start,
+                "end": slot_start + timedelta(minutes=30),
+                "label": "10:00 AM",
+            }
+        ]
+
+        first = book_slot(
+            page=self.page,
+            submission=submission,
+            slot_start_iso=slot_start.isoformat(),
+        )
+        second = book_slot(
+            page=self.page,
+            submission=submission,
+            slot_start_iso=slot_start.isoformat(),
+        )
+
+        self.assertEqual(first.id, second.id)
+        self.assertEqual(
+            CalendarBooking.objects.filter(
+                submission=submission,
+                status__in=[
+                    CalendarBooking.Status.SCHEDULED,
+                    CalendarBooking.Status.RESCHEDULED,
+                ],
+            ).count(),
+            1,
+        )
+        mocked_create_event.assert_called_once()

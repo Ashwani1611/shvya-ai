@@ -1,5 +1,7 @@
 import secrets
 import uuid
+from datetime import datetime
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
@@ -212,6 +214,44 @@ class CalendarPage(models.Model):
 
     def clean(self):
         super().clean()
+        try:
+            ZoneInfo(self.timezone)
+        except (ZoneInfoNotFoundError, ValueError) as exc:
+            raise ValidationError(
+                {"timezone": "Choose a valid IANA timezone, for example Asia/Kolkata."}
+            ) from exc
+
+        availability = self.availability or {}
+        if not isinstance(availability, dict):
+            raise ValidationError(
+                {"availability": "Availability must be a weekday configuration."}
+            )
+
+        for day, rule in availability.items():
+            if not isinstance(rule, dict) or not rule.get("enabled"):
+                continue
+            try:
+                start = datetime.strptime(
+                    str(rule.get("start") or ""),
+                    "%H:%M",
+                ).time()
+                end = datetime.strptime(
+                    str(rule.get("end") or ""),
+                    "%H:%M",
+                ).time()
+            except ValueError as exc:
+                raise ValidationError(
+                    {"availability": f"{day.title()} has an invalid working time."}
+                ) from exc
+            if start >= end:
+                raise ValidationError(
+                    {
+                        "availability": (
+                            f"{day.title()} working hours must end after they start."
+                        )
+                    }
+                )
+
         if self.pipeline_id and self.pipeline.organization_id != self.organization_id:
             raise ValidationError({"pipeline": "Pipeline must belong to this organization."})
         if self.stage_id:

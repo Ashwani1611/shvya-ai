@@ -1,5 +1,6 @@
 import hashlib
 import json
+import logging
 import re
 from datetime import UTC, datetime, time, timedelta
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -22,6 +23,7 @@ from services.crm.lead_service import create_lead
 
 from .google import (
     GoogleCalendarError,
+    connection_for_page,
     create_booking_event,
     free_busy,
     update_booking_event,
@@ -62,6 +64,8 @@ ALLOWED_UPLOAD_EXTENSIONS = {
     ".xlsx",
 }
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
+
+logger = logging.getLogger(__name__)
 
 
 def page_snapshot(page):
@@ -127,17 +131,14 @@ def publish_page(*, page, actor):
             "Select a CRM pipeline and initial stage before publishing."
         )
     page.full_clean()
-    if page.page_type != CalendarPage.PageType.LEAD:
-        if not page.host_id:
-            raise ValidationError("Select a booking host before publishing.")
-        if page.meeting_location == CalendarPage.MeetingLocation.GOOGLE_MEET:
-            from .google import connection_for_page
-            if connection_for_page(page) is None:
-                raise ValidationError(
-                    "Connect the booking host's Google Calendar before publishing "
-                    "a Google Meet page."
-                )
+    if page.page_type != CalendarPage.PageType.LEAD and not page.host_id:
+        raise ValidationError("Select a booking host before publishing.")
 
+    # Publication and provider readiness are separate concerns. A page must be
+    # shareable even before Google is connected so Web-to-Lead capture still
+    # works. When Google Meet is selected without a connection, scheduling
+    # fails closed with a clear message instead of creating a booking that has
+    # no conference link.
     version = page.current_version + 1
     published = CalendarPageVersion.objects.create(
         page=page,
@@ -360,6 +361,15 @@ def _find_existing_lead(*, organization, phone, email, match_email):
                 )
             }
         )
+    if email_lead and phone_lead is None and email_lead.phone != phone:
+        raise ValidationError(
+            {
+                "form": (
+                    "This email already belongs to a CRM lead with a different "
+                    "mobile number. Review the existing lead before continuing."
+                )
+            }
+        )
     return phone_lead or email_lead
 
 
@@ -440,6 +450,9 @@ def create_submission_and_lead(
             referrer=str(request.META.get("HTTP_REFERER") or "")[:200],
             user_agent=str(request.META.get("HTTP_USER_AGENT") or "")[:500],
             ip_hash=hash_ip(_client_ip(request)),
+        )
+        transaction.on_commit(
+            lambda submission_id=str(submission.id): notify_submission(submission_id)
         )
         return submission, existing, False
 
@@ -610,12 +623,19 @@ def notify_submission(submission_id):
             # is disconnected; internal staff notification above still records
             # that the submission exists.
             pass
+        except Exception:
+            # Provider/network failures must never turn an already committed
+            # Web-to-Lead submission into an HTTP 500 for the visitor.
+            logger.exception(
+                "SHVYA Calendar acknowledgement delivery failed for submission %s",
+                submission.id,
+            )
 
 
 def _page_zone(page):
     try:
         return ZoneInfo(page.timezone)
-    except ZoneInfoNotFoundError as exc:
+    except (ZoneInfoNotFoundError, ValueError) as exc:
         raise ValidationError({"timezone": "Choose a valid IANA timezone."}) from exc
 
 
@@ -634,6 +654,14 @@ def _overlaps(start, end, busy_start, busy_end):
 def available_slots(*, page, local_date):
     if page.status != CalendarPage.Status.PUBLISHED:
         return []
+    if (
+        page.meeting_location == CalendarPage.MeetingLocation.GOOGLE_MEET
+        and connection_for_page(page) is None
+    ):
+        raise GoogleCalendarError(
+            "Google Calendar is not connected for this booking host yet. "
+            "Your lead details are saved, but scheduling is temporarily unavailable."
+        )
     zone = _page_zone(page)
     now = timezone.now()
     local_now = now.astimezone(zone)
@@ -735,6 +763,12 @@ def upcoming_slot_days(page, *, days=7):
 @transaction.atomic
 def _create_booking_row(*, page, submission, slot_start):
     locked_page = CalendarPage.objects.select_for_update().get(pk=page.pk)
+    locked_submission = (
+        CalendarSubmission.objects
+        .select_for_update()
+        .select_related("lead")
+        .get(pk=submission.pk, page=locked_page)
+    )
     if locked_page.status != CalendarPage.Status.PUBLISHED:
         raise ValidationError("This booking page is not currently available.")
 
@@ -744,6 +778,21 @@ def _create_booking_row(*, page, submission, slot_start):
         CalendarBooking.Status.SCHEDULED,
         CalendarBooking.Status.RESCHEDULED,
     ]
+
+    # A browser retry/back-button must never create two active appointments
+    # for the same lead-form submission.
+    existing_for_submission = (
+        CalendarBooking.objects
+        .filter(
+            submission=locked_submission,
+            status__in=active_statuses,
+        )
+        .order_by("-created_at")
+        .first()
+    )
+    if existing_for_submission is not None:
+        return existing_for_submission, False
+
     existing = CalendarBooking.objects.filter(
         page=locked_page,
         status__in=active_statuses,
@@ -755,8 +804,8 @@ def _create_booking_row(*, page, submission, slot_start):
     booking = CalendarBooking(
         organization=locked_page.organization,
         page=locked_page,
-        submission=submission,
-        lead=submission.lead,
+        submission=locked_submission,
+        lead=locked_submission.lead,
         host=locked_page.host,
         start_at=slot_start,
         end_at=slot_end,
@@ -771,7 +820,7 @@ def _create_booking_row(*, page, submission, slot_start):
         booking.meeting_link = locked_page.custom_meeting_link
     booking.full_clean()
     booking.save()
-    return booking
+    return booking, True
 
 
 def book_slot(*, page, submission, slot_start_iso):
@@ -796,11 +845,14 @@ def book_slot(*, page, submission, slot_start_iso):
     if requested not in valid_starts:
         raise ValidationError("That slot is no longer available.")
 
-    booking = _create_booking_row(
+    booking, created = _create_booking_row(
         page=page,
         submission=submission,
         slot_start=requested,
     )
+    if not created:
+        return booking
+
     if page.host_id:
         try:
             create_booking_event(booking)
