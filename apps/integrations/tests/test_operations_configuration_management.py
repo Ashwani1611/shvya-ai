@@ -6,6 +6,8 @@ from django.utils import timezone
 
 from apps.accounts.models import User
 from apps.ai_engagement.models import FAQ
+from apps.channels.models import WhatsAppAccount
+from apps.followups.models import FollowupSequence
 from apps.crm.models import AttributeDefinition, Pipeline
 from apps.followups.models import TouchpointCategory, TouchpointReply
 from apps.integrations.models import (
@@ -384,6 +386,45 @@ class OperationsConfigurationManagementTests(TestCase):
             before["configuration_etag"],
             after["configuration_etag"],
         )
+
+    def test_hosted_cadence_creation_honors_selected_sender(self):
+        first = WhatsAppAccount.objects.create(
+            organization=self.organization,
+            connection_type=WhatsAppAccount.ConnectionType.coexisted,
+            business_name="Hosted One",
+            phone_number_id="+919000000001",
+            display_phone_number="+919000000001",
+            status=WhatsAppAccount.Status.CONNECTED,
+            is_active=True,
+        )
+        second = WhatsAppAccount.objects.create(
+            organization=self.organization,
+            connection_type=WhatsAppAccount.ConnectionType.coexisted,
+            business_name="Hosted Two",
+            phone_number_id="+919000000002",
+            display_phone_number="+919000000002",
+            status=WhatsAppAccount.Status.CONNECTED,
+            is_active=True,
+        )
+
+        created = self._ok(
+            self.bearer,
+            "upsert_cadence_configuration",
+            {
+                "dry_run": False,
+                "approved": False,
+                "reason": "Create Hosted Cadence on the explicitly selected sender.",
+                "data": {
+                    "name": "Selected Hosted Sender",
+                    "description": "Sender routing regression coverage.",
+                    "provider": "hosted",
+                    "whatsapp_account_id": str(second.id),
+                },
+            },
+        )
+        sequence = FollowupSequence.objects.get(pk=created["cadence"]["id"])
+        self.assertEqual(sequence.whatsapp_account_id, second.id)
+        self.assertNotEqual(sequence.whatsapp_account_id, first.id)
 
     def test_portable_export_import_creates_approval_plan_without_credentials(self):
         AttributeDefinition.objects.create(
