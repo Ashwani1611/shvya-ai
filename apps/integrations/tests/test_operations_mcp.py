@@ -234,6 +234,58 @@ class OperationsMCPTests(TestCase):
         self.assertEqual(response.status_code, 200)
         return response.json()["result"]
 
+    def test_unauthenticated_tool_call_returns_oauth_401_challenge(self):
+        response = self.client.post(
+            "/operations/mcp/",
+            data=json.dumps(
+                {
+                    "jsonrpc": "2.0",
+                    "id": "oauth-required",
+                    "method": "tools/call",
+                    "params": {
+                        "name": "get_operations_context",
+                        "arguments": {},
+                    },
+                }
+            ),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 401)
+        self.assertIn("WWW-Authenticate", response)
+        challenge = response["WWW-Authenticate"]
+        self.assertIn("Bearer ", challenge)
+        self.assertIn(
+            'resource_metadata="http://testserver/operations/.well-known/oauth-protected-resource"',
+            challenge,
+        )
+        result = response.json()["result"]
+        self.assertTrue(result["isError"])
+        self.assertIn("mcp/www_authenticate", result["_meta"])
+        self.assertEqual(
+            result["_meta"]["mcp/www_authenticate"],
+            [challenge],
+        )
+
+    def test_expired_bearer_returns_oauth_401_challenge(self):
+        bearer = self._token(
+            actor=self.superadmin,
+            role=ROLE_SUPERADMIN,
+        )
+        OperationsOAuthToken.objects.filter(
+            access_token_hash=token_hash(bearer)
+        ).update(
+            expires_at=timezone.now() - timedelta(seconds=1)
+        )
+        response = self._call(
+            bearer,
+            "get_operations_context",
+        )
+        self.assertEqual(response.status_code, 401)
+        self.assertIn("WWW-Authenticate", response)
+        result = response.json()["result"]
+        self.assertTrue(result["isError"])
+        self.assertIn("mcp/www_authenticate", result["_meta"])
+
     def test_operations_related_migration_graphs_have_single_leaf(self):
         conflicts = MigrationLoader(
             None,
