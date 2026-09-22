@@ -17,7 +17,7 @@ from datetime import timedelta
 
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
-from django.db.models import Count, Q
+from django.db.models import Count
 from django.utils import timezone
 
 from apps.ai_engagement.models import FAQ, OrgInfo
@@ -27,7 +27,6 @@ from apps.followups.models import FollowupSequence, FollowupStep, LeadSequenceSt
 from apps.followups.touchpoint_models import TouchpointCategory, TouchpointReply
 from apps.hosted_automation.models import HostedFollowupStepConfig
 from apps.integrations.diagnostic_auth import sanitize_data
-from apps.integrations.operations_approval import approval_fingerprint
 from apps.integrations.operations_models import (
     OperationsApprovalUse,
     OperationsAuditEvent,
