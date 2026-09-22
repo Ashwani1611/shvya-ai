@@ -26,7 +26,22 @@ NAV_ITEMS = [
     {
         "label": "SHVYA Calendar",
         "icon": "ti-calendar-event",
-        "url_name": "shvya_calendar:index",
+        "url_name": "shvya_calendar:bookings",
+        "children": [
+            {
+                "label": "Booking",
+                "icon": "ti-calendar-plus",
+                "url_name": "shvya_calendar:bookings",
+                "path_prefix": "/dashboard/shvya-calendar/",
+                "path_exclude": "/dashboard/shvya-calendar/calendar/",
+            },
+            {
+                "label": "Calendar",
+                "icon": "ti-calendar",
+                "url_name": "shvya_calendar:calendar",
+                "path_prefix": "/dashboard/shvya-calendar/calendar/",
+            },
+        ],
         "path_prefix": "/dashboard/shvya-calendar/",
         "section": "workspace",
         "search_keywords": [
@@ -243,6 +258,8 @@ SECTION_LABELS = {
 
 def _resolve_active(entry, request_path):
     """Return whether a navigation entry owns the current request path."""
+    if entry.get("path_exclude") and request_path.startswith(entry["path_exclude"]):
+        return False
     path_exact = entry.get("path_exact")
     path_prefix = entry.get("path_prefix")
 
