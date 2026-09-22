@@ -60,6 +60,13 @@ def catalog(org):
             ).values("id", "business_name", "display_phone_number")
         ),
         "call_statuses": dict(LeadCall._meta.get_field("status").choices),
+        "call_intents": {
+            "any": "Any intent",
+            "unknown": "Unknown",
+            "low": "Low",
+            "medium": "Medium",
+            "high": "High",
+        },
         "timezone": org.timezone,
     }
 
@@ -220,6 +227,15 @@ def validate(org, data):
         ) not in dict(LeadCall._meta.get_field("status").choices):
             fail("Choose a CRM call status.")
         clean_c["call_status"] = c["call_status"]
+    if kind == "call_intelligence_ready":
+        intent = c.get("intent", "any")
+        if intent not in {"any", "unknown", "low", "medium", "high"}:
+            fail("Choose a valid Call Intelligence intent.")
+        score = c.get("min_ai_score", 0)
+        if isinstance(score, bool) or not isinstance(score, int) or score < 0 or score > 10:
+            fail("Minimum AI score must be a whole number from 0 to 10.")
+        clean_c["intent"] = intent
+        clean_c["min_ai_score"] = score
 
     def sequences(ids):
         if not isinstance(ids, list) or not ids or len(ids) > 100:

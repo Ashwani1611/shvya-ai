@@ -9,6 +9,7 @@ from django.utils import timezone
 from apps.channels.models import WhatsAppMessage
 from apps.crm.models import Lead, LeadCall
 from apps.followups.models import LeadSequenceState
+from apps.telephony.models import CallIntelligenceResult
 from services.triggers.evaluator import emit
 
 
@@ -134,3 +135,28 @@ def call_event(sender, instance, created, raw=False, **kwargs):
             f"call:{instance.id}",
             {"status": instance.status, "manual": True},
         )
+
+
+
+@receiver(post_save, sender=CallIntelligenceResult)
+def call_intelligence_ready_event(sender, instance, raw=False, **kwargs):
+    if raw or not instance.analyzed_at or not instance.call.lead_id:
+        return
+    call = instance.call
+    lead = call.lead
+    if call.organization_id != lead.organization_id:
+        return
+    emit(
+        lead,
+        "call_intelligence_ready",
+        f"call-intelligence:{instance.id}:{instance.analyzed_at.isoformat()}",
+        {
+            "call_id": str(call.id),
+            "intent": instance.intent,
+            "sentiment": instance.sentiment,
+            "outcome": instance.outcome,
+            "ai_score": instance.ai_score or 0,
+            "qualification_score": instance.qualification_score or 0,
+            "next_action": instance.next_action,
+        },
+    )
