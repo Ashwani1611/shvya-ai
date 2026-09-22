@@ -34,7 +34,7 @@ META_LEAD_ATTRIBUTE_DEFINITIONS = (
 def _ensure_meta_attribute_definitions(organization):
     """Make Meta import attributes visible in the CRM lead attribute UI."""
     existing_keys = set(
-        AttributeDefinition.objects.filter(
+        AttributeDefinition.objects.filter(is_active=True, 
             organization=organization,
             key__in=[key for _name, key in META_LEAD_ATTRIBUTE_DEFINITIONS],
         ).values_list("key", flat=True)
@@ -376,7 +376,7 @@ def meta_lead_forms_view(request):
             "pipelines": Pipeline.objects.filter(
                 organization=organization, is_active=True
             ).prefetch_related("stages"),
-            "attributes": AttributeDefinition.objects.filter(
+            "attributes": AttributeDefinition.objects.filter(is_active=True, 
                 organization=organization
             ).order_by("display_order", "name"),
             "webhook_url": request.build_absolute_uri("/webhooks/meta-leads/"),
