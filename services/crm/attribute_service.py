@@ -355,6 +355,7 @@ def update_attribute_definition(
         attribute.description = description
 
         attribute.options = options
+        attribute.is_active = True
 
         attribute.full_clean()
 
