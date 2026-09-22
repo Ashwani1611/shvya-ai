@@ -367,3 +367,63 @@ class OperationsApprovalUse(models.Model):
 
     def delete(self, *args, **kwargs):
         raise ValidationError("Operations approval uses are immutable.")
+
+
+class OperationsConfigurationPlan(models.Model):
+    """Version-bound multi-object configuration proposal.
+
+    Plans contain only tenant configuration and safe diffs; secrets, provider
+    credentials, raw conversations, and hidden model reasoning are forbidden.
+    One create-plan audit receipt authorizes one atomic apply attempt.
+    """
+
+    class Status(models.TextChoices):
+        DRAFT = "draft", "Draft"
+        APPLIED = "applied", "Applied"
+        ROLLED_BACK = "rolled_back", "Rolled back"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    organization = models.ForeignKey(
+        "organizations.Organization",
+        on_delete=models.PROTECT,
+        related_name="operations_configuration_plans",
+    )
+    actor = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="operations_configuration_plans",
+    )
+    role = models.CharField(max_length=32)
+    status = models.CharField(
+        max_length=16,
+        choices=Status.choices,
+        default=Status.DRAFT,
+        db_index=True,
+    )
+    operations = models.JSONField(default=list)
+    summary = models.JSONField(default=dict, blank=True)
+    rollback_operations = models.JSONField(default=list, blank=True)
+    base_etag = models.CharField(max_length=64)
+    applied_etag = models.CharField(max_length=64, blank=True)
+    plan_digest = models.CharField(max_length=64, db_index=True)
+    expires_at = models.DateTimeField(db_index=True)
+    applied_at = models.DateTimeField(null=True, blank=True)
+    rolled_back_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(
+                fields=["organization", "status", "-created_at"],
+                name="ops_cfg_plan_org_status_idx",
+            ),
+            models.Index(
+                fields=["actor", "status", "-created_at"],
+                name="ops_cfg_plan_actor_status_idx",
+            ),
+        ]
+
+    def __str__(self):
+        return f"Configuration plan {self.id} — {self.organization_id} — {self.status}"
