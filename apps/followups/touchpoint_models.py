@@ -30,6 +30,7 @@ class TouchpointReply(models.Model):
     )
     title = models.CharField(max_length=150)
     body = models.TextField(max_length=1000, validators=[MaxLengthValidator(1000)])
+    is_active = models.BooleanField(default=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:

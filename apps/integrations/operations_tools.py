@@ -922,6 +922,31 @@ def _safe_workflow_config(rule, sensitive_keys):
     return conditions, action, redacted
 
 
+def _assert_workflow_safe_attribute_references(*, organization, clean):
+    sensitive = _sensitive_attribute_keys(organization)
+    if not sensitive:
+        return
+
+    referenced = set()
+    conditions = clean.get("conditions") if isinstance(clean, dict) else {}
+    action = clean.get("action") if isinstance(clean, dict) else {}
+    conditions = conditions if isinstance(conditions, dict) else {}
+    action = action if isinstance(action, dict) else {}
+
+    for item in conditions.get("attributes") or []:
+        if isinstance(item, dict):
+            referenced.add(str(item.get("key") or ""))
+    referenced.add(str(action.get("key") or ""))
+    referenced.add(str(action.get("date_attribute") or ""))
+    referenced.discard("")
+
+    if referenced & sensitive:
+        raise OperationsPermissionError(
+            "Workflow configuration cannot read or write credential-like or "
+            "sensitive CRM attributes through Operations MCP."
+        )
+
+
 def _workflow_reference_index(organization):
     stage_pairs = {
         (str(pipeline_id), str(stage_id))
@@ -5846,6 +5871,10 @@ def upsert_workflow_configuration(*, identity, arguments):
         clean = validate_workflow_rule(organization, data)
     except ValidationError as exc:
         raise OperationsToolError("Workflow validation failed.") from exc
+    _assert_workflow_safe_attribute_references(
+        organization=organization,
+        clean=clean,
+    )
 
     workflow_id = (arguments or {}).get("workflow_id")
     workflow = None
@@ -5955,6 +5984,10 @@ def upsert_workflow_configuration(*, identity, arguments):
                     "Workflow references changed after review. "
                     "Run a fresh dry-run."
                 ) from exc
+            _assert_workflow_safe_attribute_references(
+                organization=organization,
+                clean=clean_locked,
+            )
 
             if workflow is not None:
                 workflow = (
@@ -6821,6 +6854,13 @@ def execute_operations_tool(*, name, identity, arguments):
         "add_cadence_step": add_cadence_step,
     }
     handler = handlers.get(str(name or ""))
+    if handler is None:
+        # Extended configuration tools are kept in a lazily imported module so
+        # this core Operations boundary remains the single source of approval,
+        # tenant, audit, and error semantics without creating an import cycle.
+        from apps.integrations.operations_extended_tools import EXTENDED_HANDLERS
+
+        handler = EXTENDED_HANDLERS.get(str(name or ""))
     if handler is None:
         raise OperationsToolError("Unknown SHVYA Operations tool.")
     return handler(identity=identity, arguments=arguments or {})

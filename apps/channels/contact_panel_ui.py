@@ -6,6 +6,7 @@ from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, render, redirect
 from django.views.decorators.http import require_GET, require_POST, require_http_methods
 from django.db import transaction, IntegrityError
+from django.db.models import Prefetch
 from django.core.exceptions import ValidationError
 from django.urls import reverse
 
@@ -15,6 +16,7 @@ from apps.followups.models import (
     FollowupSequence,
     LeadSequenceState,
     TouchpointCategory,
+    TouchpointReply,
 )
 from apps.ai_engagement.services.intent_score import intent_score_for_lead
 from services.followup_service import (
@@ -87,7 +89,12 @@ def contact_panel(request, lead_id):
             "lead_calls": lead.calls.all()[:50],
             "categories": TouchpointCategory.objects.filter(
                 organization=lead.organization
-            ).prefetch_related("replies"),
+            ).prefetch_related(
+                Prefetch(
+                    "replies",
+                    queryset=TouchpointReply.objects.filter(is_active=True),
+                )
+            ),
         },
     )
     response["Cache-Control"] = "private, no-store"
