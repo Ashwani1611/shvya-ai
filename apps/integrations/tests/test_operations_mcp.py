@@ -370,6 +370,11 @@ class OperationsMCPTests(TestCase):
             item["name"]: item
             for item in result["tools"]
         }
+        for tool in tools.values():
+            self.assertEqual(
+                tool["_meta"]["securitySchemes"],
+                tool["securitySchemes"],
+            )
         for name in (
             "find_leads",
             "get_lead_snapshot",
