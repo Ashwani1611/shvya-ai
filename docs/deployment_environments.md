@@ -54,6 +54,14 @@ The deployment generates a random password on first deploy and keeps the plain
 credential only in `/opt/shvya-ai-staging/.env.staging`. The generated
 `.staging.htpasswd` contains only the password hash and is ignored by Git.
 
+The Operations MCP protocol surface is intentionally exempt from this outer
+Basic Auth layer so ChatGPT, Claude and VS Code can perform OAuth discovery,
+registration, authorization, token exchange and Bearer-authenticated MCP calls.
+Only the exact Operations MCP/OAuth paths are exempt; the rest of staging stays
+behind Basic Auth. Those exempt paths remain protected by SHVYA OAuth/PKCE,
+live Superadmin/Organization Admin authority checks, tenant isolation,
+capability policy and per-operation approval rules.
+
 To retrieve the generated login while connected to the VPS:
 
 ```bash
