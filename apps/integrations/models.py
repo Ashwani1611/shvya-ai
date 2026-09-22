@@ -542,6 +542,7 @@ from .diagnostic_models import (  # noqa: E402,F401
 from .operations_models import (  # noqa: E402,F401
     OperationsApprovalUse,
     OperationsAuditEvent,
+    OperationsConfigurationPlan,
     OperationsOAuthAuthorizationCode,
     OperationsOAuthClient,
     OperationsOAuthToken,
