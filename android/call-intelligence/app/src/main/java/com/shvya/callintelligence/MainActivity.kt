@@ -84,6 +84,7 @@ class MainActivity : AppCompatActivity() {
             contentDescription = "SHVYA"
             layoutParams = LinearLayout.LayoutParams(dp(64), dp(64))
         })
+        root.addView(space(20))
         root.addView(kicker("SHVYA CALL INTELLIGENCE"))
         root.addView(title("Your calls.\nYour CRM. Connected."))
         root.addView(body("Sign in with your SHVYA employee account to securely connect this Android phone to your organization."))
@@ -143,11 +144,11 @@ class MainActivity : AppCompatActivity() {
             setImageResource(R.drawable.ic_shvya)
             contentDescription = "SHVYA"
         }, LinearLayout.LayoutParams(dp(46), dp(46)))
-        header.addView(sectionTitle("Call Intelligence").apply { setPadding(dp(12), 0, 0, 0) },
+        header.addView(sectionTitle("Call Intelligence").apply { setPadding(dp(12), 0, 0, 0); textSize = 20f },
             LinearLayout.LayoutParams(0, -2, 1f))
         header.addView(secondaryButton("Settings").apply { setOnClickListener { showSettings() } })
         root.addView(header)
-        root.addView(body(auth.email))
+        root.addView(kicker("SHVYA · YOUR CALL WORKSPACE"))
         root.addView(space(24))
 
         if (!essentialPermissionsGranted()) {
@@ -180,7 +181,7 @@ class MainActivity : AppCompatActivity() {
             isSingleLine = true
             imeOptions = android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH
         }
-        root.addView(search)
+        root.addView(kicker("CALL ACTIVITY")); root.addView(space(10)); root.addView(search)
         val actions = LinearLayout(this)
         actions.addView(secondaryButton("Search").apply { setOnClickListener {
             query = search.text.toString().trim(); pageNumber = 1; render()
@@ -212,11 +213,11 @@ class MainActivity : AppCompatActivity() {
         loadInto(content, version, { ApiClient(this).authorizedGet(path) }) { data ->
             val stats = data.getJSONObject("stats")
             val summary = card()
-            summary.addView(sectionTitle("Call statistics"))
+            summary.addView(kicker("AT A GLANCE")); summary.addView(space(10)); summary.addView(sectionTitle("Call statistics"))
             summary.addView(metricRow(listOf("Total" to stats.optInt("total"), "Incoming" to stats.optInt("incoming"), "Missed" to stats.optInt("missed"))))
             summary.addView(metricRow(listOf("Outgoing" to stats.optInt("outgoing"), "Picked" to stats.optInt("picked"), "Not picked" to stats.optInt("not_picked"))))
             summary.addView(body("Measured ringing time: " + stats.optInt("total_ring") + "s"))
-            content.addView(summary); content.addView(space(20))
+            content.addView(summary); content.addView(space(20)); content.addView(sectionTitle("Recent calls"))
             val calls = data.getJSONArray("calls")
             if (calls.length() == 0) {
                 content.addView(emptyCard("No calls found", "Incoming, outgoing and missed calls appear here after sync. Try clearing your filters."))
@@ -233,6 +234,9 @@ class MainActivity : AppCompatActivity() {
                 row.addView(body("Talk: " + call.optInt("talk_duration_seconds") + "s  ·  Rang: " + if (ring > 0) "${ring}s" else "Not available"))
                 row.addView(secondaryButton("Call lead").apply { setOnClickListener { dial(call.optString("phone_number")) } })
                 if (call.optString("notes").isNotBlank()) row.addView(body(call.optString("notes")))
+                row.addView(secondaryButton(if (call.optString("notes").isBlank()) "Add call notes" else "Edit call notes").apply {
+                    setOnClickListener { editCallNotes(call) }
+                })
                 content.addView(row); content.addView(space(12))
             }
             content.addView(pagination(data.optBoolean("has_next")))
@@ -253,7 +257,7 @@ class MainActivity : AppCompatActivity() {
         loadInto(content, version, { ApiClient(this).authorizedGet(apiPath + "reminders/?page=$pageNumber") }) { data ->
             val stats = data.getJSONObject("stats")
             val summary = card()
-            summary.addView(sectionTitle("Call reminders"))
+            summary.addView(kicker("YOUR CRM FOLLOW-UPS")); summary.addView(space(10)); summary.addView(sectionTitle("Call reminders"))
             summary.addView(metricRow(listOf("Total" to stats.optInt("total"), "Upcoming" to stats.optInt("upcoming"))))
             summary.addView(metricRow(listOf("Overdue" to stats.optInt("overdue"), "Today" to stats.optInt("today"))))
             summary.addView(body("Today includes reminders already overdue today."))
@@ -264,7 +268,7 @@ class MainActivity : AppCompatActivity() {
             for (i in 0 until rows.length()) {
                 val item = rows.getJSONObject(i)
                 val row = card()
-                if (item.optBoolean("overdue")) row.background = rounded(Color.rgb(255, 245, 245), 24f)
+                if (item.optBoolean("overdue")) row.background = rounded(Color.rgb(255, 246, 245), 22f)
                 row.addView(sectionTitle(item.optString("lead_name")))
                 row.addView(body(formatDate(item.optString("due_at"))))
                 row.addView(body(item.optString("title")))
@@ -295,6 +299,41 @@ class MainActivity : AppCompatActivity() {
                 button.isEnabled = true; toast("Could not update the reminder. Please retry.")
             }
         }
+    }
+
+    private fun editCallNotes(call: JSONObject) {
+        val content = card()
+        val notes = field("What happened on the call?").apply {
+            setText(call.optString("notes"))
+            isSingleLine = false
+            minLines = 5
+            gravity = Gravity.TOP
+            setPadding(dp(16), dp(14), dp(16), dp(14))
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
+        }
+        val message = body("Notes are saved to this call and its CRM activity.")
+        content.addView(notes); content.addView(space(8)); content.addView(message)
+        val dialog = AlertDialog.Builder(this).setTitle("Call notes").setView(content)
+            .setNegativeButton("Cancel", null).setPositiveButton("Save notes", null).create()
+        dialog.setOnShowListener {
+            val button = dialog.getButton(AlertDialog.BUTTON_POSITIVE)
+            button.setOnClickListener {
+                button.isEnabled = false
+                lifecycleScope.launch {
+                    val result = withContext(Dispatchers.IO) {
+                        runCatching {
+                            ApiClient(this@MainActivity).authorizedPatch(
+                                apiPath + "calls/" + call.getString("id") + "/notes/",
+                                JSONObject().put("notes", notes.text.toString().trim()),
+                            )
+                        }.getOrNull()
+                    }
+                    if (result?.successful == true) { dialog.dismiss(); toast("Call notes saved to CRM"); render() }
+                    else { button.isEnabled = true; message.text = "Could not save notes. Please retry." }
+                }
+            }
+        }
+        dialog.show()
     }
 
     private fun showSettings() {
@@ -505,7 +544,7 @@ class MainActivity : AppCompatActivity() {
         LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(20), dp(24), dp(20), dp(28))
-            setBackgroundColor(Color.rgb(245, 245, 247))
+            setBackgroundColor(Color.rgb(246, 247, 251))
         }
 
     private fun setPage(content: LinearLayout) {
@@ -518,7 +557,8 @@ class MainActivity : AppCompatActivity() {
         LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(20), dp(20), dp(20), dp(20))
-            background = rounded(Color.WHITE, 24f)
+            background = rounded(Color.WHITE, 22f)
+            elevation = dp(2).toFloat()
         }
 
     private fun kicker(text: String): TextView =
