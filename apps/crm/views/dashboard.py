@@ -3571,6 +3571,12 @@ def lead_detail(
         lead.notes or ""
     ).strip()
 
+    from apps.shvya_calendar.services import attach_calendar_attachments_to_leads
+    attach_calendar_attachments_to_leads(
+        [lead],
+        organization=organization,
+    )
+
     return render(
         request,
         "crm/partials/lead_detail.html",
@@ -3583,6 +3589,7 @@ def lead_detail(
             "stages": stages,
             "initials": initials,
             "lead_note_text": lead_note_text,
+            "calendar_attachments": lead.calendar_attachments,
         },
     )
 
@@ -3693,6 +3700,12 @@ def _lead_card_context(
 
     lead.attribute_definitions = (
         attribute_definitions
+    )
+
+    from apps.shvya_calendar.services import attach_calendar_attachments_to_leads
+    attach_calendar_attachments_to_leads(
+        [lead],
+        organization=lead.organization,
     )
 
     lead.activities_for_card = (

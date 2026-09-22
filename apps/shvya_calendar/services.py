@@ -119,6 +119,60 @@ def page_snapshot(page):
     }
 
 
+def _validate_page_for_publish(page):
+    errors = {}
+    if not page.pipeline_id:
+        errors["pipeline"] = "Select a CRM pipeline before publishing."
+    if not page.stage_id:
+        errors["stage"] = "Select an initial stage before publishing."
+    if page.pipeline_id and page.pipeline.organization_id != page.organization_id:
+        errors["pipeline"] = "Pipeline must belong to this organization."
+    if page.stage_id and (
+        not page.pipeline_id or page.stage.pipeline_id != page.pipeline_id
+    ):
+        errors["stage"] = "Stage must belong to the selected pipeline."
+    if page.page_type != CalendarPage.PageType.LEAD and not page.host_id:
+        errors["host"] = "Select a booking host before publishing."
+    if page.host_id and page.host.organization_id != page.organization_id:
+        errors["host"] = "Booking host must belong to this organization."
+    if (
+        page.meeting_location == CalendarPage.MeetingLocation.CUSTOM
+        and not page.custom_meeting_link
+    ):
+        errors["custom_meeting_link"] = "Add the custom meeting link before publishing."
+
+    try:
+        ZoneInfo(page.timezone)
+    except (ZoneInfoNotFoundError, ValueError):
+        errors["timezone"] = "Choose a valid booking timezone, for example Asia/Kolkata."
+
+    availability = page.availability or {}
+    if not isinstance(availability, dict):
+        errors["availability"] = "Availability must be a weekday configuration."
+    else:
+        for day, rule in availability.items():
+            if not isinstance(rule, dict) or not rule.get("enabled"):
+                continue
+            try:
+                start = datetime.strptime(str(rule.get("start") or ""), "%H:%M").time()
+                end = datetime.strptime(str(rule.get("end") or ""), "%H:%M").time()
+            except (TypeError, ValueError):
+                errors["availability"] = f"{str(day).title()} has an invalid working time."
+                break
+            if start >= end:
+                errors["availability"] = (
+                    f"{str(day).title()} working hours must end after they start."
+                )
+                break
+
+    if page.bookings_per_slot < 1:
+        errors["bookings_per_slot"] = "Bookings per slot must be at least 1."
+    if page.slot_duration_minutes < 5:
+        errors["slot_duration_minutes"] = "Slot duration must be at least 5 minutes."
+    if errors:
+        raise ValidationError(errors)
+
+
 @transaction.atomic
 def publish_page(*, page, actor):
     page = (
@@ -127,36 +181,53 @@ def publish_page(*, page, actor):
         .select_related("pipeline", "stage", "host")
         .get(pk=page.pk)
     )
-    if not page.pipeline_id or not page.stage_id:
-        raise ValidationError(
-            "Select a CRM pipeline and initial stage before publishing."
-        )
-    page.full_clean()
-    if page.page_type != CalendarPage.PageType.LEAD and not page.host_id:
-        raise ValidationError("Select a booking host before publishing.")
+    _validate_page_for_publish(page)
 
-    # Publication and provider readiness are separate concerns. A page must be
-    # shareable even before Google is connected so Web-to-Lead capture still
-    # works. When Google Meet is selected without a connection, scheduling
-    # fails closed with a clear message instead of creating a booking that has
-    # no conference link.
-    latest_version = (
-        CalendarPageVersion.objects
-        .filter(page=page)
-        .aggregate(max_version=Max("version"))
-        .get("max_version")
-        or 0
-    )
-    # current_version may be stale after an interrupted/legacy publication.
-    # Always derive the next immutable version from both sources so toggling
-    # Booking Page Status can recover instead of raising a unique-key error.
-    version = max(int(page.current_version or 0), int(latest_version)) + 1
-    published = CalendarPageVersion.objects.create(
-        page=page,
-        version=version,
-        snapshot=page_snapshot(page),
-        published_by=actor,
-    )
+    # Persisted JSON fields should already be serializable, but legacy rows can
+    # predate today's editor validation. Convert an unexpected legacy payload
+    # into a useful validation error rather than a generic status-toggle failure.
+    snapshot = page_snapshot(page)
+    try:
+        json.dumps(snapshot)
+    except (TypeError, ValueError) as exc:
+        raise ValidationError(
+            "This Calendar page contains invalid saved form data. Save Lead Form "
+            "and Scheduling once, then publish again."
+        ) from exc
+
+    # current_version can be stale after interrupted/legacy releases, and two
+    # requests can race outside normal browser behavior. Lock the page and retry
+    # version allocation inside savepoints so publication self-heals safely.
+    published = None
+    version = None
+    for _attempt in range(4):
+        latest_version = (
+            CalendarPageVersion.objects
+            .filter(page=page)
+            .aggregate(max_version=Max("version"))
+            .get("max_version")
+            or 0
+        )
+        version = max(int(page.current_version or 0), int(latest_version)) + 1
+        try:
+            with transaction.atomic():
+                published = CalendarPageVersion.objects.create(
+                    page=page,
+                    version=version,
+                    snapshot=snapshot,
+                    published_by=actor,
+                )
+            break
+        except IntegrityError:
+            page.refresh_from_db(fields=["current_version"])
+            continue
+
+    if published is None or version is None:
+        raise ValidationError(
+            "SHVYA could not reserve a publication version for this page. "
+            "Please try the toggle once more."
+        )
+
     page.current_version = version
     page.status = CalendarPage.Status.PUBLISHED
     page.published_at = timezone.now()
@@ -1055,6 +1126,46 @@ def schedule_booking_reminders(booking):
             # because the task broker is temporarily unavailable.
             pass
     return deliveries
+
+
+def lead_calendar_attachments(lead, *, limit=20):
+    return list(
+        CalendarSubmissionAttachment.objects
+        .filter(
+            submission__lead=lead,
+            submission__organization=lead.organization,
+        )
+        .select_related("submission", "submission__page")
+        .order_by("-created_at")[:limit]
+    )
+
+
+def attach_calendar_attachments_to_leads(leads, *, organization, limit=20):
+    leads = list(leads)
+    lead_ids = [lead.id for lead in leads]
+    grouped = {lead_id: [] for lead_id in lead_ids}
+    counts = {lead_id: 0 for lead_id in lead_ids}
+    if lead_ids:
+        attachments = (
+            CalendarSubmissionAttachment.objects
+            .filter(
+                submission__lead_id__in=lead_ids,
+                submission__organization=organization,
+            )
+            .select_related("submission", "submission__page")
+            .order_by("submission__lead_id", "-created_at")
+        )
+        for attachment in attachments:
+            lead_id = attachment.submission.lead_id
+            counts[lead_id] = counts.get(lead_id, 0) + 1
+            bucket = grouped.setdefault(lead_id, [])
+            if len(bucket) < limit:
+                bucket.append(attachment)
+
+    for lead in leads:
+        lead.calendar_attachments = grouped.get(lead.id, [])
+        lead.calendar_attachment_count = counts.get(lead.id, 0)
+    return leads
 
 
 def schema_from_json(*, organization, raw):

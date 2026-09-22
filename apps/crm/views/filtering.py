@@ -149,6 +149,11 @@ def lead_table_partial(request):
         stage_leads = list(queryset.filter(stage=stage).prefetch_related("lead_notes"))
         from apps.ai_engagement.services.intent_score import prepare_intent_scores
         prepare_intent_scores(stage_leads)
+        from apps.shvya_calendar.services import attach_calendar_attachments_to_leads
+        attach_calendar_attachments_to_leads(
+            stage_leads,
+            organization=user.organization,
+        )
         for lead in stage_leads:
             _prepare_lead(lead, attribute_definitions)
         stage_groups.append(

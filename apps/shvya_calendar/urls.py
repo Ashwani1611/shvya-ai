@@ -11,6 +11,11 @@ urlpatterns = [
     path("<uuid:page_id>/status/", views.calendar_status, name="status"),
     path("<uuid:page_id>/preview/", views.calendar_preview, name="preview"),
     path(
+        "attachments/<uuid:attachment_id>/download/",
+        views.calendar_attachment_download,
+        name="attachment_download",
+    ),
+    path(
         "<uuid:page_id>/reminders/add/",
         views.calendar_reminder_add,
         name="reminder_add",
