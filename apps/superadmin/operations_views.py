@@ -56,7 +56,7 @@ def operations_mcp_workspace_view(request):
         reverse("shvya-operations-oauth-authorize")
     )
     resource_metadata_url = request.build_absolute_uri(
-        reverse("shvya-operations-oauth-resource-metadata")
+        reverse("shvya-operations-oauth-resource-metadata-rfc9728")
     )
     server_metadata_url = request.build_absolute_uri(
         reverse("shvya-operations-oauth-server-metadata-rfc8414")
