@@ -27,7 +27,7 @@ def accessible_pipelines(user):
 def public_attribute_definitions(organization):
     """Return only user-created/filterable attributes."""
     return (
-        AttributeDefinition.objects.filter(organization=organization)
+        AttributeDefinition.objects.filter(is_active=True, organization=organization)
         .exclude(key__in=INTERNAL_ATTRIBUTE_KEYS)
         .order_by("display_order", "created_at")
     )
