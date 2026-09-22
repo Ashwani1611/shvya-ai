@@ -171,3 +171,50 @@ class SuperadminGlobalMCPWorkspaceTests(TestCase):
         self.assertIsNone(token.revoked_at)
         self.assertIsNone(token.active_organization_id)
         self.assertIsNotNone(support.ended_at)
+
+
+    def test_superadmin_can_generate_direct_mcp_key(self):
+        response = self.client.post(
+            reverse("superadmin-operations-mcp-key-generate"),
+            {
+                "label": "VS Code",
+                "access_mode": "read_write",
+                "ttl_days": "30",
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload["ok"])
+
+        access_key = payload["key"]
+        token = OperationsOAuthToken.objects.select_related(
+            "client",
+            "actor",
+        ).get(pk=payload["token_id"])
+
+        self.assertTrue(access_key.startswith("shvya_mcp_"))
+        self.assertTrue(token.client.client_id.startswith("shvya_key_"))
+        self.assertEqual(token.client.redirect_uris, [])
+        self.assertEqual(token.client.grant_types, [])
+        self.assertEqual(token.access_token_hash, token_hash(access_key))
+        self.assertIn(OPERATIONS_READ_SCOPE, token.scope.split())
+        self.assertIn(OPERATIONS_WRITE_SCOPE, token.scope.split())
+
+        identity = authenticate_bearer(access_key)
+        self.assertEqual(identity.actor, self.superadmin)
+        self.assertEqual(identity.role, ROLE_SUPERADMIN)
+        self.assertIsNone(identity.active_organization)
+
+        self.assertTrue(
+            OperationsAuditEvent.objects.filter(
+                actor=self.superadmin,
+                tool_name="mcp_key_generate",
+                target_id=str(token.id),
+            ).exists()
+        )
+
+        workspace = self.client.get(reverse("superadmin-operations-mcp"))
+        self.assertNotIn(
+            access_key,
+            workspace.content.decode("utf-8"),
+        )
