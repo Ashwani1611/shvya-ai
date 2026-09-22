@@ -1117,6 +1117,10 @@ def book_slot(*, page, submission, slot_start_iso):
     return booking
 
 
+def active_booking_statuses():
+    return [CalendarBooking.Status.SCHEDULED, CalendarBooking.Status.RESCHEDULED]
+
+
 def reschedule_booking(*, booking, slot_start_iso):
     page = booking.page
     try:
@@ -1141,12 +1145,12 @@ def reschedule_booking(*, booking, slot_start_iso):
         locked_page = CalendarPage.objects.select_for_update().get(pk=page.pk)
         locked = (
             CalendarBooking.objects
-            .select_for_update()
+            .select_for_update(of=("self",))
             .select_related("page", "lead", "submission", "host")
             .get(pk=booking.pk)
         )
-        if locked.status == CalendarBooking.Status.CANCELLED:
-            raise ValidationError("Cancelled bookings cannot be rescheduled.")
+        if locked.status not in active_booking_statuses():
+            raise ValidationError("Only active bookings can be rescheduled.")
         duration = timedelta(minutes=locked_page.slot_duration_minutes)
         active_statuses = [
             CalendarBooking.Status.SCHEDULED,
@@ -1393,3 +1397,22 @@ def schema_from_json(*, organization, raw):
             }
         )
     return cleaned
+
+
+@transaction.atomic
+def move_booking_pipeline(*, booking, actor, pipeline_id, stage_id):
+    """A booking follows its CRM lead; preserve the booking page and host."""
+    from services.crm.lead_transition import LeadTransitionError, move_lead_to_pipeline_stage
+
+    if actor.role != User.Role.ADMIN or actor.organization_id != booking.organization_id:
+        raise ValidationError("You cannot move this booking.")
+    try:
+        pipeline = Pipeline.objects.get(pk=pipeline_id, organization=actor.organization, is_active=True)
+        stage = Stage.objects.get(pk=stage_id, pipeline=pipeline, is_active=True)
+        lead = Lead.objects.select_for_update().get(pk=booking.lead_id, organization=actor.organization)
+    except (Pipeline.DoesNotExist, Stage.DoesNotExist, Lead.DoesNotExist, ValueError, TypeError) as exc:
+        raise ValidationError("Choose an active pipeline and one of its stages.") from exc
+    try:
+        return move_lead_to_pipeline_stage(lead=lead, pipeline=pipeline, stage=stage, actor=actor)
+    except LeadTransitionError as exc:
+        raise ValidationError(str(exc)) from exc
