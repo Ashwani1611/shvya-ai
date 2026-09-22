@@ -1389,7 +1389,7 @@ def create_configuration_plan(*, identity, arguments):
         data={
             "status": "DRY_RUN",
             "plan_id": str(plan.id),
-            "plan_hash": plan.plan_hash,
+            "plan_digest": plan.plan_hash[:32],
             "base_configuration_etag": plan.base_etag,
             "expires_at": plan.expires_at.isoformat(),
             "operations": previews,
@@ -1405,7 +1405,7 @@ def create_configuration_plan(*, identity, arguments):
         outcome=OperationsAuditEvent.Outcome.DRY_RUN,
         audit_summary={
             "operation": "create_configuration_plan",
-            "plan_hash": plan.plan_hash,
+            "plan_digest": plan.plan_hash[:32],
             "operation_count": len(operations),
             "base_etag": plan.base_etag,
             "reversible": plan.reversible,
@@ -1448,7 +1448,7 @@ def _consume_plan_approval(*, identity, organization, plan, arguments):
         created_at__gte=timezone.now() - APPROVAL_RECEIPT_TTL,
     ).first()
     summary = event.change_summary if event and isinstance(event.change_summary, dict) else {}
-    if event is None or str(summary.get("plan_hash") or "") != plan.plan_hash:
+    if event is None or str(summary.get("plan_digest") or "") != plan.plan_hash[:32]:
         raise OperationsApprovalRequired(
             "The plan approval receipt is missing, expired, actor/tenant mismatched, "
             "or does not match this exact plan hash."
@@ -1898,7 +1898,7 @@ def apply_configuration_plan(*, identity, arguments):
         reason=reason,
         audit_summary={
             "operation": "apply_configuration_plan",
-            "plan_hash": plan.plan_hash,
+            "plan_digest": plan.plan_hash[:32],
             "operation_count": len(results),
             "applied_etag": plan.applied_etag,
             "verification": "passed",
@@ -1941,7 +1941,7 @@ def rollback_configuration_plan(*, identity, arguments):
 
     proposal = {
         "plan_id": str(plan.id),
-        "plan_hash": plan.plan_hash,
+        "plan_digest": plan.plan_hash[:32],
         "current_etag": plan.applied_etag,
         "target_etag": plan.base_etag,
         "inverse_operation_count": len(plan.inverse_operations),
@@ -1972,7 +1972,7 @@ def rollback_configuration_plan(*, identity, arguments):
             outcome=OperationsAuditEvent.Outcome.DRY_RUN,
             audit_summary={
                 "operation": "rollback_configuration_plan",
-                "plan_hash": plan.plan_hash,
+                "plan_digest": plan.plan_hash[:32],
                 "proposal_digest": _proposal_digest(proposal),
             },
         )
@@ -2034,7 +2034,7 @@ def rollback_configuration_plan(*, identity, arguments):
         reason=reason,
         audit_summary={
             "operation": "rollback_configuration_plan",
-            "plan_hash": plan.plan_hash,
+            "plan_digest": plan.plan_hash[:32],
             "verification": "passed",
         },
     )
