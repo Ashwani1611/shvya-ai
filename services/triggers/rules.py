@@ -49,7 +49,7 @@ def catalog(org):
             )
         ),
         "attributes": list(
-            AttributeDefinition.objects.filter(organization=org).values(
+            AttributeDefinition.objects.filter(is_active=True, organization=org).values(
                 "key", "name", "field_type", "options"
             )
         ),
@@ -123,7 +123,7 @@ def validate(org, data):
     c, a = data.get("conditions", {}), data.get("action", {})
     if not isinstance(c, dict) or not isinstance(a, dict):
         fail("Conditions and action must be objects.")
-    attrs = {x.key: x for x in AttributeDefinition.objects.filter(organization=org)}
+    attrs = {x.key: x for x in AttributeDefinition.objects.filter(is_active=True, organization=org)}
 
     def attribute(key):
         if not isinstance(key, str) or key not in attrs:
