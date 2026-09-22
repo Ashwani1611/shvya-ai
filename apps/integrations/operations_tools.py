@@ -898,7 +898,8 @@ def _sensitive_attribute_keys(organization):
     return {
         item.key
         for item in AttributeDefinition.objects.filter(
-            organization=organization
+            organization=organization,
+            is_active=True,
         ).only("key", "name")
         if is_sensitive_attribute_definition(
             {"key": item.key, "name": item.name}
@@ -1018,7 +1019,8 @@ def _workflow_reference_index(organization):
         "attribute_keys": {
             str(item)
             for item in AttributeDefinition.objects.filter(
-                organization=organization
+                organization=organization,
+                is_active=True,
             ).values_list("key", flat=True)
         },
     }
@@ -1624,7 +1626,8 @@ def get_organization_configuration(*, identity, arguments):
     )
     attribute_qs = (
         AttributeDefinition.objects.filter(
-            organization=organization
+            organization=organization,
+            is_active=True,
         )
         .exclude(key__in=sensitive_attribute_keys)
         .order_by("display_order", "name")
@@ -2921,7 +2924,10 @@ def update_lead_attributes(*, identity, arguments):
 
     definitions = {
         item.key: item
-        for item in AttributeDefinition.objects.filter(organization=organization)
+        for item in AttributeDefinition.objects.filter(
+            organization=organization,
+            is_active=True,
+        )
     }
     unknown = sorted(set(values) - set(definitions))
     if unknown:
@@ -3367,6 +3373,7 @@ def get_conversion_analysis(*, identity, arguments):
     lost_reason_definition = (
         AttributeDefinition.objects.filter(
             organization=organization,
+            is_active=True,
         )
         .filter(
             Q(key__in=["lost_reason", "loss_reason"])
@@ -5822,7 +5829,8 @@ def upsert_attribute_configuration(*, identity, arguments):
                 )
                 if (
                     AttributeDefinition.objects.filter(
-                        organization=organization
+                        organization=organization,
+                        is_active=True,
                     ).count()
                     > MAX_CUSTOM_ATTRIBUTES
                 ):
