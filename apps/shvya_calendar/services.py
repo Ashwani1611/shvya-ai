@@ -10,6 +10,7 @@ from django.core.exceptions import ValidationError
 from django.core.mail import send_mail
 from django.core.validators import validate_email
 from django.db import IntegrityError, transaction
+from django.db.models import Max
 from django.utils import timezone
 
 from apps.core.ratelimit import _client_ip
@@ -76,7 +77,7 @@ def page_snapshot(page):
         "timezone": page.timezone,
         "language": page.language,
         "accent_color": page.accent_color,
-        "logo_url": page.logo_url,
+        "logo_url": page.logo_display_url,
         "intro_title": page.intro_title,
         "intro_description": page.intro_description,
         "intro_highlights": page.intro_highlights,
@@ -139,7 +140,17 @@ def publish_page(*, page, actor):
     # works. When Google Meet is selected without a connection, scheduling
     # fails closed with a clear message instead of creating a booking that has
     # no conference link.
-    version = page.current_version + 1
+    latest_version = (
+        CalendarPageVersion.objects
+        .filter(page=page)
+        .aggregate(max_version=Max("version"))
+        .get("max_version")
+        or 0
+    )
+    # current_version may be stale after an interrupted/legacy publication.
+    # Always derive the next immutable version from both sources so toggling
+    # Booking Page Status can recover instead of raising a unique-key error.
+    version = max(int(page.current_version or 0), int(latest_version)) + 1
     published = CalendarPageVersion.objects.create(
         page=page,
         version=version,
