@@ -25,6 +25,7 @@ CAP_ATTRIBUTE_CONFIG_WRITE = "crm.attribute.config.write"
 CAP_WORKFLOW_CONFIG_WRITE = "automation.workflow.config.write"
 CAP_CADENCE_CONFIG_WRITE = "automation.cadence.config.write"
 CAP_MESSAGING_CONFIG_WRITE = "automation.messaging.config.write"
+CAP_CONFIGURATION_PLAN_WRITE = "configuration.plan.write"
 
 READ_CAPABILITIES = (
     CAP_ORGANIZATION_READ,
@@ -41,6 +42,7 @@ WRITE_CAPABILITIES = (
     CAP_WORKFLOW_CONFIG_WRITE,
     CAP_CADENCE_CONFIG_WRITE,
     CAP_MESSAGING_CONFIG_WRITE,
+    CAP_CONFIGURATION_PLAN_WRITE,
 )
 ALL_CAPABILITIES = READ_CAPABILITIES + WRITE_CAPABILITIES
 
@@ -73,6 +75,7 @@ CAPABILITY_LABELS = {
     CAP_WORKFLOW_CONFIG_WRITE: "Configure Workflows",
     CAP_CADENCE_CONFIG_WRITE: "Configure Cadence",
     CAP_MESSAGING_CONFIG_WRITE: "Configure messaging automation settings",
+    CAP_CONFIGURATION_PLAN_WRITE: "Create/apply/rollback organization configuration plans",
 }
 
 
