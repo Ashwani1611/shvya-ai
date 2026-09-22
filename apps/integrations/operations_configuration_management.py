@@ -249,7 +249,10 @@ def _portable_configuration(organization):
     )
     stage_map = {str(item.id): item for item in stages_list}
     attributes = list(
-        AttributeDefinition.objects.filter(organization=organization)
+        AttributeDefinition.objects.filter(
+            organization=organization,
+            is_active=True,
+        )
         .order_by("display_order", "key", "id")
     )
     accounts_list = list(
@@ -478,7 +481,10 @@ def _dependency_graph(organization):
         .order_by("pipeline__name", "display_order", "id")
     )
     attributes = list(
-        AttributeDefinition.objects.filter(organization=organization)
+        AttributeDefinition.objects.filter(
+            organization=organization,
+            is_active=True,
+        )
         .order_by("display_order", "key")[:100]
     )
     workflows = list(
