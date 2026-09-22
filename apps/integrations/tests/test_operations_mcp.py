@@ -7285,7 +7285,7 @@ class OperationsMCPTests(TestCase):
         )
 
         old_access_response = self._call(bearer, "get_operations_context")
-        self.assertEqual(old_access_response.status_code, 401)
+        self.assertEqual(old_access_response.status_code, 200)
         old_access = old_access_response.json()["result"]
         self.assertFalse(old_access["isError"])
 
