@@ -2193,7 +2193,7 @@ def _attachment_from_data(data):
     except (binascii.Error, ValueError) as exc:
         raise OperationsToolError("attachment_base64 is invalid.") from exc
     if not raw or len(raw) > MAX_MCP_KNOWLEDGE_UPLOAD_BYTES:
-        raise OperationsToolError("MCP attachment must be between 1 byte and 10 MiB.")
+        raise OperationsToolError("MCP attachment must be between 1 byte and 512 KiB.")
     upload = ContentFile(raw, name=filename)
     upload.content_type = str(data.get("attachment_mime_type") or "")
     return upload
