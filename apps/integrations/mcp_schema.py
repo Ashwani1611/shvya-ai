@@ -25,6 +25,41 @@ def _validate(value, schema, *, path: str):
         return
 
     expected = schema.get("type")
+    if isinstance(expected, list):
+        def _matches(candidate):
+            if candidate == "object":
+                return isinstance(value, dict)
+            if candidate == "array":
+                return isinstance(value, list)
+            if candidate == "string":
+                return isinstance(value, str)
+            if candidate == "integer":
+                return isinstance(value, int) and not isinstance(value, bool)
+            if candidate == "number":
+                return isinstance(value, (int, float)) and not isinstance(value, bool)
+            if candidate == "boolean":
+                return isinstance(value, bool)
+            if candidate == "null":
+                return value is None
+            return False
+
+        if not any(_matches(candidate) for candidate in expected):
+            _fail(path, "has an invalid type")
+        if isinstance(value, dict) and "object" in expected:
+            expected = "object"
+        elif isinstance(value, list) and "array" in expected:
+            expected = "array"
+        elif isinstance(value, bool) and "boolean" in expected:
+            expected = "boolean"
+        elif isinstance(value, str) and "string" in expected:
+            expected = "string"
+        elif isinstance(value, int) and not isinstance(value, bool) and "integer" in expected:
+            expected = "integer"
+        elif isinstance(value, (int, float)) and not isinstance(value, bool) and "number" in expected:
+            expected = "number"
+        elif value is None and "null" in expected:
+            return
+
     if expected == "object":
         if not isinstance(value, dict):
             _fail(path, "must be an object")
@@ -77,6 +112,16 @@ def _validate(value, schema, *, path: str):
             _fail(path, f"must be >= {int(minimum)}")
         if maximum is not None and value > int(maximum):
             _fail(path, f"must be <= {int(maximum)}")
+
+    elif expected == "number":
+        if not isinstance(value, (int, float)) or isinstance(value, bool):
+            _fail(path, "must be a number")
+        minimum = schema.get("minimum")
+        maximum = schema.get("maximum")
+        if minimum is not None and value < float(minimum):
+            _fail(path, f"must be >= {minimum}")
+        if maximum is not None and value > float(maximum):
+            _fail(path, f"must be <= {maximum}")
 
     elif expected == "boolean":
         if not isinstance(value, bool):
