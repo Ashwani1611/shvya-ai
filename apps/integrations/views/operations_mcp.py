@@ -241,7 +241,8 @@ def _auth_result(request, request_id, *, modern, description):
         "isError": True,
     }
     response = JsonResponse(
-        _jsonrpc_result(request_id, result, modern=modern)
+        _jsonrpc_result(request_id, result, modern=modern),
+        status=401,
     )
     response["WWW-Authenticate"] = challenge
     response["Cache-Control"] = "no-store"
