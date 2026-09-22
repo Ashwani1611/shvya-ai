@@ -2449,7 +2449,7 @@ def update_cadence_step(*, identity, arguments):
 
     with transaction.atomic():
         locked_step = (
-            FollowupStep.objects.select_for_update()
+            FollowupStep.objects.select_for_update(of=("self",))
             .select_related("sequence__whatsapp_account", "whatsapp_template")
             .filter(
                 pk=step.pk,
@@ -2580,7 +2580,7 @@ def delete_cadence_step(*, identity, arguments):
         )
     with transaction.atomic():
         locked = (
-            FollowupStep.objects.select_for_update()
+            FollowupStep.objects.select_for_update(of=("self",))
             .select_related("sequence__whatsapp_account", "whatsapp_template")
             .filter(pk=step.pk, sequence=sequence)
             .first()
