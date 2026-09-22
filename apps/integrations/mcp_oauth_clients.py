@@ -9,6 +9,7 @@ import requests
 
 MAX_CIMD_BYTES = 32 * 1024
 CIMD_TIMEOUT = (2.0, 5.0)
+LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1"}
 
 
 class MCPClientMetadataError(ValueError):
@@ -16,6 +17,8 @@ class MCPClientMetadataError(ValueError):
 
 
 def _web_provider_host_allowed(host: str) -> bool:
+    """Legacy/Diagnostic provider allowlist. Keep intentionally narrow."""
+
     host = str(host or "").lower()
     return (
         host == "chatgpt.com"
@@ -29,6 +32,26 @@ def _web_provider_host_allowed(host: str) -> bool:
     )
 
 
+def _operations_cimd_host_allowed(host: str) -> bool:
+    """Known MCP client publishers safe for server-side CIMD fetching."""
+
+    host = str(host or "").lower()
+    suffixes = (
+        "chatgpt.com",
+        "openai.com",
+        "claude.ai",
+        "anthropic.com",
+        "vscode.dev",
+        "cursor.com",
+        "google.com",
+        "googleapis.com",
+        "windsurf.com",
+        "codeium.com",
+        "github.com",
+    )
+    return any(host == suffix or host.endswith("." + suffix) for suffix in suffixes)
+
+
 def _cimd_host_allowed(host: str) -> bool:
     host = str(host or "").lower()
     return bool(
@@ -38,13 +61,38 @@ def _cimd_host_allowed(host: str) -> bool:
     )
 
 
-def is_allowed_external_ai_redirect(uri: str) -> bool:
+def _safe_parsed_uri(uri: str):
     try:
         parsed = urlparse(str(uri or ""))
-        host = (parsed.hostname or "").lower()
-        port = parsed.port
+        # Accessing .port validates malformed/out-of-range ports.
+        _ = parsed.port
+        return parsed
     except (TypeError, ValueError):
+        return None
+
+
+def _is_loopback_http_redirect(uri: str) -> bool:
+    parsed = _safe_parsed_uri(uri)
+    if parsed is None:
         return False
+    host = (parsed.hostname or "").lower()
+    return bool(
+        parsed.scheme == "http"
+        and host in LOOPBACK_HOSTS
+        and parsed.username is None
+        and parsed.password is None
+        and not parsed.fragment
+    )
+
+
+def is_allowed_external_ai_redirect(uri: str) -> bool:
+    """Legacy/Diagnostic callback policy. Do not broaden this implicitly."""
+
+    parsed = _safe_parsed_uri(uri)
+    if parsed is None:
+        return False
+    host = (parsed.hostname or "").lower()
+    port = parsed.port
 
     if (
         parsed.scheme == "http"
@@ -79,14 +127,117 @@ def is_allowed_external_ai_redirect(uri: str) -> bool:
     )
 
 
-def is_allowed_cimd_url(client_id: str) -> bool:
-    try:
-        parsed = urlparse(str(client_id or ""))
-        host = (parsed.hostname or "").lower()
-        port = parsed.port
-    except (TypeError, ValueError):
+def is_allowed_operations_redirect(uri: str) -> bool:
+    """Operations callback policy for standards-compliant remote MCP clients.
+
+    Public web clients may dynamically register a normal HTTPS callback. Native
+    clients may use RFC 8252 loopback HTTP callbacks on localhost/127.0.0.1/::1
+    with a fixed or ephemeral port. PKCE S256, exact client binding, consent,
+    issuer signalling, and exact authorization-code redirect binding remain
+    mandatory elsewhere in the Operations OAuth flow.
+    """
+
+    parsed = _safe_parsed_uri(uri)
+    if parsed is None:
         return False
 
+    host = (parsed.hostname or "").lower()
+    port = parsed.port
+    if _is_loopback_http_redirect(uri):
+        return True
+
+    return bool(
+        parsed.scheme == "https"
+        and bool(host)
+        and port in {None, 443}
+        and parsed.username is None
+        and parsed.password is None
+        and not parsed.fragment
+    )
+
+
+def _redirect_components(uri: str):
+    parsed = _safe_parsed_uri(uri)
+    if parsed is None:
+        return None
+    return (
+        parsed.scheme,
+        (parsed.hostname or "").lower(),
+        parsed.port,
+        parsed.path or "/",
+        parsed.params,
+        parsed.query,
+    )
+
+
+def operations_redirect_uri_matches_registered(
+    registered_uris,
+    requested_uri: str,
+) -> bool:
+    """Match Operations redirects, including RFC 8252 variable loopback ports.
+
+    A registered loopback URI without an explicit port can match the same
+    scheme/host/path/query at a runtime-selected port. Fixed-port registrations
+    remain exact, and localhost/127.0.0.1/::1 are never treated as equivalent
+    hosts.
+    """
+
+    requested_uri = str(requested_uri or "").strip()
+    if not is_allowed_operations_redirect(requested_uri):
+        return False
+    requested = _redirect_components(requested_uri)
+    if requested is None:
+        return False
+
+    for raw in registered_uris or []:
+        registered_uri = str(raw or "").strip()
+        if registered_uri == requested_uri:
+            return True
+        if not _is_loopback_http_redirect(registered_uri):
+            continue
+        registered = _redirect_components(registered_uri)
+        if registered is None:
+            continue
+        (
+            registered_scheme,
+            registered_host,
+            registered_port,
+            registered_path,
+            registered_params,
+            registered_query,
+        ) = registered
+        (
+            requested_scheme,
+            requested_host,
+            requested_port,
+            requested_path,
+            requested_params,
+            requested_query,
+        ) = requested
+        if registered_port is not None:
+            continue
+        if (
+            registered_scheme == requested_scheme == "http"
+            and registered_host == requested_host
+            and registered_host in LOOPBACK_HOSTS
+            and requested_port is not None
+            and registered_path == requested_path
+            and registered_params == requested_params
+            and registered_query == requested_query
+        ):
+            return True
+    return False
+
+
+def is_allowed_cimd_url(client_id: str) -> bool:
+    """Legacy/Diagnostic CIMD policy."""
+
+    parsed = _safe_parsed_uri(client_id)
+    if parsed is None:
+        return False
+
+    host = (parsed.hostname or "").lower()
+    port = parsed.port
     path = unquote(parsed.path or "")
     segments = [segment for segment in path.split("/") if segment]
     return bool(
@@ -104,15 +255,44 @@ def is_allowed_cimd_url(client_id: str) -> bool:
     )
 
 
-def fetch_cimd_metadata(client_id: str) -> dict:
-    """Fetch and validate a trusted-provider Client ID Metadata Document."""
+def is_allowed_operations_cimd_url(client_id: str) -> bool:
+    """Operations CIMD fetching stays publisher-allowlisted to avoid SSRF."""
 
+    parsed = _safe_parsed_uri(client_id)
+    if parsed is None:
+        return False
+
+    host = (parsed.hostname or "").lower()
+    port = parsed.port
+    path = unquote(parsed.path or "")
+    segments = [segment for segment in path.split("/") if segment]
+    return bool(
+        parsed.scheme == "https"
+        and _operations_cimd_host_allowed(host)
+        and port in {None, 443}
+        and path not in {"", "/"}
+        and segments
+        and all(segment not in {".", ".."} for segment in segments)
+        and "\\" not in path
+        and not parsed.query
+        and not parsed.fragment
+        and parsed.username is None
+        and parsed.password is None
+    )
+
+
+def _fetch_cimd_metadata(
+    client_id: str,
+    *,
+    client_id_validator,
+    redirect_validator,
+) -> dict:
     client_id = str(client_id or "").strip()
     if len(client_id) > 255:
         raise MCPClientMetadataError(
             "Client ID Metadata Document URL is too long for this SHVYA OAuth client."
         )
-    if not is_allowed_cimd_url(client_id):
+    if not client_id_validator(client_id):
         raise MCPClientMetadataError(
             "Client ID Metadata Document URL is not an approved External AI HTTPS URL."
         )
@@ -181,7 +361,7 @@ def fetch_cimd_metadata(client_id: str) -> dict:
         raise MCPClientMetadataError(
             "Client ID Metadata Document redirect URI is too long."
         )
-    if any(not is_allowed_external_ai_redirect(uri) for uri in redirect_uris):
+    if any(not redirect_validator(uri) for uri in redirect_uris):
         raise MCPClientMetadataError(
             "Client ID Metadata Document contains an unapproved redirect URI."
         )
@@ -238,3 +418,23 @@ def fetch_cimd_metadata(client_id: str) -> dict:
         "grant_types": grant_types,
         "response_types": response_types,
     }
+
+
+def fetch_cimd_metadata(client_id: str) -> dict:
+    """Fetch CIMD metadata under the legacy/Diagnostic trust policy."""
+
+    return _fetch_cimd_metadata(
+        client_id,
+        client_id_validator=is_allowed_cimd_url,
+        redirect_validator=is_allowed_external_ai_redirect,
+    )
+
+
+def fetch_operations_cimd_metadata(client_id: str) -> dict:
+    """Fetch CIMD metadata under the Operations multi-client trust policy."""
+
+    return _fetch_cimd_metadata(
+        client_id,
+        client_id_validator=is_allowed_operations_cimd_url,
+        redirect_validator=is_allowed_operations_redirect,
+    )
