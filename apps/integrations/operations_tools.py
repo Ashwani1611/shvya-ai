@@ -1729,9 +1729,14 @@ def get_organization_configuration(*, identity, arguments):
                 limit=20,
             ),
             "automation": {
-                "workflow_count": SmartTrigger.objects.filter(organization=organization).count(),
+                "workflow_count": SmartTrigger.objects.filter(
+                    organization=organization,
+                    is_active=True,
+                ).count(),
                 "workflow_enabled_count": SmartTrigger.objects.filter(
-                    organization=organization, enabled=True
+                    organization=organization,
+                    is_active=True,
+                    enabled=True,
                 ).count(),
                 "cadence_count": FollowupSequence.objects.filter(organization=organization).count(),
                 "cadence_active_count": FollowupSequence.objects.filter(
@@ -1774,7 +1779,8 @@ def get_automation_configuration(*, identity, arguments):
     limit = max(1, min(limit, 100))
 
     workflow_qs = SmartTrigger.objects.filter(
-        organization=organization
+        organization=organization,
+        is_active=True,
     )
     cadence_qs = FollowupSequence.objects.filter(
         organization=organization
@@ -5953,7 +5959,8 @@ def upsert_workflow_configuration(*, identity, arguments):
         if workflow is not None
         else (
             SmartTrigger.objects.filter(
-                organization=organization
+                organization=organization,
+                is_active=True,
             ).aggregate(value=Max("position"))["value"]
             or 0
         ) + 1
@@ -6058,7 +6065,8 @@ def upsert_workflow_configuration(*, identity, arguments):
                 if workflow is not None
                 else (
                     SmartTrigger.objects.filter(
-                        organization=organization
+                        organization=organization,
+                        is_active=True,
                     ).aggregate(value=Max("position"))["value"]
                     or 0
                 ) + 1
@@ -6105,6 +6113,7 @@ def upsert_workflow_configuration(*, identity, arguments):
                 )
             for key, value in clean_locked.items():
                 setattr(workflow, key, value)
+            workflow.is_active = True
             workflow.save()
             clean = clean_locked
             workflow.refresh_from_db()
