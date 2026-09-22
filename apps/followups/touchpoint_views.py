@@ -2,6 +2,7 @@
 
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
+from django.db.models import Prefetch
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, render
 from django.views.decorators.http import require_http_methods
@@ -71,6 +72,9 @@ def touchpoints(request):
             return JsonResponse({"error": error}, status=400)
         return JsonResponse({"ok": True})
     categories = TouchpointCategory.objects.filter(organization=org).prefetch_related(
-        "replies"
+        Prefetch(
+            "replies",
+            queryset=TouchpointReply.objects.filter(is_active=True),
+        )
     )
     return render(request, "followups/touchpoints.html", {"categories": categories})
