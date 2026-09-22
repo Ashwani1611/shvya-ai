@@ -63,6 +63,7 @@ from apps.integrations.operations_tools import (
     ToolExecution,
     _organization_for,
     _reason,
+    _reject_secret_like_content,
     _require_operations_capability,
     _uuid,
     configuration_plan_execution,
@@ -1168,6 +1169,17 @@ def _normalize_plan_operations(operations, *, allow_internal=False):
             raise OperationsToolError(
                 "Plan member operations cannot contain execution-control fields."
             )
+
+        secret_check = deepcopy(arguments)
+        if tool in {"add_hosted_whatsapp_step", "update_cadence_step"}:
+            data = secret_check.get("data")
+            if isinstance(data, dict):
+                data.pop("attachment_base64", None)
+        _reject_secret_like_content(
+            secret_check,
+            field=f"configuration_plan.{ref}",
+        )
+
         normalized.append(
             {
                 "ref": ref,
