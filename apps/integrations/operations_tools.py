@@ -5676,6 +5676,7 @@ def upsert_attribute_configuration(*, identity, arguments):
             "field_type": attribute.field_type,
             "description": attribute.description,
             "options": attribute.options,
+            "is_active": attribute.is_active,
         }
         if attribute
         else None
@@ -5685,6 +5686,7 @@ def upsert_attribute_configuration(*, identity, arguments):
         "field_type": field_type,
         "description": description,
         "options": options,
+        "is_active": True,
     }
     proposal = {
         "organization_id": str(organization.id),
@@ -5780,6 +5782,7 @@ def upsert_attribute_configuration(*, identity, arguments):
                     "field_type": attribute.field_type,
                     "description": attribute.description,
                     "options": attribute.options,
+                    "is_active": attribute.is_active,
                 }
                 if attribute is not None
                 else None
@@ -5789,6 +5792,7 @@ def upsert_attribute_configuration(*, identity, arguments):
                 "field_type": field_type,
                 "description": description,
                 "options": options,
+                "is_active": True,
             }
             locked_proposal = {
                 "organization_id": str(organization.id),
@@ -5858,6 +5862,7 @@ def upsert_attribute_configuration(*, identity, arguments):
                 or attribute.field_type != field_type
                 or attribute.description != description
                 or list(attribute.options or []) != list(options)
+                or not attribute.is_active
             ):
                 raise OperationsToolError(
                     "Attribute configuration verification failed."
@@ -5944,6 +5949,7 @@ def upsert_workflow_configuration(*, identity, arguments):
             "id": str(workflow.id),
             "name": workflow.name,
             "enabled": workflow.enabled,
+            "is_active": workflow.is_active,
             "position": workflow.position,
             "trigger_type": workflow.trigger_type,
             "conditions": workflow.conditions,
@@ -5967,6 +5973,7 @@ def upsert_workflow_configuration(*, identity, arguments):
     )
     workflow_after = {
         **clean,
+        "is_active": True,
         "position": proposed_position,
     }
     proposal = {
@@ -6076,6 +6083,7 @@ def upsert_workflow_configuration(*, identity, arguments):
                     "id": str(workflow.id),
                     "name": workflow.name,
                     "enabled": workflow.enabled,
+                    "is_active": workflow.is_active,
                     "position": workflow.position,
                     "trigger_type": workflow.trigger_type,
                     "conditions": workflow.conditions,
@@ -6088,6 +6096,7 @@ def upsert_workflow_configuration(*, identity, arguments):
             )
             locked_after = {
                 **clean_locked,
+                "is_active": True,
                 "position": proposed_position,
             }
             locked_proposal = {
@@ -6122,6 +6131,7 @@ def upsert_workflow_configuration(*, identity, arguments):
                 or workflow.trigger_type != clean["trigger_type"]
                 or workflow.action_type != clean["action_type"]
                 or workflow.enabled != clean["enabled"]
+                or not workflow.is_active
             ):
                 raise OperationsToolError(
                     "Workflow configuration verification failed."
@@ -6240,6 +6250,12 @@ def upsert_cadence_configuration(*, identity, arguments):
     description = str(
         data.get("description", sequence.description if sequence else "") or ""
     ).strip()
+    is_active = data.get(
+        "is_active",
+        sequence.is_active if sequence is not None else True,
+    )
+    if not isinstance(is_active, bool):
+        raise OperationsToolError("Cadence is_active must be true or false.")
     if not name or len(name) > 255 or len(description) > 300:
         raise OperationsToolError("Cadence name/description is invalid.")
     duplicate = FollowupSequence.objects.filter(
@@ -6337,6 +6353,7 @@ def upsert_cadence_configuration(*, identity, arguments):
             "description": sequence.description,
             "provider": provider,
             "whatsapp_account_id": str(sequence.whatsapp_account_id),
+            "is_active": sequence.is_active,
         }
         if sequence is not None
         else None
@@ -6346,6 +6363,7 @@ def upsert_cadence_configuration(*, identity, arguments):
         "description": description,
         "provider": provider,
         "whatsapp_account_id": str(account.id) if account else None,
+        "is_active": is_active,
     }
     proposal = {
         "organization_id": str(organization.id),
@@ -6505,6 +6523,7 @@ def upsert_cadence_configuration(*, identity, arguments):
                     "whatsapp_account_id": str(
                         sequence.whatsapp_account_id
                     ),
+                    "is_active": sequence.is_active,
                 }
                 if sequence is not None
                 else None
@@ -6516,6 +6535,7 @@ def upsert_cadence_configuration(*, identity, arguments):
                 "whatsapp_account_id": (
                     str(account.id) if account else None
                 ),
+                "is_active": is_active,
             }
             locked_proposal = {
                 "organization_id": str(organization.id),
@@ -6548,11 +6568,16 @@ def upsert_cadence_configuration(*, identity, arguments):
                     description=description,
                 )
 
+            if sequence.is_active != is_active:
+                sequence.is_active = is_active
+                sequence.save(update_fields=["is_active", "updated_at"])
+
             sequence.refresh_from_db()
             if (
                 sequence.name != name
                 or sequence.description != description
                 or sequence.whatsapp_account_id != account.id
+                or sequence.is_active != is_active
             ):
                 raise OperationsToolError(
                     "Cadence configuration verification failed."
