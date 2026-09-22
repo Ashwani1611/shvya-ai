@@ -361,7 +361,7 @@ class OperationsConfigurationManagementTests(TestCase):
                 "reason": "Review atomic stage reorder for the Sales pipeline.",
             },
         )
-        self.assertIn("approval_event_id", preview)
+        self.assertEqual(preview["status"], "DRY_RUN")
 
         changed = self._ok(
             self.bearer,
