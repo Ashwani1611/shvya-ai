@@ -133,7 +133,7 @@ def evaluate(event_id):
         organization_id=event.organization_id,
         organization__is_active=True,
         enabled=True,
-                        is_active=True,
+        is_active=True,
         trigger_type=event.kind,
         created_at__lte=event.created_at,
         id__in=event.payload.get("eligible_rules", []),
