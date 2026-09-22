@@ -582,7 +582,7 @@ def _dependency_graph(organization):
         lead_count = (
             Lead.objects.filter(
                 organization=organization,
-                **{f"attributes__has_key": attribute.key},
+                **{"attributes__has_key": attribute.key},
             ).count()
         )
         nodes.append(
