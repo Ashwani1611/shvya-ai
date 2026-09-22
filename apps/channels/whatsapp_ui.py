@@ -202,7 +202,7 @@ def whatsapp_lead_attributes_save_view(request, lead_id):
     if not lead:
         return JsonResponse({"error": "Lead not found."}, status=404)
 
-    definitions = AttributeDefinition.objects.filter(
+    definitions = AttributeDefinition.objects.filter(is_active=True, 
         organization=user.organization,
     )
     allowed = {definition.key for definition in definitions}
