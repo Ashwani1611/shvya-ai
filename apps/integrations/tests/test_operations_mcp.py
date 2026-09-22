@@ -4696,19 +4696,29 @@ class OperationsMCPTests(TestCase):
                 CAP_DIAGNOSTICS_READ,
             ],
         )
+        own_account = InstagramAccount.objects.create(
+            organization=self.organization,
+            ig_user_id="own-account",
+            username="own_account",
+            status=InstagramAccount.Status.CONNECTED,
+        )
+        other_account = InstagramAccount.objects.create(
+            organization=self.other_organization,
+            ig_user_id="other-account",
+            username="other_account",
+            status=InstagramAccount.Status.CONNECTED,
+        )
         own = InstagramWebhookDelivery.objects.create(
             payload_sha256="1" * 64,
             raw_payload={
                 "object": "instagram",
                 "entry": [
                     {
-                        "id": "own-account",
+                        "id": own_account.ig_user_id,
                         "private": "raw-own-webhook-secret",
                     }
                 ],
             },
-            organization_ids=[str(self.organization.id)],
-            account_ids=[],
             status=InstagramWebhookDelivery.Status.FAILED,
             error_message="access_token=own-webhook-secret provider failure",
             processed_at=timezone.now(),
@@ -4719,13 +4729,11 @@ class OperationsMCPTests(TestCase):
                 "object": "instagram",
                 "entry": [
                     {
-                        "id": "other-account",
+                        "id": other_account.ig_user_id,
                         "private": "raw-other-webhook-secret",
                     }
                 ],
             },
-            organization_ids=[str(self.other_organization.id)],
-            account_ids=[],
             status=InstagramWebhookDelivery.Status.FAILED,
             error_message="other tenant webhook failure",
             processed_at=timezone.now(),
