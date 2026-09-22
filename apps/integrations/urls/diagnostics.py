@@ -28,6 +28,18 @@ urlpatterns = [
         operations_oauth_server_metadata,
         name="shvya-operations-oauth-server-metadata-rfc8414",
     ),
+    # RFC 9728 path-qualified Protected Resource Metadata for the
+    # /operations/mcp/ resource. Remote MCP hosts such as Claude discover this
+    # location before they know SHVYA's authorization-server issuer.
+    path(
+        ".well-known/oauth-protected-resource/operations/mcp/",
+        operations_oauth_resource_metadata,
+        name="shvya-operations-oauth-resource-metadata-rfc9728",
+    ),
+    path(
+        ".well-known/oauth-protected-resource/operations/mcp",
+        operations_oauth_resource_metadata,
+    ),
     path(
         "operations/.well-known/oauth-protected-resource",
         operations_oauth_resource_metadata,

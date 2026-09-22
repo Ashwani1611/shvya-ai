@@ -13,6 +13,8 @@ MCP_PUBLIC_PATHS = [
     "/operations/oauth/revoke",
     "/operations/.well-known/oauth-protected-resource",
     "/operations/.well-known/oauth-authorization-server",
+    "/.well-known/oauth-protected-resource/operations/mcp/",
+    "/.well-known/oauth-protected-resource/operations/mcp",
     "/.well-known/oauth-authorization-server/operations",
 ]
 
