@@ -524,9 +524,6 @@ def organization_detail_view(
             "active_operations_tokens": active_operations_tokens,
             "open_operations_support_sessions": open_operations_support_sessions,
             "operations_audit_events": operations_audit_events,
-            "operations_mcp_url": request.build_absolute_uri(
-                reverse("shvya-operations-mcp")
-            ),
         },
     )
 
