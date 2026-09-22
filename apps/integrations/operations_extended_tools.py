@@ -18,7 +18,7 @@ from types import SimpleNamespace
 from django.core.exceptions import ValidationError
 from django.core.files.base import ContentFile
 from django.db import IntegrityError, transaction
-from django.db.models import Count, Prefetch
+from django.db.models import Count, Prefetch, Q
 from django.utils import timezone
 
 from apps.ai_engagement.models import Document, FAQ, KnowledgeSource, OrgInfo
@@ -2005,7 +2005,10 @@ def publish_knowledge_document(*, identity, arguments):
         organization=organization,
     ).annotate(
         active_chunk_count=Count("chunks"),
-        embedded_chunk_count=Count("chunks", filter=__import__("django.db.models", fromlist=["Q"]).Q(chunks__embedding__isnull=False)),
+        embedded_chunk_count=Count(
+            "chunks",
+            filter=Q(chunks__embedding__isnull=False, chunks__is_active=True),
+        ),
     ).first()
     if document is None:
         raise OperationsToolError("Knowledge document not found in this organization.")
@@ -2812,7 +2815,7 @@ def simulate_ai_conversation(*, identity, arguments):
     _require_operations_capability(
         identity=identity, organization=organization, capability=CAP_DIAGNOSTICS_READ
     )
-    _raw, sections, compiled, config = _safe_requirements_for_org(organization)
+    raw, sections, compiled, config = _safe_requirements_for_org(organization)
     requirements = list(compiled.get("requirements") or [])
     answers = (arguments or {}).get("answers") or {}
     if not isinstance(answers, dict):
@@ -2875,7 +2878,7 @@ def simulate_ai_conversation(*, identity, arguments):
             next_requirement = requirement
 
     criteria = evaluate_playbook_criteria(
-        str(sections.get("qualification_criteria") or ""),
+        raw,
         requirements=requirements,
         state={"requirement_states": states},
         values=projected_attributes,
