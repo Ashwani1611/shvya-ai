@@ -5,8 +5,14 @@ from django.urls import reverse
 from django.utils import timezone
 
 from apps.accounts.models import User
-from apps.integrations.operations_auth import token_hash
+from apps.integrations.operations_auth import (
+    OPERATIONS_READ_SCOPE,
+    OPERATIONS_WRITE_SCOPE,
+    authenticate_bearer,
+    token_hash,
+)
 from apps.integrations.operations_models import (
+    OperationsAuditEvent,
     OperationsOAuthClient,
     OperationsOAuthToken,
     OperationsSupportSession,
@@ -19,7 +25,7 @@ class SuperadminGlobalMCPWorkspaceTests(TestCase):
     def setUp(self):
         self.password = "StrongSuperadminPassword123!"
         self.superadmin = User.objects.create_superuser(
-            email="mcp-superadmin@example.com",
+            email=f"mcp-superadmin-{self._testMethodName}@example.com",
             password=self.password,
             name="MCP Superadmin",
         )
@@ -171,3 +177,85 @@ class SuperadminGlobalMCPWorkspaceTests(TestCase):
         self.assertIsNone(token.revoked_at)
         self.assertIsNone(token.active_organization_id)
         self.assertIsNotNone(support.ended_at)
+
+
+    def test_superadmin_can_generate_direct_mcp_key(self):
+        response = self.client.post(
+            reverse("superadmin-operations-mcp-key-generate"),
+            {
+                "label": "VS Code",
+                "access_mode": "read_write",
+                "ttl_days": "30",
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload["ok"])
+
+        access_key = payload["key"]
+        token = OperationsOAuthToken.objects.select_related(
+            "client",
+            "actor",
+        ).get(pk=payload["token_id"])
+
+        self.assertTrue(access_key.startswith("shvya_mcp_"))
+        self.assertTrue(token.client.client_id.startswith("shvya_key_"))
+        self.assertEqual(token.client.redirect_uris, [])
+        self.assertEqual(token.client.grant_types, [])
+        self.assertEqual(token.access_token_hash, token_hash(access_key))
+        self.assertIn(OPERATIONS_READ_SCOPE, token.scope.split())
+        self.assertIn(OPERATIONS_WRITE_SCOPE, token.scope.split())
+
+        identity = authenticate_bearer(access_key)
+        self.assertEqual(identity.actor, self.superadmin)
+        self.assertEqual(identity.role, ROLE_SUPERADMIN)
+        self.assertIsNone(identity.active_organization)
+
+        self.assertTrue(
+            OperationsAuditEvent.objects.filter(
+                actor=self.superadmin,
+                tool_name="mcp_key_generate",
+                target_id=str(token.id),
+            ).exists()
+        )
+
+        workspace = self.client.get(reverse("superadmin-operations-mcp"))
+        self.assertNotIn(
+            access_key,
+            workspace.content.decode("utf-8"),
+        )
+
+
+    def test_direct_mcp_key_can_be_read_only(self):
+        response = self.client.post(
+            reverse("superadmin-operations-mcp-key-generate"),
+            {
+                "label": "Audit only",
+                "access_mode": "read_only",
+                "ttl_days": "7",
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        token = OperationsOAuthToken.objects.get(
+            pk=response.json()["token_id"]
+        )
+        scopes = token.scope.split()
+        self.assertIn(OPERATIONS_READ_SCOPE, scopes)
+        self.assertNotIn(OPERATIONS_WRITE_SCOPE, scopes)
+
+    def test_direct_mcp_key_rejects_unsupported_lifetime(self):
+        before = OperationsOAuthToken.objects.count()
+        response = self.client.post(
+            reverse("superadmin-operations-mcp-key-generate"),
+            {
+                "label": "Invalid lifetime",
+                "access_mode": "read_write",
+                "ttl_days": "365",
+            },
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(response.json()["ok"])
+        self.assertEqual(
+            OperationsOAuthToken.objects.count(),
+            before,
+        )

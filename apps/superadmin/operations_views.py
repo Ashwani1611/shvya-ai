@@ -1,7 +1,10 @@
 import json
+import secrets
+from datetime import timedelta
 
 from django.contrib import messages
 from django.db import transaction
+from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
@@ -12,13 +15,17 @@ from apps.integrations.diagnostic_auth import (
     sanitize_text,
 )
 from apps.integrations.operations_auth import (
+    OPERATIONS_READ_SCOPE,
+    OPERATIONS_WRITE_SCOPE,
     end_support_context_record,
     operations_grant_status,
     revoke_token_record,
+    token_hash,
 )
 from apps.integrations.operations_models import (
     OperationsAuditEvent,
     OperationsOAuthAuthorizationCode,
+    OperationsOAuthClient,
     OperationsOAuthToken,
     OperationsPolicy,
     OperationsSupportSession,
@@ -30,6 +37,7 @@ from apps.integrations.operations_policy import (
     ROLE_ORGANIZATION_ADMIN,
     ROLE_SUPERADMIN,
     WRITE_CAPABILITIES,
+    capabilities_for_grant,
 )
 from apps.organizations.models import Organization
 from apps.superadmin.models import AuditLog
@@ -73,6 +81,9 @@ def operations_mcp_workspace_view(request):
             token.live_authority_reason_code,
             token.live_authority_message,
         ) = operations_grant_status(token)
+        token.is_direct_key = str(token.client.client_id).startswith(
+            "shvya_key_"
+        )
 
     open_support_sessions = list(
         OperationsSupportSession.objects.filter(
@@ -180,6 +191,211 @@ def operations_mcp_workspace_view(request):
             "organization_count": Organization.objects.count(),
         },
     )
+
+
+@superuser_required
+@require_POST
+def operations_mcp_access_key_generate_view(request):
+    """Issue a revocable Superadmin MCP bearer key without an OAuth redirect."""
+
+    now = timezone.now()
+    active_direct_keys = OperationsOAuthToken.objects.filter(
+        actor=request.user,
+        role=ROLE_SUPERADMIN,
+        client__client_id__startswith="shvya_key_",
+        revoked_at__isnull=True,
+        refresh_expires_at__gt=now,
+    ).count()
+    if active_direct_keys >= 10:
+        response = JsonResponse(
+            {
+                "ok": False,
+                "error": (
+                    "Maximum active direct MCP keys reached. "
+                    "Revoke an unused key before generating another."
+                ),
+            },
+            status=409,
+        )
+        response["Cache-Control"] = "no-store"
+        return response
+
+    label = sanitize_text(
+        request.POST.get("label") or "Superadmin MCP Key",
+        limit=80,
+    ).strip()
+    if not label:
+        label = "Superadmin MCP Key"
+
+    access_mode = str(
+        request.POST.get("access_mode") or "read_write"
+    ).strip()
+    if access_mode not in {"read_only", "read_write"}:
+        return JsonResponse(
+            {"ok": False, "error": "Unsupported MCP key access mode."},
+            status=400,
+        )
+
+    try:
+        ttl_days = int(request.POST.get("ttl_days") or "30")
+    except (TypeError, ValueError):
+        ttl_days = 0
+    if ttl_days not in {7, 30, 90}:
+        return JsonResponse(
+            {
+                "ok": False,
+                "error": "MCP key lifetime must be 7, 30, or 90 days.",
+            },
+            status=400,
+        )
+
+    allow_writes = access_mode == "read_write"
+    scopes = [OPERATIONS_READ_SCOPE]
+    if allow_writes:
+        scopes.append(OPERATIONS_WRITE_SCOPE)
+
+    raw_key = "shvya_mcp_" + secrets.token_urlsafe(48)
+    disabled_refresh_secret = (
+        "direct-key-refresh-disabled:" + secrets.token_urlsafe(48)
+    )
+    expires_at = now + timedelta(days=ttl_days)
+    operations_mcp_url = request.build_absolute_uri(
+        reverse("shvya-operations-mcp")
+    )
+
+    with transaction.atomic():
+        client = OperationsOAuthClient.objects.create(
+            client_id="shvya_key_" + secrets.token_urlsafe(24),
+            client_name=("Direct key · " + label)[:200],
+            application_type="native",
+            redirect_uris=[],
+            grant_types=[],
+            response_types=[],
+        )
+        token = OperationsOAuthToken.objects.create(
+            client=client,
+            actor=request.user,
+            organization=None,
+            active_organization=None,
+            role=ROLE_SUPERADMIN,
+            access_token_hash=token_hash(raw_key),
+            refresh_token_hash=token_hash(disabled_refresh_secret),
+            scope=" ".join(scopes),
+            granted_capabilities=sorted(
+                capabilities_for_grant(
+                    role=ROLE_SUPERADMIN,
+                    organization=None,
+                    allow_writes=allow_writes,
+                )
+            ),
+            resource=operations_mcp_url,
+            expires_at=expires_at,
+            refresh_expires_at=expires_at,
+        )
+        OperationsAuditEvent.objects.create(
+            actor=request.user,
+            role=ROLE_SUPERADMIN,
+            organization=None,
+            support_session=None,
+            tool_name="mcp_key_generate",
+            capability="",
+            target_type="mcp_access_key",
+            target_id=str(token.id),
+            reason=(
+                "SHVYA Superadmin generated a direct MCP access key "
+                "from the Superadmin workspace."
+            ),
+            outcome=OperationsAuditEvent.Outcome.SUCCESS,
+            request_fingerprint=request_fingerprint(
+                {
+                    "event": "mcp_key_generate",
+                    "token_id": str(token.id),
+                    "access_mode": access_mode,
+                    "ttl_days": ttl_days,
+                }
+            ),
+            change_summary={
+                "label": label,
+                "access": (
+                    "read_write" if allow_writes else "read_only"
+                ),
+                "expires_at": expires_at.isoformat(),
+            },
+            duration_ms=0,
+            error_code="",
+        )
+
+    bearer_header = "Bearer " + raw_key
+    configurations = {
+        "vscode": json.dumps(
+            {
+                "servers": {
+                    "shvya-superadmin": {
+                        "type": "http",
+                        "url": operations_mcp_url,
+                        "headers": {
+                            "Authorization": bearer_header,
+                        },
+                    }
+                }
+            },
+            indent=2,
+        ),
+        "cursor": json.dumps(
+            {
+                "mcpServers": {
+                    "shvya-superadmin": {
+                        "url": operations_mcp_url,
+                        "headers": {
+                            "Authorization": bearer_header,
+                        },
+                    }
+                }
+            },
+            indent=2,
+        ),
+        "gemini": json.dumps(
+            {
+                "mcpServers": {
+                    "shvya-superadmin": {
+                        "httpUrl": operations_mcp_url,
+                        "headers": {
+                            "Authorization": bearer_header,
+                        },
+                    }
+                }
+            },
+            indent=2,
+        ),
+        "claude_code": (
+            "claude mcp add --transport http "
+            f"shvya-superadmin {operations_mcp_url} "
+            f'--header "Authorization: {bearer_header}"'
+        ),
+        "codex": (
+            "[mcp_servers.shvya-superadmin]\n"
+            f'url = "{operations_mcp_url}"\n'
+            "http_headers = { Authorization = "
+            f'"{bearer_header}" }}'
+        ),
+    }
+
+    response = JsonResponse(
+        {
+            "ok": True,
+            "key": raw_key,
+            "token_id": str(token.id),
+            "label": label,
+            "access_mode": access_mode,
+            "expires_at": expires_at.isoformat(),
+            "endpoint": operations_mcp_url,
+            "authorization_header": bearer_header,
+            "configurations": configurations,
+        }
+    )
+    response["Cache-Control"] = "no-store, private"
+    response["Pragma"] = "no-cache"
+    return response
 
 
 @superuser_required
