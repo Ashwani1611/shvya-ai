@@ -56,6 +56,7 @@ from apps.integrations.operations_policy import (
     CAP_ATTRIBUTE_CONFIG_WRITE,
     CAP_AUDIT_READ,
     CAP_CADENCE_CONFIG_WRITE,
+    CAP_CONFIGURATION_PLAN_WRITE,
     CAP_DIAGNOSTICS_READ,
     CAP_LEAD_ATTRIBUTES_WRITE,
     CAP_LEAD_STAGE_WRITE,
@@ -93,6 +94,11 @@ TOOL_RESPONSE_TEXT_LIMITS = {
     # redaction. Keep ordinary diagnostics on the sanitizer's 800-char default.
     "get_ai_configuration": 110000,
     "get_organization_configuration": 30000,
+    "export_organization_configuration": 250000,
+    "get_configuration_dependency_graph": 120000,
+    "create_configuration_plan": 120000,
+    "import_organization_configuration": 120000,
+    "apply_configuration_plan": 120000,
 }
 
 OAUTH_READ_SCHEMES = [
@@ -1086,6 +1092,111 @@ OWN_TOOL_DEFINITIONS = [
         ["cadence_id"],
     ),
     _tool(
+        "get_configuration_dependency_graph",
+        "Inspect configuration dependencies",
+        "Return tenant-safe object dependencies, affected-record counts, protected-stage state, and per-object/configuration ETags.",
+        {
+            "object_type": {
+                "type": "string",
+                "enum": ["pipeline", "stage", "attribute", "workflow", "cadence"],
+            },
+            "object_id": {"type": "string"},
+        },
+    ),
+    _tool(
+        "validate_organization_configuration",
+        "Validate organization configuration",
+        "Audit qualification, WhatsApp routing, Workflows, Cadence ordering/content, stage ordering, and common configuration loops/conflicts without changing state.",
+    ),
+    _tool(
+        "reorder_stages",
+        "Reorder pipeline stages",
+        "Dry-run or atomically reorder every stage in one pipeline. The supplied ordered list must contain every current stage exactly once.",
+        _write_properties(
+            {
+                "pipeline_id": {"type": "string", "format": "uuid"},
+                "stage_ids": {
+                    "type": "array",
+                    "items": {"type": "string", "format": "uuid"},
+                    "minItems": 1,
+                },
+            }
+        ),
+        ["pipeline_id", "stage_ids", "reason"],
+        read_only=False,
+    ),
+    _tool(
+        "export_organization_configuration",
+        "Export organization configuration",
+        "Return a portable, secret-free organization configuration package with CRM, AI, Cadence, Workflow, Touchpoint, FAQ and messaging settings. Lead/message history, credentials and knowledge binaries are excluded.",
+    ),
+    _tool(
+        "create_configuration_plan",
+        "Create atomic configuration plan",
+        "Validate and persist one actor/tenant/OAuth-bound multi-object configuration plan, return the complete diff/risk summary and one approval receipt. Refer to prior plan results with objects like {\"$ref\":\"pipeline_sales.target_id\"}.",
+        {
+            "operations": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 200,
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "ref": {"type": "string", "maxLength": 80},
+                        "tool": {"type": "string"},
+                        "arguments": {"type": "object"},
+                    },
+                    "required": ["tool", "arguments"],
+                    "additionalProperties": False,
+                },
+            },
+            "reason": {"type": "string", "minLength": 8, "maxLength": 500},
+            "idempotency_key": {"type": "string", "maxLength": 128},
+            "ttl_minutes": {"type": "integer", "minimum": 5, "maximum": 1440},
+        },
+        ["operations", "reason"],
+        read_only=False,
+        requires_write_scope=True,
+    ),
+    _tool(
+        "apply_configuration_plan",
+        "Apply approved configuration plan",
+        "Apply an approved configuration plan in one database transaction. Any member failure rolls back the entire plan; a stale base ETag fails closed before writes.",
+        {
+            "plan_id": {"type": "string", "format": "uuid"},
+            "approved": {"type": "boolean"},
+            "approval_event_id": {"type": "string", "format": "uuid"},
+            "reason": {"type": "string", "minLength": 8, "maxLength": 500},
+        },
+        ["plan_id", "reason"],
+        read_only=False,
+        requires_write_scope=True,
+    ),
+    _tool(
+        "rollback_configuration_plan",
+        "Rollback recoverable configuration plan",
+        "Dry-run or roll back an applied update-only plan when no newer configuration drift exists. Plans containing creations remain atomic on failed apply but are not later auto-rollbackable.",
+        _write_properties(
+            {"plan_id": {"type": "string", "format": "uuid"}}
+        ),
+        ["plan_id", "reason"],
+        read_only=False,
+    ),
+    _tool(
+        "import_organization_configuration",
+        "Import configuration as approval plan",
+        "Convert a portable SHVYA configuration export into an atomic approval plan for the active organization. Credentials are never imported; matching connected WhatsApp accounts must already exist.",
+        {
+            "configuration": {"type": "object"},
+            "reason": {"type": "string", "minLength": 8, "maxLength": 500},
+            "idempotency_key": {"type": "string", "maxLength": 128},
+            "ttl_minutes": {"type": "integer", "minimum": 5, "maximum": 1440},
+        },
+        ["configuration", "reason"],
+        read_only=False,
+        requires_write_scope=True,
+    ),
+    _tool(
         "get_operations_audit",
         "Review SHVYA Operations audit",
         "Return safe organization-scoped audit events, or Superadmin-only platform audit events that have no customer tenant. Never mixes customer organizations.",
@@ -1208,6 +1319,14 @@ TOOL_CAPABILITIES = {
     "simulate_ai_conversation": CAP_DIAGNOSTICS_READ,
     "simulate_workflow": CAP_DIAGNOSTICS_READ,
     "simulate_cadence": CAP_DIAGNOSTICS_READ,
+    "get_configuration_dependency_graph": CAP_ORGANIZATION_READ,
+    "validate_organization_configuration": CAP_ORGANIZATION_READ,
+    "reorder_stages": CAP_STAGE_CONFIG_WRITE,
+    "export_organization_configuration": CAP_ORGANIZATION_READ,
+    "create_configuration_plan": CAP_CONFIGURATION_PLAN_WRITE,
+    "apply_configuration_plan": CAP_CONFIGURATION_PLAN_WRITE,
+    "rollback_configuration_plan": CAP_CONFIGURATION_PLAN_WRITE,
+    "import_organization_configuration": CAP_CONFIGURATION_PLAN_WRITE,
     "get_operations_audit": CAP_AUDIT_READ,
 }
 for _diagnostic_name in DIAGNOSTIC_TOOL_NAMES:
