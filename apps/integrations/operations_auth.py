@@ -15,7 +15,7 @@ from apps.accounts.session_utils import get_session_store
 from apps.organizations.access import crm_user_is_authorized, organization_is_active
 from apps.integrations.mcp_oauth_clients import (
     MCPClientMetadataError,
-    fetch_operations_cimd_metadata,
+    fetch_operations_cimd_metadata as fetch_cimd_metadata,
     is_allowed_operations_cimd_url,
     is_allowed_operations_redirect,
     operations_redirect_uri_matches_registered,
@@ -27,12 +27,6 @@ from apps.integrations.operations_models import (
     OperationsOAuthToken,
     OperationsSupportSession,
 )
-# Compatibility seam for existing hardening tests and integrations that patch
-# this module-level CIMD fetcher. It intentionally resolves to the broader
-# Operations-only policy, not the Diagnostic policy.
-fetch_cimd_metadata = fetch_operations_cimd_metadata
-
-
 from apps.integrations.operations_policy import (
     ROLE_ORGANIZATION_ADMIN,
     ROLE_SUPERADMIN,
