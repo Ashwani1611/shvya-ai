@@ -11,6 +11,7 @@ class SmartTrigger(models.Model):
     )
     name = models.CharField(max_length=255)
     enabled = models.BooleanField(default=False)
+    is_active = models.BooleanField(default=True, db_index=True)
     position = models.PositiveIntegerField(default=0)
     trigger_type = models.CharField(max_length=32)
     conditions = models.JSONField(default=dict)
