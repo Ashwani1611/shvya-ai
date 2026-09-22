@@ -233,6 +233,58 @@ class ShvyaCalendarServiceTests(TestCase):
         self.assertEqual(response["X-Content-Type-Options"], "nosniff")
         self.assertIn("attachment", response["Content-Disposition"])
 
+    def test_calendar_attachment_download_is_tenant_scoped(self):
+        lead = Lead.objects.create(
+            organization=self.organization,
+            pipeline=self.pipeline,
+            stage=self.stage,
+            name="Private Attachment Lead",
+            phone="+919222222222",
+            lead_source="shvya_calendar",
+        )
+        submission = CalendarSubmission.objects.create(
+            organization=self.organization,
+            page=self.page,
+            page_version=self.version,
+            lead=lead,
+            status=CalendarSubmission.Status.LEAD_CREATED,
+            submitted_data={},
+            normalized_data={"name": lead.name, "mobile": lead.phone},
+        )
+        attachment = CalendarSubmissionAttachment.objects.create(
+            submission=submission,
+            field_key="brief",
+            file=SimpleUploadedFile(
+                "brief.pdf",
+                b"%PDF-1.4\nprivate\n",
+                content_type="application/pdf",
+            ),
+            original_name="brief.pdf",
+            content_type="application/pdf",
+            size=18,
+        )
+
+        other_org = Organization.objects.create(name="Other Calendar Org")
+        other_user = User.objects.create_user(
+            email="other-calendar@example.com",
+            organization=other_org,
+            password="test-pass",
+            name="Other Admin",
+            role=User.Role.ADMIN,
+        )
+        session = SessionStore()
+        set_authenticated_user(session, other_user)
+        session.save()
+        self.client.cookies["shvya_crm_sessionid"] = session.session_key
+
+        response = self.client.get(
+            reverse(
+                "shvya_calendar:attachment_download",
+                kwargs={"attachment_id": attachment.id},
+            )
+        )
+        self.assertEqual(response.status_code, 404)
+
     def test_share_always_shows_website_embed_code(self):
         self.page.status = CalendarPage.Status.DISABLED
         self.page.save(update_fields=["status", "updated_at"])
