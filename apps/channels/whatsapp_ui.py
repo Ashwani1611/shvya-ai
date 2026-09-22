@@ -71,8 +71,8 @@ def whatsapp_lead_quick_update_view(request, lead_id):
 
     if "name" in request.POST:
         name = (request.POST.get("name") or "").strip()
-        if not name:
-            return JsonResponse({"error": "Name is required."}, status=400)
+        if not name or len(name) > 150:
+            return JsonResponse({"error": "Enter a name of 1 to 150 characters."}, status=400)
         lead.name = name
         update_fields.append("name")
 
@@ -124,6 +124,11 @@ def whatsapp_lead_quick_update_view(request, lead_id):
         ).first()
         if not target_stage:
             return JsonResponse({"error": "Invalid stage."}, status=400)
+
+    if target_stage is not None and target_stage.id != lead.stage_id:
+        from services.crm.stage_requirements import missing_attributes
+        if missing_attributes(target_stage, lead.attributes):
+            return JsonResponse({"error": "Complete the target stage's required attributes in Additional information before moving this lead."}, status=400)
 
     try:
         if target_pipeline is not None:
@@ -186,9 +191,10 @@ def whatsapp_lead_ai_toggle_view(request, lead_id):
 
 @crm_login_required
 @require_POST
+@transaction.atomic
 def whatsapp_lead_attributes_save_view(request, lead_id):
     user = request.crm_user
-    lead = Lead.objects.filter(
+    lead = Lead.objects.select_for_update().filter(
         id=lead_id,
         organization=user.organization,
     ).first()

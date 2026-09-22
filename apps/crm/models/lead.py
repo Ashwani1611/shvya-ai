@@ -99,6 +99,8 @@ class Lead(models.Model):
         default=dict,
         blank=True,
     )
+    auto_followup_enabled = models.BooleanField(default=True)
+
     ai_enabled = models.BooleanField(
         default=True,
         help_text=(
@@ -117,6 +119,8 @@ class Lead(models.Model):
             ("csv_import", "CSV Import"),
             ("meta_ads", "Meta Ads"),
             ("instagram", "Instagram"),
+            ("shvya_calendar", "SHVYA Calendar"),
+            ("phone_call", "Phone Call"),
         ],
         default="system",
     )

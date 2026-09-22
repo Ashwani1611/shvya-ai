@@ -1,0 +1,12 @@
+<div class="contact-content">
+<header class="contact-heading"><h2>Contact</h2></header>
+<div class="contact-scroll"><div class="contact-identity"><div class="contact-avatar">{{ contact_name|slice:':1'|upper }}</div><div><h3>{{ contact_name|default:'Contact' }}</h3><p>No CRM lead linked</p></div></div>
+{% if can_create %}<div class="contact-card"><h3>Create lead</h3><p class="contact-help">Save this contact in your CRM. Existing contacts are linked without duplication.</p>
+<form data-create-chat-lead method="post">{% csrf_token %}<input type="hidden" name="chat" value="{{ chat }}">
+<label class="contact-attribute"><span>Name</span><input name="name" value="{{ contact_name }}" required maxlength="150"></label>
+{% if instagram %}<label class="contact-attribute"><span>Phone with country code</span><input name="phone" placeholder="+919876543210" required></label><label class="contact-help"><input type="checkbox" name="confirmed" value="yes" required> This phone belongs to this Instagram contact.</label>
+{% else %}<div class="contact-row"><span>Phone</span><span>{{ phone }} <i class="ti ti-lock"></i></span></div>{% endif %}
+<label class="contact-attribute"><span>Pipeline</span><select name="pipeline" required><option value="">Choose pipeline</option>{% for pipeline in pipelines %}<option value="{{ pipeline.pk }}">{{ pipeline.name }}</option>{% endfor %}</select></label>
+{% if not pipelines %}<p class="contact-help">Connect this account to an accessible pipeline with an active stage first.</p>{% endif %}
+<button class="contact-primary" type="submit">Create lead</button></form></div>
+{% else %}<p class="contact-empty">A verified individual phone number is needed to create a lead. Group chats and unresolved contacts cannot become leads.</p>{% endif %}</div><p class="contact-feedback" data-contact-feedback role="status" hidden></p></div>

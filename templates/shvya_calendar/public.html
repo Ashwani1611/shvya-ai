@@ -1,0 +1,81 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>{{ config.intro_title|default:page.name }} · {{ page.organization.name }}</title>
+  <link rel="stylesheet" href="{% static 'shvya_calendar/calendar.css' %}?v=20260922-2">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.34.0/dist/tabler-icons.min.css">
+</head>
+<body class="sc-public-body" style="--sc-accent: {{ config.accent_color|default:page.accent_color|default:'#0060A2' }}">
+  <main class="sc-public-shell">
+    <section class="sc-public-intro">
+      {% if config.logo_url %}<img class="sc-public-logo" src="{{ config.logo_url }}" alt="{{ page.organization.name }}">{% endif %}
+      <span class="sc-kicker">{{ page.organization.name|upper }}</span>
+      <h1>{{ config.intro_title|default:page.name }}</h1>
+      {% if config.intro_description %}<p>{{ config.intro_description }}</p>{% endif %}
+      {% if config.intro_highlights %}
+        <ul class="sc-benefit-list">
+          {% for item in config.intro_highlights %}<li><i class="ti ti-check"></i>{{ item }}</li>{% endfor %}
+        </ul>
+      {% endif %}
+      <div class="sc-trust-line"><i class="ti ti-shield-check"></i> Secure lead capture powered by SHVYA</div>
+    </section>
+
+    <section class="sc-public-card">
+      <div class="sc-progress"><span class="is-active">1</span><b></b><span>2</span></div>
+      <div class="sc-public-card-head">
+        <span class="sc-kicker">YOUR DETAILS</span>
+        <h2>Tell us how to reach you.</h2>
+        <p>Your details become one CRM lead before scheduling, so your request is never lost.</p>
+      </div>
+
+      {% if form_error %}<div class="sc-alert sc-alert-error">{{ form_error }}</div>{% endif %}
+      {% if preview %}
+        <div class="sc-alert">Preview mode · submissions are disabled.</div>
+      {% endif %}
+
+      <form method="post" enctype="multipart/form-data" {% if not preview %}action="{% url 'shvya_calendar_public:submit' public_id=page.public_id slug=page.slug %}"{% endif %}>
+        {% csrf_token %}
+        {% if form_token %}<input type="hidden" name="form_token" value="{{ form_token }}">{% endif %}
+        <input class="sc-honeypot" tabindex="-1" autocomplete="off" name="website" aria-hidden="true">
+        {% for key,value in attribution.items %}<input type="hidden" name="{{ key }}" value="{{ value }}">{% endfor %}
+
+        <div class="sc-form-grid">
+          <label class="sc-field"><span>Name <b>*</b></span><input name="name" maxlength="150" required autocomplete="name" placeholder="Your name"></label>
+          <label class="sc-field"><span>Mobile <b>*</b></span><input name="mobile" maxlength="32" required autocomplete="tel" placeholder="+91 98765 43210"></label>
+
+          {% for field in config.form_schema %}
+            <label class="sc-field {% if field.field_type == 'textarea' or field.field_type == 'file' %}sc-field-wide{% endif %}">
+              <span>{{ field.label }}{% if field.required %} <b>*</b>{% endif %}</span>
+              {% if field.field_type == 'textarea' %}
+                <textarea name="f_{{ field.key }}" {% if field.required %}required{% endif %} placeholder="{{ field.placeholder }}"></textarea>
+              {% elif field.field_type == 'option' %}
+                <select name="f_{{ field.key }}" {% if field.required %}required{% endif %}>
+                  <option value="">Select</option>
+                  {% for option in field.options %}<option value="{{ option }}">{{ option }}</option>{% endfor %}
+                </select>
+              {% elif field.field_type == 'file' %}
+                <input type="file" name="f_{{ field.key }}" {% if field.required %}required{% endif %}>
+                <small>PDF, JPG, PNG, WebP, DOC/DOCX or XLS/XLSX · up to 10 MB</small>
+              {% else %}
+                <input type="{% if field.field_type == 'email' %}email{% elif field.field_type == 'numeric' %}number{% elif field.field_type == 'date' %}date{% elif field.field_type == 'datetime' %}datetime-local{% elif field.field_type == 'url' %}url{% else %}text{% endif %}" name="f_{{ field.key }}" {% if field.required %}required{% endif %} placeholder="{{ field.placeholder }}">
+              {% endif %}
+            </label>
+          {% endfor %}
+        </div>
+
+        {% if config.consent_enabled %}
+          <label class="sc-consent"><input type="checkbox" name="consent" required><span>{{ config.consent_text }}</span></label>
+        {% endif %}
+
+        <button class="sc-button sc-button-primary sc-button-block" type="{% if preview %}button{% else %}submit{% endif %}">
+          {{ config.submit_button_text|default:"Continue to scheduling" }}
+          <i class="ti ti-arrow-right"></i>
+        </button>
+      </form>
+    </section>
+  </main>
+</body>
+</html>

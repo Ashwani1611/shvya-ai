@@ -24,7 +24,7 @@ from services.channels.whatsapp_error_service import message_failure_details
 from services.channels.whatsapp_failure_patch import _failure_block
 from services.crm.lead_filter_service import active_filter_items, apply_lead_filters
 
-from .models import WhatsAppAccount, WhatsAppTemplate
+from .models import WhatsAppAccount, WhatsAppTemplate, WhatsAppMessage
 from .whatsapp_chat_smooth_ui import _inject_chat_ui
 
 
@@ -119,6 +119,7 @@ def _chat_sidebar_context(request, user):
 
     return {
         "conversations": conversations,
+        "unlinked_conversations": _unlinked_conversations(user.organization, account, query),
         "accounts": accounts,
         "selected_account": account,
         "search_query": query,
@@ -174,36 +175,11 @@ def whatsapp_chat_detail_view(request, lead_id):
     lead.initials = _lead_initials(lead)
     lead.stage_color = (lead.stage.color if lead.stage_id else "") or "#9ca3af"
 
-    lead_templates = WhatsAppTemplate.objects.filter(
-        organization=user.organization,
-        account__connection_type=WhatsAppAccount.ConnectionType.API,
-        account__is_active=True,
-        account__status=WhatsAppAccount.Status.CONNECTED,
-        status=WhatsAppTemplate.Status.APPROVED,
-    ).order_by("name")
-
-    if selected_account:
-        lead_templates = lead_templates.filter(account=selected_account)
-
-    from apps.crm.models.call import LeadCall
-    from apps.crm.models.note import LeadNote
-    from apps.crm.models.stage import Stage
-
-    from apps.ai_engagement.services.intent_score import intent_score_for_lead
-
     context = _chat_sidebar_context(request, user)
     context.update(
         {
             "active_lead": lead,
-            "intent_score": intent_score_for_lead(lead=lead),
             "chat_messages": chat_messages,
-            "lead_templates": lead_templates,
-            "lead_calls": LeadCall.objects.filter(lead=lead).order_by("-called_at")[:10],
-            "lead_notes": LeadNote.objects.filter(lead=lead).order_by("-created_at")[:5],
-            "lead_stages": Stage.objects.filter(
-                pipeline=lead.pipeline,
-                is_active=True,
-            ).order_by("display_order"),
         }
     )
     response = render(request, "channels/whatsapp_chat_list.html", context)
@@ -309,3 +285,61 @@ def whatsapp_send_template_view(request, lead_id):
     )
     send_whatsapp_message_task.delay(str(message.id))
     return JsonResponse({"id": str(message.id), "status": message.status}, status=202)
+
+
+def _unlinked_conversations(organization, account=None, query=""):
+    from django.db.models.functions import RowNumber, Substr
+
+    rows = WhatsAppMessage.objects.filter(
+        organization=organization,
+        account__organization=organization,
+        account__connection_type="api",
+        account__is_active=True,
+        lead__isnull=True,
+    ).annotate(
+        peer=models.Case(
+            models.When(direction="inbound", then=models.F("from_number")),
+            default=models.F("to_number"),
+        ),
+    )
+
+    # Provider history can keep lead=NULL even after the same phone already
+    # exists in CRM. Never offer a duplicate "Create lead" action for it.
+    lead_phones = Lead.objects.filter(organization=organization)
+    rows = rows.exclude(
+        peer__in=models.Subquery(lead_phones.values("phone")),
+    ).exclude(
+        peer__in=models.Subquery(
+            lead_phones.annotate(phone_without_plus=Substr("phone", 2)).values(
+                "phone_without_plus"
+            )
+        ),
+    )
+    if account:
+        rows = rows.filter(account=account)
+    if query:
+        rows = rows.filter(peer__icontains=query)
+    return rows.annotate(rank=models.Window(expression=RowNumber(), partition_by=[models.F("account_id"), models.F("peer")],
+        order_by=models.F("created_at").desc())).filter(rank=1).order_by("-created_at")[:100]
+
+
+@crm_login_required
+@require_GET
+def unlinked_chat_view(request, account_id, message_id):
+    from services.channels.chat_lead_service import chat_identity
+    from django.core.exceptions import ValidationError
+    from django.http import Http404
+    account = get_object_or_404(WhatsAppAccount, pk=account_id, organization=request.crm_user.organization,
+                               connection_type="api", is_active=True)
+    try:
+        phone, name, chat_messages = chat_identity(account=account, chat=str(message_id))
+    except ValidationError:
+        raise Http404("Conversation not found")
+    lead = Lead.objects.filter(organization=request.crm_user.organization, phone=phone).first()
+    if lead:
+        from django.urls import reverse
+        return redirect(reverse("whatsapp-chat-detail", args=[lead.pk]) + f"?account={account.pk}")
+    context = _chat_sidebar_context(request, request.crm_user)
+    context.update({"selected_account": account, "unlinked_contact": {"id": message_id, "name": name, "phone": phone},
+                    "chat_messages": chat_messages.order_by("created_at")})
+    return _inject_chat_ui(render(request, "channels/whatsapp_chat_list.html", context))

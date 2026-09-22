@@ -2,14 +2,20 @@
 
 import base64
 import json
+from datetime import date, timedelta
 
 from django.contrib import messages
 from django.db.models import Q
 from django.http import JsonResponse
 from django.shortcuts import redirect, render
+from django.utils import timezone
 from django.views.decorators.http import require_GET, require_POST
 
 from apps.crm.decorators import crm_login_required
+from services.channels.template_analytics import (
+    TemplateAnalyticsError,
+    fetch_template_analytics,
+)
 from services.channels.template_delete_fix import delete_template
 from services.channels.template_meta_fix import submit_template, sync_templates
 from services.channels.template_service import (
@@ -373,6 +379,179 @@ def template_delete(request, template_id):
             status=exc.status_code or 502,
         )
     return JsonResponse({"ok": True})
+
+
+
+def _template_analytics_range(request):
+    value = (request.GET.get("range") or "30").strip().lower()
+    today = timezone.localdate()
+    if value == "custom":
+        try:
+            start_date = date.fromisoformat((request.GET.get("start") or "").strip())
+            end_date = date.fromisoformat((request.GET.get("end") or "").strip())
+        except ValueError as exc:
+            raise TemplateAnalyticsError(
+                "Choose a valid start and end date for the custom range."
+            ) from exc
+    else:
+        try:
+            days = int(value)
+        except (TypeError, ValueError) as exc:
+            raise TemplateAnalyticsError("Choose a valid analytics range.") from exc
+        if days not in {7, 30, 90}:
+            raise TemplateAnalyticsError("Template analytics supports 7, 30, or 90 days.")
+        end_date = today
+        start_date = end_date - timedelta(days=days - 1)
+
+    if end_date > today:
+        raise TemplateAnalyticsError("Template analytics cannot include future dates.")
+    if end_date < start_date:
+        raise TemplateAnalyticsError("The analytics end date must be on or after the start date.")
+    if (end_date - start_date).days + 1 > 90:
+        raise TemplateAnalyticsError("Template analytics supports a maximum 90-day range.")
+    return start_date, end_date, value
+
+
+def _template_analytics_error(exc, *, default_status=502):
+    status = exc.status_code if exc.status_code and 400 <= exc.status_code < 600 else default_status
+    return JsonResponse(
+        {
+            "ok": False,
+            "error": str(exc),
+            "meta_error_code": exc.meta_error_code,
+        },
+        status=status,
+    )
+
+
+@crm_login_required
+@require_GET
+def template_analytics_summary(request):
+    """Return real Meta 30-day metrics for approved templates on the list page."""
+
+    user = request.crm_user
+    rows = list(
+        _templates(user)
+        .filter(status=WhatsAppTemplate.Status.APPROVED)
+        .exclude(meta_template_id="")
+        .select_related("account")
+    )
+    end_date = timezone.localdate()
+    start_date = end_date - timedelta(days=29)
+    grouped = {}
+    for template in rows:
+        grouped.setdefault(template.account_id, []).append(template)
+
+    payload = {}
+    warnings = []
+    for templates in grouped.values():
+        account = templates[0].account
+        try:
+            analytics = fetch_template_analytics(
+                account=account,
+                template_ids=[template.meta_template_id for template in templates],
+                start_date=start_date,
+                end_date=end_date,
+            )
+        except TemplateAnalyticsError as exc:
+            warnings.append(str(exc))
+            continue
+
+        for template in templates:
+            item = analytics.get(template.meta_template_id)
+            if not item:
+                continue
+            payload[str(template.id)] = {
+                "sent": item["totals"]["sent"],
+                "delivered": item["totals"]["delivered"],
+                "read": item["totals"]["read"],
+                "clicked": item["totals"]["clicked"],
+                "delivered_rate": item["rates"]["delivered"],
+                "read_rate": item["rates"]["read"],
+                "fetched_at": item["fetched_at"],
+            }
+
+    return JsonResponse(
+        {
+            "ok": True,
+            "start": start_date.isoformat(),
+            "end": end_date.isoformat(),
+            "templates": payload,
+            "warnings": warnings[:3],
+        }
+    )
+
+
+@crm_login_required
+@require_GET
+def template_analytics(request, template_id):
+    """Return tenant-scoped Meta analytics for one approved template."""
+
+    user = request.crm_user
+    template = _template(user, template_id)
+    if not template:
+        return JsonResponse({"ok": False, "error": "Template not found."}, status=404)
+    if template.status != WhatsAppTemplate.Status.APPROVED or not template.meta_template_id:
+        return JsonResponse(
+            {
+                "ok": False,
+                "error": "Meta analytics are available only for approved templates.",
+            },
+            status=400,
+        )
+
+    try:
+        start_date, end_date, range_value = _template_analytics_range(request)
+        analytics = fetch_template_analytics(
+            account=template.account,
+            template_ids=[template.meta_template_id],
+            start_date=start_date,
+            end_date=end_date,
+        )
+    except TemplateAnalyticsError as exc:
+        return _template_analytics_error(exc)
+
+    item = analytics.get(template.meta_template_id)
+    if item is None:
+        return JsonResponse(
+            {"ok": False, "error": "Meta returned no analytics for this template."},
+            status=502,
+        )
+
+    language = (
+        WhatsAppTemplateMetadata.objects.filter(template=template)
+        .values_list("language", flat=True)
+        .first()
+        or "en_US"
+    )
+    return JsonResponse(
+        {
+            "ok": True,
+            "template": {
+                "id": str(template.id),
+                "meta_template_id": template.meta_template_id,
+                "name": template.name,
+                "category": template.get_category_display(),
+                "status": template.get_status_display(),
+                "language": language,
+            },
+            "range": {
+                "value": range_value,
+                "start": start_date.isoformat(),
+                "end": end_date.isoformat(),
+            },
+            "analytics": item,
+            "clicks_supported": template.category
+            in {
+                WhatsAppTemplate.Category.MARKETING,
+                WhatsAppTemplate.Category.UTILITY,
+            },
+            "read_receipt_note": (
+                "Read counts exclude recipients who disabled WhatsApp read receipts, "
+                "so actual reads may be higher."
+            ),
+        }
+    )
 
 
 @crm_login_required

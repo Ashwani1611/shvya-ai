@@ -2,12 +2,12 @@ import json
 
 from django.db import transaction
 from django.db.models import Max
-from django.http import HttpResponse
+from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, render
 from django.views.decorators.http import require_GET, require_POST
 
 from apps.crm.decorators import crm_login_required
-from apps.crm.models import Lead, Stage
+from apps.crm.models import AttributeDefinition, Lead, Pipeline, Stage
 from apps.crm.views.api import get_user_pipelines
 
 
@@ -15,12 +15,9 @@ STAGE_DESCRIPTION_MAX_LENGTH = 1200
 
 
 def _allowed_pipelines(user):
-    return (
-        get_user_pipelines(user)
-        .filter(
-            organization=user.organization,
-            is_active=True,
-        )
+    return get_user_pipelines(user).filter(
+        organization=user.organization,
+        is_active=True,
     )
 
 
@@ -43,16 +40,18 @@ def _get_stage(user, stage_id):
 
 def _normalize_active_stage(pipeline, active_stage_id):
     value = str(active_stage_id or "").strip()
-    if value and Stage.objects.filter(
-        id=value,
-        pipeline=pipeline,
-        is_active=True,
-    ).exists():
+    if (
+        value
+        and Stage.objects.filter(
+            id=value,
+            pipeline=pipeline,
+            is_active=True,
+        ).exists()
+    ):
         return value
 
     first_stage_id = (
-        Stage.objects
-        .filter(
+        Stage.objects.filter(
             pipeline=pipeline,
             is_active=True,
         )
@@ -64,17 +63,16 @@ def _normalize_active_stage(pipeline, active_stage_id):
 
 
 def _modal_context(*, pipeline, active_stage_id, error=""):
-    stages = (
-        Stage.objects
-        .filter(
-            pipeline=pipeline,
-            is_active=True,
-        )
-        .order_by("display_order", "name")
-    )
+    stages = Stage.objects.filter(
+        pipeline=pipeline,
+        is_active=True,
+    ).order_by("display_order", "name")
     return {
         "pipeline": pipeline,
         "stages": stages,
+        "attribute_definitions": AttributeDefinition.objects.filter(
+            organization_id=pipeline.organization_id
+        ),
         "stage_count": stages.count(),
         "active_stage_id": _normalize_active_stage(
             pipeline,
@@ -191,8 +189,7 @@ def stage_editor_create(request):
         )
 
     max_order = (
-        Stage.objects
-        .filter(pipeline=pipeline)
+        Stage.objects.filter(pipeline=pipeline)
         .aggregate(max_order=Max("display_order"))
         .get("max_order")
     )
@@ -233,11 +230,16 @@ def stage_editor_update(request, stage_id):
             status=409,
         )
 
-    if not stage.is_system_locked and Stage.objects.filter(
-        pipeline=stage.pipeline,
-        is_active=True,
-        name__iexact=name,
-    ).exclude(id=stage.id).exists():
+    if (
+        not stage.is_system_locked
+        and Stage.objects.filter(
+            pipeline=stage.pipeline,
+            is_active=True,
+            name__iexact=name,
+        )
+        .exclude(id=stage.id)
+        .exists()
+    ):
         return HttpResponse(
             "A stage with this name already exists.",
             status=400,
@@ -272,17 +274,68 @@ def stage_editor_update(request, stage_id):
 def stage_editor_ai_toggle(request, stage_id):
     user = request.crm_user
     stage = _get_stage(user, stage_id)
-    active_stage_id = request.POST.get("active_stage", "").strip()
-
-    stage.ai_on = not stage.ai_on
-    stage.save(update_fields=["ai_on", "updated_at"])
-
-    return _render_modal(
-        request,
-        pipeline=stage.pipeline,
-        active_stage_id=active_stage_id,
-        changed=True,
+    stage.ai_on = (
+        request.POST.get("enabled") == "true"
+        if "enabled" in request.POST
+        else not stage.ai_on
     )
+    stage.save(update_fields=["ai_on", "updated_at"])
+    return JsonResponse({"ai_on": stage.ai_on})
+
+
+@crm_login_required
+@require_POST
+def stage_editor_requirements(request, stage_id):
+    stage = _get_stage(request.crm_user, stage_id)
+    selected = set(request.POST.getlist("attributes"))
+    allowed = {
+        str(pk)
+        for pk in AttributeDefinition.objects.filter(
+            organization=request.crm_user.organization
+        ).values_list("id", flat=True)
+    }
+    if not selected <= allowed:
+        return HttpResponse("Choose attributes from your organization.", status=400)
+    with transaction.atomic():
+        stage = Stage.objects.select_for_update().get(pk=stage.pk)
+        stage.config = {
+            **(stage.config or {}),
+            "required_attribute_ids": sorted(selected),
+        }
+        stage.save(update_fields=["config", "updated_at"])
+    return JsonResponse({"saved": True})
+
+
+@crm_login_required
+@require_POST
+def stage_editor_reorder(request, stage_id):
+    stage = _get_stage(request.crm_user, stage_id)
+    direction = request.POST.get("direction")
+    if direction not in {"up", "down"}:
+        return HttpResponse("Choose up or down.", status=400)
+    with transaction.atomic():
+        Pipeline.objects.select_for_update().get(pk=stage.pipeline_id)
+        stages = list(
+            Stage.objects.select_for_update()
+            .filter(pipeline_id=stage.pipeline_id, is_active=True)
+            .order_by("display_order", "name")
+        )
+        index = next(i for i, item in enumerate(stages) if item.pk == stage.pk)
+        target = index + (-1 if direction == "up" else 1)
+        if 0 <= target < len(stages):
+            first, second = stages[index], stages[target]
+            first_order, second_order = first.display_order, second.display_order
+            temporary = (
+                Stage.objects.filter(pipeline_id=stage.pipeline_id).aggregate(
+                    maximum=Max("display_order")
+                )["maximum"]
+                + 1
+            )
+            Stage.objects.filter(pk=first.pk).update(display_order=temporary)
+            Stage.objects.filter(pk=second.pk).update(display_order=first_order)
+            Stage.objects.filter(pk=first.pk).update(display_order=second_order)
+            stages[index], stages[target] = stages[target], stages[index]
+    return JsonResponse({"order": [str(item.pk) for item in stages]})
 
 
 @crm_login_required

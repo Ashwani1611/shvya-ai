@@ -10,11 +10,10 @@ def test_touchpoints_route_renders_updated_page_and_navigation():
     request = RequestFactory().get(url)
     match = resolve(url)
     response = match.func(request, **match.kwargs)
-    assert response.status_code == 200
-    html = response.content.decode()
-    assert "Touchpoints" in html
-    assert "Chain conditions and actions together into a full follow-up workflow." in html
-    assert url in html
+    # The implemented library contains tenant-owned data and now requires CRM login.
+    assert response.status_code == 302
+    assert response["Location"] == "/dashboard/login/"
+    assert match.func.__name__ == "touchpoints"
 
     parent = next(
         item for item in sidebar_nav(request)["nav_items"]

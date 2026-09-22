@@ -1,0 +1,66 @@
+{% load channels_extras %}
+{% lead_attribute_rows active_lead as attribute_rows %}
+<div class="contact-content" data-lead-id="{{ active_lead.id }}" data-channel="{{ channel }}">
+  <header class="contact-heading"><h2>Contact</h2><button type="button" class="contact-primary" data-contact-tab="touchpoints"><i class="ti ti-message-circle"></i> Touchpoints</button></header>
+  <nav class="contact-tabs" aria-label="Contact sections" role="tablist">
+    <button type="button" role="tab" aria-selected="true" data-contact-tab="personal"><i class="ti ti-user"></i>Personal</button>
+    <button type="button" role="tab" aria-selected="false" data-contact-tab="calls"><i class="ti ti-phone"></i>Calls</button>
+    <button type="button" role="tab" aria-selected="false" data-contact-tab="checking"><i class="ti ti-calendar"></i>Checking In</button>
+    {% if channel == 'hosted' %}
+    <button type="button" role="tab" aria-selected="false" data-contact-tab="touchpoints"><i class="ti ti-message-circle"></i>Touchpoints</button>
+    {% else %}
+    <button type="button" role="tab" aria-selected="false" data-contact-tab="templates"><i class="ti ti-template"></i>Templates</button>
+    {% endif %}
+  </nav>
+  <div class="contact-scroll">
+    <section data-contact-panel="personal" role="tabpanel">
+      <div class="contact-identity"><div class="contact-avatar">{{ active_lead.name|slice:':1'|upper }}</div><div><h3>{{ active_lead.name }}</h3><p><span class="contact-dot"></span> {% if channel == 'instagram' %}Instagram{% else %}WhatsApp{% endif %} contact</p></div></div>
+      <div class="contact-card"><div class="contact-section-heading"><h3>Contact details</h3><span data-save-status role="status">Autosave on</span></div>
+        <form data-autosave action="{% url 'whatsapp-lead-quick-update' active_lead.id %}">{% csrf_token %}
+          <label class="contact-row"><span>Name</span><input name="name" value="{{ active_lead.name }}" maxlength="150" required autocomplete="off"></label>
+          <div class="contact-row"><span>Phone</span><div class="contact-locked"><span>{{ active_lead.phone }}</span><i class="ti ti-lock" title="Read-only"></i><button type="button" data-copy-phone="{{ active_lead.phone }}" aria-label="Copy phone"><i class="ti ti-copy"></i></button></div></div>
+          <label class="contact-row"><span>Email</span><input name="email" type="email" value="{{ active_lead.email }}" placeholder="Add email" autocomplete="off"></label>
+        </form>
+        <div class="contact-row"><span>Intent Score</span><strong class="contact-score">{% if intent_score.assessed %}{{ intent_score.score }}/10{% else %}Not assessed{% endif %}</strong></div>
+      </div>
+      <div class="contact-card contact-ai"><div><h3><i class="ti ti-sparkles"></i> AI auto-reply</h3><p>For this lead</p></div><button type="button" class="contact-switch" role="switch" aria-label="AI auto-reply" aria-checked="{{ active_lead.ai_enabled|yesno:'true,false' }}" data-ai-url="{% url 'whatsapp-lead-ai-toggle' active_lead.id %}"><span></span></button></div>
+      <div class="contact-card"><h3>Lead details</h3>
+        <form data-routing action="{% url 'whatsapp-lead-quick-update' active_lead.id %}">{% csrf_token %}
+          <label class="contact-row"><span>Pipeline</span><select name="pipeline" aria-label="Change pipeline">{% for pipeline in pipelines %}<option value="{{ pipeline.id }}" {% if pipeline.id == active_lead.pipeline_id %}selected{% endif %}>{{ pipeline.name }}</option>{% endfor %}</select></label>
+          <label class="contact-row"><span>Stage</span><select name="stage" aria-label="Change stage">{% for stage in lead_stages %}<option value="{{ stage.id }}" {% if stage.id == active_lead.stage_id %}selected{% endif %}>{{ stage.name }}</option>{% endfor %}</select></label>
+        </form>
+        <div class="contact-row"><span>Sequence</span><span>{{ sequence_state.sequence.name|default:'Not assigned' }}</span></div>
+        <div class="contact-row"><span>Source</span><span>{{ active_lead.get_lead_source_display }} <i class="ti ti-lock" title="Read-only"></i></span></div>
+      </div>
+      <details class="contact-card contact-additional"><summary><span>Additional information<small>Attributes and more</small></span><i class="ti ti-chevron-down"></i></summary>
+        <form data-autosave action="{% url 'whatsapp-lead-attributes-save' active_lead.id %}">{% csrf_token %}
+          {% for attr in attribute_rows %}<label class="contact-attribute"><span>{{ attr.name }}</span>
+            {% if attr.field_type == 'option' %}<select name="attr_{{ attr.key }}"><option value="">Choose…</option>{% for option in attr.options %}<option {% if option == attr.value %}selected{% endif %}>{{ option }}</option>{% endfor %}</select>
+            {% else %}<input name="attr_{{ attr.key }}" value="{{ attr.value }}" type="{% if attr.field_type == 'date' %}date{% elif attr.field_type == 'datetime' %}datetime-local{% elif attr.field_type == 'numeric' %}number{% else %}text{% endif %}" placeholder="Enter value">{% endif %}</label>
+          {% empty %}<p>No custom attributes configured.</p>{% endfor %}
+        </form>
+        <button type="button" class="contact-link" hx-get="{% url 'crm-attribute-manage-modal' %}" hx-target="#modal-root">Manage attributes</button>
+      </details>
+      {% include 'crm/partials/notes_editor.html' with note_lead=active_lead %}
+      <p class="contact-created"><i class="ti ti-calendar"></i> Created {{ active_lead.created_at|date:'d M Y' }}</p>
+    </section>
+    <section data-contact-panel="calls" role="tabpanel" hidden><div class="contact-section-heading"><h3>Calls</h3><button type="button" class="contact-primary" hx-get="{% url 'crm-lead-call-modal' active_lead.id %}" hx-target="#modal-root">Add call</button></div>{% for call in lead_calls %}<article class="contact-card"><h3>{{ call.call_name|default:'Call' }}</h3><p>{{ call.get_status_display }} · {{ call.called_at|date:'d M, h:i A' }}</p>{% if call.notes %}<p class="contact-preserve">{{ call.notes }}</p>{% endif %}</article>{% empty %}<p class="contact-empty">No calls logged for this lead.</p>{% endfor %}</section>
+    <section data-contact-panel="checking" role="tabpanel" hidden><h3>Checking In</h3>
+      <div class="contact-card contact-ai"><div><h3>Auto follow-ups</h3><p>For this lead, across all sequences</p></div><button type="button" class="contact-switch" role="switch" aria-label="Auto follow-ups" aria-checked="{{ active_lead.auto_followup_enabled|yesno:'true,false' }}" data-followup-url="{% url 'chat-followups-toggle' active_lead.id %}"><span></span></button></div>
+      {% if not active_lead.auto_followup_enabled %}<p class="contact-help">Auto follow-ups are off. Turn them on to start or resume a sequence.</p>{% endif %}
+      <p class="contact-help">{{ sequence_state.sequence.name|default:'No assigned sequence' }}</p>
+      {% for sequence in sequences %}<div class="contact-card"><h3>{{ sequence.name }}</h3><p>{{ sequence.description }}</p><form data-start-sequence action="{% url 'chat-checking-in' active_lead.id %}">{% csrf_token %}<input type="hidden" name="channel" value="{{ channel }}"><input type="hidden" name="sequence" value="{{ sequence.id }}"><input type="hidden" name="account" value="{{ linked_account.id }}"><button type="submit" class="contact-primary" {% if not active_lead.auto_followup_enabled %}disabled{% endif %}>{% if sequence_state.sequence_id == sequence.id %}Resume sequence{% else %}Start sequence{% endif %}</button></form></div>{% empty %}<p class="contact-empty">{% if channel == 'instagram' %}WhatsApp sequences cannot be triggered from an Instagram conversation.{% else %}No sequences for this pipeline’s linked WhatsApp number.{% endif %}</p>{% endfor %}
+      <p class="contact-help">Sequences follow their configured timing and sending rules.</p>
+    </section>
+    {% if channel != 'hosted' %}
+    <section data-contact-panel="templates" role="tabpanel" hidden><h3>Templates</h3><label class="contact-search"><i class="ti ti-search"></i><input type="search" data-template-search placeholder="Search templates" aria-label="Search templates"></label>
+      {% for tmpl in lead_templates %}<article class="contact-card" data-template-name="{{ tmpl.name|lower }}"><h3>{{ tmpl.name }}</h3><p>{{ tmpl.get_status_display }}</p>{% if tmpl.status == 'approved' %}<form data-send-template action="{% url 'whatsapp-send-template' active_lead.id %}">{% csrf_token %}<input type="hidden" name="template_id" value="{{ tmpl.id }}"><input type="hidden" name="account" value="{{ linked_account.id }}"><button type="submit" class="contact-primary">Send template</button></form>{% endif %}</article>{% empty %}<p class="contact-empty">{% if channel == 'hosted' %}Use Touchpoints for saved replies in hosted chats.{% elif channel == 'instagram' %}WhatsApp templates are not available for Instagram. Use Touchpoints for saved replies.{% else %}No templates for this pipeline’s linked WhatsApp number.{% endif %}</p>{% endfor %}
+    </section>
+    {% endif %}
+    <section data-contact-panel="touchpoints" role="tabpanel" hidden><div class="contact-section-heading"><h3>Touchpoints</h3><a class="contact-link" href="{% url 'crm-auto-follow-ups-touchpoints' %}" target="_blank" rel="noopener">Manage <i class="ti ti-external-link"></i></a></div><p class="contact-help">Choose a category, then a saved reply.</p><label class="contact-attribute"><span>Category</span><select data-reply-category><option value="">All categories</option>{% for category in categories %}<option value="{{ category.id }}">{{ category.name }}</option>{% endfor %}</select></label><label class="contact-search"><i class="ti ti-search"></i><input type="search" data-reply-search placeholder="Search quick replies" aria-label="Search quick replies"></label>
+      {% for category in categories %}{% for reply in category.replies.all %}<article class="contact-card" data-reply data-category="{{ category.id }}"><p class="contact-eyebrow">{{ category.name }}</p><h3>{{ reply.title }}</h3><p class="contact-preserve" data-reply-body>{{ reply.body }}</p><button type="button" class="contact-primary" data-insert-reply>Use reply</button></article>{% endfor %}{% empty %}<p class="contact-empty">No Touchpoints yet. Create a category and add your first reply.</p>{% endfor %}
+      <p class="contact-help">Replies open in the message box so you can review and send them.</p>
+    </section>
+  </div>
+  <p class="contact-feedback" role="status" data-contact-feedback hidden></p>
+</div>

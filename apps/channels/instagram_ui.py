@@ -229,6 +229,7 @@ def _present_thread(thread, organization):
     lead = conversation.lead
     thread["lead_url"] = reverse("crm-instagram-link-lead", args=[thread["id"]])
     thread["lead_name"] = lead.name if lead and lead.organization_id == conversation.organization_id else ""
+    thread["sidebar_url"] = (reverse("chat-contact-panel", args=[lead.pk]) + "?channel=instagram") if thread["lead_name"] else reverse("chat-instagram-contact", args=[thread["id"]])
     thread["intent_score"] = intent_score_for_lead(lead=lead) if thread["lead_name"] else None
     thread["url"] = reverse("crm-instagram-chat-detail", args=[thread["id"]])
     thread["send_url"] = reverse("crm-instagram-send-message", args=[thread["id"]])

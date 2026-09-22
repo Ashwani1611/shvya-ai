@@ -724,6 +724,26 @@
             </div>
 
 
+            <!-- Calendar/Web-to-Lead attachment count -->
+
+            <div
+                class="
+                    inline-flex
+                    items-center
+                    gap-1.5
+                    text-sm
+                    text-gray-400
+                "
+                title="Files submitted through SHVYA Calendar / Web-to-Lead"
+            >
+                <i class="ti ti-paperclip"></i>
+                <span>
+                    {{ lead.calendar_attachment_count|default:0 }}
+                    file{{ lead.calendar_attachment_count|default:0|pluralize }}
+                </span>
+            </div>
+
+
             <!-- Activity -->
 
             <button
@@ -918,6 +938,58 @@
             </div>
 
         </section>
+
+
+        <!-- Calendar / Web-to-Lead Attachments -->
+
+        {% if lead.calendar_attachments %}
+        <section
+            class="
+                mb-4
+                rounded-lg
+                border
+                border-gray-200
+                bg-white
+                p-4
+            "
+        >
+            <div class="flex items-center justify-between gap-3 mb-3">
+                <div>
+                    <p class="text-[11px] uppercase tracking-wide font-semibold text-gray-400">
+                        Attachments
+                    </p>
+                    <p class="mt-1 text-xs text-gray-500">
+                        Files submitted by this lead through SHVYA Calendar / Web-to-Lead.
+                    </p>
+                </div>
+                <span class="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2.5 py-1 text-[11px] font-medium text-blue-700">
+                    <i class="ti ti-paperclip"></i>
+                    {{ lead.calendar_attachment_count|default:0 }}
+                </span>
+            </div>
+            <div class="grid gap-2">
+                {% for attachment in lead.calendar_attachments %}
+                <a
+                    href="{% url 'shvya_calendar:attachment_download' attachment.id %}"
+                    class="flex items-center gap-3 rounded-xl border border-gray-200 bg-gray-50/50 px-3 py-2.5 text-left hover:border-blue-200 hover:bg-blue-50/40 transition"
+                >
+                    <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white text-blue-600 shadow-sm">
+                        <i class="ti ti-file"></i>
+                    </span>
+                    <span class="min-w-0 flex-1">
+                        <strong class="block truncate text-xs font-medium text-gray-800">
+                            {{ attachment.original_name }}
+                        </strong>
+                        <small class="block truncate text-[10px] text-gray-400">
+                            {{ attachment.submission.page.name }} · {{ attachment.size|filesizeformat }} · {{ attachment.created_at|date:"M d, Y H:i" }}
+                        </small>
+                    </span>
+                    <i class="ti ti-download text-gray-400"></i>
+                </a>
+                {% endfor %}
+            </div>
+        </section>
+        {% endif %}
 
 
         <!-- Additional Info + Call Tracker -->

@@ -15,6 +15,7 @@
   class="hosted-chat-shell {% if selected_chat %}has-chat{% endif %}"
   data-data-url="{% url 'whatsapp-hosted-session-chats-data' account.id %}"
   data-send-url="{% url 'whatsapp-hosted-session-chat-send' account.id %}"
+  data-contact-url="{% url 'chat-unlinked-contact' account.id %}"
   data-account-id="{{ account.id }}"
   data-account-status="{{ account.status }}"
   data-read-url="{% url 'whatsapp-hosted-session-chat-read' account.id %}"
@@ -140,11 +141,14 @@
       <button type="button" class="chat-icon-button" title="Emoji" aria-label="Emoji"><i class="ti ti-mood-smile"></i></button>
       <button type="button" class="chat-icon-button" title="Attach" aria-label="Attach"><i class="ti ti-paperclip"></i></button>
       <input id="chat-key-input" type="hidden" name="chat" value="{{ selected_chat }}">
-      <input name="body" type="text" autocomplete="off" placeholder="Type a message" aria-label="Message">
+      <textarea id="message-body" name="body" rows="1" autocomplete="off" placeholder="Type a message" aria-label="Message"></textarea>
       <button class="chat-send" type="submit" title="Send" aria-label="Send message"><i class="ti ti-send"></i></button>
     </form>
   </section>
+  <aside class="contact-sidebar" data-contact-host><p class="contact-empty">Select a chat to see contact details.</p></aside>
 </div>
 
+<link rel="stylesheet" href="{% static 'css/contact_panel.css' %}">
+<script src="{% static 'js/contact_panel.js' %}" defer></script>
 <script src="{% static 'js/hosted_whatsapp_chat.js' %}" defer></script>
 {% endblock %}

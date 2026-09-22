@@ -3,6 +3,7 @@ from django.urls import path
 from apps.hosted_automation import queue_views as hosted_queue_views
 from apps.hosted_automation import views as hosted_automation_views
 
+from . import contact_panel_ui
 from . import api_account_repair_ui
 from . import ai_reply_status_ui
 from . import api_account_ui
@@ -25,6 +26,12 @@ from . import whatsapp_template_send_ui
 from . import whatsapp_ui
 
 urlpatterns = [
+    path("chats/account/<uuid:account_id>/unlinked/<uuid:message_id>/", whatsapp_api_chat_ui.unlinked_chat_view, name="whatsapp-unlinked-chat"),
+    path("chats/account/<uuid:account_id>/contact/", contact_panel_ui.unlinked_contact, name="chat-unlinked-contact"),
+    path("chats/instagram/<uuid:conversation_id>/contact/", contact_panel_ui.instagram_contact, name="chat-instagram-contact"),
+    path("chats/<uuid:lead_id>/followups-toggle/", contact_panel_ui.toggle_followups, name="chat-followups-toggle"),
+    path("leads/<uuid:lead_id>/contact-panel/", contact_panel_ui.contact_panel, name="chat-contact-panel"),
+    path("leads/<uuid:lead_id>/checking-in/", contact_panel_ui.start_checking_in, name="chat-checking-in"),
     path("leads/<uuid:lead_id>/ai-status/", ai_reply_status_ui.ai_reply_status, name="whatsapp-ai-reply-status"),
     path("accounts/", api_account_ui.whatsapp_account_list_view, name="whatsapp-accounts"),
     path("accounts/<uuid:account_id>/automation-settings/", views_flat.whatsapp_account_automation_settings_view, name="whatsapp-account-automation-settings"),
@@ -86,8 +93,10 @@ urlpatterns = [
     path("campaigns/<uuid:campaign_id>/launch/", campaign_ui.legacy_launch, name="whatsapp-campaign-launch"),
 
     path("templates/", template_action_ui.template_list, name="whatsapp-template-list"),
+    path("templates/analytics-summary/", template_ui.template_analytics_summary, name="whatsapp-template-analytics-summary"),
     path("templates/new/", template_action_ui.template_create, name="whatsapp-template-create"),
     path("templates/<uuid:template_id>/edit/", template_action_ui.template_edit, name="whatsapp-template-edit"),
+    path("templates/<uuid:template_id>/analytics/", template_ui.template_analytics, name="whatsapp-template-analytics"),
     path("templates/<uuid:template_id>/submit/", template_ui.template_submit, name="whatsapp-template-submit"),
     path("templates/<uuid:template_id>/copy/", template_ui.template_copy, name="whatsapp-template-copy"),
     path("templates/<uuid:template_id>/delete/", template_ui.template_delete, name="whatsapp-template-delete"),

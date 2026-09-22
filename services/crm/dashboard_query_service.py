@@ -234,6 +234,11 @@ def build_lead_table_context(
     leads = list(leads_qs)
     from apps.ai_engagement.services.intent_score import prepare_intent_scores
     prepare_intent_scores(leads)
+    from apps.shvya_calendar.services import attach_calendar_attachments_to_leads
+    attach_calendar_attachments_to_leads(
+        leads,
+        organization=organization,
+    )
 
     attribute_definitions = get_cached_attribute_definitions(
         organization.id
