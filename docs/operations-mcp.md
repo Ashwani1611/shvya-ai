@@ -4,7 +4,7 @@
 
 ## Purpose
 
-SHVYA Operations MCP lets an authorized external AI client such as ChatGPT, Claude, or VS Code inspect, diagnose, propose and, where explicitly permitted, apply bounded SHVYA changes.
+SHVYA Operations MCP lets an authorized external AI client such as ChatGPT, Claude, VS Code/Copilot, Cursor, Gemini CLI, Claude Code, Codex, Windsurf, or another standards-compliant remote MCP client inspect, diagnose, propose and, where explicitly permitted, apply bounded SHVYA changes.
 
 The backend remains authoritative. The external AI never grants itself a role, tenant, capability or approval.
 
@@ -18,13 +18,24 @@ The backend remains authoritative. The external AI never grants itself a role, t
 - Protected-resource metadata: `/operations/.well-known/oauth-protected-resource`
 - Authorization-server metadata: `/.well-known/oauth-authorization-server/operations`
 
-Operations OAuth uses PKCE S256. Access and refresh values are stored only as hashes. Revoking an Operations OAuth grant immediately invalidates its access/refresh grant and closes any active Superadmin support session tied to it; the revocation action itself is safely audited. Public client redirect URIs are restricted to HTTPS ChatGPT/OpenAI and Claude/Anthropic hosts plus the exact VS Code MCP callbacks `http://127.0.0.1:33418` and `https://vscode.dev/redirect`. Arbitrary localhost ports/hosts and arbitrary `vscode.dev` paths are rejected.
+Operations OAuth uses PKCE S256. Access and refresh values are stored only as hashes. Revoking an Operations OAuth grant immediately invalidates its access/refresh grant and closes any active Superadmin support session tied to it; the revocation action itself is safely audited. Operations dynamic registration accepts normal HTTPS callbacks for public web clients and RFC 8252 loopback HTTP callbacks on `localhost`, `127.0.0.1`, or `::1` for native clients. A portless registered loopback callback may use a runtime-selected ephemeral port with the same scheme, host, path and query; fixed-port registrations remain exact. Non-loopback plain HTTP, fragments and userinfo are rejected. PKCE, client binding, browser consent, issuer signalling and authorization-code redirect binding remain mandatory.
 
-## VS Code connection
+## Client connections
 
-VS Code can connect to the remote Streamable HTTP endpoint at `/operations/mcp/` and use the same actor-bound OAuth flow. For MCP 2026-07-28 clients, SHVYA advertises Client ID Metadata Documents (CIMD) as the preferred public-client registration path and keeps Dynamic Client Registration as a backward-compatible fallback. The exact VS Code MCP redirect URLs remain enforced.
+The one Superadmin endpoint is the deployed `https://<host>/operations/mcp/` Streamable HTTP resource. OAuth discovery is served from the Operations protected-resource and authorization-server metadata endpoints.
 
-A typical VS Code MCP configuration points an HTTP server entry at the deployed `https://<host>/operations/mcp/` URL. Authentication is completed in the browser and still resolves to either the authenticated SHVYA Superadmin role or an enabled Organization Admin role; VS Code itself never receives additional SHVYA authority.
+Common client forms:
+
+- **ChatGPT / Claude / Windsurf / other remote-MCP UIs:** add the Operations MCP URL as the remote server URL and complete SHVYA OAuth in the browser.
+- **VS Code / Copilot:** `{"servers":{"shvya-superadmin":{"type":"http","url":"https://<host>/operations/mcp/"}}}`.
+- **Cursor:** `{"mcpServers":{"shvya-superadmin":{"url":"https://<host>/operations/mcp/"}}}`.
+- **Gemini CLI:** `{"mcpServers":{"shvya-superadmin":{"httpUrl":"https://<host>/operations/mcp/"}}}`.
+- **Claude Code:** `claude mcp add --transport http shvya-superadmin https://<host>/operations/mcp/`.
+- **Codex:** add `[mcp_servers.shvya-superadmin]` with `url = "https://<host>/operations/mcp/"` to Codex configuration.
+
+For MCP clients that support Client ID Metadata Documents (CIMD), SHVYA keeps server-side CIMD fetching publisher-allowlisted to avoid SSRF. Dynamic Client Registration remains available for other public PKCE clients. Native clients may use localhost/loopback OAuth with fixed or ephemeral ports.
+
+Authentication always resolves to the authenticated SHVYA Superadmin role or an enabled Organization Admin role. The MCP client itself never receives additional SHVYA authority merely because it is a different platform.
 
 ## Authorization model
 
@@ -251,6 +262,6 @@ Organization Admin authorization is bounded by three layers:
 - **OAuth granted capabilities** — the exact capability snapshot consented to when that external-AI grant was authorized.
 - **Effective capabilities** — the intersection of live policy, the grant snapshot, and OAuth read/write scope.
 
-A policy reduction takes effect immediately on existing grants. A later policy expansion does **not** silently give an already-connected ChatGPT, Claude or VS Code client new authority; the Organization Admin must complete fresh SHVYA OAuth authorization. The MCP context reports `policy_capabilities`, `granted_capabilities` and current `capabilities` separately.
+A policy reduction takes effect immediately on existing grants. A later policy expansion does **not** silently give an already-connected External AI client new authority; the Organization Admin must complete fresh SHVYA OAuth authorization. The MCP context reports `policy_capabilities`, `granted_capabilities` and current `capabilities` separately.
 
 The Superadmin policy is granular for customer-state writes: lead stage, lead attributes, AI/Playbook, CRM pipeline, CRM stage, CRM attribute, Workflow, Cadence and messaging-automation settings can be controlled independently. Legacy stored `crm.config.write` and `automation.config.write` policies are expanded only for backward compatibility and are normalized to granular controls when Superadmin saves the policy.
