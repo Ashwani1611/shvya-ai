@@ -47,6 +47,7 @@ from apps.integrations.models import (
     OperationsSupportSession,
 )
 from apps.integrations.operations_auth import (
+    OFFLINE_SCOPE,
     OPERATIONS_READ_SCOPE,
     OPERATIONS_WRITE_SCOPE,
     pkce_s256,
