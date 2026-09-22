@@ -103,6 +103,16 @@
                     </svg>
                     <span class="sa-nav-text">RAG Monitor</span>
                 </a>
+                <a
+                    href="{% url 'superadmin-operations-mcp' %}"
+                    title="External AI MCP"
+                    class="sa-nav-link {% if request.resolver_match.url_name == 'superadmin-operations-mcp' %}is-active{% endif %}"
+                >
+                    <svg class="sa-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                        <path d="M8 8.5A3.5 3.5 0 1 1 11.5 12H8a3.5 3.5 0 1 0 3.5 3.5V12H16a3.5 3.5 0 1 0 0-7h-1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                    <span class="sa-nav-text">MCP</span>
+                </a>
                 {% include "support/partials/staff_nav.html" %}
             </nav>
 
@@ -179,6 +189,8 @@
                                 AI Coins
                             {% elif request.resolver_match.url_name == 'superadmin-organization-ai-credits' %}
                                 Manage AI Coins
+                            {% elif request.resolver_match.url_name == 'superadmin-operations-mcp' %}
+                                MCP · External AI
                             {% elif request.resolver_match.url_name == 'superadmin-organization-create' %}
                                 Add Organization
                             {% elif request.resolver_match.url_name == 'superadmin-organization-update' %}

@@ -5,6 +5,9 @@ from .views import (
     admin_global_search,
     ai_credit_overview_view,
     org_list_view,
+    operations_mcp_workspace_view,
+    operations_mcp_superadmin_session_revoke_view,
+    operations_mcp_support_end_view,
     rag_monitor_view,
     organization_ai_credit_view,
     organization_create_view,
@@ -60,6 +63,21 @@ urlpatterns = [
         "rag-monitor/",
         rag_monitor_view,
         name="superadmin-rag-monitor",
+    ),
+    path(
+        "mcp/",
+        operations_mcp_workspace_view,
+        name="superadmin-operations-mcp",
+    ),
+    path(
+        "mcp/sessions/<uuid:token_id>/revoke/",
+        operations_mcp_superadmin_session_revoke_view,
+        name="superadmin-operations-mcp-session-revoke",
+    ),
+    path(
+        "mcp/support/<uuid:session_id>/end/",
+        operations_mcp_support_end_view,
+        name="superadmin-operations-mcp-support-end",
     ),
 
     # =========================================================
