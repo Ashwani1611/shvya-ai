@@ -61,6 +61,12 @@ class AttributeDefinition(models.Model):
         default=0,
     )
 
+    is_active = models.BooleanField(
+        default=True,
+        db_index=True,
+        help_text="Archived attributes are retained for history but excluded from active configuration.",
+    )
+
     created_at = models.DateTimeField(
         auto_now_add=True,
     )
