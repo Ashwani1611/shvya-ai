@@ -81,6 +81,19 @@ OPENAI_EMBEDDING_MODEL = config(
     default="text-embedding-3-small",
 )
 
+# ---------------------------------------------------------------------------
+# Google Calendar / Google Meet
+# ---------------------------------------------------------------------------
+
+GOOGLE_CALENDAR_CLIENT_ID = config(
+    "GOOGLE_CALENDAR_CLIENT_ID",
+    default="",
+)
+GOOGLE_CALENDAR_CLIENT_SECRET = config(
+    "GOOGLE_CALENDAR_CLIENT_SECRET",
+    default="",
+)
+
 
 # ---------------------------------------------------------------------------
 # Security hardening
@@ -240,7 +253,8 @@ INSTALLED_APPS = [
     "apps.integrations",
     "apps.sales",
     "apps.teams",
-    "apps.telephony",
+    "apps.telephony.apps.TelephonyConfig",
+    "apps.shvya_calendar.apps.ShvyaCalendarConfig",
     "apps.support.apps.SupportConfig",
 ]
 
@@ -696,3 +710,15 @@ SUPPORT_IMAP_PASSWORD = config("SUPPORT_IMAP_PASSWORD", default="")
 SUPPORT_IMAP_FOLDER = config("SUPPORT_IMAP_FOLDER", default="INBOX")
 SUPPORT_IMAP_AUTHSERV_ID = config("SUPPORT_IMAP_AUTHSERV_ID", default="")
 SUPPORT_IMAP_TRUST_RECEIVER = config("SUPPORT_IMAP_TRUST_RECEIVER", default=False, cast=bool)
+
+
+# ---------------------------------------------------------------------------
+# Call Intelligence — internal Android employee application
+# ---------------------------------------------------------------------------
+CALL_INTELLIGENCE_APK_URL = config(
+    "CALL_INTELLIGENCE_APK_URL",
+    default=(
+        "https://github.com/Ashwani1611/shvya-ai/releases/download/"
+        "call-intelligence-latest/shvya-call-intelligence.apk"
+    ),
+)

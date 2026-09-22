@@ -129,6 +129,34 @@ def operations_mcp_workspace_view(request):
         },
         indent=2,
     )
+    cursor_configuration = json.dumps(
+        {
+            "mcpServers": {
+                "shvya-superadmin": {
+                    "url": operations_mcp_url,
+                }
+            }
+        },
+        indent=2,
+    )
+    gemini_configuration = json.dumps(
+        {
+            "mcpServers": {
+                "shvya-superadmin": {
+                    "httpUrl": operations_mcp_url,
+                }
+            }
+        },
+        indent=2,
+    )
+    codex_configuration = (
+        "[mcp_servers.shvya-superadmin]\n"
+        f'url = "{operations_mcp_url}"'
+    )
+    claude_code_command = (
+        "claude mcp add --transport http "
+        f"shvya-superadmin {operations_mcp_url}"
+    )
 
     return render(
         request,
@@ -139,6 +167,10 @@ def operations_mcp_workspace_view(request):
             "resource_metadata_url": resource_metadata_url,
             "server_metadata_url": server_metadata_url,
             "vscode_configuration": vscode_configuration,
+            "cursor_configuration": cursor_configuration,
+            "gemini_configuration": gemini_configuration,
+            "codex_configuration": codex_configuration,
+            "claude_code_command": claude_code_command,
             "superadmin_tokens": superadmin_tokens,
             "open_support_sessions": open_support_sessions,
             "operations_policies": policies,

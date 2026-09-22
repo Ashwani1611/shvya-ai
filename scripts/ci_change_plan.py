@@ -107,11 +107,7 @@ def classify(paths: list[str], *, force_full: bool = False) -> dict[str, str]:
             plan["full"] = True
             continue
 
-        if path in {
-            ".github/workflows/ci.yml",
-            ".github/workflows/security.yml",
-            "scripts/ci_change_plan.py",
-        }:
+        if path in {".github/workflows/ci.yml", "scripts/ci_change_plan.py"}:
             plan["full"] = True
             continue
 

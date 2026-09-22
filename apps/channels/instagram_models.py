@@ -237,8 +237,6 @@ class InstagramWebhookDelivery(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     payload_sha256 = models.CharField(max_length=64, unique=True)
     raw_payload = models.JSONField(default=dict)
-    organization_ids = models.JSONField(default=list, blank=True)
-    account_ids = models.JSONField(default=list, blank=True)
     status = models.CharField(max_length=12, choices=Status.choices, default=Status.PENDING)
     error_message = models.TextField(blank=True)
     received_at = models.DateTimeField(auto_now_add=True)

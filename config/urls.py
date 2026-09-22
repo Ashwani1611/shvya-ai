@@ -16,7 +16,7 @@ from apps.core.views import BookCallView, DocumentationView, FeaturesView, HomeV
 
 
 urlpatterns = [
-    # Remote SHVYA MCP/OAuth discovery: read-only Diagnostics + actor-bound Operations.
+    # Remote read-only SHVYA diagnostic MCP + OAuth discovery.
     path("", include("apps.integrations.urls.diagnostics")),
     path("health/live/", health_live, name="health-live"),
     path("health/ready/", health_ready, name="health-ready"),
@@ -136,6 +136,18 @@ urlpatterns = [
     ),
 
     # =========================================================
+    # SHVYA Calendar
+    # =========================================================
+    path(
+        "dashboard/shvya-calendar/",
+        include("apps.shvya_calendar.urls"),
+    ),
+    path(
+        "calendar/",
+        include("apps.shvya_calendar.public_urls"),
+    ),
+
+    # =========================================================
     # Connect Hub Web Dashboard
     #
     # Keep this before the broad CRM dashboard include so the integrations
@@ -156,6 +168,12 @@ urlpatterns = [
         "dashboard/stage-editor/",
         include("apps.crm.urls.stage_editor"),
     ),
+
+    # =========================================================
+    # Call Intelligence — Android SIM calling
+    # =========================================================
+    path("api/v1/call-intelligence/", include("apps.telephony.urls.api_v1")),
+    path("dashboard/call-intelligence/", include("apps.telephony.urls.web")),
 
     # =========================================================
     # CRM Web Dashboard

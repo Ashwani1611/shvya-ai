@@ -10,9 +10,8 @@ from django.db import connections, transaction
 from django.test import RequestFactory, TransactionTestCase, override_settings
 from django.utils import timezone
 
-from apps.channels.instagram_models import InstagramAccount, InstagramWebhookDelivery
+from apps.channels.instagram_models import InstagramWebhookDelivery
 from apps.channels.instagram_webhook import instagram_webhook_view
-from apps.organizations.models import Organization
 from services.channels.instagram_service import process_webhook_delivery
 
 
@@ -32,49 +31,6 @@ class InstagramWebhookDispatchTests(TransactionTestCase):
             HTTP_X_HUB_SIGNATURE_256=self.signature,
         )
         return instagram_webhook_view(request)
-
-    @patch("apps.channels.instagram_webhook.process_instagram_webhook_delivery_task.delay")
-    def test_signed_delivery_persists_known_tenant_and_account_routing(self, delay):
-        organization = Organization.objects.create(name="Instagram Routing Org")
-        account = InstagramAccount.objects.create(
-            organization=organization,
-            ig_user_id="ig-routing-account",
-            username="routing_account",
-            status=InstagramAccount.Status.CONNECTED,
-        )
-        payload = {
-            "object": "instagram",
-            "entry": [
-                {"id": account.ig_user_id, "messaging": []},
-                {"id": "unknown-instagram-account", "messaging": []},
-            ],
-        }
-        body = json.dumps(payload).encode()
-        signature = "sha256=" + hmac.new(
-            b"dispatch-test-secret",
-            body,
-            hashlib.sha256,
-        ).hexdigest()
-        request = RequestFactory().post(
-            "/webhooks/instagram/",
-            body,
-            content_type="application/json",
-            HTTP_X_HUB_SIGNATURE_256=signature,
-        )
-
-        self.assertEqual(instagram_webhook_view(request).status_code, 200)
-        delivery = InstagramWebhookDelivery.objects.get(
-            payload_sha256=hashlib.sha256(body).hexdigest()
-        )
-        self.assertEqual(
-            delivery.organization_ids,
-            [str(organization.id)],
-        )
-        self.assertEqual(
-            delivery.account_ids,
-            [str(account.id)],
-        )
-        delay.assert_called_once_with(str(delivery.pk))
 
     @patch("apps.channels.instagram_webhook.process_instagram_webhook_delivery_task.delay")
     def test_successful_dispatch_is_claimed_and_duplicate_does_not_publish(self, delay):
