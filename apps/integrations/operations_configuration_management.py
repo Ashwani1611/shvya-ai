@@ -21,7 +21,7 @@ from django.db.models import Count, Q
 from django.utils import timezone
 
 from apps.ai_engagement.models import FAQ, OrgInfo
-from apps.channels.models import WhatsAppAccount
+from apps.channels.models import WhatsAppAccount, WhatsAppTemplate
 from apps.crm.models import AttributeDefinition, Lead, Pipeline, Stage
 from apps.followups.models import FollowupSequence, FollowupStep, LeadSequenceState
 from apps.followups.touchpoint_models import TouchpointCategory, TouchpointReply
@@ -1135,7 +1135,7 @@ def _resolve_refs(value, refs):
     return value
 
 
-def _normalize_plan_operations(operations):
+def _normalize_plan_operations(operations, *, allow_internal=False):
     if not isinstance(operations, list) or not operations or len(operations) > PLAN_MAX_OPERATIONS:
         raise OperationsToolError(
             f"operations must contain between 1 and {PLAN_MAX_OPERATIONS} items."
@@ -1146,7 +1146,8 @@ def _normalize_plan_operations(operations):
         if not isinstance(item, dict):
             raise OperationsToolError("Each plan operation must be an object.")
         tool = str(item.get("tool") or "").strip()
-        if tool not in ALLOWED_PLAN_TOOLS:
+        allowed = ALLOWED_PLAN_TOOLS if allow_internal else PUBLIC_PLAN_TOOLS
+        if tool not in allowed:
             raise OperationsPermissionError(
                 f"Tool '{tool}' is not permitted inside configuration plans."
             )
@@ -1254,7 +1255,10 @@ def create_configuration_plan(*, identity, arguments):
             "This OAuth token does not include operations.write."
         )
     reason = _reason(arguments, required=True)
-    operations = _normalize_plan_operations((arguments or {}).get("operations"))
+    operations = _normalize_plan_operations(
+        (arguments or {}).get("operations"),
+        allow_internal=bool((arguments or {}).get("_allow_internal", False)),
+    )
 
     try:
         ttl_minutes = int((arguments or {}).get("ttl_minutes") or PLAN_TTL_MINUTES)
@@ -2061,6 +2065,7 @@ def _import_operations(organization, configuration):
                 },
             }
         )
+        ordered_stage_refs = []
         for stage_index, stage_data in enumerate(pipeline_data.get("stages") or [], start=1):
             stage_name = str(stage_data.get("name") or "").strip()
             existing_stage = (
@@ -2071,11 +2076,13 @@ def _import_operations(organization, configuration):
                 if existing else None
             )
             stage_ref = f"stage_{index}_{stage_index}"
-            stage_refs[(name.casefold(), stage_name.casefold())] = (
+            stage_value = (
                 str(existing_stage.id)
                 if existing_stage
                 else {"$ref": f"{stage_ref}.target_id"}
             )
+            stage_refs[(name.casefold(), stage_name.casefold())] = stage_value
+            ordered_stage_refs.append(stage_value)
             pipeline_value = (
                 str(existing.id)
                 if existing
@@ -2091,10 +2098,24 @@ def _import_operations(organization, configuration):
                         "data": {
                             "name": stage_name,
                             "description": str(stage_data.get("description") or ""),
-                            "display_order": int(stage_data.get("display_order") or stage_index),
                             "is_active": bool(stage_data.get("active", True)),
                             "ai_on": bool(stage_data.get("ai_on", True)),
                         },
+                    },
+                }
+            )
+        if ordered_stage_refs:
+            operations.append(
+                {
+                    "ref": f"pipeline_{index}_stage_order",
+                    "tool": "reorder_stages",
+                    "arguments": {
+                        "pipeline_id": (
+                            str(existing.id)
+                            if existing
+                            else {"$ref": f"{ref}.target_id"}
+                        ),
+                        "stage_ids": ordered_stage_refs,
                     },
                 }
             )
@@ -2244,8 +2265,36 @@ def _import_operations(organization, configuration):
                             },
                         }
                     )
-                # API-template steps require target-org approved templates. They
-                # are deliberately not guessed by portable import.
+                elif step.get("type") == "whatsapp":
+                    template = (
+                        WhatsAppTemplate.objects.filter(
+                            organization=organization,
+                            account_id=account_refs[account_ref],
+                            name__iexact=str(step.get("template_name") or ""),
+                            status=WhatsAppTemplate.Status.APPROVED,
+                        ).first()
+                    )
+                    if template is None:
+                        raise OperationsPermissionError(
+                            "Portable import requires an approved target-org WhatsApp "
+                            f"template named '{step.get('template_name') or ''}' for "
+                            f"Cadence '{name}'."
+                        )
+                    operations.append(
+                        {
+                            "ref": f"cadence_{index}_step_{step_index}",
+                            "tool": "add_cadence_step",
+                            "arguments": {
+                                "cadence_id": cadence_target,
+                                "data": {
+                                    "type": "whatsapp",
+                                    "template_id": str(template.id),
+                                    "retry_count": int(step.get("retry_count") or 0),
+                                    "schedule": schedule,
+                                },
+                            },
+                        }
+                    )
 
     for index, workflow in enumerate(configuration.get("workflows") or [], start=1):
         existing = SmartTrigger.objects.filter(
@@ -2401,6 +2450,7 @@ def import_organization_configuration(*, identity, arguments):
         "reason": _reason(arguments, required=True),
         "idempotency_key": str((arguments or {}).get("idempotency_key") or "")[:128],
         "ttl_minutes": (arguments or {}).get("ttl_minutes") or PLAN_TTL_MINUTES,
+        "_allow_internal": True,
     }
     execution = create_configuration_plan(
         identity=identity,
