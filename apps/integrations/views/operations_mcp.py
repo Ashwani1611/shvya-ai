@@ -151,7 +151,7 @@ def _resource(request):
 
 def _resource_metadata_url(request):
     return request.build_absolute_uri(
-        reverse("shvya-operations-oauth-resource-metadata")
+        reverse("shvya-operations-oauth-resource-metadata-rfc9728")
     )
 
 
@@ -856,6 +856,7 @@ def operations_oauth_resource_metadata(request):
                 OPERATIONS_WRITE_SCOPE,
                 OFFLINE_SCOPE,
             ],
+            "bearer_methods_supported": ["header"],
             "resource_documentation": request.build_absolute_uri(
                 reverse("crm-connect-hub-shvya-api")
             ),
