@@ -218,15 +218,29 @@ def _split_mapping(line: str) -> tuple[str, str] | None:
     return (match.group(1), match.group(2)) if match else None
 
 
-def _config(*, organization, requirements: list[dict[str, Any]]) -> dict[str, Any]:
-    """Compile deterministic qualification execution configuration for one org."""
+def _config(
+    *,
+    organization,
+    requirements: list[dict[str, Any]],
+    raw_override: str | None = None,
+) -> dict[str, Any]:
+    """Compile deterministic qualification execution configuration for one org.
+
+    raw_override is used only by no-write validation/dry-run callers so a
+    proposed Playbook can be compiled before it becomes persisted state.
+    Production callers continue reading the canonical OrgInfo Playbook.
+    """
     from apps.ai_engagement.models import OrgInfo
     from apps.ai_engagement.services.engagement_instruction_policy import section_lines
     from apps.crm.models import AttributeDefinition, Stage
 
     info = OrgInfo.objects.filter(organization=organization).first()
     from apps.ai_engagement.services.playbook import parse_playbook
-    raw = str(getattr(info, "ai_playbook", "") or "")
+    raw = (
+        str(raw_override)
+        if raw_override is not None
+        else str(getattr(info, "ai_playbook", "") or "")
+    )
     sections = parse_playbook(raw)
     engagement_raw = raw
     definitions = list(
