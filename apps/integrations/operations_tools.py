@@ -381,18 +381,27 @@ def _write_gate(
         capability=capability,
     )
     if not dry_run and needs_approval:
-        if not approved:
-            raise OperationsApprovalRequired(
-                "Approval is required. Run the exact dry-run first and obtain "
-                "human approval before execution."
-            )
-        _validated_approval_event(
+        from apps.integrations.operations_plan_context import (
+            configuration_plan_authorizes,
+        )
+
+        if not configuration_plan_authorizes(
             identity=identity,
             organization=organization,
-            capability=capability,
             tool_name=tool_name,
-            arguments=arguments,
-        )
+        ):
+            if not approved:
+                raise OperationsApprovalRequired(
+                    "Approval is required. Run the exact dry-run first and obtain "
+                    "human approval before execution."
+                )
+            _validated_approval_event(
+                identity=identity,
+                organization=organization,
+                capability=capability,
+                tool_name=tool_name,
+                arguments=arguments,
+            )
     return dry_run, reason
 
 
