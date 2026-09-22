@@ -14,7 +14,8 @@ from django.db.models import Max
 from django.utils import timezone
 
 from apps.core.ratelimit import _client_ip
-from apps.crm.models import AttributeDefinition, Lead
+from apps.accounts.models import User
+from apps.crm.models import AttributeDefinition, Lead, Pipeline, Stage
 from apps.crm.models.lead import normalize_phone
 from apps.integrations.services.email import (
     EmailConfigurationError,
@@ -121,20 +122,43 @@ def page_snapshot(page):
 
 def _validate_page_for_publish(page):
     errors = {}
+
     if not page.pipeline_id:
         errors["pipeline"] = "Select a CRM pipeline before publishing."
+    elif not Pipeline.objects.filter(
+        id=page.pipeline_id,
+        organization_id=page.organization_id,
+        is_active=True,
+    ).exists():
+        errors["pipeline"] = (
+            "The selected CRM pipeline is unavailable. Choose an active pipeline "
+            "and save Lead Form before publishing."
+        )
+
     if not page.stage_id:
         errors["stage"] = "Select an initial stage before publishing."
-    if page.pipeline_id and page.pipeline.organization_id != page.organization_id:
-        errors["pipeline"] = "Pipeline must belong to this organization."
-    if page.stage_id and (
-        not page.pipeline_id or page.stage.pipeline_id != page.pipeline_id
-    ):
-        errors["stage"] = "Stage must belong to the selected pipeline."
-    if page.page_type != CalendarPage.PageType.LEAD and not page.host_id:
-        errors["host"] = "Select a booking host before publishing."
-    if page.host_id and page.host.organization_id != page.organization_id:
-        errors["host"] = "Booking host must belong to this organization."
+    elif not Stage.objects.filter(
+        id=page.stage_id,
+        pipeline_id=page.pipeline_id,
+        is_active=True,
+    ).exists():
+        errors["stage"] = (
+            "The selected stage is unavailable for this pipeline. Choose an active "
+            "stage and save Lead Form before publishing."
+        )
+
+    if page.page_type != CalendarPage.PageType.LEAD:
+        if not page.host_id:
+            errors["host"] = "Select a booking host before publishing."
+        elif not User.objects.filter(
+            id=page.host_id,
+            organization_id=page.organization_id,
+            is_active=True,
+        ).exists():
+            errors["host"] = (
+                "The selected booking host is no longer active in this organization."
+            )
+
     if (
         page.meeting_location == CalendarPage.MeetingLocation.CUSTOM
         and not page.custom_meeting_link
@@ -142,9 +166,11 @@ def _validate_page_for_publish(page):
         errors["custom_meeting_link"] = "Add the custom meeting link before publishing."
 
     try:
-        ZoneInfo(page.timezone)
+        ZoneInfo(str(page.timezone or ""))
     except (ZoneInfoNotFoundError, ValueError):
-        errors["timezone"] = "Choose a valid booking timezone, for example Asia/Kolkata."
+        errors["timezone"] = (
+            "Choose a valid booking timezone, for example Asia/Kolkata."
+        )
 
     availability = page.availability or {}
     if not isinstance(availability, dict):
@@ -154,10 +180,18 @@ def _validate_page_for_publish(page):
             if not isinstance(rule, dict) or not rule.get("enabled"):
                 continue
             try:
-                start = datetime.strptime(str(rule.get("start") or ""), "%H:%M").time()
-                end = datetime.strptime(str(rule.get("end") or ""), "%H:%M").time()
+                start = datetime.strptime(
+                    str(rule.get("start") or ""),
+                    "%H:%M",
+                ).time()
+                end = datetime.strptime(
+                    str(rule.get("end") or ""),
+                    "%H:%M",
+                ).time()
             except (TypeError, ValueError):
-                errors["availability"] = f"{str(day).title()} has an invalid working time."
+                errors["availability"] = (
+                    f"{str(day).title()} has an invalid working time."
+                )
                 break
             if start >= end:
                 errors["availability"] = (
@@ -165,84 +199,112 @@ def _validate_page_for_publish(page):
                 )
                 break
 
-    if page.bookings_per_slot < 1:
+    try:
+        bookings_per_slot = int(page.bookings_per_slot)
+    except (TypeError, ValueError):
+        bookings_per_slot = 0
+    if bookings_per_slot < 1:
         errors["bookings_per_slot"] = "Bookings per slot must be at least 1."
-    if page.slot_duration_minutes < 5:
+
+    try:
+        slot_duration = int(page.slot_duration_minutes)
+    except (TypeError, ValueError):
+        slot_duration = 0
+    if slot_duration < 5:
         errors["slot_duration_minutes"] = "Slot duration must be at least 5 minutes."
+
     if errors:
         raise ValidationError(errors)
 
 
-@transaction.atomic
-def publish_page(*, page, actor):
-    page = (
-        CalendarPage.objects
-        .select_for_update()
-        .select_related("pipeline", "stage", "host")
-        .get(pk=page.pk)
-    )
-    _validate_page_for_publish(page)
-
-    # Persisted JSON fields should already be serializable, but legacy rows can
-    # predate today's editor validation. Convert an unexpected legacy payload
-    # into a useful validation error rather than a generic status-toggle failure.
+def _json_safe_snapshot(page):
     snapshot = page_snapshot(page)
     try:
-        json.dumps(snapshot)
+        # Canonicalize through JSON so the database only receives primitives
+        # even if an old row contains a lazy/custom value from an earlier build.
+        return json.loads(json.dumps(snapshot))
     except (TypeError, ValueError) as exc:
         raise ValidationError(
             "This Calendar page contains invalid saved form data. Save Lead Form "
             "and Scheduling once, then publish again."
         ) from exc
 
-    # current_version can be stale after interrupted/legacy releases, and two
-    # requests can race outside normal browser behavior. Lock the page and retry
-    # version allocation inside savepoints so publication self-heals safely.
+
+@transaction.atomic
+def publish_page(*, page, actor):
+    locked = (
+        CalendarPage.objects
+        .select_for_update()
+        .get(pk=page.pk, organization_id=page.organization_id)
+    )
+
+    _validate_page_for_publish(locked)
+    snapshot = _json_safe_snapshot(locked)
+
+    publisher_id = None
+    actor_id = getattr(actor, "pk", None)
+    if actor_id and User.objects.filter(
+        pk=actor_id,
+        organization_id=locked.organization_id,
+        is_active=True,
+    ).exists():
+        publisher_id = actor_id
+
     published = None
     version = None
-    for _attempt in range(4):
+
+    # The locked CalendarPage row serializes normal publications. The retry
+    # loop additionally repairs stale current_version values left by older
+    # releases and protects against a legacy duplicate version row.
+    for _attempt in range(5):
         latest_version = (
             CalendarPageVersion.objects
-            .filter(page=page)
+            .filter(page_id=locked.pk)
             .aggregate(max_version=Max("version"))
             .get("max_version")
             or 0
         )
-        version = max(int(page.current_version or 0), int(latest_version)) + 1
+        version = max(int(locked.current_version or 0), int(latest_version)) + 1
         try:
             with transaction.atomic():
                 published = CalendarPageVersion.objects.create(
-                    page=page,
+                    page_id=locked.pk,
                     version=version,
                     snapshot=snapshot,
-                    published_by=actor,
+                    published_by_id=publisher_id,
                 )
             break
         except IntegrityError:
-            page.refresh_from_db(fields=["current_version"])
-            continue
+            locked.refresh_from_db(fields=["current_version"])
 
     if published is None or version is None:
         raise ValidationError(
             "SHVYA could not reserve a publication version for this page. "
-            "Please try the toggle once more."
+            "Please save the page once and try again."
         )
 
-    page.current_version = version
-    page.status = CalendarPage.Status.PUBLISHED
-    page.published_at = timezone.now()
-    page.updated_by = actor
-    page.save(
-        update_fields=[
-            "current_version",
-            "status",
-            "published_at",
-            "updated_by",
-            "updated_at",
-        ]
-    )
-    return published
+    now = timezone.now()
+    update_values = {
+        "current_version": version,
+        "status": CalendarPage.Status.PUBLISHED,
+        "published_at": now,
+        "updated_at": now,
+    }
+    if publisher_id:
+        update_values["updated_by_id"] = publisher_id
 
+    CalendarPage.objects.filter(
+        pk=locked.pk,
+        organization_id=locked.organization_id,
+    ).update(**update_values)
+
+    locked.current_version = version
+    locked.status = CalendarPage.Status.PUBLISHED
+    locked.published_at = now
+    if publisher_id:
+        locked.updated_by_id = publisher_id
+
+    return published
 
 def latest_published_version(page):
     return page.published_versions.order_by("-version").first()
