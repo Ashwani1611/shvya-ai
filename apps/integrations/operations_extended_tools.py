@@ -99,7 +99,11 @@ from apps.integrations.operations_tools import (
 )
 
 
-MAX_MCP_KNOWLEDGE_UPLOAD_BYTES = 10 * 1024 * 1024
+# The Operations JSON-RPC endpoint intentionally keeps a 1 MiB request cap.
+# Base64 expands bytes by roughly one third, so MCP file ingestion is bounded
+# below that transport limit. Larger knowledge files continue through the
+# existing authenticated dashboard upload path.
+MAX_MCP_KNOWLEDGE_UPLOAD_BYTES = 512 * 1024
 
 
 def _safe_requirements_for_org(organization):
@@ -1920,7 +1924,7 @@ def _decode_upload(data):
     except (binascii.Error, ValueError) as exc:
         raise OperationsToolError("content_base64 is not valid base64.") from exc
     if not raw or len(raw) > MAX_MCP_KNOWLEDGE_UPLOAD_BYTES:
-        raise OperationsToolError("Knowledge upload must be between 1 byte and 10 MiB.")
+        raise OperationsToolError("Knowledge upload through MCP must be between 1 byte and 512 KiB.")
     return filename, raw
 
 
@@ -2147,9 +2151,11 @@ def archive_knowledge_document(*, identity, arguments):
             "after_active": False,
         }
         _ensure_approved_proposal_unchanged(arguments=arguments, proposal=locked_proposal)
+        # Retrieval already requires document.is_active=True. Keep chunk
+        # activation intact so archive is genuinely reversible by republishing
+        # this completed, embedded version later.
         locked.is_active = False
         locked.save(update_fields=["is_active", "updated_at"])
-        locked.chunks.update(is_active=False)
     return ToolExecution(
         data={"status": "FIXED", "document_id": str(document.id), "active": False, "verification": "passed"},
         capability=CAP_AI_CONFIG_WRITE,
