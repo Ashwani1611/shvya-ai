@@ -847,6 +847,64 @@ class ShvyaCalendarServiceTests(TestCase):
         )
         mocked_delay.assert_called_once()
 
+    @patch("apps.shvya_calendar.models.CalendarBooking.full_clean")
+    @patch("apps.shvya_calendar.services.schedule_booking_reminders")
+    @patch("apps.shvya_calendar.services.create_booking_event")
+    @patch("apps.shvya_calendar.services.available_slots")
+    def test_public_booking_core_does_not_depend_on_model_full_clean(
+        self,
+        mocked_available_slots,
+        mocked_create_event,
+        mocked_schedule_reminders,
+        mocked_full_clean,
+    ):
+        request = self._request(
+            {
+                "name": "Core Booking Lead",
+                "mobile": "+918222222222",
+                "consent": "on",
+            }
+        )
+        submitted, normalized = validate_public_submission(
+            page=self.page,
+            version=self.version,
+            post=request.POST,
+            files=request.FILES,
+        )
+        submission, _lead, _created = create_submission_and_lead(
+            page=self.page,
+            version=self.version,
+            submitted=submitted,
+            normalized=normalized,
+            request=request,
+            files=request.FILES,
+        )
+        slot_start = (timezone.now() + timedelta(days=2)).replace(
+            second=0,
+            microsecond=0,
+        )
+        mocked_available_slots.return_value = [
+            {
+                "start": slot_start,
+                "end": slot_start + timedelta(minutes=30),
+                "label": "9:00 AM",
+            }
+        ]
+        mocked_full_clean.side_effect = RuntimeError("legacy validation exploded")
+
+        booking = book_slot(
+            page=self.page,
+            submission=submission,
+            slot_start_iso=slot_start.isoformat(),
+        )
+
+        self.assertTrue(CalendarBooking.objects.filter(pk=booking.pk).exists())
+        self.assertTrue(booking.cancel_token)
+        self.assertTrue(booking.reschedule_token)
+        mocked_full_clean.assert_not_called()
+        mocked_create_event.assert_called_once()
+        mocked_schedule_reminders.assert_called_once()
+
     @patch("apps.shvya_calendar.services.schedule_booking_reminders")
     @patch("apps.shvya_calendar.services.create_booking_event")
     @patch("apps.shvya_calendar.services.available_slots")
