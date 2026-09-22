@@ -11,7 +11,7 @@ from apps.crm.models import AttributeDefinition
 
 
 def required_attributes(stage):
-    return AttributeDefinition.objects.filter(
+    return AttributeDefinition.objects.filter(is_active=True, 
         organization_id=stage.pipeline.organization_id,
         id__in=(stage.config or {}).get("required_attribute_ids", []),
     )
