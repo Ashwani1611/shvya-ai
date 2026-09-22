@@ -6285,20 +6285,29 @@ def upsert_cadence_configuration(*, identity, arguments):
         if account is not None and provider == "api" and account.connection_type != WhatsAppAccount.ConnectionType.API:
             raise OperationsToolError("The selected account is not a WhatsApp API account.")
         if provider == "hosted":
-            account = (
-                WhatsAppAccount.objects.filter(
-                    organization=organization,
-                    connection_type=WhatsAppAccount.ConnectionType.coexisted,
-                    status=WhatsAppAccount.Status.CONNECTED,
-                    is_active=True,
+            if (
+                account is not None
+                and account.connection_type
+                != WhatsAppAccount.ConnectionType.coexisted
+            ):
+                raise OperationsToolError(
+                    "The selected account is not a Hosted/Coexistence WhatsApp account."
                 )
-                .defer("access_token")
-                .order_by(
-                    "business_name",
-                    "display_phone_number",
+            if account is None:
+                account = (
+                    WhatsAppAccount.objects.filter(
+                        organization=organization,
+                        connection_type=WhatsAppAccount.ConnectionType.coexisted,
+                        status=WhatsAppAccount.Status.CONNECTED,
+                        is_active=True,
+                    )
+                    .defer("access_token")
+                    .order_by(
+                        "business_name",
+                        "display_phone_number",
+                    )
+                    .first()
                 )
-                .first()
-            )
             if account is None:
                 raise OperationsToolError(
                     "Connect at least one Hosted/Coexistence WhatsApp number before creating this Cadence."
@@ -6421,20 +6430,38 @@ def upsert_cadence_configuration(*, identity, arguments):
                             "active/connected. Run a fresh dry-run."
                         )
                 else:
+                    account_id = data.get("whatsapp_account_id")
                     account = (
                         WhatsAppAccount.objects.filter(
+                            pk=_uuid(
+                                account_id,
+                                field="whatsapp_account_id",
+                            ),
                             organization=organization,
                             connection_type=WhatsAppAccount.ConnectionType.coexisted,
                             status=WhatsAppAccount.Status.CONNECTED,
                             is_active=True,
                         )
                         .defer("access_token")
-                        .order_by(
-                            "business_name",
-                            "display_phone_number",
-                        )
                         .first()
+                        if account_id
+                        else None
                     )
+                    if account is None:
+                        account = (
+                            WhatsAppAccount.objects.filter(
+                                organization=organization,
+                                connection_type=WhatsAppAccount.ConnectionType.coexisted,
+                                status=WhatsAppAccount.Status.CONNECTED,
+                                is_active=True,
+                            )
+                            .defer("access_token")
+                            .order_by(
+                                "business_name",
+                                "display_phone_number",
+                            )
+                            .first()
+                        )
                     if account is None:
                         raise OperationsApprovalRequired(
                             "No active Hosted/Coexistence sender is available. "
