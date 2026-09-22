@@ -79,14 +79,14 @@
                 </span>
                 <span class="sc-logo-copy">
                   <strong>{% if page.logo_display_url %}Replace logo{% else %}Upload logo{% endif %}</strong>
-                  <small data-logo-filename>PNG, JPG or WebP · up to 2 MB</small>
+                  <small data-logo-filename>Recommended 400 × 120 px · PNG, JPG/JPEG or WebP · up to 2 MB</small>
                 </span>
                 <span class="sc-button sc-button-small">Choose file</span>
               </label>
               {% if page.logo_display_url %}
                 <label class="sc-logo-remove"><input type="checkbox" name="remove_logo"> Remove current logo</label>
               {% endif %}
-              <label class="sc-field sc-logo-url-fallback"><span>Or use an external logo URL</span><input type="url" name="logo_url" value="{{ page.logo_url }}" placeholder="https://example.com/logo.png"><small>Uploaded logo is preferred. External URL remains available as a fallback.</small></label>
+              <label class="sc-field sc-logo-url-fallback"><span>Or use an external logo URL</span><input type="url" name="logo_url" value="{{ page.logo_url }}" placeholder="https://example.com/logo.png"><small>Uploaded logo is preferred. For the sharpest result use about 400 × 120 px (roughly 10:3). External URL remains available as a fallback.</small></label>
             </div>
             <label class="sc-field"><span>Heading</span><input name="intro_title" maxlength="120" value="{{ page.intro_title }}" placeholder="Book a product demo"></label>
             <label class="sc-field"><span>Description</span><textarea name="intro_description" rows="3" placeholder="A short reason to book.">{{ page.intro_description }}</textarea></label>
