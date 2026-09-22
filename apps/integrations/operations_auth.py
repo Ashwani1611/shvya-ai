@@ -48,6 +48,12 @@ ACCESS_TOKEN_TTL = timedelta(hours=4)
 REFRESH_TOKEN_TTL = timedelta(days=14)
 AUTH_CODE_TTL = timedelta(minutes=5)
 
+CLAUDE_BROWSER_CLIENT_ID = "shvya_claude_browser"
+CLAUDE_BROWSER_REDIRECT_URIS = (
+    "https://claude.ai/api/mcp/auth_callback",
+    "https://claude.com/api/mcp/auth_callback",
+)
+
 _PKCE_VERIFIER_RE = re.compile(r"^[A-Za-z0-9\-._~]{43,128}$")
 _PKCE_CHALLENGE_RE = re.compile(r"^[A-Za-z0-9_-]{43,128}$")
 
@@ -135,6 +141,36 @@ def _resolve_oauth_client(client_id: str):
     ).first()
     if client is not None and not client.is_active:
         raise OperationsAuthError("OAuth client is inactive.")
+
+    if client_id == CLAUDE_BROWSER_CLIENT_ID:
+        canonical_redirects = list(CLAUDE_BROWSER_REDIRECT_URIS)
+        if client is None:
+            client = OperationsOAuthClient.objects.create(
+                client_id=CLAUDE_BROWSER_CLIENT_ID,
+                client_name="Claude Browser",
+                application_type="web",
+                redirect_uris=canonical_redirects,
+                grant_types=["authorization_code", "refresh_token"],
+                response_types=["code"],
+            )
+        else:
+            changed = False
+            expected = {
+                "client_name": "Claude Browser",
+                "application_type": "web",
+                "redirect_uris": canonical_redirects,
+                "grant_types": ["authorization_code", "refresh_token"],
+                "response_types": ["code"],
+            }
+            update_fields = []
+            for field, value in expected.items():
+                if getattr(client, field) != value:
+                    setattr(client, field, value)
+                    update_fields.append(field)
+                    changed = True
+            if changed:
+                client.save(update_fields=update_fields)
+        return client
 
     if is_allowed_operations_cimd_url(client_id):
         try:
