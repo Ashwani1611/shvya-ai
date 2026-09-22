@@ -20,7 +20,7 @@ from django.utils import timezone
 from apps.channels.models import WhatsAppAccount, WhatsAppMessage, WhatsAppTemplate
 from apps.channels.providers.whatsapp import WhatsAppAPIError, WhatsAppClient
 from apps.channels.template_models import WhatsAppTemplateMetadata
-from apps.crm.models import LeadReminder
+from apps.crm.models import Lead, LeadReminder
 from apps.followups.models import (
     AutoFollowupSettings,
     FollowupExecution,
@@ -763,6 +763,12 @@ def _state_conversation_delay(state):
 def assign_sequence(*, lead, sequence, actor=None):
     if lead.organization_id != sequence.organization_id:
         raise FollowupError("Lead and sequence must belong to the same organization.")
+    if not Lead.objects.filter(
+        pk=lead.pk,
+        organization_id=lead.organization_id,
+        auto_followup_enabled=True,
+    ).exists():
+        raise FollowupError("Auto Follow-up is disabled for this lead.")
     if not sequence.is_active:
         raise FollowupError("This sequence is inactive.")
     _validate_lead_sender(lead, sequence)
@@ -813,15 +819,36 @@ def clear_sequence(*, lead):
     )
 
 
+@transaction.atomic
 def set_lead_followup_enabled(*, lead, enabled):
-    state = LeadSequenceState.objects.filter(
-        lead=lead,
-        status__in=[LeadSequenceState.Status.ACTIVE, LeadSequenceState.Status.PAUSED],
-    ).first()
-    if not state:
-        raise FollowupError("This lead does not have an active Auto Follow-up sequence.")
-    state.lead_auto_followup_enabled = bool(enabled)
-    state.save(update_fields=["lead_auto_followup_enabled", "updated_at"])
+    """Persist the per-lead switch even when no sequence is currently assigned."""
+
+    enabled = bool(enabled)
+    persisted_lead = Lead.objects.select_for_update().get(pk=lead.pk)
+    if persisted_lead.auto_followup_enabled != enabled:
+        persisted_lead.auto_followup_enabled = enabled
+        persisted_lead.save(
+            update_fields=["auto_followup_enabled", "updated_at"]
+        )
+    # Keep the caller's instance coherent for JSON/UI responses.
+    lead.auto_followup_enabled = enabled
+
+    state = (
+        LeadSequenceState.objects.select_for_update()
+        .filter(
+            lead_id=lead.pk,
+            status__in=[
+                LeadSequenceState.Status.ACTIVE,
+                LeadSequenceState.Status.PAUSED,
+            ],
+        )
+        .first()
+    )
+    if state and state.lead_auto_followup_enabled != enabled:
+        state.lead_auto_followup_enabled = enabled
+        state.save(
+            update_fields=["lead_auto_followup_enabled", "updated_at"]
+        )
     return state
 
 
@@ -1290,9 +1317,15 @@ def live_followup_due(state, *, automation_settings=None, now=None):
     """One execution-time eligibility calculation shared by API and Hosted."""
     now = now or timezone.now()
     controls = automation_settings or _automation_settings_for_state(state)
+    lead_enabled = Lead.objects.filter(
+        pk=state.lead_id,
+        auto_followup_enabled=True,
+    ).exists()
     if (
         state.status != LeadSequenceState.Status.ACTIVE
-        or not state.lead_auto_followup_enabled or not state.sequence.is_active
+        or not lead_enabled
+        or not state.lead_auto_followup_enabled
+        or not state.sequence.is_active
         or not controls or not controls.get("auto_follow_up", True)
     ):
         return now + timedelta(minutes=5)
