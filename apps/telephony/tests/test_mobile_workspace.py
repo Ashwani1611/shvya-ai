@@ -117,6 +117,20 @@ class MobileWorkspaceTests(TestCase):
         self.assertFalse(second.data["has_next"])
         self.assertTrue(CallRecord.objects.filter(pk=call.pk).exists())
 
+    def test_mobile_notes_update_crm_without_erasing_disposition(self):
+        call = self.call()
+        call.disposition = "interested"
+        call.save(update_fields=["disposition"])
+        response = self.api().patch(
+            f"/api/v1/call-intelligence/calls/{call.id}/notes/",
+            {"notes": "Asked for a follow-up next week."}, format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        call.refresh_from_db()
+        self.assertEqual(call.notes, "Asked for a follow-up next week.")
+        self.assertEqual(call.disposition, "interested")
+        self.assertEqual(call.crm_call.notes, call.notes)
+
     def reminder(self):
         call = self.call()
         call.follow_up_required = True
