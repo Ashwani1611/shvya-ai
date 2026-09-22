@@ -25,7 +25,7 @@ class SuperadminGlobalMCPWorkspaceTests(TestCase):
     def setUp(self):
         self.password = "StrongSuperadminPassword123!"
         self.superadmin = User.objects.create_superuser(
-            email="mcp-superadmin@example.com",
+            email=f"mcp-superadmin-{self._testMethodName}@example.com",
             password=self.password,
             name="MCP Superadmin",
         )
