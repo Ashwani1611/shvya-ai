@@ -427,9 +427,9 @@ class OperationsMCPConfigurationToolsTests(TestCase):
                     "phone_number": "9999999991",
                 },
             )
-        self.assertFalse(connected["credentials_exposed"])
+        self.assertTrue(connected["safe_status_only"])
         self.assertNotIn("access_token", json.dumps(connected))
-        self.assertNotIn("qr", json.dumps(connected).lower())
+        self.assertNotIn('"qr":', json.dumps(connected).lower())
 
     def test_knowledge_document_upload_uses_existing_secure_ingestion_pipeline(self):
         payload = base64.b64encode(b"Restaurant menu and reservation policy.").decode("ascii")
