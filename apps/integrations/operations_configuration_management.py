@@ -272,7 +272,10 @@ def _portable_configuration(organization):
     )
     sequence_map = {str(item.id): item for item in sequences_list}
     workflows = list(
-        SmartTrigger.objects.filter(organization=organization)
+        SmartTrigger.objects.filter(
+            organization=organization,
+            is_active=True,
+        )
         .order_by("position", "name", "id")
     )
 
@@ -488,7 +491,10 @@ def _dependency_graph(organization):
         .order_by("display_order", "key")[:100]
     )
     workflows = list(
-        SmartTrigger.objects.filter(organization=organization)
+        SmartTrigger.objects.filter(
+            organization=organization,
+            is_active=True,
+        )
         .order_by("position", "id")[:200]
     )
     cadences = list(
@@ -847,7 +853,10 @@ def _organization_validation(organization):
         )
 
     workflows = list(
-        SmartTrigger.objects.filter(organization=organization).order_by("position", "id")
+        SmartTrigger.objects.filter(
+            organization=organization,
+            is_active=True,
+        ).order_by("position", "id")
     )
     for rule in workflows:
         payload = {
