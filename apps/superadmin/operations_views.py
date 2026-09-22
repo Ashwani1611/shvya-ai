@@ -15,6 +15,7 @@ from apps.integrations.diagnostic_auth import (
     sanitize_text,
 )
 from apps.integrations.operations_auth import (
+    CLAUDE_BROWSER_CLIENT_ID,
     OPERATIONS_READ_SCOPE,
     OPERATIONS_WRITE_SCOPE,
     end_support_context_record,
@@ -174,6 +175,7 @@ def operations_mcp_workspace_view(request):
         "superadmin/mcp_workspace.html",
         {
             "operations_mcp_url": operations_mcp_url,
+            "claude_browser_client_id": CLAUDE_BROWSER_CLIENT_ID,
             "oauth_authorize_url": oauth_authorize_url,
             "resource_metadata_url": resource_metadata_url,
             "server_metadata_url": server_metadata_url,
