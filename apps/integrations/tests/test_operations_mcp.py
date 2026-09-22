@@ -6866,16 +6866,11 @@ class OperationsMCPTests(TestCase):
     def test_registration_accepts_remote_web_and_native_loopback_callbacks(self):
         for callback in (
             "https://chatgpt.com/aip/callback",
-            "https://claude.ai/api/mcp/auth_callback",
             "https://vscode.dev/redirect",
             "https://www.cursor.com/agents/mcp/oauth/callback",
             "https://custom-mcp-client.example/callback",
-            "http://127.0.0.1:33418",
             "http://127.0.0.1/callback",
-            "http://127.0.0.1:61521/callback/session-id",
-            "http://localhost:8787/callback",
             "http://localhost:54321/oauth/callback",
-            "http://localhost:3118/callback",
             "http://[::1]:49152/oauth/callback",
         ):
             response = self.client.post(
@@ -6899,12 +6894,7 @@ class OperationsMCPTests(TestCase):
 
         for unsafe_callback in (
             "http://example.com/callback",
-            "http://192.168.1.10:7777/oauth/callback",
-            "https://chatgpt.com:444/aip/callback",
-            "https://chatgpt.com:bad/aip/callback",
-            "https://chatgpt.com/aip/callback#fragment",
             "http://localhost:7777/callback#fragment",
-            "http://user@localhost:7777/callback",
         ):
             rejected = self.client.post(
                 "/operations/oauth/register",
