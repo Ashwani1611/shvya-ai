@@ -2772,6 +2772,10 @@ def simulate_workflow(*, identity, arguments):
             organization=organization,
             clean=clean,
         )
+    _assert_workflow_safe_attribute_references(
+        organization=organization,
+        clean=clean,
+    )
     rule_view = SimpleNamespace(
         conditions=clean["conditions"],
         trigger_type=clean["trigger_type"],
