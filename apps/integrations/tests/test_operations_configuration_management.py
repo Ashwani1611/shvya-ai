@@ -128,6 +128,7 @@ class OperationsConfigurationManagementTests(TestCase):
             ),
             content_type="application/json",
             HTTP_AUTHORIZATION="Bearer " + bearer,
+            HTTP_X_REAL_IP="198.51.100.77",
         )
         self.assertEqual(response.status_code, 200)
         return response.json()["result"]
