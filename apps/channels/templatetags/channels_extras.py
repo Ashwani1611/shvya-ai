@@ -10,7 +10,7 @@ def lead_attribute_rows(lead):
     if not lead:
         return []
 
-    definitions = AttributeDefinition.objects.filter(
+    definitions = AttributeDefinition.objects.filter(is_active=True, 
         organization=lead.organization,
     ).order_by("display_order", "created_at")
 
