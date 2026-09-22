@@ -1426,14 +1426,17 @@ def _consume_plan_approval(*, identity, organization, plan, arguments):
         event_id = uuid.UUID(raw_event_id)
     except (TypeError, ValueError, AttributeError) as exc:
         raise OperationsApprovalRequired(
-            "approval_event_id must be the UUID returned by create_configuration_plan."
+            "approval_event_id must be the UUID returned by create_configuration_plan or import_organization_configuration."
         ) from exc
     event = OperationsAuditEvent.objects.filter(
         pk=event_id,
         actor=identity.actor,
         role=identity.role,
         organization=organization,
-        tool_name="create_configuration_plan",
+        tool_name__in=[
+            "create_configuration_plan",
+            "import_organization_configuration",
+        ],
         capability=CAP_CONFIGURATION_PLAN_WRITE,
         target_type="configuration_plan",
         target_id=str(plan.id),
