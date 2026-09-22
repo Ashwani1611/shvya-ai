@@ -1,6 +1,9 @@
 from django.urls import path
 
 from apps.telephony.views.api import (
+    MobileReminderCollectionView,
+    MobileReminderActionView,
+    MobileLeadCollectionView,
     CallAnalyticsView,
     CallCollectionView,
     CallDispositionCollectionView,
@@ -14,6 +17,9 @@ from apps.telephony.views.api import (
 )
 
 urlpatterns = [
+    path("reminders/", MobileReminderCollectionView.as_view(), name="call-mobile-reminders"),
+    path("reminders/<uuid:reminder_id>/action/", MobileReminderActionView.as_view(), name="call-mobile-reminder-action"),
+    path("leads/", MobileLeadCollectionView.as_view(), name="call-mobile-lead-create"),
     path("devices/register/", DeviceRegistrationView.as_view(), name="call-device-register"),
     path("devices/heartbeat/", DeviceHeartbeatView.as_view(), name="call-device-heartbeat"),
     path("events/", CallEventView.as_view(), name="call-event-ingest"),

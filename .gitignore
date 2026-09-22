@@ -91,3 +91,10 @@ nginx/certbot/
 
 shvya-ai.conf
 staging.conf
+# Android local build products
+.gradle/
+android/**/build/
+android/**/local.properties
+
+# Kotlin compiler workspace cache
+.kotlin/

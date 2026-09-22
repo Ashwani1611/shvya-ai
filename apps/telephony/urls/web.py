@@ -2,6 +2,7 @@ from django.urls import path
 
 from apps.telephony.views.dashboard import (
     call_intelligence_dashboard,
+    remove_call_device,
     download_android_app,
     post_call_action,
     save_call_disposition,
@@ -9,6 +10,7 @@ from apps.telephony.views.dashboard import (
 )
 
 urlpatterns = [
+    path("devices/<uuid:device_id>/remove/", remove_call_device, name="call-intelligence-device-remove"),
     path("", call_intelligence_dashboard, name="call-intelligence-dashboard"),
     path("download/android/", download_android_app, name="call-intelligence-download"),
     path("calls/<uuid:call_id>/action/", post_call_action, name="call-intelligence-call-action"),

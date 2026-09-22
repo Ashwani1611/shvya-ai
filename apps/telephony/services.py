@@ -206,6 +206,8 @@ def register_device(*, user, payload):
             raise ValidationError(
                 "This Android device is already registered to another user or organization."
             )
+        if not device.is_active:
+            raise ValidationError("This device has been removed. Ask your administrator to reconnect it.", code="device_removed")
         for field, value in defaults.items():
             setattr(device, field, value)
     else:
