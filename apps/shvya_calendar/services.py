@@ -2,6 +2,7 @@ import hashlib
 import json
 import logging
 import re
+import secrets
 from datetime import UTC, datetime, time, timedelta
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -906,29 +907,74 @@ def upcoming_slot_days(page, *, days=7):
 
 @transaction.atomic
 def _create_booking_row(*, page, submission, slot_start):
-    locked_page = CalendarPage.objects.select_for_update().get(pk=page.pk)
+    # Lock only the two rows that define the booking contract and operate with
+    # scalar FK ids. This avoids lazy/stale related-object dereferences and
+    # model-wide validation side effects in the public confirmation path.
+    locked_page = (
+        CalendarPage.objects
+        .select_for_update()
+        .only(
+            "id",
+            "organization_id",
+            "host_id",
+            "status",
+            "slot_duration_minutes",
+            "bookings_per_slot",
+            "timezone",
+            "meeting_location",
+            "custom_meeting_link",
+        )
+        .get(pk=page.pk)
+    )
     locked_submission = (
         CalendarSubmission.objects
         .select_for_update()
-        .select_related("lead")
-        .get(pk=submission.pk, page=locked_page)
+        .only("id", "page_id", "organization_id", "lead_id")
+        .get(
+            pk=submission.pk,
+            page_id=locked_page.pk,
+            organization_id=locked_page.organization_id,
+        )
     )
+
     if locked_page.status != CalendarPage.Status.PUBLISHED:
         raise ValidationError("This booking page is not currently available.")
+    if not locked_submission.lead_id:
+        raise ValidationError("This lead submission cannot be booked.")
 
-    duration = timedelta(minutes=locked_page.slot_duration_minutes)
+    # Verify the lead still belongs to the same organization without loading a
+    # related object that may be stale in a long-lived request.
+    if not Lead.objects.filter(
+        pk=locked_submission.lead_id,
+        organization_id=locked_page.organization_id,
+    ).exists():
+        raise ValidationError("This lead is no longer available for booking.")
+
+    try:
+        duration_minutes = int(locked_page.slot_duration_minutes)
+        capacity_limit = int(locked_page.bookings_per_slot)
+    except (TypeError, ValueError) as exc:
+        raise ValidationError(
+            "This booking page has invalid slot settings. Please contact the team."
+        ) from exc
+    if duration_minutes < 5 or capacity_limit < 1:
+        raise ValidationError(
+            "This booking page has invalid slot settings. Please contact the team."
+        )
+
+    duration = timedelta(minutes=duration_minutes)
     slot_end = slot_start + duration
     active_statuses = [
         CalendarBooking.Status.SCHEDULED,
         CalendarBooking.Status.RESCHEDULED,
     ]
 
-    # A browser retry/back-button must never create two active appointments
-    # for the same lead-form submission.
+    # Browser retries/back navigation must never create two appointments for the
+    # same lead-form submission.
     existing_for_submission = (
         CalendarBooking.objects
         .filter(
-            submission=locked_submission,
+            submission_id=locked_submission.pk,
             status__in=active_statuses,
         )
         .order_by("-created_at")
@@ -938,32 +984,67 @@ def _create_booking_row(*, page, submission, slot_start):
         return existing_for_submission, False
 
     existing = CalendarBooking.objects.filter(
-        page=locked_page,
+        page_id=locked_page.pk,
         status__in=active_statuses,
         start_at=slot_start,
     ).count()
-    if existing >= locked_page.bookings_per_slot:
+    if existing >= capacity_limit:
         raise ValidationError("That slot was just booked. Please choose another time.")
 
-    booking = CalendarBooking(
-        organization=locked_page.organization,
-        page=locked_page,
-        submission=locked_submission,
-        lead=locked_submission.lead,
-        host=locked_page.host,
-        start_at=slot_start,
-        end_at=slot_end,
-        timezone=locked_page.timezone,
-        calendar_sync_status=(
+    create_values = {
+        "organization_id": locked_page.organization_id,
+        "page_id": locked_page.pk,
+        "submission_id": locked_submission.pk,
+        "lead_id": locked_submission.lead_id,
+        "host_id": locked_page.host_id,
+        "start_at": slot_start,
+        "end_at": slot_end,
+        "timezone": locked_page.timezone,
+        "calendar_sync_status": (
             CalendarBooking.SyncStatus.PENDING
             if locked_page.host_id
             else CalendarBooking.SyncStatus.NOT_CONNECTED
         ),
-    )
+        # Generate before INSERT instead of relying on model.full_clean()/save
+        # ordering. This keeps the public path independent from editable=False
+        # unique token validation and legacy blank-token rows.
+        "cancel_token": secrets.token_urlsafe(32),
+        "reschedule_token": secrets.token_urlsafe(32),
+    }
     if locked_page.meeting_location == CalendarPage.MeetingLocation.CUSTOM:
-        booking.meeting_link = locked_page.custom_meeting_link
-    booking.full_clean()
-    booking.save()
+        create_values["meeting_link"] = locked_page.custom_meeting_link
+
+    try:
+        with transaction.atomic():
+            booking = CalendarBooking.objects.create(**create_values)
+    except IntegrityError as exc:
+        # If another request raced us, recover the durable appointment for the
+        # same submission. Otherwise convert the database error into a normal
+        # slot/capacity message rather than the generic public exception toast.
+        recovered = (
+            CalendarBooking.objects
+            .filter(
+                submission_id=locked_submission.pk,
+                status__in=active_statuses,
+            )
+            .order_by("-created_at")
+            .first()
+        )
+        if recovered is not None:
+            return recovered, False
+
+        if CalendarBooking.objects.filter(
+            page_id=locked_page.pk,
+            status__in=active_statuses,
+            start_at=slot_start,
+        ).count() >= capacity_limit:
+            raise ValidationError(
+                "That slot was just booked. Please choose another time."
+            ) from exc
+        raise ValidationError(
+            "That slot could not be reserved. Please choose another available time."
+        ) from exc
+
     return booking, True
 
 
