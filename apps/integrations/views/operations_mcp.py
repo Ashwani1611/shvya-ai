@@ -290,6 +290,15 @@ def _tool(
     read_only=True,
     requires_write_scope=None,
 ):
+    security_schemes = (
+        OAUTH_WRITE_SCHEMES
+        if (
+            (not read_only)
+            if requires_write_scope is None
+            else requires_write_scope
+        )
+        else OAUTH_READ_SCHEMES
+    )
     return {
         "name": name,
         "title": title,
@@ -305,15 +314,10 @@ def _tool(
             "destructiveHint": False,
             "openWorldHint": False,
         },
-        "securitySchemes": (
-            OAUTH_WRITE_SCHEMES
-            if (
-                (not read_only)
-                if requires_write_scope is None
-                else requires_write_scope
-            )
-            else OAUTH_READ_SCHEMES
-        ),
+        "securitySchemes": security_schemes,
+        "_meta": {
+            "securitySchemes": deepcopy(security_schemes),
+        },
     }
 
 
@@ -746,7 +750,9 @@ for definition in DIAGNOSTIC_TOOL_DEFINITIONS:
         continue
     item = deepcopy(definition)
     item["securitySchemes"] = OAUTH_READ_SCHEMES
-    item.pop("_meta", None)
+    item["_meta"] = {
+        "securitySchemes": deepcopy(OAUTH_READ_SCHEMES),
+    }
     DIAGNOSTIC_DEFINITIONS.append(item)
 
 TOOL_DEFINITIONS = OWN_TOOL_DEFINITIONS + DIAGNOSTIC_DEFINITIONS
