@@ -237,7 +237,7 @@ def _apply(run, lead):
         from apps.crm.models import AttributeDefinition
         from services.triggers.rules import attribute_value
 
-        definition = AttributeDefinition.objects.get(organization=org, key=a["key"])
+        definition = AttributeDefinition.objects.get(is_active=True, organization=org, key=a["key"])
         value = attribute_value(definition, a["value"])
         lead.attributes = {**(lead.attributes or {}), a["key"]: value}
         lead.save(update_fields=["attributes", "updated_at"])
