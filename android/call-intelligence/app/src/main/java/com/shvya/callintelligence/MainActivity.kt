@@ -45,6 +45,10 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 class MainActivity : AppCompatActivity() {
+    private val ink = Color.rgb(25, 36, 56)
+    private val muted = Color.rgb(105, 118, 137)
+    private val blue = Color.rgb(24, 93, 211)
+    private val canvas = Color.rgb(246, 248, 252)
     private lateinit var auth: AuthStore
     private var selectedTab = "home"
     private var query = ""
@@ -79,17 +83,22 @@ class MainActivity : AppCompatActivity() {
 
     private fun showLogin() {
         val root = page()
+        root.addView(space(42))
         root.addView(ImageView(this).apply {
             setImageResource(R.drawable.ic_shvya)
             contentDescription = "SHVYA"
-            layoutParams = LinearLayout.LayoutParams(dp(64), dp(64))
+            layoutParams = LinearLayout.LayoutParams(dp(76), dp(76)).apply { gravity = Gravity.CENTER_HORIZONTAL }
         })
-        root.addView(space(20))
-        root.addView(kicker("SHVYA CALL INTELLIGENCE"))
-        root.addView(title("Your calls.\nYour CRM. Connected."))
-        root.addView(body("Sign in with your SHVYA employee account to securely connect this Android phone to your organization."))
+        root.addView(space(22))
+        root.addView(kicker("SHVYA  /  CALL INTELLIGENCE").apply { gravity = Gravity.CENTER })
+        root.addView(title("Every conversation,\nconnected.").apply { gravity = Gravity.CENTER })
+        root.addView(body("Your calls, follow-ups and CRM in one place.").apply { gravity = Gravity.CENTER })
+        root.addView(space(30))
 
         val card = card()
+        card.addView(sectionTitle("Welcome back"))
+        card.addView(body("Sign in with your SHVYA work account."))
+        card.addView(space(18))
         val email = field("Work email")
         email.inputType = InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS
         email.setText(auth.email)
@@ -131,29 +140,36 @@ class MainActivity : AppCompatActivity() {
         card.addView(space(16))
         card.addView(login)
         card.addView(message)
-        root.addView(space(24))
         root.addView(card)
+        root.addView(space(20))
+        root.addView(body("Securely connected to your organization").apply { gravity = Gravity.CENTER })
         setPage(root)
     }
 
     private fun showDashboard() {
         val version = ++renderVersion
         val root = page()
-        val header = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
+        val header = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL; minimumHeight = dp(62) }
         header.addView(ImageView(this).apply {
             setImageResource(R.drawable.ic_shvya)
             contentDescription = "SHVYA"
         }, LinearLayout.LayoutParams(dp(46), dp(46)))
-        header.addView(sectionTitle("Call Intelligence").apply { setPadding(dp(12), 0, 0, 0); textSize = 20f },
+        header.addView(LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(12), 0, 0, 0)
+            addView(kicker("SHVYA"))
+            addView(sectionTitle("Call Intelligence").apply { setPadding(0, 0, 0, 0); textSize = 19f })
+        },
             LinearLayout.LayoutParams(0, -2, 1f))
-        header.addView(secondaryButton("Settings").apply { setOnClickListener { showSettings() } })
+        header.addView(iconAction("⚙", "Settings").apply { setOnClickListener { showSettings() } })
         root.addView(header)
-        root.addView(kicker("SHVYA · YOUR CALL WORKSPACE"))
-        root.addView(space(24))
+        root.addView(space(25))
 
         if (!essentialPermissionsGranted()) {
             val permissionCard = card()
-            permissionCard.addView(sectionTitle("Permissions required"))
+            permissionCard.addView(iconBadge("✦", blue, Color.rgb(234, 242, 255)))
+            permissionCard.addView(space(18))
+            permissionCard.addView(sectionTitle("Make every call count"))
             permissionCard.addView(body("Allow phone and call log access to capture your calls. Contacts help identify callers; notifications keep you informed."))
             permissionCard.addView(space(20))
             permissionCard.addView(primaryButton("Allow access").apply {
@@ -176,16 +192,18 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showCalls(root: LinearLayout, version: Int) {
+        root.addView(kicker("YOUR WORKSPACE"))
+        root.addView(title("Calls").apply { textSize = 34f; setPadding(0, dp(5), 0, dp(14)) })
         val search = field("Search lead or phone").apply {
             setText(query)
             isSingleLine = true
             imeOptions = android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH
         }
-        root.addView(kicker("CALL ACTIVITY")); root.addView(space(10)); root.addView(search)
+        root.addView(search)
         val actions = LinearLayout(this)
         actions.addView(secondaryButton("Search").apply { setOnClickListener {
             query = search.text.toString().trim(); pageNumber = 1; render()
-        } }, LinearLayout.LayoutParams(0, -2, 1f))
+        } }, LinearLayout.LayoutParams(0, -2, 1f).apply { rightMargin = dp(8) })
         actions.addView(primaryButton("+ Add lead").apply { setOnClickListener { addLead() } },
             LinearLayout.LayoutParams(0, -2, 1f))
         root.addView(space(10)); root.addView(actions)
@@ -214,9 +232,12 @@ class MainActivity : AppCompatActivity() {
             val stats = data.getJSONObject("stats")
             val summary = card()
             summary.addView(kicker("AT A GLANCE")); summary.addView(space(10)); summary.addView(sectionTitle("Call statistics"))
-            summary.addView(metricRow(listOf("Total" to stats.optInt("total"), "Incoming" to stats.optInt("incoming"), "Missed" to stats.optInt("missed"))))
-            summary.addView(metricRow(listOf("Outgoing" to stats.optInt("outgoing"), "Picked" to stats.optInt("picked"), "Not picked" to stats.optInt("not_picked"))))
-            summary.addView(body("Measured ringing time: " + stats.optInt("total_ring") + "s"))
+            summary.addView(metricRow(listOf("Total calls" to stats.optInt("total"), "Incoming" to stats.optInt("incoming"))))
+            summary.addView(space(9))
+            summary.addView(metricRow(listOf("Missed" to stats.optInt("missed"), "Outgoing" to stats.optInt("outgoing"))))
+            summary.addView(space(14))
+            summary.addView(View(this@MainActivity).apply { setBackgroundColor(Color.rgb(235, 239, 246)) }, LinearLayout.LayoutParams(-1, dp(1)))
+            summary.addView(body("Picked  ${stats.optInt("picked")}     ·     Not picked  ${stats.optInt("not_picked")}"))
             content.addView(summary); content.addView(space(20)); content.addView(sectionTitle("Recent calls"))
             val calls = data.getJSONArray("calls")
             if (calls.length() == 0) {
@@ -227,16 +248,27 @@ class MainActivity : AppCompatActivity() {
                 val row = card()
                 val lead = call.optJSONObject("lead")
                 val name = call.optString("contact_name").ifBlank { lead?.optString("name").orEmpty() }
+                val missed = call.optString("status") == "missed"
+                row.addView(iconBadge(if (missed) "↙" else "↗", if (missed) Color.rgb(210, 77, 65) else blue,
+                    if (missed) Color.rgb(255, 239, 236) else Color.rgb(232, 242, 255)))
+                row.addView(space(13))
                 row.addView(sectionTitle(name.ifBlank { call.optString("phone_number") }))
                 row.addView(body(call.optString("phone_number") + " · " + call.optString("direction") + " · " + call.optString("status").replace('_', ' ')))
                 row.addView(body(formatDate(call.optString("ended_at"))))
                 val ring = call.optInt("ring_duration_seconds")
                 row.addView(body("Talk: " + call.optInt("talk_duration_seconds") + "s  ·  Rang: " + if (ring > 0) "${ring}s" else "Not available"))
-                row.addView(secondaryButton("Call lead").apply { setOnClickListener { dial(call.optString("phone_number")) } })
-                if (call.optString("notes").isNotBlank()) row.addView(body(call.optString("notes")))
-                row.addView(secondaryButton(if (call.optString("notes").isBlank()) "Add call notes" else "Edit call notes").apply {
+                if (call.optString("notes").isNotBlank()) {
+                    row.addView(space(8))
+                    row.addView(body(call.optString("notes")))
+                }
+                row.addView(space(14))
+                val callActions = LinearLayout(this@MainActivity)
+                callActions.addView(secondaryButton("Call").apply { setOnClickListener { dial(call.optString("phone_number")) } },
+                    LinearLayout.LayoutParams(0, -2, 1f).apply { rightMargin = dp(8) })
+                callActions.addView(primaryButton(if (call.optString("notes").isBlank()) "Add notes" else "Edit notes").apply {
                     setOnClickListener { editCallNotes(call) }
-                })
+                }, LinearLayout.LayoutParams(0, -2, 1f))
+                row.addView(callActions)
                 content.addView(row); content.addView(space(12))
             }
             content.addView(pagination(data.optBoolean("has_next")))
@@ -252,6 +284,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showReminders(root: LinearLayout, version: Int) {
+        root.addView(kicker("STAY ON TRACK"))
+        root.addView(title("Reminders").apply { textSize = 34f; setPadding(0, dp(5), 0, dp(14)) })
         val content = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         root.addView(content)
         loadInto(content, version, { ApiClient(this).authorizedGet(apiPath + "reminders/?page=$pageNumber") }) { data ->
@@ -259,8 +293,8 @@ class MainActivity : AppCompatActivity() {
             val summary = card()
             summary.addView(kicker("YOUR CRM FOLLOW-UPS")); summary.addView(space(10)); summary.addView(sectionTitle("Call reminders"))
             summary.addView(metricRow(listOf("Total" to stats.optInt("total"), "Upcoming" to stats.optInt("upcoming"))))
+            summary.addView(space(9))
             summary.addView(metricRow(listOf("Overdue" to stats.optInt("overdue"), "Today" to stats.optInt("today"))))
-            summary.addView(body("Today includes reminders already overdue today."))
             content.addView(summary); content.addView(space(24))
             content.addView(sectionTitle("Reminder list"))
             val rows = data.getJSONArray("reminders")
@@ -268,13 +302,18 @@ class MainActivity : AppCompatActivity() {
             for (i in 0 until rows.length()) {
                 val item = rows.getJSONObject(i)
                 val row = card()
-                if (item.optBoolean("overdue")) row.background = rounded(Color.rgb(255, 246, 245), 22f)
+                if (item.optBoolean("overdue")) row.background = rounded(Color.rgb(255, 248, 247), 22f)
+                row.addView(iconBadge(if (item.optBoolean("overdue")) "!" else "✓",
+                    if (item.optBoolean("overdue")) Color.rgb(210, 77, 65) else blue,
+                    if (item.optBoolean("overdue")) Color.rgb(255, 236, 233) else Color.rgb(232, 242, 255)))
+                row.addView(space(12))
                 row.addView(sectionTitle(item.optString("lead_name")))
                 row.addView(body(formatDate(item.optString("due_at"))))
                 row.addView(body(item.optString("title")))
                 if (item.optString("description").isNotBlank()) row.addView(body("Note: " + item.optString("description")))
                 val controls = LinearLayout(this)
-                controls.addView(secondaryButton("Snooze 30m").apply { setOnClickListener { reminderAction(item, "snooze", this) } }, LinearLayout.LayoutParams(0, -2, 1f))
+                controls.addView(secondaryButton("Snooze 30m").apply { setOnClickListener { reminderAction(item, "snooze", this) } },
+                    LinearLayout.LayoutParams(0, -2, 1f).apply { rightMargin = dp(8) })
                 controls.addView(primaryButton("Mark done").apply { setOnClickListener { reminderAction(item, "complete", this) } }, LinearLayout.LayoutParams(0, -2, 1f))
                 row.addView(space(12)); row.addView(controls)
                 row.addView(secondaryButton("Call lead").apply { setOnClickListener { dial(item.optString("phone")) } })
@@ -443,15 +482,45 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun metricRow(values: List<Pair<String, Int>>): LinearLayout = LinearLayout(this).apply {
-        values.forEach { (label, value) ->
+        values.forEachIndexed { index, (label, value) ->
             addView(LinearLayout(this@MainActivity).apply {
                 orientation = LinearLayout.VERTICAL
-                gravity = Gravity.CENTER
-                setPadding(dp(4), dp(12), dp(4), dp(12))
-                addView(sectionTitle(value.toString()).apply { textSize = 28f; setTextColor(Color.rgb(0, 113, 227)) })
-                addView(body(label).apply { textSize = 12f; gravity = Gravity.CENTER })
-            }, LinearLayout.LayoutParams(0, -2, 1f))
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(dp(15), dp(16), dp(10), dp(16))
+                background = rounded(Color.rgb(246, 248, 252), 17f)
+                addView(sectionTitle(value.toString()).apply {
+                    textSize = 28f
+                    setTextColor(when (label) {
+                        "Missed", "Overdue" -> Color.rgb(215, 76, 62)
+                        "Upcoming" -> Color.rgb(39, 148, 103)
+                        else -> blue
+                    })
+                    setPadding(0, 0, 0, 0)
+                })
+                addView(body(label).apply { textSize = 12f })
+            }, LinearLayout.LayoutParams(0, dp(98), 1f).apply { if (index > 0) leftMargin = dp(9) })
         }
+    }
+
+    private fun iconBadge(symbol: String, tint: Int, backgroundColor: Int): TextView = TextView(this).apply {
+        text = symbol
+        textSize = 22f
+        gravity = Gravity.CENTER
+        setTypeface(typeface, Typeface.BOLD)
+        setTextColor(tint)
+        background = rounded(backgroundColor, 15f)
+        layoutParams = LinearLayout.LayoutParams(dp(44), dp(44))
+    }
+
+    private fun iconAction(symbol: String, description: String): TextView = TextView(this).apply {
+        text = symbol
+        textSize = 24f
+        gravity = Gravity.CENTER
+        setTextColor(ink)
+        contentDescription = description
+        background = rounded(Color.WHITE, 19f)
+        elevation = dp(1).toFloat()
+        layoutParams = LinearLayout.LayoutParams(dp(46), dp(46))
     }
 
     private fun pagination(hasNext: Boolean): LinearLayout = LinearLayout(this).apply {
@@ -467,15 +536,34 @@ class MainActivity : AppCompatActivity() {
     private fun setDashboardPage(content: LinearLayout) {
         val shell = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.rgb(245, 245, 247))
+            setBackgroundColor(canvas)
         }
         shell.addView(ScrollView(this).apply { addView(content) }, LinearLayout.LayoutParams(-1, 0, 1f))
-        val nav = LinearLayout(this).apply { setPadding(dp(16), dp(8), dp(16), dp(8)); setBackgroundColor(Color.WHITE) }
-        listOf("home" to "Home", "reminders" to "Reminders").forEach { (key, label) ->
-            val button = if (selectedTab == key) primaryButton(label) else secondaryButton(label)
-            button.isSelected = selectedTab == key
-            button.setOnClickListener { selectedTab = key; pageNumber = 1; render() }
-            nav.addView(button, LinearLayout.LayoutParams(0, -2, 1f).apply { setMargins(dp(4), 0, dp(4), 0) })
+        val nav = LinearLayout(this).apply {
+            setPadding(dp(18), dp(10), dp(18), dp(10))
+            setBackgroundColor(Color.WHITE)
+            elevation = dp(12).toFloat()
+        }
+        listOf(Triple("home", "Calls", "☎"), Triple("reminders", "Reminders", "▦")).forEach { (key, label, symbol) ->
+            val active = selectedTab == key
+            val item = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER
+                minimumHeight = dp(58)
+                background = rounded(if (active) Color.rgb(232, 241, 255) else Color.WHITE, 18f)
+                contentDescription = label
+                addView(TextView(this@MainActivity).apply {
+                    text = symbol; textSize = 23f; gravity = Gravity.CENTER
+                    setTextColor(if (active) blue else muted)
+                })
+                addView(TextView(this@MainActivity).apply {
+                    text = label; textSize = 11f; gravity = Gravity.CENTER
+                    setTypeface(typeface, if (active) Typeface.BOLD else Typeface.NORMAL)
+                    setTextColor(if (active) blue else muted)
+                })
+                setOnClickListener { selectedTab = key; pageNumber = 1; render() }
+            }
+            nav.addView(item, LinearLayout.LayoutParams(0, -2, 1f).apply { setMargins(dp(4), 0, dp(4), 0) })
         }
         shell.addView(nav)
         ViewCompat.setOnApplyWindowInsetsListener(shell) { view, insets ->
@@ -544,7 +632,7 @@ class MainActivity : AppCompatActivity() {
         LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(20), dp(24), dp(20), dp(28))
-            setBackgroundColor(Color.rgb(246, 247, 251))
+            setBackgroundColor(canvas)
         }
 
     private fun setPage(content: LinearLayout) {
@@ -565,7 +653,7 @@ class MainActivity : AppCompatActivity() {
         TextView(this).apply {
             this.text = text
             textSize = 11f
-            setTextColor(Color.rgb(105, 105, 110))
+            setTextColor(blue)
             setTypeface(typeface, Typeface.BOLD)
             letterSpacing = .12f
         }
@@ -574,7 +662,7 @@ class MainActivity : AppCompatActivity() {
         TextView(this).apply {
             this.text = text
             textSize = 38f
-            setTextColor(Color.rgb(29, 29, 31))
+            setTextColor(ink)
             setTypeface(typeface, Typeface.BOLD)
             setLineSpacing(0f, .94f)
             setPadding(0, dp(12), 0, dp(14))
@@ -584,7 +672,7 @@ class MainActivity : AppCompatActivity() {
         TextView(this).apply {
             this.text = text
             textSize = 17f
-            setTextColor(Color.rgb(29, 29, 31))
+            setTextColor(ink)
             setTypeface(typeface, Typeface.BOLD)
             setPadding(0, 0, 0, dp(12))
         }
@@ -593,7 +681,7 @@ class MainActivity : AppCompatActivity() {
         TextView(this).apply {
             this.text = text
             textSize = 14f
-            setTextColor(Color.rgb(110, 110, 115))
+            setTextColor(muted)
             setLineSpacing(dp(3).toFloat(), 1f)
             setPadding(0, dp(6), 0, 0)
         }
@@ -610,11 +698,11 @@ class MainActivity : AppCompatActivity() {
         EditText(this).apply {
             hint = hintText
             textSize = 15f
-            setTextColor(Color.rgb(29, 29, 31))
+            setTextColor(ink)
             setHintTextColor(Color.rgb(145, 145, 150))
             setPadding(dp(15), 0, dp(15), 0)
             minHeight = dp(52)
-            background = rounded(Color.rgb(245, 245, 247), 15f)
+            background = rounded(Color.rgb(240, 243, 248), 15f)
         }
 
     private fun primaryButton(label: String): Button =
@@ -624,7 +712,8 @@ class MainActivity : AppCompatActivity() {
             textSize = 14f
             setTextColor(Color.WHITE)
             minHeight = dp(52)
-            background = rounded(Color.rgb(0, 113, 227), 26f)
+            backgroundTintList = null
+            background = rounded(blue, 16f)
         }
 
     private fun secondaryButton(label: String): Button =
@@ -632,9 +721,10 @@ class MainActivity : AppCompatActivity() {
             text = label
             isAllCaps = false
             textSize = 14f
-            setTextColor(Color.rgb(29, 29, 31))
+            setTextColor(blue)
             minHeight = dp(50)
-            background = rounded(Color.WHITE, 25f)
+            backgroundTintList = null
+            background = rounded(Color.rgb(234, 242, 255), 16f)
         }
 
     private fun rounded(color: Int, radius: Float): GradientDrawable =
