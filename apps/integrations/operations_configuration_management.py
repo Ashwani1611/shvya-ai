@@ -1188,8 +1188,13 @@ def _operation_is_reversible(tool, arguments):
         return bool(arguments.get("cadence_id"))
     if tool in {"add_cadence_step", "add_hosted_whatsapp_step"}:
         return False
-    if tool == "upsert_touchpoint":
-        return bool(arguments.get("touchpoint_id"))
+    if tool == "update_cadence_step":
+        data = arguments.get("data") or {}
+        return not bool(data.get("attachment_base64")) and not bool(
+            data.get("remove_attachment", False)
+        )
+    if tool in {"upsert_touchpoint", "archive_touchpoint"}:
+        return False
     if tool == "upsert_faq":
         return bool(arguments.get("faq_id"))
     return True
@@ -1454,7 +1459,8 @@ def _consume_plan_approval(*, identity, organization, plan, arguments):
             "or does not match this exact plan hash."
         )
     try:
-        OperationsApprovalUse.objects.create(approval_event=event)
+        with transaction.atomic():
+            OperationsApprovalUse.objects.create(approval_event=event)
     except IntegrityError as exc:
         raise OperationsApprovalRequired(
             "This plan approval receipt has already been consumed."
