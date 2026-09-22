@@ -1000,18 +1000,39 @@ def book_slot(*, page, submission, slot_start_iso):
     if page.host_id:
         try:
             create_booking_event(booking)
-        except GoogleCalendarError as exc:
-            booking.calendar_sync_status = CalendarBooking.SyncStatus.FAILED
-            booking.calendar_sync_error = str(exc)
-            booking.save(
-                update_fields=[
-                    "calendar_sync_status",
-                    "calendar_sync_error",
-                    "updated_at",
-                ]
+        except Exception as exc:
+            # Calendar/Meet sync is a post-booking integration. Once the core
+            # booking row exists, a provider/token/network/storage problem must
+            # never make the visitor think their appointment failed.
+            logger.exception(
+                "SHVYA Calendar Google sync failed after booking %s was created",
+                booking.id,
             )
+            try:
+                CalendarBooking.objects.filter(pk=booking.pk).update(
+                    calendar_sync_status=CalendarBooking.SyncStatus.FAILED,
+                    calendar_sync_error=str(exc)[:1000],
+                    updated_at=timezone.now(),
+                )
+                booking.calendar_sync_status = CalendarBooking.SyncStatus.FAILED
+                booking.calendar_sync_error = str(exc)[:1000]
+            except Exception:
+                logger.exception(
+                    "Unable to persist Calendar sync failure for booking %s",
+                    booking.id,
+                )
 
-    schedule_booking_reminders(booking)
+    try:
+        schedule_booking_reminders(booking)
+    except Exception:
+        # Reminder creation/delivery is also secondary to the confirmed slot.
+        # Keep the appointment durable and surface operational failures in logs
+        # rather than returning the visitor to slot selection.
+        logger.exception(
+            "SHVYA Calendar reminder scheduling failed for booking %s",
+            booking.id,
+        )
+
     return booking
 
 
