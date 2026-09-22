@@ -27,6 +27,12 @@ from apps.integrations.operations_models import (
     OperationsOAuthToken,
     OperationsSupportSession,
 )
+# Compatibility seam for existing hardening tests and integrations that patch
+# this module-level CIMD fetcher. It intentionally resolves to the broader
+# Operations-only policy, not the Diagnostic policy.
+fetch_cimd_metadata = fetch_operations_cimd_metadata
+
+
 from apps.integrations.operations_policy import (
     ROLE_ORGANIZATION_ADMIN,
     ROLE_SUPERADMIN,
@@ -138,7 +144,7 @@ def _resolve_oauth_client(client_id: str):
 
     if is_allowed_operations_cimd_url(client_id):
         try:
-            metadata = fetch_operations_cimd_metadata(client_id)
+            metadata = fetch_cimd_metadata(client_id)
         except MCPClientMetadataError as exc:
             raise OperationsAuthError(str(exc)) from exc
         if client is None:
