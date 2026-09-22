@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}Calendar · SHVYA Calendar{% endblock %}
+{% block header %}Calendar{% endblock %}
+{% block extra_head %}{{ block.super }}
+<link rel="stylesheet" href="{% static 'shvya_calendar/workspace.css' %}?v=1">
+<script src="{% static 'shvya_calendar/workspace.js' %}?v=1" defer></script>
+{% endblock %}
+{% block content %}
+<section class="cw" id="calendar-workspace" data-events-url="{% url 'shvya_calendar:events' %}" data-timezone="{{ calendar_timezone }}" data-today="{{ calendar_today }}">
+  <header class="cw-heading"><div><p class="cw-eyebrow">SHVYA CALENDAR</p><h1>Your time, together.</h1><p class="cw-subtitle">Every booking. One clear view.</p></div><a class="cw-button" href="{% url 'shvya_calendar:bookings' %}"><i class="ti ti-calendar-plus" aria-hidden="true"></i> Manage bookings</a></header>
+  <div class="cw-card">
+    <div class="cw-toolbar">
+      <div class="cw-navigation"><button class="cw-icon" id="cw-prev" aria-label="Previous period">‹</button><h2 id="cw-period"></h2><button class="cw-icon" id="cw-next" aria-label="Next period">›</button><button class="cw-button" id="cw-today">Today</button></div>
+      <div class="cw-controls"><label class="cw-sr" for="cw-pipeline">Filter by pipeline</label><select id="cw-pipeline"><option value="">All pipelines</option>{% for pipeline in pipelines %}<option value="{{ pipeline.id }}">{{ pipeline.name }}{% if not pipeline.is_active %} (inactive){% endif %}</option>{% endfor %}</select><div class="cw-segments" role="group" aria-label="Calendar view"><button data-view="day" aria-pressed="true">Day</button><button data-view="week" aria-pressed="false">Week</button><button data-view="month" aria-pressed="false">Month</button></div><label class="cw-sr" for="cw-date">Go to date</label><input id="cw-date" type="date" value="{{ calendar_today }}" aria-label="Go to date"></div>
+    </div>
+    <div id="cw-week-strip" class="cw-week-strip" aria-label="Select day"></div>
+    <div class="cw-context"><h3 id="cw-date-title"></h3><span>{{ calendar_timezone }} <span aria-hidden="true">·</span> <span id="cw-count"></span></span></div>
+    <p class="cw-message" id="cw-message" role="status" aria-live="polite"></p>
+    <div id="cw-grid" class="cw-grid" aria-label="Bookings"></div>
+  </div>
+  <dialog id="cw-detail" class="cw-dialog" aria-label="Booking details"><button class="cw-close cw-icon" id="cw-close" aria-label="Close booking details">×</button><div id="cw-detail-body"></div></dialog>
+</section>
+{% endblock %}
