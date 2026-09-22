@@ -142,6 +142,25 @@ def _update_page_logo(request, page):
             raise ValidationError(
                 {"logo_file": "The uploaded logo file type is not supported."}
             )
+        header = upload.read(16)
+        upload.seek(0)
+        signature_ok = (
+            (extension == ".png" and header.startswith(b"\x89PNG\r\n\x1a\n"))
+            or (
+                extension in {".jpg", ".jpeg"}
+                and header.startswith(b"\xff\xd8\xff")
+            )
+            or (
+                extension == ".webp"
+                and len(header) >= 12
+                and header[:4] == b"RIFF"
+                and header[8:12] == b"WEBP"
+            )
+        )
+        if not signature_ok:
+            raise ValidationError(
+                {"logo_file": "The uploaded file is not a valid logo image."}
+            )
         page.logo_file = upload
 
     if old_name and (remove or upload is not None) and old_storage is not None:
