@@ -6967,5 +6967,9 @@ def execute_operations_tool(*, name, identity, arguments):
 
         handler = CONFIGURATION_MANAGEMENT_HANDLERS.get(str(name or ""))
     if handler is None:
+        from apps.integrations.operations_lifecycle import LIFECYCLE_HANDLERS
+
+        handler = LIFECYCLE_HANDLERS.get(str(name or ""))
+    if handler is None:
         raise OperationsToolError("Unknown SHVYA Operations tool.")
     return handler(identity=identity, arguments=arguments or {})
