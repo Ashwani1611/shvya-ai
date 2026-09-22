@@ -10,7 +10,7 @@
         </div>
         <h1 class="sa-page-title">Superadmin MCP</h1>
         <p class="sa-page-description">
-            One global Operations MCP connection for SHVYA Superadmin. Connect once, then select one organization support context at a time from ChatGPT, Claude, or VS Code.
+            One global Operations MCP connection for SHVYA Superadmin. Connect from ChatGPT, Claude, VS Code, Cursor, Gemini CLI, Claude Code, Codex, Windsurf, or another standards-compliant remote MCP client, then select one organization support context at a time.
         </p>
     </div>
     <span class="sa-badge sa-badge--primary">Operations MCP</span>
@@ -62,27 +62,70 @@
             </p>
         </div>
 
-        <div class="mt-5 grid gap-4 lg:grid-cols-3">
+        <div class="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
             <div class="rounded-2xl border border-gray-200 bg-white p-4">
                 <div class="text-sm font-semibold text-gray-900">ChatGPT</div>
-                <p class="mt-2 text-xs leading-5 text-gray-500">Add the Operations MCP endpoint as a remote MCP server. Complete the SHVYA Superadmin OAuth screen in the browser.</p>
+                <p class="mt-2 text-xs leading-5 text-gray-500">Add the Operations endpoint as a remote custom MCP server and complete SHVYA OAuth in the browser.</p>
                 <button type="button" class="mt-4 sa-secondary-button" data-copy-target="superadmin-mcp-endpoint">Copy URL</button>
             </div>
             <div class="rounded-2xl border border-gray-200 bg-white p-4">
                 <div class="text-sm font-semibold text-gray-900">Claude</div>
-                <p class="mt-2 text-xs leading-5 text-gray-500">Use the same single Operations MCP endpoint. Claude receives only the authority granted by the authenticated SHVYA Superadmin session.</p>
+                <p class="mt-2 text-xs leading-5 text-gray-500">Use the same remote Operations endpoint. SHVYA keeps the authenticated Superadmin as the authority source.</p>
                 <button type="button" class="mt-4 sa-secondary-button" data-copy-target="superadmin-mcp-endpoint">Copy URL</button>
             </div>
             <div class="rounded-2xl border border-gray-200 bg-white p-4">
-                <div class="text-sm font-semibold text-gray-900">VS Code</div>
-                <p class="mt-2 text-xs leading-5 text-gray-500">Use the remote HTTP MCP server configuration below. OAuth completes in the browser.</p>
+                <div class="text-sm font-semibold text-gray-900">VS Code / Copilot</div>
+                <p class="mt-2 text-xs leading-5 text-gray-500">Remote HTTP MCP with browser OAuth and the VS Code MCP callbacks supported by SHVYA.</p>
                 <button type="button" class="mt-4 sa-secondary-button" data-copy-target="vscode-mcp-config">Copy config</button>
+            </div>
+            <div class="rounded-2xl border border-gray-200 bg-white p-4">
+                <div class="text-sm font-semibold text-gray-900">Cursor</div>
+                <p class="mt-2 text-xs leading-5 text-gray-500">Remote MCP over HTTP. Web and desktop OAuth callback styles are supported.</p>
+                <button type="button" class="mt-4 sa-secondary-button" data-copy-target="cursor-mcp-config">Copy config</button>
+            </div>
+            <div class="rounded-2xl border border-gray-200 bg-white p-4">
+                <div class="text-sm font-semibold text-gray-900">Gemini CLI</div>
+                <p class="mt-2 text-xs leading-5 text-gray-500">Remote HTTP MCP with OAuth discovery, DCR and ephemeral localhost callback ports.</p>
+                <button type="button" class="mt-4 sa-secondary-button" data-copy-target="gemini-mcp-config">Copy config</button>
+            </div>
+            <div class="rounded-2xl border border-gray-200 bg-white p-4">
+                <div class="text-sm font-semibold text-gray-900">Claude Code</div>
+                <p class="mt-2 text-xs leading-5 text-gray-500">Add SHVYA as a remote HTTP MCP server from the Claude Code CLI.</p>
+                <button type="button" class="mt-4 sa-secondary-button" data-copy-target="claude-code-command">Copy command</button>
+            </div>
+            <div class="rounded-2xl border border-gray-200 bg-white p-4">
+                <div class="text-sm font-semibold text-gray-900">Codex</div>
+                <p class="mt-2 text-xs leading-5 text-gray-500">Add the remote server to Codex config; loopback OAuth can use runtime-selected ports.</p>
+                <button type="button" class="mt-4 sa-secondary-button" data-copy-target="codex-mcp-config">Copy config</button>
+            </div>
+            <div class="rounded-2xl border border-gray-200 bg-white p-4">
+                <div class="text-sm font-semibold text-gray-900">Windsurf / Other MCP</div>
+                <p class="mt-2 text-xs leading-5 text-gray-500">Use the global Streamable HTTP endpoint. Standards-compliant HTTPS or loopback OAuth clients can register dynamically.</p>
+                <button type="button" class="mt-4 sa-secondary-button" data-copy-target="superadmin-mcp-endpoint">Copy URL</button>
             </div>
         </div>
 
-        <div class="mt-5 rounded-2xl border border-gray-200 bg-gray-950 p-4 text-gray-100">
-            <div class="mb-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-gray-400">VS Code mcp.json</div>
-            <pre id="vscode-mcp-config" class="overflow-x-auto whitespace-pre-wrap break-words text-xs leading-6">{{ vscode_configuration }}</pre>
+        <div class="mt-5 grid gap-4 xl:grid-cols-2">
+            <div class="rounded-2xl border border-gray-200 bg-gray-950 p-4 text-gray-100">
+                <div class="mb-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-gray-400">VS Code mcp.json</div>
+                <pre id="vscode-mcp-config" class="overflow-x-auto whitespace-pre-wrap break-words text-xs leading-6">{{ vscode_configuration }}</pre>
+            </div>
+            <div class="rounded-2xl border border-gray-200 bg-gray-950 p-4 text-gray-100">
+                <div class="mb-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-gray-400">Cursor mcp.json</div>
+                <pre id="cursor-mcp-config" class="overflow-x-auto whitespace-pre-wrap break-words text-xs leading-6">{{ cursor_configuration }}</pre>
+            </div>
+            <div class="rounded-2xl border border-gray-200 bg-gray-950 p-4 text-gray-100">
+                <div class="mb-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-gray-400">Gemini CLI settings.json</div>
+                <pre id="gemini-mcp-config" class="overflow-x-auto whitespace-pre-wrap break-words text-xs leading-6">{{ gemini_configuration }}</pre>
+            </div>
+            <div class="rounded-2xl border border-gray-200 bg-gray-950 p-4 text-gray-100">
+                <div class="mb-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-gray-400">Claude Code</div>
+                <pre id="claude-code-command" class="overflow-x-auto whitespace-pre-wrap break-words text-xs leading-6">{{ claude_code_command }}</pre>
+            </div>
+            <div class="rounded-2xl border border-gray-200 bg-gray-950 p-4 text-gray-100 xl:col-span-2">
+                <div class="mb-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-gray-400">Codex config.toml</div>
+                <pre id="codex-mcp-config" class="overflow-x-auto whitespace-pre-wrap break-words text-xs leading-6">{{ codex_configuration }}</pre>
+            </div>
         </div>
 
         <details class="mt-5 rounded-xl border border-gray-200 bg-white px-4 py-3">
