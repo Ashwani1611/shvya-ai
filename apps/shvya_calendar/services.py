@@ -453,7 +453,7 @@ def mapped_lead_values(*, organization, version, normalized):
     attributes = {}
     definitions = {
         item.key: item
-        for item in AttributeDefinition.objects.filter(organization=organization)
+        for item in AttributeDefinition.objects.filter(is_active=True, organization=organization)
     }
     for field in _field_schema(version):
         key = str(field.get("key") or "")
@@ -1346,7 +1346,7 @@ def schema_from_json(*, organization, raw):
 
     definitions = {
         item.key: item
-        for item in AttributeDefinition.objects.filter(organization=organization)
+        for item in AttributeDefinition.objects.filter(is_active=True, organization=organization)
     }
     cleaned = []
     seen = set()
