@@ -255,7 +255,7 @@ class OperationsMCPTests(TestCase):
         challenge = response["WWW-Authenticate"]
         self.assertIn("Bearer ", challenge)
         self.assertIn(
-            'resource_metadata="http://testserver/operations/.well-known/oauth-protected-resource"',
+            'resource_metadata="http://testserver/.well-known/oauth-protected-resource/operations/mcp/"',
             challenge,
         )
         result = response.json()["result"]
@@ -6912,6 +6912,44 @@ class OperationsMCPTests(TestCase):
             self.assertTrue(
                 capabilities[capability]["approval_required"]
             )
+
+    def test_standard_operations_resource_metadata_discovery(self):
+        for path in (
+            "/.well-known/oauth-protected-resource/operations/mcp/",
+            "/.well-known/oauth-protected-resource/operations/mcp",
+        ):
+            response = self.client.get(path)
+            self.assertEqual(response.status_code, 200)
+            body = response.json()
+            self.assertEqual(
+                body["resource"],
+                "http://testserver/operations/mcp/",
+            )
+            self.assertEqual(
+                body["authorization_servers"],
+                ["http://testserver/operations"],
+            )
+            self.assertEqual(
+                body["bearer_methods_supported"],
+                ["header"],
+            )
+            self.assertIn(
+                OPERATIONS_READ_SCOPE,
+                body["scopes_supported"],
+            )
+            self.assertIn(
+                OPERATIONS_WRITE_SCOPE,
+                body["scopes_supported"],
+            )
+
+        server = self.client.get(
+            "/.well-known/oauth-authorization-server/operations"
+        )
+        self.assertEqual(server.status_code, 200)
+        self.assertEqual(
+            server.json()["code_challenge_methods_supported"],
+            ["S256"],
+        )
 
     def test_oauth_metadata_advertises_revocation_endpoint(self):
         metadata = self.client.get(
