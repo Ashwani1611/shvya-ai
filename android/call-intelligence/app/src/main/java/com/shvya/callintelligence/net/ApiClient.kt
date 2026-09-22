@@ -2,6 +2,9 @@ package com.shvya.callintelligence.net
 
 import android.Manifest
 import android.content.Context
+import android.content.Intent
+import com.shvya.callintelligence.calls.CallTrackingService
+import androidx.work.WorkManager
 import android.content.pm.PackageManager
 import android.os.Build
 import android.provider.Settings
@@ -114,10 +117,21 @@ class ApiClient(private val context: Context) {
         return authorizedPost("api/v1/call-intelligence/events/", payload)
     }
 
-    fun authorizedPost(path: String, payload: JSONObject): ApiResponse {
-        var response = request(path, payload, authorized = true)
+    fun authorizedGet(path: String): ApiResponse = authorizedRequest(path, JSONObject(), "GET")
+
+    fun authorizedPatch(path: String, payload: JSONObject): ApiResponse = authorizedRequest(path, payload, "PATCH")
+
+    fun authorizedPost(path: String, payload: JSONObject): ApiResponse = authorizedRequest(path, payload, "POST")
+
+    private fun authorizedRequest(path: String, payload: JSONObject, method: String): ApiResponse {
+        var response = request(path, payload, authorized = true, method = method)
         if (response.code == 401 && refresh()) {
-            response = request(path, payload, authorized = true)
+            response = request(path, payload, authorized = true, method = method)
+        }
+        if (response.code == 403 && response.body.contains("device_removed")) {
+            auth.clear()
+            context.stopService(Intent(context, CallTrackingService::class.java))
+            WorkManager.getInstance(context).cancelAllWork()
         }
         return response
     }
@@ -142,13 +156,13 @@ class ApiClient(private val context: Context) {
             )
     }
 
-    private fun request(path: String, payload: JSONObject, authorized: Boolean): ApiResponse {
+    private fun request(path: String, payload: JSONObject, authorized: Boolean, method: String = "POST"): ApiResponse {
         val connection = (URL(baseUrl + path.trimStart('/')).openConnection() as HttpURLConnection)
         return try {
-            connection.requestMethod = "POST"
+            connection.requestMethod = method
             connection.connectTimeout = 15000
             connection.readTimeout = 20000
-            connection.doOutput = true
+            connection.doOutput = method != "GET"
             connection.setRequestProperty("Content-Type", "application/json")
             connection.setRequestProperty("Accept", "application/json")
             if (authorized) {
@@ -157,7 +171,7 @@ class ApiClient(private val context: Context) {
                     connection.setRequestProperty("Authorization", "Bearer " + token)
                 }
             }
-            connection.outputStream.use { stream ->
+            if (method != "GET") connection.outputStream.use { stream ->
                 stream.write(payload.toString().toByteArray(Charsets.UTF_8))
             }
             val code = connection.responseCode

@@ -122,3 +122,69 @@ The APK is built by the dedicated Android GitHub Actions workflow. A successful
 `call-intelligence-latest`. The authenticated dashboard download endpoint
 redirects to that release by default; `CALL_INTELLIGENCE_APK_URL` can override
 the location if distribution moves to private object storage.
+
+
+## Overview / Analytics and Android 1.1.0
+
+The sidebar entry opens Overview. Analytics is selected with
+`?section=analytics` and contains Calls at a glance, the full paginated call
+history, filters, missed calls and team metrics. Every web metric uses the
+same filtered queryset. Clear resets all filters while staying in Analytics.
+Existing filter URLs still select Analytics.
+
+Overview contains product information, APK download/setup, connected phones
+and organization configuration. Removing a phone is a CSRF-protected POST,
+scoped to the current organization and either the device owner or an admin.
+The device is deactivated rather than deleted, preserving its call history.
+Registration and new ingestion reject deactivated devices with
+`403 / device_removed`, so periodic workers cannot silently reconnect them.
+The mobile client stops background work and clears its local session on that
+response. A removed device must be explicitly re-enabled by an administrator
+before it can register again.
+
+Ringing is a duration in seconds, not an estimated count of audible rings.
+The current Android receiver measures incoming ringing when lifecycle events
+are available. Missing / legacy zero timings display as unavailable and do
+not enter ring averages. Outgoing audible-ring counts cannot be derived from
+Android call-log duration and are never invented.
+
+The native app uses SHVYA branding, an adaptive launcher icon, permissions
+onboarding, Home / Reminders navigation, call search and dates, real call
+statistics, paginated call history, manual lead creation, assigned reminders
+and organization settings. Reminder completion, snooze and deletion update
+the canonical CRM reminder. Snoozing an overdue reminder sets it at least
+30 minutes into the future. Agents can view lead-creation settings; only
+organization admins can change them. A settings PATCH changes only supplied
+boolean fields, preserving other pipeline / owner / automation settings.
+
+Additional mobile API endpoints:
+
+- `GET reminders/` (current employee assignments; paginated)
+- `POST reminders/<uuid>/action/` (`complete`, `snooze`, `delete`)
+- `POST leads/` (name, phone; existing leads are never overwritten)
+- `PATCH settings/` (admin-only lead-creation booleans)
+- `GET calls/?mine=1&page=1` includes filtered totals and `has_next`
+
+SHVYA vector artwork source:
+https://kraya-ai.com/images/Assets-SHVYA-Homepage/kraya-blue-logo.svg
+The existing Android package identifier remains unchanged. Version is 1.1.0
+(code 2). CI remains the canonical signing/distribution route; a locally
+built APK uses a local debug signing key and is for review only.
+
+### Review builds and validation
+
+The debug variant uses `com.shvya.callintelligence.preview` and the launcher
+label “SHVYA Call Intelligence Preview”, so it can be installed alongside the
+existing app. The release application ID is unchanged. Deploy the matching
+backend endpoints before using the new mobile screens against a live account.
+
+Local validation: 25 telephony tests passed using temporary SQLite settings
+with PostgreSQL GIN index creation omitted, plus Ruff and whitespace checks.
+This verifies application behavior, not PostgreSQL migrations or concurrency.
+The dashboard was inspected at desktop and 390px mobile widths during this
+change. Physical-device permission, incoming-call timing and background-sync
+checks remain part of release validation.
+
+Both `assembleRelease` and `assembleDebug` completed successfully locally.
+The preview APK's package/label, adaptive launcher icon and v1/v2 signatures
+were verified with Android build tools.

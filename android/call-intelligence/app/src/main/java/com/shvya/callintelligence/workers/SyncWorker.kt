@@ -13,7 +13,7 @@ class SyncWorker(
     params: WorkerParameters,
 ) : CoroutineWorker(appContext, params) {
     override suspend fun doWork(): Result {
-        if (!AuthStore(applicationContext).hasSession()) return Result.retry()
+        if (!AuthStore(applicationContext).hasSession()) return Result.success()
 
         val dao = AppDatabase.get(applicationContext).callDao()
         val api = ApiClient(applicationContext)
@@ -22,7 +22,7 @@ class SyncWorker(
         } catch (_: Exception) {
             return Result.retry()
         }
-        if (!registered.successful) return Result.retry()
+        if (!registered.successful) return if (AuthStore(applicationContext).hasSession()) Result.retry() else Result.success()
 
         var shouldRetry = false
         dao.pendingQueue(50).forEach { queue ->
