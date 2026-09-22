@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import time
 from copy import deepcopy
 from urllib.parse import urlencode, urlparse
@@ -83,6 +84,7 @@ from apps.integrations.views.mcp import TOOL_DEFINITIONS as DIAGNOSTIC_TOOL_DEFI
 MODERN_PROTOCOL_VERSION = "2026-07-28"
 LEGACY_PROTOCOL_VERSION = "2025-11-25"
 SERVER_INFO = {"name": "shvya-operations", "version": "1.0.0"}
+logger = logging.getLogger(__name__)
 OAUTH_MAX_BODY_BYTES = 32 * 1024
 OAUTH_MAX_STATE_LENGTH = 1024
 
@@ -2233,6 +2235,10 @@ def operations_mcp(request):
                 "isError": True,
             }
         except Exception:
+            logger.exception(
+                "Operations MCP tool failed unexpectedly: %s",
+                tool_name,
+            )
             error_code = "operations_internal_error"
             audit_outcome = OperationsAuditEvent.Outcome.ERROR
             error_reason = "Operations tool failed safely."
