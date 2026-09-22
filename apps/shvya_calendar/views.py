@@ -1387,6 +1387,32 @@ def public_schedule(request, public_id, slug, submission_id):
                     "organization_id": str(page.organization_id),
                 },
             )
+
+            # A failure can happen after the core booking row has already been
+            # committed (for example while syncing Google Calendar or creating
+            # reminders). Recover that durable appointment instead of asking
+            # the visitor to choose the same slot again.
+            recovered = (
+                CalendarBooking.objects
+                .filter(
+                    submission=submission,
+                    page=page,
+                    organization=page.organization,
+                    status__in=[
+                        CalendarBooking.Status.SCHEDULED,
+                        CalendarBooking.Status.RESCHEDULED,
+                    ],
+                )
+                .order_by("-created_at")
+                .first()
+            )
+            if recovered is not None:
+                return redirect(
+                    "shvya_calendar_public:confirmation",
+                    booking_id=recovered.id,
+                    cancel_token=recovered.cancel_token,
+                )
+
             error = (
                 "We couldn't confirm that slot right now. "
                 "Your lead details are safe; please choose a time again."
