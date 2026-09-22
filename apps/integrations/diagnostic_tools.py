@@ -195,6 +195,26 @@ def _tenant_safe_instagram_messages(organization):
     )
 
 
+def _tenant_safe_instagram_webhook_deliveries(organization):
+    """Scope durable Instagram webhook failures by signed payload account id."""
+    account_ids = list(
+        InstagramAccount.objects.filter(
+            organization=organization,
+        ).values_list("ig_user_id", flat=True)
+    )
+    if not account_ids:
+        return InstagramWebhookDelivery.objects.none()
+
+    routing = Q()
+    for account_id in account_ids:
+        routing |= Q(
+            raw_payload__entry__contains=[
+                {"id": str(account_id)}
+            ]
+        )
+    return InstagramWebhookDelivery.objects.filter(routing)
+
+
 def _tenant_safe_hosted_jobs(organization):
     safe_lead_ids = _tenant_safe_leads(
         organization
@@ -1590,8 +1610,9 @@ def get_recent_errors(*, organization, arguments):
         status=InstagramMessage.Status.FAILED,
         created_at__gte=since,
     )
-    instagram_webhook_qs = InstagramWebhookDelivery.objects.filter(
-        organization_ids__contains=[str(organization.id)],
+    instagram_webhook_qs = _tenant_safe_instagram_webhook_deliveries(
+        organization
+    ).filter(
         status=InstagramWebhookDelivery.Status.FAILED,
         received_at__gte=since,
     )
@@ -1857,8 +1878,9 @@ def get_runtime_health(*, organization, arguments):
                 ).count()
             ),
             "instagram_webhook_failed_24h": (
-                InstagramWebhookDelivery.objects.filter(
-                    organization_ids__contains=[str(organization.id)],
+                _tenant_safe_instagram_webhook_deliveries(
+                    organization
+                ).filter(
                     status=InstagramWebhookDelivery.Status.FAILED,
                     received_at__gte=since,
                 ).count()
