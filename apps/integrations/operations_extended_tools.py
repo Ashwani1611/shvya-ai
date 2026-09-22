@@ -284,7 +284,10 @@ def _clean_qualification_data(*, organization, data):
     sensitive = _sensitive_attribute_keys(organization)
     attributes = {
         item.key: item
-        for item in AttributeDefinition.objects.filter(organization=organization)
+        for item in AttributeDefinition.objects.filter(
+            organization=organization,
+            is_active=True,
+        )
         if item.key not in sensitive
     }
     requirement_ids = {item["stable_id"] for item in cleaned_requirements}
