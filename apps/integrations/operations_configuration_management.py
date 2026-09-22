@@ -27,6 +27,10 @@ from apps.followups.models import FollowupSequence, FollowupStep, LeadSequenceSt
 from apps.followups.touchpoint_models import TouchpointCategory, TouchpointReply
 from apps.hosted_automation.models import HostedFollowupStepConfig
 from apps.integrations.diagnostic_auth import sanitize_data
+from apps.integrations.mcp_schema import (
+    MCPInputValidationError,
+    validate_mcp_arguments,
+)
 from apps.integrations.operations_models import (
     OperationsApprovalUse,
     OperationsAuditEvent,
@@ -1201,11 +1205,15 @@ def _operation_is_reversible(tool, arguments):
 
 def _execute_plan_member(*, identity, tool, arguments):
     from apps.integrations.operations_tools import execute_operations_tool
+    from apps.integrations.views.operations_mcp import TOOL_INPUT_SCHEMAS
+
+    actual_tool = tool
+    member_arguments = deepcopy(arguments)
 
     if tool == "_ensure_stage_configuration":
         organization = _organization_for(identity)
-        pipeline_id = arguments.get("pipeline_id")
-        name = str((arguments.get("data") or {}).get("name") or "").strip()
+        pipeline_id = member_arguments.get("pipeline_id")
+        name = str((member_arguments.get("data") or {}).get("name") or "").strip()
         stage = (
             Stage.objects.filter(
                 pipeline_id=pipeline_id,
@@ -1213,20 +1221,28 @@ def _execute_plan_member(*, identity, tool, arguments):
                 name__iexact=name,
             ).first()
         )
-        converted = deepcopy(arguments)
         if stage is not None:
-            converted["stage_id"] = str(stage.id)
-        return execute_operations_tool(
-            name="upsert_stage_configuration",
-            identity=identity,
-            arguments=converted,
+            member_arguments["stage_id"] = str(stage.id)
+        actual_tool = "upsert_stage_configuration"
+
+    schema = TOOL_INPUT_SCHEMAS.get(actual_tool)
+    if schema is None:
+        raise OperationsPermissionError(
+            f"Plan member tool '{actual_tool}' is not exposed by the Operations MCP."
         )
-    if tool == "reorder_stages":
-        return reorder_stages(identity=identity, arguments=arguments)
+    try:
+        validate_mcp_arguments(member_arguments, schema)
+    except MCPInputValidationError as exc:
+        raise OperationsToolError(
+            f"Plan member '{actual_tool}' failed MCP schema validation: {exc}"
+        ) from exc
+
+    if actual_tool == "reorder_stages":
+        return reorder_stages(identity=identity, arguments=member_arguments)
     return execute_operations_tool(
-        name=tool,
+        name=actual_tool,
         identity=identity,
-        arguments=arguments,
+        arguments=member_arguments,
     )
 
 
