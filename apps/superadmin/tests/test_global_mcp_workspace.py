@@ -218,3 +218,38 @@ class SuperadminGlobalMCPWorkspaceTests(TestCase):
             access_key,
             workspace.content.decode("utf-8"),
         )
+
+
+    def test_direct_mcp_key_can_be_read_only(self):
+        response = self.client.post(
+            reverse("superadmin-operations-mcp-key-generate"),
+            {
+                "label": "Audit only",
+                "access_mode": "read_only",
+                "ttl_days": "7",
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        token = OperationsOAuthToken.objects.get(
+            pk=response.json()["token_id"]
+        )
+        scopes = token.scope.split()
+        self.assertIn(OPERATIONS_READ_SCOPE, scopes)
+        self.assertNotIn(OPERATIONS_WRITE_SCOPE, scopes)
+
+    def test_direct_mcp_key_rejects_unsupported_lifetime(self):
+        before = OperationsOAuthToken.objects.count()
+        response = self.client.post(
+            reverse("superadmin-operations-mcp-key-generate"),
+            {
+                "label": "Invalid lifetime",
+                "access_mode": "read_write",
+                "ttl_days": "365",
+            },
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(response.json()["ok"])
+        self.assertEqual(
+            OperationsOAuthToken.objects.count(),
+            before,
+        )
