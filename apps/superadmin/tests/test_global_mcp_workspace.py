@@ -5,8 +5,14 @@ from django.urls import reverse
 from django.utils import timezone
 
 from apps.accounts.models import User
-from apps.integrations.operations_auth import (\n    OPERATIONS_READ_SCOPE,\n    OPERATIONS_WRITE_SCOPE,\n    authenticate_bearer,\n    token_hash,\n)
+from apps.integrations.operations_auth import (
+    OPERATIONS_READ_SCOPE,
+    OPERATIONS_WRITE_SCOPE,
+    authenticate_bearer,
+    token_hash,
+)
 from apps.integrations.operations_models import (
+    OperationsAuditEvent,
     OperationsOAuthClient,
     OperationsOAuthToken,
     OperationsSupportSession,
