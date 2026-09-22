@@ -264,7 +264,7 @@ class OperationsConfigurationManagementTests(TestCase):
                 "dry_run": False,
                 "approved": True,
                 "approval_event_id": rollback_preview["approval_event_id"],
-                "reason": "Rollback approved configuration plan after verification.",
+                "reason": "Review rollback of the applied configuration plan.",
             },
         )
         self.assertEqual(rolled_back["status"], "ROLLED_BACK")
