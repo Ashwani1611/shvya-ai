@@ -170,6 +170,12 @@ urlpatterns = [
     ),
 
     # =========================================================
+    # Call Intelligence — Android SIM calling
+    # =========================================================
+    path("api/v1/call-intelligence/", include("apps.telephony.urls.api_v1")),
+    path("dashboard/call-intelligence/", include("apps.telephony.urls.web")),
+
+    # =========================================================
     # CRM Web Dashboard
     # =========================================================
     path(
