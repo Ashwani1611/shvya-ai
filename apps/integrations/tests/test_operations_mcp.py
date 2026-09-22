@@ -47,6 +47,7 @@ from apps.integrations.models import (
     OperationsSupportSession,
 )
 from apps.integrations.operations_auth import (
+    OFFLINE_SCOPE,
     OPERATIONS_READ_SCOPE,
     OPERATIONS_WRITE_SCOPE,
     pkce_s256,
@@ -6862,12 +6863,20 @@ class OperationsMCPTests(TestCase):
             ["none"],
         )
 
-    def test_registration_accepts_chatgpt_claude_and_exact_vscode_callbacks(self):
+    def test_registration_accepts_remote_web_and_native_loopback_callbacks(self):
         for callback in (
             "https://chatgpt.com/aip/callback",
             "https://claude.ai/api/mcp/auth_callback",
-            "http://127.0.0.1:33418",
             "https://vscode.dev/redirect",
+            "https://www.cursor.com/agents/mcp/oauth/callback",
+            "https://custom-mcp-client.example/callback",
+            "http://127.0.0.1:33418",
+            "http://127.0.0.1/callback",
+            "http://127.0.0.1:61521/callback/session-id",
+            "http://localhost:8787/callback",
+            "http://localhost:54321/oauth/callback",
+            "http://localhost:3118/callback",
+            "http://[::1]:49152/oauth/callback",
         ):
             response = self.client.post(
                 "/operations/oauth/register",
@@ -6882,27 +6891,20 @@ class OperationsMCPTests(TestCase):
                 ),
                 content_type="application/json",
             )
-            self.assertEqual(response.status_code, 201)
-
-        rejected = self.client.post(
-            "/operations/oauth/register",
-            data=json.dumps(
-                {
-                    "redirect_uris": ["https://example.com/callback"],
-                    "token_endpoint_auth_method": "none",
-                }
-            ),
-            content_type="application/json",
-        )
-        self.assertEqual(rejected.status_code, 400)
+            self.assertEqual(
+                response.status_code,
+                201,
+                callback,
+            )
 
         for unsafe_callback in (
-            "http://127.0.0.1:33419",
-            "http://localhost:33418",
-            "https://vscode.dev/not-the-mcp-redirect",
+            "http://example.com/callback",
+            "http://192.168.1.10:7777/oauth/callback",
             "https://chatgpt.com:444/aip/callback",
             "https://chatgpt.com:bad/aip/callback",
             "https://chatgpt.com/aip/callback#fragment",
+            "http://localhost:7777/callback#fragment",
+            "http://user@localhost:7777/callback",
         ):
             rejected = self.client.post(
                 "/operations/oauth/register",
@@ -6914,7 +6916,64 @@ class OperationsMCPTests(TestCase):
                 ),
                 content_type="application/json",
             )
-            self.assertEqual(rejected.status_code, 400)
+            self.assertEqual(
+                rejected.status_code,
+                400,
+                unsafe_callback,
+            )
+
+    def test_portless_loopback_registration_accepts_ephemeral_runtime_port(self):
+        registration = self.client.post(
+            "/operations/oauth/register",
+            data=json.dumps(
+                {
+                    "client_name": "Native MCP",
+                    "application_type": "native",
+                    "redirect_uris": ["http://127.0.0.1/callback"],
+                    "grant_types": ["authorization_code", "refresh_token"],
+                    "response_types": ["code"],
+                    "token_endpoint_auth_method": "none",
+                }
+            ),
+            content_type="application/json",
+        )
+        self.assertEqual(registration.status_code, 201)
+        client_id = registration.json()["client_id"]
+        common = {
+            "client_id": client_id,
+            "response_type": "code",
+            "code_challenge": "A" * 43,
+            "code_challenge_method": "S256",
+            "scope": f"{OPERATIONS_READ_SCOPE} {OFFLINE_SCOPE}",
+            "resource": "http://testserver/operations/mcp/",
+        }
+
+        accepted = self.client.get(
+            "/operations/oauth/authorize",
+            {
+                **common,
+                "redirect_uri": "http://127.0.0.1:49152/callback",
+            },
+        )
+        self.assertEqual(accepted.status_code, 200)
+
+        wrong_path = self.client.get(
+            "/operations/oauth/authorize",
+            {
+                **common,
+                "redirect_uri": "http://127.0.0.1:49152/other",
+            },
+        )
+        self.assertEqual(wrong_path.status_code, 400)
+
+        wrong_host = self.client.get(
+            "/operations/oauth/authorize",
+            {
+                **common,
+                "redirect_uri": "http://localhost:49152/callback",
+            },
+        )
+        self.assertEqual(wrong_host.status_code, 400)
 
     def test_operations_oauth_bounds_dynamic_registration_and_state(self):
         too_many = self.client.post(
