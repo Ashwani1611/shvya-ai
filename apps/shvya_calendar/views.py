@@ -867,8 +867,12 @@ def calendar_attachment_download(request, attachment_id):
         submission__lead__isnull=False,
     )
     filename = Path(attachment.original_name or "attachment").name or "attachment"
+    try:
+        file_handle = attachment.file.open("rb")
+    except (FileNotFoundError, OSError) as exc:
+        raise Http404("Attachment file is no longer available.") from exc
     response = FileResponse(
-        attachment.file.open("rb"),
+        file_handle,
         as_attachment=True,
         filename=filename,
         content_type=attachment.content_type or "application/octet-stream",
