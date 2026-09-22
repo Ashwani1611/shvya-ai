@@ -285,6 +285,38 @@ class ShvyaCalendarServiceTests(TestCase):
         )
         self.assertEqual(response.status_code, 404)
 
+    @patch("apps.shvya_calendar.views.GoogleCalendarConnection.objects.filter")
+    def test_status_toggle_stays_published_if_google_readiness_check_fails(
+        self,
+        mocked_filter,
+    ):
+        self.page.meeting_location = CalendarPage.MeetingLocation.GOOGLE_MEET
+        self.page.status = CalendarPage.Status.DISABLED
+        self.page.save(
+            update_fields=["meeting_location", "status", "updated_at"]
+        )
+        mocked_filter.side_effect = RuntimeError("provider readiness unavailable")
+        self._authenticate_dashboard_client()
+
+        response = self.client.post(
+            reverse(
+                "shvya_calendar:status",
+                kwargs={"page_id": self.page.id},
+            ),
+            {"action": "publish"},
+            follow=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.page.refresh_from_db()
+        self.assertEqual(self.page.status, CalendarPage.Status.PUBLISHED)
+        rendered = response.content.decode("utf-8")
+        self.assertIn("Booking page is ON and published.", rendered)
+        self.assertNotIn(
+            "Booking page status could not be changed",
+            rendered,
+        )
+
     def test_share_always_shows_website_embed_code(self):
         self.page.status = CalendarPage.Status.DISABLED
         self.page.save(update_fields=["status", "updated_at"])

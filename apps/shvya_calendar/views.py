@@ -646,50 +646,89 @@ def calendar_status(request, page_id):
     _require_calendar_manager(user)
     page = _page_for_user(user, page_id)
     action = request.POST.get("action") or ""
-    try:
-        if action == "publish":
+
+    if action == "publish":
+        try:
             publish_page(page=page, actor=user)
-            if (
-                page.meeting_location == CalendarPage.MeetingLocation.GOOGLE_MEET
-                and not GoogleCalendarConnection.objects.filter(
-                    organization=user.organization,
+        except ValidationError as exc:
+            messages.error(request, _validation_text(exc))
+            return redirect("shvya_calendar:editor", page_id=page.id)
+        except Exception:
+            logger.exception(
+                "Unable to publish SHVYA Calendar page",
+                extra={
+                    "calendar_page_id": str(page.id),
+                    "organization_id": str(user.organization_id),
+                },
+            )
+            messages.error(
+                request,
+                (
+                    "SHVYA could not publish this page because its saved Calendar "
+                    "configuration could not be committed. Re-save Lead Form and "
+                    "Scheduling once, then try the status toggle again."
+                ),
+            )
+            return redirect("shvya_calendar:editor", page_id=page.id)
+
+        # Publication is complete at this point. Provider-readiness checks are
+        # advisory only and must never turn a successful status change into a
+        # misleading failure toast.
+        page.refresh_from_db(fields=["status", "meeting_location", "host_id"])
+        google_missing = False
+        if page.meeting_location == CalendarPage.MeetingLocation.GOOGLE_MEET:
+            try:
+                google_missing = not GoogleCalendarConnection.objects.filter(
+                    organization_id=user.organization_id,
                     user_id=page.host_id,
                     is_active=True,
                 ).exists()
-            ):
-                messages.warning(
-                    request,
-                    (
-                        "Booking page published. Lead capture is live. "
-                        "Connect the booking host's Google Calendar before "
-                        "Google Meet slots can be booked."
-                    ),
+            except Exception:
+                logger.exception(
+                    "Unable to inspect Google Calendar readiness after publication",
+                    extra={
+                        "calendar_page_id": str(page.id),
+                        "organization_id": str(user.organization_id),
+                    },
                 )
-            else:
-                messages.success(request, "Booking page published.")
-        elif action == "disable":
-            page.status = CalendarPage.Status.DISABLED
-            page.updated_by = user
-            page.save(update_fields=["status", "updated_by", "updated_at"])
-            messages.success(request, "Booking page disabled.")
+
+        if google_missing:
+            messages.warning(
+                request,
+                (
+                    "Booking page is ON and lead capture is live. Connect the "
+                    "booking host's Google Calendar before Google Meet slots can "
+                    "be booked."
+                ),
+            )
         else:
-            raise ValidationError("Unknown page status action.")
-    except ValidationError as exc:
-        messages.error(request, _validation_text(exc))
-    except Exception:
-        logger.exception(
-            "Unable to change SHVYA Calendar page status",
-            extra={
-                "calendar_page_id": str(page.id),
-                "organization_id": str(user.organization_id),
-                "action": action,
-            },
-        )
-        messages.error(
-            request,
-            "Booking page status could not be changed. Your existing page state "
-            "was kept safely. Please try again.",
-        )
+            messages.success(request, "Booking page is ON and published.")
+        return redirect("shvya_calendar:editor", page_id=page.id)
+
+    if action == "disable":
+        try:
+            CalendarPage.objects.filter(
+                pk=page.pk,
+                organization_id=user.organization_id,
+            ).update(
+                status=CalendarPage.Status.DISABLED,
+                updated_by_id=user.pk,
+                updated_at=timezone.now(),
+            )
+        except Exception:
+            logger.exception(
+                "Unable to disable SHVYA Calendar page",
+                extra={
+                    "calendar_page_id": str(page.id),
+                    "organization_id": str(user.organization_id),
+                },
+            )
+            messages.error(request, "Booking page could not be disabled. Please try again.")
+        else:
+            messages.success(request, "Booking page disabled.")
+        return redirect("shvya_calendar:editor", page_id=page.id)
+
+    messages.error(request, "Unknown booking page status action.")
     return redirect("shvya_calendar:editor", page_id=page.id)
 
 
