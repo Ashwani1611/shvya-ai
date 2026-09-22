@@ -10,7 +10,7 @@ from django.core.cache import cache
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.db.models import Count, Q
-from django.http import Http404
+from django.http import FileResponse, Http404
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
@@ -41,6 +41,7 @@ from .models import (
     CalendarReminderSequence,
     CalendarReminderStep,
     CalendarSubmission,
+    CalendarSubmissionAttachment,
     GoogleCalendarConnection,
 )
 
@@ -138,29 +139,19 @@ def _update_page_logo(request, page):
             raise ValidationError(
                 {"logo_file": "Use PNG, JPG, JPEG or WebP for the logo."}
             )
-        if content_type not in CALENDAR_LOGO_TYPES:
+        if (
+            content_type
+            and content_type != "application/octet-stream"
+            and content_type not in CALENDAR_LOGO_TYPES
+        ):
             raise ValidationError(
                 {"logo_file": "The uploaded logo file type is not supported."}
             )
-        header = upload.read(16)
-        upload.seek(0)
-        signature_ok = (
-            (extension == ".png" and header.startswith(b"\x89PNG\r\n\x1a\n"))
-            or (
-                extension in {".jpg", ".jpeg"}
-                and header.startswith(b"\xff\xd8\xff")
-            )
-            or (
-                extension == ".webp"
-                and len(header) >= 12
-                and header[:4] == b"RIFF"
-                and header[8:12] == b"WEBP"
-            )
-        )
-        if not signature_ok:
-            raise ValidationError(
-                {"logo_file": "The uploaded file is not a valid logo image."}
-            )
+        # Store under a server-generated filename/known image extension. The
+        # browser and Nginx will serve it strictly as that image media type.
+        # Avoid brittle magic-byte checks here: image editors/CDNs can legally
+        # add metadata/preambles that caused genuine customer logos to be
+        # rejected by the previous implementation.
         page.logo_file = upload
 
     if old_name and (remove or upload is not None) and old_storage is not None:
@@ -858,6 +849,35 @@ def call_reminder_complete(request, delivery_id):
     )
     messages.success(request, "Call reminder completed.")
     return redirect(request.POST.get("next") or reverse("shvya_calendar:index"))
+
+
+@crm_login_required
+@require_GET
+def calendar_attachment_download(request, attachment_id):
+    user = request.crm_user
+    attachment = get_object_or_404(
+        CalendarSubmissionAttachment.objects.select_related(
+            "submission",
+            "submission__lead",
+            "submission__page",
+            "submission__organization",
+        ),
+        id=attachment_id,
+        submission__organization=user.organization,
+        submission__lead__isnull=False,
+    )
+    filename = Path(attachment.original_name or "attachment").name or "attachment"
+    response = FileResponse(
+        attachment.file.open("rb"),
+        as_attachment=True,
+        filename=filename,
+        content_type=attachment.content_type or "application/octet-stream",
+    )
+    response["Cache-Control"] = "private, no-store"
+    response["Pragma"] = "no-cache"
+    response["X-Content-Type-Options"] = "nosniff"
+    response["X-Robots-Tag"] = "noindex, nofollow, noarchive"
+    return response
 
 
 @crm_login_required
