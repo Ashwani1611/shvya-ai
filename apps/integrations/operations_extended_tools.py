@@ -38,7 +38,7 @@ from apps.ai_engagement.services.playbook import (
     validate_playbook,
 )
 from apps.channels.models import WhatsAppAccount, WhatsAppTemplate
-from apps.crm.models import AttributeDefinition, Lead, Pipeline, Stage
+from apps.crm.models import AttributeDefinition, Pipeline, Stage
 from apps.followups.models import FollowupExecution, FollowupSequence, FollowupStep
 from apps.followups.touchpoint_models import TouchpointCategory, TouchpointReply
 from apps.hosted_automation.models import HostedFollowupStepConfig
@@ -49,8 +49,6 @@ from apps.integrations.operations_policy import (
     CAP_DIAGNOSTICS_READ,
     CAP_MESSAGING_CONFIG_WRITE,
     CAP_ORGANIZATION_READ,
-    CAP_STAGE_CONFIG_WRITE,
-    CAP_WORKFLOW_CONFIG_WRITE,
     approval_required,
 )
 from apps.organizations.features import is_hosted_account_enabled
@@ -2004,7 +2002,10 @@ def publish_knowledge_document(*, identity, arguments):
         pk=(arguments or {}).get("document_id"),
         organization=organization,
     ).annotate(
-        active_chunk_count=Count("chunks"),
+        active_chunk_count=Count(
+            "chunks",
+            filter=Q(chunks__is_active=True),
+        ),
         embedded_chunk_count=Count(
             "chunks",
             filter=Q(chunks__embedding__isnull=False, chunks__is_active=True),
