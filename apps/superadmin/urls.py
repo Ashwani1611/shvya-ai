@@ -5,6 +5,7 @@ from .views import (
     admin_global_search,
     ai_credit_overview_view,
     org_list_view,
+    operations_mcp_access_key_generate_view,
     operations_mcp_workspace_view,
     operations_mcp_superadmin_session_revoke_view,
     operations_mcp_support_end_view,
@@ -68,6 +69,11 @@ urlpatterns = [
         "mcp/",
         operations_mcp_workspace_view,
         name="superadmin-operations-mcp",
+    ),
+    path(
+        "mcp/keys/generate/",
+        operations_mcp_access_key_generate_view,
+        name="superadmin-operations-mcp-key-generate",
     ),
     path(
         "mcp/sessions/<uuid:token_id>/revoke/",
