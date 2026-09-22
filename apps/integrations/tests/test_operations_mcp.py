@@ -47,6 +47,7 @@ from apps.integrations.models import (
     OperationsSupportSession,
 )
 from apps.integrations.operations_auth import (
+    CLAUDE_BROWSER_CLIENT_ID,
     OFFLINE_SCOPE,
     OPERATIONS_READ_SCOPE,
     OPERATIONS_WRITE_SCOPE,
@@ -6964,6 +6965,61 @@ class OperationsMCPTests(TestCase):
         self.assertEqual(
             body["revocation_endpoint_auth_methods_supported"],
             ["none"],
+        )
+
+    def test_builtin_claude_browser_public_client_uses_exact_callback(self):
+        verifier = "c" * 64
+        response = self.client.get(
+            "/operations/oauth/authorize",
+            {
+                "client_id": CLAUDE_BROWSER_CLIENT_ID,
+                "redirect_uri": "https://claude.ai/api/mcp/auth_callback",
+                "response_type": "code",
+                "code_challenge": pkce_s256(verifier),
+                "code_challenge_method": "S256",
+                "scope": (
+                    f"{OPERATIONS_READ_SCOPE} "
+                    f"{OPERATIONS_WRITE_SCOPE} "
+                    f"{OFFLINE_SCOPE}"
+                ),
+                "resource": "http://testserver/operations/mcp/",
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        client = OperationsOAuthClient.objects.get(
+            client_id=CLAUDE_BROWSER_CLIENT_ID
+        )
+        self.assertEqual(
+            client.redirect_uris,
+            [
+                "https://claude.ai/api/mcp/auth_callback",
+                "https://claude.com/api/mcp/auth_callback",
+            ],
+        )
+        self.assertEqual(client.application_type, "web")
+        self.assertEqual(
+            client.grant_types,
+            ["authorization_code", "refresh_token"],
+        )
+        self.assertEqual(client.response_types, ["code"])
+
+        rejected = self.client.get(
+            "/operations/oauth/authorize",
+            {
+                "client_id": CLAUDE_BROWSER_CLIENT_ID,
+                "redirect_uri": "https://example.com/callback",
+                "response_type": "code",
+                "code_challenge": pkce_s256(verifier),
+                "code_challenge_method": "S256",
+                "scope": f"{OPERATIONS_READ_SCOPE} {OFFLINE_SCOPE}",
+                "resource": "http://testserver/operations/mcp/",
+            },
+        )
+        self.assertEqual(rejected.status_code, 400)
+        self.assertContains(
+            rejected,
+            "OAuth redirect URI is not registered.",
+            status_code=400,
         )
 
     def test_registration_accepts_remote_web_and_native_loopback_callbacks(self):
