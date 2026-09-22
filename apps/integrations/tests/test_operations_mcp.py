@@ -7284,9 +7284,9 @@ class OperationsMCPTests(TestCase):
             before_refresh_expiry,
         )
 
-        old_access = self._result(
-            self._call(bearer, "get_operations_context")
-        )
+        old_access_response = self._call(bearer, "get_operations_context")
+        self.assertEqual(old_access_response.status_code, 401)
+        old_access = old_access_response.json()["result"]
         self.assertFalse(old_access["isError"])
 
         success = self.client.post(
@@ -7958,9 +7958,9 @@ class OperationsMCPTests(TestCase):
         policy.refresh_from_db()
         self.assertTrue(policy.organization_admin_enabled)
 
-        old_token_result = self._result(
-            self._call(bearer, "get_operations_context")
-        )
+        old_token_response = self._call(bearer, "get_operations_context")
+        self.assertEqual(old_token_response.status_code, 401)
+        old_token_result = old_token_response.json()["result"]
         self.assertTrue(old_token_result["isError"])
         self.assertIn("mcp/www_authenticate", old_token_result["_meta"])
 
@@ -8062,9 +8062,9 @@ class OperationsMCPTests(TestCase):
             original_refresh_expiry,
         )
 
-        old_access = self._result(
-            self._call(bearer, "get_operations_context")
-        )
+        old_access_response = self._call(bearer, "get_operations_context")
+        self.assertEqual(old_access_response.status_code, 401)
+        old_access = old_access_response.json()["result"]
         self.assertTrue(old_access["isError"])
         self.assertIn("mcp/www_authenticate", old_access["_meta"])
 
@@ -8142,9 +8142,9 @@ class OperationsMCPTests(TestCase):
             1,
         )
 
-        result = self._result(
-            self._call(bearer, "get_operations_context")
-        )
+        response = self._call(bearer, "get_operations_context")
+        self.assertEqual(response.status_code, 401)
+        result = response.json()["result"]
         self.assertTrue(result["isError"])
         self.assertIn("mcp/www_authenticate", result["_meta"])
 
@@ -8170,9 +8170,9 @@ class OperationsMCPTests(TestCase):
         token = OperationsOAuthToken.objects.get(actor=self.admin)
         self.assertIsNotNone(token.revoked_at)
 
-        result = self._result(
-            self._call(bearer, "get_operations_context")
-        )
+        response = self._call(bearer, "get_operations_context")
+        self.assertEqual(response.status_code, 401)
+        result = response.json()["result"]
         self.assertTrue(result["isError"])
         self.assertIn("mcp/www_authenticate", result["_meta"])
 
@@ -8200,12 +8200,12 @@ class OperationsMCPTests(TestCase):
         self.admin.role = User.Role.AGENT
         self.admin.save(update_fields=["role", "updated_at"])
 
-        blocked = self._result(
-            self._call(
-                bearer,
-                "get_operations_context",
-            )
+        blocked_response = self._call(
+            bearer,
+            "get_operations_context",
         )
+        self.assertEqual(blocked_response.status_code, 401)
+        blocked = blocked_response.json()["result"]
         self.assertTrue(blocked["isError"])
         self.assertIn("mcp/www_authenticate", blocked["_meta"])
 
@@ -8214,12 +8214,12 @@ class OperationsMCPTests(TestCase):
 
         self.admin.role = User.Role.ADMIN
         self.admin.save(update_fields=["role", "updated_at"])
-        still_blocked = self._result(
-            self._call(
-                bearer,
-                "get_operations_context",
-            )
+        still_blocked_response = self._call(
+            bearer,
+            "get_operations_context",
         )
+        self.assertEqual(still_blocked_response.status_code, 401)
+        still_blocked = still_blocked_response.json()["result"]
         self.assertTrue(still_blocked["isError"])
         self.assertIn("mcp/www_authenticate", still_blocked["_meta"])
 
@@ -8249,12 +8249,12 @@ class OperationsMCPTests(TestCase):
         self.superadmin.is_superuser = False
         self.superadmin.save(update_fields=["is_superuser", "updated_at"])
 
-        blocked = self._result(
-            self._call(
-                bearer,
-                "get_operations_context",
-            )
+        blocked_response = self._call(
+            bearer,
+            "get_operations_context",
         )
+        self.assertEqual(blocked_response.status_code, 401)
+        blocked = blocked_response.json()["result"]
         self.assertTrue(blocked["isError"])
         self.assertIn("mcp/www_authenticate", blocked["_meta"])
 
@@ -8280,12 +8280,12 @@ class OperationsMCPTests(TestCase):
 
         self.superadmin.is_superuser = True
         self.superadmin.save(update_fields=["is_superuser", "updated_at"])
-        still_blocked = self._result(
-            self._call(
-                bearer,
-                "get_operations_context",
-            )
+        still_blocked_response = self._call(
+            bearer,
+            "get_operations_context",
         )
+        self.assertEqual(still_blocked_response.status_code, 401)
+        still_blocked = still_blocked_response.json()["result"]
         self.assertTrue(still_blocked["isError"])
         self.assertIn("mcp/www_authenticate", still_blocked["_meta"])
 
@@ -8296,7 +8296,9 @@ class OperationsMCPTests(TestCase):
             organization=self.organization,
             scopes=[OPERATIONS_READ_SCOPE],
         )
-        result = self._result(self._call(bearer, "get_operations_context"))
+        response = self._call(bearer, "get_operations_context")
+        self.assertEqual(response.status_code, 401)
+        result = response.json()["result"]
         self.assertTrue(result["isError"])
         self.assertIn("mcp/www_authenticate", result["_meta"])
 
