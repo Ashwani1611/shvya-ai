@@ -20,6 +20,7 @@ from apps.superadmin.workspace_views import (
 )
 
 from apps.superadmin.operations_views import (
+    operations_mcp_access_key_generate_view as operations_mcp_access_key_generate_view,
     operations_mcp_workspace_view as operations_mcp_workspace_view,
     operations_mcp_superadmin_session_revoke_view as operations_mcp_superadmin_session_revoke_view,
     operations_mcp_support_end_view as operations_mcp_support_end_view,
