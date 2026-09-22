@@ -15,9 +15,10 @@ from apps.accounts.session_utils import get_session_store
 from apps.organizations.access import crm_user_is_authorized, organization_is_active
 from apps.integrations.mcp_oauth_clients import (
     MCPClientMetadataError,
-    fetch_cimd_metadata,
-    is_allowed_cimd_url,
-    is_allowed_external_ai_redirect,
+    fetch_operations_cimd_metadata,
+    is_allowed_operations_cimd_url,
+    is_allowed_operations_redirect,
+    operations_redirect_uri_matches_registered,
 )
 from apps.integrations.operations_models import (
     OperationsAuditEvent,
@@ -78,7 +79,7 @@ def pkce_s256(verifier: str) -> str:
 
 
 def _allowed_redirect(uri: str) -> bool:
-    return is_allowed_external_ai_redirect(uri)
+    return is_allowed_operations_redirect(uri)
 
 
 def register_client(
@@ -103,7 +104,7 @@ def register_client(
         raise OperationsAuthError("OAuth redirect URI is too long.")
     if any(not _allowed_redirect(uri) for uri in redirect_uris):
         raise OperationsAuthError(
-            "Operations MCP accepts only approved ChatGPT/OpenAI/Claude/Anthropic or exact VS Code MCP redirect URIs."
+            "Operations MCP accepts secure HTTPS callbacks and RFC 8252 loopback callbacks for public PKCE clients."
         )
 
     grant_types = list(grant_types or ["authorization_code", "refresh_token"])
@@ -135,9 +136,9 @@ def _resolve_oauth_client(client_id: str):
     if client is not None and not client.is_active:
         raise OperationsAuthError("OAuth client is inactive.")
 
-    if is_allowed_cimd_url(client_id):
+    if is_allowed_operations_cimd_url(client_id):
         try:
-            metadata = fetch_cimd_metadata(client_id)
+            metadata = fetch_operations_cimd_metadata(client_id)
         except MCPClientMetadataError as exc:
             raise OperationsAuthError(str(exc)) from exc
         if client is None:
@@ -181,7 +182,10 @@ def validate_authorization_request(
     scope,
 ):
     client = _resolve_oauth_client(client_id)
-    if redirect_uri not in (client.redirect_uris or []):
+    if not operations_redirect_uri_matches_registered(
+        client.redirect_uris,
+        redirect_uri,
+    ):
         raise OperationsAuthError("OAuth redirect URI is not registered.")
     if response_type != "code":
         raise OperationsAuthError("Only response_type=code is supported.")
