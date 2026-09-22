@@ -95,6 +95,7 @@ from apps.integrations.operations_tools import (
     _uuid,
     _write_gate,
     _cadence_schedule,
+    _assert_workflow_safe_attribute_references,
 )
 
 
@@ -1256,6 +1257,10 @@ def validate_workflow_configuration(*, identity, arguments):
         clean = validate_workflow_rule(organization, data)
     except ValidationError as exc:
         raise OperationsToolError("Workflow validation failed: " + "; ".join(exc.messages)) from exc
+    _assert_workflow_safe_attribute_references(
+        organization=organization,
+        clean=clean,
+    )
     return ToolExecution(
         data={
             "valid": True,
@@ -2763,6 +2768,10 @@ def simulate_workflow(*, identity, arguments):
             clean = validate_workflow_rule(organization, data)
         except ValidationError as exc:
             raise OperationsToolError("Workflow validation failed: " + "; ".join(exc.messages)) from exc
+        _assert_workflow_safe_attribute_references(
+            organization=organization,
+            clean=clean,
+        )
     rule_view = SimpleNamespace(
         conditions=clean["conditions"],
         trigger_type=clean["trigger_type"],
