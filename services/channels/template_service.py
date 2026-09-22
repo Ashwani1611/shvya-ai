@@ -94,7 +94,7 @@ def available_placeholders(*, organization):
         }
         for key, label, source, field_name, example in base
     ]
-    for item in AttributeDefinition.objects.filter(organization=organization):
+    for item in AttributeDefinition.objects.filter(is_active=True, organization=organization):
         result.append(
             {
                 "key": item.key,
