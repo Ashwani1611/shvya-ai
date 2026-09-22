@@ -100,8 +100,9 @@ class LeadDashboardPerformanceTests(TestCase):
         self._create_lead(1)
 
         cache.clear()
-        # Two bounded queries load WhatsApp and Instagram scoring evidence.
-        with self.assertNumQueries(9):
+        # WhatsApp/Instagram scoring plus one bounded SHVYA Calendar
+        # attachment query remain constant regardless of lead count.
+        with self.assertNumQueries(10):
             one_lead_context = self._build_context()
 
         self.assertEqual(
@@ -116,8 +117,9 @@ class LeadDashboardPerformanceTests(TestCase):
             self._create_lead(index)
 
         cache.clear()
-        # Two bounded queries load WhatsApp and Instagram scoring evidence.
-        with self.assertNumQueries(9):
+        # WhatsApp/Instagram scoring plus one bounded SHVYA Calendar
+        # attachment query remain constant regardless of lead count.
+        with self.assertNumQueries(10):
             many_lead_context = self._build_context()
 
         rendered_leads = [
