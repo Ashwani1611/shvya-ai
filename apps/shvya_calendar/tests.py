@@ -847,6 +847,194 @@ class ShvyaCalendarServiceTests(TestCase):
         )
         mocked_delay.assert_called_once()
 
+    @patch("apps.shvya_calendar.services.schedule_booking_reminders")
+    @patch("apps.shvya_calendar.services.create_booking_event")
+    @patch("apps.shvya_calendar.services.available_slots")
+    def test_booking_remains_confirmed_when_google_sync_crashes(
+        self,
+        mocked_available_slots,
+        mocked_create_event,
+        mocked_schedule_reminders,
+    ):
+        request = self._request(
+            {
+                "name": "Google Failure Lead",
+                "mobile": "+918333333333",
+                "consent": "on",
+            }
+        )
+        submitted, normalized = validate_public_submission(
+            page=self.page,
+            version=self.version,
+            post=request.POST,
+            files=request.FILES,
+        )
+        submission, _lead, _created = create_submission_and_lead(
+            page=self.page,
+            version=self.version,
+            submitted=submitted,
+            normalized=normalized,
+            request=request,
+            files=request.FILES,
+        )
+        slot_start = (timezone.now() + timedelta(days=2)).replace(
+            second=0,
+            microsecond=0,
+        )
+        mocked_available_slots.return_value = [
+            {
+                "start": slot_start,
+                "end": slot_start + timedelta(minutes=30),
+                "label": "10:00 AM",
+            }
+        ]
+        mocked_create_event.side_effect = RuntimeError("provider exploded")
+
+        booking = book_slot(
+            page=self.page,
+            submission=submission,
+            slot_start_iso=slot_start.isoformat(),
+        )
+
+        self.assertEqual(
+            CalendarBooking.objects.filter(pk=booking.pk).count(),
+            1,
+        )
+        booking.refresh_from_db()
+        self.assertEqual(
+            booking.calendar_sync_status,
+            CalendarBooking.SyncStatus.FAILED,
+        )
+        self.assertIn("provider exploded", booking.calendar_sync_error)
+        mocked_schedule_reminders.assert_called_once()
+
+    @patch("apps.shvya_calendar.services.schedule_booking_reminders")
+    @patch("apps.shvya_calendar.services.create_booking_event")
+    @patch("apps.shvya_calendar.services.available_slots")
+    def test_booking_remains_confirmed_when_reminder_setup_crashes(
+        self,
+        mocked_available_slots,
+        mocked_create_event,
+        mocked_schedule_reminders,
+    ):
+        request = self._request(
+            {
+                "name": "Reminder Failure Lead",
+                "mobile": "+918444444444",
+                "consent": "on",
+            }
+        )
+        submitted, normalized = validate_public_submission(
+            page=self.page,
+            version=self.version,
+            post=request.POST,
+            files=request.FILES,
+        )
+        submission, _lead, _created = create_submission_and_lead(
+            page=self.page,
+            version=self.version,
+            submitted=submitted,
+            normalized=normalized,
+            request=request,
+            files=request.FILES,
+        )
+        slot_start = (timezone.now() + timedelta(days=2)).replace(
+            second=0,
+            microsecond=0,
+        )
+        mocked_available_slots.return_value = [
+            {
+                "start": slot_start,
+                "end": slot_start + timedelta(minutes=30),
+                "label": "11:00 AM",
+            }
+        ]
+        mocked_schedule_reminders.side_effect = RuntimeError("broker unavailable")
+
+        booking = book_slot(
+            page=self.page,
+            submission=submission,
+            slot_start_iso=slot_start.isoformat(),
+        )
+
+        self.assertTrue(CalendarBooking.objects.filter(pk=booking.pk).exists())
+        mocked_create_event.assert_called_once()
+        mocked_schedule_reminders.assert_called_once()
+
+    @patch("apps.shvya_calendar.views.upcoming_slot_days", return_value=[])
+    @patch("apps.shvya_calendar.views.book_slot")
+    def test_public_schedule_recovers_booking_created_before_late_failure(
+        self,
+        mocked_book_slot,
+        _mocked_slot_days,
+    ):
+        from apps.shvya_calendar.views import _booking_flow_token
+
+        request = self._request(
+            {
+                "name": "Recovered Booking Lead",
+                "mobile": "+918555555555",
+                "consent": "on",
+            }
+        )
+        submitted, normalized = validate_public_submission(
+            page=self.page,
+            version=self.version,
+            post=request.POST,
+            files=request.FILES,
+        )
+        submission, lead, _created = create_submission_and_lead(
+            page=self.page,
+            version=self.version,
+            submitted=submitted,
+            normalized=normalized,
+            request=request,
+            files=request.FILES,
+        )
+        start_at = (timezone.now() + timedelta(days=2)).replace(
+            second=0,
+            microsecond=0,
+        )
+        booking = CalendarBooking.objects.create(
+            organization=self.organization,
+            page=self.page,
+            submission=submission,
+            lead=lead,
+            host=self.user,
+            start_at=start_at,
+            end_at=start_at + timedelta(minutes=30),
+            timezone=self.page.timezone,
+        )
+        mocked_book_slot.side_effect = RuntimeError("late side-effect failure")
+        flow_token = _booking_flow_token(self.page, submission)
+
+        response = self.client.post(
+            reverse(
+                "shvya_calendar_public:schedule",
+                kwargs={
+                    "public_id": self.page.public_id,
+                    "slug": self.page.slug,
+                    "submission_id": submission.id,
+                },
+            ),
+            {
+                "flow_token": flow_token,
+                "slot_start": start_at.isoformat(),
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(
+            response.url,
+            reverse(
+                "shvya_calendar_public:confirmation",
+                kwargs={
+                    "booking_id": booking.id,
+                    "cancel_token": booking.cancel_token,
+                },
+            ),
+        )
+
     @patch("apps.shvya_calendar.services.create_booking_event")
     @patch("apps.shvya_calendar.services.available_slots")
     def test_booking_retry_reuses_existing_active_booking(
