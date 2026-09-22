@@ -1,11 +1,17 @@
 from django.urls import path
 
-from . import views
+from . import views, workspace
 
 app_name = "shvya_calendar"
 
 urlpatterns = [
     path("", views.calendar_index, name="index"),
+    path("bookings/", views.calendar_index, name="bookings"),
+    path("calendar/", workspace.calendar_workspace, name="calendar"),
+    path("calendar/events/", workspace.calendar_events, name="events"),
+    path("calendar/bookings/<uuid:booking_id>/", workspace.booking_detail, name="booking_detail"),
+    path("calendar/bookings/<uuid:booking_id>/slots/", workspace.booking_slots, name="booking_slots"),
+    path("calendar/bookings/<uuid:booking_id>/update/", workspace.booking_update, name="booking_update"),
     path("<uuid:page_id>/", views.calendar_editor, name="editor"),
     path("<uuid:page_id>/save/", views.calendar_editor_save, name="save"),
     path("<uuid:page_id>/status/", views.calendar_status, name="status"),
