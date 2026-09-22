@@ -55,7 +55,7 @@
   </nav>
 
   <section class="sc-tab-panel" data-tab-panel="lead">
-    <form method="post" action="{% url 'shvya_calendar:save' page_id=page.id %}" id="sc-lead-form">
+    <form method="post" enctype="multipart/form-data" action="{% url 'shvya_calendar:save' page_id=page.id %}" id="sc-lead-form">
       {% csrf_token %}<input type="hidden" name="section" value="lead">
       <details class="sc-accordion" open>
         <summary><span class="sc-summary-icon"><i class="ti ti-layout-sidebar-left-collapse"></i></span><span><strong>Page Introduction</strong><small>The heading, identity and highlights shown beside the form.</small></span><i class="ti ti-chevron-down"></i></summary>
@@ -66,7 +66,28 @@
             <label class="sc-field"><span>Page type</span><select name="page_type"><option value="lead" {% if page.page_type == 'lead' %}selected{% endif %}>Lead capture only</option><option value="booking" {% if page.page_type == 'booking' %}selected{% endif %}>Booking</option><option value="lead_booking" {% if page.page_type == 'lead_booking' %}selected{% endif %}>Lead capture + booking</option></select></label>
             <label class="sc-field"><span>Accent color</span><div class="sc-color-input"><input type="color" value="{{ page.accent_color }}" data-color-picker><input name="accent_color" value="{{ page.accent_color }}" data-color-text></div></label>
             <label class="sc-field"><span>Page language</span><select name="language"><option value="en" {% if page.language == 'en' %}selected{% endif %}>English</option><option value="hi" {% if page.language == 'hi' %}selected{% endif %}>Hindi</option></select></label>
-            <label class="sc-field sc-field-wide"><span>Logo URL</span><input type="url" name="logo_url" value="{{ page.logo_url }}" placeholder="https://…"><small>Optional brand mark for the public page.</small></label>
+            <div class="sc-field sc-field-wide">
+              <span>Brand logo</span>
+              <label class="sc-logo-upload" for="sc-logo-file">
+                <input id="sc-logo-file" type="file" name="logo_file" accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp">
+                <span class="sc-logo-preview" data-logo-preview>
+                  {% if page.logo_display_url %}
+                    <img src="{{ page.logo_display_url }}" alt="{{ page.organization.name }} logo">
+                  {% else %}
+                    <i class="ti ti-cloud-upload"></i>
+                  {% endif %}
+                </span>
+                <span class="sc-logo-copy">
+                  <strong>{% if page.logo_display_url %}Replace logo{% else %}Upload logo{% endif %}</strong>
+                  <small data-logo-filename>PNG, JPG or WebP · up to 2 MB</small>
+                </span>
+                <span class="sc-button sc-button-small">Choose file</span>
+              </label>
+              {% if page.logo_display_url %}
+                <label class="sc-logo-remove"><input type="checkbox" name="remove_logo"> Remove current logo</label>
+              {% endif %}
+              <label class="sc-field sc-logo-url-fallback"><span>Or use an external logo URL</span><input type="url" name="logo_url" value="{{ page.logo_url }}" placeholder="https://example.com/logo.png"><small>Uploaded logo is preferred. External URL remains available as a fallback.</small></label>
+            </div>
             <label class="sc-field"><span>Heading</span><input name="intro_title" maxlength="120" value="{{ page.intro_title }}" placeholder="Book a product demo"></label>
             <label class="sc-field"><span>Description</span><textarea name="intro_description" rows="3" placeholder="A short reason to book.">{{ page.intro_description }}</textarea></label>
             <label class="sc-field sc-field-wide"><span>Highlights</span><textarea name="intro_highlights" rows="4" placeholder="AI-powered follow-up&#10;30-minute product walkthrough&#10;Questions answered live">{% for item in page.intro_highlights %}{{ item }}{% if not forloop.last %}&#10;{% endif %}{% endfor %}</textarea><small>One public-page highlight per line.</small></label>
@@ -313,12 +334,12 @@
         <div class="sc-share-card">
           <span class="sc-kicker">WEBSITE EMBED</span>
           <strong>Place the complete flow inside your website</strong>
+          <textarea readonly rows="6" data-copy-source="embed">{{ embed_code }}</textarea>
+          <button class="sc-button" type="button" data-copy-target="embed"><i class="ti ti-code"></i> Copy embed</button>
           {% if page.status == 'published' %}
-            <textarea readonly rows="6" data-copy-source="embed">{{ embed_code }}</textarea>
-            <button class="sc-button" type="button" data-copy-target="embed"><i class="ti ti-code"></i> Copy embed</button>
-            <small>The public flow is signed and does not depend on third-party CSRF cookies.</small>
+            <small>Live now. The public flow is signed and does not depend on third-party CSRF cookies.</small>
           {% else %}
-            <div class="sc-alert">Publish this page first. SHVYA will then enable the live embed code.</div>
+            <small>You can add this embed now. It will automatically become live when Booking Page Status is published.</small>
           {% endif %}
         </div>
         <div class="sc-info-strip sc-info-blue"><i class="ti ti-shield-check"></i><span>Every submission still goes through the published field allowlist, tenant-scoped CRM mapping, duplicate handling and rate limits.</span></div>
