@@ -134,8 +134,8 @@ jobs:
             $COMPOSE run --rm --no-deps --user 0 web sh -c \
               'mkdir -p /app/staticfiles /app/media && chown -R 10001:10001 /app/staticfiles /app/media'
 
-            echo "Starting isolated staging PostgreSQL and Redis..."
-            $COMPOSE up -d --wait db redis
+            echo "Starting isolated staging PostgreSQL, Redis, and PgBouncer..."
+            $COMPOSE up -d --wait db redis pgbouncer
 
             echo "Creating a staging database backup before migrations..."
             BACKUP_FILE="$APP_DIR/backups/shvya-staging-$(date -u +%Y%m%dT%H%M%SZ).sql"
