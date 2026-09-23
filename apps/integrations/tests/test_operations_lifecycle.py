@@ -7,7 +7,7 @@ from django.utils import timezone
 
 from apps.accounts.models import User
 from apps.ai_engagement.models import FAQ
-from apps.channels.models import WhatsAppAccount
+from apps.channels.models import WhatsAppAccount, WhatsAppTemplate
 from apps.crm.models import AttributeDefinition, Lead, Pipeline, Stage
 from apps.followups.models import FollowupSequence, LeadSequenceState
 from apps.followups.touchpoint_models import TouchpointCategory, TouchpointReply
@@ -336,6 +336,56 @@ class OperationsLifecycleToolsTests(TestCase):
         self.assertEqual(restored["status"], "FIXED")
         attribute.refresh_from_db()
         self.assertTrue(attribute.is_active)
+
+    def test_attribute_archive_detects_whatsapp_template_placeholder_dependency(self):
+        attribute = AttributeDefinition.objects.create(
+            organization=self.organization,
+            name="VIP Note",
+            key="vip_note",
+            field_type="text",
+        )
+        account = WhatsAppAccount.objects.create(
+            organization=self.organization,
+            connection_type=WhatsAppAccount.ConnectionType.API,
+            business_name="Template API",
+            phone_number_id="template-phone-id",
+            display_phone_number="+919800000003",
+            status=WhatsAppAccount.Status.CONNECTED,
+            is_active=True,
+        )
+        template = WhatsAppTemplate.objects.create(
+            organization=self.organization,
+            account=account,
+            name="vip_note_template",
+            category=WhatsAppTemplate.Category.UTILITY,
+            status=WhatsAppTemplate.Status.APPROVED,
+            body="Your note is {{vip_note}}",
+            created_by=self.admin,
+        )
+
+        blocked = self._ok(
+            "archive_attribute",
+            {
+                "attribute_id": str(attribute.id),
+                "reason": "Review VIP Note attribute template dependencies before archive.",
+            },
+        )
+        self.assertFalse(blocked["can_apply"])
+        self.assertEqual(
+            len(blocked["dependencies"]["whatsapp_template_references"]),
+            1,
+        )
+
+        template.status = WhatsAppTemplate.Status.ARCHIVED
+        template.save(update_fields=["status", "updated_at"])
+        clear = self._ok(
+            "archive_attribute",
+            {
+                "attribute_id": str(attribute.id),
+                "reason": "Recheck VIP Note after retiring dependent WhatsApp template.",
+            },
+        )
+        self.assertTrue(clear["can_apply"])
 
     def test_attribute_delete_requires_explicit_bounded_value_purge(self):
         attribute = AttributeDefinition.objects.create(
