@@ -4,6 +4,7 @@ import uuid
 
 from celery import shared_task
 from django.conf import settings
+from django.core.cache import cache
 from django.db.models import F, Window
 from django.db.models.functions import RowNumber
 from django.utils import timezone
@@ -48,16 +49,66 @@ def _fair_queryset(
     order_by,
     per_organization,
     limit,
+    cursor_key=None,
 ):
-    """Bound one dispatch pass while reserving capacity for each tenant."""
+    """Bound one pass and rotate the active organization subset across runs."""
+    per_organization = max(1, int(per_organization))
+    limit = max(1, int(limit))
+    organization_batch = max(1, limit // per_organization)
+
+    # A per-tenant row cap prevents one organization filling the batch. The
+    # cursor also rotates which organizations are eligible so a permanent
+    # backlog in the oldest tenants cannot starve organization 501+ forever.
+    cursor = ""
+    if cursor_key:
+        try:
+            cursor = str(cache.get(cursor_key) or "").strip()
+        except Exception:
+            cursor = ""
+
+    organization_queryset = queryset
+    after_cursor = organization_queryset
+    if cursor:
+        after_cursor = after_cursor.filter(
+            **{f"{partition_by}__gt": cursor}
+        )
+    organizations = list(
+        after_cursor.order_by(partition_by)
+        .values_list(partition_by, flat=True)
+        .distinct()[:organization_batch]
+    )
+    if cursor and len(organizations) < organization_batch:
+        remaining = organization_batch - len(organizations)
+        wrapped = list(
+            organization_queryset.filter(
+                **{f"{partition_by}__lte": cursor}
+            )
+            .order_by(partition_by)
+            .values_list(partition_by, flat=True)
+            .distinct()[:remaining]
+        )
+        organizations.extend(
+            organization_id
+            for organization_id in wrapped
+            if organization_id not in organizations
+        )
+
+    if organizations:
+        queryset = queryset.filter(**{f"{partition_by}__in": organizations})
+        if cursor_key:
+            try:
+                cache.set(cursor_key, str(organizations[-1]), timeout=None)
+            except Exception:
+                pass
+
     ranked = queryset.annotate(
         _tenant_rank=Window(
             expression=RowNumber(),
             partition_by=[F(partition_by)],
             order_by=[F(order_by).asc(), F("id").asc()],
         )
-    ).filter(_tenant_rank__lte=max(1, int(per_organization)))
-    return ranked.order_by(order_by, "id")[: max(1, int(limit))]
+    ).filter(_tenant_rank__lte=per_organization)
+    return ranked.order_by("_tenant_rank", order_by, "id")[:limit]
 
 
 def _dispatch():
@@ -77,6 +128,7 @@ def _dispatch():
         order_by="created_at",
         per_organization=10,
         limit=500,
+        cursor_key="shvya:automation:event-org-cursor",
     ).values_list("id", flat=True):
         try:
             evaluate(event_id)
@@ -92,6 +144,7 @@ def _dispatch():
         order_by="due_at",
         per_organization=10,
         limit=500,
+        cursor_key="shvya:automation:run-org-cursor",
     ).values_list("id", flat=True):
         try:
             execute(run_id)
@@ -104,6 +157,7 @@ def _dispatch():
         order_by="due_at",
         per_organization=5,
         limit=100,
+        cursor_key="shvya:automation:email-org-cursor",
     ).values_list("id", flat=True):
         try:
             deliver_email(run_id)
@@ -137,6 +191,7 @@ def _dispatch_messages():
         order_by="due_at",
         per_organization=10,
         limit=500,
+        cursor_key="shvya:automation:message-org-cursor",
     )
     for run in runs:
         try:
