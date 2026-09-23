@@ -53,8 +53,17 @@ replaceOnce(
 );
 
 replaceOnce(
-  "    if (!state || state.status === 'failed') continue;",
-  "    if (!state || state.status === 'failed' || state.status === 'expired') continue;",
+  lines(
+    '  const heartbeatCallbacks = [];',
+    '  for (const [sessionId, state] of sessions.entries()) {',
+    '    const key = lockKey(sessionId);',
+  ),
+  lines(
+    '  const heartbeatCallbacks = [];',
+    '  for (const [sessionId, state] of sessions.entries()) {',
+    "    if (!state || state.status === 'failed' || state.status === 'expired') continue;",
+    '    const key = lockKey(sessionId);',
+  ),
   'do not reacquire leases for expired QR sessions',
 );
 
@@ -199,7 +208,10 @@ replaceOnce(
 );
 
 replaceOnce(
-  "app.get('/health', (_req, res) => res.json({ ok: true, sessions: sessions.size }));",
+  lines(
+    "app.get('/health', (_req, res) => {",
+    '  const memory = process.memoryUsage();',
+  ),
   lines(
     "app.get('/health', (_req, res) => {",
     '  const statuses = {};',
@@ -207,8 +219,20 @@ replaceOnce(
     "    const status = String((state && state.status) || 'unknown');",
     '    statuses[status] = (statuses[status] || 0) + 1;',
     '  }',
-    '  res.json({ ok: true, sessions: sessions.size, statuses });',
-    '});',
+    '  const memory = process.memoryUsage();',
+  ),
+  'collect session status counts for the health endpoint',
+);
+
+replaceOnce(
+  lines(
+    '    sessions: sessions.size,',
+    '    maxSessions: MAX_HOSTED_SESSIONS,',
+  ),
+  lines(
+    '    sessions: sessions.size,',
+    '    statuses,',
+    '    maxSessions: MAX_HOSTED_SESSIONS,',
   ),
   'expose session status counts in health endpoint',
 );
