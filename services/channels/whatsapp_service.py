@@ -276,6 +276,8 @@ def _queue_whatsapp_engagement(
     """Queue the durable, source-message-idempotent API AI execution path."""
     from apps.ai_engagement.services.execution_tracker import queue_api_engagement
 
+    if source_message_id is None:
+        return queue_api_engagement(lead_id=lead_id)
     return queue_api_engagement(
         lead_id=lead_id,
         source_message_id=source_message_id,
