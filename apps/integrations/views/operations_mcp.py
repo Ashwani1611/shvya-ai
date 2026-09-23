@@ -1261,6 +1261,104 @@ OWN_TOOL_DEFINITIONS = [
         read_only=False,
     ),
     _tool(
+        "simulate_ai_response_policy",
+        "Simulate AI response policy",
+        "Run SHVYA's deterministic backend conversation-policy engine with synthetic intent/qualification inputs. No AI provider, message send, CRM write, or lead creation occurs.",
+        {
+            "data": {
+                "type": "object",
+                "properties": {
+                    "primary_intent": {
+                        "type": "string",
+                        "enum": [
+                            "GREETING",
+                            "PRODUCT_OR_SERVICE_QUESTION",
+                            "PRICING_QUESTION",
+                            "POLICY_QUESTION",
+                            "LOCATION_QUESTION",
+                            "AVAILABILITY_QUESTION",
+                            "QUALIFICATION_ANSWER",
+                            "BOOKING_INTENT",
+                            "CALL_REQUEST",
+                            "HUMAN_REQUEST",
+                            "OBJECTION",
+                            "BUYING_INTENT",
+                            "FOLLOW_UP_RESPONSE",
+                            "COMPLAINT",
+                            "OPT_OUT",
+                            "THANK_YOU",
+                            "AMBIGUOUS",
+                            "UNKNOWN",
+                        ],
+                    },
+                    "secondary_intents": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "maxItems": 10,
+                    },
+                    "confidence": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 1,
+                    },
+                    "direct_question": {"type": "string", "maxLength": 2000},
+                    "requires_knowledge": {"type": "boolean"},
+                    "qualification_accepted": {"type": "boolean"},
+                    "next_requirement_id": {"type": "string", "maxLength": 120},
+                    "continue_after_answer": {"type": "boolean"},
+                    "ai_allowed": {"type": "boolean"},
+                    "capabilities": {
+                        "type": "array",
+                        "items": {"type": "string", "enum": ["booking", "call"]},
+                        "maxItems": 2,
+                    },
+                    "knowledge_available": {"type": ["boolean", "null"]},
+                    "channel": {"type": "string", "maxLength": 32},
+                },
+                "required": ["primary_intent"],
+                "additionalProperties": False,
+            },
+        },
+        ["data"],
+    ),
+    _tool(
+        "test_integration_runtime",
+        "Test integration runtime",
+        "Run a side-effect-free persisted-state self-test for WhatsApp and/or Instagram connection, routing, automation and known runtime blockers. Makes no provider network calls.",
+        {
+            "channel": {
+                "type": "string",
+                "enum": ["all", "whatsapp", "instagram"],
+                "default": "all",
+            },
+        },
+    ),
+    _tool(
+        "test_webhook_runtime",
+        "Test webhook runtime",
+        "Inspect persisted outbound webhook delivery state plus WhatsApp/Instagram inbound webhook evidence for a bounded time window. Does not replay or send a webhook.",
+        {
+            "hours": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 168,
+                "default": 24,
+            },
+        },
+    ),
+    _tool(
+        "compare_configuration_drift",
+        "Compare configuration drift",
+        "Superadmin-only server-side structural comparison between the active organization and one reference organization. Returns counts and cryptographic structure signatures only; no cross-tenant configuration content, names, lead data, messages, or credentials are returned.",
+        {
+            "reference_organization_id": {
+                "type": "string",
+                "format": "uuid",
+            },
+        },
+        ["reference_organization_id"],
+    ),
+    _tool(
         "get_operations_audit",
         "Review SHVYA Operations audit",
         "Return safe organization-scoped audit events, or Superadmin-only platform audit events that have no customer tenant. Never mixes customer organizations.",
@@ -1398,6 +1496,10 @@ TOOL_CAPABILITIES = {
     "archive_pipeline": CAP_PIPELINE_CONFIG_WRITE,
     "archive_cadence": CAP_CADENCE_CONFIG_WRITE,
     "archive_workflow": CAP_WORKFLOW_CONFIG_WRITE,
+    "simulate_ai_response_policy": CAP_DIAGNOSTICS_READ,
+    "test_integration_runtime": CAP_DIAGNOSTICS_READ,
+    "test_webhook_runtime": CAP_DIAGNOSTICS_READ,
+    "compare_configuration_drift": CAP_DIAGNOSTICS_READ,
     "get_operations_audit": CAP_AUDIT_READ,
 }
 for _diagnostic_name in DIAGNOSTIC_TOOL_NAMES:
