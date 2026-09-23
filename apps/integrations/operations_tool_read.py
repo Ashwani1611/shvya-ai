@@ -144,6 +144,13 @@ from apps.integrations.operations_tools import (
     ATTRIBUTE_COMPATIBILITY_SCAN_LIMIT,
 )
 
+def _operations_facade():
+    """Resolve compatibility seams through the stable Operations facade."""
+    from apps.integrations import operations_tools
+
+    return operations_tools
+
+
 def _reject_secret_like_content(value, *, field="configuration"):
     """Reject credential-like strings before persisting external-AI authored text."""
 
@@ -254,20 +261,21 @@ def _incompatible_existing_attribute_value_count(
 ):
     count = 0
     scanned = 0
+    scan_limit = _operations_facade().ATTRIBUTE_COMPATIBILITY_SCAN_LIMIT
     values = (
         _tenant_safe_leads(organization)
         .filter(**{"attributes__has_key": attribute.key})
         .order_by("id")
         .values_list("attributes", flat=True)[
-            : ATTRIBUTE_COMPATIBILITY_SCAN_LIMIT + 1
+            : scan_limit + 1
         ]
     )
     for attributes in values.iterator(chunk_size=500):
         scanned += 1
-        if scanned > ATTRIBUTE_COMPATIBILITY_SCAN_LIMIT:
+        if scanned > scan_limit:
             raise OperationsManualFixRequired(
                 "This attribute type/options change requires checking more "
-                f"than {ATTRIBUTE_COMPATIBILITY_SCAN_LIMIT} leads. Operations "
+                f"than {scan_limit} leads. Operations "
                 "MCP will not perform an unbounded compatibility scan; use a "
                 "dedicated CRM cleanup/migration workflow and then run a fresh "
                 "dry-run."
