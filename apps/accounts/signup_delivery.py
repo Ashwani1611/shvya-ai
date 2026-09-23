@@ -3,13 +3,13 @@ import logging
 from datetime import timedelta
 from urllib.parse import urlencode
 
-from django.conf import settings
 from django.core import signing
-from django.core.mail import get_connection, send_mail
+from django.core.mail import send_mail
 from django.db import transaction
 from django.utils import timezone
 
 from .models import SignupVerificationDelivery
+from apps.superadmin.platform_email import platform_verification_mail_options
 
 logger = logging.getLogger(__name__)
 
@@ -37,9 +37,8 @@ def deliver_signup_verification(delivery_id):
                 message=("Welcome to SHVYA AI.\n\n"
                          "Verify your email address to activate your organization:\n\n"
                          f"{url}\n\nThis verification link expires in 24 hours."),
-                from_email=settings.DEFAULT_FROM_EMAIL,
+                **platform_verification_mail_options(),
                 recipient_list=[delivery.email],
-                connection=get_connection(timeout=10),
                 fail_silently=False,
             )
             if sent != 1:
