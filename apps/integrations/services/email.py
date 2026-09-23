@@ -343,6 +343,20 @@ def send_organization_email(
 
     try:
         return message.send(fail_silently=False)
+    except smtplib.SMTPResponseException as exc:
+        if 400 <= int(exc.smtp_code or 0) < 500:
+            from apps.core.observability import increment
+
+            increment("provider.throttled", labels={"provider": "smtp"})
+        logger.exception(
+            "Configured email delivery was rejected for organization %s.",
+            organization.pk,
+        )
+        raise EmailConfigurationError(
+            "The email provider temporarily rejected delivery."
+            if 400 <= int(exc.smtp_code or 0) < 500
+            else "The email provider rejected delivery."
+        ) from exc
     except Exception as exc:
         logger.exception(
             "Configured email delivery failed for organization %s.",
